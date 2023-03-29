@@ -1,91 +1,94 @@
 import os
-import subprocess
-import sys
 from pathlib import Path
 import requests
-
-import Utils
-
 from io import BytesIO
 from urllib.request import urlopen
 from zipfile import ZipFile
 
+import Utils
+
 # https://sdk.lunarg.com/sdk/download/latest/PLATFORM/vulkan_sdk.[exe|tar.gz|dmg]
 VULKAN_SDK_INSTALLER_URL = 'https://sdk.lunarg.com/sdk/download/latest/windows/vulkan_sdk.exe'
-VULKAN_VERSION_MIN = '1.3'
+VULKAN_VERSION_MIN = '1.2'
 VULKAN_VERSION_LATEST = '1.3.231.1'
+VULKAN_VERSION_INSTALLED = ''
 VULKAN_SDK_EXE_PATH = 'ThirdParty/VulkanSDK/VulkanSDK.exe'
 VULKAN_SDK_FOLDER = 'ThirdParty/VulkanSDK/'
 
 
-def GetLatestVulkanSDKVer():
+def get_latest_vulkan_sdk_ver():
     url = "https://vulkan.lunarg.com/sdk/latest/windows.txt"
     response = requests.get(url)
-    print(response.status_code)
+    # print(response.status_code)
 
     if response.status_code == 200:
         global VULKAN_VERSION_LATEST
         VULKAN_VERSION_LATEST = response.content.decode()
     else:
-        print("Error:", response.status_code)
+        Utils.print_error(response.status_code)
 
 
-def InstallVulkanSDK():
-    GetLatestVulkanSDKVer()
-    print('Latest Vulkan SDK version is {}'.format(VULKAN_VERSION_LATEST))
-
-    print('Downloading {} to {}'.format(
+def install_vulkan_sdk():
+    Utils.print_info('Downloading {} to {}'.format(
         VULKAN_SDK_INSTALLER_URL, VULKAN_SDK_EXE_PATH))
     # Create the directory if it does not exist
     os.makedirs(VULKAN_SDK_FOLDER, exist_ok=True)
-    Utils.DownloadFile(VULKAN_SDK_INSTALLER_URL, VULKAN_SDK_EXE_PATH)
-    print("Done!")
-    print("Running Vulkan SDK installer...")
+    Utils.download_file(VULKAN_SDK_INSTALLER_URL, VULKAN_SDK_EXE_PATH)
+    Utils.print_success("Done!")
+    Utils.print_info("Running Vulkan SDK installer...")
     os.startfile(os.path.abspath(VULKAN_SDK_EXE_PATH))
-    print("Re-run this script after installation")
+    Utils.print_info("Re-run this script after installation")
 
 
-def InstallVulkanPrompt():
-    print("Would you like to install the Vulkan SDK?")
-    install = Utils.YesOrNo()
+def install_vulkan_prompt():
+    Utils.print_info("Would you like to install the Vulkan SDK?")
+    install = Utils.yes_or_no()
     if (install):
-        InstallVulkanSDK()
+        install_vulkan_sdk()
         quit()
 
 
-def CheckVulkanSDK():
+def check_vulkan_sdk():
     VULKAN_SDK = os.environ.get('VULKAN_SDK')
+    get_latest_vulkan_sdk_ver()
+    Utils.print_info(
+        'Latest Vulkan SDK version from LunarG is {}'.format(VULKAN_VERSION_LATEST))
+
     if (VULKAN_SDK is None):
-        print("You don't have the Vulkan SDK installed!")
-        InstallVulkanPrompt()
+        Utils.print_warning("You don't have the Vulkan SDK installed!")
+        install_vulkan_prompt()
         return False
     else:
         # Convert to a raw string
         VULKAN_SDK = r"" + VULKAN_SDK
-        if (os.path.basename(VULKAN_SDK) < VULKAN_VERSION_MIN):
-            print(f"Located Vulkan SDK at {VULKAN_SDK}")
-            print(
+        global VULKAN_VERSION_INSTALLED
+        VULKAN_VERSION_INSTALLED = os.path.basename(VULKAN_SDK)
+        Utils.print_info(
+            f"Vulkan SDK version you installed: {VULKAN_VERSION_INSTALLED}")
+
+        if (VULKAN_VERSION_INSTALLED < VULKAN_VERSION_MIN):
+            Utils.print_info(f"Located Vulkan SDK at {VULKAN_SDK}")
+            Utils.print_warning(
                 f"You don't have the correct Vulkan SDK version! (Requires {VULKAN_VERSION_MIN}+)")
-            InstallVulkanPrompt()
+            install_vulkan_prompt()
             return False
 
-    print(f"Correct Vulkan SDK located at {VULKAN_SDK}")
+    Utils.print_success(f"Correct Vulkan SDK installed at {VULKAN_SDK}")
+
     return True
 
 
-# VulkanSDKDebugLibsURL = 'https://files.lunarg.com/SDK-1.2.170.0/VulkanSDK-1.2.170.0-DebugLibs.zip'
-# OutputDirectory = "QAQ/vendor/VulkanSDK"
-# TempZipFile = f"{OutputDirectory}/VulkanSDK.zip"
+# VULKAN_SDK_DEBUG_LIBS_URL = f'https://files.lunarg.com/SDK-{VULKAN_VERSION_INSTALLED}/VulkanSDK-{VULKAN_VERSION_INSTALLED}-DebugLibs.zip'
+# TempZipFile = f"{VULKAN_SDK_FOLDER}VulkanSDK.zip"
 
-
-# def CheckVulkanSDKDebugLibs():
-#     shadercdLib = Path(f"{OutputDirectory}/Lib/shaderc_sharedd.lib")
+# def check_vulkan_sdk_debuglibs():
+#     shadercdLib = Path(f"{VULKAN_SDK_FOLDER}Lib/shaderc_sharedd.lib")
 #     if (not shadercdLib.exists()):
 #         print(f"No Vulkan SDK debug libs found. (Checked {shadercdLib})")
-#         print("Downloading", VulkanSDKDebugLibsURL)
-#         with urlopen(VulkanSDKDebugLibsURL) as zipresp:
+#         print("Downloading", VULKAN_SDK_DEBUG_LIBS_URL)
+#         with urlopen(VULKAN_SDK_DEBUG_LIBS_URL) as zipresp:
 #             with ZipFile(BytesIO(zipresp.read())) as zfile:
-#                 zfile.extractall(OutputDirectory)
+#                 zfile.extractall(VULKAN_SDK_FOLDER)
 
-#     print(f"Vulkan SDK debug libs located at {OutputDirectory}")
+#     print(f"Vulkan SDK debug libs located at {VULKAN_SDK_FOLDER}")
 #     return True

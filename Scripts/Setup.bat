@@ -1,4 +1,9 @@
 @echo off
-pushd %~dp0
-python3 .\PythonUtils\Setup.py
-PAUSE
+
+set pwd=%~dp0
+set project_dir=%~dp0..\
+set python=python3
+
+pushd %project_dir%
+call %python% %pwd%PythonUtils\Setup.py
+popd
