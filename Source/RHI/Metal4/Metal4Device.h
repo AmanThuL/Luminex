@@ -45,6 +45,12 @@ public:
 
     std::string_view deviceName() const override { return m_deviceName; }
 
+    // Backend-internal, same role as the handle() on every resource wrapper: sibling Metal 4
+    // files reach the native object through it (Metal4Capture needs the MTLDevice to name as a
+    // capture object). Deliberately not on the RHI Device interface -- no Metal type appears in
+    // RHI.h.
+    MTL::Device* handle() const { return m_device.get(); }
+
 private:
     Metal4Device() = default;
 

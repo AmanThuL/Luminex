@@ -1,4 +1,5 @@
 #include "Core/Log.h"
+#include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/RHI.h"
 
 #include <SDL3/SDL.h>
@@ -40,6 +41,9 @@ constexpr int kWindowHeight = 720;
 
 constexpr float kClearColor[4] = {0.1f, 0.15f, 0.2f, 1.0f};
 
+// Relative to the process CWD, which for `xmake run App` is the directory holding the binary.
+constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
+
 // Automated-run knobs. LMX_MAX_FRAMES=N exits cleanly after N frame attempts, which is what
 // makes this window app verifiable from a script; when it is set, the loop also drives the
 // resize path on its own at the two frame numbers below, because there is no way to synthesise
@@ -49,9 +53,10 @@ constexpr uint64_t kResizeUpFrame = 200;
 constexpr uint32_t kResizeDownWidth = 800;
 constexpr uint32_t kResizeDownHeight = 600;
 
-// 0 means "run until the user quits".
-uint64_t maxFramesFromEnv() {
-    const char* raw = std::getenv("LMX_MAX_FRAMES");
+// Reads a frame number out of the environment. 0 -- which is also what an unset or malformed
+// variable yields -- means "disabled" for every caller: run until the user quits, never capture.
+uint64_t frameNumberFromEnv(const char* name) {
+    const char* raw = std::getenv(name);
     if (raw == nullptr) {
         return 0;
     }
@@ -59,7 +64,7 @@ uint64_t maxFramesFromEnv() {
     uint64_t frames = 0;
     const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), frames);
     if (ec != std::errc{} || end != text.data() + text.size()) {
-        LMX_LOG_WARN("LMX_MAX_FRAMES='{}' is not a number; running until quit", text);
+        LMX_LOG_WARN("{}='{}' is not a number; ignoring it", name, text);
         return 0;
     }
     return frames;
@@ -164,15 +169,26 @@ int run(SDL_Window* window, void* metalLayer) {
     }
     LMX_LOG_INFO("swapchain: {}x{} pixels BGRA8Unorm", pixelWidth, pixelHeight);
 
-    const uint64_t maxFrames = maxFramesFromEnv();
+    const uint64_t maxFrames = frameNumberFromEnv("LMX_MAX_FRAMES");
     if (maxFrames > 0) {
         LMX_LOG_INFO("LMX_MAX_FRAMES={}: exiting after that many frames", maxFrames);
     }
+    // The keypress cannot be driven by a script -- there is nobody to press the key in an
+    // automated run -- so the same one-frame capture is reachable by frame number. The 'c' key is
+    // the path a human uses; this exists for verification and CI.
+    const uint64_t captureAtFrame = frameNumberFromEnv("LMX_CAPTURE_AT_FRAME");
+    if (captureAtFrame > 0) {
+        LMX_LOG_INFO("LMX_CAPTURE_AT_FRAME={}: will capture that frame", captureAtFrame);
+    }
+    LMX_LOG_INFO("press 'c' to capture one frame to {} (needs MTL_CAPTURE_ENABLED=1)",
+                 kCapturePath);
 
     uint64_t frameIndex = 0;
     uint64_t presentedFrames = 0;
     uint64_t skippedFrames = 0;
     bool running = true;
+    // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
+    bool captureRequested = false;
 
     while (running) {
         SDL_Event event;
@@ -181,6 +197,12 @@ int run(SDL_Window* window, void* metalLayer) {
             case SDL_EVENT_QUIT:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 running = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                // Ignoring repeats: holding the key would otherwise queue a capture per frame.
+                if (event.key.key == SDLK_C && !event.key.repeat) {
+                    captureRequested = true;
+                }
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 // data1/data2 are the new size in pixels. A minimised window reports 0 in at
@@ -209,6 +231,9 @@ int run(SDL_Window* window, void* metalLayer) {
                     ->resize(static_cast<uint32_t>(pixelWidth), static_cast<uint32_t>(pixelHeight));
             }
         }
+        if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
+            captureRequested = true;
+        }
 
         auto target = (*swapchain)->acquireNextTexture();
         if (!target) {
@@ -222,10 +247,27 @@ int run(SDL_Window* window, void* metalLayer) {
             continue;
         }
 
+        // The capture window is exactly one frame wide, and it opens here -- after the acquire
+        // that can still drop the frame, before any encoding. A request that finds capture
+        // unavailable is consumed rather than retried: the fix is an environment variable at
+        // launch, so retrying every frame would only repeat the warning forever.
+        bool capturingThisFrame = false;
+        if (captureRequested) {
+            captureRequested = false;
+            capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, kCapturePath);
+        }
+
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
         recordTriangleFrame(commands, **target, *assets);
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
+
+        if (capturingThisFrame) {
+            // stopCapture finalises the document, so the frame it is meant to contain has to be
+            // off the GPU first. One stall on one frame, only when capturing.
+            (*device)->waitIdle();
+            lmx::rhi::metal4::endCapture();
+        }
 
         if (maxFrames > 0 && frameIndex >= maxFrames) {
             running = false;
