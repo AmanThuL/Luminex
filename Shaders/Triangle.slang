@@ -6,7 +6,8 @@ struct Vertex
     float3 color;
 };
 
-StructuredBuffer<Vertex> gVertices;  // buffer slot 0
+[[vk::binding(0, 0)]]
+StructuredBuffer<Vertex> gVertices : register(t0);  // → MSL [[buffer(0)]] = MTL4ArgumentTable buffer slot 0
 
 struct VSOutput
 {
