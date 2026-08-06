@@ -1,0 +1,33 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+jobs:
+  build-test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xmake and clang-format
+        run: brew install xmake clang-format
+
+      - name: Cache ThirdParty
+        uses: actions/cache@v4
+        with:
+          path: ThirdParty
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua') }}
+
+      - name: Fetch pinned third-party deps
+        run: xmake setup
+
+      - name: Configure (release)
+        run: xmake f -m release -y --ccache=n
+
+      - name: Build
+        run: xmake -y
+
+      - name: Unit tests
+        run: xmake test Tests/unit
+
+      - name: Format check
+        run: xmake format --check
