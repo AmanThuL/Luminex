@@ -23,6 +23,10 @@
 - Every commit compiles and passes `xmake test` (CPU tests at minimum).
 - All GPU objects get debug labels at creation.
 
+## Amendments
+
+**A1 (2026-08-07, Task 0 blocker):** Apple's MobileAsset catalog currently refuses the Metal Toolchain download for Xcode 26.4.1 build 17E202 (server requests 17E188 — catalog lag). The offline `metal` CLI is therefore unavailable; the OS *runtime* compiler works (probed: `makeLibrary(source:)` OK, `MTLGPUFamilyMetal4` supported on this M3 Max). **Amended shader pipeline:** build rule always emits readable `.metal` (Slang→MSL); it additionally precompiles `.metallib` only when `xcrun metal` exists. `Device::loadShaderLibrary(pathNoExt)` resolves `<pathNoExt>.metallib` first, else `<pathNoExt>.metal` (runtime compile, Metal-4 language version). Retry `xcodebuild -downloadComponent MetalToolchain` at later task boundaries; when it lands, the offline path activates automatically. Tasks 6, 7, 9, 11, 12 below are written post-amendment.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
@@ -408,7 +412,9 @@ future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
 - Current plan: `docs/plans/2026-08-07-m1-foundation-triangle.md`
 
 ## Commands
-- Setup (once): `brew install xmake`, `xcodebuild -downloadComponent MetalToolchain`, `xmake setup`
+- Setup (once): `brew install xmake`, `xmake setup`. Optional: `xcodebuild -downloadComponent
+  MetalToolchain` enables offline shader precompile (Apple catalog was refusing it 2026-08-07 —
+  retry occasionally; the runtime-MSL-compile fallback works without it).
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
 - Format: `xmake format` (check: `xmake format --check`)
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
@@ -561,28 +567,35 @@ rule("slang2metallib")
         local outdir = path.join(target:targetdir(), "Shaders")
         local name = path.basename(sourcefile)
         local msl = path.join(outdir, name .. ".metal")
-        local lib = path.join(outdir, name .. ".metallib")
         local slangc = path.join(os.projectdir(), "ThirdParty/slang/bin/slangc")
         batchcmds:mkdir(outdir)
         batchcmds:show_progress(opt.progress, "${color.build.object}slang %s", sourcefile)
         batchcmds:vrunv(slangc, {sourcefile, "-target", "metal", "-o", msl})
-        batchcmds:vrunv("xcrun", {"-sdk", "macosx", "metal", "-std=metal4.0",
-                                  "-frecord-sources", "-gline-tables-only", "-o", lib, msl})
+        -- Amendment A1: offline metallib precompile only when the Metal toolchain
+        -- exists; otherwise the runtime compiles the .metal source (RHI resolves both).
+        local has_metal = try {function ()
+            os.runv("xcrun", {"-sdk", "macosx", "metal", "--version"}); return true
+        end}
+        if has_metal then
+            local lib = path.join(outdir, name .. ".metallib")
+            batchcmds:vrunv("xcrun", {"-sdk", "macosx", "metal", "-std=metal4.0",
+                                      "-frecord-sources", "-gline-tables-only", "-o", lib, msl})
+        end
         batchcmds:add_depfiles(sourcefile)
-        batchcmds:set_depmtime(os.mtime(lib))
-        batchcmds:set_depcache(target:dependfile(lib))
+        batchcmds:set_depmtime(os.mtime(msl))
+        batchcmds:set_depcache(target:dependfile(msl))
     end)
 ```
-Use the `-std=` flag recorded in Task 0 Step 3. `-frecord-sources -gline-tables-only` embeds shader debug info for Xcode captures.
+`-std=metal4.0` is the expected flag (try `metal4.1` if rejected, once the toolchain exists). `-frecord-sources -gline-tables-only` embeds shader debug info for Xcode captures.
 
 - [ ] **Step 3: Verify by hand before target wiring**
 
 ```bash
 ThirdParty/slang/bin/slangc Shaders/Triangle.slang -target metal -o /tmp/Triangle.metal
 grep -E "vertexMain|fragmentMain|\[\[buffer\(0\)\]\]" /tmp/Triangle.metal
-xcrun -sdk macosx metal -std=metal4.0 -o /tmp/Triangle.metallib /tmp/Triangle.metal && echo SHADER-OK
+xcrun -sdk macosx metal --version >/dev/null 2>&1 && xcrun -sdk macosx metal -std=metal4.0 -o /tmp/Triangle.metallib /tmp/Triangle.metal && echo SHADER-OK || echo NO-METAL-CLI-RUNTIME-PATH
 ```
-Expected: both entry names present in readable MSL, `gVertices` at `[[buffer(0)]]`, `SHADER-OK`. If slang mangles entry names or binding indices differ, fix the .slang (explicit `[[vk::binding]]`-style or `-fvk-` flags are NOT the tool here — consult slang Metal docs: https://shader-slang.org/slang/user-guide/metal-target-specific) and record actual MSL function names for Task 9.
+Expected: both entry names present in readable MSL, `gVertices` at `[[buffer(0)]]`; `SHADER-OK` if the Metal toolchain is installed, otherwise `NO-METAL-CLI-RUNTIME-PATH` (Amendment A1 — acceptable, the runtime path covers it). If slang mangles entry names or binding indices differ, fix the .slang (explicit `[[vk::binding]]`-style or `-fvk-` flags are NOT the tool here — consult slang Metal docs: https://shader-slang.org/slang/user-guide/metal-target-specific) and record actual MSL function names for Task 9.
 
 - [ ] **Step 4: Commit**
 
@@ -713,7 +726,9 @@ public:
     virtual Result<std::unique_ptr<Buffer>> createBuffer(const BufferDesc&,
                                                          const void* initialData) = 0;
     virtual Result<std::unique_ptr<Texture>> createTexture(const TextureDesc&) = 0;
-    virtual Result<std::unique_ptr<ShaderLibrary>> loadShaderLibrary(std::string_view path) = 0;
+    // pathNoExt: resolves "<pathNoExt>.metallib" (precompiled) first, else
+    // "<pathNoExt>.metal" (runtime-compiled MSL, Metal 4 language version) — Amendment A1.
+    virtual Result<std::unique_ptr<ShaderLibrary>> loadShaderLibrary(std::string_view pathNoExt) = 0;
     virtual Result<std::unique_ptr<GraphicsPipeline>>
     createGraphicsPipeline(const GraphicsPipelineDesc&) = 0;
 
@@ -786,7 +801,7 @@ int main() {
 
 **Interfaces:**
 - Consumes: Task 7 descs + validation, Task 8 device members, `Triangle.metallib` from the App target's shader rule (path: alongside the App binary under `Shaders/`).
-- Produces: the four creation methods, each: `validate(desc)` first → Metal object → label → **add to residency set** (buffers/textures; then `residency->commit()`), returning typed wrappers. Details: Buffer = `device->newBuffer(size, MTL::ResourceStorageModeShared)` + memcpy initialData; Texture = descriptor with `renderTarget ? MTL::TextureUsageRenderTarget : 0`, storage `Shared` when `cpuReadback` (readback via `getBytes`); ShaderLibrary = `device->newLibrary(NS::String path)` (metallib file — error → `ShaderLoadFailed` with path in message); Pipeline = `MTL4::RenderPipelineDescriptor` + `MTL4::LibraryFunctionDescriptor` (library + entry names from Task 6 Step 3 record) + colorFormat, built through `compiler->newRenderPipelineState(...)` → `PipelineCreationFailed` on error with compiler error text.
+- Produces: the four creation methods, each: `validate(desc)` first → Metal object → label → **add to residency set** (buffers/textures; then `residency->commit()`), returning typed wrappers. Details: Buffer = `device->newBuffer(size, MTL::ResourceStorageModeShared)` + memcpy initialData; Texture = descriptor with `renderTarget ? MTL::TextureUsageRenderTarget : 0`, storage `Shared` when `cpuReadback` (readback via `getBytes`); ShaderLibrary = per Amendment A1: if `<pathNoExt>.metallib` exists → `device->newLibrary(url)`; else read `<pathNoExt>.metal` and `device->newLibrary(source, compileOptions, &error)` with the Metal-4 language version from the metal-cpp `MTL::LanguageVersion` enum (pick the highest 4.x the headers offer); neither file / compile error → `ShaderLoadFailed` with path and compiler text in message; Pipeline = `MTL4::RenderPipelineDescriptor` + `MTL4::LibraryFunctionDescriptor` (library + entry names from Task 6 Step 3 record) + colorFormat, built through `compiler->newRenderPipelineState(...)` → `PipelineCreationFailed` on error with compiler error text.
 
 - [ ] **Step 1:** Extend `main.cpp` to create: vertex buffer (3 × `{float2 pos, float3 color}` = the classic RGB triangle: `{{0,0.5},{1,0,0}}, {{-0.5,-0.5},{0,1,0}}, {{0.5,-0.5},{0,0,1}}` — define the struct locally in App with `alignas` matching Slang's layout; **verify stride against the generated .metal struct** and record it), readback texture 4×4, shader library from the built metallib path, pipeline from it.
 - [ ] **Step 2: Verify** — `xmake run App` logs success for all four creations. Intentionally break the entry name once ("vertexMainX") → expect a `PipelineCreationFailed` error with useful message, then restore.
@@ -878,7 +893,7 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
     auto rt = device.createTexture({.width = 64, .height = 64, .format = Format::BGRA8Unorm,
                                     .renderTarget = true, .cpuReadback = true, .label = "smoke.rt"});
     REQUIRE(rt.has_value());
-    auto lib = device.loadShaderLibrary("Shaders/Triangle.metallib");
+    auto lib = device.loadShaderLibrary("Shaders/Triangle");
     REQUIRE(lib.has_value());
     auto pso = device.createGraphicsPipeline({.library = lib->get(), .vertexEntry = "vertexMain",
                                               .fragmentEntry = "fragmentMain",
@@ -908,7 +923,7 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
 ```
 Note: NDC y-up vs texture row order means the triangle's interior sits in the *lower* rows of the image half — if the center probe fails, dump the buffer as PPM to inspect (`std::ofstream("smoke.ppm")`, P6 header, RGB swizzle) and adjust probe coordinates once; the corner-black assert is orientation-proof.
 
-- [ ] **Step 2:** Working-directory care: the test loads `Shaders/Triangle.metallib` relative to CWD — run via `xmake test` (xmake runs tests with CWD = target dir). Verify: `xmake test` → both `unit` and `gpu` PASS locally.
+- [ ] **Step 2:** Working-directory care: the test loads `Shaders/Triangle` (metallib or .metal per A1) relative to CWD — run via `xmake test` (xmake runs tests with CWD = target dir). Verify: `xmake test` → both `unit` and `gpu` PASS locally.
 - [ ] **Step 3: Commit** — `git commit -m "Add offscreen GPU smoke test with pixel readback"`
 
 ---
