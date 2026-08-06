@@ -7,9 +7,10 @@
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
+#include <optional>
 #include <string_view>
 #include <system_error>
-#include <vector>
 
 namespace {
 
@@ -30,8 +31,8 @@ constexpr std::array<Vertex, 3> kTriangle = {{
     {0.5f, -0.5f, 0.0f, 0.0f, 1.0f},
 }};
 
-// Small enough that a full readback is trivial, large enough to prove row stride handling.
-constexpr uint32_t kReadbackExtent = 4;
+// Slot 0 of the MTL4 argument table, which is where Slang binds `gVertices` (Task 6 record).
+constexpr uint32_t kVertexBufferSlot = 0;
 
 // Logical points, not pixels — SDL scales this by the display's backing factor.
 constexpr int kWindowWidth = 1280;
@@ -64,6 +65,70 @@ uint64_t maxFramesFromEnv() {
     return frames;
 }
 
+// Everything needed to draw the triangle, created in one place and recorded by one function
+// (recordTriangleFrame) so that every way of rendering it stays the same drawing.
+struct TriangleAssets {
+    std::unique_ptr<lmx::rhi::Buffer> vertexBuffer;
+    std::unique_ptr<lmx::rhi::ShaderLibrary> library;
+    std::unique_ptr<lmx::rhi::GraphicsPipeline> pipeline;
+};
+
+// Returns nullopt after logging; every step here is fatal for the caller.
+std::optional<TriangleAssets> createTriangleAssets(lmx::rhi::Device& device) {
+    TriangleAssets assets;
+
+    auto vertexBuffer = device.createBuffer(
+        {.size = sizeof(kTriangle), .label = "lmx.app.triangleVertices"}, kTriangle.data());
+    if (!vertexBuffer) {
+        LMX_LOG_ERROR("createBuffer failed: {}", vertexBuffer.error().message);
+        return std::nullopt;
+    }
+    LMX_LOG_INFO("vertex buffer: {} bytes ({} vertices, stride {})", (*vertexBuffer)->size(),
+                 kTriangle.size(), sizeof(Vertex));
+    assets.vertexBuffer = std::move(*vertexBuffer);
+
+    // Relative to the process CWD: `xmake run App` (and `xmake test`) launch the target with
+    // CWD == the target directory, which is exactly where the slang2metallib rule drops
+    // Shaders/. Verified on this machine -- CWD was build/macosx/arm64/debug. No
+    // executable-relative resolution needed, so none is added.
+    auto library = device.loadShaderLibrary("Shaders/Triangle");
+    if (!library) {
+        LMX_LOG_ERROR("loadShaderLibrary failed: {}", library.error().message);
+        return std::nullopt;
+    }
+    assets.library = std::move(*library);
+
+    // BGRA8Unorm because that is the swapchain's format, and a pipeline's color format must
+    // match the attachment it renders into.
+    auto pipeline = device.createGraphicsPipeline({.library = assets.library.get(),
+                                                   .vertexEntry = "vertexMain",
+                                                   .fragmentEntry = "fragmentMain",
+                                                   .colorFormat = lmx::rhi::Format::BGRA8Unorm,
+                                                   .label = "lmx.app.trianglePipeline"});
+    if (!pipeline) {
+        LMX_LOG_ERROR("createGraphicsPipeline failed: {}", pipeline.error().message);
+        return std::nullopt;
+    }
+    LMX_LOG_INFO("graphics pipeline: vertexMain/fragmentMain -> BGRA8Unorm");
+    assets.pipeline = std::move(*pipeline);
+
+    return assets;
+}
+
+// The whole of M1's rendering: clear to steel blue, draw three vertices. Recorded into an already
+// open frame; the caller owns beginFrame/endFrame.
+void recordTriangleFrame(lmx::rhi::CommandList& commands, lmx::rhi::Texture& target,
+                         const TriangleAssets& assets) {
+    commands.beginRenderPass(
+        {.colorTarget = &target,
+         .clearColor = {kClearColor[0], kClearColor[1], kClearColor[2], kClearColor[3]},
+         .clear = true});
+    commands.bindPipeline(*assets.pipeline);
+    commands.bindVertexBuffer(kVertexBufferSlot, *assets.vertexBuffer);
+    commands.draw(static_cast<uint32_t>(kTriangle.size()));
+    commands.endRenderPass();
+}
+
 // Everything RHI-owned lives here so that returning destroys it in reverse creation order --
 // swapchain first, device last -- before main tears down the SDL window the swapchain's layer
 // belongs to.
@@ -75,54 +140,10 @@ int run(SDL_Window* window, void* metalLayer) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    auto vertexBuffer = (*device)->createBuffer(
-        {.size = sizeof(kTriangle), .label = "lmx.app.triangleVertices"}, kTriangle.data());
-    if (!vertexBuffer) {
-        LMX_LOG_ERROR("createBuffer failed: {}", vertexBuffer.error().message);
+    auto assets = createTriangleAssets(**device);
+    if (!assets) {
         return 1;
     }
-    LMX_LOG_INFO("vertex buffer: {} bytes ({} vertices, stride {})", (*vertexBuffer)->size(),
-                 kTriangle.size(), sizeof(Vertex));
-
-    auto readbackTexture = (*device)->createTexture({.width = kReadbackExtent,
-                                                     .height = kReadbackExtent,
-                                                     .format = lmx::rhi::Format::RGBA8Unorm,
-                                                     .renderTarget = true,
-                                                     .cpuReadback = true,
-                                                     .label = "lmx.app.readback"});
-    if (!readbackTexture) {
-        LMX_LOG_ERROR("createTexture failed: {}", readbackTexture.error().message);
-        return 1;
-    }
-    LMX_LOG_INFO("readback texture: {}x{} RGBA8Unorm", (*readbackTexture)->width(),
-                 (*readbackTexture)->height());
-
-    // Relative to the process CWD: `xmake run App` (and `xmake test`) launch the target with
-    // CWD == the target directory, which is exactly where the slang2metallib rule drops
-    // Shaders/. Verified on this machine -- CWD was build/macosx/arm64/debug. No
-    // executable-relative resolution needed, so none is added.
-    auto library = (*device)->loadShaderLibrary("Shaders/Triangle");
-    if (!library) {
-        LMX_LOG_ERROR("loadShaderLibrary failed: {}", library.error().message);
-        return 1;
-    }
-
-    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
-                                                       .vertexEntry = "vertexMain",
-                                                       .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = lmx::rhi::Format::BGRA8Unorm,
-                                                       .label = "lmx.app.trianglePipeline"});
-    if (!pipeline) {
-        LMX_LOG_ERROR("createGraphicsPipeline failed: {}", pipeline.error().message);
-        return 1;
-    }
-    LMX_LOG_INFO("graphics pipeline: vertexMain/fragmentMain -> BGRA8Unorm");
-
-    // Nothing has rendered into the texture yet (that is Task 11); this only exercises the
-    // shared-storage readback path end to end.
-    std::vector<uint8_t> pixels(size_t{kReadbackExtent} * kReadbackExtent * 4);
-    (*readbackTexture)->readback(pixels.data(), pixels.size());
-    LMX_LOG_INFO("texture readback: {} bytes", pixels.size());
 
     // Pixels, not points: on a Retina display the backing store is 2x the logical window size,
     // and a swapchain sized in points would be presented upscaled and blurry.
@@ -202,12 +223,7 @@ int run(SDL_Window* window, void* metalLayer) {
         }
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
-        commands.beginRenderPass(
-            {.colorTarget = *target,
-             .clearColor = {kClearColor[0], kClearColor[1], kClearColor[2], kClearColor[3]},
-             .clear = true});
-        // Task 11 binds the pipeline and vertex buffer and draws here.
-        commands.endRenderPass();
+        recordTriangleFrame(commands, **target, *assets);
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 

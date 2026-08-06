@@ -49,29 +49,39 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
                                  0.0,
                                  1.0};
     m_encoder->setViewport(viewport);
+
+    // Attached here rather than in bindVertexBuffer so that *every* pass has a table, including
+    // one that binds a pipeline but no buffer: a stage whose signature names a buffer that no
+    // attached argument table binds trips validation at draw time, and the table is
+    // zero-initialised (setInitializeBindings, Task 8), so an unbound slot reads as a null
+    // address rather than as garbage. Both stages, deliberately: Slang emits `gVertices` into
+    // the vertex *and* fragment signatures at buffer 0 (Task 6 record).
+    m_encoder->setArgumentTable(m_argumentTable, MTL::RenderStageVertex | MTL::RenderStageFragment);
 }
 
 void Metal4CommandList::bindPipeline(GraphicsPipeline& pipeline) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
     LMX_ASSERT(m_encoder, "bindPipeline must be called between beginRenderPass and endRenderPass");
     m_encoder->setRenderPipelineState(static_cast<Metal4Pipeline&>(pipeline).handle());
 }
 
 void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
     LMX_ASSERT(m_encoder,
                "bindVertexBuffer must be called between beginRenderPass and endRenderPass");
 
     // Metal 4 binds by raw GPU address through an argument table rather than by resource
     // handle; residency is what keeps the allocation alive, and that was arranged when the
-    // buffer was created (Metal4Buffer's ResidencyRegistration).
+    // buffer was created (Metal4Buffer's ResidencyRegistration). The table itself was attached
+    // to the encoder by beginRenderPass.
     m_argumentTable->setAddress(static_cast<Metal4Buffer&>(buffer).handle()->gpuAddress(), slot);
-
-    // Both stages, deliberately: Slang emits `gVertices` into the vertex *and* fragment
-    // signatures at buffer 0 (Task 6 record), and a stage whose signature names a buffer that
-    // no attached argument table binds trips validation at draw time.
-    m_encoder->setArgumentTable(m_argumentTable, MTL::RenderStageVertex | MTL::RenderStageFragment);
 }
 
 void Metal4CommandList::draw(uint32_t vertexCount, uint32_t firstVertex) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
     LMX_ASSERT(m_encoder, "draw must be called between beginRenderPass and endRenderPass");
     LMX_ASSERT(vertexCount > 0, "draw: vertexCount must be greater than zero");
     m_encoder->drawPrimitives(MTL::PrimitiveTypeTriangle, firstVertex, vertexCount);
