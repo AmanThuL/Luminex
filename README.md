@@ -8,6 +8,8 @@ Metal 4 · C++23 · Slang · xmake
 
 **Status**: M1 in progress (foundation + Metal 4 triangle through the RHI).
 
+![Metal 4 triangle rendered through lmx::rhi](docs/images/m1-triangle.png)
+
 ## Requirements
 
 - macOS 26+, Apple Silicon
@@ -26,6 +28,11 @@ xmake run App
 xmake test
 xmake format
 ```
+
+`xmake run App --screenshot /tmp/triangle.bmp` renders one frame offscreen — no window, no
+swapchain — and writes it out as a BMP; that is how the image above is produced. In the windowed
+run, pressing `c` writes a one-frame `luminex-frame.gputrace` next to the binary for Xcode's GPU
+debugger, which requires launching with `MTL_CAPTURE_ENABLED=1` in the environment.
 
 ## Architecture
 
