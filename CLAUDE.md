@@ -12,10 +12,15 @@ future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
 - Setup (once): `brew install xmake`, `xmake setup`. Optional: `xcodebuild -downloadComponent
   MetalToolchain` enables offline shader precompile (Apple catalog was refusing it 2026-08-07 —
   retry occasionally; the runtime-MSL-compile fallback works without it).
+- Editor setup (once, for clangd): `xmake project -k compile_commands` writes
+  `compile_commands.json` (gitignored) — without it clangd cannot resolve the xmake-managed
+  include paths and reports spurious "file not found" diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
 - Format: `xmake format` (check: `xmake format --check`)
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
-  (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode.
+  (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Offscreen screenshot:
+  `xmake run App --screenshot <out.bmp>`. Automated runs: `LMX_MAX_FRAMES=N` exits after N
+  frames (0 or unset = unlimited); `LMX_CAPTURE_AT_FRAME=N` captures frame N without a keypress.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → `Source/RHI` (lmx::rhi interfaces; **no Metal types in public

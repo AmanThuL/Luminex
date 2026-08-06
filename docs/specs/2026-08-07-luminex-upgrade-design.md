@@ -1,7 +1,7 @@
 # Luminex Upgrade — Design Spec
 
 **Date**: 2026-08-07
-**Status**: Approved (brainstormed and section-approved with Rudy)
+**Status**: Implemented (M1) — 2026-08-08
 **Supersedes**: the current repo state (Premake + GLFW + Vulkan triangle test), which is treated as disposable.
 
 ## 1. Purpose & Goals
@@ -123,7 +123,7 @@ Root-level; contains project overview, build/run/test/format commands, architect
 ## 8. Milestones
 
 - **M1 — Foundation + triangle through RHI (this spec's scope)**
-  DoD: `xmake && xmake run app` opens an SDL3 window rendering the Metal 4 triangle through `lmx::rhi`; `xmake test` green (unit + local GPU smoke); format/lint clean; CLAUDE.md, ADRs 0001–0004, this spec committed; CI green.
+  DoD: `xmake && xmake run App` opens an SDL3 window rendering the Metal 4 triangle through `lmx::rhi`; `xmake test` green (unit + local GPU smoke); format/lint clean; CLAUDE.md, ADRs 0001–0004, this spec committed; CI green.
 - **M2 — Renderer skeleton**: `lmx::render` becomes real — mesh/camera/uniform plumbing, depth buffer, ImGui (Metal 4 + SDL3 backends) overlay.
 - **M3 — lumine content returns**: sponza + DDS/asset loading, shadow mapping (PCF), then PCSS; sky.
 - **M4+ — modern features playground**: candidates — MetalFX upscaling/frame interpolation, Metal RT, mesh shaders, GPU-driven culling. Chosen per interest at the time.

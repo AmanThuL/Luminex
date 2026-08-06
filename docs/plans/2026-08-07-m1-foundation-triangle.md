@@ -55,14 +55,14 @@ Every dispatched subagent must be told which model tier its task was assigned an
 **Interfaces:**
 - Produces: working `xmake`, `xcrun metal` (Metal 4 capable), verified host (macOS 26.5.2, Xcode 26.4.1, arm64 — pre-audited).
 
-- [ ] **Step 1: Install xmake**
+- [x] **Step 1: Install xmake**
 
 ```bash
 brew install xmake
 xmake --version   # expect v3.x
 ```
 
-- [ ] **Step 2: Download the Metal toolchain component** (macOS 26 ships it separately; pre-audit showed it missing)
+- [x] **Step 2: Download the Metal toolchain component** (macOS 26 ships it separately; pre-audit showed it missing)
 
 ```bash
 sudo xcodebuild -license accept 2>/dev/null || true
@@ -70,7 +70,7 @@ xcodebuild -downloadComponent MetalToolchain
 ```
 This can take several minutes. If `sudo` prompts block automation, surface the command to Rudy to run via `! xcodebuild -downloadComponent MetalToolchain`.
 
-- [ ] **Step 3: Verify Metal 4 compiler works**
+- [x] **Step 3: Verify Metal 4 compiler works**
 
 ```bash
 xcrun -sdk macosx metal --version
@@ -91,7 +91,7 @@ Expected: version string + `METAL4-OK`. If `-std=metal4.0` is rejected, try `-st
 **Interfaces:**
 - Produces: clean repo containing only LICENSE, README.md, .editorconfig, .clang-format, .gitignore, docs/.
 
-- [ ] **Step 1: Remove submodules properly**
+- [x] **Step 1: Remove submodules properly**
 
 ```bash
 cd /Users/rudyz/Documents/projects/Luminex
@@ -103,7 +103,7 @@ git status   # verify: only deletions + docs/ intact
 ```
 If `git rm` balks on any path (vendored vs submodule differences), fall back to `git rm -rf <path>` per path. Verify `LICENSE`, `README.md`, `.editorconfig`, `.clang-format`, `.gitignore`, `docs/` survived.
 
-- [ ] **Step 2: Replace .gitignore content**
+- [x] **Step 2: Replace .gitignore content**
 
 ```gitignore
 # xmake
@@ -121,7 +121,7 @@ compile_commands.json
 .DS_Store
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add -A && git commit -m "Remove legacy Premake, Vulkan test, and vendored dependencies"
@@ -138,7 +138,7 @@ git add -A && git commit -m "Remove legacy Premake, Vulkan test, and vendored de
 **Interfaces:**
 - Produces: `lmx::log::init()`, `LMX_LOG_INFO/WARN/ERROR(fmt, ...)` macros (spdlog passthrough), `LMX_ASSERT(cond, msg)` (logs + `std::abort()` on failure, enabled in all configs). Targets: `Core` (static), `Tests` (Catch2, `xmake test`). Later targets follow this file's pattern.
 
-- [ ] **Step 1: Write root xmake.lua**
+- [x] **Step 1: Write root xmake.lua**
 
 ```lua
 set_project("Luminex")
@@ -168,7 +168,7 @@ target("Tests")
 ```
 (`xmake test Tests/unit` = CPU-only; `xmake test` = everything. Package names `libsdl3`/`glm`/`spdlog`/`catch2` — if resolution fails, `xrepo search <name>` for the exact name and fix.)
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 `Tests/CoreTests.cpp`:
 ```cpp
@@ -185,14 +185,14 @@ TEST_CASE("log init is idempotent", "[core]") {
 }
 ```
 
-- [ ] **Step 3: Run to verify failure**
+- [x] **Step 3: Run to verify failure**
 
 ```bash
 xmake f -m debug && xmake build Tests
 ```
 Expected: FAIL — `Core/Log.h` not found.
 
-- [ ] **Step 4: Implement Core**
+- [x] **Step 4: Implement Core**
 
 `Source/Core/Log.h`:
 ```cpp
@@ -247,14 +247,14 @@ void init() {
     } while (0)
 ```
 
-- [ ] **Step 5: Run tests to verify pass**
+- [x] **Step 5: Run tests to verify pass**
 
 ```bash
 xmake build Tests && xmake test
 ```
 Expected: `unit` PASS (gpu entry passes trivially — no [gpu] tests exist yet).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add xmake.lua Source/Core Tests ThirdParty/README.md
@@ -272,7 +272,7 @@ git commit -m "Add xmake workspace, Core logging/assert, Catch2 harness"
 **Interfaces:**
 - Produces: `xmake format` (in-place) and `xmake format --check` (CI mode, nonzero exit on drift).
 
-- [ ] **Step 1: Replace .clang-format**
+- [x] **Step 1: Replace .clang-format**
 
 ```yaml
 BasedOnStyle: LLVM
@@ -290,7 +290,7 @@ SortIncludes: CaseSensitive
 IncludeBlocks: Preserve
 ```
 
-- [ ] **Step 2: Append format task to xmake.lua**
+- [x] **Step 2: Append format task to xmake.lua**
 
 ```lua
 task("format")
@@ -308,7 +308,7 @@ task("format")
     end)
 ```
 
-- [ ] **Step 3: Apply and verify** (mechanical — Haiku-eligible)
+- [x] **Step 3: Apply and verify** (mechanical — Haiku-eligible)
 
 ```bash
 xmake format && xmake format --check && echo FORMAT-CLEAN
@@ -316,7 +316,7 @@ xmake build Tests && xmake test
 ```
 Expected: `FORMAT-CLEAN`, tests still green.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add .clang-format xmake.lua Source Tests
@@ -336,7 +336,7 @@ git commit -m "Add clang-format config and xmake format task"
 **Interfaces:**
 - Produces: the documentation contract every later task follows. CLAUDE.md is the agent entry point.
 
-- [ ] **Step 1: Write conventions** — full content:
+- [x] **Step 1: Write conventions** — full content:
 
 `docs/conventions/cpp-style.md`:
 ```markdown
@@ -377,7 +377,7 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 - Every commit compiles and passes `xmake test`. Format before committing (`xmake format`).
 ```
 
-- [ ] **Step 2: Write ADRs** — each ~10 lines: Status/Context/Decision/Consequences. Content = condensed from spec §2 rows D1 (0001), D2 (0002), D5+D6 (0003), and spec §4 philosophy (0004). Example shape for 0001 (repeat the pattern, don't skip fields):
+- [x] **Step 2: Write ADRs** — each ~10 lines: Status/Context/Decision/Consequences. Content = condensed from spec §2 rows D1 (0001), D2 (0002), D5+D6 (0003), and spec §4 philosophy (0004). Example shape for 0001 (repeat the pattern, don't skip fields):
 
 ```markdown
 # ADR 0001: Build system — xmake
@@ -398,7 +398,7 @@ No generated Xcode project — GPU debugging goes through programmatic MTLCaptur
 Premake remains the documented fallback (both are Lua).
 ```
 
-- [ ] **Step 3: Write CLAUDE.md** — full content:
+- [x] **Step 3: Write CLAUDE.md** — full content:
 
 ```markdown
 # Luminex
@@ -444,9 +444,9 @@ checkbox updates).
 Refresh this file at every milestone boundary (M1 → M2 → …) and whenever a command or hard rule changes.
 ```
 
-- [ ] **Step 4: Replace README.md** — portfolio-facing skeleton (real content, no placeholders): project one-liner, "Metal 4 · C++23 · Slang · xmake" badges line (plain text), Requirements (macOS 26+, Apple Silicon, Xcode 26 + Metal toolchain, Homebrew xmake), Quick start (the four setup/build/run commands from CLAUDE.md), Architecture paragraph (from spec §4 summary), Roadmap (spec §8 milestone list), Credits (lumine, Apple samples, WickedEngine, metal-cpp, Slang), License pointer.
+- [x] **Step 4: Replace README.md** — portfolio-facing skeleton (real content, no placeholders): project one-liner, "Metal 4 · C++23 · Slang · xmake" badges line (plain text), Requirements (macOS 26+, Apple Silicon, Xcode 26 + Metal toolchain, Homebrew xmake), Quick start (the four setup/build/run commands from CLAUDE.md), Architecture paragraph (from spec §4 summary), Roadmap (spec §8 milestone list), Credits (lumine, Apple samples, WickedEngine, metal-cpp, Slang), License pointer.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs CLAUDE.md README.md
@@ -463,14 +463,14 @@ git commit -m "Add conventions, ADRs 0001-0004, CLAUDE.md, and new README"
 **Interfaces:**
 - Produces: `xmake setup` → `ThirdParty/metal-cpp/` (headers) and `ThirdParty/slang/` (with `bin/slangc`). Pinned versions live in the two locals at the top of the task. Task 6 uses `ThirdParty/slang/bin/slangc`; Task 8 uses `ThirdParty/metal-cpp` includes.
 
-- [ ] **Step 1: Determine pin versions** (record actual values into the code below)
+- [x] **Step 1: Determine pin versions** (record actual values into the code below)
 
 ```bash
 curl -s https://api.github.com/repos/apple/metal-cpp/tags | python3 -c "import json,sys; print(json.load(sys.stdin)[0]['name'])"
 curl -s https://api.github.com/repos/shader-slang/slang/releases/latest | python3 -c "import json,sys; print(json.load(sys.stdin)['tag_name'])"
 ```
 
-- [ ] **Step 2: Append setup task to xmake.lua** (substitute the two pins from Step 1)
+- [x] **Step 2: Append setup task to xmake.lua** (substitute the two pins from Step 1)
 
 ```lua
 local metalcpp_pin = "<TAG-FROM-STEP-1>"   -- e.g. macOS26.4-iOS26.4
@@ -497,7 +497,7 @@ task("setup")
 ```
 (`<TAG-FROM-STEP-1>` must be replaced with the real recorded values before commit — grep the file for `<TAG` to confirm none remain. Verify the slang zip asset name against the release page assets; adjust if the naming scheme differs.)
 
-- [ ] **Step 3: Run and verify**
+- [x] **Step 3: Run and verify**
 
 ```bash
 xmake setup
@@ -505,7 +505,7 @@ ls ThirdParty/metal-cpp/Metal | grep -c "MTL4" && ThirdParty/slang/bin/slangc -v
 ```
 Expected: a nonzero MTL4 header count (full Metal 4 coverage) and slangc version string.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add xmake.lua && git commit -m "Add xmake setup task fetching pinned metal-cpp and slang"
@@ -522,7 +522,7 @@ git add xmake.lua && git commit -m "Add xmake setup task fetching pinned metal-c
 **Interfaces:**
 - Produces: rule `slang2metallib` — for each `.slang` source of a target, emits `$(builddir)/Shaders/<name>.metal` (readable MSL) and `$(builddir)/Shaders/<name>.metallib`. Task 9/11 loads `Triangle.metallib` with entries `vertexMain`/`fragmentMain` reading a structured buffer at **argument-table buffer slot 0**.
 
-- [ ] **Step 1: Write Shaders/Triangle.slang**
+- [x] **Step 1: Write Shaders/Triangle.slang**
 
 ```slang
 // Fullscreen-less triangle fed by a structured buffer bound at slot 0
@@ -558,7 +558,7 @@ float4 fragmentMain(VSOutput in): SV_Target
 }
 ```
 
-- [ ] **Step 2: Add the rule to xmake.lua**
+- [x] **Step 2: Add the rule to xmake.lua**
 
 ```lua
 rule("slang2metallib")
@@ -588,7 +588,7 @@ rule("slang2metallib")
 ```
 `-std=metal4.0` is the expected flag (try `metal4.1` if rejected, once the toolchain exists). `-frecord-sources -gline-tables-only` embeds shader debug info for Xcode captures.
 
-- [ ] **Step 3: Verify by hand before target wiring**
+- [x] **Step 3: Verify by hand before target wiring**
 
 ```bash
 ThirdParty/slang/bin/slangc Shaders/Triangle.slang -target metal -o /tmp/Triangle.metal
@@ -597,7 +597,7 @@ xcrun -sdk macosx metal --version >/dev/null 2>&1 && xcrun -sdk macosx metal -st
 ```
 Expected: both entry names present in readable MSL, `gVertices` at `[[buffer(0)]]`; `SHADER-OK` if the Metal toolchain is installed, otherwise `NO-METAL-CLI-RUNTIME-PATH` (Amendment A1 — acceptable, the runtime path covers it). If slang mangles entry names or binding indices differ, fix the .slang (explicit `[[vk::binding]]`-style or `-fvk-` flags are NOT the tool here — consult slang Metal docs: https://shader-slang.org/slang/user-guide/metal-target-specific) and record actual MSL function names for Task 9.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add Shaders xmake.lua && git commit -m "Add Slang to metallib build rule and triangle shader"
@@ -749,11 +749,11 @@ Result<std::unique_ptr<Device>> createDevice(const DeviceDesc& desc = {});
 
 - Also produces `Validate.h`: `Result<void> validate(const BufferDesc&)`, `validate(const TextureDesc&)`, `validate(const GraphicsPipelineDesc&)`, `validate(const SwapchainDesc&)` — pure functions, each returning `ErrorCode::InvalidDesc` with a message naming the offending field; backends call them first.
 
-- [ ] **Step 1: Write failing tests** — `Tests/RHIValidateTests.cpp`: zero-size BufferDesc → error mentions "size"; TextureDesc 0×0 → error; TextureDesc cpuReadback+Format::D32Float → error ("readback supports 8-bit formats only"); GraphicsPipelineDesc null library → error mentions "library"; empty vertexEntry → error; SwapchainDesc null nativeLayer → error; and the happy path for each desc → `has_value()`. Write each as a separate `TEST_CASE(..., "[rhi]")` with exact asserts (`REQUIRE_FALSE(r.has_value()); REQUIRE(r.error().code == ErrorCode::InvalidDesc); REQUIRE(r.error().message.contains("size"));`).
-- [ ] **Step 2: Run** `xmake build Tests` — expected FAIL (headers missing).
-- [ ] **Step 3: Implement** `RHI.h` exactly as above + `Validate.{h,cpp}` making tests pass; add RHI target to xmake.lua (`add_deps("Core")`, `add_includedirs("Source", {public=true})`), Tests `add_deps("RHI")`.
-- [ ] **Step 4: Run** `xmake test Tests/unit` — expected PASS.
-- [ ] **Step 5: Commit** — `git commit -m "Add RHI public surface and desc validation with tests"`
+- [x] **Step 1: Write failing tests** — `Tests/RHIValidateTests.cpp`: zero-size BufferDesc → error mentions "size"; TextureDesc 0×0 → error; TextureDesc cpuReadback+Format::D32Float → error ("readback supports 8-bit formats only"); GraphicsPipelineDesc null library → error mentions "library"; empty vertexEntry → error; SwapchainDesc null nativeLayer → error; and the happy path for each desc → `has_value()`. Write each as a separate `TEST_CASE(..., "[rhi]")` with exact asserts (`REQUIRE_FALSE(r.has_value()); REQUIRE(r.error().code == ErrorCode::InvalidDesc); REQUIRE(r.error().message.contains("size"));`).
+- [x] **Step 2: Run** `xmake build Tests` — expected FAIL (headers missing).
+- [x] **Step 3: Implement** `RHI.h` exactly as above + `Validate.{h,cpp}` making tests pass; add RHI target to xmake.lua (`add_deps("Core")`, `add_includedirs("Source", {public=true})`), Tests `add_deps("RHI")`.
+- [x] **Step 4: Run** `xmake test Tests/unit` — expected PASS.
+- [x] **Step 5: Commit** — `git commit -m "Add RHI public surface and desc validation with tests"`
 
 ---
 
@@ -768,8 +768,8 @@ Result<std::unique_ptr<Device>> createDevice(const DeviceDesc& desc = {});
 - Consumes: `RHI.h` surface (Task 7), metal-cpp headers (Task 5).
 - Produces: working `lmx::rhi::createDevice()` → `Metal4Device` holding: `MTL::Device* device` (`MTL::CreateSystemDefaultDevice()`), Metal 4 family check (`device->supportsFamily(MTL::GPUFamilyMetal4)` — exact enum name per metal-cpp headers; on failure return `ErrorCode::DeviceUnsupported` with the device name in the message), `MTL4::CommandQueue* queue` (created via the device's MTL4 queue factory — verify exact metal-cpp name, e.g. `newMTL4CommandQueue()`), `MTL4::Compiler* compiler` (from `MTL4::CompilerDescriptor`), one `MTL::ResidencySet* residency` attached to the queue, three `MTL4::CommandAllocator*`, one `MTL::SharedEvent* frameEvent`, `uint64_t frameNumber = 0`. All labeled ("lmx.device.queue" etc.). Destructor releases in reverse order (metal-cpp is manual retain/release — see Apple's `managing-metal-cpp-lifetimes` skill).
 
-- [ ] **Step 1:** Implement the files. `Metal4Device` implements every `Device` virtual; all except the five creation methods used later may `LMX_ASSERT(false, "implemented in a later task")` bodies EXCEPT: constructor/family check/`deviceName()`/`waitIdle()` (`frameEvent`-based or `queue` idle wait — simplest correct: signal+wait a fresh shared event value) must be real now.
-- [ ] **Step 2:** Minimal `Source/App/main.cpp`:
+- [x] **Step 1:** Implement the files. `Metal4Device` implements every `Device` virtual; all except the five creation methods used later may `LMX_ASSERT(false, "implemented in a later task")` bodies EXCEPT: constructor/family check/`deviceName()`/`waitIdle()` (`frameEvent`-based or `queue` idle wait — simplest correct: signal+wait a fresh shared event value) must be real now.
+- [x] **Step 2:** Minimal `Source/App/main.cpp`:
 
 ```cpp
 #include "Core/Log.h"
@@ -787,8 +787,8 @@ int main() {
 }
 ```
 
-- [ ] **Step 3: Verify** — `xmake build App && xmake run App` → expected: log line with your GPU name (e.g. "Apple M-series"). Run `leaks --atExit -- ./build/.../App 2>/dev/null | tail -3` once to sanity-check metal-cpp release discipline (no growing leak list; a few Apple-internal singletons are normal).
-- [ ] **Step 4: Commit** — `git commit -m "Add Metal 4 device bootstrap and App entry point"`
+- [x] **Step 3: Verify** — `xmake build App && xmake run App` → expected: log line with your GPU name (e.g. "Apple M-series"). Run `leaks --atExit -- ./build/.../App 2>/dev/null | tail -3` once to sanity-check metal-cpp release discipline (no growing leak list; a few Apple-internal singletons are normal).
+- [x] **Step 4: Commit** — `git commit -m "Add Metal 4 device bootstrap and App entry point"`
 
 ---
 
@@ -803,9 +803,9 @@ int main() {
 - Consumes: Task 7 descs + validation, Task 8 device members, `Triangle.metallib` from the App target's shader rule (path: alongside the App binary under `Shaders/`).
 - Produces: the four creation methods, each: `validate(desc)` first → Metal object → label → **add to residency set** (buffers/textures; then `residency->commit()`), returning typed wrappers. Details: Buffer = `device->newBuffer(size, MTL::ResourceStorageModeShared)` + memcpy initialData; Texture = descriptor with `renderTarget ? MTL::TextureUsageRenderTarget : 0`, storage `Shared` when `cpuReadback` (readback via `getBytes`); ShaderLibrary = per Amendment A1: if `<pathNoExt>.metallib` exists → `device->newLibrary(url)`; else read `<pathNoExt>.metal` and `device->newLibrary(source, compileOptions, &error)` with the Metal-4 language version from the metal-cpp `MTL::LanguageVersion` enum (pick the highest 4.x the headers offer); neither file / compile error → `ShaderLoadFailed` with path and compiler text in message; Pipeline = `MTL4::RenderPipelineDescriptor` + `MTL4::LibraryFunctionDescriptor` (library + entry names from Task 6 Step 3 record) + colorFormat, built through `compiler->newRenderPipelineState(...)` → `PipelineCreationFailed` on error with compiler error text.
 
-- [ ] **Step 1:** Extend `main.cpp` to create: vertex buffer (3 × the classic RGB triangle: `{{0,0.5},{1,0,0}}, {{-0.5,-0.5},{0,1,0}}, {{0.5,-0.5},{0,0,1}}`). **Measured shader ABI (Task 6 record — binding):** Slang emits `struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; }` — tightly packed, stride 20, position@0, color@8. C++ side: `struct Vertex { float px, py; float r, g, b; }; static_assert(sizeof(Vertex) == 20);`. Entry names preserved (`vertexMain`/`fragmentMain`); `gVertices` is at buffer index 0 in BOTH vertex and fragment stages (Slang emits it into the fragment signature too — bind slot 0 on both argument-table stages or validation flags an unbound buffer). Also create: readback texture 4×4, shader library via `loadShaderLibrary("Shaders/Triangle")`, pipeline from it.
-- [ ] **Step 2: Verify** — `xmake run App` logs success for all four creations. Intentionally break the entry name once ("vertexMainX") → expect a `PipelineCreationFailed` error with useful message, then restore.
-- [ ] **Step 3: Commit** — `git commit -m "Add Metal 4 buffer, texture, shader library, and pipeline creation"`
+- [x] **Step 1:** Extend `main.cpp` to create: vertex buffer (3 × the classic RGB triangle: `{{0,0.5},{1,0,0}}, {{-0.5,-0.5},{0,1,0}}, {{0.5,-0.5},{0,0,1}}`). **Measured shader ABI (Task 6 record — binding):** Slang emits `struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; }` — tightly packed, stride 20, position@0, color@8. C++ side: `struct Vertex { float px, py; float r, g, b; }; static_assert(sizeof(Vertex) == 20);`. Entry names preserved (`vertexMain`/`fragmentMain`); `gVertices` is at buffer index 0 in BOTH vertex and fragment stages (Slang emits it into the fragment signature too — bind slot 0 on both argument-table stages or validation flags an unbound buffer). Also create: readback texture 4×4, shader library via `loadShaderLibrary("Shaders/Triangle")`, pipeline from it.
+- [x] **Step 2: Verify** — `xmake run App` logs success for all four creations. Intentionally break the entry name once ("vertexMainX") → expect a `PipelineCreationFailed` error with useful message, then restore.
+- [x] **Step 3: Commit** — `git commit -m "Add Metal 4 buffer, texture, shader library, and pipeline creation"`
 
 ---
 
@@ -825,9 +825,9 @@ int main() {
   - `Metal4Swapchain`: wraps the `CA::MetalLayer*` from desc (sets device, pixelFormat, drawableSize); `acquireNextTexture()` → `layer->nextDrawable()` (nil → `SwapchainFailed`), wraps drawable texture in a transient non-owning Metal4Texture; `resize` sets `drawableSize`.
 - App loop produces: SDL init video; `SDL_CreateWindow("Luminex", 1280, 720, SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE)`; `SDL_Metal_CreateView` + `SDL_Metal_GetLayer` → `SwapchainDesc.nativeLayer`; per frame: poll events (`SDL_EVENT_QUIT`; on `SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED` → `swapchain->resize`), acquire, `beginFrame`, render pass clearing to `{0.1f, 0.15f, 0.2f, 1.f}`, `endFrame(&swapchain)`.
 
-- [ ] **Step 1:** Implement; build clean (`xmake`).
-- [ ] **Step 2: Verify visually** — `xmake run App`: window shows the steel-blue clear color, no validation errors with `MTL_DEBUG_LAYER=1 xmake run App`, resizing doesn't crash, quit is clean (waitIdle in shutdown path before releasing).
-- [ ] **Step 3: Commit** — `git commit -m "Add Metal 4 frame loop, swapchain, and SDL3 window with clear pass"`
+- [x] **Step 1:** Implement; build clean (`xmake`).
+- [x] **Step 2: Verify visually** — `xmake run App`: window shows the steel-blue clear color, no validation errors with `MTL_DEBUG_LAYER=1 xmake run App`, resizing doesn't crash, quit is clean (waitIdle in shutdown path before releasing).
+- [x] **Step 3: Commit** — `git commit -m "Add Metal 4 frame loop, swapchain, and SDL3 window with clear pass"`
 
 ---
 
@@ -841,10 +841,10 @@ int main() {
 - Consumes: the whole stack.
 - Produces: THE TRIANGLE. And: pressing `c` (SDL keycode `SDLK_C`) writes `luminex-frame.gputrace` next to the binary (requires env `MTL_CAPTURE_ENABLED=1`; log a warning if capture manager reports unsupported).
 
-- [ ] **Step 1:** Wire draw calls into the App loop between beginRenderPass/endRenderPass: `bindPipeline(*pipeline); bindVertexBuffer(0, *vertexBuffer); draw(3);`
-- [ ] **Step 2: Verify** — `xmake run App` → RGB triangle on steel-blue background. `MTL_DEBUG_LAYER=1` run → zero validation messages. Press `c` with `MTL_CAPTURE_ENABLED=1` → .gputrace appears and opens in Xcode (`open luminex-frame.gputrace`) showing the draw with argument table contents.
-- [ ] **Step 3:** Screenshot for the README, fully automated (Rudy may be AFK): add a `--screenshot <out.bmp>` mode to App — render ONE frame offscreen (1280×720, renderTarget+cpuReadback texture, same pipeline/vertex buffer), `readback()`, write an uncompressed 32-bit BMP (hand-rolled 54-byte header — BGRA matches BMP natively), exit. Then `sips -s format png <out.bmp> --out docs/images/m1-triangle.png` and reference it from README. This doubles as a no-window sanity path.
-- [ ] **Step 4: Commit** — `git commit -m "Render the first Metal 4 triangle through the RHI"`
+- [x] **Step 1:** Wire draw calls into the App loop between beginRenderPass/endRenderPass: `bindPipeline(*pipeline); bindVertexBuffer(0, *vertexBuffer); draw(3);`
+- [x] **Step 2: Verify** — `xmake run App` → RGB triangle on steel-blue background. `MTL_DEBUG_LAYER=1` run → zero validation messages. Press `c` with `MTL_CAPTURE_ENABLED=1` → .gputrace appears and opens in Xcode (`open luminex-frame.gputrace`) showing the draw with argument table contents.
+- [x] **Step 3:** Screenshot for the README, fully automated (Rudy may be AFK): add a `--screenshot <out.bmp>` mode to App — render ONE frame offscreen (1280×720, renderTarget+cpuReadback texture, same pipeline/vertex buffer), `readback()`, write an uncompressed 32-bit BMP (hand-rolled 54-byte header — BGRA matches BMP natively), exit. Then `sips -s format png <out.bmp> --out docs/images/m1-triangle.png` and reference it from README. This doubles as a no-window sanity path.
+- [x] **Step 4: Commit** — `git commit -m "Render the first Metal 4 triangle through the RHI"`
 
 ---
 
@@ -857,7 +857,7 @@ int main() {
 **Interfaces:**
 - Consumes: full RHI. No SDL — offscreen only.
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 ```cpp
 #include <catch2/catch_test_macros.hpp>
@@ -923,8 +923,8 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
 ```
 Note: NDC y-up vs texture row order means the triangle's interior sits in the *lower* rows of the image half — if the center probe fails, dump the buffer as PPM to inspect (`std::ofstream("smoke.ppm")`, P6 header, RGB swizzle) and adjust probe coordinates once; the corner-black assert is orientation-proof.
 
-- [ ] **Step 2:** Working-directory care: the test loads `Shaders/Triangle` (metallib or .metal per A1) relative to CWD — run via `xmake test` (xmake runs tests with CWD = target dir). Verify: `xmake test` → both `unit` and `gpu` PASS locally.
-- [ ] **Step 3: Commit** — `git commit -m "Add offscreen GPU smoke test with pixel readback"`
+- [x] **Step 2:** Working-directory care: the test loads `Shaders/Triangle` (metallib or .metal per A1) relative to CWD — run via `xmake test` (xmake runs tests with CWD = target dir). Verify: `xmake test` → both `unit` and `gpu` PASS locally.
+- [x] **Step 3: Commit** — `git commit -m "Add offscreen GPU smoke test with pixel readback"`
 
 ---
 
@@ -936,7 +936,7 @@ Note: NDC y-up vs texture row order means the triangle's interior sits in the *l
 **Interfaces:**
 - Produces: green check on push to main. GPU test excluded (runner GPUs are virtualized; Metal 4 availability unverified — the smoke test stays a documented local gate per spec §6).
 
-- [ ] **Step 1: Write workflow**
+- [x] **Step 1: Write workflow**
 
 ```yaml
 name: CI
@@ -963,8 +963,8 @@ jobs:
 ```
 If the Metal toolchain step proves unreliable on runners, shader compilation will fail the build — in that case split shader targets behind an xmake option (`--shaders=n`) in a follow-up commit and note it in CLAUDE.md. Do not silently drop CI compilation of the backend itself.
 
-- [ ] **Step 2:** Push and verify the workflow runs green (`gh run watch`). Fix package-name or brew hiccups as they surface.
-- [ ] **Step 3: Commit** (the yml lands with its own commit before push): `git commit -m "Add GitHub Actions CI for macOS build, tests, and format check"`
+- [x] **Step 2:** Push and verify the workflow runs green (`gh run watch`). Fix package-name or brew hiccups as they surface.
+- [x] **Step 3: Commit** (the yml lands with its own commit before push): `git commit -m "Add GitHub Actions CI for macOS build, tests, and format check"`
 
 ---
 
@@ -973,14 +973,14 @@ If the Metal toolchain step proves unreliable on runners, shader compilation wil
 **Files:**
 - Modify: `README.md` (triangle screenshot from Task 11, verified quick-start), `CLAUDE.md` (verify commands truthful), `docs/specs/2026-08-07-luminex-upgrade-design.md` (Status → "Implemented (M1) — 2026-08-07"), this plan (all checkboxes ticked)
 
-- [ ] **Step 1:** Re-run the full local gate from scratch as a user would:
+- [x] **Step 1:** Re-run the full local gate from scratch as a user would:
 
 ```bash
 git clean -xdff ThirdParty build .xmake 2>/dev/null; xmake setup && xmake f -m debug -y && xmake -y && xmake test && xmake run App
 ```
 All green + triangle visible. Fix any doc/command drift found.
-- [ ] **Step 2:** `xmake format --check` clean; update the three docs; tick all plan checkboxes.
-- [ ] **Step 3: Commit** — `git commit -m "Polish README and docs for M1 completion"`
+- [x] **Step 2:** `xmake format --check` clean; update the three docs; tick all plan checkboxes.
+- [x] **Step 3: Commit** — `git commit -m "Polish README and docs for M1 completion"`
 
 ---
 

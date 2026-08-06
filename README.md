@@ -6,7 +6,9 @@ A Metal 4-native rendering playground and portfolio piece, built around a thin, 
 
 Metal 4 · C++23 · Slang · xmake
 
-**Status**: M1 in progress (foundation + Metal 4 triangle through the RHI).
+[![CI](https://github.com/AmanThuL/Luminex/actions/workflows/ci.yml/badge.svg)](https://github.com/AmanThuL/Luminex/actions/workflows/ci.yml)
+
+**Status**: M1 complete — foundation + Metal 4 triangle rendered through the RHI (2026-08-08).
 
 ![Metal 4 triangle rendered through lmx::rhi](docs/images/m1-triangle.png)
 
@@ -47,7 +49,7 @@ compiled to MSL today, keeping the door open for SPIR-V/DXIL once Vulkan and D3D
 
 ## Roadmap
 
-- **M1 — Foundation + triangle through RHI** *(current)*: SDL3 window, Metal 4 device/swapchain,
+- **M1 — Foundation + triangle through RHI** *(complete)*: SDL3 window, Metal 4 device/swapchain,
   `lmx::rhi`, a Slang-authored triangle, tests, formatting, docs, CI.
 - **M2 — Renderer skeleton**: `lmx::render` becomes real — mesh/camera/uniform plumbing, depth
   buffer, ImGui (Metal 4 + SDL3 backends) overlay.
