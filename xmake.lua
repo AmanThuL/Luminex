@@ -26,6 +26,33 @@ target("Tests")
     -- must be allowed to pass trivially until GPU tests land (later tasks).
     add_tests("gpu",  {runargs = {"[gpu]", "--allow-running-no-tests"}})
 
+local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
+local slang_pin    = "v2026.14.1"
+
+task("setup")
+    set_menu {usage = "xmake setup", description = "fetch pinned ThirdParty deps"}
+    on_run(function ()
+        if not os.isdir("ThirdParty/metal-cpp") then
+            os.execv("git", {"clone", "--depth", "1", "--branch", metalcpp_pin,
+                             "https://github.com/apple/metal-cpp.git", "ThirdParty/metal-cpp"})
+        end
+        if not os.isfile("ThirdParty/slang/bin/slangc") then
+            local ver = slang_pin:sub(2)  -- strip leading v
+            local zip = format("slang-%s-macos-aarch64.zip", ver)
+            local url = format("https://github.com/shader-slang/slang/releases/download/%s/%s", slang_pin, zip)
+            os.mkdir("ThirdParty/slang")
+            os.execv("curl", {"-L", "--max-time", "600", "-o", "ThirdParty/" .. zip, url})
+            os.execv("unzip", {"-q", "-o", "ThirdParty/" .. zip, "-d", "ThirdParty/slang"})
+            os.rm("ThirdParty/" .. zip)
+            try {
+                function ()
+                    os.execv("xattr", {"-dr", "com.apple.quarantine", "ThirdParty/slang"})
+                end
+            }
+        end
+        print("setup done: metal-cpp %s, slang %s", metalcpp_pin, slang_pin)
+    end)
+
 task("format")
     set_menu {usage = "xmake format [--check]", description = "clang-format all sources",
               options = {{nil, "check", "k", nil, "check only, do not modify"}}}
