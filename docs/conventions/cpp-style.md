@@ -2,7 +2,8 @@
 
 Formatting is owned by `.clang-format` (`xmake format`). This file covers what a formatter cannot.
 
-- **Naming**: `PascalCase` types & files; `camelCase` functions/variables/members (no `m_`/`s_` prefixes);
+- **Naming**: `PascalCase` types & files; `camelCase` functions/variables; private data members use the
+  `m_` prefix (`m_device`), public/aggregate members do not (no `s_` prefix anywhere);
   `kPascalCase` compile-time constants; `LMX_` macros; `lowercase` namespaces (`lmx`, `lmx::rhi`).
 - **Files**: one primary type per header; `PascalCase.h/.cpp` named after it. `#pragma once`.
 - **Includes**: own header first, then project (`"Core/..."`), then third-party, then std. Blank line between groups.
