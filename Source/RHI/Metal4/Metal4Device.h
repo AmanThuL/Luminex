@@ -1,10 +1,12 @@
 #pragma once
+#include "RHI/Metal4/Metal4CommandList.h"
 #include "RHI/Metal4/Metal4Common.h"
 #include "RHI/RHI.h"
 
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 namespace lmx::rhi::metal4 {
@@ -57,7 +59,22 @@ private:
     NS::SharedPtr<MTL::ResidencySet> m_residency;
     std::array<NS::SharedPtr<MTL4::CommandAllocator>, kFramesInFlight> m_allocators;
     NS::SharedPtr<MTL::SharedEvent> m_frameEvent;
+    // One command buffer for the whole device, re-opened against this frame's allocator by
+    // every beginFrame. In Metal 4 the recorded commands live in the *allocator*, not in the
+    // command buffer, so the buffer is a reusable encoding handle and the ring of allocators
+    // (plus the shared-event pacing) is what keeps a frame from overwriting in-flight work.
+    NS::SharedPtr<MTL4::CommandBuffer> m_commandBuffer;
+    // One argument table for the whole device, likewise. Its contents are read by the GPU while
+    // a frame is in flight, so rebinding a *different* address per frame would need one table
+    // per frame in flight; M1 binds the same static vertex buffer every frame, so one suffices.
+    NS::SharedPtr<MTL4::ArgumentTable> m_argumentTable;
+    // Not a member by value: Metal4CommandList's constructor needs the two objects above, which
+    // do not exist until create() has run.
+    std::optional<Metal4CommandList> m_commandList;
+
     uint64_t m_frameNumber = 0;
+    // Guards the beginFrame/endFrame pairing; see the assertions in both.
+    bool m_frameOpen = false;
 };
 
 } // namespace lmx::rhi::metal4

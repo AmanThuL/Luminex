@@ -3,6 +3,7 @@
 #include "Core/Assert.h"
 #include "Core/Log.h"
 #include "RHI/Metal4/Metal4Resources.h"
+#include "RHI/Metal4/Metal4Swapchain.h"
 #include "RHI/Validate.h"
 
 #include <cstdlib>
@@ -17,8 +18,15 @@
 namespace lmx::rhi::metal4 {
 namespace {
 
-// Generous: any wait longer than this means the GPU is wedged, not busy.
-constexpr uint64_t kWaitIdleTimeoutMs = 10'000;
+// Generous: any wait longer than this means the GPU is wedged, not busy. Shared by waitIdle()
+// and by beginFrame's pacing wait, which have the same "this should never actually elapse"
+// character.
+constexpr uint64_t kGpuTimeoutMs = 10'000;
+
+// Sized for M1's single vertex buffer with room to grow before anyone has to think about it;
+// the table is a fixed-size allocation, so the cost of the slack is a few dozen bytes.
+constexpr NS::UInteger kMaxBufferBindCount = 8;
+constexpr NS::UInteger kMaxTextureBindCount = 8;
 
 // Highest 4.x the vendored metal-cpp headers expose (MTLLibrary.hpp: LanguageVersion4_0 is
 // the last entry of the enum). Runtime-compiled MSL must match what the offline `metal
@@ -208,11 +216,45 @@ Result<std::unique_ptr<Device>> Metal4Device::create(const DeviceDesc& desc) {
     self->m_frameEvent->setSignaledValue(0);
     self->m_frameNumber = 0;
 
+    self->m_commandBuffer = NS::TransferPtr(self->m_device->newCommandBuffer());
+    if (!self->m_commandBuffer) {
+        return fail(ErrorCode::DeviceUnsupported, "failed to create MTL4 command buffer");
+    }
+    self->m_commandBuffer->setLabel(makeString("lmx.device.commandBuffer").get());
+
+    {
+        auto tableDesc = NS::TransferPtr(MTL4::ArgumentTableDescriptor::alloc()->init());
+        tableDesc->setMaxBufferBindCount(kMaxBufferBindCount);
+        tableDesc->setMaxTextureBindCount(kMaxTextureBindCount);
+        // Zero-fills the unbound slots. Without it a slot a shader declares but nobody binds
+        // holds whatever was in the allocation, which is a garbage GPU address rather than a
+        // diagnosable null.
+        tableDesc->setInitializeBindings(true);
+        tableDesc->setLabel(makeString("lmx.device.argumentTable").get());
+        error = nullptr;
+        self->m_argumentTable =
+            NS::TransferPtr(self->m_device->newArgumentTable(tableDesc.get(), &error));
+        if (!self->m_argumentTable) {
+            return fail(ErrorCode::DeviceUnsupported,
+                        "failed to create MTL4 argument table: " + describe(error));
+        }
+    }
+
+    self->m_commandList.emplace(self->m_commandBuffer.get(), self->m_argumentTable.get());
+
     return self;
 }
 
 Metal4Device::~Metal4Device() {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    // Drain first, unwire second, release third. The last committed frame may still be running
+    // on the GPU, and it references the command allocator and the frame event that the member
+    // releases below are about to drop. create() bails out before m_queue exists on some paths,
+    // hence the guard.
+    if (m_queue) {
+        waitIdle();
+    }
 
     // Unwire before releasing: the queue holds a reference to the residency set, so drop
     // that edge explicitly rather than relying on teardown order inside Metal.
@@ -227,8 +269,32 @@ Result<std::unique_ptr<Swapchain>> Metal4Device::createSwapchain(const Swapchain
     if (auto ok = validate(desc); !ok) {
         return std::unexpected(ok.error());
     }
-    LMX_ASSERT(false, "Metal4Device::createSwapchain is implemented in Task 10");
-    std::unreachable();
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    // The windowing layer created and owns the CAMetalLayer; RetainPtr takes a second reference
+    // so the swapchain cannot be left holding a dangling pointer if the window is torn down
+    // out of order. Only the layer's *configuration* below is ours.
+    NS::SharedPtr<CA::MetalLayer> layer =
+        NS::RetainPtr(static_cast<CA::MetalLayer*>(desc.nativeLayer));
+
+    layer->setDevice(m_device.get());
+    layer->setPixelFormat(toMTL(desc.format));
+    layer->setDrawableSize(
+        CGSize{static_cast<CGFloat>(desc.width), static_cast<CGFloat>(desc.height)});
+    // We only ever render into the drawable and present it -- never sample or read it back --
+    // and telling Core Animation so lets it hand out textures with the cheapest layout.
+    layer->setFramebufferOnly(true);
+
+    // Divergence check recorded for Task 11: the vendored CAMetalLayer.hpp *does* expose
+    // residencySet() (a getter only). Null-guarded anyway, since it is documented as vending a
+    // set only once the layer has a device.
+    MTL::ResidencySet* layerResidency = layer->residencySet();
+    if (layerResidency == nullptr) {
+        LMX_LOG_WARN("CAMetalLayer vends no residency set; relying on Metal's default drawable "
+                     "residency handling");
+    }
+
+    return std::make_unique<Metal4Swapchain>(std::move(layer), m_queue, layerResidency);
 }
 
 Result<std::unique_ptr<Buffer>> Metal4Device::createBuffer(const BufferDesc& desc,
@@ -439,28 +505,83 @@ Metal4Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
 }
 
 CommandList& Metal4Device::beginFrame() {
-    LMX_ASSERT(false, "Metal4Device::beginFrame is implemented in Task 10");
-    std::unreachable();
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(!m_frameOpen, "beginFrame: the previous frame is still open -- call endFrame");
+
+    ++m_frameNumber;
+
+    // Frame N and frame N-kFramesInFlight share an allocator, so N cannot reset it until N-3
+    // has actually finished on the GPU. endFrame signals the event with the frame number after
+    // that frame's command buffer, which makes "signaled value >= N-3" exactly that guarantee.
+    // The first kFramesInFlight frames have no predecessor to wait for.
+    if (m_frameNumber > kFramesInFlight) {
+        const uint64_t completedFrame = m_frameNumber - kFramesInFlight;
+        const bool signaled = m_frameEvent->waitUntilSignaledValue(completedFrame, kGpuTimeoutMs);
+        LMX_ASSERT(signaled, "beginFrame: the GPU did not finish the frame that owns this "
+                             "frame's command allocator within the timeout");
+    }
+
+    MTL4::CommandAllocator* allocator = m_allocators[m_frameNumber % kFramesInFlight].get();
+    allocator->reset();
+    m_commandBuffer->beginCommandBuffer(allocator);
+
+    m_frameOpen = true;
+    return *m_commandList;
 }
 
-void Metal4Device::endFrame([[maybe_unused]] Swapchain* presentTo) {
-    LMX_ASSERT(false, "Metal4Device::endFrame is implemented in Task 10");
+void Metal4Device::endFrame(Swapchain* presentTo) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(m_frameOpen, "endFrame: no frame is open -- call beginFrame first");
+    LMX_ASSERT(!m_commandList->inRenderPass(),
+               "endFrame: a render pass is still open -- call endRenderPass first");
+
+    m_commandBuffer->endCommandBuffer();
+
+    // Every Swapchain this backend hands out is a Metal4Swapchain; a foreign pointer is a
+    // caller contract violation, not a runtime error path.
+    auto* swapchain = static_cast<Metal4Swapchain*>(presentTo);
+    CA::MetalDrawable* drawable = swapchain != nullptr ? swapchain->currentDrawable() : nullptr;
+    LMX_ASSERT(swapchain == nullptr || drawable != nullptr,
+               "endFrame: asked to present a swapchain whose texture was never acquired");
+
+    if (drawable != nullptr) {
+        // Order matters and is not interchangeable: the wait must be queued *before* the work
+        // that writes the drawable (it gates that work on the display being finished with the
+        // surface), and the signal after it (it tells Core Animation the pixels are ready).
+        // present() then schedules the flip; it does not block.
+        m_queue->wait(drawable);
+    }
+
+    const MTL4::CommandBuffer* commandBuffers[] = {m_commandBuffer.get()};
+    m_queue->commit(commandBuffers, 1);
+
+    if (drawable != nullptr) {
+        m_queue->signalDrawable(drawable);
+        drawable->present();
+        swapchain->releaseCurrentDrawable();
+    }
+
+    // Retires this frame's allocator for the frame kFramesInFlight later; see beginFrame.
+    m_queue->signalEvent(m_frameEvent.get(), m_frameNumber);
+    m_frameOpen = false;
 }
 
 void Metal4Device::waitIdle() {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-    // A throwaway event rather than m_frameEvent: the frame-pacing event's values are
-    // owned by the frame loop (Task 10), and signalling an out-of-band value on it would
-    // corrupt that sequence. The queue signals in submission order, so once this fires
-    // every command buffer committed before it has completed.
+    // A throwaway event rather than m_frameEvent: the frame-pacing event's values are owned by
+    // beginFrame/endFrame, and signalling an out-of-band value on it would corrupt that
+    // sequence. The queue signals in submission order, so once this fires every command buffer
+    // committed before it has completed.
     NS::SharedPtr<MTL::SharedEvent> done = NS::TransferPtr(m_device->newSharedEvent());
     LMX_ASSERT(done, "waitIdle: failed to create shared event");
     done->setLabel(makeString("lmx.device.waitIdle").get());
     done->setSignaledValue(0);
 
     m_queue->signalEvent(done.get(), 1);
-    const bool signaled = done->waitUntilSignaledValue(1, kWaitIdleTimeoutMs);
+    const bool signaled = done->waitUntilSignaledValue(1, kGpuTimeoutMs);
     LMX_ASSERT(signaled, "waitIdle: GPU did not complete within the timeout");
 }
 
