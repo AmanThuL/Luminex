@@ -803,7 +803,7 @@ int main() {
 - Consumes: Task 7 descs + validation, Task 8 device members, `Triangle.metallib` from the App target's shader rule (path: alongside the App binary under `Shaders/`).
 - Produces: the four creation methods, each: `validate(desc)` first → Metal object → label → **add to residency set** (buffers/textures; then `residency->commit()`), returning typed wrappers. Details: Buffer = `device->newBuffer(size, MTL::ResourceStorageModeShared)` + memcpy initialData; Texture = descriptor with `renderTarget ? MTL::TextureUsageRenderTarget : 0`, storage `Shared` when `cpuReadback` (readback via `getBytes`); ShaderLibrary = per Amendment A1: if `<pathNoExt>.metallib` exists → `device->newLibrary(url)`; else read `<pathNoExt>.metal` and `device->newLibrary(source, compileOptions, &error)` with the Metal-4 language version from the metal-cpp `MTL::LanguageVersion` enum (pick the highest 4.x the headers offer); neither file / compile error → `ShaderLoadFailed` with path and compiler text in message; Pipeline = `MTL4::RenderPipelineDescriptor` + `MTL4::LibraryFunctionDescriptor` (library + entry names from Task 6 Step 3 record) + colorFormat, built through `compiler->newRenderPipelineState(...)` → `PipelineCreationFailed` on error with compiler error text.
 
-- [ ] **Step 1:** Extend `main.cpp` to create: vertex buffer (3 × `{float2 pos, float3 color}` = the classic RGB triangle: `{{0,0.5},{1,0,0}}, {{-0.5,-0.5},{0,1,0}}, {{0.5,-0.5},{0,0,1}}` — define the struct locally in App with `alignas` matching Slang's layout; **verify stride against the generated .metal struct** and record it), readback texture 4×4, shader library from the built metallib path, pipeline from it.
+- [ ] **Step 1:** Extend `main.cpp` to create: vertex buffer (3 × the classic RGB triangle: `{{0,0.5},{1,0,0}}, {{-0.5,-0.5},{0,1,0}}, {{0.5,-0.5},{0,0,1}}`). **Measured shader ABI (Task 6 record — binding):** Slang emits `struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; }` — tightly packed, stride 20, position@0, color@8. C++ side: `struct Vertex { float px, py; float r, g, b; }; static_assert(sizeof(Vertex) == 20);`. Entry names preserved (`vertexMain`/`fragmentMain`); `gVertices` is at buffer index 0 in BOTH vertex and fragment stages (Slang emits it into the fragment signature too — bind slot 0 on both argument-table stages or validation flags an unbound buffer). Also create: readback texture 4×4, shader library via `loadShaderLibrary("Shaders/Triangle")`, pipeline from it.
 - [ ] **Step 2: Verify** — `xmake run App` logs success for all four creations. Intentionally break the entry name once ("vertexMainX") → expect a `PipelineCreationFailed` error with useful message, then restore.
 - [ ] **Step 3: Commit** — `git commit -m "Add Metal 4 buffer, texture, shader library, and pipeline creation"`
 
@@ -869,12 +869,12 @@ int main() {
 #include "RHI/RHI.h"
 
 namespace {
+// Measured Slang/MSL ABI (Task 6 record): packed_float2 + packed_float3, stride 20.
 struct Vertex {
     float position[2];
-    float pad0[2];  // match the recorded Slang/MSL stride from Task 9 — verify!
     float color[3];
-    float pad1;
 };
+static_assert(sizeof(Vertex) == 20, "must match Slang's packed Vertex_natural_0 layout");
 }
 
 TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
@@ -884,9 +884,9 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
     auto& device = **deviceR;
 
     const std::array<Vertex, 3> verts = {{
-        {{0.f, 0.5f}, {}, {1.f, 0.f, 0.f}, 0.f},
-        {{-0.5f, -0.5f}, {}, {0.f, 1.f, 0.f}, 0.f},
-        {{0.5f, -0.5f}, {}, {0.f, 0.f, 1.f}, 0.f},
+        {{0.f, 0.5f}, {1.f, 0.f, 0.f}},
+        {{-0.5f, -0.5f}, {0.f, 1.f, 0.f}},
+        {{0.5f, -0.5f}, {0.f, 0.f, 1.f}},
     }};
     auto vb = device.createBuffer({.size = sizeof(verts), .label = "smoke.vb"}, verts.data());
     REQUIRE(vb.has_value());
