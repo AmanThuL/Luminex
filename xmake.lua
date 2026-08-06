@@ -8,6 +8,34 @@ set_policy("build.warning", true)
 
 add_requires("libsdl3", "glm", "spdlog", "catch2 3.x")
 
+-- Slang -> readable MSL -> .metallib (ADR 0003). Emits both artifacts into
+-- <targetdir>/Shaders/; a target opts in with add_rules("slang2metallib") plus
+-- add_files("Shaders/*.slang"). No target consumes it yet -- App does (Task 10).
+rule("slang2metallib")
+    set_extensions(".slang")
+    on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
+        local outdir = path.join(target:targetdir(), "Shaders")
+        local name = path.basename(sourcefile)
+        local msl = path.join(outdir, name .. ".metal")
+        local slangc = path.join(os.projectdir(), "ThirdParty/slang/bin/slangc")
+        batchcmds:mkdir(outdir)
+        batchcmds:show_progress(opt.progress, "${color.build.object}slang %s", sourcefile)
+        batchcmds:vrunv(slangc, {sourcefile, "-target", "metal", "-o", msl})
+        -- Amendment A1: offline metallib precompile only when the Metal toolchain
+        -- exists; otherwise the runtime compiles the .metal source (RHI resolves both).
+        local has_metal = try {function ()
+            os.runv("xcrun", {"-sdk", "macosx", "metal", "--version"}); return true
+        end}
+        if has_metal then
+            local lib = path.join(outdir, name .. ".metallib")
+            batchcmds:vrunv("xcrun", {"-sdk", "macosx", "metal", "-std=metal4.0",
+                                      "-frecord-sources", "-gline-tables-only", "-o", lib, msl})
+        end
+        batchcmds:add_depfiles(sourcefile)
+        batchcmds:set_depmtime(os.mtime(msl))
+        batchcmds:set_depcache(target:dependfile(msl))
+    end)
+
 target("Core")
     set_kind("static")
     add_files("Source/Core/*.cpp")
