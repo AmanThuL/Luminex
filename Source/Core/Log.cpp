@@ -6,7 +6,8 @@ namespace lmx::log {
 
 void init() {
     static bool initialized = false;
-    if (initialized) return;
+    if (initialized)
+        return;
     initialized = true;
     auto logger = spdlog::stdout_color_mt("lmx");
     spdlog::set_default_logger(std::move(logger));
@@ -14,4 +15,4 @@ void init() {
     spdlog::set_level(spdlog::level::trace);
 }
 
-}  // namespace lmx::log
+} // namespace lmx::log

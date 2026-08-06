@@ -2,7 +2,7 @@
 #include <spdlog/spdlog.h>
 
 namespace lmx::log {
-void init();  // safe to call more than once
+void init(); // safe to call more than once
 }
 
 #define LMX_LOG_INFO(...) SPDLOG_INFO(__VA_ARGS__)
