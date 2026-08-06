@@ -37,6 +37,7 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
 
     m_encoder = NS::RetainPtr(m_commandBuffer->renderCommandEncoder(passDesc.get()));
     LMX_ASSERT(m_encoder, "beginRenderPass: failed to create a render command encoder");
+    m_encoder->setLabel(makeString("lmx.encoder.render").get());
 
     // The default viewport is derived from the attachment, so this is redundant *today*; it is
     // set explicitly because the derived value silently stops being the right one the moment a

@@ -7,6 +7,16 @@
 
 namespace lmx::rhi {
 
+// Deliberate M1 omissions -- deferred until a real feature demands them, not designed against
+// in advance (ADR 0004, "thin, explicit, honest"; spec §4):
+//   - Explicit barriers (M1 renders a single pass; nothing to track yet)
+//   - Compute
+//   - Multi-queue
+//   - Dynamic residency (everything lives in one MTLResidencySet)
+//   - Queries
+//   - Ray tracing
+// Each grows in once a milestone actually needs it.
+
 enum class ErrorCode {
     DeviceUnsupported,
     ShaderLoadFailed,

@@ -31,8 +31,9 @@ constexpr std::array<Vertex, 3> kTriangle = {{
 // Slot 0 of the MTL4 argument table, where Slang binds `gVertices` (Task 6 record).
 constexpr uint32_t kVertexBufferSlot = 0;
 
-// Small enough that the whole test is a few milliseconds, large enough that every probe
-// below sits at least three pixels clear of an edge rather than on one.
+// Small enough that the whole test is a few milliseconds, large enough that each probe below
+// sits far enough inside its region to be deterministically interior without MSAA; see the
+// per-probe margins noted at each REQUIRE below.
 constexpr uint32_t kSize = 64;
 
 // One BGRA8Unorm texel, in the channel order readback() produces.

@@ -116,6 +116,17 @@ Explicit barriers (one pass), compute, multi-queue, dynamic residency (everythin
 - **Error handling**: `std::expected` at creation/loading boundaries; `LMX_ASSERT` fatal + descriptive for contract violations; `spdlog` leveled logging; fail fast, no silent fallbacks.
 - **Commits**: imperative mood, English, no AI co-author trailers (matches repo history style).
 
+### M1 deviations
+
+- **clang-tidy CI job deferred to M2.** D8 called for a non-blocking clang-tidy job in CI; at
+  M1's size (a handful of RHI/App files) there is nothing beyond `-Wall`/`allextra` worth
+  linting for yet, so the job was not added. Revisit once the codebase is large enough for
+  clang-tidy's `modernize-*`/`bugprone-*`/`performance-*` checks to earn their runtime.
+- **GPU smoke test is a local gate only.** The `[gpu]` test (`Tests/GpuSmokeTests.cpp`) hard-
+  requires `createDevice()` to succeed against a real Metal 4 device; hosted macOS runners
+  cannot guarantee one (virtualized/absent GPU). CI therefore runs `Tests/unit` exclusively —
+  this supersedes this section's earlier "best-effort in CI" framing for the GPU test.
+
 ## 7. CLAUDE.md
 
 Root-level; contains project overview, build/run/test/format commands, architecture map, pointers into `docs/conventions/` and `docs/decisions/`, and a policy note: **updated at every milestone boundary**.
