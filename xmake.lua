@@ -10,7 +10,9 @@ add_requires("libsdl3", "glm", "spdlog", "catch2 3.x")
 
 -- Slang -> readable MSL -> .metallib (ADR 0003). Emits both artifacts into
 -- <targetdir>/Shaders/; a target opts in with add_rules("slang2metallib") plus
--- add_files("Shaders/*.slang"). App consumes it, so the artifacts land beside the binary.
+-- add_files("Shaders/*.slang"). App and Tests both load the artifacts at runtime, so both
+-- opt in -- which is why they must not share a target directory: two targets emitting the
+-- same paths race under a parallel build. See the Tests target's set_targetdir below.
 rule("slang2metallib")
     set_extensions(".slang")
     on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
@@ -66,13 +68,27 @@ target("App")
 target("Tests")
     set_kind("binary")
     set_default(false)
+    -- Its own directory, not the default one it would otherwise share with App. Tests
+    -- compiles the same shaders as App does, and two targets emitting the same output paths
+    -- is a real data race: `xmake build -a` schedules them in parallel, both run slangc and
+    -- `xcrun metal` on Shaders/Triangle.slang, and the interleaved writes leave behind a
+    -- Triangle.metallib that Metal refuses to load. Observed, not theorised.
+    -- Singular "test": macOS filesystems are case-insensitive, so a directory named "tests"
+    -- collides with the "Tests" binary that sits one level up.
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
     add_files("Tests/*.cpp")
     add_deps("Core", "RHI")
     add_packages("catch2")
+    -- The [gpu] smoke test loads "Shaders/Triangle" relative to its working directory, and
+    -- `xmake test` runs a target with CWD == target:rundir(), which defaults to the target
+    -- directory (verified on this machine). Tests emits its own copy rather than reusing
+    -- App's so that running the tests never requires App to have been built.
+    add_rules("slang2metallib")
+    add_files("Shaders/*.slang")
     add_tests("unit", {runargs = {"~[gpu]"}})
-    -- Catch2 3.x treats a tag filter matching zero tests as failure (exit 2)
-    -- unless told otherwise; no [gpu] tests exist yet in M1, so this entry
-    -- must be allowed to pass trivially until GPU tests land (later tasks).
+    -- --allow-running-no-tests: Catch2 3.x exits 2 when a tag filter matches nothing.
+    -- [gpu] matches now, so this only keeps the entry from turning a future "all GPU
+    -- tests removed/renamed" into a confusing hard failure of the runner itself.
     add_tests("gpu",  {runargs = {"[gpu]", "--allow-running-no-tests"}})
 
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
