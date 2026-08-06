@@ -90,6 +90,10 @@ struct SwapchainDesc {
     uint32_t width = 0, height = 0;
     Format format = Format::BGRA8Unorm;
 };
+// Lifetime: a Swapchain must not outlive the Device that created it, and must be destroyed
+// before the native surface it was built on. Destruction blocks until all GPU work referencing
+// the swapchain has completed — a backend may not release presentation resources out from under
+// in-flight command buffers — so no waitIdle() is required around it.
 class Swapchain {
 public:
     virtual ~Swapchain() = default;

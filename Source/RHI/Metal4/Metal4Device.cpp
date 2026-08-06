@@ -18,11 +18,6 @@
 namespace lmx::rhi::metal4 {
 namespace {
 
-// Generous: any wait longer than this means the GPU is wedged, not busy. Shared by waitIdle()
-// and by beginFrame's pacing wait, which have the same "this should never actually elapse"
-// character.
-constexpr uint64_t kGpuTimeoutMs = 10'000;
-
 // Sized for M1's single vertex buffer with room to grow before anyone has to think about it;
 // the table is a fixed-size allocation, so the cost of the slack is a few dozen bytes.
 constexpr NS::UInteger kMaxBufferBindCount = 8;
@@ -287,14 +282,17 @@ Result<std::unique_ptr<Swapchain>> Metal4Device::createSwapchain(const Swapchain
 
     // Divergence check recorded for Task 11: the vendored CAMetalLayer.hpp *does* expose
     // residencySet() (a getter only). Null-guarded anyway, since it is documented as vending a
-    // set only once the layer has a device.
-    MTL::ResidencySet* layerResidency = layer->residencySet();
-    if (layerResidency == nullptr) {
+    // set only once the layer has a device -- and NS::RetainPtr dereferences its argument
+    // unconditionally, so the check has to happen before the retain, not inside it.
+    NS::SharedPtr<MTL::ResidencySet> layerResidency;
+    if (MTL::ResidencySet* set = layer->residencySet(); set != nullptr) {
+        layerResidency = NS::RetainPtr(set);
+    } else {
         LMX_LOG_WARN("CAMetalLayer vends no residency set; relying on Metal's default drawable "
                      "residency handling");
     }
 
-    return std::make_unique<Metal4Swapchain>(std::move(layer), m_queue, layerResidency);
+    return std::make_unique<Metal4Swapchain>(std::move(layer), m_queue, std::move(layerResidency));
 }
 
 Result<std::unique_ptr<Buffer>> Metal4Device::createBuffer(const BufferDesc& desc,
@@ -569,20 +567,7 @@ void Metal4Device::endFrame(Swapchain* presentTo) {
 }
 
 void Metal4Device::waitIdle() {
-    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
-    // A throwaway event rather than m_frameEvent: the frame-pacing event's values are owned by
-    // beginFrame/endFrame, and signalling an out-of-band value on it would corrupt that
-    // sequence. The queue signals in submission order, so once this fires every command buffer
-    // committed before it has completed.
-    NS::SharedPtr<MTL::SharedEvent> done = NS::TransferPtr(m_device->newSharedEvent());
-    LMX_ASSERT(done, "waitIdle: failed to create shared event");
-    done->setLabel(makeString("lmx.device.waitIdle").get());
-    done->setSignaledValue(0);
-
-    m_queue->signalEvent(done.get(), 1);
-    const bool signaled = done->waitUntilSignaledValue(1, kGpuTimeoutMs);
-    LMX_ASSERT(signaled, "waitIdle: GPU did not complete within the timeout");
+    drainQueue(m_queue.get());
 }
 
 } // namespace lmx::rhi::metal4

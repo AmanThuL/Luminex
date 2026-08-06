@@ -216,9 +216,9 @@ int run(SDL_Window* window, void* metalLayer) {
         }
     }
 
-    // Before anything is released: the swapchain destructor detaches the layer's residency set
-    // from the queue, and the last frames are still executing against it. The device destructor
-    // drains too, but it runs after the swapchain's -- too late for that edge.
+    // Not load-bearing -- the swapchain and device destructors each drain on their own -- but
+    // it keeps the teardown readable: the loop is over and the GPU is idle before anything
+    // starts being released. The redundant drain costs one already-signalled event.
     (*device)->waitIdle();
 
     LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,

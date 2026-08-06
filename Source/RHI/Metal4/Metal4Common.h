@@ -1,13 +1,15 @@
 #pragma once
 // Shared plumbing for the Metal 4 backend: the metal-cpp umbrella includes plus the
-// two conversions every backend file needs. Private to the RHI target -- metal-cpp
+// handful of helpers every backend file needs. Private to the RHI target -- metal-cpp
 // types never appear in RHI.h.
+#include "Core/Assert.h"
 #include "RHI/RHI.h"
 
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -34,6 +36,37 @@ inline MTL::PixelFormat toMTL(Format format) {
         break;
     }
     return MTL::PixelFormatInvalid;
+}
+
+// Generous: any wait longer than this means the GPU is wedged, not busy.
+inline constexpr uint64_t kGpuTimeoutMs = 10'000;
+
+// Blocks until every command buffer already committed to `queue` has completed.
+//
+// Shared by Device::waitIdle() and by ~Metal4Swapchain, which must drain before it detaches the
+// layer's residency set from the queue. It deliberately takes only the queue: MTL4::CommandQueue
+// exposes device(), so no back-pointer to Metal4Device is needed and a swapchain can drain
+// safely without knowing anything about the object that created it.
+//
+// A throwaway event rather than the device's frame-pacing event: that event's value sequence is
+// owned by beginFrame/endFrame, and signalling an out-of-band value on it would corrupt pacing.
+// The queue signals in submission order, so once this fires every command buffer committed
+// before it has completed.
+inline void drainQueue(MTL4::CommandQueue* queue) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(queue != nullptr, "drainQueue: queue must not be null");
+    MTL::Device* device = queue->device();
+    LMX_ASSERT(device != nullptr, "drainQueue: command queue has no device");
+
+    NS::SharedPtr<MTL::SharedEvent> done = NS::TransferPtr(device->newSharedEvent());
+    LMX_ASSERT(done, "drainQueue: failed to create shared event");
+    done->setLabel(makeString("lmx.queue.drain").get());
+    done->setSignaledValue(0);
+
+    queue->signalEvent(done.get(), 1);
+    const bool signaled = done->waitUntilSignaledValue(1, kGpuTimeoutMs);
+    LMX_ASSERT(signaled, "drainQueue: GPU did not complete within the timeout");
 }
 
 } // namespace lmx::rhi::metal4

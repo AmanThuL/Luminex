@@ -10,22 +10,37 @@ namespace lmx::rhi::metal4 {
 
 Metal4Swapchain::Metal4Swapchain(NS::SharedPtr<CA::MetalLayer> layer,
                                  NS::SharedPtr<MTL4::CommandQueue> queue,
-                                 MTL::ResidencySet* layerResidency)
-    : m_layer(std::move(layer)), m_queue(std::move(queue)), m_layerResidency(layerResidency) {
+                                 NS::SharedPtr<MTL::ResidencySet> layerResidency)
+    : m_layer(std::move(layer)), m_queue(std::move(queue)),
+      m_layerResidency(std::move(layerResidency)) {
     // The layer keeps its drawables' allocations in a residency set of its own, and Metal 4
     // makes nothing resident implicitly -- so the queue needs this set in addition to the
     // device's. It is attached for the swapchain's whole lifetime rather than per frame: the
     // set's *contents* are the layer's business, only the queue edge is ours.
-    if (m_layerResidency != nullptr) {
-        m_queue->addResidencySet(m_layerResidency);
+    if (m_layerResidency) {
+        m_queue->addResidencySet(m_layerResidency.get());
     }
 }
 
 Metal4Swapchain::~Metal4Swapchain() {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-    if (m_layerResidency != nullptr) {
-        m_queue->removeResidencySet(m_layerResidency);
+    // Drain before unwiring anything. Every teardown step below -- detaching the residency set
+    // that keeps the drawables resident, dropping the drawable itself -- pulls something out
+    // from under command buffers that may still be executing.
+    //
+    // This is self-enforcing on purpose. Device::waitIdle() cannot cover it: a swapchain is
+    // destroyed *before* its device (it must be -- it holds the layer), so the device's own
+    // drain always runs too late. Requiring callers to remember a waitIdle here would be an
+    // invisible precondition that the next teardown path silently gets wrong.
+    //
+    // drainQueue takes only the queue (MTL4::CommandQueue::device() supplies the rest), so this
+    // needs no back-pointer to Metal4Device -- an object that, per Task 9's precedent, a
+    // resource must never hold.
+    drainQueue(m_queue.get());
+
+    if (m_layerResidency) {
+        m_queue->removeResidencySet(m_layerResidency.get());
     }
     // A drawable still held here means the caller acquired without ever ending the frame.
     // Releasing it un-presented is the correct teardown -- the layer reclaims it.
