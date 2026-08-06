@@ -10,7 +10,7 @@ add_requires("libsdl3", "glm", "spdlog", "catch2 3.x")
 
 -- Slang -> readable MSL -> .metallib (ADR 0003). Emits both artifacts into
 -- <targetdir>/Shaders/; a target opts in with add_rules("slang2metallib") plus
--- add_files("Shaders/*.slang"). No target consumes it yet -- App does (Task 10).
+-- add_files("Shaders/*.slang"). App consumes it, so the artifacts land beside the binary.
 rule("slang2metallib")
     set_extensions(".slang")
     on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
@@ -42,13 +42,26 @@ target("Core")
     add_includedirs("Source", {public = true})
     add_packages("spdlog", {public = true})
 
--- Backend sources (Source/RHI/Metal4/*.cpp) and the Metal frameworks join in Task 8;
--- for now the target is the desc validation + the public headers.
+-- add_files is non-recursive, so the Metal4 backend sources are listed explicitly.
+-- metal-cpp is an implementation detail of this target: RHI.h never names an MTL type,
+-- so the include dir stays private and only Source/ is public.
 target("RHI")
     set_kind("static")
-    add_files("Source/RHI/*.cpp")
+    add_files("Source/RHI/*.cpp", "Source/RHI/Metal4/*.cpp")
     add_includedirs("Source", {public = true})
+    add_includedirs("ThirdParty/metal-cpp")
+    add_frameworks("Metal", "QuartzCore", "Foundation")
     add_deps("Core")
+
+target("App")
+    set_kind("binary")
+    add_files("Source/App/*.cpp")
+    add_deps("Core", "RHI")
+    add_packages("libsdl3", "glm")
+    -- Emits build/<plat>/<arch>/<mode>/Shaders/Triangle.metal (+ .metallib when the
+    -- Metal toolchain is present) next to the App binary.
+    add_rules("slang2metallib")
+    add_files("Shaders/*.slang")
 
 target("Tests")
     set_kind("binary")
