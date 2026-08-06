@@ -51,6 +51,13 @@ std::unexpected<Error> fail(ErrorCode code, std::string message) {
     return std::unexpected(Error{code, std::move(message)});
 }
 
+// cpp-style.md: "GPU objects always get a label." A caller that leaves desc.label empty still
+// gets one, synthesized from the object kind, so it never shows up unidentified in Xcode's GPU
+// debugger or a .gputrace capture.
+NS::SharedPtr<NS::String> labelOrFallback(std::string_view label, std::string_view fallback) {
+    return makeString(label.empty() ? fallback : label);
+}
+
 std::vector<std::string> libraryFunctionNames(MTL::Library* library) {
     std::vector<std::string> names;
     NS::Array* array = library->functionNames();
@@ -314,9 +321,7 @@ Result<std::unique_ptr<Buffer>> Metal4Device::createBuffer(const BufferDesc& des
     if (initialData != nullptr) {
         std::memcpy(buffer->contents(), initialData, desc.size);
     }
-    if (!desc.label.empty()) {
-        buffer->setLabel(makeString(desc.label).get());
-    }
+    buffer->setLabel(labelOrFallback(desc.label, "lmx.buffer.unnamed").get());
 
     // Passing the residency set registers the allocation and, just as importantly, unregisters
     // it when the wrapper dies -- see ResidencyRegistration.
@@ -352,9 +357,7 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
                     "failed to create " + std::to_string(desc.width) + "x" +
                         std::to_string(desc.height) + " texture");
     }
-    if (!desc.label.empty()) {
-        texture->setLabel(makeString(desc.label).get());
-    }
+    texture->setLabel(labelOrFallback(desc.label, "lmx.texture.unnamed").get());
 
     return std::make_unique<Metal4Texture>(std::move(texture), desc.width, desc.height,
                                            desc.cpuReadback, m_residency);
@@ -484,9 +487,7 @@ Metal4Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
     pipelineDesc->setRasterSampleCount(1);
     // MTL::RenderPipelineState has no setLabel (only a getter) -- the label has to be set on
     // the descriptor and is carried into the compiled state.
-    if (!desc.label.empty()) {
-        pipelineDesc->setLabel(makeString(desc.label).get());
-    }
+    pipelineDesc->setLabel(labelOrFallback(desc.label, "lmx.pipeline.unnamed").get());
 
     NS::Error* error = nullptr;
     NS::SharedPtr<MTL::RenderPipelineState> state =

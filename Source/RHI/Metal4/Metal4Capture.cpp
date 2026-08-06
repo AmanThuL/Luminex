@@ -39,6 +39,23 @@ bool beginCapture(Device& device, std::string_view outPath) {
         return false;
     }
 
+    // Guard the destructive path below (remove_all) before anything else touches the
+    // filesystem: an empty outPath resolves to std::filesystem::absolute("") == the process
+    // CWD, which would make the "clear the old document" step below recursively delete the
+    // working directory. Requiring the ".gputrace" suffix is a second, independent guard --
+    // it is the one thing every legitimate caller of this function has in common, and it
+    // stops a typo'd or attacker-controlled path from ever reaching remove_all regardless of
+    // how it resolves.
+    if (outPath.empty()) {
+        LMX_LOG_ERROR("GPU capture: outPath must not be empty");
+        return false;
+    }
+    constexpr std::string_view kRequiredSuffix = ".gputrace";
+    if (!outPath.ends_with(kRequiredSuffix)) {
+        LMX_LOG_ERROR("GPU capture: outPath '{}' must end in '{}'", outPath, kRequiredSuffix);
+        return false;
+    }
+
     // Absolute, because the URL outlives this call's notion of the working directory and a
     // relative one in a log line is useless to whoever has to find the document afterwards.
     std::error_code pathError;

@@ -138,17 +138,18 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
     REQUIRE(corner.a == 255);
 
     // (32,40) is clip (+0.02, -0.27): on the vertical centre line, between the apex row and
-    // the base row, and about twelve pixels inside the nearest edge.
+    // the base row, and 7.5px from its nearest edge (the base, at row 48).
     const Pixel inside = pixelAt(pixels, 32, 40);
     INFO(describe("inside", 32, 40, inside));
     REQUIRE(int{inside.b} + int{inside.g} + int{inside.r} > 60);
     REQUIRE(inside.a == 255);
 
     // The next three probes are what separate "a triangle was drawn" from "*this* triangle
-    // was drawn": each sits about three pixels inside the edges meeting one vertex, so its
-    // dominant channel must be that vertex's colour. A wrong vertex stride, a mis-bound
-    // buffer slot or a flipped image moves the colours off these points while leaving the
-    // two probes above perfectly happy.
+    // was drawn": each sits inside the edges meeting one vertex -- the two base-corner probes
+    // (bottom-left, bottom-right) are 1.5px from the base edge at row 48 -- so its dominant
+    // channel must be that vertex's colour. A wrong vertex stride, a mis-bound buffer slot or
+    // a flipped image moves the colours off these points while leaving the two probes above
+    // perfectly happy.
     const Pixel apex = pixelAt(pixels, 32, 24);
     INFO(describe("apex", 32, 24, apex));
     REQUIRE(apex.r > 128);

@@ -12,6 +12,16 @@ bool isEightBitFormat(Format format) {
     return format == Format::BGRA8Unorm || format == Format::RGBA8Unorm;
 }
 
+// Metal 4 / Apple7+ GPU family cap on a 2D texture's width and height (Metal Feature Set
+// Tables, "Maximum 2D texture width and height"; M1 requires MTLGPUFamilyMetal4, which implies
+// this family on every supported device). metal-cpp's MTL::Device exposes no
+// maxTextureDimension2D()-style query to read this back at runtime (checked ThirdParty/metal-cpp/
+// Metal/MTLDevice.hpp during Task 14: only maxBufferLength() exists), so the limit is hardcoded
+// here rather than derived from the device. Exceeding it is not a diagnosable Metal error -- the
+// MTLTextureDescriptor validator aborts the process outright -- so it has to be caught here,
+// before a TextureDesc ever reaches the backend.
+constexpr uint32_t kMaxTextureDimension2D = 16384;
+
 // Formats that may back a color attachment or a swapchain surface. A depth format in either
 // place is fatal rather than recoverable further down: Metal's render-pipeline descriptor
 // validator aborts the process on "MTLPixelFormatDepth32Float is not color renderable", and
@@ -34,8 +44,14 @@ Result<void> validate(const TextureDesc& desc) {
     if (desc.width == 0) {
         return invalid("TextureDesc.width must be greater than zero");
     }
+    if (desc.width > kMaxTextureDimension2D) {
+        return invalid("TextureDesc.width exceeds the maximum 2D texture dimension (16384)");
+    }
     if (desc.height == 0) {
         return invalid("TextureDesc.height must be greater than zero");
+    }
+    if (desc.height > kMaxTextureDimension2D) {
+        return invalid("TextureDesc.height exceeds the maximum 2D texture dimension (16384)");
     }
     if (desc.format == Format::Unknown) {
         return invalid("TextureDesc.format must not be Format::Unknown");

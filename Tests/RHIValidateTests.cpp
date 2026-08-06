@@ -33,10 +33,10 @@ TEST_CASE("BufferDesc with a non-zero size is accepted", "[rhi]") {
     REQUIRE(validate(desc).has_value());
 }
 
-TEST_CASE("TextureDesc with zero extent is rejected", "[rhi]") {
+TEST_CASE("TextureDesc with zero width is rejected", "[rhi]") {
     TextureDesc desc{};
     desc.width = 0;
-    desc.height = 0;
+    desc.height = 64;
     desc.label = "empty";
 
     const auto r = validate(desc);
@@ -55,6 +55,22 @@ TEST_CASE("TextureDesc with zero height is rejected", "[rhi]") {
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("height"));
+}
+
+// Metal 4 / Apple7+ caps a 2D texture at 16384 per side (Validate.cpp); one pixel over that on
+// either axis must be rejected before it ever reaches the backend, since MTLTextureDescriptor
+// validation aborts the process on an oversized texture rather than returning a diagnosable
+// error. Pure validation -- no device or GPU needed to exercise this.
+TEST_CASE("TextureDesc exceeding the max 2D dimension is rejected", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 16385;
+    desc.height = 16385;
+    desc.label = "oversized";
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("width"));
 }
 
 TEST_CASE("TextureDesc with Format::Unknown is rejected", "[rhi]") {

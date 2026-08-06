@@ -16,10 +16,12 @@ namespace lmx::rhi::metal4 {
 // automation hook), so a single call could only ever record zero frames.
 //
 // `outPath` is resolved against the process CWD when relative, and an existing document at that
-// path is removed first (Metal refuses to overwrite one). Returns false -- after logging why --
-// when capture is unavailable, which is the normal case: Metal only permits programmatic capture
-// when `MTL_CAPTURE_ENABLED=1` is in the environment at launch. A false return means nothing was
-// started, so the caller must not call endCapture().
+// path is removed first (Metal refuses to overwrite one) -- so `outPath` must be non-empty and
+// end in ".gputrace" (checked before that removal happens); anything else is rejected without
+// touching the filesystem. Returns false -- after logging why -- when capture is unavailable or
+// `outPath` fails that check. Metal capture itself is unavailable in the normal case: it only
+// permits programmatic capture when `MTL_CAPTURE_ENABLED=1` is in the environment at launch. A
+// false return means nothing was started, so the caller must not call endCapture().
 //
 // Process-global, like MTLCaptureManager itself: only one capture can be open at a time, and the
 // path being written is remembered between the two calls.
