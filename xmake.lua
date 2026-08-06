@@ -42,11 +42,19 @@ target("Core")
     add_includedirs("Source", {public = true})
     add_packages("spdlog", {public = true})
 
+-- Backend sources (Source/RHI/Metal4/*.cpp) and the Metal frameworks join in Task 8;
+-- for now the target is the desc validation + the public headers.
+target("RHI")
+    set_kind("static")
+    add_files("Source/RHI/*.cpp")
+    add_includedirs("Source", {public = true})
+    add_deps("Core")
+
 target("Tests")
     set_kind("binary")
     set_default(false)
     add_files("Tests/*.cpp")
-    add_deps("Core")
+    add_deps("Core", "RHI")
     add_packages("catch2")
     add_tests("unit", {runargs = {"~[gpu]"}})
     -- Catch2 3.x treats a tag filter matching zero tests as failure (exit 2)
