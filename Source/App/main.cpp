@@ -1,18 +1,490 @@
-#include "Application.h"
+#include "Core/Log.h"
+#include "RHI/Metal4/Metal4Capture.h"
+#include "RHI/RHI.h"
 
-int main()
-{
-    Luminex::Application app;
+#include <SDL3/SDL.h>
 
-    try
-    {
-        app.run();
+#include <array>
+#include <charconv>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
+
+namespace {
+
+// Mirrors the MSL struct Slang emits for Shaders/Triangle.slang (measured, Task 6):
+//   struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; };
+// packed_* means no inter-member padding and no 16-byte struct alignment, so the C++
+// mirror is five bare floats and the stride is 20, not 32.
+struct Vertex {
+    float px, py;
+    float r, g, b;
+};
+static_assert(sizeof(Vertex) == 20, "vertex stride must match the shader's packed_float2/3 layout");
+
+// The classic RGB triangle, clip space, counter-clockwise from the top.
+constexpr std::array<Vertex, 3> kTriangle = {{
+    {0.0f, 0.5f, 1.0f, 0.0f, 0.0f},
+    {-0.5f, -0.5f, 0.0f, 1.0f, 0.0f},
+    {0.5f, -0.5f, 0.0f, 0.0f, 1.0f},
+}};
+
+// Slot 0 of the MTL4 argument table, which is where Slang binds `gVertices` (Task 6 record).
+constexpr uint32_t kVertexBufferSlot = 0;
+
+// Logical points, not pixels — SDL scales this by the display's backing factor.
+constexpr int kWindowWidth = 1280;
+constexpr int kWindowHeight = 720;
+
+// The offscreen --screenshot render target, in pixels. Fixed rather than derived from the window
+// so the README image is the same on every machine.
+constexpr uint32_t kScreenshotWidth = 1280;
+constexpr uint32_t kScreenshotHeight = 720;
+
+constexpr float kClearColor[4] = {0.1f, 0.15f, 0.2f, 1.0f};
+
+// Relative to the process CWD, which for `xmake run App` is the directory holding the binary.
+constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
+
+// Automated-run knobs. LMX_MAX_FRAMES=N exits cleanly after N frame attempts, which is what
+// makes this window app verifiable from a script; when it is set, the loop also drives the
+// resize path on its own at the two frame numbers below, because there is no way to synthesise
+// a real window resize without a user. Both are inert in a normal interactive run.
+constexpr uint64_t kResizeDownFrame = 100;
+constexpr uint64_t kResizeUpFrame = 200;
+constexpr uint32_t kResizeDownWidth = 800;
+constexpr uint32_t kResizeDownHeight = 600;
+
+// Reads a frame number out of the environment. 0 -- which is also what an unset or malformed
+// variable yields -- means "disabled" for every caller.
+uint64_t frameNumberFromEnv(const char* name) {
+    const char* raw = std::getenv(name);
+    if (raw == nullptr) {
+        return 0;
     }
-    catch (const std::exception& e)
-    {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
+    const std::string_view text(raw);
+    uint64_t frames = 0;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), frames);
+    if (ec != std::errc{} || end != text.data() + text.size()) {
+        LMX_LOG_WARN("{}='{}' is not a number; ignoring it", name, text);
+        return 0;
+    }
+    return frames;
+}
+
+// Everything needed to draw the triangle. Created in one place, and recorded by one function
+// (recordTriangleFrame), so the windowed loop and the offscreen screenshot cannot drift apart in
+// what they draw -- the screenshot is only evidence about the window if both draw the same thing.
+struct TriangleAssets {
+    std::unique_ptr<lmx::rhi::Buffer> vertexBuffer;
+    std::unique_ptr<lmx::rhi::ShaderLibrary> library;
+    std::unique_ptr<lmx::rhi::GraphicsPipeline> pipeline;
+};
+
+// Returns nullopt after logging; every step here is fatal for both run modes.
+std::optional<TriangleAssets> createTriangleAssets(lmx::rhi::Device& device) {
+    TriangleAssets assets;
+
+    auto vertexBuffer = device.createBuffer(
+        {.size = sizeof(kTriangle), .label = "lmx.app.triangleVertices"}, kTriangle.data());
+    if (!vertexBuffer) {
+        LMX_LOG_ERROR("createBuffer failed: {}", vertexBuffer.error().message);
+        return std::nullopt;
+    }
+    LMX_LOG_INFO("vertex buffer: {} bytes ({} vertices, stride {})", (*vertexBuffer)->size(),
+                 kTriangle.size(), sizeof(Vertex));
+    assets.vertexBuffer = std::move(*vertexBuffer);
+
+    // Relative to the process CWD: `xmake run App` (and `xmake test`) launch the target with
+    // CWD == the target directory, which is exactly where the slang2metallib rule drops
+    // Shaders/. Verified on this machine -- CWD was build/macosx/arm64/debug. No
+    // executable-relative resolution needed, so none is added.
+    auto library = device.loadShaderLibrary("Shaders/Triangle");
+    if (!library) {
+        LMX_LOG_ERROR("loadShaderLibrary failed: {}", library.error().message);
+        return std::nullopt;
+    }
+    assets.library = std::move(*library);
+
+    // BGRA8Unorm for both run modes: it is the swapchain's format, and the screenshot's render
+    // target adopts it too, because a pipeline's color format must match the attachment it
+    // renders into.
+    auto pipeline = device.createGraphicsPipeline({.library = assets.library.get(),
+                                                   .vertexEntry = "vertexMain",
+                                                   .fragmentEntry = "fragmentMain",
+                                                   .colorFormat = lmx::rhi::Format::BGRA8Unorm,
+                                                   .label = "lmx.app.trianglePipeline"});
+    if (!pipeline) {
+        LMX_LOG_ERROR("createGraphicsPipeline failed: {}", pipeline.error().message);
+        return std::nullopt;
+    }
+    LMX_LOG_INFO("graphics pipeline: vertexMain/fragmentMain -> BGRA8Unorm");
+    assets.pipeline = std::move(*pipeline);
+
+    return assets;
+}
+
+// The whole of M1's rendering: clear to steel blue, draw three vertices. Recorded into an already
+// open frame; the caller owns beginFrame/endFrame.
+void recordTriangleFrame(lmx::rhi::CommandList& commands, lmx::rhi::Texture& target,
+                         const TriangleAssets& assets) {
+    commands.beginRenderPass(
+        {.colorTarget = &target,
+         .clearColor = {kClearColor[0], kClearColor[1], kClearColor[2], kClearColor[3]},
+         .clear = true});
+    commands.bindPipeline(*assets.pipeline);
+    commands.bindVertexBuffer(kVertexBufferSlot, *assets.vertexBuffer);
+    commands.draw(static_cast<uint32_t>(kTriangle.size()));
+    commands.endRenderPass();
+}
+
+void appendLittleEndian(std::vector<uint8_t>& out, uint32_t value) {
+    for (int byte = 0; byte < 4; ++byte) {
+        out.push_back(static_cast<uint8_t>((value >> (8 * byte)) & 0xFFu));
+    }
+}
+
+void appendLittleEndian(std::vector<uint8_t>& out, uint16_t value) {
+    out.push_back(static_cast<uint8_t>(value & 0xFFu));
+    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
+}
+
+// Uncompressed 32-bit BMP: a 14-byte BITMAPFILEHEADER, a 40-byte BITMAPINFOHEADER, then the
+// readback bytes verbatim. Two facts make the pixel copy verbatim rather than a conversion:
+// BI_RGB at 32bpp stores each pixel as B,G,R,A -- exactly our BGRA8Unorm readback -- and a
+// *negative* biHeight declares top-down rows, which is the order readback() produces. At 4 bytes
+// per pixel every row is already a multiple of 4 bytes, so there is no row padding to insert.
+//
+// Hand-rolled because the alternative is an image library dependency for one write of the
+// simplest container in existence.
+bool writeBmp(const std::filesystem::path& path, const std::vector<uint8_t>& bgra, uint32_t width,
+              uint32_t height) {
+    constexpr uint32_t kFileHeaderSize = 14;
+    constexpr uint32_t kInfoHeaderSize = 40;
+    constexpr uint32_t kPixelOffset = kFileHeaderSize + kInfoHeaderSize;
+    // 2835 px/m == 72 dpi. Not meaningful for a screenshot, but zeroes make some readers guess.
+    constexpr int32_t kPixelsPerMeter = 2835;
+
+    const uint32_t imageSize = static_cast<uint32_t>(bgra.size());
+
+    std::vector<uint8_t> header;
+    header.reserve(kPixelOffset);
+    header.push_back('B');
+    header.push_back('M');
+    appendLittleEndian(header, kPixelOffset + imageSize);
+    appendLittleEndian(header, uint16_t{0}); // reserved1
+    appendLittleEndian(header, uint16_t{0}); // reserved2
+    appendLittleEndian(header, kPixelOffset);
+
+    appendLittleEndian(header, kInfoHeaderSize);
+    appendLittleEndian(header, width);
+    // Negative height == top-down. static_cast of a negative value to uint32_t is the two's
+    // complement bit pattern, which is exactly what the format wants.
+    appendLittleEndian(header, static_cast<uint32_t>(-static_cast<int32_t>(height)));
+    appendLittleEndian(header, uint16_t{1});  // planes
+    appendLittleEndian(header, uint16_t{32}); // bits per pixel
+    appendLittleEndian(header, uint32_t{0});  // BI_RGB, no compression
+    appendLittleEndian(header, imageSize);
+    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
+    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
+    appendLittleEndian(header, uint32_t{0}); // palette colors used
+    appendLittleEndian(header, uint32_t{0}); // palette colors required
+
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) {
+        LMX_LOG_ERROR("screenshot: cannot open '{}' for writing", path.string());
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(header.data()),
+               static_cast<std::streamsize>(header.size()));
+    file.write(reinterpret_cast<const char*>(bgra.data()),
+               static_cast<std::streamsize>(bgra.size()));
+    file.close();
+    if (!file) {
+        LMX_LOG_ERROR("screenshot: failed while writing '{}'", path.string());
+        return false;
+    }
+    return true;
+}
+
+// Logs one pixel in memory order (B,G,R,A) -- the same order the BMP stores -- so a script can
+// check the file it just wrote against what the GPU actually produced.
+void logPixel(const char* what, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t x,
+              uint32_t y) {
+    const size_t offset = (size_t{y} * width + x) * 4;
+    LMX_LOG_INFO("screenshot probe {} at ({},{}): B={} G={} R={} A={}", what, x, y, bgra[offset],
+                 bgra[offset + 1], bgra[offset + 2], bgra[offset + 3]);
+}
+
+// --screenshot: one offscreen frame, no window and no swapchain, written out as a BMP. Doubles as
+// the headless sanity path -- everything except presentation is the windowed code.
+int runScreenshot(const std::filesystem::path& outPath) {
+    auto device = lmx::rhi::createDevice();
+    if (!device) {
+        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
+        return 1;
+    }
+    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
+
+    auto assets = createTriangleAssets(**device);
+    if (!assets) {
+        return 1;
     }
 
-    return EXIT_SUCCESS;
+    // cpuReadback puts the texture in shared storage so readback() is a memcpy rather than a
+    // blit; renderTarget is what lets the pass draw into it.
+    auto target = (*device)->createTexture({.width = kScreenshotWidth,
+                                            .height = kScreenshotHeight,
+                                            .format = lmx::rhi::Format::BGRA8Unorm,
+                                            .renderTarget = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.app.screenshot"});
+    if (!target) {
+        LMX_LOG_ERROR("createTexture failed: {}", target.error().message);
+        return 1;
+    }
+
+    lmx::rhi::CommandList& commands = (*device)->beginFrame();
+    recordTriangleFrame(commands, **target, *assets);
+    // nullptr: nothing to present, this frame only fills a texture.
+    (*device)->endFrame(nullptr);
+
+    // readback() copies out of shared storage with no synchronisation of its own, so the frame
+    // has to be off the GPU before the copy -- otherwise the "screenshot" is whatever the
+    // allocation happened to contain.
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
+    (*target)->readback(pixels.data(), pixels.size());
+
+    // Enough to tell "the triangle rendered" from "the clear worked and nothing else did"
+    // without opening the image: a corner must be the clear color, the centre must not be.
+    logPixel("background", pixels, kScreenshotWidth, 0, 0);
+    logPixel("triangle centre", pixels, kScreenshotWidth, kScreenshotWidth / 2,
+             kScreenshotHeight / 2);
+
+    if (!writeBmp(outPath, pixels, kScreenshotWidth, kScreenshotHeight)) {
+        return 1;
+    }
+    LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
+                 kScreenshotWidth, kScreenshotHeight, pixels.size());
+    return 0;
+}
+
+// Everything RHI-owned lives here so that returning destroys it in reverse creation order --
+// swapchain first, device last -- before main tears down the SDL window the swapchain's layer
+// belongs to.
+int run(SDL_Window* window, void* metalLayer) {
+    auto device = lmx::rhi::createDevice();
+    if (!device) {
+        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
+        return 1;
+    }
+    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
+
+    auto assets = createTriangleAssets(**device);
+    if (!assets) {
+        return 1;
+    }
+
+    // Pixels, not points: on a Retina display the backing store is 2x the logical window size,
+    // and a swapchain sized in points would be presented upscaled and blurry.
+    int pixelWidth = 0;
+    int pixelHeight = 0;
+    if (!SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight)) {
+        LMX_LOG_ERROR("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
+        return 1;
+    }
+
+    auto swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
+                                                 .width = static_cast<uint32_t>(pixelWidth),
+                                                 .height = static_cast<uint32_t>(pixelHeight),
+                                                 .format = lmx::rhi::Format::BGRA8Unorm});
+    if (!swapchain) {
+        LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
+        return 1;
+    }
+    LMX_LOG_INFO("swapchain: {}x{} pixels BGRA8Unorm", pixelWidth, pixelHeight);
+
+    const uint64_t maxFrames = frameNumberFromEnv("LMX_MAX_FRAMES");
+    if (maxFrames > 0) {
+        LMX_LOG_INFO("LMX_MAX_FRAMES={}: exiting after that many frames", maxFrames);
+    }
+    // The keypress path cannot be driven by a script -- there is nobody to press the key in an
+    // automated run -- so the same one-frame capture is reachable by frame number. The 'c' key is
+    // the path a human uses; this exists for verification and CI.
+    const uint64_t captureAtFrame = frameNumberFromEnv("LMX_CAPTURE_AT_FRAME");
+    if (captureAtFrame > 0) {
+        LMX_LOG_INFO("LMX_CAPTURE_AT_FRAME={}: will capture that frame", captureAtFrame);
+    }
+    LMX_LOG_INFO("press 'c' to capture one frame to {} (needs MTL_CAPTURE_ENABLED=1)",
+                 kCapturePath);
+
+    uint64_t frameIndex = 0;
+    uint64_t presentedFrames = 0;
+    uint64_t skippedFrames = 0;
+    bool running = true;
+    // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
+    bool captureRequested = false;
+
+    while (running) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+            case SDL_EVENT_QUIT:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                running = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                // Ignoring repeats: holding the key would otherwise queue a capture per frame.
+                if (event.key.key == SDLK_C && !event.key.repeat) {
+                    captureRequested = true;
+                }
+                break;
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                // data1/data2 are the new size in pixels. A minimised window reports 0 in at
+                // least one dimension, which is not a size any swapchain can adopt.
+                if (event.window.data1 > 0 && event.window.data2 > 0) {
+                    (*swapchain)
+                        ->resize(static_cast<uint32_t>(event.window.data1),
+                                 static_cast<uint32_t>(event.window.data2));
+                }
+                break;
+            default:
+                break;
+            }
+        }
+        if (!running) {
+            break;
+        }
+
+        ++frameIndex;
+
+        if (maxFrames > 0) {
+            if (frameIndex == kResizeDownFrame) {
+                (*swapchain)->resize(kResizeDownWidth, kResizeDownHeight);
+            } else if (frameIndex == kResizeUpFrame) {
+                (*swapchain)
+                    ->resize(static_cast<uint32_t>(pixelWidth), static_cast<uint32_t>(pixelHeight));
+            }
+        }
+        if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
+            captureRequested = true;
+        }
+
+        auto target = (*swapchain)->acquireNextTexture();
+        if (!target) {
+            // Expected under contention, not an error: every drawable is still in flight or the
+            // layer timed out. Dropping the frame is the correct response.
+            ++skippedFrames;
+            LMX_LOG_WARN("frame {} skipped: {}", frameIndex, target.error().message);
+            if (maxFrames > 0 && frameIndex >= maxFrames) {
+                running = false;
+            }
+            continue;
+        }
+
+        // The capture window is exactly one frame wide, and it opens here -- after the acquire
+        // that can still drop the frame, before any encoding. A request that finds capture
+        // unavailable is consumed rather than retried: the fix is an environment variable at
+        // launch, so retrying every frame would only repeat the warning forever.
+        bool capturingThisFrame = false;
+        if (captureRequested) {
+            captureRequested = false;
+            capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, kCapturePath);
+        }
+
+        lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        recordTriangleFrame(commands, **target, *assets);
+        (*device)->endFrame(swapchain->get());
+        ++presentedFrames;
+
+        if (capturingThisFrame) {
+            // stopCapture finalises the document, so the frame it is meant to contain has to be
+            // off the GPU first. One stall on one frame, only when capturing.
+            (*device)->waitIdle();
+            lmx::rhi::metal4::endCapture();
+        }
+
+        if (maxFrames > 0 && frameIndex >= maxFrames) {
+            running = false;
+        }
+    }
+
+    // Not load-bearing -- the swapchain and device destructors each drain on their own -- but
+    // it keeps the teardown readable: the loop is over and the GPU is idle before anything
+    // starts being released. The redundant drain costs one already-signalled event.
+    (*device)->waitIdle();
+
+    LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,
+                 skippedFrames, frameIndex);
+    return 0;
+}
+
+int runWindowed() {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        LMX_LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
+        return 1;
+    }
+
+    SDL_Window* window =
+        SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight,
+                         SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE);
+    if (window == nullptr) {
+        LMX_LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    // SDL owns the CAMetalLayer; the view is what keeps it alive, so it must outlive every RHI
+    // object built on top of it -- hence the destruction of all of those inside run().
+    SDL_MetalView view = SDL_Metal_CreateView(window);
+    if (view == nullptr) {
+        LMX_LOG_ERROR("SDL_Metal_CreateView failed: {}", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    const int exitCode = run(window, SDL_Metal_GetLayer(view));
+
+    SDL_Metal_DestroyView(view);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return exitCode;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    lmx::log::init();
+
+    std::string_view screenshotPath;
+    for (int i = 1; i < argc; ++i) {
+        const std::string_view arg(argv[i]);
+        if (arg == "--screenshot") {
+            if (i + 1 >= argc) {
+                LMX_LOG_ERROR("--screenshot needs an output path: App --screenshot <out.bmp>");
+                return 1;
+            }
+            screenshotPath = argv[++i];
+        } else {
+            LMX_LOG_ERROR("unknown argument '{}'; usage: App [--screenshot <out.bmp>]", arg);
+            return 1;
+        }
+    }
+
+    // SDL is never initialised on the screenshot path: it renders offscreen, so a window would be
+    // pure ceremony -- and skipping it keeps the path free of any windowing dependency at all.
+    if (!screenshotPath.empty()) {
+        return runScreenshot(std::filesystem::path(screenshotPath));
+    }
+    return runWindowed();
 }
