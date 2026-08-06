@@ -12,6 +12,15 @@ bool isEightBitFormat(Format format) {
     return format == Format::BGRA8Unorm || format == Format::RGBA8Unorm;
 }
 
+// Formats that may back a color attachment or a swapchain surface. A depth format in either
+// place is fatal rather than recoverable further down: Metal's render-pipeline descriptor
+// validator aborts the process on "MTLPixelFormatDepth32Float is not color renderable", and
+// CAMetalLayer rejects a depth pixel format outright. Both are reachable from the public RHI
+// with a perfectly well-formed desc, so the whitelist has to live here.
+bool isColorRenderableFormat(Format format) {
+    return format == Format::BGRA8Unorm || format == Format::RGBA8Unorm;
+}
+
 } // namespace
 
 Result<void> validate(const BufferDesc& desc) {
@@ -50,6 +59,10 @@ Result<void> validate(const GraphicsPipelineDesc& desc) {
     if (desc.colorFormat == Format::Unknown) {
         return invalid("GraphicsPipelineDesc.colorFormat must not be Format::Unknown");
     }
+    if (!isColorRenderableFormat(desc.colorFormat)) {
+        return invalid("GraphicsPipelineDesc.colorFormat must be a color-renderable format "
+                       "(BGRA8Unorm or RGBA8Unorm)");
+    }
     return {};
 }
 
@@ -65,6 +78,10 @@ Result<void> validate(const SwapchainDesc& desc) {
     }
     if (desc.format == Format::Unknown) {
         return invalid("SwapchainDesc.format must not be Format::Unknown");
+    }
+    if (!isColorRenderableFormat(desc.format)) {
+        return invalid(
+            "SwapchainDesc.format must be a color-renderable format (BGRA8Unorm or RGBA8Unorm)");
     }
     return {};
 }

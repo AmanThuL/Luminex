@@ -153,6 +153,24 @@ TEST_CASE("GraphicsPipelineDesc with Format::Unknown color is rejected", "[rhi]"
     REQUIRE(r.error().message.contains("colorFormat"));
 }
 
+// Depth in a color slot is not a recoverable driver error: Metal's render-pipeline
+// descriptor validator aborts the process on it, so validation has to catch it first.
+TEST_CASE("GraphicsPipelineDesc with a depth colorFormat is rejected", "[rhi]") {
+    DummyShaderLibrary library;
+    GraphicsPipelineDesc desc{};
+    desc.library = &library;
+    desc.vertexEntry = "vertexMain";
+    desc.fragmentEntry = "fragmentMain";
+    desc.colorFormat = Format::D32Float;
+    desc.label = "depth as color";
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("colorFormat"));
+    REQUIRE(r.error().message.contains("color-renderable"));
+}
+
 TEST_CASE("GraphicsPipelineDesc with a library and both entries is accepted", "[rhi]") {
     DummyShaderLibrary library;
     GraphicsPipelineDesc desc{};
@@ -187,6 +205,46 @@ TEST_CASE("SwapchainDesc with a zero extent is rejected", "[rhi]") {
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("width"));
+}
+
+TEST_CASE("SwapchainDesc with a zero height is rejected", "[rhi]") {
+    SwapchainDesc desc{};
+    desc.nativeLayer = &dummyNativeLayer;
+    desc.width = 1280;
+    desc.height = 0;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("height"));
+}
+
+TEST_CASE("SwapchainDesc with Format::Unknown is rejected", "[rhi]") {
+    SwapchainDesc desc{};
+    desc.nativeLayer = &dummyNativeLayer;
+    desc.width = 1280;
+    desc.height = 720;
+    desc.format = Format::Unknown;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("format"));
+}
+
+// CAMetalLayer rejects a depth pixel format outright, so this must not reach the backend.
+TEST_CASE("SwapchainDesc with a depth format is rejected", "[rhi]") {
+    SwapchainDesc desc{};
+    desc.nativeLayer = &dummyNativeLayer;
+    desc.width = 1280;
+    desc.height = 720;
+    desc.format = Format::D32Float;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("format"));
+    REQUIRE(r.error().message.contains("color-renderable"));
 }
 
 TEST_CASE("SwapchainDesc with a layer and non-zero extent is accepted", "[rhi]") {
