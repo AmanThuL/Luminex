@@ -13,27 +13,58 @@ namespace lmx::rhi::metal4 {
 // Metal type escapes into RHI.h.
 //
 // Construction is always through Metal4Device::create*/loadShaderLibrary, which is where
-// desc validation, labeling and residency registration happen; the wrappers themselves only
-// own and report.
+// desc validation and labeling happen; the wrappers themselves own, report, and manage
+// residency membership (below).
+
+// Ties an allocation's membership of a residency set to the owning wrapper's lifetime:
+// added on construction, removed on destruction, with a commit() on each side because the
+// set only republishes its allocation list when told to.
+//
+// It holds the *set* rather than a back-pointer to Metal4Device deliberately: a resource
+// outliving its device is then merely wasteful instead of a dangling write, and the class
+// needs nothing from the device beyond the set.
+//
+// A null set means "not residency-managed", and that is a real case, not a defensive one:
+// swapchain drawable textures (Task 10) are owned by CAMetalLayer, are handed out and
+// reclaimed every frame, and must never be registered. Registration is therefore always an
+// explicit argument at the construction site.
+class ResidencyRegistration {
+public:
+    ResidencyRegistration() = default;
+    ResidencyRegistration(NS::SharedPtr<MTL::ResidencySet> residency,
+                          const MTL::Allocation* allocation);
+    ~ResidencyRegistration();
+
+    ResidencyRegistration(const ResidencyRegistration&) = delete;
+    ResidencyRegistration& operator=(const ResidencyRegistration&) = delete;
+
+private:
+    NS::SharedPtr<MTL::ResidencySet> m_residency;
+    const MTL::Allocation* m_allocation = nullptr;
+};
 
 class Metal4Buffer final : public Buffer {
 public:
-    explicit Metal4Buffer(NS::SharedPtr<MTL::Buffer> buffer) : m_buffer(std::move(buffer)) {}
+    Metal4Buffer(NS::SharedPtr<MTL::Buffer> buffer, NS::SharedPtr<MTL::ResidencySet> residency)
+        : m_buffer(std::move(buffer)), m_residency(std::move(residency), m_buffer.get()) {}
 
     uint64_t size() const override { return m_buffer->length(); }
 
     MTL::Buffer* handle() const { return m_buffer.get(); }
 
 private:
+    // m_residency is declared last so it is destroyed *first* (reverse declaration order),
+    // while m_buffer still holds the allocation it has to unregister.
     NS::SharedPtr<MTL::Buffer> m_buffer;
+    ResidencyRegistration m_residency;
 };
 
 class Metal4Texture final : public Texture {
 public:
     Metal4Texture(NS::SharedPtr<MTL::Texture> texture, uint32_t width, uint32_t height,
-                  bool cpuReadback)
+                  bool cpuReadback, NS::SharedPtr<MTL::ResidencySet> residency)
         : m_texture(std::move(texture)), m_width(width), m_height(height),
-          m_cpuReadback(cpuReadback) {}
+          m_cpuReadback(cpuReadback), m_residency(std::move(residency), m_texture.get()) {}
 
     uint32_t width() const override { return m_width; }
     uint32_t height() const override { return m_height; }
@@ -49,6 +80,8 @@ private:
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;
+    // Declared last -- see the note in Metal4Buffer.
+    ResidencyRegistration m_residency;
 };
 
 class Metal4ShaderLibrary final : public ShaderLibrary {

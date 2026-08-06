@@ -5,7 +5,6 @@
 #include "RHI/Metal4/Metal4Resources.h"
 #include "RHI/Validate.h"
 
-#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -60,6 +59,26 @@ std::vector<std::string> libraryFunctionNames(MTL::Library* library) {
         names.push_back(toStdString(array->object<NS::String>(i)));
     }
     return names;
+}
+
+const char* describe(MTL::FunctionType type) {
+    switch (type) {
+    case MTL::FunctionTypeVertex:
+        return "vertex";
+    case MTL::FunctionTypeFragment:
+        return "fragment";
+    case MTL::FunctionTypeKernel:
+        return "kernel";
+    case MTL::FunctionTypeVisible:
+        return "visible";
+    case MTL::FunctionTypeIntersection:
+        return "intersection";
+    case MTL::FunctionTypeMesh:
+        return "mesh";
+    case MTL::FunctionTypeObject:
+        return "object";
+    }
+    return "unknown";
 }
 
 std::string join(const std::vector<std::string>& items) {
@@ -235,13 +254,9 @@ Result<std::unique_ptr<Buffer>> Metal4Device::createBuffer(const BufferDesc& des
         buffer->setLabel(makeString(desc.label).get());
     }
 
-    // Metal 4 does not make resources resident implicitly; anything a command buffer may
-    // touch has to be in a residency set attached to the queue. commit() republishes the
-    // whole allocation list -- the queue attachment itself was made once in create().
-    m_residency->addAllocation(buffer.get());
-    m_residency->commit();
-
-    return std::make_unique<Metal4Buffer>(std::move(buffer));
+    // Passing the residency set registers the allocation and, just as importantly, unregisters
+    // it when the wrapper dies -- see ResidencyRegistration.
+    return std::make_unique<Metal4Buffer>(std::move(buffer), m_residency);
 }
 
 Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& desc) {
@@ -277,11 +292,8 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
         texture->setLabel(makeString(desc.label).get());
     }
 
-    m_residency->addAllocation(texture.get());
-    m_residency->commit();
-
     return std::make_unique<Metal4Texture>(std::move(texture), desc.width, desc.height,
-                                           desc.cpuReadback);
+                                           desc.cpuReadback, m_residency);
 }
 
 Result<std::unique_ptr<ShaderLibrary>> Metal4Device::loadShaderLibrary(std::string_view pathNoExt) {
@@ -359,18 +371,36 @@ Metal4Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
     // foreign pointer is a caller contract violation, not a runtime error path.
     auto* library = static_cast<Metal4ShaderLibrary*>(desc.library);
 
-    // MTL4::LibraryFunctionDescriptor resolves the entry name inside the compiler, and an
-    // unknown name resolves to nil rather than to an NS::Error. The pipeline-descriptor
-    // validator then trips a *fatal* `vertexFunction must not be nil` assertion, aborting
-    // the process with no error to propagate (measured). Checking the names up front is what
-    // turns a misspelled entry point into a PipelineCreationFailed the caller can handle.
-    const std::vector<std::string> available = libraryFunctionNames(library->handle());
-    for (const std::string_view entry : {desc.vertexEntry, desc.fragmentEntry}) {
-        if (std::ranges::find(available, entry) == available.end()) {
-            return fail(ErrorCode::PipelineCreationFailed,
-                        "shader entry point '" + std::string(entry) +
-                            "' not found in library; available entry points: " + join(available));
+    // Both failure modes below are *fatal* inside Metal, not recoverable errors, which is
+    // why they are checked here rather than left to newRenderPipelineState:
+    //   - an unknown entry name resolves to a nil function, and the pipeline-descriptor
+    //     validator aborts with "vertexFunction must not be nil";
+    //   - a name that exists but belongs to the wrong stage (fragmentMain as the vertex
+    //     entry) aborts with "functionType is not a MTLFunctionTypeVertex".
+    // Both measured. newFunction() answers existence *and* type in one call; functionNames()
+    // is only used to build the suggestion list on the not-found path.
+    const auto rejectEntry = [&](std::string_view entry,
+                                 MTL::FunctionType expected) -> std::optional<std::string> {
+        NS::SharedPtr<MTL::Function> function =
+            NS::TransferPtr(library->handle()->newFunction(makeString(entry).get()));
+        if (!function) {
+            return "shader entry point '" + std::string(entry) +
+                   "' not found in library; available entry points: " +
+                   join(libraryFunctionNames(library->handle()));
         }
+        if (function->functionType() != expected) {
+            return "shader entry point '" + std::string(entry) + "' is a " +
+                   describe(function->functionType()) + " function, but a " + describe(expected) +
+                   " function is required here";
+        }
+        return std::nullopt;
+    };
+
+    if (auto problem = rejectEntry(desc.vertexEntry, MTL::FunctionTypeVertex)) {
+        return fail(ErrorCode::PipelineCreationFailed, std::move(*problem));
+    }
+    if (auto problem = rejectEntry(desc.fragmentEntry, MTL::FunctionTypeFragment)) {
+        return fail(ErrorCode::PipelineCreationFailed, std::move(*problem));
     }
 
     auto vertexFunction = NS::TransferPtr(MTL4::LibraryFunctionDescriptor::alloc()->init());
