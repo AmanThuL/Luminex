@@ -1,7 +1,7 @@
 # Luminex Upgrade — Design Spec
 
 **Date**: 2026-08-07
-**Status**: Implemented (M1) — 2026-08-08
+**Status**: Implemented (M1) — 2026-08-07
 **Supersedes**: the current repo state (Premake + GLFW + Vulkan triangle test), which is treated as disposable.
 
 ## 1. Purpose & Goals

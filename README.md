@@ -8,7 +8,7 @@ Metal 4 · C++23 · Slang · xmake
 
 [![CI](https://github.com/AmanThuL/Luminex/actions/workflows/ci.yml/badge.svg)](https://github.com/AmanThuL/Luminex/actions/workflows/ci.yml)
 
-**Status**: M1 complete — foundation + Metal 4 triangle rendered through the RHI (2026-08-08).
+**Status**: M1 complete — foundation + Metal 4 triangle rendered through the RHI (2026-08-07).
 
 ![Metal 4 triangle rendered through lmx::rhi](docs/images/m1-triangle.png)
 
