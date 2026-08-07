@@ -66,9 +66,9 @@ constant/vertex/index buffers off these two values so the CPU never overwrites a
 still be reading, mirroring the RHI's existing rotation guarantee exactly. `Init` also wants a
 `MTL4::CommandQueue*`, so Task 9 needs a handle to the device's queue, not just its command list.
 
-ImTextureID convention **(changed from the classic backend)**: texture identity is
-`MTLTexture.gpuResourceID`, not the raw texture pointer — the header states it directly: "Use
-'MTLTexture.gpuResourceID' as texture identifier." Concretely: `tex->SetTexID((ImTextureID)(intptr_t)texture)`
+ImTextureID convention: texture identity is the **`MTLTexture` object pointer** — the header's
+feature list ("Use 'MTLTexture.gpuResourceID' as texture identifier") is stale against its own
+`.mm` and was corrected in Task 9. Concretely: `tex->SetTexID((ImTextureID)(intptr_t)texture)`
 still stores a pointer-sized value, but the backend's own draw loop resolves it back to a texture
 and then binds `texture.gpuResourceID` (an `MTL::ResourceID`) into the Metal 4 argument table
 (`setTexture:...atIndex:0`) — the same handle type `Metal4CommandList::bindTexture` already uses
