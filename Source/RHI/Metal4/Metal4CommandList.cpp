@@ -51,6 +51,13 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
         // format", naming neither the RHI call nor the texture.
         LMX_ASSERT(depthTarget->handle()->pixelFormat() == MTL::PixelFormatDepth32Float,
                    "RenderPassDesc.depthTarget must be a D32Float texture");
+        // Not a Metal rule but ours, and it closes a silent one: the store action below is
+        // DontCare, so no pass ever leaves depth behind, so LoadActionLoad could only ever read
+        // undefined memory -- producing a plausible-looking image with wrong occlusion and no
+        // diagnostic anywhere. Lift this together with the store action, not before.
+        LMX_ASSERT(desc.clear,
+                   "RenderPassDesc: a depth attachment requires clear -- depth is never stored "
+                   "in M2, so a load would read undefined memory");
 
         MTL::RenderPassDepthAttachmentDescriptor* depth = passDesc->depthAttachment();
         depth->setTexture(depthTarget->handle());

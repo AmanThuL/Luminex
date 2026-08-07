@@ -366,14 +366,21 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
     textureDesc->setMipmapLevelCount(1);
     // Usage is desc-driven rather than "ShaderRead always on" (M1): a depth target that is
     // never sampled gets no ShaderRead, which is what lets the driver keep it in the compressed
-    // layout it would otherwise have to give up. cpuReadback implies ShaderRead because
-    // getBytes() reads the texture's contents.
+    // layout it would otherwise have to give up.
+    //
+    // cpuReadback is folded in here *not* because getBytes() needs ShaderRead -- it needs
+    // StorageModeShared, set below, and nothing else -- but because a readback-only texture
+    // would otherwise have no usage bits at all and trip the assert below. ShaderRead is the
+    // cheapest honest bit to give it.
     MTL::TextureUsage usage =
-        desc.sampled || desc.cpuReadback ? MTL::TextureUsageShaderRead : MTL::TextureUsage(0);
+        desc.sampled || desc.cpuReadback ? MTL::TextureUsageShaderRead : MTL::TextureUsageUnknown;
     if (desc.renderTarget) {
         usage |= MTL::TextureUsageRenderTarget;
     }
-    LMX_ASSERT(usage != MTL::TextureUsage(0),
+    // Backstop only: validate() rejects this desc before it ever gets here (a texture with no
+    // usage is unreachable by definition). Kept so a future backend-internal caller that skips
+    // validation still fails loudly rather than creating a texture nothing can bind.
+    LMX_ASSERT(usage != MTL::TextureUsageUnknown,
                "TextureDesc: a texture that is neither renderTarget, sampled, nor cpuReadback "
                "has no reachable use");
     textureDesc->setUsage(usage);
@@ -545,7 +552,11 @@ Metal4Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
         dsDesc->setDepthCompareFunction(desc.depthTestEnable ? MTL::CompareFunctionLess
                                                              : MTL::CompareFunctionAlways);
         dsDesc->setDepthWriteEnabled(desc.depthWriteEnable);
-        dsDesc->setLabel(labelOrFallback(desc.label, "lmx.pipeline.unnamed").get());
+        // Its own label, suffixed from the pipeline's: labels exist to make a .gputrace readable,
+        // and two distinct objects answering to one name defeats that.
+        const std::string_view pipelineLabel =
+            desc.label.empty() ? std::string_view("lmx.pipeline.unnamed") : desc.label;
+        dsDesc->setLabel(makeString(std::string(pipelineLabel) + ".depth").get());
         depthState = NS::TransferPtr(m_device->newDepthStencilState(dsDesc.get()));
         if (!depthState) {
             return fail(ErrorCode::PipelineCreationFailed, "failed to create depth-stencil state");

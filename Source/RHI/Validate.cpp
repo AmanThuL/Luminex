@@ -63,6 +63,17 @@ Result<void> validate(const TextureDesc& desc) {
     if (desc.format == Format::Unknown) {
         return invalid("TextureDesc.format must not be Format::Unknown");
     }
+    // A texture nothing can ever reach. M1 papered over this by giving every texture ShaderRead
+    // unconditionally; now that usage is desc-driven, an all-false desc would reach the backend
+    // and hit its zero-usage LMX_ASSERT -- a process abort from a desc that passed validation.
+    // Caught here so the caller gets a message naming the flags instead.
+    if (!desc.renderTarget && !desc.sampled && !desc.cpuReadback) {
+        return invalid("TextureDesc has no usage: set at least one of renderTarget, sampled, or "
+                       "cpuReadback");
+    }
+    // Unreachable with today's Format enum -- Unknown is rejected above and every remaining
+    // format is either color-renderable or depth. It guards the day a non-renderable format
+    // (a compressed one, say) joins the enum, where Metal would abort rather than return an error.
     if (desc.renderTarget && !isColorRenderableFormat(desc.format) && !isDepthFormat(desc.format)) {
         return invalid("TextureDesc.renderTarget requires a color-renderable or depth format");
     }

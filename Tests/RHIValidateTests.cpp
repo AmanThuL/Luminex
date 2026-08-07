@@ -276,15 +276,47 @@ TEST_CASE("SwapchainDesc with a layer and non-zero extent is accepted", "[rhi]")
     REQUIRE(validate(desc).has_value());
 }
 
-TEST_CASE("TextureDesc renderTarget with a non-renderable format is rejected", "[rhi]") {
+// Named for what it pins rather than for the renderTarget-format rule: that rule is unreachable
+// with today's Format enum (see Validate.cpp), so what is actually observable here is that a depth
+// format is legal in both of its real roles.
+TEST_CASE("TextureDesc D32Float is valid sampled and as a depth render target", "[rhi]") {
     TextureDesc desc{};
     desc.width = 64;
     desc.height = 64;
     desc.format = Format::D32Float;
-    desc.renderTarget = false; // plain sampled D32 is fine...
+    desc.sampled = true; // a sampled depth texture (a shadow map) is fine...
     REQUIRE(validate(desc).has_value());
 
+    desc.sampled = false;
     desc.renderTarget = true; // ...and a D32 render target is a *depth* target: also fine.
+    REQUIRE(validate(desc).has_value());
+}
+
+// The backend asserts this too, but an assert is a process abort: a desc that clears validation
+// must never be able to reach it. M1 could not hit this at all -- every texture got ShaderRead
+// whether or not the desc asked for it.
+TEST_CASE("TextureDesc with no usage flags is rejected", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::BGRA8Unorm;
+    desc.label = "unreachable";
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("usage"));
+    REQUIRE(r.error().message.contains("sampled"));
+}
+
+TEST_CASE("TextureDesc with sampled as its only usage is accepted", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::BGRA8Unorm;
+    desc.sampled = true;
+    desc.label = "sampled only";
+
     REQUIRE(validate(desc).has_value());
 }
 

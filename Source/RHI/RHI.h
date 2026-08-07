@@ -92,6 +92,9 @@ struct RenderPassDesc {
     bool clear = true;
     // Optional depth attachment. Cleared to clearDepth when set (load) and discarded after the
     // pass (store) -- M2 never reads depth back. Null = depth-less pass, as in M1.
+    //
+    // Requires clear == true: since no pass stores depth, loading it could only ever read
+    // undefined memory. Setting depthTarget with clear == false is a caller error and asserts.
     Texture* depthTarget = nullptr;
     float clearDepth = 1.0f;
 };
