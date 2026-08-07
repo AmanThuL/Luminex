@@ -70,12 +70,16 @@ private:
     // command buffer, so the buffer is a reusable encoding handle and the ring of allocators
     // (plus the shared-event pacing) is what keeps a frame from overwriting in-flight work.
     NS::SharedPtr<MTL4::CommandBuffer> m_commandBuffer;
-    // One argument table for the whole device, likewise. Its contents are read by the GPU while
-    // a frame is in flight, so rebinding a *different* address per frame would need one table
-    // per frame in flight; M1 binds the same static vertex buffer every frame, so one suffices.
-    NS::SharedPtr<MTL4::ArgumentTable> m_argumentTable;
-    // Not a member by value: Metal4CommandList's constructor needs the two objects above, which
-    // do not exist until create() has run.
+    // A ring, for exactly the reason the allocators are one: an argument table's contents are
+    // read by the GPU for as long as the frame that bound them is in flight, so writing a table
+    // the GPU is still reading is a data race. Frame N therefore touches only table
+    // N % kFramesInFlight, and beginFrame's shared-event wait has already proven frame
+    // N-kFramesInFlight -- the only other frame that can own that table -- is off the GPU.
+    // M1 got away with one device-wide table because every frame rebound the same static vertex
+    // address (an idempotent write); this lands before the first binding that varies per frame.
+    std::array<NS::SharedPtr<MTL4::ArgumentTable>, kFramesInFlight> m_argumentTables;
+    // Not a member by value: Metal4CommandList's constructor needs the command buffer above,
+    // which does not exist until create() has run.
     std::optional<Metal4CommandList> m_commandList;
 
     uint64_t m_frameNumber = 0;

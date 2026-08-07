@@ -8,6 +8,8 @@ namespace lmx::rhi::metal4 {
 void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
+    LMX_ASSERT(m_argumentTable != nullptr,
+               "no argument table -- command list used outside a frame");
     LMX_ASSERT(!m_encoder, "beginRenderPass: a render pass is already open on this command list");
     // Task 9's D1 generalised: Metal 4 descriptor validation *aborts* on a nil field instead of
     // returning an NS::Error, and beginRenderPass has no error channel anyway. A null color
@@ -61,15 +63,11 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
 }
 
 void Metal4CommandList::bindPipeline(GraphicsPipeline& pipeline) {
-    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
     LMX_ASSERT(m_encoder, "bindPipeline must be called between beginRenderPass and endRenderPass");
     m_encoder->setRenderPipelineState(static_cast<Metal4Pipeline&>(pipeline).handle());
 }
 
 void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
-    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
     LMX_ASSERT(m_encoder,
                "bindVertexBuffer must be called between beginRenderPass and endRenderPass");
 
@@ -81,8 +79,6 @@ void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
 }
 
 void Metal4CommandList::draw(uint32_t vertexCount, uint32_t firstVertex) {
-    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
-
     LMX_ASSERT(m_encoder, "draw must be called between beginRenderPass and endRenderPass");
     LMX_ASSERT(vertexCount > 0, "draw: vertexCount must be greater than zero");
     m_encoder->drawPrimitives(MTL::PrimitiveTypeTriangle, firstVertex, vertexCount);
@@ -94,6 +90,16 @@ void Metal4CommandList::endRenderPass() {
     LMX_ASSERT(m_encoder, "endRenderPass: no render pass is open on this command list");
     m_encoder->endEncoding();
     m_encoder.reset();
+}
+
+void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable) {
+    // An open encoder here means the previous frame never ended its pass, and swapping the table
+    // under a live encoder would move bindings the device has already been told about. The
+    // device asserts the same thing from the other side in endFrame; this catches the case where
+    // the list is re-pointed without an endFrame at all.
+    LMX_ASSERT(!m_encoder, "resetForFrame: a render pass is still open from the previous frame");
+    LMX_ASSERT(argumentTable != nullptr, "resetForFrame: argument table must not be null");
+    m_argumentTable = argumentTable;
 }
 
 } // namespace lmx::rhi::metal4

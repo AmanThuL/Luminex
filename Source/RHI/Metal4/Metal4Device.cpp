@@ -224,7 +224,9 @@ Result<std::unique_ptr<Device>> Metal4Device::create(const DeviceDesc& desc) {
     }
     self->m_commandBuffer->setLabel(makeString("lmx.device.commandBuffer").get());
 
-    {
+    // One table per frame in flight, rotated by beginFrame; see the member comment in
+    // Metal4Device.h for why the ring is not optional once bindings vary per frame.
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
         auto tableDesc = NS::TransferPtr(MTL4::ArgumentTableDescriptor::alloc()->init());
         tableDesc->setMaxBufferBindCount(kMaxBufferBindCount);
         tableDesc->setMaxTextureBindCount(kMaxTextureBindCount);
@@ -232,17 +234,20 @@ Result<std::unique_ptr<Device>> Metal4Device::create(const DeviceDesc& desc) {
         // holds whatever was in the allocation, which is a garbage GPU address rather than a
         // diagnosable null.
         tableDesc->setInitializeBindings(true);
-        tableDesc->setLabel(makeString("lmx.device.argumentTable").get());
+        tableDesc->setLabel(makeString("lmx.device.argumentTable." + std::to_string(i)).get());
         error = nullptr;
-        self->m_argumentTable =
+        self->m_argumentTables[i] =
             NS::TransferPtr(self->m_device->newArgumentTable(tableDesc.get(), &error));
-        if (!self->m_argumentTable) {
-            return fail(ErrorCode::DeviceUnsupported,
-                        "failed to create MTL4 argument table: " + describe(error));
+        if (!self->m_argumentTables[i]) {
+            return fail(ErrorCode::DeviceUnsupported, "failed to create MTL4 argument table " +
+                                                          std::to_string(i) + ": " +
+                                                          describe(error));
         }
     }
 
-    self->m_commandList.emplace(self->m_commandBuffer.get(), self->m_argumentTable.get());
+    // No table yet: the command list only ever holds the one beginFrame hands it, so that it
+    // cannot keep writing a frame's table after that frame has been committed.
+    self->m_commandList.emplace(self->m_commandBuffer.get());
 
     return self;
 }
@@ -521,9 +526,15 @@ CommandList& Metal4Device::beginFrame() {
                              "frame's command allocator within the timeout");
     }
 
-    MTL4::CommandAllocator* allocator = m_allocators[m_frameNumber % kFramesInFlight].get();
+    // Same index for both rings, and deliberately so: the wait above is the single proof that
+    // frame N-kFramesInFlight is done with *everything* it owns at this slot.
+    const uint32_t slot = static_cast<uint32_t>(m_frameNumber % kFramesInFlight);
+
+    MTL4::CommandAllocator* allocator = m_allocators[slot].get();
     allocator->reset();
     m_commandBuffer->beginCommandBuffer(allocator);
+
+    m_commandList->resetForFrame(m_argumentTables[slot].get());
 
     m_frameOpen = true;
     return *m_commandList;

@@ -16,13 +16,21 @@ namespace lmx::rhi::metal4 {
 // renderCommandEncoder() returns an autoreleased (+0) object that must survive the local
 // autorelease pool it was created in.
 //
+// The argument table pointer is *not* fixed at construction: the device owns one table per
+// frame in flight and hands this list the current frame's through resetForFrame, so a table is
+// only ever written while its frame is the open one.
+//
 // Encoder-scoped calls (bindPipeline/bindVertexBuffer/draw) assert rather than return errors:
 // calling them outside a pass is a caller sequencing bug, and the RHI CommandList methods
-// return void.
+// return void. They also hold no autorelease pool of their own -- none of them invokes an
+// autoreleasing selector (they are direct setters and draws on an already-retained encoder), so
+// a per-call pool bought nothing and cost a create/drain on what becomes the hottest path in
+// the backend. The pools stay where objects are actually autoreleased: around the encoder's
+// creation and teardown.
 class Metal4CommandList final : public CommandList {
 public:
-    Metal4CommandList(MTL4::CommandBuffer* commandBuffer, MTL4::ArgumentTable* argumentTable)
-        : m_commandBuffer(commandBuffer), m_argumentTable(argumentTable) {}
+    explicit Metal4CommandList(MTL4::CommandBuffer* commandBuffer)
+        : m_commandBuffer(commandBuffer) {}
 
     Metal4CommandList(const Metal4CommandList&) = delete;
     Metal4CommandList& operator=(const Metal4CommandList&) = delete;
@@ -32,6 +40,10 @@ public:
     void bindVertexBuffer(uint32_t slot, Buffer& buffer) override;
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
     void endRenderPass() override;
+
+    // beginFrame's half of the per-frame rotation: point this command list at the frame's
+    // argument table. Must be called before any encoding in the frame; asserts no pass is open.
+    void resetForFrame(MTL4::ArgumentTable* argumentTable);
 
     // True between beginRenderPass and endRenderPass. Metal4Device checks it so that ending a
     // frame with an open encoder is reported here rather than as a Metal abort at commit time.
