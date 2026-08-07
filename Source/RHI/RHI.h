@@ -91,6 +91,12 @@ public:
     virtual void beginRenderPass(const RenderPassDesc& desc) = 0;
     virtual void bindPipeline(GraphicsPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(uint32_t slot, Buffer& buffer) = 0; // argument-table slot
+    // Copies `size` bytes into the frame's transient uniform ring and binds the copy's GPU
+    // address at the given argument-table slot for subsequent draws. The data is captured at
+    // call time -- the caller may reuse or free its buffer immediately. Valid only inside a
+    // render pass. Ring capacity is a fixed per-frame budget; exhausting it is fatal
+    // (LMX_ASSERT) -- grow the backend constant when a real scene hits it.
+    virtual void setUniforms(uint32_t slot, const void* data, uint64_t size) = 0;
     virtual void draw(uint32_t vertexCount, uint32_t firstVertex = 0) = 0;
     virtual void endRenderPass() = 0;
 };

@@ -169,3 +169,93 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
     REQUIRE(bottomRight.b > bottomRight.r);
     REQUIRE(bottomRight.b > bottomRight.g);
 }
+
+// Proves the transient uniform ring end to end -- the memcpy into the mapped ring, the
+// gpuAddress() + offset arithmetic, and the residency registration -- on the GPU rather than by
+// inspecting backend state.
+//
+// The trick is the payload: it feeds the *triangle vertices* through setUniforms and binds them
+// at the vertex slot. Metal 4 argument tables hold untyped GPU addresses, so a suballocation of
+// the ring is exactly as bindable as a whole MTLBuffer, and reusing Shaders/Triangle means the
+// shader itself reports whether the bytes arrived -- no extra shader, and the expected image is
+// the one the smoke test above already pins.
+//
+// The deliberate part is the *first* call: a throwaway blob is written first so the vertices
+// land at a non-zero (256-aligned) offset. At offset 0 a dropped `+ offset` in either the
+// memcpy destination or the bound address would still produce a perfect triangle; this is what
+// makes that bug visible. If the ring were also not resident, the GPU would read unmapped
+// memory here rather than vertices.
+TEST_CASE("uniform ring feeds a draw from a non-zero offset", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto target = (*device)->createTexture({.width = kSize,
+                                            .height = kSize,
+                                            .format = Format::BGRA8Unorm,
+                                            .renderTarget = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.test.ringTarget"});
+    INFO(errorOf(target));
+    REQUIRE(target.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/Triangle");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
+                                                       .vertexEntry = "vertexMain",
+                                                       .fragmentEntry = "fragmentMain",
+                                                       .colorFormat = Format::BGRA8Unorm,
+                                                       .label = "lmx.test.ringPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    // Bound at an argument-table slot no stage of Shaders/Triangle declares, so it does nothing
+    // but push the ring cursor past zero. 100 bytes rounds up to the 256-byte alignment.
+    const std::array<uint8_t, 100> filler{};
+    constexpr uint32_t kUnusedSlot = 4;
+
+    CommandList& commands = (*device)->beginFrame();
+    commands.beginRenderPass(
+        {.colorTarget = target->get(), .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}, .clear = true});
+    commands.bindPipeline(**pipeline);
+    commands.setUniforms(kUnusedSlot, filler.data(), filler.size());
+    commands.setUniforms(kVertexBufferSlot, kTriangle.data(), sizeof(kTriangle));
+    commands.draw(static_cast<uint32_t>(kTriangle.size()));
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*target)->readback(pixels.data(), pixels.size());
+
+    // Same probes as the smoke test: background stays clear, and each vertex's colour has to
+    // land on its own corner. Garbage vertices fail these long before they look plausible.
+    const Pixel corner = pixelAt(pixels, 2, 2);
+    INFO(describe("corner", 2, 2, corner));
+    REQUIRE(corner.b == 0);
+    REQUIRE(corner.g == 0);
+    REQUIRE(corner.r == 0);
+    REQUIRE(corner.a == 255);
+
+    const Pixel apex = pixelAt(pixels, 32, 24);
+    INFO(describe("apex", 32, 24, apex));
+    REQUIRE(apex.r > 128);
+    REQUIRE(apex.r > apex.g);
+    REQUIRE(apex.r > apex.b);
+
+    const Pixel bottomLeft = pixelAt(pixels, 20, 46);
+    INFO(describe("bottom-left", 20, 46, bottomLeft));
+    REQUIRE(bottomLeft.g > 128);
+    REQUIRE(bottomLeft.g > bottomLeft.r);
+    REQUIRE(bottomLeft.g > bottomLeft.b);
+
+    const Pixel bottomRight = pixelAt(pixels, 43, 46);
+    INFO(describe("bottom-right", 43, 46, bottomRight));
+    REQUIRE(bottomRight.b > 128);
+    REQUIRE(bottomRight.b > bottomRight.r);
+    REQUIRE(bottomRight.b > bottomRight.g);
+}

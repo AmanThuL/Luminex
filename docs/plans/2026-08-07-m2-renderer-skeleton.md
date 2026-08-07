@@ -89,6 +89,53 @@ needed (Tests already depends on RHI, which now depends on ImGui, and xmake prop
 public include dirs/defines transitively) — then it was deleted per the plan's Step 3 ("prove it
 compiles, then remove the scratch"); it is not part of either commit.
 
+**A2 (2026-08-07, Task 3):** Argument-table **capture semantics** — the question Task 3's design
+rests on: when `setUniforms` rebinds one per-frame `MTL4ArgumentTable` before every draw, does each
+draw see the address that was bound when *it* was encoded, or do all draws in the pass see whatever
+was written last?
+
+**Recorded expectation: capture at encode time.** Each draw command takes the argument table's
+bindings as they stand when that command is encoded, so per-draw `setAddress` on a single table is
+safe within a pass and no table pool is needed. Task 3 is built on this and Task 8 must prove it.
+
+Evidence, strongest first:
+
+- *Metal by Example*, "Getting Started with Metal 4" (Warren Moore) — the only source found that
+  states it outright (verbatim): "Argument tables can be updated between draw calls; argument table
+  state is effectively copied for each command, so you don't need to pool argument tables or do any
+  other special state management for your resource bindings to 'stick.'"
+- Apple, *Understanding the Metal 4 core API* (verbatim): "As your app adds render or dispatch work
+  to a command buffer by calling an encoder's methods, the encoder looks up the resources that the
+  method needs from the encoder's argument table." Consistent with encode-time capture — the lookup
+  is described as happening *as the work is added* — but it stops short of saying the result is
+  snapshotted, so on its own it is suggestive rather than conclusive.
+- Apple, *Understanding the Metal 4 core API* (verbatim): "in Metal 4 you can create a single
+  argument table that stores bindings to resources that apply to multiple encoders, and then reuse
+  that argument table indefinitely." Reuse is endorsed; the doc nowhere warns that a table must stay
+  unmodified while commands referencing it are in flight, which a read-at-execution design would
+  require it to say.
+
+**Confidence and its limits — read before trusting this.** The explicit statement is *secondary*
+(a respected third-party author), not Apple's. Apple's own `MTL4ArgumentTable` reference page is
+abstract-only ("Provides a mechanism to manage and provide resource bindings for buffers, textures,
+sampler states and other Metal resources") with no discussion section, and WWDC25 session 205
+describes argument tables without addressing binding timing at all. The
+`translating-to-metal4-api` game-porting-toolkit skill the brief pointed at is **not installed on
+this machine** (searched `~/.claude/skills`, `~/.claude/plugins`, and the filesystem — no match), so
+it could not be consulted; the above is what the public record supports. Treat this as the
+documented *expectation*, not a measurement.
+
+Note that the per-frame table ring is **not** what this question decides, and stays either way:
+that ring exists because the GPU reads a table for as long as its frame is in flight, which is a
+cross-*frame* hazard. This amendment is only about draws *within* one pass.
+
+**Empirical proof: Task 8's multi-object GPU test** (distinct per-draw colours must all appear in
+one pass). **Contingency trigger:** if that test shows every object rendering in the *last* draw's
+colour, capture is last-write-wins and the fix is a small per-frame argument-table *pool*
+(grow-on-demand, one table per draw, same rotation guarantee). The RHI surface does not change —
+`setUniforms` keeps its signature — so the change is contained in `Metal4Device`/`Metal4CommandList`.
+The pool is deliberately **not** built speculatively.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
@@ -258,7 +305,7 @@ xmake format && git add -A && git commit -m "Close the argument-table hard gate:
 - Consumes: Task 2's per-frame rotation (`resetForFrame`).
 - Produces: `CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size)` on the RHI; `lmx::alignUp(uint64_t value, uint64_t alignment)` in Core; backend uniform ring (one `MTL::Buffer` per frame in flight, 256 KiB, shared storage, in the residency set). **Measured record required** (step 5): argument-table capture semantics for per-draw rebinds.
 
-- [ ] **Step 1: Write the failing alignUp test**
+- [x] **Step 1: Write the failing alignUp test**
 
 ```cpp
 // Tests/CoreTests.cpp
@@ -274,7 +321,7 @@ TEST_CASE("alignUp rounds to the next multiple", "[core]") {
 ```
 Run: `xmake -y && xmake test Tests/unit` — expect FAIL (no `Core/Align.h`).
 
-- [ ] **Step 2: Implement Core/Align.h**
+- [x] **Step 2: Implement Core/Align.h**
 
 ```cpp
 #pragma once
@@ -292,7 +339,7 @@ constexpr uint64_t alignUp(uint64_t value, uint64_t alignment) {
 ```
 Run the test — PASS. Commit: `git add -A && git commit -m "Add constexpr alignUp to Core"`.
 
-- [ ] **Step 3: RHI surface + backend ring**
+- [x] **Step 3: RHI surface + backend ring**
 
 `RHI.h` `CommandList` grows (with the doc comment):
 
@@ -330,17 +377,17 @@ void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t si
 }
 ```
 
-- [ ] **Step 4: Build + existing tests green**
+- [x] **Step 4: Build + existing tests green**
 
 ```bash
 xmake -y && xmake test
 ```
 
-- [ ] **Step 5: Record the capture-semantics ground truth**
+- [x] **Step 5: Record the capture-semantics ground truth**
 
 Consult the `translating-to-metal4-api` skill (game-porting-toolkit) on whether a draw captures argument-table contents at encode time (making per-draw `setAddress` on one table safe within a pass) or the GPU reads the table at execution (making it last-write-wins). Record the answer in this plan's Amendments block. **The empirical proof lands in Task 8's multi-object GPU test** (distinct per-draw colors must all appear). Contingency if last-write-wins is observed there: replace the single per-frame table with a small per-frame table *pool* (grow-on-demand, one table per draw, same rotation guarantee); the RHI surface does not change. Do not build the pool speculatively.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 xmake format && git add -A && git commit -m "Add transient per-frame uniforms to the RHI (setUniforms + ring)"

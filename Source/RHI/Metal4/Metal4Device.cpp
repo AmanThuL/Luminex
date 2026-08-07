@@ -245,8 +245,27 @@ Result<std::unique_ptr<Device>> Metal4Device::create(const DeviceDesc& desc) {
         }
     }
 
-    // No table yet: the command list only ever holds the one beginFrame hands it, so that it
-    // cannot keep writing a frame's table after that frame has been committed.
+    // One transient uniform ring per frame in flight, on the same rotation. Registered with the
+    // residency set here and never unregistered: they live exactly as long as the device, and
+    // the set is released with it.
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        self->m_uniformRings[i] = NS::TransferPtr(
+            self->m_device->newBuffer(kUniformRingBytes, MTL::ResourceStorageModeShared));
+        if (!self->m_uniformRings[i]) {
+            return fail(ErrorCode::ResourceCreationFailed,
+                        "failed to create uniform ring " + std::to_string(i) + " of " +
+                            std::to_string(kUniformRingBytes) + " bytes");
+        }
+        self->m_uniformRings[i]->setLabel(
+            makeString("lmx.device.uniformRing." + std::to_string(i)).get());
+        self->m_residency->addAllocation(self->m_uniformRings[i].get());
+    }
+    // One commit for all three rings, not one per ring: commit republishes the set's whole
+    // allocation list, so the intermediate commits would do the same work for the same result.
+    self->m_residency->commit();
+
+    // No table and no ring yet: the command list only ever holds the pair beginFrame hands it,
+    // so that it cannot keep writing a frame's state after that frame has been committed.
     self->m_commandList.emplace(self->m_commandBuffer.get());
 
     return self;
@@ -534,7 +553,11 @@ CommandList& Metal4Device::beginFrame() {
     allocator->reset();
     m_commandBuffer->beginCommandBuffer(allocator);
 
-    m_commandList->resetForFrame(m_argumentTables[slot].get());
+    // Rewinding the bump allocator is what makes the ring a ring: the wait above proved the GPU
+    // is done with the bytes frame N-kFramesInFlight wrote here, so they are free to overwrite.
+    m_uniformOffsets[slot] = 0;
+    m_commandList->resetForFrame(m_argumentTables[slot].get(), m_uniformRings[slot].get(),
+                                 &m_uniformOffsets[slot]);
 
     m_frameOpen = true;
     return *m_commandList;
@@ -575,6 +598,12 @@ void Metal4Device::endFrame(Swapchain* presentTo) {
 
     // Retires this frame's allocator for the frame kFramesInFlight later; see beginFrame.
     m_queue->signalEvent(m_frameEvent.get(), m_frameNumber);
+
+    // Drop the frame's table and ring now that the work referencing them is committed. Without
+    // this the list would keep valid-looking pointers into a slot the GPU is actively reading,
+    // and encoding after endFrame would corrupt an in-flight frame's bindings before anything
+    // noticed; with it, the next beginRenderPass trips our own assert instead.
+    m_commandList->endFrameReset();
     m_frameOpen = false;
 }
 

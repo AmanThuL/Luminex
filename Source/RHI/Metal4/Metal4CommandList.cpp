@@ -1,15 +1,22 @@
 #include "RHI/Metal4/Metal4CommandList.h"
 
+#include "Core/Align.h"
 #include "Core/Assert.h"
+#include "RHI/Metal4/Metal4Device.h" // kUniformOffsetAlignment
 #include "RHI/Metal4/Metal4Resources.h"
+
+#include <cstring>
 
 namespace lmx::rhi::metal4 {
 
 void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-    LMX_ASSERT(m_argumentTable != nullptr,
-               "no argument table -- command list used outside a frame");
+    // These are nulled by endFrameReset as well as unset before the first frame, so this is a
+    // real "is a frame open?" check and not merely "has beginFrame ever run?".
+    LMX_ASSERT(m_argumentTable != nullptr && m_uniformRing != nullptr,
+               "beginRenderPass: no frame is open -- this command list is only valid between "
+               "Device::beginFrame and Device::endFrame");
     LMX_ASSERT(!m_encoder, "beginRenderPass: a render pass is already open on this command list");
     // Task 9's D1 generalised: Metal 4 descriptor validation *aborts* on a nil field instead of
     // returning an NS::Error, and beginRenderPass has no error channel anyway. A null color
@@ -78,6 +85,20 @@ void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
     m_argumentTable->setAddress(static_cast<Metal4Buffer&>(buffer).handle()->gpuAddress(), slot);
 }
 
+void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size) {
+    // No autorelease pool, and that is verified rather than assumed: contents(), length(),
+    // gpuAddress() and setAddress() are all scalar- or void-returning sendMessage in the
+    // vendored headers, so nothing on this path is autoreleased. See the header's note.
+    LMX_ASSERT(m_encoder, "setUniforms must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(data != nullptr && size > 0, "setUniforms: data must be non-null and non-empty");
+    const uint64_t offset = *m_uniformOffset;
+    LMX_ASSERT(offset + size <= m_uniformRing->length(),
+               "setUniforms: per-frame uniform ring exhausted -- grow kUniformRingBytes");
+    std::memcpy(static_cast<uint8_t*>(m_uniformRing->contents()) + offset, data, size);
+    m_argumentTable->setAddress(m_uniformRing->gpuAddress() + offset, slot);
+    *m_uniformOffset = alignUp(offset + size, kUniformOffsetAlignment);
+}
+
 void Metal4CommandList::draw(uint32_t vertexCount, uint32_t firstVertex) {
     LMX_ASSERT(m_encoder, "draw must be called between beginRenderPass and endRenderPass");
     LMX_ASSERT(vertexCount > 0, "draw: vertexCount must be greater than zero");
@@ -92,14 +113,28 @@ void Metal4CommandList::endRenderPass() {
     m_encoder.reset();
 }
 
-void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable) {
+void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::Buffer* uniformRing,
+                                      uint64_t* uniformOffset) {
     // An open encoder here means the previous frame never ended its pass, and swapping the table
     // under a live encoder would move bindings the device has already been told about. The
     // device asserts the same thing from the other side in endFrame; this catches the case where
     // the list is re-pointed without an endFrame at all.
     LMX_ASSERT(!m_encoder, "resetForFrame: a render pass is still open from the previous frame");
     LMX_ASSERT(argumentTable != nullptr, "resetForFrame: argument table must not be null");
+    LMX_ASSERT(uniformRing != nullptr && uniformOffset != nullptr,
+               "resetForFrame: uniform ring and its offset cursor must not be null");
     m_argumentTable = argumentTable;
+    m_uniformRing = uniformRing;
+    m_uniformOffset = uniformOffset;
+}
+
+void Metal4CommandList::endFrameReset() {
+    // The device already asserted the pass was closed before it committed, so there is nothing
+    // to tear down here -- only per-frame pointers to forget. Deliberately unconditional: this
+    // is the state that makes "used outside a frame" detectable at all.
+    m_argumentTable = nullptr;
+    m_uniformRing = nullptr;
+    m_uniformOffset = nullptr;
 }
 
 } // namespace lmx::rhi::metal4

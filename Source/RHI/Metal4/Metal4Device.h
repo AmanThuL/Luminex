@@ -15,6 +15,12 @@ namespace lmx::rhi::metal4 {
 // lag the frame-pacing shared event enforces (Task 10 consumes both).
 inline constexpr uint32_t kFramesInFlight = 3;
 
+// 256 KiB per frame: ~1,800 draws of the M2 ObjectUniforms (144 B aligned to 256). The
+// offset alignment is the conservative Metal constant-buffer bound; Apple GPUs accept less,
+// but 256 is correct everywhere and costs at most 112 B of slack per draw at M2 sizes.
+inline constexpr uint64_t kUniformRingBytes = 256 * 1024;
+inline constexpr uint64_t kUniformOffsetAlignment = 256;
+
 // Ownership convention for the whole Metal 4 backend: every metal-cpp object this class
 // owns is held in an NS::SharedPtr obtained with NS::TransferPtr, because all the
 // factories used here are `new*` methods that hand back a +1 reference. Members are
@@ -78,6 +84,17 @@ private:
     // M1 got away with one device-wide table because every frame rebound the same static vertex
     // address (an idempotent write); this lands before the first binding that varies per frame.
     std::array<NS::SharedPtr<MTL4::ArgumentTable>, kFramesInFlight> m_argumentTables;
+    // The transient-uniform ring, rotated on the *same* slot as the allocators and argument
+    // tables and for the same reason: a frame's uniform bytes are read by the GPU for as long
+    // as that frame is in flight, so only the beginFrame wait proves the slot is reusable.
+    // Deliberately raw MTL::Buffer rather than the Metal4Buffer wrapper -- these are
+    // device-internal (no RHI Buffer handle is ever handed out for them), and the wrapper's
+    // ResidencyRegistration exists to *unregister* on destruction, which for a device-lifetime
+    // allocation would only ever run while the residency set itself is being torn down.
+    std::array<NS::SharedPtr<MTL::Buffer>, kFramesInFlight> m_uniformRings;
+    // Bump allocator per ring, in bytes. beginFrame zeroes this frame's entry and hands the
+    // command list a pointer to it, so the list allocates without knowing about the rotation.
+    std::array<uint64_t, kFramesInFlight> m_uniformOffsets{};
     // Not a member by value: Metal4CommandList's constructor needs the command buffer above,
     // which does not exist until create() has run.
     std::optional<Metal4CommandList> m_commandList;
