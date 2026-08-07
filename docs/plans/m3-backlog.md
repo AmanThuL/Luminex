@@ -43,6 +43,10 @@ written.
   `--screenshot` render) — M3 or Rudy's session. (Final review.)
 
 ## Watch items carried from the M2 ledger
+- Device-dtor autorelease pool drains before member release (body-local pool ordering); revisit
+  when teardown grows. (Carried unchanged from `m2-backlog.md`, originally T8 M-1.)
+- `newFunction()` returns nil for entries with function constants — revisit when specialization
+  constants arrive. (Carried unchanged from `m2-backlog.md`, originally T9 re-review.)
 - Vendored imgui process-teardown leak — upstream, exit-only, unchanged.
 - Tidy sweep excludes `.mm` files — moot today (none in `Source/`), watch as the codebase grows.
 - `EditorShell` debounce state isn't reset when its panel is collapsed — inert today.
