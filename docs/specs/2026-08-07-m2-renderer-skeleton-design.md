@@ -89,8 +89,14 @@ Each addition is demanded by a concrete M2 feature:
 - `GraphicsPipelineDesc` += `Format depthFormat` (`Unknown` = no depth attachment),
   `bool depthTestEnable`, `bool depthWriteEnable`.
 - `TextureDesc` += `bool sampled = false` (scene color RT is `renderTarget + sampled`).
-- `validate(TextureDesc)` += reject `renderTarget` with a format that is neither
-  color-renderable nor depth (closes the M1 abort-on-nil door — backlog).
+- `validate(TextureDesc)` += reject a desc with no usage flag set — `renderTarget`, `sampled`,
+  and `cpuReadback` all false (closes the M1 abort-on-nil door — backlog: an all-false desc used
+  to reach the backend and hit its zero-usage `LMX_ASSERT`, an abort from a desc that had passed
+  validation; caught here instead, added in Task 4's fix round).
+- `validate(TextureDesc)` += reject `renderTarget` with a format that is neither color-renderable
+  nor depth. Unreachable with today's `Format` enum — every non-`Unknown` format is either
+  color-renderable or depth, per `Validate.cpp`'s own comment — but guards the day a
+  non-renderable format (a compressed one, say) joins it.
 - Vertex data stays **bindless vertex-pulling** (`StructuredBuffer` at slot 0) as in M1; no
   vertex-layout descriptors are introduced.
 
@@ -149,13 +155,14 @@ every `TriangleAssets` remnant in the App.
 
 - **Unit** (`Tests/unit`, CI-run): camera matrices (known pose → expected view/proj), mesh
   factories (counts, winding, AABB), new validation rules, `Format::Unknown` pin with
-  `contains("Unknown")` (backlog), capture-guard test via `MTL_CAPTURE_ENABLED` plumbing
-  (backlog).
+  `contains("Unknown")` (backlog).
 - **GPU smoke** (local gate, as M1): offscreen scene render — corner pixel == clear color,
   center != clear color; **depth-order test** — near and far geometry drawn far-first and
   near-first must both resolve to the near color; **barrier path** — render → barrier → sample
-  → readback.
-- **App nits** (backlog): skip bare `--` in arg parsing; bounds-check `logPixel`.
+  → readback; **capture-guard test** via `MTL_CAPTURE_ENABLED` plumbing (backlog) —
+  `[gpu]`-tagged, not `Tests/unit`: it needs a real `Device&` to exercise, so CI (which runs
+  `Tests/unit` only) does not cover it (Task 11 records the same).
+- **App nits** (backlog): skip bare `--` in arg parsing; bounds-check `probePixel`.
 - **CI**: clang-tidy non-blocking job (closes the D8 deferral), `~/.xmake/packages` cache,
   shader-outdir rule guard (backlog). Format + unit-test jobs unchanged.
 
@@ -163,7 +170,7 @@ every `TriangleAssets` remnant in the App.
 
 Every item is in scope for M2: argument table per frame (§5), renderTarget format validation
 (§4), `Format::Unknown` pin (§7), shader-outdir rule guard (§7), capture-guard test (§7),
-per-draw autorelease pool (§5), arg-parsing/logPixel nits (§7). Device-dtor pool ordering and
+per-draw autorelease pool (§5), arg-parsing/probePixel nits (§7). Device-dtor pool ordering and
 `newFunction()` function-constants notes remain watch-items (nothing in M2 changes them). The
 slang direct-metallib collapse (ADR 0003) stays blocked on upstream issues #12325/#12096.
 
@@ -187,7 +194,8 @@ slang direct-metallib collapse (ADR 0003) stays blocked on upstream issues #1232
 
 `xmake run App` opens the docked layout — Viewport shows the lit scene, fly camera works,
 Inspector edits apply live; `xmake test` green including new unit + GPU depth/barrier tests;
-format/tidy clean; CI green with the new tidy + cache jobs; every §8 backlog item closed or
+format clean; tidy job present and reporting (non-blocking by design; findings triaged as
+style-level); CI green with the new tidy + cache jobs; every §8 backlog item closed or
 explicitly re-deferred with a reason; parent spec §8 status, CLAUDE.md, and README updated at
 the milestone boundary (CLAUDE.md update policy).
 

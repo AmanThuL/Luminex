@@ -122,6 +122,8 @@ Explicit barriers (one pass), compute, multi-queue, dynamic residency (everythin
   M1's size (a handful of RHI/App files) there is nothing beyond `-Wall`/`allextra` worth
   linting for yet, so the job was not added. Revisit once the codebase is large enough for
   clang-tidy's `modernize-*`/`bugprone-*`/`performance-*` checks to earn their runtime.
+  **Resolved 2026-08-07 (M2): closed** — the non-blocking clang-tidy CI job landed (see M2 spec
+  §7).
 - **GPU smoke test is a local gate only.** The `[gpu]` test (`Tests/GpuSmokeTests.cpp`) hard-
   requires `createDevice()` to succeed against a real Metal 4 device; hosted macOS runners
   cannot guarantee one (virtualized/absent GPU). CI therefore runs `Tests/unit` exclusively —

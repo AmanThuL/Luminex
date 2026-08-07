@@ -153,6 +153,12 @@ local slang_pin    = "v2026.14.1"
 -- Exact commit on the docking branch, past v1.92.7-docking: that tag predates
 -- imgui_impl_metal4.{h,mm} (the native Metal 4 backend), which this project needs (M2 Task 0
 -- amendment). Pinned by SHA rather than a tag because no tag exists yet at this commit.
+-- Re-pinning past this commit: re-verify (a) Metal4ImGui.cpp's imguiResidencySet(), which infers
+-- ImGui_ImplMetal4_Data's layout from its first member + the `residencySet` selector and fails
+-- SILENTLY (no compile error, wrong pointer at runtime) on an upstream struct reorder; (b) the
+-- ImGui target's -fno-objc-arc requirement still holding; (c) the ImTextureID-is-the-MTLTexture-
+-- object-pointer convention (not .gpuResourceID). See the ImGui target block comment above and
+-- Metal4ImGui.cpp for the details behind each.
 local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 
 task("setup")

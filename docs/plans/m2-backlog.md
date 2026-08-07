@@ -28,7 +28,9 @@ spec-level disposition.
 - Capture-guard unit test (empty/non-.gputrace path) — **Closed in M2 (Task 11, commit `f7730b3`
   "Add capture-guard tests with MTL_CAPTURE_ENABLED plumbing").** `Tests/CaptureTests.cpp` covers the
   bad-path guard unconditionally and the happy path best-effort (`SKIP` when capture is unavailable
-  in the environment).
+  in the environment). Note: both cases are `[gpu]`-tagged (need a real `Device&`), not
+  `Tests/unit` — CI, which runs `Tests/unit` only, does not exercise this coverage; it is a local
+  gate, same as the rest of the GPU smoke suite.
 
 ## Code shape / perf notes
 - Remove per-draw `NS::AutoreleasePool` when draw counts grow — **Closed in M2 (Task 2, commit

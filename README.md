@@ -11,7 +11,7 @@ Metal 4 · C++23 · Slang · xmake
 **Status**: M2 complete — depth-tested procedural scene, fly camera, and a docked ImGui editor
 shell rendering through an offscreen viewport (2026-08-07).
 
-![Depth-tested procedural scene in the M2 editor shell — ground plane and three lit cubes rendered offscreen through lmx::render](docs/images/m2-scene.png)
+![Offscreen scene render produced via App --screenshot — ground plane and three lit cubes, depth-tested through lmx::render. Not a picture of the docked ImGui editor shell; that's the interactive windowed app (Viewport + Inspector panels).](docs/images/m2-scene.png)
 
 ## Requirements
 
@@ -33,7 +33,9 @@ xmake format
 ```
 
 `xmake run App --screenshot /tmp/m2-scene.bmp` renders one frame of the default scene offscreen —
-no window, no swapchain — and writes it out as a BMP; that is how the image above is produced. The
+no window, no swapchain — and writes it out as a BMP; the image above was produced this way, then
+converted to PNG by hand with `sips -s format png /tmp/m2-scene.bmp --out docs/images/m2-scene.png`
+(no automated conversion step exists — re-run this manually when refreshing the screenshot). The
 windowed run instead opens the docked editor: a central Viewport (the same scene, rendered to an
 offscreen target and sampled into an ImGui image) and a right-side Inspector for live camera/object
 edits. Hold right-mouse in the Viewport to fly the camera (WASD + Q/E while held). Pressing `c`
