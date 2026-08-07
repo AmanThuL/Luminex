@@ -355,7 +355,7 @@ xmake format && xmake test && git add -A && git commit -m "Pin Dear ImGui dockin
 **Interfaces:**
 - Produces: no API changes — four M1-review closures: bare `--` skipped in arg parsing; `logPixel` bounds-checked; `Format::Unknown` validation tests pinned with `contains("Unknown")`; `slang2metallib` fails loudly when two targets share a shader output dir.
 
-- [ ] **Step 1: Pin the Format::Unknown tests**
+- [x] **Step 1: Pin the Format::Unknown tests**
 
 In `Tests/RHIValidateTests.cpp`, every `TEST_CASE` that rejects `Format::Unknown` (TextureDesc, GraphicsPipelineDesc colorFormat, SwapchainDesc — find them with `grep -n "Format::Unknown" Tests/RHIValidateTests.cpp`) gets one added line so the whitelist can't silently absorb the Unknown branch:
 
@@ -364,7 +364,7 @@ In `Tests/RHIValidateTests.cpp`, every `TEST_CASE` that rejects `Format::Unknown
 ```
 Run `xmake test Tests/unit` — expect PASS (messages already name Unknown). If any fails, fix the *message* in `Source/RHI/Validate.cpp` to name Unknown, not the test.
 
-- [ ] **Step 2: App arg-parsing nits**
+- [x] **Step 2: App arg-parsing nits**
 
 In `Source/App/main.cpp`'s arg loop: `if (arg == "--") { continue; }` before the `--screenshot` check (a bare `--` is conventionally "end of options", not an error). In `logPixel`, bound-check before indexing:
 
@@ -379,7 +379,7 @@ void logPixel(const char* what, const std::vector<uint8_t>& bgra, uint32_t width
     ...
 ```
 
-- [ ] **Step 3: Shader-outdir rule guard**
+- [x] **Step 3: Shader-outdir rule guard**
 
 In the `slang2metallib` rule (`xmake.lua`), before emitting, detect two opted-in targets sharing a targetdir. Add at the top of `on_buildcmd_file`:
 
@@ -396,7 +396,7 @@ In the `slang2metallib` rule (`xmake.lua`), before emitting, detect two opted-in
 ```
 Verify the exact xmake API for enumerating targets (`target:project():targets()` vs `import("core.project.project").targets()`) against xmake 3.x docs — whichever resolves inside `on_buildcmd_file`; the check itself is the deliverable. Prove it fires: temporarily give Tests the default targetdir, run `xmake -y`, expect the raise; restore.
 
-- [ ] **Step 4: Verify + commit**
+- [x] **Step 4: Verify + commit**
 
 ```bash
 xmake format && xmake -y && xmake test
@@ -415,11 +415,11 @@ git add -A && git commit -m "Close M1-review hardening items: arg nits, Unknown 
 - Consumes: existing `Metal4Device` frame protocol (`beginFrame`/`endFrame`, allocator ring, shared-event pacing).
 - Produces: `Metal4CommandList::resetForFrame(MTL4::ArgumentTable* table)` (called by `beginFrame`); device member `std::array<NS::SharedPtr<MTL4::ArgumentTable>, kFramesInFlight> m_argumentTables`. Per-draw autorelease pools removed (frame-scoped instead). This closes the M1 hard gate BEFORE any dynamic binding exists (backlog: "loud carry-forward").
 
-- [ ] **Step 1: Per-frame tables in Metal4Device**
+- [x] **Step 1: Per-frame tables in Metal4Device**
 
 In `Metal4Device.h` replace the single `m_argumentTable` member with `std::array<NS::SharedPtr<MTL4::ArgumentTable>, kFramesInFlight> m_argumentTables;` and rewrite the member comment: the table's contents are consumed while its frame is in flight, so frame N may only touch table `N % kFramesInFlight` — same rotation, same guarantee as the allocator ring. In `create()` (`Metal4Device.cpp:227-243`) build all `kFramesInFlight` tables in a loop (labels `"lmx.device.argumentTable." + std::to_string(i)`, keep `setInitializeBindings(true)` and both max-bind counts). Construct `m_commandList` with a null table: `self->m_commandList.emplace(self->m_commandBuffer.get());` (next step changes the constructor).
 
-- [ ] **Step 2: resetForFrame on Metal4CommandList**
+- [x] **Step 2: resetForFrame on Metal4CommandList**
 
 `Metal4CommandList` constructor drops the table parameter (keeps the command buffer); add:
 
@@ -430,11 +430,11 @@ In `Metal4Device.h` replace the single `m_argumentTable` member with `std::array
 ```
 Implementation: `LMX_ASSERT(!m_encoder, ...); m_argumentTable = argumentTable;`. In `Metal4Device::beginFrame()` after the allocator reset: `m_commandList->resetForFrame(m_argumentTables[m_frameNumber % kFramesInFlight].get());`. Add `LMX_ASSERT(m_argumentTable != nullptr, "no argument table -- command list used outside a frame")` at the top of `beginRenderPass`.
 
-- [ ] **Step 3: Frame-scoped autorelease pools (backlog)**
+- [x] **Step 3: Frame-scoped autorelease pools (backlog)**
 
 Delete the per-call `NS::SharedPtr<NS::AutoreleasePool> pool = ...` line from `bindPipeline`, `bindVertexBuffer`, `draw` (`Metal4CommandList.cpp:64,71,84`) — wrong shape for a hot path once draw counts grow. Keep the pools in `beginRenderPass`/`endRenderPass` (each creates/destroys an autoreleased encoder). Add to the class comment: encoder-scoped calls run inside the pass's pool lifetime; anything autoreleased per-draw would accumulate until `endRenderPass`, which is acceptable at M2 draw counts and revisited when instancing arrives.
 
-- [ ] **Step 4: Verify + commit**
+- [x] **Step 4: Verify + commit**
 
 ```bash
 xmake -y && xmake test        # unit AND [gpu] locally — the smoke test must still render
@@ -567,7 +567,7 @@ xmake format && git add -A && git commit -m "Add transient per-frame uniforms to
 - Consumes: `Format::D32Float` (already in the enum), `toMTL` (already maps it).
 - Produces: `TextureDesc.sampled : bool = false`; `RenderPassDesc.depthTarget : Texture* = nullptr` + `RenderPassDesc.clearDepth : float = 1.0f`; `GraphicsPipelineDesc.depthFormat : Format = Format::Unknown` (Unknown = no depth attachment) + `.depthTestEnable/.depthWriteEnable : bool = false`; `Metal4Pipeline` carries an `MTL::DepthStencilState`; validation closes the renderTarget-format abort door (backlog).
 
-- [ ] **Step 1: Write the failing validation tests (TDD)**
+- [x] **Step 1: Write the failing validation tests (TDD)**
 
 Append to `Tests/RHIValidateTests.cpp`, matching its existing style:
 
@@ -628,7 +628,7 @@ TEST_CASE("TextureDesc D32Float with cpuReadback is rejected", "[rhi]") {
 ```
 Run: `xmake -y` — expect compile FAIL (`depthTestEnable` doesn't exist yet). That is the red state.
 
-- [ ] **Step 2: Grow RHI.h**
+- [x] **Step 2: Grow RHI.h**
 
 ```cpp
 struct TextureDesc {
@@ -659,7 +659,7 @@ struct TextureDesc {
     bool depthWriteEnable = false;
 ```
 
-- [ ] **Step 3: Grow Validate.cpp**
+- [x] **Step 3: Grow Validate.cpp**
 
 Add `isDepthFormat` next to `isColorRenderableFormat` (`Validate.cpp:30`):
 
@@ -690,7 +690,7 @@ In `validate(const GraphicsPipelineDesc&)` add:
 ```
 Run: `xmake -y && xmake test Tests/unit` — all PASS.
 
-- [ ] **Step 4: Backend — texture usage + depth pass + depth-stencil state**
+- [x] **Step 4: Backend — texture usage + depth pass + depth-stencil state**
 
 `Metal4Device::createTexture` (`Metal4Device.cpp:346-352`): usage/storage derive from the desc —
 
@@ -736,7 +736,7 @@ Run: `xmake -y && xmake test Tests/unit` — all PASS.
 ```
 `Metal4Pipeline` gains the member + accessor (`MTL::DepthStencilState* depthState() const` — may be null); `bindPipeline` sets it when present: `if (auto* ds = pipeline.depthState()) m_encoder->setDepthStencilState(ds);`.
 
-- [ ] **Step 5: Verify + commit**
+- [x] **Step 5: Verify + commit**
 
 ```bash
 xmake -y && xmake test && xmake format
@@ -754,7 +754,7 @@ git add -A && git commit -m "Grow the RHI: depth attachments, sampled targets, f
 - Consumes: `Metal4Buffer::handle()->gpuAddress()` (M1 pattern at `Metal4CommandList.cpp:80`).
 - Produces: `CommandList::drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex = 0)` — indices are **uint32 only**, documented on the method. GPU-proof lands with Task 8's scene test.
 
-- [ ] **Step 1: RHI surface**
+- [x] **Step 1: RHI surface**
 
 ```cpp
     // Indexed draw. Indices are uint32 (the only index type this RHI models); the index buffer
@@ -763,7 +763,7 @@ git add -A && git commit -m "Grow the RHI: depth attachments, sampled targets, f
     virtual void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex = 0) = 0;
 ```
 
-- [ ] **Step 2: Backend**
+- [x] **Step 2: Backend**
 
 ```cpp
 void Metal4CommandList::drawIndexed(Buffer& indexBuffer, uint32_t indexCount,
@@ -783,7 +783,7 @@ void Metal4CommandList::drawIndexed(Buffer& indexBuffer, uint32_t indexCount,
 ```
 (Signature verified against `MTL4RenderCommandEncoder.hpp:66`; the trailing parameter is the *length* of the index data at that address.)
 
-- [ ] **Step 3: Verify + commit**
+- [x] **Step 3: Verify + commit**
 
 ```bash
 xmake -y && xmake test && xmake format
@@ -802,11 +802,11 @@ git add -A && git commit -m "Add uint32 indexed draws to the RHI"
 - Consumes: Task 4's `sampled` textures; per-frame argument tables (Task 2).
 - Produces: `enum class TextureUse { RenderTarget, ShaderRead };` · `CommandList::bindTexture(uint32_t slot, Texture& texture)` (texture slots are their own index space, distinct from buffer slots) · `CommandList::textureBarrier(Texture&, TextureUse from, TextureUse to)` — callable only **between** passes; M2 implements exactly the RenderTarget→ShaderRead edge.
 
-- [ ] **Step 1: Record the spec amendment**
+- [x] **Step 1: Record the spec amendment**
 
 `bindTexture` is not in spec §4. It is required to make §7's "barrier path — render → barrier → sample → readback" GPU test expressible through the RHI at all (ImGui samples through its own backend, not ours), and it is the argument-table texture half M3's shadow sampling needs. Append to the spec's §4 (one bullet + a dated "Amendment" note at the section end) and commit together with this task.
 
-- [ ] **Step 2: RHI surface**
+- [x] **Step 2: RHI surface**
 
 ```cpp
 // How a texture is being used at a barrier boundary. Grows per real feature demand, exactly
@@ -828,7 +828,7 @@ On `CommandList`:
     virtual void textureBarrier(Texture& texture, TextureUse from, TextureUse to) = 0;
 ```
 
-- [ ] **Step 3: Backend**
+- [x] **Step 3: Backend**
 
 `bindTexture`:
 
@@ -864,7 +864,7 @@ In `beginRenderPass`, immediately after the encoder is created and labeled:
 ```
 Member: `bool m_pendingBarrier = false;`. Also clear it in `resetForFrame` (a barrier pending at frame end is a dropped edge — assert it is false there instead: `LMX_ASSERT(!m_pendingBarrier, "textureBarrier recorded but no later pass consumed it")`). Executor: verify `barrierAfterQueueStages` is legal at render-encoder start against the synchronization skill; if render encoders reject queue-stage barriers in this position, the fallback is `barrierAfterStages(...)` with the same stage pair — record whichever holds in the Amendments block.
 
-- [ ] **Step 4: Verify + commit**
+- [x] **Step 4: Verify + commit**
 
 ```bash
 xmake -y && xmake test && xmake format
@@ -904,7 +904,7 @@ rhi::Result<Mesh> createMesh(rhi::Device&, const MeshData&, std::string_view lab
 }
 ```
 
-- [ ] **Step 1: xmake target**
+- [x] **Step 1: xmake target**
 
 ```lua
 target("Render")
@@ -915,7 +915,7 @@ target("Render")
 ```
 Add `"Render"` to App's and Tests' `add_deps`, and `add_packages("glm")` to Tests.
 
-- [ ] **Step 2: Write the failing camera + mesh tests**
+- [x] **Step 2: Write the failing camera + mesh tests**
 
 `Tests/RenderTests.cpp` (Catch2, `[render]` tag — CPU-only, runs in CI). Real test bodies, not sketches:
 
@@ -1023,7 +1023,7 @@ TEST_CASE("plane mesh spans its half extent with +Y normals", "[render]") {
 ```
 (Include `<catch2/catch_approx.hpp>` for `Catch::Approx`.) Run: `xmake -y` — FAIL (headers don't exist). Red state confirmed.
 
-- [ ] **Step 3: Implement Camera**
+- [x] **Step 3: Implement Camera**
 
 `Camera.h` — public-field struct-style class as in the Interfaces block, with the doc comment: yaw 0 faces −Z, positive yaw turns toward +X; pitch positive looks up; both radians. `Camera.cpp`:
 
@@ -1056,7 +1056,7 @@ glm::mat4 Camera::projectionMatrix(float aspect) const {
 }
 ```
 
-- [ ] **Step 4: Implement Mesh**
+- [x] **Step 4: Implement Mesh**
 
 `Mesh.h` per the Interfaces block, with the layout comment: "Mirrors the packed MSL layout Slang emits for Shaders/Mesh.slang (measured in Task 8): three packed_float3 fields, stride 36" + `static_assert(sizeof(Vertex) == 36, "vertex stride must match the shader's packed layout");`. `Mesh.cpp`: `makeCube` builds 6 faces × 4 vertices (per-face normal, per-face color left white {1,1,1} — scene color comes from `DrawItem.baseColor`), indices CCW viewed from outside; `makePlane` 4 corners at ±halfExtent, CCW from above, light gray {0.8, 0.8, 0.8}. `createMesh`:
 
@@ -1086,7 +1086,7 @@ rhi::Result<Mesh> createMesh(rhi::Device& device, const MeshData& data, std::str
 ```
 (`BufferDesc.label` is a `string_view` over a local `std::string` — safe: `createBuffer` consumes it synchronously. Note this in a comment.)
 
-- [ ] **Step 5: Green + commit**
+- [x] **Step 5: Green + commit**
 
 ```bash
 xmake -y && xmake test Tests/unit    # camera/mesh tests pass
