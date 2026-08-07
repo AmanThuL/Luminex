@@ -47,6 +47,22 @@ Metal4Device* g_device = nullptr;
 NS::SharedPtr<MTL::Texture> g_formatCarrier;
 NS::SharedPtr<MTL4::RenderPassDescriptor> g_passDescriptor;
 
+// The slot imguiNewFrame() last handed the backend, or kNoFrameStarted between an imguiRender()
+// and the next imguiNewFrame().
+//
+// This exists because skipping imguiNewFrame() is the one misuse in this file that would otherwise
+// be *silent*. Every other one aborts: a missing imguiInit, a closed render pass, a missing
+// ImGui::Render(). But the backend keeps its frame slot in a member (`currentFrameSlot`), so
+// rendering without a matching NewFrame simply reuses the previous frame's slot and writes vertex,
+// index and constant buffers a frame still on the GPU may be reading -- corruption that shows up,
+// if at all, as an intermittently torn UI several frames later.
+//
+// Comparing the *slot* rather than a bare bool costs nothing extra and catches more: it also fires
+// when frames were begun and ended between the NewFrame and the render, which lands in the same
+// place for the same reason.
+constexpr uint32_t kNoFrameStarted = UINT32_MAX;
+uint32_t g_pendingFrameSlot = kNoFrameStarted;
+
 } // namespace
 
 bool imguiInit(Device& device, Format colorFormat) {
@@ -75,6 +91,13 @@ bool imguiInit(Device& device, Format colorFormat) {
     textureDesc->setWidth(1);
     textureDesc->setHeight(1);
     textureDesc->setMipmapLevelCount(1);
+    // The least obvious line here and the one that actually does the work: this is what makes
+    // ImGui's UI pipeline single-sampled. The backend takes its sample count off the *attachment
+    // texture* (imgui_impl_metal4.mm:573) and feeds it straight to the pipeline's
+    // rasterSampleCount (:762); it never reads the render pass descriptor's
+    // defaultRasterSampleCount, so setting that here would be inert. Stated rather than left to
+    // MTLTextureDescriptor's default of 1, because that default is the entire mechanism.
+    textureDesc->setSampleCount(1);
     // RenderTarget rather than the descriptor's default ShaderRead: it stands in for a color
     // attachment, and the usage bits are the only place that intent can be written down.
     textureDesc->setUsage(MTL::TextureUsageRenderTarget);
@@ -88,11 +111,11 @@ bool imguiInit(Device& device, Format colorFormat) {
     }
     carrier->setLabel(makeString("lmx.imgui.formatCarrier").get());
 
+    // Nothing else is set on it: the color attachment's load/store actions and clear color are
+    // never read (the backend only ever builds a FramebufferDescriptor from this), and the sample
+    // count that matters rode in on the texture above.
     auto passDesc = NS::TransferPtr(MTL4::RenderPassDescriptor::alloc()->init());
     passDesc->colorAttachments()->object(0)->setTexture(carrier.get());
-    // Stated rather than inherited, as beginRenderPass states it: this is the sample count ImGui
-    // will compile its UI pipeline for, and it has to match the pass the App actually opens.
-    passDesc->setDefaultRasterSampleCount(1);
 
     // kFramesInFlight, not a number of its own: the backend sizes its per-frame vertex, index and
     // constant buffers by this, and imguiNewFrame() indexes them with the very slot this device
@@ -121,9 +144,17 @@ void imguiShutdown() {
         return;
     }
 
+    // Drained here rather than demanded of the caller, because this is the only place that both
+    // knows the requirement and can satisfy it. ImGui_ImplMetal4_Shutdown() frees the font atlas
+    // and every cached vertex/index buffer without waiting for anything, so a frame still in
+    // flight would be reading freed allocations. A second drain at teardown costs nothing -- the
+    // queue is idle by then in every path that already called waitIdle.
+    g_device->waitIdle();
+
     ImGui_ImplMetal4_Shutdown();
     g_passDescriptor.reset();
     g_formatCarrier.reset();
+    g_pendingFrameSlot = kNoFrameStarted;
     g_device = nullptr;
 }
 
@@ -134,8 +165,9 @@ void imguiNewFrame() {
     // frameInFlightIndex() answers for the frame *about to open* when called here, before
     // Device::beginFrame -- see its comment. Passing the just-ended frame's slot instead would
     // have ImGui write the vertex, index and constant buffers of a frame still on the GPU.
-    ImGui_ImplMetal4_NewFrame(g_passDescriptor.get(),
-                              static_cast<int>(g_device->frameInFlightIndex()));
+    const uint32_t slot = g_device->frameInFlightIndex();
+    ImGui_ImplMetal4_NewFrame(g_passDescriptor.get(), static_cast<int>(slot));
+    g_pendingFrameSlot = slot;
 }
 
 void imguiRender(CommandList& commands) {
@@ -150,6 +182,17 @@ void imguiRender(CommandList& commands) {
     LMX_ASSERT(drawData != nullptr,
                "imguiRender: no draw data -- call ImGui::Render() before this, in the same frame");
 
+    // See kNoFrameStarted: this pairing is the one thing here that would fail silently. A frame is
+    // open by now, so frameInFlightIndex() names the open frame's slot -- the same value
+    // imguiNewFrame() computed for it, whether it ran before or after beginFrame.
+    LMX_ASSERT(g_pendingFrameSlot != kNoFrameStarted,
+               "imguiRender: no ImGui frame is open -- call imguiNewFrame() (then ImGui::NewFrame, "
+               "build the UI, ImGui::Render) once per frame before this");
+    LMX_ASSERT(g_pendingFrameSlot == g_device->frameInFlightIndex(),
+               "imguiRender: this frame's imguiNewFrame() ran against a different frame in flight "
+               "-- call imguiNewFrame() and imguiRender() exactly once each per Device frame");
+    g_pendingFrameSlot = kNoFrameStarted;
+
     // Both accessors assert a pass is open, so the "called outside beginRenderPass" case is
     // reported from there rather than as a Metal abort part-way through encoding.
     ImGui_ImplMetal4_RenderDrawData(drawData, commandList.commandBuffer(),
@@ -157,6 +200,11 @@ void imguiRender(CommandList& commands) {
 }
 
 ImTextureID imguiTextureID(Texture& texture) {
+    // Not needed to compute the value -- this is a pure cast -- but an identifier handed to a
+    // renderer that does not exist yet can only be a sequencing mistake, and every other entry
+    // point here says so.
+    LMX_ASSERT(g_device != nullptr, "imguiTextureID: call imguiInit first");
+
     // The identifier is the MTLTexture object pointer, not its gpuResourceID: the backend stores
     // `(ImTextureID)(intptr_t)texture` for its own atlas (imgui_impl_metal4.mm:406), casts it
     // straight back to an id<MTLTexture> when it meets one in a draw command

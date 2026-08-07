@@ -53,10 +53,12 @@ namespace lmx::rhi::metal4 {
 bool imguiInit(Device& device, Format colorFormat = Format::BGRA8Unorm);
 
 // Releases everything imguiInit() created, including the font atlas texture, and unregisters the
-// renderer from the ImGui context. Call before ImGui::DestroyContext(), and only once the GPU has
-// finished every frame whose draw data referenced ImGui's resources (Device::waitIdle) -- the
-// ImGui backend frees them without waiting for anything. No-op when imguiInit() was never called
-// or has already been undone, so an early-exit teardown path needs no bookkeeping of its own.
+// renderer from the ImGui context. Call before ImGui::DestroyContext().
+//
+// Drains the device itself before freeing anything -- the ImGui backend frees its textures and
+// buffers without waiting, so a frame still in flight would be reading freed allocations. The
+// caller does not have to waitIdle first. No-op when imguiInit() was never called or has already
+// been undone, so an early-exit teardown path needs no bookkeeping of its own.
 void imguiShutdown();
 
 // Opens ImGui's renderer frame. Call once per frame, immediately before ImGui::NewFrame().
@@ -71,8 +73,11 @@ void imguiShutdown();
 void imguiNewFrame();
 
 // Encodes ImGui::GetDrawData() into the render pass currently open on `commands`. Call after
-// ImGui::Render(), between beginRenderPass and endRenderPass; asserts when no pass is open or when
-// ImGui::Render() has not run.
+// ImGui::Render(), between beginRenderPass and endRenderPass; asserts when no pass is open, when
+// ImGui::Render() has not run, and when this frame's imguiNewFrame() is missing or belonged to a
+// different frame in flight. That last check is not redundant bookkeeping: the ImGui backend holds
+// its frame slot in a member, so an unpaired render would silently reuse the previous frame's slot
+// and write buffers the GPU may still be reading -- the one misuse here with no other symptom.
 //
 // This hands the encoder to ImGui, and ImGui does not put it back: the argument table, render
 // pipeline state, depth-stencil state, viewport, scissor rect and cull mode all belong to ImGui
