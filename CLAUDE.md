@@ -6,12 +6,14 @@ future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` (C++ style, shader style, commits)
-- Current plan: `docs/plans/2026-08-07-m1-foundation-triangle.md`
+- Current plan: `docs/plans/2026-08-07-m2-renderer-skeleton.md` (M2 complete; M3 not yet planned)
 
 ## Commands
-- Setup (once): `brew install xmake`, `xmake setup`. Optional: `xcodebuild -downloadComponent
-  MetalToolchain` enables offline shader precompile (Apple catalog was refusing it 2026-08-07 —
-  retry occasionally; the runtime-MSL-compile fallback works without it).
+- Setup (once): `brew install xmake`, `xmake setup` — also fetches pinned ThirdParty deps
+  (metal-cpp, slang, and Dear ImGui at a docking-branch commit for the native Metal 4 backend; see
+  `xmake.lua` for pins). Optional: `xcodebuild -downloadComponent MetalToolchain` enables offline
+  shader precompile (Apple catalog was refusing it 2026-08-07 — retry occasionally; the
+  runtime-MSL-compile fallback works without it).
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd cannot resolve the xmake-managed
   include paths and reports spurious "file not found" diagnostics.
@@ -21,12 +23,18 @@ future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
   (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Offscreen screenshot:
   `xmake run App --screenshot <out.bmp>`. Automated runs: `LMX_MAX_FRAMES=N` exits after N
   frames (0 or unset = unlimited); `LMX_CAPTURE_AT_FRAME=N` captures frame N without a keypress.
+- Controls: fly camera — hold RMB in the Viewport panel + WASD (move) / QE (down/up) while held.
+  Dock layout persists via `imgui.ini` next to the built binary (build dir, gitignored — a clean
+  build resets to the default layout).
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → `Source/RHI` (lmx::rhi interfaces; **no Metal types in public
 headers**) → `Source/RHI/Metal4` (the only backend: metal-cpp, 3 frames in flight, argument tables,
-residency set, shared-event pacing) → `Source/App` (SDL3 window + frame loop). `Source/Render` is an
-intentionally empty placeholder until M2. Shaders: `Shaders/*.slang` (see shader-style.md).
+residency set, shared-event pacing, `Metal4ImGui` glue) → `Source/Render` (lmx::render: `Camera`,
+`Mesh`, `Renderer` — owns the offscreen scene color+depth targets and draws the depth-tested
+procedural scene) → `Source/App` (SDL3 window, docked ImGui editor shell, frame loop: scene pass
+into the offscreen RT → explicit barrier → UI pass samples it into the Viewport window). Shaders:
+`Shaders/*.slang` (see shader-style.md).
 
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.

@@ -278,6 +278,14 @@ scene-target resize — and it is consistent by construction, because the event 
 `ImGui_ImplSDL3_NewFrame()` in the same frame. Verified: `MTL_DEBUG_LAYER=1 LMX_MAX_FRAMES=600` runs
 both drills with zero validation diagnostics.
 
+**(d) `imgui.ini` stays at its ImGui default location — the process CWD — rather than a
+config-directory lookup.** For `xmake run App` that CWD is the build target directory, so the file
+lands next to the binary: gitignored, and wiped by a clean build. That is a deliberate M2 choice
+(documented in code at `EditorShell::create`, `EditorShell.cpp:174-178`), not an oversight — losing
+the ini costs exactly one rebuild of the default docked layout, and keeping it inside the build tree
+avoids touching either the repo or the user's home directory. Revisit if M3+ wants the layout to
+survive a clean build.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
@@ -1312,11 +1320,11 @@ ImTextureID imguiTextureID(Texture& texture);      // for ImGui::Image of an RHI
 ```
 (`ImTextureID` needs `imgui.h` in this header — acceptable: this header is backend tooling included only by App/UI code that already speaks ImGui; RHI.h stays clean. If Task 0 recorded a metal-cpp-native backend API, the `.cpp` stays C++; if the backend is ObjC++-only, this file becomes `.mm` and the header still compiles as plain C++.)
 
-- [ ] **Step 1: Implement against Task 0's record**
+- [x] **Step 1: Implement against Task 0's record**
 
 Init wires the imgui Metal backend with `static_cast<Metal4Device&>(device).handle()`; render calls the backend's RenderDrawData with `ImGui::GetDrawData()` and the native encoder from `currentEncoder()`; `imguiTextureID` returns the recorded backend's texture-ID convention for `static_cast<Metal4Texture&>(texture).handle()` (imgui 1.92: `(ImTextureID)(intptr_t)mtlTexture` unless the backend documents otherwise — the example is ground truth). Follow the M1 convention: every downcast documented as a contract, not a runtime check.
 
-- [ ] **Step 2: Compile-only verify + commit**
+- [x] **Step 2: Compile-only verify + commit**
 
 Nothing calls this yet; the target must build clean with the new files and deps.
 ```bash
@@ -1388,7 +1396,7 @@ Manual interaction (fly the camera, drag docks, edit objects) is Rudy's closing 
 - Consumes: `metal4::beginCapture/endCapture` (`Metal4Capture.h:28-33`), `createDevice`.
 - Produces: the backlog's capture-guard coverage — `[gpu]`-tagged (needs a Device&, so unit-tier isn't possible; backlog anticipated exactly this plumbing).
 
-- [ ] **Step 1: Tests**
+- [x] **Step 1: Tests**
 
 `Tests/CaptureTests.cpp`:
 
@@ -1440,7 +1448,7 @@ TEST_CASE("begin/endCapture writes a .gputrace document", "[gpu]") {
 ```
 Note: Tests currently include only `RHI/RHI.h`; `Metal4Capture.h` is deliberately metal-cpp-free (its header says so), so this include is legal from the Tests target with no include-dir changes.
 
-- [ ] **Step 2: Verify + commit**
+- [x] **Step 2: Verify + commit**
 
 ```bash
 xmake -y && xmake test && xmake format
@@ -1458,7 +1466,7 @@ git add -A && git commit -m "Add capture-guard tests with MTL_CAPTURE_ENABLED pl
 **Interfaces:**
 - Produces: D8's non-blocking clang-tidy CI job (closes the M1 deferral) + `~/.xmake/packages` cache (backlog).
 
-- [ ] **Step 1: .clang-tidy**
+- [x] **Step 1: .clang-tidy**
 
 ```yaml
 # Curated per spec D8: modernize/bugprone/performance, minus checks that fight the codebase's
@@ -1474,7 +1482,7 @@ WarningsAsErrors: ''
 HeaderFilterRegex: '(Source|Tests)/.*'
 ```
 
-- [ ] **Step 2: ci.yml — cache + tidy job**
+- [x] **Step 2: ci.yml — cache + tidy job**
 
 Add after the ThirdParty cache step in the existing `build-test` job:
 
@@ -1519,7 +1527,7 @@ New parallel job (non-blocking by design — `continue-on-error` at job level):
 ```
 (Metal4 backend TUs are excluded: metal-cpp headers drown tidy in third-party noise; `HeaderFilterRegex` already keeps reports to our code. Note the exclusion in a yml comment. If the runner's tidy chokes on C++23 flags, record it in Amendments and keep the job present-but-red — it is non-blocking by design.)
 
-- [ ] **Step 3: Verify locally what CI will run**
+- [x] **Step 3: Verify locally what CI will run**
 
 ```bash
 xmake project -k compile_commands
@@ -1538,11 +1546,11 @@ git add -A && git commit -m "Add non-blocking clang-tidy CI job and xmake packag
 - Consumes: everything shipped above.
 - Produces: coherent milestone-boundary docs (CLAUDE.md update policy is a standing rule).
 
-- [ ] **Step 1: Backlog disposition** — rewrite `docs/plans/m2-backlog.md` as a closed ledger: every item → "Closed in M2 (commit/task)" or explicitly re-deferred with a reason (expected re-defers: device-dtor pool ordering, `newFunction()` function constants, slang direct-metallib upstream, slang `device`-pointer warning — all watch-items by design).
-- [ ] **Step 2: Spec statuses** — M2 spec header → `**Status**: Implemented — <date>` (+ the Amendments recorded during implementation, folded into the relevant sections M1-style); parent spec §8 M2 line gains `(done <date>)`.
-- [ ] **Step 3: CLAUDE.md refresh** — architecture line: `Source/Render` no longer "intentionally empty placeholder" → one line on Renderer/Camera/Mesh + offscreen-viewport frame flow; commands: add the fly-camera/ImGui controls one-liner (RMB-drag look, WASD+QE) next to the debug knobs; deps line gains imgui-docking (route per Task 0); drop any M1-only phrasing that lies now. Keep it terse — CLAUDE.md is a map, not a manual.
-- [ ] **Step 4: README** — regenerate the screenshot via `xmake run App -- --screenshot docs/…` (match wherever M1's README image lives — check `grep -n "screenshot\|\.bmp\|\.png" README.md` first, follow its existing convention including any BMP→PNG conversion step recorded there), refresh the feature list (depth-tested scene, fly camera, docked ImGui editor shell, offscreen viewport).
-- [ ] **Step 5: Final full gate**
+- [x] **Step 1: Backlog disposition** — rewrite `docs/plans/m2-backlog.md` as a closed ledger: every item → "Closed in M2 (commit/task)" or explicitly re-deferred with a reason (expected re-defers: device-dtor pool ordering, `newFunction()` function constants, slang direct-metallib upstream, slang `device`-pointer warning — all watch-items by design).
+- [x] **Step 2: Spec statuses** — M2 spec header → `**Status**: Implemented — <date>` (+ the Amendments recorded during implementation, folded into the relevant sections M1-style); parent spec §8 M2 line gains `(done <date>)`.
+- [x] **Step 3: CLAUDE.md refresh** — architecture line: `Source/Render` no longer "intentionally empty placeholder" → one line on Renderer/Camera/Mesh + offscreen-viewport frame flow; commands: add the fly-camera/ImGui controls one-liner (RMB-drag look, WASD+QE) next to the debug knobs; deps line gains imgui-docking (route per Task 0); drop any M1-only phrasing that lies now. Keep it terse — CLAUDE.md is a map, not a manual.
+- [x] **Step 4: README** — regenerate the screenshot via `xmake run App -- --screenshot docs/…` (match wherever M1's README image lives — check `grep -n "screenshot\|\.bmp\|\.png" README.md` first, follow its existing convention including any BMP→PNG conversion step recorded there), refresh the feature list (depth-tested scene, fly camera, docked ImGui editor shell, offscreen viewport).
+- [x] **Step 5: Final full gate**
 
 ```bash
 xmake format --check && xmake -y && xmake test

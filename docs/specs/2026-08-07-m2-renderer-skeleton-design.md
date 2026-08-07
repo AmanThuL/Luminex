@@ -1,7 +1,7 @@
 # M2 — Renderer Skeleton — Design Spec
 
 **Date**: 2026-08-07
-**Status**: Approved — implementation not started
+**Status**: Implemented — 2026-08-07
 **Parent spec**: [2026-08-07-luminex-upgrade-design.md](2026-08-07-luminex-upgrade-design.md) (§8, M2)
 **Inputs**: [docs/plans/m2-backlog.md](../plans/m2-backlog.md) (all items triaged into scope, see §8)
 
@@ -36,6 +36,9 @@ directional light, left-side hierarchy panel (earns its place with M3 content).
 3. Viewport-size changes are **debounced**: during a dock drag the old render target stretches;
    once the size is stable for a few frames, `waitIdle` + recreate. No deferred-release
    machinery is added for this — a dock drag does not justify it (revisit when something does).
+   The recreate runs at the **top** of the frame, before the UI records the Viewport image's
+   texture ID for that frame — recreating after that recording would hand ImGui's draw list an
+   identifier for a texture that no longer exists (Task 10, Amendment A5b).
 4. `Device::beginFrame()` → **scene pass** into the offscreen RT (clear color + depth, draw
    items, depth-tested) → **textureBarrier** (scene color: render-target write → fragment read)
    → **UI pass** onto the swapchain drawable (ImGui draw data; the Viewport window samples the
@@ -52,9 +55,18 @@ All SDL-free and Metal-free; `Source/Render/`.
 |---|---|
 | `Camera` | Fly-camera state (position, yaw/pitch, fov, near/far) → `viewMatrix()`, `projectionMatrix(aspect)`. Consumes abstract inputs (move vector, look delta) — the App owns SDL mapping. Unit-testable. |
 | `Mesh` | GPU mesh: vertex + index buffer handles, index count. Procedural factories `makeCube()` / `makePlane()` emit positions, normals, colors (CPU data) uploaded via `Device`. |
-| `Renderer` | Owns scene color+depth targets (BGRA8Unorm + D32Float), the mesh pipeline, and `render(CommandList&, const Camera&, span<const DrawItem>)` with `DrawItem = {const Mesh*, glm::mat4 model, glm::vec4 baseColor}`. Explicit `resize(w, h)`; the App debounces. |
+| `Renderer` | Owns scene color+depth targets (BGRA8Unorm + D32Float), the mesh pipeline, and `render(CommandList&, const Camera&, span<const DrawItem>, bool barrierForSampling = true)` with `DrawItem = {const Mesh*, glm::mat4 model, glm::vec4 baseColor}`. Explicit `resize(w, h)`; the App debounces. |
 
 No scene graph, no material system — a draw list is the whole abstraction (ADR 0004).
+
+**Amendment (2026-08-07, Task 8): `render()` gained `bool barrierForSampling = true`.** As
+originally specified, `render()` always ended with the `RenderTarget → ShaderRead` barrier — but
+that is unsatisfiable for an offscreen-only frame: `textureBarrier` records the barrier as pending
+and `endFrameReset` aborts if no later pass consumes it (§5), so a bare `render()` + `endFrame()`
+is a guaranteed abort (verified by running it). Requiring every caller to add a dummy consuming pass
+just to satisfy the assert would burden the `--screenshot` path, which has no UI pass either. So the
+barrier became a parameter, default `true` (the App path, which always has a UI pass to consume
+it); `false` means "no later pass samples the target this frame."
 
 ## 4. RHI growth (`RHI.h`)
 
@@ -120,8 +132,18 @@ rest of this section — one concrete feature demands it — rather than as spec
 `Shaders/Mesh.slang`: `StructuredBuffer<Vertex>` (packed pos/normal/color) at slot 0;
 `ConstantBuffer<ObjectUniforms> { float4x4 mvp; float4x4 model; float4 baseColor; }` at slot 1;
 one `setUniforms` per draw item. Fragment: lambert against a fixed directional light (normals
-keep the cubes readable). `Triangle.slang` retires with the triangle. Same slang→MSL→metallib
-rule; the slang `device`-pointer warning (backlog, upstream) carries over, still tracked.
+keep the cubes readable). Same slang→MSL→metallib rule; the slang `device`-pointer warning
+(backlog, upstream) carries over, still tracked.
+
+**Amendment (2026-08-07, Task 10): `Triangle.slang` survives, as a test oracle.** This section
+originally said "`Triangle.slang` retires with the triangle." It does not: three GPU cases in
+`Tests/GpuSmokeTests.cpp` (uniform-ring offset, uniform-ring slot reuse across frames, depth-test
+rejection of a coplanar draw) render it as their *oracle*, because a three-vertex shader's expected
+image is derivable by hand — which is what makes a dropped ring offset or a dead depth test surface
+as a wrong *colour* rather than a slightly different lambert term. `Mesh.slang` cannot do that job
+without becoming a second copy of `Triangle.slang`, so the original shader stays. What did retire:
+the M1 GPU case `offscreen triangle renders expected pixels` (superseded by the Renderer cases) and
+every `TriangleAssets` remnant in the App.
 
 ## 7. Testing & CI
 
@@ -160,3 +182,8 @@ Inspector edits apply live; `xmake test` green including new unit + GPU depth/ba
 format/tidy clean; CI green with the new tidy + cache jobs; every §8 backlog item closed or
 explicitly re-deferred with a reason; parent spec §8 status, CLAUDE.md, and README updated at
 the milestone boundary (CLAUDE.md update policy).
+
+**As of 2026-08-07:** all automated gates are green — `xmake format --check`, `xmake -y`,
+`xmake test`, and `MTL_DEBUG_LAYER=1 LMX_MAX_FRAMES=300 xmake run App` (validation-clean, exercises
+the resize drills). **Interactive verification is pending Rudy's closing gate** — fly-around,
+dock-drag, Inspector edits, and CI green on the PR — and is not claimed by this document.
