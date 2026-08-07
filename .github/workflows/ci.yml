@@ -17,6 +17,12 @@ jobs:
           path: ThirdParty
           key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua') }}
 
+      - name: Cache xmake packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.xmake/packages
+          key: ${{ runner.os }}-xrepo-${{ hashFiles('xmake.lua') }}
+
       - name: Fetch pinned third-party deps
         run: xmake setup
 
@@ -31,3 +37,36 @@ jobs:
 
       - name: Format check
         run: xmake format --check
+
+  # Non-blocking per spec D8 (closes the M1 deferral): reports style/modernization findings
+  # without failing the build. Metal4 backend TUs are excluded from the tidy sweep below —
+  # metal-cpp headers drown tidy in third-party noise; HeaderFilterRegex already keeps
+  # reports scoped to our own code.
+  clang-tidy:
+    runs-on: macos-26
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xmake and llvm
+        run: brew install xmake llvm
+      - name: Cache ThirdParty
+        uses: actions/cache@v4
+        with:
+          path: ThirdParty
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua') }}
+      - name: Cache xmake packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.xmake/packages
+          key: ${{ runner.os }}-xrepo-${{ hashFiles('xmake.lua') }}
+      - name: Fetch pinned third-party deps
+        run: xmake setup
+      - name: Configure and generate compile_commands
+        run: |
+          xmake f -m debug -y --ccache=n
+          xmake project -k compile_commands
+      - name: clang-tidy (non-blocking)
+        run: |
+          $(brew --prefix llvm)/bin/clang-tidy --version
+          find Source -name '*.cpp' ! -path '*Metal4*' -print0 | \
+            xargs -0 $(brew --prefix llvm)/bin/clang-tidy -p . || true
