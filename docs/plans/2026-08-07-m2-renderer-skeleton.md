@@ -24,7 +24,55 @@
 
 ## Amendments
 
-(none yet — record deviations here as they are discovered, M1-A1 style)
+**A1 (2026-08-07, Task 0):** Dear ImGui docking wired via **Route B** — xrepo's `imgui` package
+has no metal backend config (confirmed: `imgui_impl_metal*` is never compiled by the package), so
+core + both backends are vendored wholesale from source, exactly like the metal-cpp/slang pins,
+into a new `ImGui` static target (`xmake.lua`) that `RHI` and `App` both depend on. Pinned tag
+`v1.92.7-docking` (commit `b1bcb12a624af7509894c8e77dd47416997777fa`; the tag itself is an
+annotated-tag object — `git clone --branch` prints a benign "is not a commit!" warning but still
+checks out the right commit, observed both in the scratch probe and via `xmake setup`).
+
+Backend source files compiled into the `ImGui` target: `ThirdParty/imgui/backends/imgui_impl_sdl3.h/.cpp`
+(platform) and `ThirdParty/imgui/backends/imgui_impl_metal.h/.mm` (renderer) — there is no separate
+`imgui_impl_metal4.*` file; `imgui_impl_metal.*` is the only Metal backend in this tag and it has
+**no Metal 4 path at all** (no `MTL4`/`metal4` symbol anywhere in the backend or in
+`examples/example_sdl3_metal/`, which — contrary to the plan's planning-time guess — is named
+`example_sdl3_metal`, not `example_sdl3_metal4`).
+
+Render-draw-data entry point (via `#define IMGUI_IMPL_METAL_CPP`, set as a public define on the
+`ImGui` target so every consumer sees the metal-cpp overloads):
+```cpp
+void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data,
+                                     MTL::CommandBuffer* commandBuffer,
+                                     MTL::RenderCommandEncoder* commandEncoder);
+```
+**Encoder parameter type is `MTL::RenderCommandEncoder*` — the classic/legacy metal-cpp encoder
+(`Metal/MTLRenderCommandEncoder.hpp`, namespace `MTL`) — NOT `MTL4::RenderCommandEncoder*`**
+(`Metal/MTL4RenderCommandEncoder.hpp`, namespace `MTL4`, a distinct, unrelated class — verified in
+the vendored headers). Task 9 cannot hand the Metal4 backend's render-pass encoder to this
+function directly; it must record the UI draw through a classic `MTL::CommandBuffer`/
+`MTL::RenderCommandEncoder` (e.g. a plain `renderCommandEncoder(...)` off a classic command queue
+for the swapchain pass), separate from the `MTL4::CommandBuffer`/`MTL4::RenderCommandEncoder` used
+for the scene pass. This is a real API gap, not a wiring detail — plan for it explicitly in Task 9.
+
+ImTextureID convention: a texture handle is round-tripped as a pointer-sized integer —
+`(ImTextureID)(intptr_t)texturePointer` in, `(__bridge id<MTLTexture>)(void*)(intptr_t)(tex_id)`
+out (`imgui_impl_metal.mm`). From the metal-cpp side this is `(ImTextureID)(intptr_t)someMTLTexturePtr`
+where `someMTLTexturePtr` is an `MTL::Texture*` (or `id<MTLTexture>`) — the backend's header comment
+states it directly: "Use 'MTLTexture' as texture identifier."
+
+Build note (empirically verified, not a guess): the `imgui_impl_metal.mm` backend must compile
+**without ARC**. Its metal-cpp-path branch does explicit `[x release]` / `[x autorelease]` sends
+(around lines 429 and 182) that are hard ARC compile errors. xmake compiles `.mm` files under ARC
+by default in this environment (confirmed by first hitting exactly those two errors), so the
+`ImGui` target carries `add_mxxflags("-fno-objc-arc")`. No `imgui.h`/other core file needed it —
+only this one backend file is Objective-C++.
+
+Compile-proof: a temporary `Tests/ImGuiSmokeTests.cpp` (`ImGui::CreateContext()` /
+`ImGui::DestroyContext()`) built and ran green under `xmake test` with no extra target wiring
+needed (Tests already depends on RHI, which now depends on ImGui, and xmake propagates the
+public include dirs/defines transitively) — then it was deleted per the plan's Step 3 ("prove it
+compiles, then remove the scratch"); it is not part of this commit.
 
 ## Subagent & Model Policy (per Rudy)
 
@@ -54,7 +102,7 @@
 
 Planning-time facts (verified 2026-08-07): xrepo `imgui` has docking version tags (`v1.92.7-docking`) and an `sdl3` config, but **no metal backend config** — the package never compiles `imgui_impl_metal*`. The imgui source tree ships `backends/imgui_impl_metal.*` and (1.92.x) an `example_sdl3_metal4` (parent spec §9), so the Metal backend must be compiled by us from source regardless of route.
 
-- [ ] **Step 1: Inspect the imgui-docking source tree**
+- [x] **Step 1: Inspect the imgui-docking source tree**
 
 ```bash
 cd /private/tmp/claude-501/-Users-rudyz-Documents-projects-Luminex/*/scratchpad 2>/dev/null || cd /tmp
@@ -66,16 +114,18 @@ grep -n "IMGUI_IMPL_METAL_CPP" imgui-probe/backends/imgui_impl_metal.h | head -3
 ```
 Record: does `imgui_impl_metal.h` expose a metal-cpp (C++) API under `IMGUI_IMPL_METAL_CPP`, and does it accept a `MTL4::RenderCommandEncoder` (look for `MTL4`/`metal4` in the backend and in `examples/example_sdl3_metal4/`)? If the Metal-4 path lives in a *different* backend file (e.g. `imgui_impl_metal4.*`), record that name — Task 9 consumes it verbatim.
 
-- [ ] **Step 2: Decide the route**
+- [x] **Step 2: Decide the route**
 
 Route A (only if it genuinely composes): `add_requires("imgui v1.92.7-docking", {configs = {sdl3 = true}})` for core+SDL3 backend, and vendor ONLY the Metal backend source files into the build from a ThirdParty pin of the exact same tag. Mixed-version risk must be zero (same tag both sides).
 Route B (default if A is awkward): skip xrepo imgui entirely; extend `task("setup")` in `xmake.lua` to clone `imgui` at the pinned docking tag into `ThirdParty/imgui` (M1 pattern: metal-cpp/slang pins at `xmake.lua:94-95`), and add an `ImGui` static target compiling `imgui/*.cpp` + `backends/imgui_impl_sdl3.cpp` + the Metal backend file(s). The Metal backend `.mm` compiles as ObjC++ (`add_files("...mm", {sourcekinds = "mxx"})`) with ARC enabled if the backend expects it (`add_mxxflags("-fobjc-arc")` — check the backend's header comment) — this is backend-internal and leaks nothing into RHI.h.
 
-- [ ] **Step 3: Prove the choice compiles**
+Decision: **Route B** — see Amendment A1 above.
+
+- [x] **Step 3: Prove the choice compiles**
 
 Wire the chosen route in `xmake.lua` (new `ImGui` target or add_requires + vendored backend), add a temporary translation-unit smoke (`ImGui::CreateContext(); ImGui::DestroyContext();` in a scratch target or Tests TU), `xmake -y`, then remove the scratch. Record the pinned tag in this plan's Amendments block.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 xmake format && xmake test && git add -A && git commit -m "Pin Dear ImGui docking for M2 UI"

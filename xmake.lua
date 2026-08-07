@@ -44,21 +44,46 @@ target("Core")
     add_includedirs("Source", {public = true})
     add_packages("spdlog", {public = true})
 
+-- Dear ImGui (docking) + its SDL3 platform backend + Metal renderer backend, vendored
+-- wholesale like metal-cpp/slang (task("setup") below): the xrepo `imgui` package has no
+-- metal backend config (M2 Task 0 finding -- it never compiles imgui_impl_metal*), so route A
+-- would mean stitching in a second, independently-versioned source tree just for the Metal
+-- backend. One pinned tree, one target: core + both backends stay locked to the same tag.
+-- IMGUI_IMPL_METAL_CPP (public) switches imgui_impl_metal.h/.mm to the metal-cpp overloads
+-- (MTL::Device*/MTL::CommandBuffer*/MTL::RenderCommandEncoder* -- see the M2 plan's Amendments
+-- for why that is *not* MTL4::RenderCommandEncoder*: this imgui version has no Metal 4 path).
+-- -fno-objc-arc: xmake compiles .mm under ARC by default here, but this backend does explicit
+-- `[x release]` / `[x autorelease]` sends (imgui_impl_metal.mm ~lines 182, 429) -- a hard ARC
+-- compile error (verified: build fails without this flag). The file must build under MRC.
+target("ImGui")
+    set_kind("static")
+    add_files("ThirdParty/imgui/*.cpp")
+    add_files("ThirdParty/imgui/backends/imgui_impl_sdl3.cpp")
+    add_files("ThirdParty/imgui/backends/imgui_impl_metal.mm")
+    add_includedirs("ThirdParty/imgui", {public = true})
+    add_includedirs("ThirdParty/imgui/backends", {public = true})
+    add_includedirs("ThirdParty/metal-cpp")
+    add_defines("IMGUI_IMPL_METAL_CPP", {public = true})
+    add_packages("libsdl3")
+    add_frameworks("Metal", "QuartzCore", "Cocoa")
+    add_mxxflags("-fno-objc-arc")
+
 -- add_files is non-recursive, so the Metal4 backend sources are listed explicitly.
 -- metal-cpp is an implementation detail of this target: RHI.h never names an MTL type,
--- so the include dir stays private and only Source/ is public.
+-- so the include dir stays private and only Source/ is public. ImGui is a dep (not just the
+-- Metal renderer backend's headers): Source/RHI/Metal4/Metal4ImGui.* (M2 Task 9) links it.
 target("RHI")
     set_kind("static")
     add_files("Source/RHI/*.cpp", "Source/RHI/Metal4/*.cpp")
     add_includedirs("Source", {public = true})
     add_includedirs("ThirdParty/metal-cpp")
     add_frameworks("Metal", "QuartzCore", "Foundation")
-    add_deps("Core")
+    add_deps("Core", "ImGui")
 
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp")
-    add_deps("Core", "RHI")
+    add_deps("Core", "RHI", "ImGui")
     add_packages("libsdl3", "glm")
     -- Emits build/<plat>/<arch>/<mode>/Shaders/Triangle.metal (+ .metallib when the
     -- Metal toolchain is present) next to the App binary.
@@ -93,6 +118,7 @@ target("Tests")
 
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local slang_pin    = "v2026.14.1"
+local imgui_pin    = "v1.92.7-docking"
 
 task("setup")
     set_menu {usage = "xmake setup", description = "fetch pinned ThirdParty deps"}
@@ -115,7 +141,11 @@ task("setup")
                 end
             }
         end
-        print("setup done: metal-cpp %s, slang %s", metalcpp_pin, slang_pin)
+        if not os.isdir("ThirdParty/imgui") then
+            os.execv("git", {"clone", "--depth", "1", "--branch", imgui_pin,
+                             "https://github.com/ocornut/imgui.git", "ThirdParty/imgui"})
+        end
+        print("setup done: metal-cpp %s, slang %s, imgui %s", metalcpp_pin, slang_pin, imgui_pin)
     end)
 
 task("format")
