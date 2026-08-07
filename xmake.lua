@@ -94,10 +94,18 @@ target("RHI")
     add_frameworks("Metal", "QuartzCore", "Foundation")
     add_deps("Core", "ImGui")
 
+-- Camera + procedural mesh helpers on top of RHI. glm is public so App/Tests only need
+-- "Render" in their own add_deps to inherit its include path.
+target("Render")
+    set_kind("static")
+    add_files("Source/Render/*.cpp")
+    add_deps("Core", "RHI")
+    add_packages("glm", {public = true})
+
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp")
-    add_deps("Core", "RHI", "ImGui")
+    add_deps("Core", "RHI", "Render", "ImGui")
     add_packages("libsdl3", "glm")
     -- Emits build/<plat>/<arch>/<mode>/Shaders/Triangle.metal (+ .metallib when the
     -- Metal toolchain is present) next to the App binary.
@@ -116,8 +124,8 @@ target("Tests")
     -- collides with the "Tests" binary that sits one level up.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
     add_files("Tests/*.cpp")
-    add_deps("Core", "RHI")
-    add_packages("catch2")
+    add_deps("Core", "RHI", "Render")
+    add_packages("catch2", "glm")
     -- The [gpu] smoke test loads "Shaders/Triangle" relative to its working directory, and
     -- `xmake test` runs a target with CWD == target:rundir(), which defaults to the target
     -- directory (verified on this machine). Tests emits its own copy rather than reusing
