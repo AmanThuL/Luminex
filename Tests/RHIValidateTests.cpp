@@ -275,3 +275,57 @@ TEST_CASE("SwapchainDesc with a layer and non-zero extent is accepted", "[rhi]")
 
     REQUIRE(validate(desc).has_value());
 }
+
+TEST_CASE("TextureDesc renderTarget with a non-renderable format is rejected", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::D32Float;
+    desc.renderTarget = false; // plain sampled D32 is fine...
+    REQUIRE(validate(desc).has_value());
+
+    desc.renderTarget = true; // ...and a D32 render target is a *depth* target: also fine.
+    REQUIRE(validate(desc).has_value());
+}
+
+TEST_CASE("GraphicsPipelineDesc depth flags without a depth format are rejected", "[rhi]") {
+    DummyShaderLibrary library;
+    GraphicsPipelineDesc desc{};
+    desc.library = &library;
+    desc.vertexEntry = "vertexMain";
+    desc.fragmentEntry = "fragmentMain";
+    desc.colorFormat = Format::BGRA8Unorm;
+    desc.depthTestEnable = true; // but depthFormat left Unknown
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("depthFormat"));
+}
+
+TEST_CASE("GraphicsPipelineDesc with a color format as depth format is rejected", "[rhi]") {
+    DummyShaderLibrary library;
+    GraphicsPipelineDesc desc{};
+    desc.library = &library;
+    desc.vertexEntry = "vertexMain";
+    desc.fragmentEntry = "fragmentMain";
+    desc.colorFormat = Format::BGRA8Unorm;
+    desc.depthFormat = Format::RGBA8Unorm;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("depth"));
+}
+
+TEST_CASE("TextureDesc D32Float with cpuReadback is rejected", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::D32Float;
+    desc.cpuReadback = true;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+}

@@ -40,6 +40,27 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
         color->setClearColor(MTL::ClearColor(desc.clearColor[0], desc.clearColor[1],
                                              desc.clearColor[2], desc.clearColor[3]));
     }
+
+    // Optional: a null depthTarget leaves the descriptor's depth attachment without a texture,
+    // which is how Metal spells "depth-less pass" -- exactly the M1 behaviour, unchanged.
+    if (desc.depthTarget != nullptr) {
+        // Same contract-violation rationale as colorTarget above.
+        auto* depthTarget = static_cast<Metal4Texture*>(desc.depthTarget);
+        // The abort this replaces: a color-formatted texture in the depth slot makes Metal's
+        // pass validator abort with "the depth attachment's pixel format is not a depth
+        // format", naming neither the RHI call nor the texture.
+        LMX_ASSERT(depthTarget->handle()->pixelFormat() == MTL::PixelFormatDepth32Float,
+                   "RenderPassDesc.depthTarget must be a D32Float texture");
+
+        MTL::RenderPassDepthAttachmentDescriptor* depth = passDesc->depthAttachment();
+        depth->setTexture(depthTarget->handle());
+        depth->setLoadAction(desc.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+        // DontCare: nothing reads scene depth after the pass in M2; Store would spill it for no
+        // consumer. Flip to Store the day a depth-reading pass exists.
+        depth->setStoreAction(MTL::StoreActionDontCare);
+        depth->setClearDepth(desc.clearDepth);
+    }
+
     // Stated rather than inherited, for the same reason the pipeline states it (Task 9): the
     // pass's sample count must match the pipeline's, and M1 never multisamples.
     passDesc->setDefaultRasterSampleCount(1);
@@ -71,7 +92,15 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
 
 void Metal4CommandList::bindPipeline(GraphicsPipeline& pipeline) {
     LMX_ASSERT(m_encoder, "bindPipeline must be called between beginRenderPass and endRenderPass");
-    m_encoder->setRenderPipelineState(static_cast<Metal4Pipeline&>(pipeline).handle());
+    auto& metalPipeline = static_cast<Metal4Pipeline&>(pipeline);
+    m_encoder->setRenderPipelineState(metalPipeline.handle());
+    // Depth state rides along with the pipeline even though Metal keeps the two separate, so
+    // that one RHI bind fully describes the depth behaviour a GraphicsPipelineDesc asked for.
+    // Null (neither test nor write requested) leaves the encoder's default in place, which is
+    // already compare-Always/no-write -- see Metal4Pipeline::depthState.
+    if (MTL::DepthStencilState* depthState = metalPipeline.depthState()) {
+        m_encoder->setDepthStencilState(depthState);
+    }
 }
 
 void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {

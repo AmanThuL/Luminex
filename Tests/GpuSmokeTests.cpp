@@ -363,3 +363,144 @@ TEST_CASE("uniform ring keeps per-frame data across slot reuse", "[gpu]") {
         REQUIRE(inside.a == 255);
     }
 }
+
+// Proves the depth path end to end on the GPU: the pass's depth attachment (Metal4CommandList)
+// and the pipeline's depth-stencil state (Metal4Device + bindPipeline). Neither has any other
+// coverage -- the new validation tests are CPU-only -- and a depth feature that silently does
+// nothing is exactly the kind of bug that survives until a scene looks subtly wrong.
+//
+// The mechanism is coplanarity, not occlusion by distance: Shaders/Triangle emits z = 0 for every
+// vertex, so with clearDepth 1.0 the first draw passes LESS (0 < 1) and writes 0, and the second
+// draw of the *same* geometry fails it (0 < 0 is false). Red therefore has to survive green.
+// Deliberately chosen over two different depths because it needs no shader change: the existing
+// shader has no way to vary z.
+//
+// The two passes below cover the two halves of the feature separately, and that split is
+// deliberate -- it was measured, not assumed:
+//   - Pass 1 (coplanar draws) covers bindPipeline's setDepthStencilState. Skipping that bind
+//     leaves the encoder default (compare Always, no write) and green wins. Verified by
+//     temporarily removing the bind: the probe came back G=255 R=0.
+//   - Pass 1 does NOT cover the depth *attachment*: removing it from the pass descriptor leaves
+//     this test green. Metal keeps per-tile depth storage for the pass regardless, so the test
+//     still works -- the attachment texture is where depth is stored, not what makes the test
+//     run. Also verified by temporarily removing it.
+//   - Pass 2 is what covers the attachment, via clearDepth: a clear value only exists on the
+//     depth attachment descriptor, so clearing to 0.0 and watching an entire z=0 draw vanish
+//     is only possible if beginRenderPass actually wired the attachment up.
+TEST_CASE("depth test rejects a coplanar second draw", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto target = (*device)->createTexture({.width = kSize,
+                                            .height = kSize,
+                                            .format = Format::BGRA8Unorm,
+                                            .renderTarget = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.test.depthColorTarget"});
+    INFO(errorOf(target));
+    REQUIRE(target.has_value());
+
+    // renderTarget only -- neither sampled nor cpuReadback. That is the case the reworked
+    // usage logic exists for: a pure depth target asks for no ShaderRead, so the driver keeps
+    // it in whatever compressed layout it likes. It also pins that validation accepts a
+    // D32Float render target (a *depth* target) rather than rejecting it as non-color-renderable.
+    auto depthTarget = (*device)->createTexture({.width = kSize,
+                                                 .height = kSize,
+                                                 .format = Format::D32Float,
+                                                 .renderTarget = true,
+                                                 .label = "lmx.test.depthTarget"});
+    INFO(errorOf(depthTarget));
+    REQUIRE(depthTarget.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/Triangle");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
+                                                       .vertexEntry = "vertexMain",
+                                                       .fragmentEntry = "fragmentMain",
+                                                       .colorFormat = Format::BGRA8Unorm,
+                                                       .depthFormat = Format::D32Float,
+                                                       .depthTestEnable = true,
+                                                       .depthWriteEnable = true,
+                                                       .label = "lmx.test.depthPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    // Same geometry, flat-shaded, drawn in this order. Depth has to keep the first.
+    const auto flatTriangle = [](float r, float g, float b) {
+        std::array<Vertex, 3> vertices = kTriangle;
+        for (Vertex& vertex : vertices) {
+            vertex.color[0] = r;
+            vertex.color[1] = g;
+            vertex.color[2] = b;
+        }
+        return vertices;
+    };
+    const std::array<Vertex, 3> first = flatTriangle(1.0f, 0.0f, 0.0f);
+    const std::array<Vertex, 3> second = flatTriangle(0.0f, 1.0f, 0.0f);
+
+    CommandList& commands = (*device)->beginFrame();
+    commands.beginRenderPass({.colorTarget = target->get(),
+                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                              .clear = true,
+                              .depthTarget = depthTarget->get(),
+                              .clearDepth = 1.0f});
+    commands.bindPipeline(**pipeline);
+    commands.setUniforms(kVertexBufferSlot, first.data(), sizeof(first));
+    commands.draw(static_cast<uint32_t>(first.size()));
+    commands.setUniforms(kVertexBufferSlot, second.data(), sizeof(second));
+    commands.draw(static_cast<uint32_t>(second.size()));
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*target)->readback(pixels.data(), pixels.size());
+
+    // (32,40) is the interior probe the smoke test establishes. Red means the depth test
+    // rejected the second draw; green means depth did nothing at all.
+    const Pixel inside = pixelAt(pixels, 32, 40);
+    INFO(describe("inside", 32, 40, inside));
+    REQUIRE(channelIs(inside.r, 1.0f));
+    REQUIRE(channelIs(inside.g, 0.0f));
+    REQUIRE(inside.a == 255);
+
+    // The clear still has to have happened outside the triangle -- a depth attachment must not
+    // disturb the color attachment's own load/store behaviour.
+    const Pixel corner = pixelAt(pixels, 2, 2);
+    INFO(describe("corner", 2, 2, corner));
+    REQUIRE(corner.r == 0);
+    REQUIRE(corner.g == 0);
+    REQUIRE(corner.b == 0);
+    REQUIRE(corner.a == 255);
+
+    // Pass 2: same everything, but the depth attachment is cleared to 0.0 instead of 1.0. Now
+    // the *first* draw fails LESS as well (0 < 0 is false), so nothing reaches the color target
+    // and the whole image stays at the clear colour. clearDepth lives on the depth attachment
+    // descriptor and nowhere else, so this can only hold if beginRenderPass built that
+    // attachment -- which is exactly what pass 1 above cannot see.
+    CommandList& secondFrame = (*device)->beginFrame();
+    secondFrame.beginRenderPass({.colorTarget = target->get(),
+                                 .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                                 .clear = true,
+                                 .depthTarget = depthTarget->get(),
+                                 .clearDepth = 0.0f});
+    secondFrame.bindPipeline(**pipeline);
+    secondFrame.setUniforms(kVertexBufferSlot, first.data(), sizeof(first));
+    secondFrame.draw(static_cast<uint32_t>(first.size()));
+    secondFrame.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+    (*target)->readback(pixels.data(), pixels.size());
+
+    const Pixel occluded = pixelAt(pixels, 32, 40);
+    INFO(describe("occluded", 32, 40, occluded));
+    REQUIRE(occluded.r == 0);
+    REQUIRE(occluded.g == 0);
+    REQUIRE(occluded.b == 0);
+    REQUIRE(occluded.a == 255);
+}

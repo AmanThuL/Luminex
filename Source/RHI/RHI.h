@@ -48,6 +48,7 @@ struct TextureDesc {
     uint32_t width = 0, height = 0;
     Format format = Format::BGRA8Unorm;
     bool renderTarget = false;
+    bool sampled = false;     // bound for shader reads after rendering (scene RT, shadow maps)
     bool cpuReadback = false; // shared storage; enables readback()
     std::string_view label;
 };
@@ -72,6 +73,12 @@ struct GraphicsPipelineDesc {
     std::string_view vertexEntry;
     std::string_view fragmentEntry;
     Format colorFormat = Format::BGRA8Unorm;
+    // Unknown = no depth attachment. Metal 4 pipelines carry no depth pixel format (it is a
+    // render-pass property there) -- this field is validated CPU-side against the depth flags
+    // and kept in the desc because the future Vulkan backend bakes it into the pipeline.
+    Format depthFormat = Format::Unknown;
+    bool depthTestEnable = false; // compare LESS when enabled
+    bool depthWriteEnable = false;
     std::string_view label;
 };
 class GraphicsPipeline {
@@ -83,6 +90,10 @@ struct RenderPassDesc {
     Texture* colorTarget = nullptr;
     float clearColor[4] = {0.f, 0.f, 0.f, 1.f};
     bool clear = true;
+    // Optional depth attachment. Cleared to clearDepth when set (load) and discarded after the
+    // pass (store) -- M2 never reads depth back. Null = depth-less pass, as in M1.
+    Texture* depthTarget = nullptr;
+    float clearDepth = 1.0f;
 };
 
 class CommandList {

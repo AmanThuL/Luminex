@@ -97,15 +97,31 @@ private:
 
 class Metal4Pipeline final : public GraphicsPipeline {
 public:
-    explicit Metal4Pipeline(NS::SharedPtr<MTL::RenderPipelineState> state)
-        : m_state(std::move(state)) {}
+    Metal4Pipeline(NS::SharedPtr<MTL::RenderPipelineState> state,
+                   NS::SharedPtr<MTL::DepthStencilState> depthState)
+        : m_state(std::move(state)), m_depthState(std::move(depthState)) {}
 
     MTL::RenderPipelineState* handle() const { return m_state.get(); }
+
+    // Null for a pipeline whose desc enabled neither depth test nor depth write -- Metal's
+    // default depth-stencil state (compare Always, writes off) is already exactly that, so
+    // bindPipeline simply skips the bind rather than creating a no-op state per pipeline.
+    MTL::DepthStencilState* depthState() const { return m_depthState.get(); }
 
 private:
     // MTL4::Compiler hands back a plain MTL::RenderPipelineState -- Metal 4 reuses the
     // Metal 3 pipeline-state type, only the descriptor and the compiler entry point are new.
+    //
+    // The depth-stencil state is a *separate* object bound alongside the pipeline rather than
+    // baked into it: in Metal it is encoder state, not pipeline state. The RHI hides that split
+    // (both come from one GraphicsPipelineDesc) because the future Vulkan backend bakes depth
+    // into the pipeline and could not expose it separately.
+    //
+    // Unlike Metal4Buffer/Metal4Texture there is no ordering constraint between these two
+    // members: neither references the other, so declaration order is arbitrary and release
+    // order does not matter.
     NS::SharedPtr<MTL::RenderPipelineState> m_state;
+    NS::SharedPtr<MTL::DepthStencilState> m_depthState;
 };
 
 } // namespace lmx::rhi::metal4

@@ -364,12 +364,19 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
     textureDesc->setWidth(desc.width);
     textureDesc->setHeight(desc.height);
     textureDesc->setMipmapLevelCount(1);
-    // ShaderRead is always on: it is free here and every texture we create is either
-    // sampled or resolved at some point. RenderTarget is the one usage that constrains
-    // allocation, so it stays opt-in via the desc.
-    textureDesc->setUsage(desc.renderTarget
-                              ? MTL::TextureUsageShaderRead | MTL::TextureUsageRenderTarget
-                              : MTL::TextureUsageShaderRead);
+    // Usage is desc-driven rather than "ShaderRead always on" (M1): a depth target that is
+    // never sampled gets no ShaderRead, which is what lets the driver keep it in the compressed
+    // layout it would otherwise have to give up. cpuReadback implies ShaderRead because
+    // getBytes() reads the texture's contents.
+    MTL::TextureUsage usage =
+        desc.sampled || desc.cpuReadback ? MTL::TextureUsageShaderRead : MTL::TextureUsage(0);
+    if (desc.renderTarget) {
+        usage |= MTL::TextureUsageRenderTarget;
+    }
+    LMX_ASSERT(usage != MTL::TextureUsage(0),
+               "TextureDesc: a texture that is neither renderTarget, sampled, nor cpuReadback "
+               "has no reachable use");
+    textureDesc->setUsage(usage);
     // Shared keeps the pixels in CPU-addressable memory so getBytes() can read them without
     // a blit; Private lets the driver pick an optimal (possibly compressed) layout.
     textureDesc->setStorageMode(desc.cpuReadback ? MTL::StorageModeShared
@@ -524,7 +531,28 @@ Metal4Device::createGraphicsPipeline(const GraphicsPipelineDesc& desc) {
                         "'): " + describe(error));
     }
 
-    return std::make_unique<Metal4Pipeline>(std::move(state));
+    // Depth state is encoder state in Metal, not pipeline state, so it is built here and
+    // carried on the wrapper for bindPipeline to set alongside the pipeline (see
+    // Metal4Pipeline). Left null when the desc enables neither test nor write: Metal's default
+    // is already compare-Always/no-write, so a state object would encode nothing.
+    // desc.depthFormat is deliberately unused on this backend -- MTL4::RenderPipelineDescriptor
+    // has no depth pixel format field; the attachment's format comes from the render pass. It is
+    // still validated against these flags CPU-side, which is what makes the RHI contract
+    // backend-independent.
+    NS::SharedPtr<MTL::DepthStencilState> depthState;
+    if (desc.depthTestEnable || desc.depthWriteEnable) {
+        auto dsDesc = NS::TransferPtr(MTL::DepthStencilDescriptor::alloc()->init());
+        dsDesc->setDepthCompareFunction(desc.depthTestEnable ? MTL::CompareFunctionLess
+                                                             : MTL::CompareFunctionAlways);
+        dsDesc->setDepthWriteEnabled(desc.depthWriteEnable);
+        dsDesc->setLabel(labelOrFallback(desc.label, "lmx.pipeline.unnamed").get());
+        depthState = NS::TransferPtr(m_device->newDepthStencilState(dsDesc.get()));
+        if (!depthState) {
+            return fail(ErrorCode::PipelineCreationFailed, "failed to create depth-stencil state");
+        }
+    }
+
+    return std::make_unique<Metal4Pipeline>(std::move(state), std::move(depthState));
 }
 
 CommandList& Metal4Device::beginFrame() {
