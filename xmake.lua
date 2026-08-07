@@ -115,8 +115,10 @@ target("App")
     add_files("Source/App/*.cpp")
     add_deps("Core", "RHI", "Render", "ImGui")
     add_packages("libsdl3", "glm")
-    -- Emits build/<plat>/<arch>/<mode>/Shaders/Triangle.metal (+ .metallib when the
-    -- Metal toolchain is present) next to the App binary.
+    -- Emits build/<plat>/<arch>/<mode>/Shaders/<name>.metal (+ .metallib when the Metal
+    -- toolchain is present) next to the App binary, one pair per Shaders/*.slang. The App only
+    -- loads Mesh; the other two are compiled here because the rule takes the directory, and
+    -- because a shader that stopped compiling should fail the App build too.
     add_rules("slang2metallib")
     add_files("Shaders/*.slang")
 

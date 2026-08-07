@@ -18,18 +18,25 @@
 
 namespace {
 
-// Mirrors the MSL struct Slang emits for Shaders/Triangle.slang (measured, Task 6):
+// Mirrors the MSL struct Slang emits for Shaders/Triangle.slang (measured, M1 Task 6):
 //   struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; };
 // packed_* means no inter-member padding and no 16-byte struct alignment, so the stride
-// is 20, not 32. Same mirror as Source/App/main.cpp -- if one drifts, this fires.
+// is 20, not 32.
+//
+// Shaders/Triangle.slang outlived the triangle app it was written for (M2 Task 10, plan
+// Amendment A5): the uniform-ring and depth cases below use it as their *oracle* -- a shader
+// simple enough that the expected image is derivable by hand, which is exactly what makes a
+// wrong ring offset or a dead depth test visible as a colour. Mesh.slang cannot do that job;
+// its output is a lambert term. Retiring the shader would mean writing a second one just like
+// it for the tests.
 struct Vertex {
     float position[2];
     float color[3];
 };
 static_assert(sizeof(Vertex) == 20, "must match Slang's packed Vertex_natural_0 layout");
 
-// The app's triangle, unchanged: red apex at clip y=+0.5, green bottom-left, blue
-// bottom-right, counter-clockwise.
+// M1's triangle, unchanged: red apex at clip y=+0.5, green bottom-left, blue bottom-right,
+// counter-clockwise.
 constexpr std::array<Vertex, 3> kTriangle = {{
     {{0.0f, 0.5f}, {1.0f, 0.0f, 0.0f}},
     {{-0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
@@ -43,6 +50,24 @@ constexpr uint32_t kVertexBufferSlot = 0;
 // sits far enough inside its region to be deterministically interior without MSAA; see the
 // per-probe margins noted at each REQUIRE below.
 constexpr uint32_t kSize = 64;
+
+// Where kTriangle lands in a kSize x kSize readback, derived once here because every triangle
+// case below probes the same points.
+//
+// Row order: readback() (MTLTexture::getBytes) produces row 0 == the *top* of the image, so a
+// clip-space y maps to row kSize * (1 - y) / 2. Measured in M1 Task 11: the red apex at y = +0.5
+// landed on row 183 of a 720-row readback (720 * 0.5 / 2 = 180), and the base edge on row 539
+// (expected 540). At kSize that puts the apex near row 16 and the base near row 48.
+//
+//   (2,2)   clip (-0.92, +0.92) -- far outside the triangle on both axes, so it holds whichever
+//           way up the readback is, and fails outright if the pass never ran.
+//   (32,40) clip (+0.02, -0.27) -- on the vertical centre line, between the apex row and the
+//           base row, 7.5 px from its nearest edge. The flat-shaded interior probe.
+//   (32,24) / (20,46) / (43,46) -- inside the edges meeting the apex, the bottom-left and the
+//           bottom-right vertex respectively (the base-corner pair sits 1.5 px above the base
+//           edge at row 48), so each one's dominant channel must be that vertex's colour. A wrong
+//           vertex stride, a mis-bound buffer slot or a flipped image moves the colours off these
+//           three while leaving the two above perfectly happy.
 
 // One BGRA8Unorm texel, in the channel order readback() produces.
 struct Pixel {
@@ -78,113 +103,6 @@ bool channelIs(uint8_t actual, float expected) {
 
 } // namespace
 
-// Row order: readback() (MTLTexture::getBytes) produces row 0 == the *top* of the image, so
-// a clip-space y maps to row kSize * (1 - y) / 2. Measured in Task 11: the red apex at
-// y=+0.5 landed on row 183 of a 720-row readback (720 * 0.5 / 2 = 180), and the base edge on
-// row 539 (expected 540). Here that puts the apex near row 16 and the base near row 48.
-TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
-    using namespace lmx::rhi;
-
-    // Declared before every resource, so it is destroyed last: no RHI object may outlive the
-    // device that created it. Nothing else is needed here -- there is no swapchain, and so
-    // none of the presentation-surface ordering the windowed path has to respect.
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-
-    auto vertexBuffer = (*device)->createBuffer(
-        {.size = sizeof(kTriangle), .label = "lmx.test.smokeVertices"}, kTriangle.data());
-    INFO(errorOf(vertexBuffer));
-    REQUIRE(vertexBuffer.has_value());
-
-    // cpuReadback puts the texture in shared storage so readback() is a plain copy;
-    // renderTarget is what lets a pass draw into it.
-    auto target = (*device)->createTexture({.width = kSize,
-                                            .height = kSize,
-                                            .format = Format::BGRA8Unorm,
-                                            .renderTarget = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.test.smokeTarget"});
-    INFO(errorOf(target));
-    REQUIRE(target.has_value());
-
-    // pathNoExt, resolved against the process CWD. `xmake test` runs a target with CWD ==
-    // target:rundir(), which defaults to the target directory -- exactly where this target's
-    // slang2metallib rule drops Shaders/Triangle.{metal,metallib}. Verified on this machine
-    // (CWD was build/macosx/arm64/debug/test, and the load still succeeded with App's copy
-    // of Shaders/ deleted), so no executable-relative fallback is needed.
-    auto library = (*device)->loadShaderLibrary("Shaders/Triangle");
-    INFO(errorOf(library));
-    REQUIRE(library.has_value());
-
-    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
-                                                       .vertexEntry = "vertexMain",
-                                                       .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = Format::BGRA8Unorm,
-                                                       .label = "lmx.test.smokePipeline"});
-    INFO(errorOf(pipeline));
-    REQUIRE(pipeline.has_value());
-
-    CommandList& commands = (*device)->beginFrame();
-    commands.beginRenderPass(
-        {.colorTarget = target->get(), .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}, .clear = true});
-    commands.bindPipeline(**pipeline);
-    commands.bindVertexBuffer(kVertexBufferSlot, **vertexBuffer);
-    commands.draw(static_cast<uint32_t>(kTriangle.size()));
-    commands.endRenderPass();
-    // nullptr: this frame only fills a texture, there is nothing to present.
-    (*device)->endFrame(nullptr);
-    // readback() does no synchronisation of its own, so the frame has to be off the GPU
-    // first -- otherwise the pixels are whatever the allocation happened to contain.
-    (*device)->waitIdle();
-
-    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    (*target)->readback(pixels.data(), pixels.size());
-
-    // No SECTIONs below: Catch2 replays the whole test case body once per section, which
-    // would mean building a device and rendering a frame three times over for one image.
-
-    // (2,2) is clip (-0.92, +0.92) -- far outside the triangle on both axes, so this holds
-    // whichever way up the readback is, and it fails outright if the pass never ran.
-    const Pixel corner = pixelAt(pixels, 2, 2);
-    INFO(describe("corner", 2, 2, corner));
-    REQUIRE(corner.b == 0);
-    REQUIRE(corner.g == 0);
-    REQUIRE(corner.r == 0);
-    REQUIRE(corner.a == 255);
-
-    // (32,40) is clip (+0.02, -0.27): on the vertical centre line, between the apex row and
-    // the base row, and 7.5px from its nearest edge (the base, at row 48).
-    const Pixel inside = pixelAt(pixels, 32, 40);
-    INFO(describe("inside", 32, 40, inside));
-    REQUIRE(int{inside.b} + int{inside.g} + int{inside.r} > 60);
-    REQUIRE(inside.a == 255);
-
-    // The next three probes are what separate "a triangle was drawn" from "*this* triangle
-    // was drawn": each sits inside the edges meeting one vertex -- the two base-corner probes
-    // (bottom-left, bottom-right) are 1.5px from the base edge at row 48 -- so its dominant
-    // channel must be that vertex's colour. A wrong vertex stride, a mis-bound buffer slot or
-    // a flipped image moves the colours off these points while leaving the two probes above
-    // perfectly happy.
-    const Pixel apex = pixelAt(pixels, 32, 24);
-    INFO(describe("apex", 32, 24, apex));
-    REQUIRE(apex.r > 128);
-    REQUIRE(apex.r > apex.g);
-    REQUIRE(apex.r > apex.b);
-
-    const Pixel bottomLeft = pixelAt(pixels, 20, 46);
-    INFO(describe("bottom-left", 20, 46, bottomLeft));
-    REQUIRE(bottomLeft.g > 128);
-    REQUIRE(bottomLeft.g > bottomLeft.r);
-    REQUIRE(bottomLeft.g > bottomLeft.b);
-
-    const Pixel bottomRight = pixelAt(pixels, 43, 46);
-    INFO(describe("bottom-right", 43, 46, bottomRight));
-    REQUIRE(bottomRight.b > 128);
-    REQUIRE(bottomRight.b > bottomRight.r);
-    REQUIRE(bottomRight.b > bottomRight.g);
-}
-
 // Proves the transient uniform ring end to end -- the memcpy into the mapped ring, the
 // gpuAddress() + offset arithmetic, and the residency registration -- on the GPU rather than by
 // inspecting backend state.
@@ -192,8 +110,8 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
 // The trick is the payload: it feeds the *triangle vertices* through setUniforms and binds them
 // at the vertex slot. Metal 4 argument tables hold untyped GPU addresses, so a suballocation of
 // the ring is exactly as bindable as a whole MTLBuffer, and reusing Shaders/Triangle means the
-// shader itself reports whether the bytes arrived -- no extra shader, and the expected image is
-// the one the smoke test above already pins.
+// shader itself reports whether the bytes arrived -- no extra shader, and an expected image that
+// is derivable by hand from the vertex list above.
 //
 // The deliberate part is the *first* call: a throwaway blob is written first so the vertices
 // land at a non-zero (256-aligned) offset. At offset 0 a dropped `+ offset` in either the
@@ -253,8 +171,8 @@ TEST_CASE("uniform ring feeds a draw from a non-zero offset", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*target)->readback(pixels.data(), pixels.size());
 
-    // Same probes as the smoke test: background stays clear, and each vertex's colour has to
-    // land on its own corner. Garbage vertices fail these long before they look plausible.
+    // The shared triangle probes: background stays clear, and each vertex's colour has to land
+    // on its own corner. Garbage vertices fail these long before they look plausible.
     const Pixel corner = pixelAt(pixels, 2, 2);
     INFO(describe("corner", 2, 2, corner));
     REQUIRE(corner.b == 0);
@@ -359,8 +277,8 @@ TEST_CASE("uniform ring keeps per-frame data across slot reuse", "[gpu]") {
         (*device)->waitIdle();
         (*target)->readback(pixels.data(), pixels.size());
 
-        // (32,40) is the interior probe the smoke test above establishes -- inside all three
-        // edges, so it carries the flat colour rather than an edge-antialiased blend.
+        // (32,40) is the shared interior probe -- inside all three edges, so it carries the
+        // flat colour rather than an edge-antialiased blend.
         const Pixel inside = pixelAt(pixels, 32, 40);
         INFO("frame " + std::to_string(frame) + " expected R=" + std::to_string(color[0]) +
              " G=" + std::to_string(color[1]) + " B=" + std::to_string(color[2]));
@@ -469,8 +387,8 @@ TEST_CASE("depth test rejects a coplanar second draw", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*target)->readback(pixels.data(), pixels.size());
 
-    // (32,40) is the interior probe the smoke test establishes. Red means the depth test
-    // rejected the second draw; green means depth did nothing at all.
+    // (32,40) is the shared interior probe. Red means the depth test rejected the second draw;
+    // green means depth did nothing at all.
     const Pixel inside = pixelAt(pixels, 32, 40);
     INFO(describe("inside", 32, 40, inside));
     REQUIRE(channelIs(inside.r, 1.0f));

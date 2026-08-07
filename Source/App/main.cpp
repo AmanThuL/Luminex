@@ -1,48 +1,33 @@
+#include "App/EditorShell.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "RHI/Metal4/Metal4Capture.h"
+#include "RHI/Metal4/Metal4ImGui.h"
 #include "RHI/RHI.h"
+#include "Render/Renderer.h"
 
 #include <SDL3/SDL.h>
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
 
-#include <array>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
-#include <memory>
-#include <optional>
-#include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace {
-
-// Mirrors the MSL struct Slang emits for Shaders/Triangle.slang (measured, Task 6):
-//   struct Vertex_natural_0 { packed_float2 position_0; packed_float3 color_1; };
-// packed_* means no inter-member padding and no 16-byte struct alignment, so the C++
-// mirror is five bare floats and the stride is 20, not 32.
-struct Vertex {
-    float px, py;
-    float r, g, b;
-};
-static_assert(sizeof(Vertex) == 20, "vertex stride must match the shader's packed_float2/3 layout");
-
-// The classic RGB triangle, clip space, counter-clockwise from the top.
-constexpr std::array<Vertex, 3> kTriangle = {{
-    {0.0f, 0.5f, 1.0f, 0.0f, 0.0f},
-    {-0.5f, -0.5f, 0.0f, 1.0f, 0.0f},
-    {0.5f, -0.5f, 0.0f, 0.0f, 1.0f},
-}};
-
-// Slot 0 of the MTL4 argument table, which is where Slang binds `gVertices` (Task 6 record).
-constexpr uint32_t kVertexBufferSlot = 0;
 
 // Logical points, not pixels — SDL scales this by the display's backing factor.
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
-constexpr float kClearColor[4] = {0.1f, 0.15f, 0.2f, 1.0f};
+// The UI pass's clear. Only ever visible where no ImGui window covers it -- the dockspace's own
+// gaps -- so it is a neutral dark rather than anything with an opinion. The *scene's* clear is
+// Renderer::clearColor, which the Inspector edits.
+constexpr float kUiClearColor[4] = {0.06f, 0.06f, 0.07f, 1.0f};
 
 // Relative to the process CWD, which for `xmake run App` is the directory holding the binary.
 constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
@@ -51,10 +36,17 @@ constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
 // makes this window app verifiable from a script; when it is set, the loop also drives the
 // resize path on its own at the two frame numbers below, because there is no way to synthesise
 // a real window resize without a user. Both are inert in a normal interactive run.
+//
+// M2 note: these drive SDL_SetWindowSize rather than Swapchain::resize, which is what M1 did.
+// Resizing the swapchain alone now desynchronises the frame -- ImGui's draw data is sized from
+// the *window*, so its scissor rects would exceed a smaller drawable and Metal validation
+// rejects that. Driving the real window instead makes the drill exercise the whole path the way
+// a user's resize does: SDL event -> swapchain resize -> new panel size -> debounced scene-target
+// resize. Points, not pixels, because that is what SDL_SetWindowSize takes.
 constexpr uint64_t kResizeDownFrame = 100;
 constexpr uint64_t kResizeUpFrame = 200;
-constexpr uint32_t kResizeDownWidth = 800;
-constexpr uint32_t kResizeDownHeight = 600;
+constexpr int kResizeDownWidth = 800;
+constexpr int kResizeDownHeight = 600;
 
 // Reads a frame number out of the environment. 0 -- which is also what an unset or malformed
 // variable yields -- means "disabled" for every caller.
@@ -73,75 +65,10 @@ uint64_t frameNumberFromEnv(const char* name) {
     return frames;
 }
 
-// Everything needed to draw the triangle. Created in one place, and recorded by one function
-// (recordTriangleFrame), so the windowed loop and the offscreen screenshot cannot drift apart in
-// what they draw -- the screenshot is only evidence about the window if both draw the same thing.
-struct TriangleAssets {
-    std::unique_ptr<lmx::rhi::Buffer> vertexBuffer;
-    std::unique_ptr<lmx::rhi::ShaderLibrary> library;
-    std::unique_ptr<lmx::rhi::GraphicsPipeline> pipeline;
-};
-
-// Returns nullopt after logging; every step here is fatal for both run modes.
-std::optional<TriangleAssets> createTriangleAssets(lmx::rhi::Device& device) {
-    TriangleAssets assets;
-
-    auto vertexBuffer = device.createBuffer(
-        {.size = sizeof(kTriangle), .label = "lmx.app.triangleVertices"}, kTriangle.data());
-    if (!vertexBuffer) {
-        LMX_LOG_ERROR("createBuffer failed: {}", vertexBuffer.error().message);
-        return std::nullopt;
-    }
-    LMX_LOG_INFO("vertex buffer: {} bytes ({} vertices, stride {})", (*vertexBuffer)->size(),
-                 kTriangle.size(), sizeof(Vertex));
-    assets.vertexBuffer = std::move(*vertexBuffer);
-
-    // Relative to the process CWD: `xmake run App` (and `xmake test`) launch the target with
-    // CWD == the target directory, which is exactly where the slang2metallib rule drops
-    // Shaders/. Verified on this machine -- CWD was build/macosx/arm64/debug. No
-    // executable-relative resolution needed, so none is added.
-    auto library = device.loadShaderLibrary("Shaders/Triangle");
-    if (!library) {
-        LMX_LOG_ERROR("loadShaderLibrary failed: {}", library.error().message);
-        return std::nullopt;
-    }
-    assets.library = std::move(*library);
-
-    // BGRA8Unorm for both run modes: it is the swapchain's format, and the screenshot's render
-    // target adopts it too, because a pipeline's color format must match the attachment it
-    // renders into.
-    auto pipeline = device.createGraphicsPipeline({.library = assets.library.get(),
-                                                   .vertexEntry = "vertexMain",
-                                                   .fragmentEntry = "fragmentMain",
-                                                   .colorFormat = lmx::rhi::Format::BGRA8Unorm,
-                                                   .label = "lmx.app.trianglePipeline"});
-    if (!pipeline) {
-        LMX_LOG_ERROR("createGraphicsPipeline failed: {}", pipeline.error().message);
-        return std::nullopt;
-    }
-    LMX_LOG_INFO("graphics pipeline: vertexMain/fragmentMain -> BGRA8Unorm");
-    assets.pipeline = std::move(*pipeline);
-
-    return assets;
-}
-
-// The whole of M1's rendering: clear to steel blue, draw three vertices. Recorded into an already
-// open frame; the caller owns beginFrame/endFrame.
-void recordTriangleFrame(lmx::rhi::CommandList& commands, lmx::rhi::Texture& target,
-                         const TriangleAssets& assets) {
-    commands.beginRenderPass(
-        {.colorTarget = &target,
-         .clearColor = {kClearColor[0], kClearColor[1], kClearColor[2], kClearColor[3]},
-         .clear = true});
-    commands.bindPipeline(*assets.pipeline);
-    commands.bindVertexBuffer(kVertexBufferSlot, *assets.vertexBuffer);
-    commands.draw(static_cast<uint32_t>(kTriangle.size()));
-    commands.endRenderPass();
-}
-
-// Everything RHI-owned lives here so that returning destroys it in reverse creation order --
-// swapchain first, device last -- before main tears down the SDL window the swapchain's layer
-// belongs to.
+// Everything RHI-owned and everything ImGui-owned lives here so that returning destroys it in
+// reverse creation order -- editor shell first (it drains the device through imguiShutdown, so
+// the device must still exist), then swapchain, renderer, meshes, device -- before main tears
+// down the SDL window the swapchain's layer belongs to.
 int run(SDL_Window* window, void* metalLayer) {
     auto device = lmx::rhi::createDevice();
     if (!device) {
@@ -150,8 +77,9 @@ int run(SDL_Window* window, void* metalLayer) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    auto assets = createTriangleAssets(**device);
-    if (!assets) {
+    auto meshes = lmx::app::createSceneMeshes(**device);
+    if (!meshes) {
+        LMX_LOG_ERROR("createSceneMeshes failed: {}", meshes.error().message);
         return 1;
     }
 
@@ -174,6 +102,23 @@ int run(SDL_Window* window, void* metalLayer) {
     }
     LMX_LOG_INFO("swapchain: {}x{} pixels BGRA8Unorm", pixelWidth, pixelHeight);
 
+    // Started at the window's size only because the Viewport panel's size is not known until it
+    // has been laid out once; the shell's debounce corrects it within the first few frames.
+    auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
+                                                  static_cast<uint32_t>(pixelHeight));
+    if (!renderer) {
+        LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
+        return 1;
+    }
+
+    // Declared last so it is destroyed first: ~EditorShell tears the ImGui backends down, and the
+    // renderer glue drains this device while doing it.
+    auto shell = lmx::app::EditorShell::create(
+        window, **device, lmx::app::makeDefaultScene(meshes->cube, meshes->plane));
+    if (!shell) {
+        return 1;
+    }
+
     const uint64_t maxFrames = frameNumberFromEnv("LMX_MAX_FRAMES");
     if (maxFrames > 0) {
         LMX_LOG_INFO("LMX_MAX_FRAMES={}: exiting after that many frames", maxFrames);
@@ -194,10 +139,14 @@ int run(SDL_Window* window, void* metalLayer) {
     bool running = true;
     // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
     bool captureRequested = false;
+    uint64_t previousTicksNs = SDL_GetTicksNS();
 
     while (running) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
+            // ImGui sees every event first and unconditionally: it is the thing that decides who
+            // owns the mouse and the keyboard, and it cannot decide from events it never saw.
+            ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
             case SDL_EVENT_QUIT:
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
@@ -205,7 +154,10 @@ int run(SDL_Window* window, void* metalLayer) {
                 break;
             case SDL_EVENT_KEY_DOWN:
                 // Ignoring repeats: holding the key would otherwise queue a capture per frame.
-                if (event.key.key == SDLK_C && !event.key.repeat) {
+                // WantCaptureKeyboard holds last frame's answer, which is the documented way to
+                // use it -- without it, typing 'c' into an Inspector field would start a capture.
+                if (event.key.key == SDLK_C && !event.key.repeat &&
+                    !ImGui::GetIO().WantCaptureKeyboard) {
                     captureRequested = true;
                 }
                 break;
@@ -213,9 +165,11 @@ int run(SDL_Window* window, void* metalLayer) {
                 // data1/data2 are the new size in pixels. A minimised window reports 0 in at
                 // least one dimension, which is not a size any swapchain can adopt.
                 if (event.window.data1 > 0 && event.window.data2 > 0) {
+                    pixelWidth = event.window.data1;
+                    pixelHeight = event.window.data2;
                     (*swapchain)
-                        ->resize(static_cast<uint32_t>(event.window.data1),
-                                 static_cast<uint32_t>(event.window.data2));
+                        ->resize(static_cast<uint32_t>(pixelWidth),
+                                 static_cast<uint32_t>(pixelHeight));
                 }
                 break;
             default:
@@ -230,16 +184,29 @@ int run(SDL_Window* window, void* metalLayer) {
 
         if (maxFrames > 0) {
             if (frameIndex == kResizeDownFrame) {
-                (*swapchain)->resize(kResizeDownWidth, kResizeDownHeight);
+                SDL_SetWindowSize(window, kResizeDownWidth, kResizeDownHeight);
             } else if (frameIndex == kResizeUpFrame) {
-                (*swapchain)
-                    ->resize(static_cast<uint32_t>(pixelWidth), static_cast<uint32_t>(pixelHeight));
+                SDL_SetWindowSize(window, kWindowWidth, kWindowHeight);
             }
         }
         if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
             captureRequested = true;
         }
 
+        const uint64_t nowNs = SDL_GetTicksNS();
+        const float deltaSeconds = static_cast<float>(nowNs - previousTicksNs) * 1e-9f;
+        previousTicksNs = nowNs;
+        const float timeSeconds = static_cast<float>(nowNs) * 1e-9f;
+
+        // Before the ImGui frame opens, for two reasons: it drains the GPU and frees the old
+        // scene targets, which the Viewport image below is about to name; and it must not run
+        // between an imguiNewFrame() and its imguiRender().
+        shell->applyPendingViewportResize(**device, **renderer);
+
+        // The acquire comes before *any* ImGui call this frame, and that ordering is the whole
+        // answer to the skip-on-failure path: an imguiNewFrame() with no matching imguiRender()
+        // leaves ImGui mid-frame, and the next ImGui::NewFrame() would abort on it. With the
+        // acquire first, a skipped frame has simply not started an ImGui frame to orphan.
         auto target = (*swapchain)->acquireNextTexture();
         if (!target) {
             // Expected under contention, not an error: every drawable is still in flight or the
@@ -262,8 +229,31 @@ int run(SDL_Window* window, void* metalLayer) {
             capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, kCapturePath);
         }
 
+        // Metal4ImGui.h's contract: the renderer's NewFrame runs before Device::beginFrame(),
+        // because Dear ImGui wants it before ImGui::NewFrame() and therefore before the UI code
+        // that decides what this frame draws at all.
+        lmx::rhi::metal4::imguiNewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        shell->buildUI(**renderer, deltaSeconds);
+        ImGui::Render();
+
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
-        recordTriangleFrame(commands, **target, *assets);
+        // barrierForSampling defaults to true, and is wanted here: the UI pass below samples this
+        // target through ImGui's own backend.
+        (*renderer)->render(commands, shell->camera(), shell->drawItems(timeSeconds));
+
+        // The UI pass: the swapchain drawable, single-sampled, no depth attachment -- ImGui's
+        // pipeline was built against exactly that description at imguiInit(), and a mismatch is
+        // a Metal validation failure rather than anything this code could catch.
+        commands.beginRenderPass(
+            {.colorTarget = *target,
+             .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]},
+             .clear = true});
+        // Last in the pass: imguiRender hands the encoder to ImGui and ImGui does not put it
+        // back -- pipeline, argument table and scissor all belong to it afterwards.
+        lmx::rhi::metal4::imguiRender(commands);
+        commands.endRenderPass();
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 
@@ -279,9 +269,9 @@ int run(SDL_Window* window, void* metalLayer) {
         }
     }
 
-    // Not load-bearing -- the swapchain and device destructors each drain on their own -- but
-    // it keeps the teardown readable: the loop is over and the GPU is idle before anything
-    // starts being released. The redundant drain costs one already-signalled event.
+    // Not load-bearing -- the swapchain and device destructors each drain on their own, and
+    // imguiShutdown drains before freeing ImGui's buffers -- but it keeps the teardown readable:
+    // the loop is over and the GPU is idle before anything starts being released.
     (*device)->waitIdle();
 
     LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,

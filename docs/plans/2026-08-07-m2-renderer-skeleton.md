@@ -234,6 +234,50 @@ So the flag is a *parameter*, default `true` (the App path), documented as "fals
 samples the target this frame". Test (c) exercises the real path with `true` plus a
 `FullscreenSample` second pass.
 
+**A5 (2026-08-07, Task 10):** Three records from replacing the triangle app with the editor shell.
+
+**(a) `Shaders/Triangle.slang` SURVIVES the triangle's retirement, as a test oracle.** Spec §6
+("`Triangle.slang` retires with the triangle") and this task's step 4 ("delete
+`Shaders/Triangle.slang`") are both superseded here. Three GPU cases use it as their *oracle* —
+`uniform ring feeds a draw from a non-zero offset`, `uniform ring keeps per-frame data across slot
+reuse`, `depth test rejects a coplanar second draw` — and an oracle is exactly what it is: a shader
+whose expected image is derivable by hand from a three-vertex list, which is what makes a dropped
+ring offset or a dead depth test surface as a *colour* rather than as a slightly different lambert
+term. `Shaders/Mesh.slang` cannot do that job. Retiring the shader would mean writing a second one
+just like it for the tests, so it stays and the reason is now stated at the top of
+`Tests/GpuSmokeTests.cpp`. What *did* go: the M1 GPU case `offscreen triangle renders expected
+pixels` (its coverage is the Renderer cases now) and every `TriangleAssets` remnant in the App.
+Spec §6's "retires" line is folded at Task 13.
+
+**(b) `imguiNewFrame()` runs after the drawable acquire, not before it.** The task brief's frame
+order puts the ImGui new-frame calls after the event pump and the acquire's skip-on-failure
+`continue` — and that ordering is load-bearing, not incidental. Metal4ImGui.h requires
+`imguiNewFrame()` before `Device::beginFrame()`, and the acquire also happens before `beginFrame()`,
+so `acquire → imguiNewFrame → beginFrame` satisfies the glue and leaves the skip path with no ImGui
+frame to orphan. The alternative — opening the ImGui frame first — breaks twice on a skipped frame:
+`ImGui::NewFrame()` aborts on the next frame because the previous one was never rendered, and the
+glue's own NewFrame/Render pairing sentinel trips on the stale frame slot. Neither is a hypothetical
+the code has to guard; the ordering removes both.
+
+The **debounced viewport resize moved with it**, to the top of the frame — before `imguiNewFrame()`
+rather than between `buildUI()` and `ImGui::Render()` as step 3 below has it. Same class of reason,
+different mechanism: the resize drains the GPU and *frees the old scene targets*, and the Viewport
+image records `imguiTextureID(renderer.colorTarget())` into ImGui's draw list. Resizing after that
+recording would leave `ImGui::Render()` handing the backend an identifier for a texture that no
+longer exists — a use-after-free with no assert anywhere to catch it. Running one frame earlier
+costs nothing (the size it acts on was measured last frame either way) and the debounce means the
+image the user sees is one frame stale only at the moment a resize lands.
+
+**(c) `LMX_MAX_FRAMES`'s self-resize drills now drive `SDL_SetWindowSize`, not
+`Swapchain::resize`.** M1 resized the swapchain alone, which was sound when the only pass drew three
+vertices with no viewport or scissor. With ImGui in the frame it is not: ImGui's draw data is sized
+from the *window*, so a smaller drawable under an unchanged window means scissor rects that exceed
+the render target, which Metal validation rejects. Driving the real window makes the drill exercise
+the whole path a user's resize does — SDL event → swapchain resize → new panel size → debounced
+scene-target resize — and it is consistent by construction, because the event pump precedes
+`ImGui_ImplSDL3_NewFrame()` in the same frame. Verified: `MTL_DEBUG_LAYER=1 LMX_MAX_FRAMES=600` runs
+both drills with zero validation diagnostics.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
@@ -1314,16 +1358,16 @@ std::vector<SceneObject> makeDefaultScene(const lmx::render::Mesh& cube,
 // Default camera: position (0, 2.5, 7), yaw 0, pitch −0.25 rad — frames the whole scene.
 ```
 
-- [ ] **Step 1: Screenshot split** — move `writeBmp`/`appendLittleEndian`/`logPixel`/`runScreenshot` from `main.cpp` into `Screenshot.{h,cpp}`; `runScreenshot` now builds device → meshes → `makeDefaultScene` → `Renderer::create(device, 1280, 720, /*cpuReadback=*/true)` → one frame at `timeSeconds = 0` → readback → BMP. Probes: corner (0,0) == Renderer clear color; center — gold cube. No ImGui on this path. Commit separately once green (`xmake run App -- --screenshot /tmp/m2.bmp` + open the BMP and LOOK at it: plane, three lit cubes, gold centered).
+- [x] **Step 1: Screenshot split** — move `writeBmp`/`appendLittleEndian`/`logPixel`/`runScreenshot` from `main.cpp` into `Screenshot.{h,cpp}`; `runScreenshot` now builds device → meshes → `makeDefaultScene` → `Renderer::create(device, 1280, 720, /*cpuReadback=*/true)` → one frame at `timeSeconds = 0` → readback → BMP. Probes: corner (0,0) == Renderer clear color; center — gold cube. No ImGui on this path. Commit separately once green (`xmake run App -- --screenshot /tmp/m2.bmp` + open the BMP and LOOK at it: plane, three lit cubes, gold centered).
 
-- [ ] **Step 2: EditorShell** — owns: ImGui context init (`ImGuiConfigFlags_DockingEnable`), `ImGui_ImplSDL3_InitForMetal(window)` + `metal4::imguiInit(device)`; scene vector + camera + viewport state (`m_viewportSize`, `m_viewportFocused`); per-frame `buildUI()`:
+- [x] **Step 2: EditorShell** — owns: ImGui context init (`ImGuiConfigFlags_DockingEnable`), `ImGui_ImplSDL3_InitForMetal(window)` + `metal4::imguiInit(device)`; scene vector + camera + viewport state (`m_viewportSize`, `m_viewportFocused`); per-frame `buildUI()`:
   - Fullscreen dockspace (`ImGui::DockSpaceOverViewport`). First run only (no imgui.ini): DockBuilder splits right 22% → **Inspector**, center → **Viewport** (`imgui_internal.h` is required for DockBuilder — include it in EditorShell.cpp only).
   - **Viewport window**: no padding; `ImGui::Image(metal4::imguiTextureID(renderer.colorTarget()), contentSize)`; records `contentSize` + focus/hover for input routing.
   - **Inspector window**, three collapsing headers: *Stats* (`io.Framerate`, `1000/io.Framerate` ms, `ImGui::PlotLines` over the last 120 frame times); *Camera* (`DragFloat3` position, `DragFloat` yaw/pitch in degrees, fovY degrees 30–110, moveSpeed 0.5–50, `ColorEdit4` on renderer clearColor); *Objects* (per SceneObject: `DragFloat3` position, `DragFloat3` euler, `DragFloat` scale 0.1–10, `ColorEdit4` baseColor, `Checkbox` rotating).
   - Input (only when viewport hovered): RMB press → `SDL_SetWindowRelativeMouseMode(window, true)`, release → false; while held: relative mouse deltas × 0.0025 rad/px → `camera.look(dx, −dy)`, `SDL_GetKeyboardState` WASD → forward/right, Q/E → down/up, scaled by `moveSpeed × dt` → `camera.move(...)`. When ImGui wants the keyboard (`io.WantCaptureKeyboard` and RMB not held), skip camera keys.
-- [ ] **Step 3: main.cpp frame loop rewrite** — per frame: SDL events → `ImGui_ImplSDL3_ProcessEvent` first, then quit/resize/'c' handling as in M1 (`main.cpp:337-419` structure preserved, including skip-on-acquire-failure, capture window, `LMX_MAX_FRAMES` self-resize drills); then `metal4::imguiNewFrame(); ImGui_ImplSDL3_NewFrame(); ImGui::NewFrame();` → `editorShell.buildUI(...)` → **debounced viewport resize**: if `m_viewportSize` ≠ renderer size and stable for 10 consecutive frames (or RMB-drag on a dock splitter ended), `device.waitIdle(); renderer.resize(w, h);` (during the drag the Image just stretches — document why: no deferred-release machinery for a dock drag, spec §2) → `ImGui::Render()` → `beginFrame` → `renderer.render(commands, camera, drawItems)` (drawItems built from scene at `timeSeconds` via `SDL_GetTicks()`) → UI pass: `beginRenderPass` on the swapchain texture (clear, dark `{0.06, 0.06, 0.07, 1}`, **no depth**) → `metal4::imguiRender(commands)` → `endRenderPass` → `endFrame(swapchain)`.
-- [ ] **Step 4: Retire the triangle** — delete `Shaders/Triangle.slang`, the M1 triangle GPU case in `Tests/GpuSmokeTests.cpp` (keep the file's helpers — Task 8's cases use them), and every `TriangleAssets` remnant in App.
-- [ ] **Step 5: Full verify + commit**
+- [x] **Step 3: main.cpp frame loop rewrite** — per frame: SDL events → `ImGui_ImplSDL3_ProcessEvent` first, then quit/resize/'c' handling as in M1 (`main.cpp:337-419` structure preserved, including skip-on-acquire-failure, capture window, `LMX_MAX_FRAMES` self-resize drills); then `metal4::imguiNewFrame(); ImGui_ImplSDL3_NewFrame(); ImGui::NewFrame();` → `editorShell.buildUI(...)` → **debounced viewport resize**: if `m_viewportSize` ≠ renderer size and stable for 10 consecutive frames (or RMB-drag on a dock splitter ended), `device.waitIdle(); renderer.resize(w, h);` (during the drag the Image just stretches — document why: no deferred-release machinery for a dock drag, spec §2) → `ImGui::Render()` → `beginFrame` → `renderer.render(commands, camera, drawItems)` (drawItems built from scene at `timeSeconds` via `SDL_GetTicks()`) → UI pass: `beginRenderPass` on the swapchain texture (clear, dark `{0.06, 0.06, 0.07, 1}`, **no depth**) → `metal4::imguiRender(commands)` → `endRenderPass` → `endFrame(swapchain)`.
+- [x] **Step 4: Retire the triangle** — ~~delete `Shaders/Triangle.slang`~~ (**superseded by Amendment A5**: it stays as the uniform-ring/depth cases' oracle), delete the M1 triangle GPU case in `Tests/GpuSmokeTests.cpp` (keep the file's helpers — Task 8's cases use them), and every `TriangleAssets` remnant in App.
+- [x] **Step 5: Full verify + commit**
 
 ```bash
 xmake format && xmake -y && xmake test
