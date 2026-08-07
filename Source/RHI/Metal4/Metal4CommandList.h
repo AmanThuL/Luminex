@@ -23,17 +23,21 @@ namespace lmx::rhi::metal4 {
 // open" from "a frame is open" at all -- without it a stale pointer would keep every check
 // passing while the writes landed in a slot the GPU was still reading.
 //
-// Encoder-scoped calls (bindPipeline/bindVertexBuffer/setUniforms/draw/drawIndexed) assert
-// rather than return errors: calling them outside a pass is a caller sequencing bug, and the RHI
-// CommandList methods return void. They also hold no autorelease pool of their own -- none of
-// them invokes an autoreleasing selector, so a per-call pool bought nothing and cost a
+// Encoder-scoped calls (bindPipeline/bindVertexBuffer/bindTexture/setUniforms/draw/drawIndexed)
+// assert rather than return errors: calling them outside a pass is a caller sequencing bug, and
+// the RHI CommandList methods return void. They also hold no autorelease pool of their own -- none
+// of them invokes an autoreleasing selector, so a per-call pool bought nothing and cost a
 // create/drain on what becomes the hottest path in the backend. Verified against the vendored
 // headers rather than assumed: bindPipeline/bindVertexBuffer/draw are direct setters and draws
 // on an already-retained encoder; setUniforms' whole call path -- MTL::Buffer::contents()/
 // length()/gpuAddress() and MTL4::ArgumentTable::setAddress() -- is scalar- and void-returning
-// sendMessage; and drawIndexed adds only MTL::Buffer::length()/gpuAddress() (scalar sends) plus
-// drawIndexedPrimitives (a void send) on top of a plain C++ Metal4Buffer::handle() getter. So no
-// path produces a +0 object.
+// sendMessage; drawIndexed adds only MTL::Buffer::length()/gpuAddress() (scalar sends) plus
+// drawIndexedPrimitives (a void send) on top of a plain C++ Metal4Buffer::handle() getter; and
+// bindTexture is MTL::Texture::gpuResourceID() (a scalar send, MTLTexture.hpp:241) into
+// MTL4::ArgumentTable::setTexture() (a void send, MTL4ArgumentTable.hpp:80). So no path produces
+// a +0 object. textureBarrier records a flag and touches Metal not at all; the barrier it defers
+// is MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside
+// beginRenderPass's existing pool.
 //
 // Exactly one pool is load-bearing, in beginRenderPass: renderCommandEncoder() is the only
 // selector here that returns +0. endRenderPass keeps a pool too (symmetry, and cheap insurance
@@ -50,10 +54,12 @@ public:
     void beginRenderPass(const RenderPassDesc& desc) override;
     void bindPipeline(GraphicsPipeline& pipeline) override;
     void bindVertexBuffer(uint32_t slot, Buffer& buffer) override;
+    void bindTexture(uint32_t slot, Texture& texture) override;
     void setUniforms(uint32_t slot, const void* data, uint64_t size) override;
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
     void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex) override;
     void endRenderPass() override;
+    void textureBarrier(Texture& texture, TextureUse from, TextureUse to) override;
 
     // beginFrame's half of the per-frame rotation: point this command list at the frame's
     // argument table and uniform ring. `uniformOffset` is the device's bump cursor for that
@@ -64,6 +70,7 @@ public:
 
     // endFrame's half: forget the frame's table and ring once its work is committed, so that
     // encoding after endFrame fails our assert rather than quietly writing a slot the GPU owns.
+    // Also where an unconsumed textureBarrier is caught -- see the .cpp.
     void endFrameReset();
 
     // True between beginRenderPass and endRenderPass. Metal4Device checks it so that ending a
@@ -76,6 +83,9 @@ private:
     MTL::Buffer* m_uniformRing = nullptr;
     uint64_t* m_uniformOffset = nullptr;
     NS::SharedPtr<MTL4::RenderCommandEncoder> m_encoder;
+    // Set by textureBarrier (which runs between passes, where there is no encoder to record on)
+    // and consumed by the next beginRenderPass. See textureBarrier's note in the .cpp.
+    bool m_pendingBarrier = false;
 };
 
 } // namespace lmx::rhi::metal4

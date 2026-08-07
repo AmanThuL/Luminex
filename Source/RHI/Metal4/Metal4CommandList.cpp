@@ -76,6 +76,31 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     LMX_ASSERT(m_encoder, "beginRenderPass: failed to create a render command encoder");
     m_encoder->setLabel(makeString("lmx.encoder.render").get());
 
+    // A textureBarrier recorded since the last pass lands here, as the first thing this encoder
+    // does: Metal 4 barriers are encoder operations, but the RHI call that asks for one sits
+    // *between* passes, when no encoder exists. So it is recorded as pending and encoded
+    // consumer-side, on the pass that reads the data (Apple, "Synchronizing passes with consumer
+    // barriers"). Consumer rather than producer form because the reader is the pass we can still
+    // reach -- the producing encoder was already ended when textureBarrier was called.
+    if (m_pendingBarrier) {
+        // Attachment writes happen in the fragment stage (MTL::Stages has no render-target
+        // stage), so the RT-write -> fragment-read edge is fragment -> fragment.
+        //
+        // barrierAfterQueueStages, not barrierAfterStages: afterQueueStages names stages of
+        // *prior* encoders and beforeStages names work in *this* one, which is exactly the
+        // direction we need (the producer-side call would have to be encoded in the pass that
+        // wrote, and that pass is gone). Its documented restriction -- "Don't use this method for
+        // synchronizing resource access within the same pass" -- is satisfied by textureBarrier's
+        // between-passes assert. Position: Apple asks for the barrier "as close to the command
+        // that consumes the resource as possible"; the RHI cannot know which draw that is, so it
+        // goes first, which is the conservative end of the range (beforeStages applies to
+        // everything encoded after it here) and is what makes it correct for every draw in the
+        // pass.
+        m_encoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageFragment,
+                                           MTL4::VisibilityOptionDevice);
+        m_pendingBarrier = false;
+    }
+
     // The default viewport is derived from the attachment, so this is redundant *today*; it is
     // set explicitly because the derived value silently stops being the right one the moment a
     // pass renders into a sub-region of its target, and that is a bug that looks like a shader
@@ -119,6 +144,16 @@ void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
     // buffer was created (Metal4Buffer's ResidencyRegistration). The table itself was attached
     // to the encoder by beginRenderPass.
     m_argumentTable->setAddress(static_cast<Metal4Buffer&>(buffer).handle()->gpuAddress(), slot);
+}
+
+void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture) {
+    LMX_ASSERT(m_encoder, "bindTexture must be called between beginRenderPass and endRenderPass");
+    // Textures bind by MTL::ResourceID rather than by GPU address (the buffer path above);
+    // residency is again what keeps the allocation alive, arranged at creation. `slot` indexes
+    // the argument table's *texture* bindings, a separate array from its addresses -- so this
+    // does not collide with bindVertexBuffer/setUniforms on the same number.
+    m_argumentTable->setTexture(static_cast<Metal4Texture&>(texture).handle()->gpuResourceID(),
+                                slot);
 }
 
 void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size) {
@@ -178,6 +213,17 @@ void Metal4CommandList::endRenderPass() {
     m_encoder.reset();
 }
 
+void Metal4CommandList::textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
+    (void)texture; // stage-scoped in Metal 4; the parameter documents intent and feeds the
+                   // future Vulkan backend's image transition.
+    LMX_ASSERT(!m_encoder, "textureBarrier must be called between render passes, not inside one");
+    LMX_ASSERT(from == TextureUse::RenderTarget && to == TextureUse::ShaderRead,
+               "textureBarrier: only RenderTarget -> ShaderRead is implemented (grown per demand)");
+    // Nothing is encoded here -- there is no encoder to encode onto between passes. The next
+    // beginRenderPass emits the barrier as its first command; see the block there.
+    m_pendingBarrier = true;
+}
+
 void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::Buffer* uniformRing,
                                       uint64_t* uniformOffset) {
     // An open encoder here means the previous frame never ended its pass, and swapping the table
@@ -194,12 +240,21 @@ void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::B
 }
 
 void Metal4CommandList::endFrameReset() {
+    // A barrier still pending at commit is a dropped dependency edge: the caller asked for one
+    // and no later pass ever consumed it, so the read it was meant to order either never happened
+    // or happened unsynchronised. Silently clearing it would turn that into an intermittent
+    // wrong-pixels bug, so it is fatal here rather than swept up. Checked at *end* of frame, not
+    // at the next resetForFrame, so the abort names the frame that dropped it.
+    LMX_ASSERT(!m_pendingBarrier, "textureBarrier recorded but no later pass consumed it");
     // The device already asserted the pass was closed before it committed, so there is nothing
     // to tear down here -- only per-frame pointers to forget. Deliberately unconditional: this
     // is the state that makes "used outside a frame" detectable at all.
     m_argumentTable = nullptr;
     m_uniformRing = nullptr;
     m_uniformOffset = nullptr;
+    // Redundant given the assert above (which never compiles out), and written anyway so that
+    // "no per-frame state survives endFrameReset" holds by construction rather than by argument.
+    m_pendingBarrier = false;
 }
 
 } // namespace lmx::rhi::metal4

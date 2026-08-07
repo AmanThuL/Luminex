@@ -69,6 +69,10 @@ Each addition is demanded by a concrete M2 feature:
 - `CommandList::textureBarrier(Texture&, TextureUse from, TextureUse to)` with
   `enum class TextureUse { RenderTarget, ShaderRead }`. The "explicit barriers" v1 omission
   ends here (multi-pass now exists); the RHI.h omissions comment updates accordingly.
+- `CommandList::bindTexture(uint32_t slot, Texture& texture)` — binds a texture for shader reads
+  at an argument-table **texture** slot (its own index space; texture slot 0 and buffer slot 0
+  coexist). Valid only inside a render pass; the texture must have been created with
+  `sampled = true`. See the amendment below.
 - `RenderPassDesc` += `Texture* depthTarget = nullptr`, `float clearDepth = 1.0f`.
 - `GraphicsPipelineDesc` += `Format depthFormat` (`Unknown` = no depth attachment),
   `bool depthTestEnable`, `bool depthWriteEnable`.
@@ -81,6 +85,15 @@ Each addition is demanded by a concrete M2 feature:
 ImGui's native needs (`MTLTexture` behind `ImTextureID`, the render encoder) do not appear in
 `RHI.h` — they live in backend-internal `Metal4ImGui.h` (§5), following the `Metal4Capture`
 precedent.
+
+**Amendment (2026-08-07, Task 6): `bindTexture` added.** The list above shipped without it, on the
+assumption that the only M2 consumer of a sampled texture was ImGui's Viewport image — and ImGui
+samples through its own Metal 4 backend, not through `RHI.h`. That assumption leaves §7's
+"barrier path — render → barrier → sample → readback" GPU test **inexpressible through this RHI**:
+there is no way to bind the scene render target for a shader read, so the one edge `textureBarrier`
+implements would ship with no executable proof. `bindTexture` is the argument-table texture half
+that closes it, and is the same call M3's shadow-map sampling needs. Added per the same rule as the
+rest of this section — one concrete feature demands it — rather than as speculative surface.
 
 ## 5. Metal 4 backend changes
 

@@ -7,15 +7,16 @@
 
 namespace lmx::rhi {
 
-// Deliberate M1 omissions -- deferred until a real feature demands them, not designed against
+// Deliberate omissions -- deferred until a real feature demands them, not designed against
 // in advance (ADR 0004, "thin, explicit, honest"; spec §4):
-//   - Explicit barriers (M1 renders a single pass; nothing to track yet)
 //   - Compute
 //   - Multi-queue
 //   - Dynamic residency (everything lives in one MTLResidencySet)
 //   - Queries
 //   - Ray tracing
-// Each grows in once a milestone actually needs it.
+// Each grows in once a milestone actually needs it. "Explicit barriers" sat on this list through
+// M1, which rendered a single pass and so had nothing to order; M2 renders scene-then-UI and grew
+// exactly the one edge that demands -- CommandList::textureBarrier -- and no barrier system.
 
 enum class ErrorCode {
     DeviceUnsupported,
@@ -63,6 +64,10 @@ public:
     virtual void readback(void* out, uint64_t outSize) = 0;
 };
 
+// How a texture is being used at a barrier boundary. Grows per real feature demand, exactly
+// like the rest of this header (ADR 0004).
+enum class TextureUse { RenderTarget, ShaderRead };
+
 class ShaderLibrary {
 public:
     virtual ~ShaderLibrary() = default;
@@ -105,6 +110,10 @@ public:
     virtual void beginRenderPass(const RenderPassDesc& desc) = 0;
     virtual void bindPipeline(GraphicsPipeline& pipeline) = 0;
     virtual void bindVertexBuffer(uint32_t slot, Buffer& buffer) = 0; // argument-table slot
+    // Binds a texture for shader reads at the given argument-table texture slot. Texture slots
+    // are their own index space -- slot 0 here and buffer slot 0 coexist. Valid only inside a
+    // render pass; the texture must have been created with sampled = true.
+    virtual void bindTexture(uint32_t slot, Texture& texture) = 0;
     // Copies `size` bytes into the frame's transient uniform ring and binds the copy's GPU
     // address at the given argument-table slot for subsequent draws. The data is captured at
     // call time -- the caller may reuse or free its buffer immediately. Valid only inside a
@@ -117,6 +126,11 @@ public:
     // separate index-buffer bind state. firstIndex is an element offset into the buffer.
     virtual void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex = 0) = 0;
     virtual void endRenderPass() = 0;
+    // Makes writes of `from` visible to reads of `to` for subsequent passes. Valid only
+    // *between* render passes on this frame's command list. M2 supports the one edge a real
+    // feature demands -- RenderTarget -> ShaderRead (scene RT sampled by the UI pass); any
+    // other combination is a contract violation until a feature grows it.
+    virtual void textureBarrier(Texture& texture, TextureUse from, TextureUse to) = 0;
 };
 
 struct SwapchainDesc {

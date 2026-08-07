@@ -136,6 +136,42 @@ colour, capture is last-write-wins and the fix is a small per-frame argument-tab
 `setUniforms` keeps its signature — so the change is contained in `Metal4Device`/`Metal4CommandList`.
 The pool is deliberately **not** built speculatively.
 
+**A3 (2026-08-07, Task 6):** Barrier form — **`barrierAfterQueueStages` holds**; the
+`barrierAfterStages` fallback was not needed. `textureBarrier`'s `RenderTarget → ShaderRead` edge
+is encoded as
+`m_encoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageFragment, MTL4::VisibilityOptionDevice)`
+as the first command of the *next* `beginRenderPass`'s encoder.
+
+Legality was checked two ways. **Documented:** the method is declared on `MTL4CommandEncoder`
+itself (metal-cpp `MTL4CommandEncoder.hpp:52`; `MTL4::RenderCommandEncoder` derives from
+`MTL4::CommandEncoder`), so it is available to *every* Metal 4 encoder type — there is no
+render-encoder carve-out. Apple's reference for it says (verbatim): "Encode a barrier that
+guarantees that any subsequent work you encode in the current command encoder that corresponds to
+the `beforeStages` stages doesn't proceed until Metal completes all work prior to the current
+command encoder corresponding to the `afterQueueStages` stages, completes." and "Metal can reorder
+the exact point where it applies the barrier, so encode the barrier as close to the command that
+consumes the resource as possible. **Don't use this method for synchronizing resource access within
+the same pass.**" Our single restriction — not within one pass — is enforced by `textureBarrier`'s
+`LMX_ASSERT(!m_encoder, ...)`. Apple's *Synchronizing passes with consumer barriers* confirms the
+shape we use: the barrier goes in the **consuming** encoder and blocks its `beforeStages` until the
+prior passes' `afterQueueStages` finish. Consumer form (not the producer `barrierAfterStages`) is
+forced by where the RHI call sits: by the time `textureBarrier` is called, the producing encoder
+has already been ended, so only the reader is still reachable. **Empirical:**
+`MTL_DEBUG_LAYER=1 xmake test` is clean with the barrier encoded at that position.
+
+Two deliberate deviations from the task brief, both recorded here rather than left implicit:
+*(a)* the barrier goes **first** in the encoder, which is earlier than Apple's "as close to the
+consuming command as possible" — the RHI cannot know which draw consumes, and first-in-encoder is
+the conservative end of that range (`beforeStages` covers everything encoded after it), so it is
+correct for every draw in the pass. *(b)* the "pending barrier was never consumed" assert lives in
+`endFrameReset`, not `resetForFrame`: `endFrameReset` did not exist when the brief was written, and
+checking at end-of-frame aborts inside the frame that dropped the edge instead of one frame later.
+
+**Stage choice:** `MTL::Stages` has no render-target stage (`StageVertex/Fragment/Tile/Object/
+Mesh/ResourceState/Dispatch/Blit/AccelerationStructure/MachineLearning/All`), and Apple documents
+`fragment` as "all fragment shader stage work in a render pass" — colour-attachment writes are part
+of it. So the RT-write → shader-read edge is `fragment → fragment`.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
