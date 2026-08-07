@@ -24,55 +24,70 @@
 
 ## Amendments
 
-**A1 (2026-08-07, Task 0):** Dear ImGui docking wired via **Route B** — xrepo's `imgui` package
-has no metal backend config (confirmed: `imgui_impl_metal*` is never compiled by the package), so
-core + both backends are vendored wholesale from source, exactly like the metal-cpp/slang pins,
-into a new `ImGui` static target (`xmake.lua`) that `RHI` and `App` both depend on. Pinned tag
-`v1.92.7-docking` (commit `b1bcb12a624af7509894c8e77dd47416997777fa`; the tag itself is an
-annotated-tag object — `git clone --branch` prints a benign "is not a commit!" warning but still
-checks out the right commit, observed both in the scratch probe and via `xmake setup`).
+**A1 (2026-08-07, Task 0; revised same day):** Dear ImGui docking wired via **Route B** — xrepo's
+`imgui` package has no metal backend config (confirmed: `imgui_impl_metal*` is never compiled by
+the package), so core + both backends are vendored wholesale from source, exactly like the
+metal-cpp/slang pins, into a new `ImGui` static target (`xmake.lua`) that `RHI` and `App` both
+depend on.
+
+**Revision note:** the first pass of this amendment pinned tag `v1.92.7-docking` and reported "no
+Metal 4 path exists" in this imgui version. That claim is **wrong and superseded** — the docking
+*branch* (not that tag) gained a native `imgui_impl_metal4.{h,mm}` backend shortly after the tag
+(changelog: "2026-07-02: Metal 4: Added new Metal 4 backend implementation", "2026-07-07: Metal 4:
+Added metal-cpp support"). Re-pinned past the tag to the exact commit
+**`83f668625ad45364de71d385aeb6a5dd04bee02e`** on the docking branch (pinned by full SHA, not a
+tag, since no tag exists yet at this commit — `xmake setup` fetches it via
+`git init && git remote add origin ... && git fetch --depth 1 origin <sha> && git checkout
+FETCH_HEAD`, verified idempotent and verified `git -C ThirdParty/imgui rev-parse HEAD` matches the
+pin exactly after both a fresh fetch and a repeat `xmake setup` run).
 
 Backend source files compiled into the `ImGui` target: `ThirdParty/imgui/backends/imgui_impl_sdl3.h/.cpp`
-(platform) and `ThirdParty/imgui/backends/imgui_impl_metal.h/.mm` (renderer) — there is no separate
-`imgui_impl_metal4.*` file; `imgui_impl_metal.*` is the only Metal backend in this tag and it has
-**no Metal 4 path at all** (no `MTL4`/`metal4` symbol anywhere in the backend or in
-`examples/example_sdl3_metal/`, which — contrary to the plan's planning-time guess — is named
-`example_sdl3_metal`, not `example_sdl3_metal4`).
+(platform) and `ThirdParty/imgui/backends/imgui_impl_metal4.h/.mm` (renderer — the **native Metal 4**
+backend). The classic `imgui_impl_metal.h/.mm` also exists in this tree but is **not compiled** —
+nothing in this project uses it.
 
-Render-draw-data entry point (via `#define IMGUI_IMPL_METAL_CPP`, set as a public define on the
-`ImGui` target so every consumer sees the metal-cpp overloads):
+Render-draw-data entry point and its companion Init/NewFrame signatures (via
+`#define IMGUI_IMPL_METAL_CPP`, set as a public define on the `ImGui` target so every consumer sees
+the metal-cpp overloads — verbatim from `imgui_impl_metal4.h`'s C++ API section):
 ```cpp
-void ImGui_ImplMetal_RenderDrawData(ImDrawData* draw_data,
-                                     MTL::CommandBuffer* commandBuffer,
-                                     MTL::RenderCommandEncoder* commandEncoder);
+bool ImGui_ImplMetal4_Init(MTL::Device* device, MTL4::CommandQueue* commandQueue, int framesInFlight);
+void ImGui_ImplMetal4_Shutdown();
+void ImGui_ImplMetal4_NewFrame(MTL4::RenderPassDescriptor* renderPassDescriptor, int frameInFlightIndex);
+void ImGui_ImplMetal4_RenderDrawData(ImDrawData* draw_data,
+                                      MTL4::CommandBuffer* commandBuffer,
+                                      MTL4::RenderCommandEncoder* commandEncoder);
 ```
-**Encoder parameter type is `MTL::RenderCommandEncoder*` — the classic/legacy metal-cpp encoder
-(`Metal/MTLRenderCommandEncoder.hpp`, namespace `MTL`) — NOT `MTL4::RenderCommandEncoder*`**
-(`Metal/MTL4RenderCommandEncoder.hpp`, namespace `MTL4`, a distinct, unrelated class — verified in
-the vendored headers). Task 9 cannot hand the Metal4 backend's render-pass encoder to this
-function directly; it must record the UI draw through a classic `MTL::CommandBuffer`/
-`MTL::RenderCommandEncoder` (e.g. a plain `renderCommandEncoder(...)` off a classic command queue
-for the swapchain pass), separate from the `MTL4::CommandBuffer`/`MTL4::RenderCommandEncoder` used
-for the scene pass. This is a real API gap, not a wiring detail — plan for it explicitly in Task 9.
+**Encoder parameter type is `MTL4::RenderCommandEncoder*`** — the same type
+`Metal4CommandList` uses everywhere else in this codebase; no bridging gap, unlike the classic
+backend. `framesInFlight` (passed once to `Init`) must equal `kFramesInFlight`; `frameInFlightIndex`
+(passed every `NewFrame`) must be the same `frame % kFramesInFlight` index the RHI already uses for
+its own per-frame rotation (argument tables, uniform ring) — the backend sizes its own per-frame
+constant/vertex/index buffers off these two values so the CPU never overwrites a slot the GPU may
+still be reading, mirroring the RHI's existing rotation guarantee exactly. `Init` also wants a
+`MTL4::CommandQueue*`, so Task 9 needs a handle to the device's queue, not just its command list.
 
-ImTextureID convention: a texture handle is round-tripped as a pointer-sized integer —
-`(ImTextureID)(intptr_t)texturePointer` in, `(__bridge id<MTLTexture>)(void*)(intptr_t)(tex_id)`
-out (`imgui_impl_metal.mm`). From the metal-cpp side this is `(ImTextureID)(intptr_t)someMTLTexturePtr`
-where `someMTLTexturePtr` is an `MTL::Texture*` (or `id<MTLTexture>`) — the backend's header comment
-states it directly: "Use 'MTLTexture' as texture identifier."
+ImTextureID convention **(changed from the classic backend)**: texture identity is
+`MTLTexture.gpuResourceID`, not the raw texture pointer — the header states it directly: "Use
+'MTLTexture.gpuResourceID' as texture identifier." Concretely: `tex->SetTexID((ImTextureID)(intptr_t)texture)`
+still stores a pointer-sized value, but the backend's own draw loop resolves it back to a texture
+and then binds `texture.gpuResourceID` (an `MTL::ResourceID`) into the Metal 4 argument table
+(`setTexture:...atIndex:0`) — the same handle type `Metal4CommandList::bindTexture` already uses
+via `MTL::Texture::gpuResourceID()` (Task 6). Any future custom ImTextureID our code hands to ImGui
+(e.g. sampling the scene RT in the Viewport window, M2 Task 10+) should be the texture pointer cast
+the same way `SetTexID` does; the backend derives the `gpuResourceID` from it internally.
 
-Build note (empirically verified, not a guess): the `imgui_impl_metal.mm` backend must compile
-**without ARC**. Its metal-cpp-path branch does explicit `[x release]` / `[x autorelease]` sends
-(around lines 429 and 182) that are hard ARC compile errors. xmake compiles `.mm` files under ARC
-by default in this environment (confirmed by first hitting exactly those two errors), so the
-`ImGui` target carries `add_mxxflags("-fno-objc-arc")`. No `imgui.h`/other core file needed it —
-only this one backend file is Objective-C++.
+Build note (empirically re-verified against `imgui_impl_metal4.mm` specifically, not assumed from
+the classic backend): it **still must compile without ARC**. Its `ImGui_ImplMetal4_NewFrame` does
+an explicit `[[[FramebufferDescriptor alloc] ...] autorelease]` send (~line 155) — a hard ARC
+compile error under xmake's default ARC-on `.mm` compilation here (build failed with exactly that
+error on the first attempt without the flag; passed clean, module warnings only, once
+`add_mxxflags("-fno-objc-arc")` was restored on the `ImGui` target).
 
 Compile-proof: a temporary `Tests/ImGuiSmokeTests.cpp` (`ImGui::CreateContext()` /
 `ImGui::DestroyContext()`) built and ran green under `xmake test` with no extra target wiring
 needed (Tests already depends on RHI, which now depends on ImGui, and xmake propagates the
 public include dirs/defines transitively) — then it was deleted per the plan's Step 3 ("prove it
-compiles, then remove the scratch"); it is not part of this commit.
+compiles, then remove the scratch"); it is not part of either commit.
 
 ## Subagent & Model Policy (per Rudy)
 

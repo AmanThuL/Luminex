@@ -44,22 +44,25 @@ target("Core")
     add_includedirs("Source", {public = true})
     add_packages("spdlog", {public = true})
 
--- Dear ImGui (docking) + its SDL3 platform backend + Metal renderer backend, vendored
+-- Dear ImGui (docking) + its SDL3 platform backend + native Metal 4 renderer backend, vendored
 -- wholesale like metal-cpp/slang (task("setup") below): the xrepo `imgui` package has no
 -- metal backend config (M2 Task 0 finding -- it never compiles imgui_impl_metal*), so route A
 -- would mean stitching in a second, independently-versioned source tree just for the Metal
--- backend. One pinned tree, one target: core + both backends stay locked to the same tag.
--- IMGUI_IMPL_METAL_CPP (public) switches imgui_impl_metal.h/.mm to the metal-cpp overloads
--- (MTL::Device*/MTL::CommandBuffer*/MTL::RenderCommandEncoder* -- see the M2 plan's Amendments
--- for why that is *not* MTL4::RenderCommandEncoder*: this imgui version has no Metal 4 path).
--- -fno-objc-arc: xmake compiles .mm under ARC by default here, but this backend does explicit
--- `[x release]` / `[x autorelease]` sends (imgui_impl_metal.mm ~lines 182, 429) -- a hard ARC
--- compile error (verified: build fails without this flag). The file must build under MRC.
+-- backend. One pinned tree, one target: core + both backends stay locked to the same commit.
+-- Pinned past the v1.92.7-docking tag (see imgui_pin below): imgui_impl_metal4.{h,mm} --
+-- the native Metal 4 backend (MTL4::CommandQueue/CommandBuffer/RenderCommandEncoder,
+-- ImTextureID via MTLTexture.gpuResourceID) -- lands on the docking branch after that tag.
+-- IMGUI_IMPL_METAL_CPP (public) switches imgui_impl_metal4.h/.mm to the metal-cpp overloads
+-- (MTL::Device*, MTL4::CommandQueue*/CommandBuffer*/RenderPassDescriptor*/RenderCommandEncoder*
+-- -- see the M2 plan's Amendments for the exact signatures). -fno-objc-arc: re-verified against
+-- this backend specifically (it is a different file from the classic one) -- it still does an
+-- explicit `[x autorelease]` send (imgui_impl_metal4.mm ~line 155), a hard ARC compile error
+-- under xmake's default ARC-on .mm compilation here (confirmed: build fails without this flag).
 target("ImGui")
     set_kind("static")
     add_files("ThirdParty/imgui/*.cpp")
     add_files("ThirdParty/imgui/backends/imgui_impl_sdl3.cpp")
-    add_files("ThirdParty/imgui/backends/imgui_impl_metal.mm")
+    add_files("ThirdParty/imgui/backends/imgui_impl_metal4.mm")
     add_includedirs("ThirdParty/imgui", {public = true})
     add_includedirs("ThirdParty/imgui/backends", {public = true})
     add_includedirs("ThirdParty/metal-cpp")
@@ -118,7 +121,10 @@ target("Tests")
 
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local slang_pin    = "v2026.14.1"
-local imgui_pin    = "v1.92.7-docking"
+-- Exact commit on the docking branch, past v1.92.7-docking: that tag predates
+-- imgui_impl_metal4.{h,mm} (the native Metal 4 backend), which this project needs (M2 Task 0
+-- amendment). Pinned by SHA rather than a tag because no tag exists yet at this commit.
+local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 
 task("setup")
     set_menu {usage = "xmake setup", description = "fetch pinned ThirdParty deps"}
@@ -142,8 +148,14 @@ task("setup")
             }
         end
         if not os.isdir("ThirdParty/imgui") then
-            os.execv("git", {"clone", "--depth", "1", "--branch", imgui_pin,
-                             "https://github.com/ocornut/imgui.git", "ThirdParty/imgui"})
+            -- Shallow-fetch by exact commit SHA: `git clone --branch <sha>` doesn't work (a
+            -- SHA is not a ref), so init + remote + fetch --depth 1 <sha> + checkout instead.
+            os.mkdir("ThirdParty/imgui")
+            os.execv("git", {"-C", "ThirdParty/imgui", "init", "-q"})
+            os.execv("git", {"-C", "ThirdParty/imgui", "remote", "add", "origin",
+                             "https://github.com/ocornut/imgui.git"})
+            os.execv("git", {"-C", "ThirdParty/imgui", "fetch", "--depth", "1", "origin", imgui_pin})
+            os.execv("git", {"-C", "ThirdParty/imgui", "checkout", "-q", "FETCH_HEAD"})
         end
         print("setup done: metal-cpp %s, slang %s, imgui %s", metalcpp_pin, slang_pin, imgui_pin)
     end)
