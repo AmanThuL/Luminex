@@ -13,6 +13,11 @@
 // -- the whole ObjC surface of the backend stays inside imgui_impl_metal4.mm.
 #include <imgui_impl_metal4.h>
 
+// For imguiForgetTexture()'s reach into the backend's own residency set -- see the comment on
+// imguiResidencySet() below. Plain C headers, usable from C++; metal-cpp itself is built on them.
+#include <objc/message.h>
+#include <objc/runtime.h>
+
 #include <cstdint>
 #include <utility>
 
@@ -62,6 +67,52 @@ NS::SharedPtr<MTL4::RenderPassDescriptor> g_passDescriptor;
 // place for the same reason.
 constexpr uint32_t kNoFrameStarted = UINT32_MAX;
 uint32_t g_pendingFrameSlot = kNoFrameStarted;
+
+// The ImGui Metal 4 backend's own MTLResidencySet, or nullptr when the backend is not up.
+//
+// This is the one place in the project that reaches into a vendored implementation rather than
+// through its header, and it is deliberate: the backend adds every user texture to this set
+// (imgui_impl_metal4.mm:333) and offers no way to take one out again -- there is no removal hook
+// in imgui_impl_metal4.h at all, and ImGui_ImplMetal4_DestroyDeviceObjects (:488-502) does not
+// touch the set either. The alternatives were worse: patching the vendored tree loses the change
+// on the next `xmake setup`, and leaving it alone strands a full-viewport texture per resize.
+//
+// The reach is exactly the one the backend makes internally, in two documented steps:
+//
+//  1. ImGui_ImplMetal4_GetBackendData() is `(ImGui_ImplMetal4_Data*)io.BackendRendererUserData`
+//     (:112), and `struct ImGui_ImplMetal4_Data { MetalContext* SharedMetalContext; id<...>
+//     RenderCommandEncoder; }` (:104-110) -- SharedMetalContext is the *first* member, so the
+//     first pointer-sized word of that allocation is the MetalContext object itself.
+//  2. MetalContext declares `@property (nonatomic, strong) id<MTLResidencySet> residencySet;`
+//     (:86), whose synthesised getter is the `residencySet` selector sent below.
+//
+// Both couplings are asserted rather than assumed: if a future imgui pin reorders the struct or
+// renames the property, the responds-to-selector check below aborts with this comment's name on
+// it instead of silently returning garbage. Raw objc_msgSend rather than NS::Object::sendMessage
+// because metal-cpp keeps that one protected.
+MTL::ResidencySet* imguiResidencySet() {
+    void* backendData = ImGui::GetIO().BackendRendererUserData;
+    if (backendData == nullptr) {
+        return nullptr;
+    }
+    void* context = *static_cast<void**>(backendData);
+    if (context == nullptr) {
+        return nullptr;
+    }
+
+    static const SEL kResidencySetSelector = sel_registerName("residencySet");
+    LMX_ASSERT(
+        class_respondsToSelector(object_getClass(static_cast<id>(context)), kResidencySetSelector),
+        "imguiForgetTexture: the ImGui Metal 4 backend's private layout changed -- the "
+        "first member of ImGui_ImplMetal4_Data is no longer a MetalContext with a "
+        "'residencySet' property. Re-derive imguiResidencySet() against the new "
+        "imgui_impl_metal4.mm");
+
+    using SendObjectMessage = void* (*)(const void*, SEL);
+    void* residency =
+        reinterpret_cast<SendObjectMessage>(objc_msgSend)(context, kResidencySetSelector);
+    return static_cast<MTL::ResidencySet*>(residency);
+}
 
 } // namespace
 
@@ -219,6 +270,34 @@ ImTextureID imguiTextureID(Texture& texture) {
     // Same contract-violation downcast as everywhere else in this file.
     MTL::Texture* handle = static_cast<Metal4Texture&>(texture).handle();
     return static_cast<ImTextureID>(reinterpret_cast<uintptr_t>(handle));
+}
+
+void imguiForgetTexture(Texture& texture) {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    // Tolerant rather than assertive, like imguiShutdown(): a caller that never brought the UI up
+    // still releases its textures, and has nothing to undo here.
+    if (g_device == nullptr) {
+        return;
+    }
+    MTL::ResidencySet* residency = imguiResidencySet();
+    if (residency == nullptr) {
+        return;
+    }
+
+    // Same contract-violation downcast as everywhere else in this file.
+    MTL::Texture* handle = static_cast<Metal4Texture&>(texture).handle();
+    const NS::UInteger before = residency->allocationCount();
+    residency->removeAllocation(handle);
+    // The set only republishes its allocation list when told to -- the same reason
+    // ResidencyRegistration commits on both sides.
+    residency->commit();
+    // Logged, not silent: this is the only visibility anything has into a set we do not own, and
+    // a count that climbs across resizes instead of returning to its previous value is the exact
+    // shape of the leak this function exists to prevent. It runs once per settled resize, so it
+    // is no noisier than the resize log it accompanies.
+    LMX_LOG_INFO("ImGui residency: forgot a displayed texture ({} -> {} allocations)", before,
+                 residency->allocationCount());
 }
 
 } // namespace lmx::rhi::metal4

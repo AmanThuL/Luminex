@@ -66,9 +66,11 @@ uint64_t frameNumberFromEnv(const char* name) {
 }
 
 // Everything RHI-owned and everything ImGui-owned lives here so that returning destroys it in
-// reverse creation order -- editor shell first (it drains the device through imguiShutdown, so
-// the device must still exist), then swapchain, renderer, meshes, device -- before main tears
-// down the SDL window the swapchain's layer belongs to.
+// reverse declaration order -- editor shell, renderer, swapchain, meshes, device -- before main
+// tears down the SDL window the swapchain's layer belongs to. Two orderings in that list are
+// load-bearing, not incidental: the shell goes first because ~EditorShell drains this device
+// through imguiShutdown() and so needs it alive, and the device goes last because no RHI object
+// may outlive the device that created it.
 int run(SDL_Window* window, void* metalLayer) {
     auto device = lmx::rhi::createDevice();
     if (!device) {
@@ -140,6 +142,12 @@ int run(SDL_Window* window, void* metalLayer) {
     // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
     bool captureRequested = false;
     uint64_t previousTicksNs = SDL_GetTicksNS();
+    // Accumulated from the per-frame deltas rather than read off the clock, and kept in double.
+    // The scene's animation is a function of this, and `float(absolute clock)` loses resolution as
+    // the process runs: at an hour of uptime a float second has ~0.2 ms of precision left, which
+    // is visible as a stutter in a 45 deg/s spin. Starting at zero and accumulating keeps the
+    // magnitude small; double keeps the accumulation itself exact enough not to matter.
+    double elapsedSeconds = 0.0;
 
     while (running) {
         SDL_Event event;
@@ -165,11 +173,9 @@ int run(SDL_Window* window, void* metalLayer) {
                 // data1/data2 are the new size in pixels. A minimised window reports 0 in at
                 // least one dimension, which is not a size any swapchain can adopt.
                 if (event.window.data1 > 0 && event.window.data2 > 0) {
-                    pixelWidth = event.window.data1;
-                    pixelHeight = event.window.data2;
                     (*swapchain)
-                        ->resize(static_cast<uint32_t>(pixelWidth),
-                                 static_cast<uint32_t>(pixelHeight));
+                        ->resize(static_cast<uint32_t>(event.window.data1),
+                                 static_cast<uint32_t>(event.window.data2));
                 }
                 break;
             default:
@@ -194,9 +200,11 @@ int run(SDL_Window* window, void* metalLayer) {
         }
 
         const uint64_t nowNs = SDL_GetTicksNS();
-        const float deltaSeconds = static_cast<float>(nowNs - previousTicksNs) * 1e-9f;
+        const double deltaSecondsExact = static_cast<double>(nowNs - previousTicksNs) * 1e-9;
         previousTicksNs = nowNs;
-        const float timeSeconds = static_cast<float>(nowNs) * 1e-9f;
+        elapsedSeconds += deltaSecondsExact;
+        const float deltaSeconds = static_cast<float>(deltaSecondsExact);
+        const float timeSeconds = static_cast<float>(elapsedSeconds);
 
         // Before the ImGui frame opens, for two reasons: it drains the GPU and frees the old
         // scene targets, which the Viewport image below is about to name; and it must not run

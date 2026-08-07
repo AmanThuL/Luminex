@@ -230,9 +230,17 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     // a dock drag does not justify it (spec §2), and the debounce above means the stall happens
     // once per resize rather than once per frame of one.
     device.waitIdle();
+    // Before the resize frees it, and only meaningful because the drain above already happened:
+    // ImGui's backend added this texture to its own residency set the first time it drew the
+    // Viewport image and never removes one, so without this every resize strands a full-viewport
+    // texture for the process lifetime.
+    rhi::metal4::imguiForgetTexture(renderer.colorTarget());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
         // Not fatal: resize() leaves the previous, still-valid pair in place on failure, so the
-        // editor keeps running with a stretched image rather than going down.
+        // editor keeps running with a stretched image rather than going down. The debounce is
+        // restarted rather than left satisfied, so a failing size costs one waitIdle and one
+        // failed allocation instead of both on every frame from here on.
+        m_stableFrames = 0;
         LMX_LOG_ERROR("viewport resize to {}x{} failed: {}", m_viewportWidth, m_viewportHeight,
                       resized.error().message);
         return;
@@ -381,17 +389,23 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
             // edge of the window -- and, on release, the cursor is back where it was.
             SDL_SetWindowRelativeMouseMode(m_window, true);
         }
-    } else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        m_looking = false;
-        SDL_SetWindowRelativeMouseMode(m_window, false);
-    }
-
-    // Everything below is gated on the look button being held, which subsumes the
-    // io.WantCaptureKeyboard rule: with the button up the App never reads the keyboard at all, so
-    // a focused Inspector field can never lose a keystroke to the camera.
-    if (!m_looking) {
+        // Returning on the entering frame too, and that is the point: the deltas read above are
+        // from *before* relative mode existed -- ordinary cursor travel on the way to the click.
+        // Applying them would snap the camera by however far the mouse had moved this frame. The
+        // look starts from the next frame, with deltas that mean what this code thinks they mean.
         return;
     }
+    if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
+        m_looking = false;
+        SDL_SetWindowRelativeMouseMode(m_window, false);
+        // Symmetrically: the release frame's deltas are the last of the look, but the camera has
+        // already been handed back to the cursor. Dropping them costs nothing visible.
+        return;
+    }
+
+    // Everything past here is gated on the look button being held, which subsumes the
+    // io.WantCaptureKeyboard rule: with the button up the App never reads the keyboard at all, so
+    // a focused Inspector field can never lose a keystroke to the camera.
 
     // Screen y grows downward, camera pitch grows upward.
     m_camera.look(relativeX * kLookRadiansPerPixel, -relativeY * kLookRadiansPerPixel);

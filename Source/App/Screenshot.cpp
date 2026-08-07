@@ -164,6 +164,15 @@ int runScreenshot(const std::filesystem::path& outPath) {
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    // The file is written *before* the probes are judged, deliberately: a failing probe is exactly
+    // when someone wants to look at the image, and gating the write on the probes would throw away
+    // the only evidence of what went wrong.
+    if (!writeBmp(outPath, pixels, kScreenshotWidth, kScreenshotHeight)) {
+        return 1;
+    }
+    LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
+                 kScreenshotWidth, kScreenshotHeight, pixels.size());
+
     // Enough to tell "the scene rendered" from "the clear worked and nothing else did" without
     // opening the image. The corner is sky: the camera's pitch puts the horizon just under
     // halfway up the frame, so row 0 can only be the clear colour. The centre is the gold cube --
@@ -178,20 +187,16 @@ int runScreenshot(const std::filesystem::path& outPath) {
     const float* clear = (*renderer)->clearColor;
     if (!isClearChannel(corner.b, clear[2]) || !isClearChannel(corner.g, clear[1]) ||
         !isClearChannel(corner.r, clear[0]) || corner.a != 255) {
-        LMX_LOG_ERROR("screenshot: the background probe is not the clear colour ({}, {}, {})",
+        LMX_LOG_ERROR("screenshot: the background probe is not the clear colour ({}, {}, {}) -- "
+                      "the image was still written, open it",
                       clear[0], clear[1], clear[2]);
         return 1;
     }
     if (center.r < 64 || center.r <= center.b || center.r <= center.g) {
-        LMX_LOG_ERROR("screenshot: the centre probe is not a lit gold cube");
+        LMX_LOG_ERROR("screenshot: the centre probe is not a lit gold cube -- the image was still "
+                      "written, open it");
         return 1;
     }
-
-    if (!writeBmp(outPath, pixels, kScreenshotWidth, kScreenshotHeight)) {
-        return 1;
-    }
-    LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
-                 kScreenshotWidth, kScreenshotHeight, pixels.size());
     return 0;
 }
 

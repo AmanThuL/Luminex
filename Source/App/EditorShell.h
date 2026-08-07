@@ -124,6 +124,8 @@ private:
     uint32_t m_stableFrames = 0;
 
     bool m_viewportHovered = false;
+    // Display-only, shown in the Stats panel. Hover is what gates input, deliberately: a look
+    // should start where the cursor is, not where the last click left the focus.
     bool m_viewportFocused = false;
     // True between the right-mouse press that entered relative mouse mode and its release.
     // Latched rather than re-derived each frame: relative mode hides the cursor, so the Viewport

@@ -90,7 +90,23 @@ void imguiRender(CommandList& commands);
 // The texture must have been created with TextureDesc::sampled, and must outlive every frame whose
 // draw data still references it -- ImGui holds the identifier, never a reference. Residency for
 // the draw itself is ImGui's problem and it handles it: the texture joins the backend's own
-// residency set when the draw command that names it is encoded.
+// residency set when the draw command that names it is encoded -- and never leaves it on its own,
+// which is what imguiForgetTexture() below exists for.
 ImTextureID imguiTextureID(Texture& texture);
+
+// Removes `texture` from the ImGui backend's residency set. Call it immediately before releasing
+// any texture that has been displayed through imguiTextureID().
+//
+// It is needed because the backend only ever adds: every user ImTextureID it meets in a draw
+// command joins its residency set (imgui_impl_metal4.mm:333) and nothing in the backend removes
+// one, so a released texture stays referenced by the set -- and therefore alive and resident --
+// for the process lifetime. Harmless for a texture that lives as long as the app; a leak once
+// something recreates one, which is exactly what a resized editor viewport does. This is the same
+// hazard ResidencyRegistration handles for our own resources, in a set we do not own.
+//
+// The caller guarantees the GPU is done with the texture (Device::waitIdle) -- it is about to be
+// freed anyway. No-op when imguiInit() was never called, so a UI-less path (--screenshot) needs no
+// guard of its own.
+void imguiForgetTexture(Texture& texture);
 
 } // namespace lmx::rhi::metal4
