@@ -148,6 +148,28 @@ void Metal4CommandList::draw(uint32_t vertexCount, uint32_t firstVertex) {
     m_encoder->drawPrimitives(MTL::PrimitiveTypeTriangle, firstVertex, vertexCount);
 }
 
+void Metal4CommandList::drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex) {
+    LMX_ASSERT(m_encoder, "drawIndexed must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(indexCount > 0, "drawIndexed: indexCount must be greater than zero");
+    auto& mtlBuffer = static_cast<Metal4Buffer&>(indexBuffer);
+    const uint64_t offsetBytes = uint64_t{firstIndex} * sizeof(uint32_t);
+    const uint64_t lengthBytes = mtlBuffer.handle()->length();
+    // Written as a plain sum, unlike setUniforms' subtraction dance, because here it provably
+    // cannot wrap: both terms are a uint32 widened to uint64 and scaled by 4, so each is at most
+    // 2^34 and the sum at most 2^35. setUniforms needed the subtraction only because its `size`
+    // is a caller-supplied uint64 that can sit near UINT64_MAX; no argument here can.
+    LMX_ASSERT(offsetBytes + uint64_t{indexCount} * sizeof(uint32_t) <= lengthBytes,
+               "drawIndexed: index range reads past the end of the index buffer");
+    // The trailing argument is the length of the index *data* at the address passed -- i.e. the
+    // bytes remaining after the offset, not the buffer's total length (signature checked against
+    // MTL4RenderCommandEncoder.hpp:66). Passing lengthBytes would overstate the range by
+    // offsetBytes. The subtraction is safe because the assert above, which is never compiled out,
+    // establishes offsetBytes < lengthBytes whenever indexCount > 0.
+    m_encoder->drawIndexedPrimitives(MTL::PrimitiveTypeTriangle, indexCount, MTL::IndexTypeUInt32,
+                                     mtlBuffer.handle()->gpuAddress() + offsetBytes,
+                                     lengthBytes - offsetBytes);
+}
+
 void Metal4CommandList::endRenderPass() {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 

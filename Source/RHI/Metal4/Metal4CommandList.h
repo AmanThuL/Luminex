@@ -23,15 +23,17 @@ namespace lmx::rhi::metal4 {
 // open" from "a frame is open" at all -- without it a stale pointer would keep every check
 // passing while the writes landed in a slot the GPU was still reading.
 //
-// Encoder-scoped calls (bindPipeline/bindVertexBuffer/setUniforms/draw) assert rather than
-// return errors: calling them outside a pass is a caller sequencing bug, and the RHI CommandList
-// methods return void. They also hold no autorelease pool of their own -- none of them invokes
-// an autoreleasing selector, so a per-call pool bought nothing and cost a create/drain on what
-// becomes the hottest path in the backend. Verified against the vendored headers rather than
-// assumed: bindPipeline/bindVertexBuffer/draw are direct setters and draws on an already-
-// retained encoder, and setUniforms' whole call path -- MTL::Buffer::contents()/length()/
-// gpuAddress() and MTL4::ArgumentTable::setAddress() -- is scalar- and void-returning
-// sendMessage, so no path produces a +0 object.
+// Encoder-scoped calls (bindPipeline/bindVertexBuffer/setUniforms/draw/drawIndexed) assert
+// rather than return errors: calling them outside a pass is a caller sequencing bug, and the RHI
+// CommandList methods return void. They also hold no autorelease pool of their own -- none of
+// them invokes an autoreleasing selector, so a per-call pool bought nothing and cost a
+// create/drain on what becomes the hottest path in the backend. Verified against the vendored
+// headers rather than assumed: bindPipeline/bindVertexBuffer/draw are direct setters and draws
+// on an already-retained encoder; setUniforms' whole call path -- MTL::Buffer::contents()/
+// length()/gpuAddress() and MTL4::ArgumentTable::setAddress() -- is scalar- and void-returning
+// sendMessage; and drawIndexed adds only MTL::Buffer::length()/gpuAddress() (scalar sends) plus
+// drawIndexedPrimitives (a void send) on top of a plain C++ Metal4Buffer::handle() getter. So no
+// path produces a +0 object.
 //
 // Exactly one pool is load-bearing, in beginRenderPass: renderCommandEncoder() is the only
 // selector here that returns +0. endRenderPass keeps a pool too (symmetry, and cheap insurance
@@ -50,6 +52,7 @@ public:
     void bindVertexBuffer(uint32_t slot, Buffer& buffer) override;
     void setUniforms(uint32_t slot, const void* data, uint64_t size) override;
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
+    void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex) override;
     void endRenderPass() override;
 
     // beginFrame's half of the per-frame rotation: point this command list at the frame's

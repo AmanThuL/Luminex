@@ -112,6 +112,10 @@ public:
     // (LMX_ASSERT) -- grow the backend constant when a real scene hits it.
     virtual void setUniforms(uint32_t slot, const void* data, uint64_t size) = 0;
     virtual void draw(uint32_t vertexCount, uint32_t firstVertex = 0) = 0;
+    // Indexed draw. Indices are uint32 (the only index type this RHI models); the index buffer
+    // is any Buffer holding them -- Metal 4 consumes it per-draw by GPU address, so there is no
+    // separate index-buffer bind state. firstIndex is an element offset into the buffer.
+    virtual void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex = 0) = 0;
     virtual void endRenderPass() = 0;
 };
 
