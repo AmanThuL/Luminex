@@ -16,6 +16,17 @@ add_requires("libsdl3", "glm", "spdlog", "catch2 3.x")
 rule("slang2metallib")
     set_extensions(".slang")
     on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
+        -- Two targets emitting the same shader paths race under a parallel build
+        -- (observed in M1 -- see the Tests targetdir comment). Fail loudly instead.
+        import("core.project.project")
+        for _, other in pairs(project.targets()) do
+            if other:name() ~= target:name() and other:rule("slang2metallib")
+               and path.absolute(other:targetdir()) == path.absolute(target:targetdir()) then
+                os.raise("slang2metallib: targets '%s' and '%s' share targetdir '%s'; give one "
+                         .. "its own set_targetdir", target:name(), other:name(), target:targetdir())
+            end
+        end
+
         local outdir = path.join(target:targetdir(), "Shaders")
         local name = path.basename(sourcefile)
         local msl = path.join(outdir, name .. ".metal")

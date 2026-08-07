@@ -84,6 +84,7 @@ TEST_CASE("TextureDesc with Format::Unknown is rejected", "[rhi]") {
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("format"));
+    REQUIRE(r.error().message.contains("Unknown"));
 }
 
 TEST_CASE("TextureDesc cpuReadback with a non-8-bit format is rejected", "[rhi]") {
@@ -167,6 +168,7 @@ TEST_CASE("GraphicsPipelineDesc with Format::Unknown color is rejected", "[rhi]"
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("colorFormat"));
+    REQUIRE(r.error().message.contains("Unknown"));
 }
 
 // Depth in a color slot is not a recoverable driver error: Metal's render-pipeline
@@ -246,6 +248,7 @@ TEST_CASE("SwapchainDesc with Format::Unknown is rejected", "[rhi]") {
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("format"));
+    REQUIRE(r.error().message.contains("Unknown"));
 }
 
 // CAMetalLayer rejects a depth pixel format outright, so this must not reach the backend.

@@ -219,6 +219,10 @@ bool writeBmp(const std::filesystem::path& path, const std::vector<uint8_t>& bgr
 void logPixel(const char* what, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t x,
               uint32_t y) {
     const size_t offset = (size_t{y} * width + x) * 4;
+    if (offset + 3 >= bgra.size()) {
+        LMX_LOG_WARN("screenshot probe {} at ({},{}) is outside the image; skipping", what, x, y);
+        return;
+    }
     LMX_LOG_INFO("screenshot probe {} at ({},{}): B={} G={} R={} A={}", what, x, y, bgra[offset],
                  bgra[offset + 1], bgra[offset + 2], bgra[offset + 3]);
 }
@@ -469,6 +473,11 @@ int main(int argc, char** argv) {
     std::string_view screenshotPath;
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
+        if (arg == "--") {
+            // Conventional end-of-options marker, not an error -- nothing after it is parsed
+            // as a flag by this app today, but a bare "--" should never be rejected.
+            continue;
+        }
         if (arg == "--screenshot") {
             if (i + 1 >= argc) {
                 LMX_LOG_ERROR("--screenshot needs an output path: App --screenshot <out.bmp>");
