@@ -1,3 +1,4 @@
+#include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/RHI.h"
@@ -9,13 +10,11 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <vector>
 
 namespace {
 
@@ -42,11 +41,6 @@ constexpr uint32_t kVertexBufferSlot = 0;
 // Logical points, not pixels — SDL scales this by the display's backing factor.
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
-
-// The offscreen --screenshot render target, in pixels. Fixed rather than derived from the window
-// so the README image is the same on every machine.
-constexpr uint32_t kScreenshotWidth = 1280;
-constexpr uint32_t kScreenshotHeight = 720;
 
 constexpr float kClearColor[4] = {0.1f, 0.15f, 0.2f, 1.0f};
 
@@ -143,143 +137,6 @@ void recordTriangleFrame(lmx::rhi::CommandList& commands, lmx::rhi::Texture& tar
     commands.bindVertexBuffer(kVertexBufferSlot, *assets.vertexBuffer);
     commands.draw(static_cast<uint32_t>(kTriangle.size()));
     commands.endRenderPass();
-}
-
-void appendLittleEndian(std::vector<uint8_t>& out, uint32_t value) {
-    for (int byte = 0; byte < 4; ++byte) {
-        out.push_back(static_cast<uint8_t>((value >> (8 * byte)) & 0xFFu));
-    }
-}
-
-void appendLittleEndian(std::vector<uint8_t>& out, uint16_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFFu));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-}
-
-// Uncompressed 32-bit BMP: a 14-byte BITMAPFILEHEADER, a 40-byte BITMAPINFOHEADER, then the
-// readback bytes verbatim. Two facts make the pixel copy verbatim rather than a conversion:
-// BI_RGB at 32bpp stores each pixel as B,G,R,A -- exactly our BGRA8Unorm readback -- and a
-// *negative* biHeight declares top-down rows, which is the order readback() produces. At 4 bytes
-// per pixel every row is already a multiple of 4 bytes, so there is no row padding to insert.
-//
-// Hand-rolled because the alternative is an image library dependency for one write of the
-// simplest container in existence.
-bool writeBmp(const std::filesystem::path& path, const std::vector<uint8_t>& bgra, uint32_t width,
-              uint32_t height) {
-    constexpr uint32_t kFileHeaderSize = 14;
-    constexpr uint32_t kInfoHeaderSize = 40;
-    constexpr uint32_t kPixelOffset = kFileHeaderSize + kInfoHeaderSize;
-    // 2835 px/m == 72 dpi. Not meaningful for a screenshot, but zeroes make some readers guess.
-    constexpr int32_t kPixelsPerMeter = 2835;
-
-    const uint32_t imageSize = static_cast<uint32_t>(bgra.size());
-
-    std::vector<uint8_t> header;
-    header.reserve(kPixelOffset);
-    header.push_back('B');
-    header.push_back('M');
-    appendLittleEndian(header, kPixelOffset + imageSize);
-    appendLittleEndian(header, uint16_t{0}); // reserved1
-    appendLittleEndian(header, uint16_t{0}); // reserved2
-    appendLittleEndian(header, kPixelOffset);
-
-    appendLittleEndian(header, kInfoHeaderSize);
-    appendLittleEndian(header, width);
-    // Negative height == top-down. static_cast of a negative value to uint32_t is the two's
-    // complement bit pattern, which is exactly what the format wants.
-    appendLittleEndian(header, static_cast<uint32_t>(-static_cast<int32_t>(height)));
-    appendLittleEndian(header, uint16_t{1});  // planes
-    appendLittleEndian(header, uint16_t{32}); // bits per pixel
-    appendLittleEndian(header, uint32_t{0});  // BI_RGB, no compression
-    appendLittleEndian(header, imageSize);
-    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
-    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
-    appendLittleEndian(header, uint32_t{0}); // palette colors used
-    appendLittleEndian(header, uint32_t{0}); // palette colors required
-
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        LMX_LOG_ERROR("screenshot: cannot open '{}' for writing", path.string());
-        return false;
-    }
-    file.write(reinterpret_cast<const char*>(header.data()),
-               static_cast<std::streamsize>(header.size()));
-    file.write(reinterpret_cast<const char*>(bgra.data()),
-               static_cast<std::streamsize>(bgra.size()));
-    file.close();
-    if (!file) {
-        LMX_LOG_ERROR("screenshot: failed while writing '{}'", path.string());
-        return false;
-    }
-    return true;
-}
-
-// Logs one pixel in memory order (B,G,R,A) -- the same order the BMP stores -- so a script can
-// check the file it just wrote against what the GPU actually produced.
-void logPixel(const char* what, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t x,
-              uint32_t y) {
-    const size_t offset = (size_t{y} * width + x) * 4;
-    if (offset + 3 >= bgra.size()) {
-        LMX_LOG_WARN("screenshot probe {} at ({},{}) is outside the image; skipping", what, x, y);
-        return;
-    }
-    LMX_LOG_INFO("screenshot probe {} at ({},{}): B={} G={} R={} A={}", what, x, y, bgra[offset],
-                 bgra[offset + 1], bgra[offset + 2], bgra[offset + 3]);
-}
-
-// --screenshot: one offscreen frame, no window and no swapchain, written out as a BMP. Doubles as
-// the headless sanity path -- everything except presentation is the windowed code.
-int runScreenshot(const std::filesystem::path& outPath) {
-    auto device = lmx::rhi::createDevice();
-    if (!device) {
-        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
-        return 1;
-    }
-    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
-
-    auto assets = createTriangleAssets(**device);
-    if (!assets) {
-        return 1;
-    }
-
-    // cpuReadback puts the texture in shared storage so readback() is a memcpy rather than a
-    // blit; renderTarget is what lets the pass draw into it.
-    auto target = (*device)->createTexture({.width = kScreenshotWidth,
-                                            .height = kScreenshotHeight,
-                                            .format = lmx::rhi::Format::BGRA8Unorm,
-                                            .renderTarget = true,
-                                            .cpuReadback = true,
-                                            .label = "lmx.app.screenshot"});
-    if (!target) {
-        LMX_LOG_ERROR("createTexture failed: {}", target.error().message);
-        return 1;
-    }
-
-    lmx::rhi::CommandList& commands = (*device)->beginFrame();
-    recordTriangleFrame(commands, **target, *assets);
-    // nullptr: nothing to present, this frame only fills a texture.
-    (*device)->endFrame(nullptr);
-
-    // readback() copies out of shared storage with no synchronisation of its own, so the frame
-    // has to be off the GPU before the copy -- otherwise the "screenshot" is whatever the
-    // allocation happened to contain.
-    (*device)->waitIdle();
-
-    std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
-    (*target)->readback(pixels.data(), pixels.size());
-
-    // Enough to tell "the triangle rendered" from "the clear worked and nothing else did"
-    // without opening the image: a corner must be the clear color, the centre must not be.
-    logPixel("background", pixels, kScreenshotWidth, 0, 0);
-    logPixel("triangle centre", pixels, kScreenshotWidth, kScreenshotWidth / 2,
-             kScreenshotHeight / 2);
-
-    if (!writeBmp(outPath, pixels, kScreenshotWidth, kScreenshotHeight)) {
-        return 1;
-    }
-    LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
-                 kScreenshotWidth, kScreenshotHeight, pixels.size());
-    return 0;
 }
 
 // Everything RHI-owned lives here so that returning destroys it in reverse creation order --
@@ -493,7 +350,7 @@ int main(int argc, char** argv) {
     // SDL is never initialised on the screenshot path: it renders offscreen, so a window would be
     // pure ceremony -- and skipping it keeps the path free of any windowing dependency at all.
     if (!screenshotPath.empty()) {
-        return runScreenshot(std::filesystem::path(screenshotPath));
+        return lmx::app::runScreenshot(std::filesystem::path(screenshotPath));
     }
     return runWindowed();
 }
