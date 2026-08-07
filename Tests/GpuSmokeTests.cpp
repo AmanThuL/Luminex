@@ -3,10 +3,18 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
 #include "RHI/RHI.h"
+#include "Render/Camera.h"
+#include "Render/Mesh.h"
+#include "Render/Renderer.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace {
 
@@ -503,4 +511,289 @@ TEST_CASE("depth test rejects a coplanar second draw", "[gpu]") {
     REQUIRE(occluded.g == 0);
     REQUIRE(occluded.b == 0);
     REQUIRE(occluded.a == 255);
+}
+
+// --- lmx::render::Renderer cases ------------------------------------------------------------
+//
+// Everything below drives the real Renderer rather than a hand-rolled pass, so the shader binding
+// contract, the ObjectUniforms mirror and the depth/barrier wiring are all covered as the App uses
+// them, not as a test re-derives them.
+
+namespace {
+
+using lmx::render::Camera;
+using lmx::render::DrawItem;
+using lmx::render::Mesh;
+using lmx::render::Renderer;
+
+// Renderer's default clear, restated here because the probes below assert against it: if the
+// default ever changes, these tests must be re-derived rather than silently loosened.
+constexpr std::array<float, 4> kSceneClear = {0.05f, 0.07f, 0.10f, 1.0f};
+
+// x offset of each cube from the origin. At the camera distance below this puts the two cubes on
+// opposite halves of a 64px image with clear background between them -- see the probe comments.
+constexpr float kCubeOffsetX = 1.2f;
+
+// The camera every scene case uses: 5 units back on +Z, level, looking down -Z at the origin.
+Camera sceneCamera() {
+    Camera camera;
+    camera.position = {0.0f, 0.0f, 5.0f};
+    return camera;
+}
+
+// BGRA8Unorm quantises a float channel by rounding, so the clear colour lands within a ulp or two
+// of this. Tolerance 2, not 0, because the exact rounding of the conversion is not contractual.
+bool isClearChannel(uint8_t actual, float expected) {
+    const int want = static_cast<int>(expected * 255.0f + 0.5f);
+    return std::abs(int{actual} - want) <= 2;
+}
+
+// The two-cube scene shared by the capture case and the barrier case. Deliberately *one* mesh
+// drawn twice: buffer slot 0 then holds the same address for both draws, so the only thing that
+// differs between them is the per-draw uniform block at slot 1 -- which is exactly the variable
+// the argument-table capture question turns on (plan Amendment A2).
+std::array<DrawItem, 2> twoCubeScene(const Mesh& cube) {
+    return {{
+        {.mesh = &cube,
+         .model = glm::translate(glm::mat4{1.0f}, glm::vec3{-kCubeOffsetX, 0.0f, 0.0f}),
+         .baseColor = {1.0f, 0.0f, 0.0f, 1.0f}},
+        {.mesh = &cube,
+         .model = glm::translate(glm::mat4{1.0f}, glm::vec3{kCubeOffsetX, 0.0f, 0.0f}),
+         .baseColor = {0.0f, 0.0f, 1.0f, 1.0f}},
+    }};
+}
+
+// The image twoCubeScene must produce, as three probes.
+//
+// Geometry, so the coordinates are checkable rather than magic: fovY 60 deg at aspect 1 makes the
+// visible half-extent at the cubes' front faces (4.5 units out) 4.5*tan(30 deg) = 2.598, so the
+// left cube's front face spans x in [-1.7, -0.7] -> columns 11..23 and the right cube's spans
+// columns 41..53; both span rows 26..38. (16,32) and (48,32) sit interior to those, and (2,2) is
+// outside both by a wide margin.
+//
+// Lighting, so the thresholds are derived rather than tuned: the front faces have normal +Z, and
+// the shader's fixed light is normalize(0.4, 1.0, 0.3), so n.l = 0.268 and the shade factor is
+// 0.25 + 0.75*0.268 = 0.45. A white cube vertex times baseColor times that lands the lit channel
+// near 115 and the other two at 0 -- hence "> 64 and clearly dominant" rather than "> 200".
+void requireTwoCubeImage(const std::vector<uint8_t>& pixels, const char* label) {
+    const Pixel corner = pixelAt(pixels, 2, 2);
+    INFO(describe(label, 2, 2, corner));
+    REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
+    REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
+    REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+    REQUIRE(corner.a == 255);
+
+    // The load-bearing pair. Under last-write-wins argument-table semantics both draws would use
+    // the *second* item's uniforms -- same mvp, same colour -- so two blue cubes would stack on
+    // the right and the left probe would come back at the clear colour. That is what this fails on.
+    const Pixel left = pixelAt(pixels, 16, 32);
+    INFO(describe("left cube", 16, 32, left));
+    REQUIRE(left.r > 64);
+    REQUIRE(left.r > left.g + 32);
+    REQUIRE(left.r > left.b + 32);
+
+    const Pixel right = pixelAt(pixels, 48, 32);
+    INFO(describe("right cube", 48, 32, right));
+    REQUIRE(right.b > 64);
+    REQUIRE(right.b > right.r + 32);
+    REQUIRE(right.b > right.g + 32);
+}
+
+} // namespace
+
+// The milestone's key measurement (plan Amendment A2): does a draw capture the MTL4 argument
+// table's bindings as they stood when *it* was encoded, or do all draws in a pass read whatever
+// was written last?
+//
+// Two cubes, one pass, one mesh, two per-draw uniform blocks with different model matrices and
+// different base colours. Encode-time capture puts a red cube on the left and a blue one on the
+// right. Last-write-wins puts a single blue cube on the right and leaves the left probe at the
+// clear colour. There is no third outcome, and no CPU-side inspection can distinguish them -- so
+// this test, not the documentation, is the answer.
+//
+// It also covers the rest of the Renderer end to end: the Mesh.slang binding contract (slot 0
+// vertices / slot 1 uniforms), the 144-byte column-major ObjectUniforms mirror (a transposed
+// upload puts the cubes nowhere near these probes), indexed draws, and the depth attachment the
+// pipeline is built with.
+TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.cube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+
+    CommandList& commands = (*device)->beginFrame();
+    // barrierForSampling false: nothing else in this frame reads the target, and a barrier no pass
+    // consumes is a dropped edge the RHI aborts on at endFrame (Amendment A4).
+    (*renderer)->render(commands, sceneCamera(), items, /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    requireTwoCubeImage(pixels, "clear");
+}
+
+// Proves the Renderer's depth path decides visibility, and that *draw order does not*. Two upright
+// planes on the camera axis: green nearer than red. Rendering [far, near] and then [near, far]
+// must give the same picture -- green.
+//
+// The second ordering is the one with teeth: it is the painter's-algorithm case, where a renderer
+// with no depth buffer, a disabled depth test, or a depth attachment that never made it into the
+// pass descriptor paints red over green and this fails. (Verified by construction: with
+// depthTestEnable turned off in the Renderer's pipeline, the second ordering came back R=92 G=0.)
+// The first ordering is the control that the planes are where the probe expects them at all.
+TEST_CASE("renderer depth test beats draw order", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    // halfExtent 1: at the plane distances below this covers the centre probe from both depths
+    // while leaving the image corners at the clear colour.
+    auto plane = lmx::render::createMesh(**device, lmx::render::makePlane(1.0f), "lmx.test.plane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    // makePlane lies in XZ with a +Y normal; a quarter turn about X stands it up facing +Z, i.e.
+    // square-on to a camera looking down -Z.
+    const auto upright = [](float z) {
+        return glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 0.0f, z}) *
+               glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f});
+    };
+    const DrawItem nearGreen{
+        .mesh = &*plane, .model = upright(1.0f), .baseColor = {0.0f, 1.0f, 0.0f, 1.0f}};
+    const DrawItem farRed{
+        .mesh = &*plane, .model = upright(-1.0f), .baseColor = {1.0f, 0.0f, 0.0f, 1.0f}};
+
+    const std::array<std::array<DrawItem, 2>, 2> orderings = {{
+        {{farRed, nearGreen}}, // back-to-front: passes even without a depth buffer
+        {{nearGreen, farRed}}, // front-to-back: only depth can keep green on top
+    }};
+    const std::array<const char*, 2> names = {"far-then-near", "near-then-far"};
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    for (size_t i = 0; i < orderings.size(); ++i) {
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, sceneCamera(), orderings[i], /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        // Per ordering, not once at the end: each readback has to observe its own frame.
+        (*device)->waitIdle();
+        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+
+        INFO(std::string("ordering: ") + names[i]);
+
+        // The planes' grey vertex colour (0.8) times the green base colour times the same 0.45
+        // shade factor as the cubes lands the green channel near 92, red at 0.
+        const Pixel center = pixelAt(pixels, 32, 32);
+        INFO(describe("center", 32, 32, center));
+        REQUIRE(center.g > 64);
+        REQUIRE(center.g > center.r + 32);
+        REQUIRE(center.g > center.b + 32);
+
+        // Neither plane reaches the corner, so a depth attachment must not have disturbed the
+        // colour clear.
+        const Pixel corner = pixelAt(pixels, 2, 2);
+        INFO(describe("corner", 2, 2, corner));
+        REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
+        REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
+        REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+    }
+}
+
+// The M2 architecture in miniature: scene pass -> textureBarrier -> second pass samples the scene
+// target -> readback. This is the only case that exercises the barrier at all, and the only one
+// where the Renderer runs in its *real* configuration (cpuReadback false -- the App never reads
+// the scene target back on the CPU; it hands it to a second pass).
+//
+// The destination is cleared to magenta, a colour the scene cannot produce, so a copy pass that
+// silently drew nothing fails every probe instead of coincidentally matching. (Verified: with the
+// draw(3) removed, the first probe came back B=255 G=0 R=255.)
+//
+// What this case does *not* prove, stated plainly rather than left to be assumed: that the barrier
+// is load-bearing. Re-running it with barrierForSampling false still passes on this machine -- the
+// two encoders are serial on one command buffer, and this driver evidently orders them anyway. The
+// case proves the barrier is correctly plumbed and does not corrupt the image; the argument for
+// needing it at all is the API contract (Amendment A3), not this measurement.
+TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.barrierCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/false);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    auto destination = (*device)->createTexture({.width = kSize,
+                                                 .height = kSize,
+                                                 .format = Format::BGRA8Unorm,
+                                                 .renderTarget = true,
+                                                 .cpuReadback = true,
+                                                 .label = "lmx.test.barrierDestination"});
+    INFO(errorOf(destination));
+    REQUIRE(destination.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    // No depth: the copy pass is a single fullscreen triangle with nothing to occlude.
+    auto copyPipeline =
+        (*device)->createGraphicsPipeline({.library = library->get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = Format::BGRA8Unorm,
+                                           .label = "lmx.test.fullscreenSamplePipeline"});
+    INFO(errorOf(copyPipeline));
+    REQUIRE(copyPipeline.has_value());
+
+    // Slot 0 of the argument table's *texture* index space, where Slang binds gSource
+    // ([[texture(0)]] in the emitted MSL, Task 8 record) -- a separate space from the buffer slots
+    // the mesh pipeline uses, so this 0 does not collide with the vertex buffer's.
+    constexpr uint32_t kSourceTextureSlot = 0;
+
+    CommandList& commands = (*device)->beginFrame();
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+    // barrierForSampling true: the copy pass below is exactly the "later pass samples the target"
+    // case the barrier exists for.
+    (*renderer)->render(commands, sceneCamera(), items, /*barrierForSampling=*/true);
+
+    // The pending barrier is encoded as the first command of this pass (Amendment A3).
+    commands.beginRenderPass(
+        {.colorTarget = destination->get(), .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}, .clear = true});
+    commands.bindPipeline(**copyPipeline);
+    commands.bindTexture(kSourceTextureSlot, (*renderer)->colorTarget());
+    commands.draw(3);
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*destination)->readback(pixels.data(), pixels.size());
+
+    // Identical probes to the capture case: the copy is a Load at matching coordinates, so the
+    // destination must be the scene image texel for texel -- including its clear colour, which is
+    // also what proves the magenta clear was fully overwritten.
+    requireTwoCubeImage(pixels, "copied clear");
 }

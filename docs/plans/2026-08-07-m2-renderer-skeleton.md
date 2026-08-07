@@ -177,6 +177,63 @@ Mesh/ResourceState/Dispatch/Blit/AccelerationStructure/MachineLearning/All`), an
 `fragment` as "all fragment shader stage work in a render pass" — colour-attachment writes are part
 of it. So the RT-write → shader-read edge is `fragment → fragment`.
 
+**A4 (2026-08-07, Task 8):** Three records from building `Shaders/Mesh.slang` +
+`Shaders/FullscreenSample.slang` and `lmx::render::Renderer`.
+
+**(a) A2 is CONFIRMED by measurement: Metal 4 argument tables capture at ENCODE TIME.** The GPU
+test `renderer draws per-object uniforms in one pass` renders two cubes from **one** mesh in **one**
+pass, differing only in their per-draw `setUniforms` block (different model matrix, different base
+colour), and both land:
+
+| probe | measured (BGRA8Unorm) | meaning |
+|---|---|---|
+| (2,2) corner | B=26 G=18 R=13 A=255 | clear colour `{0.05, 0.07, 0.10, 1}` |
+| (16,32) left cube | B=0 G=0 **R=115** A=255 | draw 1's uniforms — red |
+| (48,32) right cube | **B=115** G=0 R=0 A=255 | draw 2's uniforms — blue |
+
+115 is the derived value, not a tuned one: the front faces have normal +Z, the shader's fixed light
+is `normalize(0.4, 1.0, 0.3)`, so `n·l = 0.268` and the shade factor is `0.25 + 0.75·0.268 = 0.45`
+→ `0.45 × 255 ≈ 115`. **Negative control run, not merely predicted:** hoisting `setUniforms` out of
+the draw loop so both draws share the last item's block — an exact simulation of last-write-wins —
+put the left probe at the clear colour (B=26 G=18 R=13) and failed the case. **The per-frame
+argument-table pool contingency is therefore NOT needed and stays unbuilt.** The per-frame table
+*ring* is unaffected either way (it answers a cross-frame question).
+
+**(b) Emitted-MSL record** (`build/macosx/arm64/debug/Shaders/*.metal`):
+
+- `gVertices` → `[[buffer(0)]]`, `gObject` → `[[buffer(1)]]`, `gSource` → `[[texture(0)]]` — the
+  contract holds. Both appear in the **vertex and fragment** signatures (Slang emits the whole
+  global parameter list per stage), which the backend already satisfies by attaching the argument
+  table to both stages.
+- `struct Vertex_natural_0 { packed_float3 position_0; packed_float3 normal_1; packed_float3
+  color_1; };` — **stride 36**, matching `render::Vertex`'s `static_assert`. No change needed to
+  `Render/Mesh.h`.
+- `struct ObjectUniforms_natural_0 { _MatrixStorage_float4x4_ColMajornatural_0 mvp_0; ... model_0;
+  float4 baseColor_0; };` where `_MatrixStorage_float4x4_ColMajornatural_0 { array<float4, 4> }` —
+  **144 bytes, column-major, no padding**, so `glm::mat4` uploads verbatim. The codegen also pins
+  the convention: `mul(M, v)` becomes `v * M_msl` with `M_msl` built by transposing the storage, so
+  `v * M_msl == storage · v` — standard glm `M * v`. No transpose anywhere.
+- **Correction to the shader as briefed:** `gObject` must be `register(b1)`, not `register(b0)`.
+  Slang's Metal target maps the register *index* straight to the MSL buffer index and ignores the
+  register class, so `t0` + `b0` both request `[[buffer(0)]]` and `xcrun metal` rejects the emitted
+  source ("cannot reserve 'buffer' resource location at index 0"). Fixed in the shader, per the
+  task's "never the C++ constants first" rule.
+- Pre-existing, unchanged from M1: `xcrun metal` warns "writable resources in non-void vertex
+  function" because Slang lowers `StructuredBuffer` to `device*` rather than `const device*`.
+  `Shaders/Triangle.slang` produces the identical warning; not introduced here.
+
+**(c) Renderer contract adjustment vs spec §3 — `render()` gains
+`bool barrierForSampling = true`.** Spec §3 has `render()` always end with the `RenderTarget →
+ShaderRead` barrier. That is unsatisfiable for an offscreen-only frame: `textureBarrier` is recorded
+as pending and `endFrameReset` aborts on a barrier no later pass consumed (A3), so `render()` +
+`endFrame()` with nothing in between is a guaranteed `SIGABRT` — **verified by running it**. The
+alternative (every caller adds a dummy consuming pass) buys a whole render pass to satisfy an
+assert, and would also burden Task 10's `--screenshot` path, which likewise has no UI pass.
+Loosening `endFrameReset` was rejected outright: dropped-edge detection is the point of that assert.
+So the flag is a *parameter*, default `true` (the App path), documented as "false = no later pass
+samples the target this frame". Test (c) exercises the real path with `true` plus a
+`FullscreenSample` second pass.
+
 ## Subagent & Model Policy (per Rudy)
 
 | Model | Used for | Tasks |
@@ -1012,7 +1069,7 @@ class Renderer {
 ```
 Shader binding contract (verify against emitted MSL, step 2): buffer slot 0 = `gVertices`, buffer slot 1 = `gObject` (ConstantBuffer), texture slot 0 = `gSource` (FullscreenSample only).
 
-- [ ] **Step 1: Write Shaders/Mesh.slang**
+- [x] **Step 1: Write Shaders/Mesh.slang**
 
 ```slang
 // Depth-tested lambert mesh: vertex pulling from slot 0, per-draw uniforms at slot 1
@@ -1096,7 +1153,7 @@ float4 fragmentMain(VSOutput in): SV_Target
 }
 ```
 
-- [ ] **Step 2: Measure the emitted MSL — record**
+- [x] **Step 2: Measure the emitted MSL — record**
 
 ```bash
 xmake -y
@@ -1105,7 +1162,7 @@ grep -n "texture(" build/macosx/arm64/debug/Shaders/FullscreenSample.metal | hea
 ```
 Record in this plan's Amendments block (M1 Task-6-record pattern): the actual MSL buffer/texture indices for `gVertices`/`gObject`/`gSource`, the emitted Vertex struct (expect `packed_float3 ×3`, stride 36 — must match `render::Vertex`'s static_assert), and the ObjectUniforms MSL layout (expect column-major `float4x4`s + `float4`, 144 bytes — glm matrices upload verbatim; the mul() order in the shader plus the GPU tests below is what proves the convention, a transposed matrix cannot pass the depth-order probes). If any index differs from the contract above, fix the `[[vk::binding]]` in the shader — never the C++ constants first.
 
-- [ ] **Step 3: Implement Renderer**
+- [x] **Step 3: Implement Renderer**
 
 `Renderer.h` per Interfaces (private: device ref, color/depth `std::unique_ptr<rhi::Texture>`, pipeline, shader library, `m_width/m_height/m_cpuReadback`). `Renderer.cpp` essentials:
 
@@ -1166,7 +1223,7 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera,
 }
 ```
 
-- [ ] **Step 4: GPU proof tests**
+- [x] **Step 4: GPU proof tests**
 
 Append to `Tests/GpuSmokeTests.cpp` (shared helpers already exist there; generalize `pixelAt`/`describe` to take a width if needed). Three cases, all `[gpu]`:
 
@@ -1178,7 +1235,7 @@ Append to `Tests/GpuSmokeTests.cpp` (shared helpers already exist there; general
 
 Run: `xmake test` — all `[gpu]` cases pass locally. This is the moment Task 3's design is proven or amended.
 
-- [ ] **Step 5: Format, full verify, commit**
+- [x] **Step 5: Format, full verify, commit**
 
 ```bash
 xmake format && xmake -y && xmake test
