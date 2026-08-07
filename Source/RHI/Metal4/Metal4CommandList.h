@@ -78,6 +78,18 @@ public:
     // frame with an open encoder is reported here rather than as a Metal abort at commit time.
     bool inRenderPass() const { return static_cast<bool>(m_encoder); }
 
+    // Backend-internal, the same role handle() plays on every resource wrapper: a sibling Metal 4
+    // file reaches the native objects through them, and the RHI CommandList interface has neither.
+    // Metal4ImGui needs both, because Dear ImGui's Metal 4 backend records into the open encoder
+    // but allocates its per-frame buffers and its UI pipeline off the command buffer's device.
+    //
+    // Both assert a pass is open, which is the only state in which either is meaningful to hand
+    // out: the command buffer is a valid pointer for this list's whole lifetime, but Metal 4 only
+    // accepts encoding into it between beginCommandBuffer and endCommandBuffer, and outside that
+    // window the encoding aborts inside Metal with nothing pointing back at the RHI call.
+    MTL4::CommandBuffer* commandBuffer() const;
+    MTL4::RenderCommandEncoder* currentEncoder() const;
+
 private:
     MTL4::CommandBuffer* m_commandBuffer = nullptr;
     MTL4::ArgumentTable* m_argumentTable = nullptr;

@@ -59,6 +59,29 @@ public:
     // RHI.h.
     MTL::Device* handle() const { return m_device.get(); }
 
+    // Same standing as handle(): backend-internal, deliberately absent from the RHI Device
+    // interface. Metal4ImGui hands this queue to Dear ImGui's Metal 4 backend, which attaches its
+    // own residency set to it -- so ImGui's font atlas and vertex buffers are resident for the
+    // command buffers this device commits, without either side knowing about the other's set.
+    MTL4::CommandQueue* queue() const { return m_queue.get(); }
+
+    // The slot of the per-frame ring (command allocator, argument table, uniform ring) belonging
+    // to the frame currently being built: the open frame while one is open, and the frame the
+    // next beginFrame() will open while none is.
+    //
+    // The two cases are not cosmetic. beginFrame() increments m_frameNumber *before* deriving its
+    // slot, so `m_frameNumber % kFramesInFlight` names the open frame only while a frame is open
+    // -- outside one it still names the frame that just ended, which is the frame whose GPU work
+    // this device is now waiting on. Metal4ImGui::imguiNewFrame() runs in exactly that gap (Dear
+    // ImGui requires its renderer's NewFrame before ImGui::NewFrame(), which is before any of the
+    // UI-building code that decides what the frame renders), and the slot it passes on has to be
+    // the one whose GPU work will read the buffers ImGui is about to fill -- the frame about to
+    // open. Hence the +1 rather than a second accessor the caller could pick wrongly.
+    uint32_t frameInFlightIndex() const {
+        return static_cast<uint32_t>((m_frameOpen ? m_frameNumber : m_frameNumber + 1) %
+                                     kFramesInFlight);
+    }
+
 private:
     Metal4Device() = default;
 

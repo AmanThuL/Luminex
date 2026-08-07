@@ -62,7 +62,11 @@ target("Core")
 -- backend. One pinned tree, one target: core + both backends stay locked to the same commit.
 -- Pinned past the v1.92.7-docking tag (see imgui_pin below): imgui_impl_metal4.{h,mm} --
 -- the native Metal 4 backend (MTL4::CommandQueue/CommandBuffer/RenderCommandEncoder,
--- ImTextureID via MTLTexture.gpuResourceID) -- lands on the docking branch after that tag.
+-- ImTextureID = the MTLTexture object pointer) -- lands on the docking branch after that tag.
+-- The pointer, *not* its gpuResourceID, despite what imgui_impl_metal4.h's feature list still
+-- says: the .mm stores (ImTextureID)(intptr_t)texture (line 406), casts it straight back to an
+-- id<MTLTexture> when it meets one (line 332), and derives .gpuResourceID only to bind it
+-- (line 334) -- a ResourceID could not survive that round trip. Corrected in M2 Task 9.
 -- IMGUI_IMPL_METAL_CPP (public) switches imgui_impl_metal4.h/.mm to the metal-cpp overloads
 -- (MTL::Device*, MTL4::CommandQueue*/CommandBuffer*/RenderPassDescriptor*/RenderCommandEncoder*
 -- -- see the M2 plan's Amendments for the exact signatures). -fno-objc-arc: re-verified against

@@ -1,0 +1,91 @@
+#pragma once
+#include "RHI/RHI.h"
+
+#include <imgui.h>
+
+// The renderer half of Dear ImGui on the Metal 4 backend: a thin wrapper over the vendored
+// imgui_impl_metal4 backend that keeps every Metal type out of the App. Developer/editor tooling,
+// not part of the RHI surface -- the same standing as Metal4Capture, and metal-cpp-free in its
+// declarations for the same reason: the App target does not have the metal-cpp include directory.
+//
+// imgui.h *is* included, and deliberately: ImTextureID is Dear ImGui's own type, and the only
+// code that ever includes this header already speaks ImGui. RHI.h stays clean either way.
+//
+// The platform half (ImGui_ImplSDL3_*) is API-agnostic and is not wrapped here -- the App drives
+// it directly, alongside these calls.
+//
+// The order below is a contract, not a suggestion; the note on each function says what breaks:
+//
+//     imguiInit(device)                        once, after ImGui::CreateContext()
+//     ... per frame ...
+//       imguiNewFrame()                        before Device::beginFrame()
+//       ImGui::NewFrame(); <build the UI>; ImGui::Render()
+//       CommandList& cmd = device.beginFrame()
+//       cmd.beginRenderPass(<the UI target>)
+//       imguiRender(cmd)
+//       cmd.endRenderPass(); device.endFrame(&swapchain)
+//     ... teardown ...
+//     device.waitIdle(); imguiShutdown(); ImGui::DestroyContext()
+//
+// State is process-global, exactly as in Metal4Capture and for the same reason: the backend being
+// wrapped reaches its own state through the current ImGui context rather than through a handle the
+// caller keeps, so there is nothing here to hand back and hold. Single-threaded by construction,
+// as the whole Metal 4 backend is.
+
+namespace lmx::rhi::metal4 {
+
+// Wires Dear ImGui's renderer backend to `device`'s Metal device and command queue, sized for this
+// backend's three frames in flight. Call once, after ImGui::CreateContext() and before anything
+// else here. Returns false, after logging why, if the backend could not be created; nothing is
+// left initialised on that path.
+//
+// `colorFormat` is the pixel format of the render pass imguiRender() will be called inside -- the
+// swapchain's in the ordinary case, which is why it defaults to what SwapchainDesc defaults to.
+// It is wanted at init rather than at render time because Dear ImGui keys its UI pipeline on a
+// framebuffer description it is handed before the frame's real target exists; see imguiNewFrame().
+//
+// That pass must also be single-sampled and carry no depth or stencil attachment, which is how
+// this glue describes it. A mismatch is not silent but neither is it catchable here: it surfaces
+// as a Metal validation failure about the render pipeline being incompatible with the render pass.
+//
+// Returns bool rather than Result<T> despite the creation-shaped name, following beginCapture():
+// this is tooling the App can run without, not an RHI object whose failure a caller must model.
+bool imguiInit(Device& device, Format colorFormat = Format::BGRA8Unorm);
+
+// Releases everything imguiInit() created, including the font atlas texture, and unregisters the
+// renderer from the ImGui context. Call before ImGui::DestroyContext(), and only once the GPU has
+// finished every frame whose draw data referenced ImGui's resources (Device::waitIdle) -- the
+// ImGui backend frees them without waiting for anything. No-op when imguiInit() was never called
+// or has already been undone, so an early-exit teardown path needs no bookkeeping of its own.
+void imguiShutdown();
+
+// Opens ImGui's renderer frame. Call once per frame, immediately before ImGui::NewFrame().
+//
+// Callable before Device::beginFrame(), and required to be: Dear ImGui wants the renderer's
+// NewFrame ahead of ImGui::NewFrame(), which is ahead of the UI-building code that decides what
+// the frame draws at all. Two consequences follow, both absorbed here rather than pushed onto the
+// caller. The frame-in-flight slot handed to the backend is the slot of the frame *about to open*
+// rather than the one that just ended (Metal4Device::frameInFlightIndex() gets that phase right on
+// both sides of beginFrame). And the framebuffer description handed to the backend is a
+// format-only stand-in built at init, because the frame's real render target does not exist yet.
+void imguiNewFrame();
+
+// Encodes ImGui::GetDrawData() into the render pass currently open on `commands`. Call after
+// ImGui::Render(), between beginRenderPass and endRenderPass; asserts when no pass is open or when
+// ImGui::Render() has not run.
+//
+// This hands the encoder to ImGui, and ImGui does not put it back: the argument table, render
+// pipeline state, depth-stencil state, viewport, scissor rect and cull mode all belong to ImGui
+// afterwards. Anything drawn later in the same pass must rebind its own. Making this the last call
+// in the pass -- what the App does -- sidesteps the question.
+void imguiRender(CommandList& commands);
+
+// The ImTextureID naming an RHI texture, for ImGui::Image and friends.
+//
+// The texture must have been created with TextureDesc::sampled, and must outlive every frame whose
+// draw data still references it -- ImGui holds the identifier, never a reference. Residency for
+// the draw itself is ImGui's problem and it handles it: the texture joins the backend's own
+// residency set when the draw command that names it is encoded.
+ImTextureID imguiTextureID(Texture& texture);
+
+} // namespace lmx::rhi::metal4

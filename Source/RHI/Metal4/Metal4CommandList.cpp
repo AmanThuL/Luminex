@@ -274,4 +274,15 @@ void Metal4CommandList::endFrameReset() {
     m_pendingBarrier = false;
 }
 
+MTL4::CommandBuffer* Metal4CommandList::commandBuffer() const {
+    LMX_ASSERT(m_encoder, "commandBuffer: no render pass is open -- the command buffer is only "
+                          "open for encoding between beginRenderPass and endRenderPass");
+    return m_commandBuffer;
+}
+
+MTL4::RenderCommandEncoder* Metal4CommandList::currentEncoder() const {
+    LMX_ASSERT(m_encoder, "currentEncoder: no render pass is open -- call beginRenderPass first");
+    return m_encoder.get();
+}
+
 } // namespace lmx::rhi::metal4
