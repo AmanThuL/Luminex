@@ -173,7 +173,15 @@ slang direct-metallib collapse (ADR 0003) stays blocked on upstream issues #1232
   normally a version tag/config). Verifying the exact combination is implementation task #1;
   fallback is pinning imgui into `ThirdParty/` via `xmake setup`, which the parent spec allows
   for non-xrepo deps.
-- New xrepo dep: `imgui` only. `glm` (already in M1's dep list) gets its first real use.
+
+  **Resolved (2026-08-07, Task 0).** Verified: xrepo's `imgui` package has a docking config but
+  no Metal backend config at all — it never compiles `imgui_impl_metal*` — so the combination this
+  risk worried about doesn't exist there at any version. The fallback was taken: **Route B**, imgui
+  vendored wholesale into `ThirdParty/imgui`, pinned by commit on the docking branch, the same
+  pattern as the metal-cpp/slang pins. Full record (exact pin, backend files, build flags) in the
+  plan's Amendment A1.
+- **No new xrepo dep.** `imgui` is pinned in `ThirdParty/` via `xmake setup` (Route B above), not
+  xrepo. `glm` (already in M1's dep list) gets its first real use.
 
 ## 10. Definition of Done
 
