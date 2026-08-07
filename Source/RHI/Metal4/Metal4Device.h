@@ -15,9 +15,11 @@ namespace lmx::rhi::metal4 {
 // lag the frame-pacing shared event enforces (Task 10 consumes both).
 inline constexpr uint32_t kFramesInFlight = 3;
 
-// 256 KiB per frame: ~1,800 draws of the M2 ObjectUniforms (144 B aligned to 256). The
-// offset alignment is the conservative Metal constant-buffer bound; Apple GPUs accept less,
-// but 256 is correct everywhere and costs at most 112 B of slack per draw at M2 sizes.
+// 256 KiB per frame: 1,024 draws of the M2 ObjectUniforms. The budget is set by the *aligned*
+// stride, not the payload -- a 144 B ObjectUniforms consumes a full 256 B once the next
+// allocation is aligned, so the ceiling is 262144 / 256, not 262144 / 144. The offset alignment
+// is the conservative Metal constant-buffer bound; Apple GPUs accept less, but 256 is correct
+// everywhere and costs 112 B of slack per draw at M2 sizes.
 inline constexpr uint64_t kUniformRingBytes = 256 * 1024;
 inline constexpr uint64_t kUniformOffsetAlignment = 256;
 

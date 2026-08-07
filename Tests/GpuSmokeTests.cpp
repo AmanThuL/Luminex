@@ -61,6 +61,13 @@ std::string errorOf(const lmx::rhi::Result<T>& result) {
     return result ? std::string{} : result.error().message;
 }
 
+// BGRA8Unorm quantises 0.0 to 0 and 1.0 to 255, and the flat-shaded triangles below interpolate
+// three identical vertex colours, so the rendered channel is the vertex channel. The tolerance
+// only has to separate "on" from "off", so it is deliberately loose rather than exact.
+bool channelIs(uint8_t actual, float expected) {
+    return expected > 0.5f ? actual > 200 : actual < 55;
+}
+
 } // namespace
 
 // Row order: readback() (MTLTexture::getBytes) produces row 0 == the *top* of the image, so
@@ -185,6 +192,11 @@ TEST_CASE("offscreen triangle renders expected pixels", "[gpu]") {
 // memcpy destination or the bound address would still produce a perfect triangle; this is what
 // makes that bug visible. If the ring were also not resident, the GPU would read unmapped
 // memory here rather than vertices.
+//
+// Both calls target kVertexBufferSlot -- the second simply overwrites the first's binding.
+// Pushing the cursor through a *different* slot would work too, but only for slots inside the
+// device's maxBufferBindCount, which this test has no way to see; going through the slot the
+// shader actually reads keeps the proof identical and the coupling zero.
 TEST_CASE("uniform ring feeds a draw from a non-zero offset", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -213,16 +225,17 @@ TEST_CASE("uniform ring feeds a draw from a non-zero offset", "[gpu]") {
     INFO(errorOf(pipeline));
     REQUIRE(pipeline.has_value());
 
-    // Bound at an argument-table slot no stage of Shaders/Triangle declares, so it does nothing
-    // but push the ring cursor past zero. 100 bytes rounds up to the 256-byte alignment.
+    // Zeroes, written only to push the ring cursor past zero: 100 bytes rounds up to the
+    // 256-byte alignment. Deliberately zeroes rather than noise -- if the real vertices below
+    // were ever bound at offset 0 instead, the draw reads this and collapses to a degenerate
+    // black triangle, which the colour probes catch immediately.
     const std::array<uint8_t, 100> filler{};
-    constexpr uint32_t kUnusedSlot = 4;
 
     CommandList& commands = (*device)->beginFrame();
     commands.beginRenderPass(
         {.colorTarget = target->get(), .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}, .clear = true});
     commands.bindPipeline(**pipeline);
-    commands.setUniforms(kUnusedSlot, filler.data(), filler.size());
+    commands.setUniforms(kVertexBufferSlot, filler.data(), filler.size());
     commands.setUniforms(kVertexBufferSlot, kTriangle.data(), sizeof(kTriangle));
     commands.draw(static_cast<uint32_t>(kTriangle.size()));
     commands.endRenderPass();
@@ -258,4 +271,95 @@ TEST_CASE("uniform ring feeds a draw from a non-zero offset", "[gpu]") {
     REQUIRE(bottomRight.b > 128);
     REQUIRE(bottomRight.b > bottomRight.r);
     REQUIRE(bottomRight.b > bottomRight.g);
+}
+
+// Pins the per-frame rotation the ring exists for: that frame N's uniform bytes are frame N's,
+// even once N starts reusing a slot an earlier frame wrote.
+//
+// kFramesInFlight is 3, so slot = frameNumber % 3 first repeats on the *fourth* frame -- which
+// is also the first frame whose beginFrame actually waits on the pacing shared event (the wait
+// is skipped while frameNumber <= kFramesInFlight). Six frames therefore cover two full
+// rotations with the wait engaged, and frame 3 landing yellow where frame 0 left red in the same
+// slot is precisely the observation that a stale or misrouted ring would fail.
+//
+// This also discharges the rotation coverage deferred from Task 2's review: nothing until now
+// asserted that a frame reusing a slot sees its own data.
+//
+// Cheap by construction: one 64x64 target reused across frames, one flat-shaded draw each, and
+// the colours are the six saturated corners of the RGB cube so each frame is unmistakable.
+TEST_CASE("uniform ring keeps per-frame data across slot reuse", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr std::array<std::array<float, 3>, 6> kFrameColors = {{
+        {1.0f, 0.0f, 0.0f}, // frame 0 -> ring slot 1
+        {0.0f, 1.0f, 0.0f}, // frame 1 -> ring slot 2
+        {0.0f, 0.0f, 1.0f}, // frame 2 -> ring slot 0
+        {1.0f, 1.0f, 0.0f}, // frame 3 -> ring slot 1 again, first frame that waits
+        {0.0f, 1.0f, 1.0f}, // frame 4 -> ring slot 2 again
+        {1.0f, 0.0f, 1.0f}, // frame 5 -> ring slot 0 again
+    }};
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto target = (*device)->createTexture({.width = kSize,
+                                            .height = kSize,
+                                            .format = Format::BGRA8Unorm,
+                                            .renderTarget = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.test.rotationTarget"});
+    INFO(errorOf(target));
+    REQUIRE(target.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/Triangle");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline = (*device)->createGraphicsPipeline({.library = library->get(),
+                                                       .vertexEntry = "vertexMain",
+                                                       .fragmentEntry = "fragmentMain",
+                                                       .colorFormat = Format::BGRA8Unorm,
+                                                       .label = "lmx.test.rotationPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+
+    for (uint32_t frame = 0; frame < kFrameColors.size(); ++frame) {
+        const std::array<float, 3>& color = kFrameColors[frame];
+
+        // The app's triangle geometry, flat-shaded in this frame's colour: all three vertices
+        // share it, so the interior interpolates to exactly that colour and one probe suffices.
+        std::array<Vertex, 3> vertices = kTriangle;
+        for (Vertex& vertex : vertices) {
+            vertex.color[0] = color[0];
+            vertex.color[1] = color[1];
+            vertex.color[2] = color[2];
+        }
+
+        CommandList& commands = (*device)->beginFrame();
+        commands.beginRenderPass(
+            {.colorTarget = target->get(), .clearColor = {0.0f, 0.0f, 0.0f, 1.0f}, .clear = true});
+        commands.bindPipeline(**pipeline);
+        commands.setUniforms(kVertexBufferSlot, vertices.data(), sizeof(vertices));
+        commands.draw(static_cast<uint32_t>(vertices.size()));
+        commands.endRenderPass();
+        (*device)->endFrame(nullptr);
+        // Per frame, not once at the end: the point is to observe *this* frame's pixels before
+        // the next frame overwrites the target.
+        (*device)->waitIdle();
+        (*target)->readback(pixels.data(), pixels.size());
+
+        // (32,40) is the interior probe the smoke test above establishes -- inside all three
+        // edges, so it carries the flat colour rather than an edge-antialiased blend.
+        const Pixel inside = pixelAt(pixels, 32, 40);
+        INFO("frame " + std::to_string(frame) + " expected R=" + std::to_string(color[0]) +
+             " G=" + std::to_string(color[1]) + " B=" + std::to_string(color[2]));
+        INFO(describe("inside", 32, 40, inside));
+        REQUIRE(channelIs(inside.r, color[0]));
+        REQUIRE(channelIs(inside.g, color[1]));
+        REQUIRE(channelIs(inside.b, color[2]));
+        REQUIRE(inside.a == 255);
+    }
 }

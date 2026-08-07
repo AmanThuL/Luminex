@@ -354,9 +354,11 @@ Run the test — PASS. Commit: `git add -A && git commit -m "Add constexpr align
 Backend (`Metal4Device.h`): `std::array<NS::SharedPtr<MTL::Buffer>, kFramesInFlight> m_uniformRings;` + `std::array<uint64_t, kFramesInFlight> m_uniformOffsets{};` with constants:
 
 ```cpp
-// 256 KiB per frame: ~1,800 draws of the M2 ObjectUniforms (144 B aligned to 256). The
-// offset alignment is the conservative Metal constant-buffer bound; Apple GPUs accept less,
-// but 256 is correct everywhere and costs at most 112 B of slack per draw at M2 sizes.
+// 256 KiB per frame: 1,024 draws of the M2 ObjectUniforms. The budget is set by the *aligned*
+// stride, not the payload -- a 144 B ObjectUniforms consumes a full 256 B once the next
+// allocation is aligned, so the ceiling is 262144 / 256, not 262144 / 144. The offset alignment
+// is the conservative Metal constant-buffer bound; Apple GPUs accept less, but 256 is correct
+// everywhere and costs 112 B of slack per draw at M2 sizes.
 inline constexpr uint64_t kUniformRingBytes = 256 * 1024;
 inline constexpr uint64_t kUniformOffsetAlignment = 256;
 ```
@@ -376,6 +378,15 @@ void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t si
     *m_uniformOffset = alignUp(offset + size, kUniformOffsetAlignment);
 }
 ```
+
+> **Corrections applied during Task 3 review (2026-08-07)** — this step's text above is the
+> original brief; the shipped code differs on two points, both deliberate:
+> 1. The capacity comment originally read "~1,800 draws", which is 262144/144 — the *unaligned*
+>    figure, contradicting the 256-byte alignment named in the same sentence. Corrected to 1,024
+>    (262144/256) here and in `Metal4Device.h`.
+> 2. The capacity assert above (`offset + size <= length`) wraps on a bogus huge `size` and would
+>    then wave through an unbounded `memcpy`. Shipped code uses the overflow-safe pair instead:
+>    `size <= capacity` first, then `offset <= capacity - size`.
 
 - [x] **Step 4: Build + existing tests green**
 

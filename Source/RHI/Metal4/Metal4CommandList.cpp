@@ -92,7 +92,14 @@ void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t si
     LMX_ASSERT(m_encoder, "setUniforms must be called between beginRenderPass and endRenderPass");
     LMX_ASSERT(data != nullptr && size > 0, "setUniforms: data must be non-null and non-empty");
     const uint64_t offset = *m_uniformOffset;
-    LMX_ASSERT(offset + size <= m_uniformRing->length(),
+    const uint64_t capacity = m_uniformRing->length();
+    // Split in two, and phrased as a subtraction, because the obvious `offset + size <= capacity`
+    // wraps on a bogus size near UINT64_MAX and would wave through the unbounded memcpy below --
+    // the exact case the guard exists for. `size <= capacity` first is what makes the
+    // `capacity - size` in the second check safe.
+    LMX_ASSERT(size <= capacity, "setUniforms: upload is larger than the entire per-frame uniform "
+                                 "ring -- grow kUniformRingBytes");
+    LMX_ASSERT(offset <= capacity - size,
                "setUniforms: per-frame uniform ring exhausted -- grow kUniformRingBytes");
     std::memcpy(static_cast<uint8_t*>(m_uniformRing->contents()) + offset, data, size);
     m_argumentTable->setAddress(m_uniformRing->gpuAddress() + offset, slot);
