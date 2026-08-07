@@ -16,7 +16,8 @@ namespace lmx::rhi {
 //   - Ray tracing
 // Each grows in once a milestone actually needs it. "Explicit barriers" sat on this list through
 // M1, which rendered a single pass and so had nothing to order; M2 renders scene-then-UI and grew
-// exactly the one edge that demands -- CommandList::textureBarrier -- and no barrier system.
+// exactly the one edge a real feature demands -- CommandList::textureBarrier -- and no barrier
+// system.
 
 enum class ErrorCode {
     DeviceUnsupported,

@@ -33,8 +33,9 @@ namespace lmx::rhi::metal4 {
 // length()/gpuAddress() and MTL4::ArgumentTable::setAddress() -- is scalar- and void-returning
 // sendMessage; drawIndexed adds only MTL::Buffer::length()/gpuAddress() (scalar sends) plus
 // drawIndexedPrimitives (a void send) on top of a plain C++ Metal4Buffer::handle() getter; and
-// bindTexture is MTL::Texture::gpuResourceID() (a scalar send, MTLTexture.hpp:241) into
-// MTL4::ArgumentTable::setTexture() (a void send, MTL4ArgumentTable.hpp:80). So no path produces
+// bindTexture is MTL::Texture::usage() and gpuResourceID() (scalar sends, MTLTexture.hpp:293 and
+// :241) into MTL4::ArgumentTable::setTexture() (a void send, MTL4ArgumentTable.hpp:80). So no
+// path produces
 // a +0 object. textureBarrier records a flag and touches Metal not at all; the barrier it defers
 // is MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside
 // beginRenderPass's existing pool.
@@ -85,6 +86,11 @@ private:
     NS::SharedPtr<MTL4::RenderCommandEncoder> m_encoder;
     // Set by textureBarrier (which runs between passes, where there is no encoder to record on)
     // and consumed by the next beginRenderPass. See textureBarrier's note in the .cpp.
+    //
+    // A bool is sufficient *only* because exactly one edge exists (RenderTarget -> ShaderRead), so
+    // "a barrier is pending" fully determines the stage pair to encode. The second edge -- M3's
+    // shadow map is the likely first -- must carry the stage pair here instead of widening this
+    // flag, or two different edges pending at once will silently collapse into one.
     bool m_pendingBarrier = false;
 };
 

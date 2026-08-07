@@ -154,7 +154,12 @@ consumes the resource as possible. **Don't use this method for synchronizing res
 the same pass.**" Our single restriction — not within one pass — is enforced by `textureBarrier`'s
 `LMX_ASSERT(!m_encoder, ...)`. Apple's *Synchronizing passes with consumer barriers* confirms the
 shape we use: the barrier goes in the **consuming** encoder and blocks its `beforeStages` until the
-prior passes' `afterQueueStages` finish. Consumer form (not the producer `barrierAfterStages`) is
+prior passes' `afterQueueStages` finish. **Unexercised case:** `afterQueueStages` is documented to
+cover *all* prior work in the queue, not merely prior passes of the same command buffer, so a
+barrier consumed by the first pass of frame N+1 should also order against frame N's writes. That
+follows from the docs but **no test exercises it** — every path we have records and consumes the
+barrier inside one frame. Treat cross-frame ordering as reasoned, not measured, until a feature
+needs it. Consumer form (not the producer `barrierAfterStages`) is
 forced by where the RHI call sits: by the time `textureBarrier` is called, the producing encoder
 has already been ended, so only the reader is still reachable. **Empirical:**
 `MTL_DEBUG_LAYER=1 xmake test` is clean with the barrier encoded at that position.

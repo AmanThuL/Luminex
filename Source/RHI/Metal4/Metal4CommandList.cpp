@@ -148,12 +148,23 @@ void Metal4CommandList::bindVertexBuffer(uint32_t slot, Buffer& buffer) {
 
 void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture) {
     LMX_ASSERT(m_encoder, "bindTexture must be called between beginRenderPass and endRenderPass");
+    auto& metalTexture = static_cast<Metal4Texture&>(texture);
+    // RHI.h states the sampled requirement; this is what enforces it, and the enforcement cannot
+    // be left to Metal: setTexture below takes an opaque MTL::ResourceID, not a texture object,
+    // so the validation layer has nothing to resolve a usage flag from at bind time. Without this
+    // the mistake surfaces (if at all) as a shader reading a texture that never got ShaderRead
+    // usage, far from the call that bound it.
+    //
+    // Deliberately a usage-bit test rather than a desc.sampled test: Metal4Device grants
+    // ShaderRead for `sampled || cpuReadback` (Metal4Device.cpp:375), and a readback texture bound
+    // for sampling is legal -- the bit is exactly the question being asked.
+    LMX_ASSERT((metalTexture.handle()->usage() & MTL::TextureUsageShaderRead) != 0,
+               "bindTexture: texture has no ShaderRead usage -- create it with sampled = true");
     // Textures bind by MTL::ResourceID rather than by GPU address (the buffer path above);
     // residency is again what keeps the allocation alive, arranged at creation. `slot` indexes
     // the argument table's *texture* bindings, a separate array from its addresses -- so this
     // does not collide with bindVertexBuffer/setUniforms on the same number.
-    m_argumentTable->setTexture(static_cast<Metal4Texture&>(texture).handle()->gpuResourceID(),
-                                slot);
+    m_argumentTable->setTexture(metalTexture.handle()->gpuResourceID(), slot);
 }
 
 void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size) {
@@ -217,6 +228,12 @@ void Metal4CommandList::textureBarrier(Texture& texture, TextureUse from, Textur
     (void)texture; // stage-scoped in Metal 4; the parameter documents intent and feeds the
                    // future Vulkan backend's image transition.
     LMX_ASSERT(!m_encoder, "textureBarrier must be called between render passes, not inside one");
+    // "Between passes" has to mean between passes *of an open frame*. resetForFrame deliberately
+    // does not clear m_pendingBarrier (endFrameReset owns that, so a dropped edge aborts in the
+    // frame that dropped it), which leaves one gap: a barrier recorded with no frame open would
+    // sit in the flag and be silently applied to the *next* frame's first pass. The nulled
+    // per-frame pointer is this class's established outside-a-frame tell, so it closes that gap.
+    LMX_ASSERT(m_argumentTable != nullptr, "textureBarrier must be called inside a frame");
     LMX_ASSERT(from == TextureUse::RenderTarget && to == TextureUse::ShaderRead,
                "textureBarrier: only RenderTarget -> ShaderRead is implemented (grown per demand)");
     // Nothing is encoded here -- there is no encoder to encode onto between passes. The next
