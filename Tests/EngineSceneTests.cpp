@@ -255,15 +255,16 @@ TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched ass
     REQUIRE(scene.has_value());
 
     // 5x5 sphere grid (25) + 6 colour patches + 1 gradient ramp + 1 normal-map probe + 3 depth
-    // probes.
-    REQUIRE((*scene)->objects.size() == 36);
+    // probes + 1 mip probe.
+    REQUIRE((*scene)->objects.size() == 37);
     // One material per sphere (25, distinct roughness/fresnelR0) + 6 patches + the ramp + the
-    // normal probe + one material shared by the three depth probes.
-    REQUIRE((*scene)->materials.size() == 34);
-    // Sphere, unit quad (shared by the patches and the normal probe), gradient ramp quad, cube.
+    // normal probe + one material shared by the three depth probes + the mip probe.
+    REQUIRE((*scene)->materials.size() == 35);
+    // Sphere, unit quad (shared by the patches, the normal probe, and the mip probe), gradient
+    // ramp quad, cube.
     REQUIRE((*scene)->meshes.size() == 4);
-    // The gradient ramp and the normal map are the scene's only two textures.
-    REQUIRE((*scene)->textures.size() == 2);
+    // The gradient ramp, the normal map, and the mip probe's checkerboard.
+    REQUIRE((*scene)->textures.size() == 3);
 
     size_t normalMapped = 0;
     for (const render::Material& material : (*scene)->materials) {
@@ -822,6 +823,89 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     INFO("ramp spread: " + std::to_string(samples.front()) + " -> " +
          std::to_string(samples.back()));
     REQUIRE(samples.back() - samples.front() > 100);
+}
+
+//======================================================================================================================
+// Exit-gate check: Metal's blit generateMipmaps was measured to point-pick, not filter, so a
+// point-picked mip of MaterialLab's 1-texel checkerboard (makeCheckerboardPixels) reads solid
+// black or solid white -- stepping by a power of two always lands on the same parity. A correctly
+// box-filtered chain (Source/Engine/TextureBake.h's bakeMips, the same function the offline bake
+// tool uses) instead converges every level above 0 to an exact uniform mid-gray, because every 2x2
+// block of a 1-texel checkerboard contains exactly two black and two white texels.
+//
+// The bespoke camera sits 10 world units from the probe -- a 1x1 unit quad at that distance,
+// against a 64px target and 45-degree vertical FOV, covers roughly 8 screen pixels while sampling
+// a 64-texel-wide texture, comfortably selecting a mip level above 0 (texel/pixel ratio ~8, so LOD
+// ~3) while still covering enough pixels that rasterization cannot miss every sample. The probe's
+// own material has diffuse = the checkerboard texture (sRGB) and albedo = white; with ambient =
+// (1,1,1) and every light off (the same "no light, no sky, ambient times diffuse" configuration as
+// this file's white-patch test above), the shaded linear value is exactly the sampled texel: 0.5.
+// sRGB-encoded, linear 0.5 lands at byte ~188 -- the same value pinned by this file's white-patch
+// test and by Tests/GpuRendererTests.cpp's encode oracle, derived there from the identical
+// linearToSrgb(0.5) computation.
+TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
+          "proving its mips are filtered rather than point-picked",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const SceneObject* probe = findObject(**scene, "material-lab mip probe");
+    REQUIRE(probe != nullptr);
+
+    constexpr uint32_t kProbeSize = 64;
+    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+                                             /*cpuReadback=*/true);
+    INFO(describeSceneError(renderer));
+    REQUIRE(renderer.has_value());
+
+    // 10 world units back from the probe, on the +Z side its quad normal faces (the probe's front
+    // face is invisible from initialCamera on the other side by construction -- see
+    // MaterialLab.cpp's file-level comment).
+    render::Camera camera;
+    camera.position = probe->position + glm::vec3(0.0f, 0.0f, 10.0f);
+    camera.fovY = glm::radians(45.0f);
+    camera.nearZ = 0.1f;
+    camera.farZ = 20.0f;
+
+    std::vector<render::DrawItem> items;
+    items.push_back({.mesh = &(*scene)->meshes[probe->meshIndex],
+                     .model = probe->modelMatrix(),
+                     .material = (*scene)->materials[probe->materialIndex]});
+
+    render::SceneView view;
+    view.items = items;
+    view.ambient = {1.0f, 1.0f, 1.0f};
+    for (render::DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};
+
+    rhi::CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
+    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+
+    const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, probe->position);
+    REQUIRE(coord.x < kProbeSize);
+    REQUIRE(coord.y < kProbeSize);
+    const size_t offset = (static_cast<size_t>(coord.y) * kProbeSize + coord.x) * 4;
+
+    for (size_t channel = 0; channel < 3; ++channel) {
+        const int value = pixels[offset + channel];
+        INFO("mip probe channel " + std::to_string(channel) + " = " + std::to_string(value));
+        REQUIRE(std::abs(value - 188) <= 6);
+        // Point-picking this pattern reads solid black (0) or solid white (255); mid-gray is far
+        // from both, so these hold with wide margin for a correctly filtered chain and fail for a
+        // point-picked one.
+        REQUIRE(value > 40);
+        REQUIRE(value < 215);
+    }
 }
 
 //======================================================================================================================
