@@ -84,6 +84,11 @@ struct ShadowMatrices {
 // direction, look at the sphere's centre, and fit an
 // orthographic frustum to the sphere exactly (extents +/-r, near r, far 3r).
 //
+// Depth is reversed, like the camera's: the near plane maps to 1 and the far plane to 0, so the
+// surface nearest the light holds the larger value. Everything downstream is built on that --
+// the shadow pass clears to 0 and keeps what compares Greater, and the comparison sampler is
+// GreaterEqual.
+//
 // A free function because it is pure arithmetic on the scene's bounds -- unit-testable without a
 // device, which is where its coverage lives (Tests/RenderTests.cpp).
 //

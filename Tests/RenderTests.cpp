@@ -82,15 +82,33 @@ TEST_CASE("view matrix moves the world opposite the camera", "[render]") {
 }
 
 //======================================================================================================================
-TEST_CASE("projection maps near to 0 and far to 1 -- Metal depth range", "[render]") {
+TEST_CASE("projection maps near to 1 and the horizon to 0 -- reversed infinite far", "[render]") {
     Camera camera;
     camera.nearZ = 0.1f;
     camera.farZ = 100.0f;
     const glm::mat4 proj = camera.projectionMatrix(16.0f / 9.0f);
+
+    // The reversed infinite-far projection emits clip.z = nearZ and clip.w = -z_view, so the
+    // depth a fragment writes is nearZ / (-z_view): exactly 1 on the near plane, and a reciprocal
+    // that only approaches 0 as the eye distance grows without bound. There is no depth a point
+    // can reach 0 at, which is the whole point of an infinite far plane -- nothing is ever
+    // clipped away for being too distant.
     const glm::vec4 nearP = proj * glm::vec4(0.0f, 0.0f, -camera.nearZ, 1.0f);
+    REQUIRE(nearP.z / nearP.w == Catch::Approx(1.0f).margin(1e-6));
+
+    // farZ is data the projection no longer reads. A point at farZ is an ordinary point, at
+    // 0.1/100 = 0.001, and one a thousand times farther still sits above zero rather than being
+    // clipped -- both of which a finite far plane would have gotten wrong.
     const glm::vec4 farP = proj * glm::vec4(0.0f, 0.0f, -camera.farZ, 1.0f);
-    REQUIRE(nearP.z / nearP.w == Catch::Approx(0.0f).margin(1e-6));
-    REQUIRE(farP.z / farP.w == Catch::Approx(1.0f).margin(1e-4));
+    REQUIRE(farP.z / farP.w == Catch::Approx(0.001f).margin(1e-6));
+    const glm::vec4 beyondP = proj * glm::vec4(0.0f, 0.0f, -100000.0f, 1.0f);
+    REQUIRE(beyondP.w > 0.0f);
+    REQUIRE(beyondP.z / beyondP.w == Catch::Approx(1e-6f).margin(1e-9));
+
+    // Depth decreases monotonically with distance, which is what makes Greater the nearer-wins
+    // comparison the pipelines are built with.
+    REQUIRE(nearP.z / nearP.w > farP.z / farP.w);
+    REQUIRE(farP.z / farP.w > beyondP.z / beyondP.w);
 }
 
 //======================================================================================================================
@@ -122,13 +140,16 @@ TEST_CASE("fitShadowOrtho places the light 2r back along its own direction", "[r
 
     // An orthographic eye has no projected point of its own, but it does have a clip-space image,
     // and that image is what pins where the fit put it. With the eye 2r out and the frustum
-    // running near = r to far = 3r, orthoRH_ZO maps the eye's own plane (z_view = 0) to
-    // -near/(far - near) = -0.5 and the sphere's centre (z_view = -2r) to exactly 0.5.
+    // running near = r to far = 3r, the reversed ortho maps z_view linearly with slope
+    // 1/(far - near) = 1/(2r) and offset far/(far - near) = 1.5 -- so the near plane lands on 1,
+    // the far plane on 0, and the eye's own plane (z_view = 0) one half-depth past the near plane
+    // at 1.5. The sphere's centre (z_view = -2r) still lands on exactly 0.5: reversing the
+    // convention swaps the ends and leaves the midpoint where it was.
     const glm::vec4 eye = matrices.viewProj * glm::vec4(-2.0f * sphere.w * riggedLightDir(), 1.0f);
     REQUIRE(eye.w == Catch::Approx(1.0f)); // orthographic: no perspective divide anywhere
     REQUIRE(eye.x == Catch::Approx(0.0f).margin(1e-4));
     REQUIRE(eye.y == Catch::Approx(0.0f).margin(1e-4));
-    REQUIRE(eye.z == Catch::Approx(-0.5f).margin(1e-4));
+    REQUIRE(eye.z == Catch::Approx(1.5f).margin(1e-4));
 
     // And the light looks *at* the centre: it lands dead on the view axis, halfway through depth.
     const glm::vec4 center = matrices.viewProj * glm::vec4(glm::vec3(sphere), 1.0f);
@@ -154,6 +175,18 @@ TEST_CASE("fitShadowOrtho fits the bounding sphere exactly, off-origin too", "[r
     // range a D32Float shadow map stores, which is why CalcShadowFactor needs no z remap.
     REQUIRE(extent.minZ == Catch::Approx(0.0f).margin(1e-3));
     REQUIRE(extent.maxZ == Catch::Approx(1.0f).margin(1e-3));
+
+    // Which end of that range is which is the whole reversed-Z convention, and the extents above
+    // cannot see it -- they are the same two numbers either way round. Named points can: the
+    // surface point nearest the light sits one radius in front of the fitted near plane and must
+    // read 1, the one behind it must read 0. A fit that forgot to reverse passes every assertion
+    // above and fails both of these.
+    const glm::vec3 nearestToLight = glm::vec3(sphere) - sphere.w * riggedLightDir();
+    const glm::vec3 farthestFromLight = glm::vec3(sphere) + sphere.w * riggedLightDir();
+    REQUIRE((matrices.viewProj * glm::vec4(nearestToLight, 1.0f)).z ==
+            Catch::Approx(1.0f).margin(1e-3));
+    REQUIRE((matrices.viewProj * glm::vec4(farthestFromLight, 1.0f)).z ==
+            Catch::Approx(0.0f).margin(1e-3));
 }
 
 //======================================================================================================================

@@ -342,6 +342,9 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
                                            .depthFormat = Format::D32Float,
                                            .depthTestEnable = true,
                                            .depthWriteEnable = true,
+                                           // Reversed-Z: the map clears to 0 and the nearest
+                                           // surface to the light is the largest depth.
+                                           .depthCompare = DepthCompare::Greater,
                                            .label = "lmx.test.shadowDepthPipeline"});
     INFO(errorOf(depthPipeline));
     REQUIRE(depthPipeline.has_value());
@@ -358,14 +361,18 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     auto shadowSampler = (*device)->createSampler({.filter = FilterMode::Linear,
                                                    .addressMode = AddressMode::Clamp,
                                                    .maxAnisotropy = 16,
-                                                   .compare = CompareFunc::LessEqual,
+                                                   .compare = CompareFunc::GreaterEqual,
                                                    .label = "lmx.test.shadowCompareSampler"});
     INFO(errorOf(shadowSampler));
     REQUIRE(shadowSampler.has_value());
 
     const glm::mat4 lightView =
         glm::lookAtRH(glm::vec3{0.0f, 0.0f, 2.0f}, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
-    const glm::mat4 lightProj = glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 3.0f);
+    // Reversed, the same way fitShadowOrtho reverses: near and far handed to orthoRH_ZO the other
+    // way round, so the light's near plane (distance 1) is depth 1 and its far plane (3) is 0.
+    // The occluder quad sits at world z = 0.2, i.e. 1.8 from the light, and so writes
+    // (3 - 1.8) / 2 = 0.6; the receiver plane at z = 0 is 2 away and reads 0.5. Nearer is larger.
+    const glm::mat4 lightProj = glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 3.0f, 1.0f);
     const glm::mat4 lightViewProj = lightProj * lightView;
 
     glm::mat4 ndcToTexcoord{1.0f};
@@ -383,7 +390,7 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     CommandList& commands = (*device)->beginFrame();
 
     commands.beginRenderPass({.depthTarget = shadowMap->get(),
-                              .clearDepth = 1.0f,
+                              .clearDepth = 0.0f,
                               .storeDepth = true,
                               .label = "lmx.test.shadowSmoke.map"});
     commands.bindPipeline(**depthPipeline);
@@ -565,6 +572,12 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
 
 //======================================================================================================================
 // A sloped ramp exposes depth bias; a flat control keeps unrelated depth behavior pinned.
+//
+// The bias is the renderer's own sign, negative, because depth is reversed: kShadowDepthBias in
+// Renderer.cpp pushes a shadow caster's stored depth *away* from the light so the surface stops
+// shadowing itself, and away from the light is now the smaller number. This case is the
+// instrument that says so -- a bias that kept the conventional sign would move the ramp the other
+// way and read here as a positive difference.
 TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -605,6 +618,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
                                                   .depthTestEnable = true,
                                                   .depthWriteEnable = true,
                                                   .cullMode = CullMode::None,
+                                                  .depthCompare = DepthCompare::Greater,
                                                   .depthBias = bias,
                                                   .label = label});
     };
@@ -612,7 +626,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(unbiasedPipeline));
     REQUIRE(unbiasedPipeline.has_value());
     auto biasedPipeline =
-        makeDepthPipeline({.constant = 4.0f, .slopeScale = 1.0f}, "lmx.test.biasedDepthPipeline");
+        makeDepthPipeline({.constant = -4.0f, .slopeScale = -1.0f}, "lmx.test.biasedDepthPipeline");
     INFO(errorOf(biasedPipeline));
     REQUIRE(biasedPipeline.has_value());
 
@@ -659,7 +673,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     CommandList& commands = (*device)->beginFrame();
     const auto depthPass = [&](Texture& target, GraphicsPipeline& pipeline) {
         commands.beginRenderPass({.depthTarget = &target,
-                                  .clearDepth = 1.0f,
+                                  .clearDepth = 0.0f,
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
@@ -700,8 +714,12 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     const Pixel rampBiased = pixelAt(biased, 32, 3);
     INFO(describe("ramp, unbiased", 32, 3, rampUnbiased));
     INFO(describe("ramp, biased", 32, 3, rampBiased));
+    // The unbiased reading is the vertex depth this probe interpolates and is unchanged by the
+    // convention flip: the quads are given in clip space, so reversing what the *projection*
+    // emits does not move them. Only the bias direction changed, and the assertion below is the
+    // previous one with its operands swapped.
     REQUIRE(channelNear(rampUnbiased.r, 116, 6));
-    REQUIRE(int{rampBiased.r} - int{rampUnbiased.r} > 12);
+    REQUIRE(int{rampUnbiased.r} - int{rampBiased.r} > 12);
 
     const Pixel flatUnbiased = pixelAt(unbiased, 32, 60);
     const Pixel flatBiased = pixelAt(biased, 32, 60);

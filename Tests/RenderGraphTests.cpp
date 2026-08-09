@@ -508,7 +508,9 @@ TEST_CASE("execute encodes the schedule as labelled render passes", "[render][gr
     REQUIRE(commands.passes[0].colorTarget == nullptr);
     REQUIRE(commands.passes[0].depthTarget == &shadowMap);
     REQUIRE(commands.passes[0].storeDepth);
-    REQUIRE(commands.passes[0].clearDepth == 1.0f);
+    // Forwarded from DepthAttachment's default, which is the reversed convention's far plane --
+    // not rhi::RenderPassDesc's own 1.0, which this pass would otherwise have inherited.
+    REQUIRE(commands.passes[0].clearDepth == 0.0f);
 
     REQUIRE(commands.passes[1].colorTarget == &color);
     REQUIRE(commands.passes[1].depthTarget == &depth);

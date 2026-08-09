@@ -1,4 +1,4 @@
-// Camera-centered sky sphere pinned to the far plane. The pipeline uses LessEqual depth and no
+// Camera-centered sky sphere pinned to the far plane. The pipeline uses GreaterEqual depth and no
 // culling because the camera views the sphere from inside. Slots: buffers 0/2, texture 2, sampler 0.
 
 struct Vertex
@@ -44,7 +44,11 @@ VSOutput vertexMain(uint vid: SV_VertexID)
     float3 local = gVertices[vid].position;
     VSOutput o;
     float4 clip = mul(gSky.viewProj, float4(local + gSky.eyePos, 1.0));
-    o.position = clip.xyww;
+    // Pin every sky vertex to the far plane, which reversed depth puts at 0: z / w = 0 whatever
+    // the sphere's own geometry says, so the sky rasterises at exactly the value the pass cleared
+    // to and its GreaterEqual test lets it through only where no geometry has written. (The
+    // conventional-depth form of this trick was clip.xyww, pinning z / w to 1.)
+    o.position = float4(clip.xy, 0.0, clip.w);
     o.direction = local;
     return o;
 }
