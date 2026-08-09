@@ -9,7 +9,8 @@ next. Updated at milestone boundaries.
 beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle invariant asserted)
 │
 ├─ 1. Shadow pass          depth-only → shadow map (2048², depth32Float, storeDepth)
-│       every opaque DrawItem, depth bias {4.0, slope 32.0}, light 0 only
+│       every opaque DrawItem, depth bias {-4.0, slope -32.0}, light 0 only
+│       reversed depth: clears to 0, keeps Greater, comparison sampler GreaterEqual
 │
 ├─ 2. Scene pass           → offscreen color (BGRA8Unorm) + depth (D32), viewport-sized
 │       │  per-pass uniforms (slot b2): viewProj, shadowTransform, eye, time, ambient,
@@ -19,7 +20,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle in
 │       │    + normal mapping (TBN, uniform branch on material flag)
 │       │    per-draw uniforms (b1): mvp, model, uvTransform, albedo, fresnelR0, roughness, flags
 │       │    textures t0 diffuse / t1 normal (white / flat-normal fallbacks when unmapped)
-│       ├─ sky, drawn last: camera-centered sphere, z = w far-plane trick, LessEqual, cull none,
+│       ├─ sky, drawn last: camera-centered sphere, z = 0 far-plane trick, GreaterEqual, cull none,
 │       │    cubemap t2
 │       └─ every fragment sRGB-encodes on output (Encode.slang) — the target stays non-sRGB
 │
