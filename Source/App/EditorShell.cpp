@@ -182,7 +182,11 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
 
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
-    return m_activeScene->view(m_drawItems, m_shadowFilter, m_wireframe);
+    render::SceneView view = m_activeScene->view(m_drawItems, m_shadowFilter, m_wireframe);
+    // Exposure is a shell knob rather than scene data, so it is applied after the scene has
+    // described itself -- the same way the wireframe and shadow-filter settings are.
+    view.exposureEv = m_exposureEv;
+    return view;
 }
 
 //======================================================================================================================
@@ -270,6 +274,10 @@ void EditorShell::buildLightsSection() {
 void EditorShell::buildRenderSettingsSection() {
     if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Wireframe", &m_wireframe);
+        // Six stops each way: enough to drive a scene to black or to the tone map's shoulder,
+        // which is the whole range a manual exposure control is useful over here.
+        ImGui::SliderFloat("Exposure (EV)", &m_exposureEv, -6.0f, 6.0f, "%.2f",
+                           ImGuiSliderFlags_AlwaysClamp);
         int filterIndex = static_cast<int>(m_shadowFilter);
         constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
         if (ImGui::Combo("Shadow filter", &filterIndex, kFilterNames,
