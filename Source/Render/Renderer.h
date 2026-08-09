@@ -119,6 +119,14 @@ public:
     GraphTexture declarePasses(RenderGraph& graph, rhi::CommandList& commands, const Camera& camera,
                                const SceneView& view);
 
+    // Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
+    // else, compiled and executed on the spot. It is what a caller with no passes of its own wants
+    // -- the offscreen capture path and the tests; a caller that has its own pass declares against
+    // declarePasses instead, so the graph orders the whole frame rather than half of it.
+    //
+    // barrierForSampling covers the one case the graph cannot see: a caller that samples
+    // colorTarget() from a pass it encodes by hand afterwards has declared nothing, so the
+    // transition to a shader read is emitted on its behalf.
     void render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                 bool barrierForSampling = true);
 

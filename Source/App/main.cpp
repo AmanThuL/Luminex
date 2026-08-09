@@ -7,6 +7,7 @@
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 #include "RHI/RHI.h"
+#include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
 
 #include <SDL3/SDL.h>
@@ -19,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -215,24 +217,39 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
         (*renderer)->timeSeconds = timeSeconds;
-        // The default sampling barrier makes the scene target visible to the UI pass.
-        (*renderer)->render(commands, shell->camera(), shell->sceneView());
 
+        // Named rather than passed inline: the pass bodies borrow this view and run when the
+        // graph executes, which is past the end of the statement that would hold a temporary.
+        const lmx::render::SceneView view = shell->sceneView();
+
+        lmx::render::RenderGraph graph;
+        const lmx::render::GraphTexture sceneColor =
+            (*renderer)->declarePasses(graph, commands, shell->camera(), view);
+        const lmx::render::GraphTexture drawable =
+            graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
+
+        lmx::render::PassDesc ui;
+        // Declaring the read is the whole ordering statement: it puts this pass after the scene
+        // pass and the scene target's transition to a shader read in front of it.
+        ui.textureReads.push_back(sceneColor);
         // This attachment layout must match the pipeline configured by imguiInit().
-        commands.beginRenderPass(
-            {.colorTarget = *target,
-             .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]},
-             .clear = true,
-             .label = "lmx.pass.ui"});
-        // ImGui owns encoder state after this call, so no engine draw follows it.
-        lmx::rhi::metal4::imguiRender(commands);
-        commands.endRenderPass();
+        ui.color = lmx::render::ColorAttachment{
+            .handle = drawable,
+            .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]}};
+        // ImGui owns encoder state once it starts, so no engine draw follows it in this pass.
+        graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
+            lmx::rhi::metal4::imguiRender(commands);
+        });
+        graph.exportTexture(lmx::render::nextVersion(drawable));
+
+        // A frame that cannot validate is a mis-declared frame, which is programmer error: execute
+        // aborts with the graph's own message rather than encoding a hazard.
+        graph.execute(commands);
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 
         if (capturingThisFrame) {
             {
-                const lmx::render::SceneView view = shell->sceneView();
                 lmx::rhi::debug::SchemaContext ctx;
                 ctx.sceneName = std::string(shell->activeSceneName());
                 ctx.frameIndex = frameIndex;
