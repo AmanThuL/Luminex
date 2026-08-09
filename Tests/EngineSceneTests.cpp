@@ -208,6 +208,81 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
     REQUIRE((*scene)->skyCubemap != nullptr);
 }
 
+namespace {
+
+//======================================================================================================================
+const SceneObject* findObject(const Scene& scene, std::string_view name) {
+    for (const SceneObject& object : scene.objects) {
+        if (object.name == name) {
+            return &object;
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
+//======================================================================================================================
+// Deterministic and fully code-generated -- the whole point of MaterialLab -- so this loads with
+// no fetched-asset gate at all, unlike the Sponza/Helmet cases above.
+TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched assets", "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    // 5x5 sphere grid (25) + 6 colour patches + 1 gradient ramp + 1 normal-map probe + 3 depth
+    // probes.
+    REQUIRE((*scene)->objects.size() == 36);
+    // One material per sphere (25, distinct roughness/fresnelR0) + 6 patches + the ramp + the
+    // normal probe + one material shared by the three depth probes.
+    REQUIRE((*scene)->materials.size() == 34);
+    // Sphere, unit quad (shared by the patches and the normal probe), gradient ramp quad, cube.
+    REQUIRE((*scene)->meshes.size() == 4);
+    // The gradient ramp and the normal map are the scene's only two textures.
+    REQUIRE((*scene)->textures.size() == 2);
+
+    size_t normalMapped = 0;
+    for (const render::Material& material : (*scene)->materials) {
+        if (material.normalMap != nullptr) {
+            ++normalMapped;
+        }
+    }
+    REQUIRE(normalMapped == 1);
+
+    REQUIRE((*scene)->boundingSphere.w > 0.0f);
+    REQUIRE((*scene)->skyCubemap != nullptr);
+
+    REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 12.0f)));
+    REQUIRE((*scene)->initialCamera.yaw == 0.0f);
+    REQUIRE((*scene)->initialCamera.pitch == 0.0f);
+}
+
+//======================================================================================================================
+TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns and fresnelR0 "
+          "across rows",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const auto materialOf = [&](std::string_view name) -> const render::Material& {
+        const SceneObject* object = findObject(**scene, name);
+        REQUIRE(object != nullptr);
+        return (*scene)->materials[object->materialIndex];
+    };
+
+    REQUIRE(materialOf("material-lab sphere r0c0").roughness == Catch::Approx(0.05f));
+    REQUIRE(materialOf("material-lab sphere r0c4").roughness == Catch::Approx(1.0f));
+    REQUIRE(materialOf("material-lab sphere r0c0").fresnelR0.x == Catch::Approx(0.04f));
+    REQUIRE(materialOf("material-lab sphere r4c0").fresnelR0.x == Catch::Approx(1.0f));
+    // Albedo stays white across the whole grid -- only roughness and fresnelR0 sweep.
+    REQUIRE(near3(glm::vec3(materialOf("material-lab sphere r2c2").albedo), glm::vec3(1.0f)));
+}
+
 //======================================================================================================================
 TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exhausting the "
           "uniform ring",
@@ -420,26 +495,125 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 }
 
 //======================================================================================================================
+// Ambient-only lighting isolates albedo/texture from directional shading, the same isolation
+// Tests/GpuRendererTests.cpp's sRGB-encode oracle uses (linear 0.5 -> byte 188).
+TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient ramp reads back "
+          "monotonic",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const SceneObject* whitePatch = findObject(**scene, "material-lab patch white");
+    REQUIRE(whitePatch != nullptr);
+    const SceneObject* ramp = findObject(**scene, "material-lab gradient ramp");
+    REQUIRE(ramp != nullptr);
+
+    constexpr uint32_t kProbeSize = 64;
+    auto renderer = render::Renderer::create(**device, kProbeSize, kProbeSize,
+                                             /*cpuReadback=*/true);
+    INFO(describeSceneError(renderer));
+    REQUIRE(renderer.has_value());
+
+    // A bespoke camera framing just the patch row and the ramp beneath it -- the sphere grid,
+    // normal probe, and depth probes sit outside this frustum and are not drawn here at all.
+    render::Camera camera;
+    camera.position = {0.0f, -5.25f, 8.5f};
+    camera.fovY = glm::radians(45.0f);
+    camera.nearZ = 0.1f;
+    camera.farZ = 20.0f;
+
+    std::vector<render::DrawItem> items;
+    items.push_back({.mesh = &(*scene)->meshes[whitePatch->meshIndex],
+                     .model = whitePatch->modelMatrix(),
+                     .material = (*scene)->materials[whitePatch->materialIndex]});
+    items.push_back({.mesh = &(*scene)->meshes[ramp->meshIndex],
+                     .model = ramp->modelMatrix(),
+                     .material = (*scene)->materials[ramp->materialIndex]});
+
+    render::SceneView view;
+    view.items = items;
+    view.ambient = {0.5f, 0.5f, 0.5f};
+    for (render::DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.boundingSphere = {0.0f, -5.25f, 0.0f, 5.0f};
+
+    rhi::CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
+    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+
+    const auto channelAt = [&](uint32_t x, uint32_t y, size_t channel) -> uint8_t {
+        const size_t offset = (size_t{y} * kProbeSize + x) * 4;
+        return pixels[offset + channel];
+    };
+
+    // White patch: albedo 1 times ambient 0.5, sRGB-encoded -- the same expectation as the
+    // encode oracle. Channel order is left unspecified on purpose: white makes every channel
+    // equal, so the probe does not need to know it.
+    const ProjectedPixel patchPixel = projectScenePixel(camera, kProbeSize, whitePatch->position);
+    REQUIRE(patchPixel.x < kProbeSize);
+    REQUIRE(patchPixel.y < kProbeSize);
+    for (size_t channel = 0; channel < 3; ++channel) {
+        const int value = channelAt(patchPixel.x, patchPixel.y, channel);
+        INFO("white patch channel " + std::to_string(channel) + " = " + std::to_string(value));
+        REQUIRE(std::abs(value - 188) <= 6);
+    }
+
+    // Gradient ramp: byte i in all channels at texel column i, sampled left to right. The
+    // readback must be non-decreasing end to end, with a wide spread -- a probe that would also
+    // pass against a flat or empty ramp is not discriminating anything.
+    std::vector<int> samples;
+    for (int i = 0; i < 8; ++i) {
+        const float worldX = -2.9f + static_cast<float>(i) * (5.8f / 7.0f);
+        const glm::vec3 world{worldX, ramp->position.y, ramp->position.z};
+        const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, world);
+        REQUIRE(coord.x < kProbeSize);
+        REQUIRE(coord.y < kProbeSize);
+        samples.push_back(channelAt(coord.x, coord.y, /*channel=*/0));
+    }
+    for (size_t i = 1; i < samples.size(); ++i) {
+        INFO("ramp sample " + std::to_string(i - 1) + "=" + std::to_string(samples[i - 1]) +
+             ", sample " + std::to_string(i) + "=" + std::to_string(samples[i]));
+        REQUIRE(samples[i] >= samples[i - 1]);
+    }
+    INFO("ramp spread: " + std::to_string(samples.front()) + " -> " +
+         std::to_string(samples.back()));
+    REQUIRE(samples.back() - samples.front() > 100);
+}
+
+//======================================================================================================================
 TEST_CASE("scene IDs are stable and reject unknown input", "[engine]") {
     REQUIRE(sceneIdString(*parseSceneId("sponza")) == "sponza");
     REQUIRE(sceneIdString(*parseSceneId("damaged-helmet")) == "damaged-helmet");
+    REQUIRE(sceneIdString(*parseSceneId("material-lab")) == "material-lab");
     REQUIRE_FALSE(parseSceneId("3"));
     REQUIRE_FALSE(parseSceneId("Sponza"));
     REQUIRE(sceneIdString(defaultSceneId()) == "sponza");
 }
 
 //======================================================================================================================
-TEST_CASE("SceneLibrary lists the two scenes in a fixed order", "[gpu]") {
+TEST_CASE("SceneLibrary lists the three scenes in a fixed order", "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 2);
+    REQUIRE(library.entries().size() == 3);
     REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
     REQUIRE(sceneIdString(library.entries()[1].id) == "damaged-helmet");
     REQUIRE(library.entries()[1].stableId == "damaged-helmet");
+    REQUIRE(sceneIdString(library.entries()[2].id) == "material-lab");
+    REQUIRE(library.entries()[2].stableId == "material-lab");
+    REQUIRE(library.entries()[2].displayName == "MaterialLab");
+    REQUIRE(library.entries()[2].role == SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -460,6 +634,10 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
         findRepoAsset("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb").has_value();
     REQUIRE(library.entries()[1].available == helmetPresent);
     REQUIRE(library.entries()[1].hint.empty() == helmetPresent);
+
+    // MaterialLab is fully code-generated: available regardless of what this checkout has fetched.
+    REQUIRE(library.entries()[2].available);
+    REQUIRE(library.entries()[2].hint.empty());
 }
 
 //======================================================================================================================
