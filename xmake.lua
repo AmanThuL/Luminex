@@ -183,7 +183,10 @@ local sponza_info_sha256 = "c584c17ae5514e6218c2f19127f06106d81f472320a8f9a17a94
 local sponza_sha256 = "9f1960875b3a4781a012f9745a88576aaf596acccff4d48d6947674618f9a4a0"
 
 task("setup")
-    set_menu {usage = "xmake setup", description = "fetch pinned dependencies and scene assets"}
+    -- An explicit (even empty) options table is required for -P to work with this task: a
+    -- set_menu with no "options" key rejects -P as an unrecognized option outright.
+    set_menu {usage = "xmake setup", description = "fetch pinned dependencies and scene assets",
+              options = {}}
     on_run(function ()
         if not os.isdir("ThirdParty/metal-cpp") then
             os.mkdir("ThirdParty/metal-cpp")
@@ -335,6 +338,25 @@ task("setup")
                                                   "Assets/Fetched/Sponza"}):trim()
         assert(sponza_hash == sponza_sha256,
                format("Sponza tree checksum mismatch; expected %s", sponza_sha256))
+
+        -- Deterministic offline mip bake (Source/Engine/TextureBake.h): every base-color and
+        -- normal image the two glTF/GLB files reference gets a sibling Baked/image<N>.dds that
+        -- Engine/Scene.cpp's ensureUploaded prefers over the runtime fallback path. Re-running
+        -- setup is cheap here too -- Tools/bake_gltf_textures.py skips any image whose manifest
+        -- matches the current source hash, role-specific filter, and bake-tool version.
+        import("core.project.config")
+        import("core.project.project")
+        -- setup is a one-command bootstrap, including xrepo packages the bake tool links. CI and
+        -- other non-interactive callers have no stdin for xmake's install confirmation, so accept
+        -- the pinned package plan here instead of requiring a separate `xmake f -y` beforehand.
+        os.execv("xmake", {"build", "-P", ".", "-y", "TextureBake"})
+        config.load() -- needed for targetfile() below to resolve the mode-scoped build path
+        local texturebake_bin = project.target("TextureBake"):targetfile()
+        os.execv("python3", {"Tools/bake_gltf_textures.py", "Assets/Fetched/Sponza/Sponza.gltf",
+                             texturebake_bin})
+        os.execv("python3", {"Tools/bake_gltf_textures.py",
+                             "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", texturebake_bin})
+
         print("setup done: metal-cpp %s, slang %s, imgui %s, Sponza archive %s, helmet %s",
               metalcpp_pin, slang_pin, imgui_pin, sponza_archive_sha256, helmet_pin)
     end)
