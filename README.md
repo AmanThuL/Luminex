@@ -51,6 +51,10 @@ Viewport to fly the camera (WASD + Q/E while held). Pressing `c` writes a one-fr
 `luminex-frame.gputrace` next to the binary for Xcode's GPU debugger, which requires launching
 with `MTL_CAPTURE_ENABLED=1` in the environment.
 
+GitHub-hosted macOS runners expose a paravirtual GPU without Metal 4. Hosted CI therefore builds
+and inventories the GPU suite but cannot execute it; renderer changes must run
+`MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on Metal 4 Apple Silicon before merge.
+
 ## Architecture
 
 Luminex is organized as `Source/Core` (logging, assertions) → `Source/RHI` (`lmx::rhi`, the

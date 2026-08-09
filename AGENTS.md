@@ -33,6 +33,9 @@ future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
   (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Automated runs:
   `LMX_MAX_FRAMES=N` exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress.
+- GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
+  GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
+  Metal 4 Apple Silicon before merge.
 - Controls: fly camera — hold RMB in the Viewport panel + WASD (move) / QE (down/up) while held.
   Dock layout persists via `imgui.ini` next to the built binary (build dir, gitignored).
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
