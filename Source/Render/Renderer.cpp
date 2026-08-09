@@ -529,96 +529,15 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 //======================================================================================================================
 void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                       bool barrierForSampling) {
-    LMX_ASSERT(m_color && m_depth && m_shadowMap,
-               "Renderer::render: targets are missing -- create() failed");
-    LMX_ASSERT(view.boundingSphere.w > 0.0f,
-               "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
-               "frustum is fitted to");
-
-    const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
-
-    commands.beginRenderPass({.depthTarget = m_shadowMap.get(),
-                              .clearDepth = 1.0f,
-                              .storeDepth = true,
-                              .label = "lmx.pass.shadow"});
-    commands.bindPipeline(*m_shadowPipeline);
-    for (const DrawItem& item : view.items) {
-        LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
-        const ShadowObjectUniforms uniforms{.mvp = shadow.viewProj * item.model};
-        commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-        commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
-        commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
-    }
-    commands.endRenderPass();
-
-    commands.textureBarrier(*m_shadowMap, rhi::TextureUse::RenderTarget,
-                            rhi::TextureUse::ShaderRead);
-
-    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
-
-    PassUniforms pass{};
-    pass.viewProj = viewProj;
-    pass.shadowTransform = shadow.shadowTransform;
-    pass.eyePos = camera.position;
-    pass.time = timeSeconds;
-    pass.ambient = glm::vec4(view.ambient, 1.0f);
-    for (size_t i = 0; i < std::size(pass.lights); ++i) {
-        pass.lights[i] = toUniform(view.lights[i]);
-    }
-    pass.shadowFilter =
-        view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
-
-    commands.beginRenderPass(
-        {.colorTarget = m_color.get(),
-         .clearColor = {clearColor[0], clearColor[1], clearColor[2], clearColor[3]},
-         .clear = true,
-         .depthTarget = m_depth.get(),
-         .clearDepth = 1.0f,
-         .label = "lmx.pass.scene"});
-
-    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline : *m_scenePipeline);
-    commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
-    commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
-    commands.bindTexture(kShadowTextureSlot, *m_shadowMap);
-    commands.bindTexture(kSkyTextureSlot,
-                         view.skyCubemap != nullptr ? *view.skyCubemap : *m_blackCubeTexture);
-    commands.setUniforms(kPassUniformsSlot, &pass, sizeof(pass));
-
-    for (const DrawItem& item : view.items) {
-        const Material& material = item.material;
-        ObjectUniforms uniforms{};
-        uniforms.mvp = viewProj * item.model;
-        uniforms.model = item.model;
-        uniforms.uvTransform = material.uvTransform;
-        uniforms.albedo = material.albedo;
-        uniforms.fresnelR0 = material.fresnelR0;
-        uniforms.roughness = material.roughness;
-        uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
-
-        commands.bindTexture(kDiffuseTextureSlot,
-                             material.diffuse != nullptr ? *material.diffuse : *m_whiteTexture);
-        commands.bindTexture(kNormalTextureSlot, material.normalMap != nullptr
-                                                     ? *material.normalMap
-                                                     : *m_flatNormalTexture);
-        commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-        // setUniforms copies into transient storage before the slot is rebound by the next draw.
-        commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
-        commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
-    }
-
-    // Draw the solid sky last so opaque geometry rejects covered fragments at the depth clear.
-    if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
-        const SkyUniforms sky{.viewProj = viewProj, .eyePos = camera.position, .eyePadding = 0.0f};
-        commands.bindPipeline(*m_skyPipeline);
-        commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
-        commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
-        commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);
-    }
-    commands.endRenderPass();
+    RenderGraph graph;
+    const GraphTexture sceneColor = declarePasses(graph, commands, camera, view);
+    // The scene colour is this frame's whole result, so it is what the graph roots.
+    graph.exportTexture(sceneColor);
+    graph.execute(commands);
 
     if (barrierForSampling) {
-        // Order a later same-frame sampling pass after the color attachment writes.
+        // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there
+        // is no read for the graph to have derived the transition from.
         commands.textureBarrier(*m_color, rhi::TextureUse::RenderTarget,
                                 rhi::TextureUse::ShaderRead);
     }

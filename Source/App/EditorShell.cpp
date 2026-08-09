@@ -337,6 +337,11 @@ void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer
                              static_cast<int>(m_frameTimesMs.size()),
                              static_cast<int>(m_frameTimeCursor), "frame time (ms)", 0.0f,
                              kFrameTimePlotCeilingMs, ImVec2(0.0f, 60.0f));
+            // Every pass of the newest retired frame, in the order the graph ran them. The list is
+            // empty until a frame retires, which is a fact about the counters rather than a gap.
+            for (const rhi::PassTiming& timing : device.passTimings()) {
+                ImGui::Text("%s: %.2f ms", timing.label.c_str(), timing.gpuMilliseconds);
+            }
         }
 
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {

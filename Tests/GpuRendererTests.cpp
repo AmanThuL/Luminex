@@ -72,143 +72,7 @@ void requireTwoCubeImage(const std::vector<uint8_t>& pixels, const char* label) 
     REQUIRE(right.b > right.g + 32);
 }
 
-//======================================================================================================================
-// Byte-for-byte, because a probe answers "does this look right" and a migration has to answer
-// "is this the same image". The index of the first disagreement is what says where to look.
-size_t firstDifferingByte(const std::vector<uint8_t>& lhs, const std::vector<uint8_t>& rhs) {
-    REQUIRE(lhs.size() == rhs.size());
-    for (size_t byte = 0; byte < lhs.size(); ++byte) {
-        if (lhs[byte] != rhs[byte]) {
-            return byte;
-        }
-    }
-    return lhs.size();
-}
-
-//======================================================================================================================
-// Two blank targets are byte-identical too; this is what keeps that from passing for agreement.
-bool isFlat(const std::vector<uint8_t>& bgra) {
-    for (size_t byte = 4; byte + 3 < bgra.size(); byte += 4) {
-        if (bgra[byte] != bgra[0] || bgra[byte + 1] != bgra[1] || bgra[byte + 2] != bgra[2]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-//======================================================================================================================
-std::vector<uint8_t> endFrameAndReadback(lmx::rhi::Device& device, Renderer& renderer) {
-    device.endFrame(nullptr);
-    device.waitIdle();
-    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    renderer.colorTarget().readback(pixels.data(), pixels.size());
-    return pixels;
-}
-
 } // namespace
-
-//======================================================================================================================
-// The migration gate: the same scene, encoded once by hand and once from the graph's declarations,
-// must land the same bytes in the target. Two renderers rather than two frames of one, so a graph
-// path that encoded nothing at all would be compared against an untouched target instead of
-// against the image the previous frame left behind.
-TEST_CASE("the graph path renders byte-identically to the hand-sequenced path", "[gpu]") {
-    using namespace lmx::rhi;
-
-    auto device = createDevice();
-    INFO(errorOf(device));
-    REQUIRE(device.has_value());
-
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.parityCube");
-    INFO(errorOf(cube));
-    REQUIRE(cube.has_value());
-    auto ground =
-        lmx::render::createMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.parityGround");
-    INFO(errorOf(ground));
-    REQUIRE(ground.has_value());
-    auto skySphere = lmx::render::createMesh(
-        **device, lmx::render::fromGeo(lmx::engine::makeSphere(0.5f, 20, 20)),
-        "lmx.test.paritySky");
-    INFO(errorOf(skySphere));
-    REQUIRE(skySphere.has_value());
-
-    constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
-    const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
-    const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
-    auto skyCubemap = (*device)->createTexture({.width = 1,
-                                                .height = 1,
-                                                .format = Format::RGBA8Unorm,
-                                                .kind = TextureKind::Cube,
-                                                .sampled = true,
-                                                .label = "lmx.test.parityCubemap"},
-                                               skyFaces);
-    INFO(errorOf(skyCubemap));
-    REQUIRE(skyCubemap.has_value());
-
-    auto legacyRenderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
-    INFO(errorOf(legacyRenderer));
-    REQUIRE(legacyRenderer.has_value());
-    auto graphRenderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
-    INFO(errorOf(graphRenderer));
-    REQUIRE(graphRenderer.has_value());
-
-    const auto requireSameImage = [&](const Camera& camera, const SceneView& view,
-                                      const char* what) {
-        CommandList& legacyCommands = (*device)->beginFrame();
-        (*legacyRenderer)->render(legacyCommands, camera, view, /*barrierForSampling=*/false);
-        const std::vector<uint8_t> legacy = endFrameAndReadback(**device, **legacyRenderer);
-
-        CommandList& graphCommands = (*device)->beginFrame();
-        lmx::render::RenderGraph graph;
-        const lmx::render::GraphTexture sceneColor =
-            (*graphRenderer)->declarePasses(graph, graphCommands, camera, view);
-        graph.exportTexture(sceneColor);
-        graph.execute(graphCommands);
-        const std::vector<uint8_t> throughGraph = endFrameAndReadback(**device, **graphRenderer);
-
-        INFO(std::string("scene: ") + what);
-        // A flat image would make the comparison below meaningless whichever way it came out.
-        REQUIRE_FALSE(isFlat(throughGraph));
-
-        const size_t difference = firstDifferingByte(legacy, throughGraph);
-        INFO("first differing byte: " + std::to_string(difference) + " of " +
-             std::to_string(legacy.size()));
-        REQUIRE(difference == legacy.size());
-    };
-
-    const std::array<DrawItem, 2> cubes = twoCubeScene(*cube);
-    requireSameImage(sceneCamera(), litSceneView(cubes), "two cubes, no shadow caster, no sky");
-
-    const std::array<DrawItem, 2> shadowed = {{
-        {.mesh = &*ground,
-         .model = glm::mat4{1.0f},
-         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
-        {.mesh = &*cube,
-         .model = glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 3.0f, 0.0f}) *
-                  glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f}),
-         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
-    }};
-    SceneView shadowedView;
-    shadowedView.items = shadowed;
-    shadowedView.lights[0] = {.strength = {0.8f, 0.8f, 0.8f},
-                              .direction = glm::normalize(glm::vec3{1.0f, -1.0f, 1.0f})};
-    shadowedView.lights[1].strength = {0.0f, 0.0f, 0.0f};
-    shadowedView.lights[2].strength = {0.0f, 0.0f, 0.0f};
-    shadowedView.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
-    shadowedView.skySphere = &*skySphere;
-    shadowedView.skyCubemap = skyCubemap->get();
-
-    Camera shadowCamera;
-    shadowCamera.position = {0.0f, 12.0f, 16.0f};
-    shadowCamera.pitch = -0.62f;
-    requireSameImage(shadowCamera, shadowedView, "cast shadow under a sky");
-
-    // The filter is a uniform the shader branches on, so it is the one scene input that changes
-    // what the shadow read does rather than what the shadow map holds.
-    SceneView pcssView = shadowedView;
-    pcssView.shadowFilter = lmx::render::ShadowFilter::PCSS;
-    requireSameImage(shadowCamera, pcssView, "cast shadow under a sky, PCSS");
-}
 
 //======================================================================================================================
 // Separated red and blue cubes catch argument-table last-write reuse across per-draw uniforms.
@@ -984,4 +848,161 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     INFO(describe("blue cube under the sky", 48, 32, right));
     REQUIRE(right.b > 64);
     REQUIRE(right.g < 188 - 6);
+}
+
+//======================================================================================================================
+// The editor reads these labels straight out of the device, so the frame's passes have to arrive
+// named and in the order the graph ran them -- an unnamed or missing pass is an invisible pass.
+TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.timedCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+
+    CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, sceneCamera(), litSceneView(items), /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
+    (*device)->beginFrame();
+    (*device)->endFrame(nullptr);
+
+    const std::span<const PassTiming> timings = (*device)->passTimings();
+    REQUIRE(timings.size() == 2);
+    REQUIRE(timings[0].label == "lmx.pass.shadow");
+    REQUIRE(timings[1].label == "lmx.pass.scene");
+    for (const PassTiming& timing : timings) {
+        INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
+        REQUIRE(timing.gpuMilliseconds > 0.0);
+    }
+}
+
+//======================================================================================================================
+// The editor's frame shape: the scene passes plus one joined pass that reads what they rendered.
+// Nothing here places a barrier -- the read declaration is the only thing standing between the
+// scene pass's writes and this pass's sample, so a correct image is what proves the graph derived
+// the transition.
+TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.joinedCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/false);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    auto destination = makeProbeTarget(**device, "lmx.test.joinedDestination");
+    INFO(errorOf(destination));
+    REQUIRE(destination.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto copyPipeline = (*device)->createGraphicsPipeline({.library = library->get(),
+                                                           .vertexEntry = "vertexMain",
+                                                           .fragmentEntry = "fragmentMain",
+                                                           .colorFormat = Format::BGRA8Unorm,
+                                                           .label = "lmx.test.joinedCopyPipeline"});
+    INFO(errorOf(copyPipeline));
+    REQUIRE(copyPipeline.has_value());
+
+    constexpr uint32_t kSourceTextureSlot = 0;
+
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+    const SceneView view = litSceneView(items);
+
+    CommandList& commands = (*device)->beginFrame();
+    lmx::render::RenderGraph graph;
+    const lmx::render::GraphTexture sceneColor =
+        (*renderer)->declarePasses(graph, commands, sceneCamera(), view);
+    const lmx::render::GraphTexture copyTarget =
+        graph.importTexture(**destination, Format::BGRA8Unorm, "destination");
+
+    lmx::render::PassDesc copy;
+    copy.textureReads.push_back(sceneColor);
+    // Magenta makes a pass that drew nothing at all obvious rather than merely wrong.
+    copy.color =
+        lmx::render::ColorAttachment{.handle = copyTarget, .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}};
+    graph.addPass("lmx.pass.copy", std::move(copy),
+                  [&](const lmx::render::PassResources& resources) {
+                      const auto source = resources.texture(sceneColor);
+                      REQUIRE(source.has_value());
+                      commands.bindPipeline(**copyPipeline);
+                      commands.bindTexture(kSourceTextureSlot, **source);
+                      commands.draw(3);
+                  });
+    graph.exportTexture(lmx::render::nextVersion(copyTarget));
+    graph.execute(commands);
+
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*destination)->readback(pixels.data(), pixels.size());
+    requireTwoCubeImage(pixels, "clear sampled through the graph");
+}
+
+//======================================================================================================================
+// Validation has to be live in the path the frame actually takes, not only in a unit test of the
+// declaration layer: a pass body reaching for a resource it never declared is refused mid-frame,
+// with the pass and the resource named.
+TEST_CASE("a pass resolving an undeclared texture is refused while the frame runs", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto declaredTarget = makeProbeTarget(**device, "lmx.test.declaredTarget");
+    INFO(errorOf(declaredTarget));
+    REQUIRE(declaredTarget.has_value());
+    auto undeclaredTarget = makeProbeTarget(**device, "lmx.test.undeclaredTarget");
+    INFO(errorOf(undeclaredTarget));
+    REQUIRE(undeclaredTarget.has_value());
+
+    lmx::render::RenderGraph graph;
+    const lmx::render::GraphTexture declared =
+        graph.importTexture(**declaredTarget, Format::BGRA8Unorm, "declaredTarget");
+    const lmx::render::GraphTexture undeclared =
+        graph.importTexture(**undeclaredTarget, Format::BGRA8Unorm, "undeclaredTarget");
+
+    std::optional<lmx::render::GraphError> refusal;
+    lmx::render::PassDesc probe;
+    probe.color = lmx::render::ColorAttachment{.handle = declared};
+    graph.addPass("lmx.pass.probe", std::move(probe),
+                  [&](const lmx::render::PassResources& resources) {
+                      const auto texture = resources.texture(undeclared);
+                      if (!texture) {
+                          refusal = texture.error();
+                      }
+                  });
+
+    CommandList& commands = (*device)->beginFrame();
+    graph.execute(commands);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    REQUIRE(refusal.has_value());
+    INFO(refusal->message);
+    REQUIRE(refusal->message.contains("lmx.pass.probe"));
+    REQUIRE(refusal->message.contains("undeclaredTarget"));
+    REQUIRE(refusal->message.contains("did not declare"));
 }
