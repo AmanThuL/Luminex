@@ -27,6 +27,11 @@ README and `AGENTS.md` are navigation and operation surfaces. They summarize; th
 new architecture decisions. Implemented historical specs may remain as frozen design context, but
 current documents cannot depend on deleted executor plans.
 
+Public-facing surfaces such as README, GitHub About, release text, and gallery captions describe
+what the renderer does now before naming a short set of future feature themes. They do not expose
+internal milestone numbers, plan/task status, or present an unimplemented backend as a current
+capability. Detailed sequencing and gates belong in the roadmap and internal records.
+
 ## Status lifecycle
 
 Use one explicit `**Status**:` field near the top of every ADR, convention, roadmap, active plan,
