@@ -18,6 +18,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -254,7 +255,7 @@ TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched ass
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
     REQUIRE((*scene)->skyCubemap != nullptr);
 
-    REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 12.0f)));
+    REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 80.0f)));
     REQUIRE((*scene)->initialCamera.yaw == 0.0f);
     REQUIRE((*scene)->initialCamera.pitch == 0.0f);
 }
@@ -281,6 +282,167 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
     REQUIRE(materialOf("material-lab sphere r4c0").fresnelR0.x == Catch::Approx(1.0f));
     // Albedo stays white across the whole grid -- only roughness and fresnelR0 sweep.
     REQUIRE(near3(glm::vec3(materialOf("material-lab sphere r2c2").albedo), glm::vec3(1.0f)));
+}
+
+namespace {
+
+struct ScreenBox {
+    float minX, maxX, minY, maxY;
+};
+
+//======================================================================================================================
+// Projects a world-space AABB's 8 corners through the camera and returns the enclosing
+// screen-space box, in the same pixel convention as projectScenePixel above (row 0 = top) but
+// without truncating to an integer pixel -- a partly off-screen box must stay readable as such
+// rather than wrapping through uint32_t.
+ScreenBox projectAabbToScreen(const render::Camera& camera, uint32_t size, const glm::vec3& center,
+                              const glm::vec3& halfExtent) {
+    ScreenBox box{std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest(),
+                  std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()};
+    const glm::mat4 viewProj = camera.projectionMatrix(1.0f) * camera.viewMatrix();
+    for (float sx : {-1.0f, 1.0f}) {
+        for (float sy : {-1.0f, 1.0f}) {
+            for (float sz : {-1.0f, 1.0f}) {
+                const glm::vec3 corner = center + glm::vec3(sx, sy, sz) * halfExtent;
+                const glm::vec4 clip = viewProj * glm::vec4(corner, 1.0f);
+                const float ndcX = clip.x / clip.w;
+                const float ndcY = clip.y / clip.w;
+                const float px = (ndcX * 0.5f + 0.5f) * static_cast<float>(size);
+                const float py = (1.0f - (ndcY * 0.5f + 0.5f)) * static_cast<float>(size);
+                box.minX = std::min(box.minX, px);
+                box.maxX = std::max(box.maxX, px);
+                box.minY = std::min(box.minY, py);
+                box.maxY = std::max(box.maxY, py);
+            }
+        }
+    }
+    return box;
+}
+
+//======================================================================================================================
+bool disjoint(const ScreenBox& a, const ScreenBox& b) {
+    return a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY;
+}
+
+} // namespace
+
+//======================================================================================================================
+// A pure projection check (no rendering): each depth probe's world AABB, and the sphere grid's,
+// projected to screen space through initialCamera. This is what would have caught the depth
+// probes' original placement, where the far probe's screen footprint sat entirely inside the mid
+// probe's (hiding it completely) and the near/mid probes both clipped into the sphere grid.
+TEST_CASE("loadMaterialLabScene's depth probes are simultaneously visible and occlude neither "
+          "each other nor the sphere grid from initialCamera",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    render::Camera camera;
+    camera.position = (*scene)->initialCamera.position;
+    camera.yaw = (*scene)->initialCamera.yaw;
+    camera.pitch = (*scene)->initialCamera.pitch;
+    camera.fovY = (*scene)->initialCamera.fovY;
+    camera.nearZ = (*scene)->initialCamera.nearZ;
+    camera.farZ = (*scene)->initialCamera.farZ;
+
+    constexpr uint32_t kSize = 256;
+    const auto boxOf = [&](std::string_view name, const glm::vec3& halfExtent) {
+        const SceneObject* object = findObject(**scene, name);
+        REQUIRE(object != nullptr);
+        return projectAabbToScreen(camera, kSize, object->position, halfExtent);
+    };
+
+    const ScreenBox nearBox = boxOf("material-lab depth probe near", glm::vec3(0.25f));
+    const ScreenBox midBox = boxOf("material-lab depth probe mid", glm::vec3(0.25f));
+    const ScreenBox farBox = boxOf("material-lab depth probe far", glm::vec3(0.25f));
+    // Sphere-inclusive: the grid's spheres sit at x,y in {-3,-1.5,0,1.5,3}, radius 0.5.
+    const ScreenBox gridBox =
+        projectAabbToScreen(camera, kSize, glm::vec3(0.0f), glm::vec3(3.5f, 3.5f, 0.5f));
+
+    for (const ScreenBox& box : {nearBox, midBox, farBox}) {
+        INFO("box: x[" + std::to_string(box.minX) + "," + std::to_string(box.maxX) + "] y[" +
+             std::to_string(box.minY) + "," + std::to_string(box.maxY) + "]");
+        REQUIRE(box.minX >= 0.0f);
+        REQUIRE(box.maxX <= static_cast<float>(kSize));
+        REQUIRE(box.minY >= 0.0f);
+        REQUIRE(box.maxY <= static_cast<float>(kSize));
+    }
+
+    REQUIRE(disjoint(nearBox, midBox));
+    REQUIRE(disjoint(nearBox, farBox));
+    REQUIRE(disjoint(midBox, farBox));
+    REQUIRE(disjoint(nearBox, gridBox));
+    REQUIRE(disjoint(midBox, gridBox));
+    REQUIRE(disjoint(farBox, gridBox));
+}
+
+//======================================================================================================================
+// The flat region of the normal map is data (RGBA8Unorm, no lighting involved), so this copies
+// the uploaded texture verbatim via Shaders/FullscreenSample.slang's `Load`-based passthrough
+// rather than trying to reconstruct it from a lit render.
+TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,128,255,255} "
+          "outside the bump",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const SceneObject* normalProbe = findObject(**scene, "material-lab normal probe");
+    REQUIRE(normalProbe != nullptr);
+    rhi::Texture* normalMap = (*scene)->materials[normalProbe->materialIndex].normalMap;
+    REQUIRE(normalMap != nullptr);
+
+    constexpr uint32_t kMapSize = 64;
+    auto destination = (*device)->createTexture({.width = kMapSize,
+                                                 .height = kMapSize,
+                                                 .format = rhi::Format::BGRA8Unorm,
+                                                 .renderTarget = true,
+                                                 .cpuReadback = true,
+                                                 .label = "lmx.test.materialLabNormalCopy"});
+    INFO(describeSceneError(destination));
+    REQUIRE(destination.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(describeSceneError(library));
+    REQUIRE(library.has_value());
+    auto pipeline =
+        (*device)->createGraphicsPipeline({.library = library->get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = rhi::Format::BGRA8Unorm,
+                                           .label = "lmx.test.materialLabNormalCopyPipeline"});
+    INFO(describeSceneError(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    rhi::CommandList& commands = (*device)->beginFrame();
+    commands.beginRenderPass({.colorTarget = destination->get(),
+                              .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
+                              .clear = true,
+                              .label = "lmx.test.materialLabNormalCopy"});
+    commands.bindPipeline(**pipeline);
+    commands.bindTexture(0, *normalMap);
+    commands.draw(3);
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kMapSize} * kMapSize * 4);
+    (*destination)->readback(pixels.data(), pixels.size());
+
+    // Texel (0,0) is well outside the centred bump radius (28 texels from the (31.5,31.5)
+    // centre) -- flat. Sorted so the assertion does not depend on the destination's BGRA channel
+    // order, only on the multiset of bytes {128,128,255,255} being present.
+    std::array<uint8_t, 4> corner = {pixels[0], pixels[1], pixels[2], pixels[3]};
+    std::sort(corner.begin(), corner.end());
+    INFO("corner texel bytes (sorted): " + std::to_string(corner[0]) + "," +
+         std::to_string(corner[1]) + "," + std::to_string(corner[2]) + "," +
+         std::to_string(corner[3]));
+    REQUIRE(corner == std::array<uint8_t, 4>{128, 128, 255, 255});
 }
 
 //======================================================================================================================

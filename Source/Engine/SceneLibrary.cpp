@@ -92,6 +92,19 @@ std::string_view sceneIdString(SceneId id) {
 }
 
 //======================================================================================================================
+std::span<const std::string_view> sceneStableIds() {
+    static const std::vector<std::string_view> ids = [] {
+        std::vector<std::string_view> result;
+        result.reserve(kSceneDescriptors.size());
+        for (const SceneDescriptor& descriptor : kSceneDescriptors) {
+            result.push_back(descriptor.stableId);
+        }
+        return result;
+    }();
+    return ids;
+}
+
+//======================================================================================================================
 SceneLibrary::SceneLibrary(rhi::Device& device) : m_device(device) {
     m_entries.reserve(kSceneDescriptors.size());
     m_scenes.resize(kSceneDescriptors.size());

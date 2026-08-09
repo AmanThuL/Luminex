@@ -37,6 +37,11 @@ SceneId defaultSceneId();
 std::optional<SceneId> parseSceneId(std::string_view stableId);
 std::string_view sceneIdString(SceneId id);
 
+// Every catalog entry's stableId, in catalog order. Device-free (the catalog itself is static
+// data), so callers that only need to name valid IDs -- CLI usage/error text -- do not need a
+// device just to keep that text in sync with the catalog.
+std::span<const std::string_view> sceneStableIds();
+
 class SceneLibrary {
 public:
     explicit SceneLibrary(rhi::Device& device);
