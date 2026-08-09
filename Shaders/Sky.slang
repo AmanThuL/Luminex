@@ -1,6 +1,5 @@
 // Camera-centered sky sphere pinned to the far plane. The pipeline uses LessEqual depth and no
 // culling because the camera views the sphere from inside. Slots: buffers 0/2, texture 2, sampler 0.
-import Encode;
 
 struct Vertex
 {
@@ -13,11 +12,14 @@ struct Vertex
 [[vk::binding(0, 0)]]
 StructuredBuffer<Vertex> gVertices : register(t0); // → MSL [[buffer(0)]]
 
-// The dedicated 80-byte CPU mirror pads eyePos to a 16-byte constant-buffer slot.
+// The dedicated 96-byte CPU mirror pads eyePos to a 16-byte constant-buffer slot. preExposure is
+// PassUniforms' field under another name: the sky draws in the same pass on the same slot, so it
+// has to carry the same exposure or the background would ignore the exposure slider.
 struct SkyUniforms
 {
     float4x4 viewProj;
     float3 eyePos;
+    float preExposure;
 };
 
 [[vk::binding(2, 0)]]
@@ -50,7 +52,7 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
-    // Sampling decodes sRGB; encode again for the non-sRGB scene target.
+    // Sampling decodes sRGB; the result stays linear all the way to the display transform.
     float3 color = gSkyCube.Sample(gLinearSampler, normalize(input.direction)).rgb;
-    return float4(linearToSrgb(color), 1.0);
+    return float4(color * gSky.preExposure, 1.0);
 }

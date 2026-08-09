@@ -1,4 +1,9 @@
+#include "DisplayTransformOracle.h"
 #include "GpuTestSupport.h"
+
+#include <catch2/catch_approx.hpp>
+
+#include <cstring>
 
 namespace {
 
@@ -33,9 +38,22 @@ SceneView litSceneView(std::span<const DrawItem> items) {
 }
 
 //======================================================================================================================
-bool isClearChannel(uint8_t actual, float expected) {
-    const int want = static_cast<int>(expected * 255.0f + 0.5f);
-    return std::abs(int{actual} - want) <= 2;
+// kSceneClear is authored in display space, and the renderer decodes it once when it declares the
+// scene pass. It therefore reaches the display target the same way a fragment writing that linear
+// colour would -- through the tone map and the encode -- rather than landing in the target
+// verbatim, which is what it did while the scene pass owned the encode.
+std::array<int, 3> sceneClearBytes() {
+    return lmx::test::displayBytes({lmx::test::srgbDecode(kSceneClear[0]),
+                                    lmx::test::srgbDecode(kSceneClear[1]),
+                                    lmx::test::srgbDecode(kSceneClear[2])});
+}
+
+//======================================================================================================================
+void requireClearPixel(const Pixel& pixel) {
+    const std::array<int, 3> want = sceneClearBytes();
+    REQUIRE(channelNear(pixel.r, want[0], 2));
+    REQUIRE(channelNear(pixel.g, want[1], 2));
+    REQUIRE(channelNear(pixel.b, want[2], 2));
 }
 
 //======================================================================================================================
@@ -54,9 +72,7 @@ std::array<DrawItem, 2> twoCubeScene(const Mesh& cube) {
 void requireTwoCubeImage(const std::vector<uint8_t>& pixels, const char* label) {
     const Pixel corner = pixelAt(pixels, 2, 2);
     INFO(describe(label, 2, 2, corner));
-    REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
-    REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
-    REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+    requireClearPixel(corner);
     REQUIRE(corner.a == 255);
 
     const Pixel left = pixelAt(pixels, 16, 32);
@@ -154,9 +170,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 
         const Pixel corner = pixelAt(pixels, 2, 2);
         INFO(describe("corner", 2, 2, corner));
-        REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
-        REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
-        REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+        requireClearPixel(corner);
     }
 }
 
@@ -526,14 +540,22 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     const Pixel lit = pixelAtWidth(pixels, kSceneProbeSize, litAt.x, litAt.y);
     INFO(describe("clear of the shadow", litAt.x, litAt.y, lit));
 
-    REQUIRE(channelNear(lit.r, 189, 6));
-    REQUIRE(channelNear(lit.g, 189, 6));
-    REQUIRE(channelNear(lit.b, 189, 6));
+    // The lit ground's radiance is what it always was; only the transform between it and the
+    // display target changed. Naming that radiance as the linear value behind the byte this probe
+    // used to read (189) keeps the expectation derived rather than re-measured: 189 decodes to
+    // 0.5089, which the tone map takes to 0.4689 and the encode returns as 182.
+    const int litByte = lmx::test::displayByte(lmx::test::linearOfSrgbByte(189));
+    REQUIRE(channelNear(lit.r, litByte, 6));
+    REQUIRE(channelNear(lit.g, litByte, 6));
+    REQUIRE(channelNear(lit.b, litByte, 6));
 
     REQUIRE(shadowed.r * 4 < lit.r * 3);
     REQUIRE(shadowed.g * 4 < lit.g * 3);
     REQUIRE(shadowed.b * 4 < lit.b * 3);
-    REQUIRE(shadowed.r > 30);
+    // Fully shadowed ground still carries the ambient term (0.05 linear on a white albedo), which
+    // the transform lands on byte 34. A shadow that swallowed the ambient floor would read below
+    // it; partial PCF coverage can only read above.
+    REQUIRE(shadowed.r >= lmx::test::displayByte(view.ambient.r) - 2);
 
     const PixelCoord edgeAt = projectToPixel(camera, kSceneProbeSize, {4.0f, 0.0f, 4.0f});
     const Pixel edge = pixelAtWidth(pixels, kSceneProbeSize, edgeAt.x, edgeAt.y);
@@ -690,8 +712,12 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
 }
 
 //======================================================================================================================
-// Linear 0.5 should read back near sRGB byte 188, separating shader encode from raw storage.
-TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
+// Ambient 0.5 on a white albedo is linear 0.5 at the fragment. Nothing between there and the
+// display target may store it as a display-space number: the tone map subtracts its 0.04 black
+// offset (0.5 is above the 0.08 knee and below the 0.76 shoulder, so that is the whole of it) and
+// the encode turns the remaining 0.46 into byte 181. A scene shader that still encoded would put
+// 188 here, and an 8-bit intermediate would round it somewhere else again.
+TEST_CASE("the display transform tone maps and encodes the scene's linear output", "[gpu]") {
     using namespace lmx::rhi;
 
     auto device = createDevice();
@@ -729,12 +755,134 @@ TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    const int want = lmx::test::displayByte(0.5f);
     const Pixel probe = pixelAt(pixels, 32, 32);
     INFO(describe("ambient-only white", 32, 32, probe));
-    REQUIRE(channelNear(probe.r, 188, 6));
-    REQUIRE(channelNear(probe.g, 188, 6));
-    REQUIRE(channelNear(probe.b, 188, 6));
+    REQUIRE(channelNear(probe.r, want, 6));
+    REQUIRE(channelNear(probe.g, want, 6));
+    REQUIRE(channelNear(probe.b, want, 6));
     REQUIRE(probe.a == 255);
+}
+
+namespace {
+
+//======================================================================================================================
+// Bit pattern of `value` in binary16 -- the layout an RGBA16Float readback hands back. The
+// round-trip check pins every caller to a value binary16 holds exactly, which is what lets the
+// probes below compare readback bits for equality rather than within a tolerance.
+uint16_t halfBits(float value) {
+    const _Float16 half = static_cast<_Float16>(value);
+    REQUIRE(static_cast<float>(half) == value);
+    uint16_t bits = 0;
+    std::memcpy(&bits, &half, sizeof(bits));
+    return bits;
+}
+
+//======================================================================================================================
+// The other direction, for values binary16 only approximates -- a decoded clear colour, say.
+float floatOfHalfBits(uint16_t bits) {
+    _Float16 half = 0;
+    std::memcpy(&half, &bits, sizeof(half));
+    return static_cast<float>(half);
+}
+
+// One RGBA16Float texel, in the channel order readback() produces.
+struct HalfPixel {
+    uint16_t r = 0, g = 0, b = 0, a = 0;
+};
+
+//======================================================================================================================
+HalfPixel halfPixelAt(const std::vector<uint16_t>& rgba, uint32_t x, uint32_t y) {
+    const size_t offset = (size_t{y} * kSize + x) * 4;
+    return {rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]};
+}
+
+} // namespace
+
+//======================================================================================================================
+// The scene target is scene-linear and unbounded, and exposure is a multiply applied before it.
+//
+// Ambient 4.0 on a white albedo puts linear 4.0 at the fragment -- four times what an 8-bit unorm
+// target can hold -- so the readback finding exactly 4.0 is what says no display-space
+// intermediate stands between the shading and the target. 4.0 and 8.0 are exact in binary16, so
+// these are equalities: raising exposure by one EV doubles the stored radiance and nothing else.
+//
+// The clear is probed on the same terms. It is authored in display space, decoded once when the
+// pass is declared, and pre-exposed with everything else -- if it were not, an exposure change
+// would move the shaded pixels and leave the background behind, which is the failure this pins.
+TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exactly", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.exposurePlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {{
+        {.mesh = &*plane,
+         .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+    }};
+
+    SceneView view;
+    view.items = items;
+    for (DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.ambient = {4.0f, 4.0f, 4.0f};
+    view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
+    // An unset SceneView must render at unit exposure, or every existing probe in this file moves.
+    REQUIRE(view.exposureEv == 0.0f);
+
+    std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    const auto renderAtExposure = [&](float exposureEv) {
+        view.exposureEv = exposureEv;
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    };
+
+    renderAtExposure(0.0f);
+    const HalfPixel litAtZero = halfPixelAt(texels, 32, 32);
+    REQUIRE(litAtZero.r == halfBits(4.0f));
+    REQUIRE(litAtZero.g == halfBits(4.0f));
+    REQUIRE(litAtZero.b == halfBits(4.0f));
+
+    // Radiance of 4.0 reaches the display target as 253, not 255: the tone map's shoulder
+    // compresses it. Clipping it to 1.0 anywhere upstream would have written 255 instead.
+    const Pixel displayAtZero = pixelAt(pixels, 32, 32);
+    INFO(describe("ambient 4.0 through the display transform", 32, 32, displayAtZero));
+    REQUIRE(channelNear(displayAtZero.r, lmx::test::displayByte(4.0f), 2));
+
+    // The renderer's authored clear is 0.05 in its red channel; scene-linear, that is 0.003936.
+    const HalfPixel clearAtZero = halfPixelAt(texels, 2, 2);
+    INFO(describe("scene clear, exposure 0", 2, 2, displayAtZero));
+    REQUIRE(floatOfHalfBits(clearAtZero.r) ==
+            Catch::Approx(lmx::test::srgbDecode(kSceneClear[0])).epsilon(0.001));
+
+    renderAtExposure(1.0f);
+    const HalfPixel litAtOne = halfPixelAt(texels, 32, 32);
+    REQUIRE(litAtOne.r == halfBits(8.0f));
+    REQUIRE(litAtOne.g == halfBits(8.0f));
+    REQUIRE(litAtOne.b == halfBits(8.0f));
+
+    // Doubling a binary16 value is exact, so the clear's two readings compare without a tolerance.
+    const HalfPixel clearAtOne = halfPixelAt(texels, 2, 2);
+    REQUIRE(floatOfHalfBits(clearAtOne.r) == 2.0f * floatOfHalfBits(clearAtZero.r));
+    REQUIRE(floatOfHalfBits(clearAtOne.g) == 2.0f * floatOfHalfBits(clearAtZero.g));
+    REQUIRE(floatOfHalfBits(clearAtOne.b) == 2.0f * floatOfHalfBits(clearAtZero.b));
 }
 
 //======================================================================================================================
@@ -781,14 +929,13 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     renderWith(true);
     const Pixel wire = pixelAt(pixels, 26, 26);
     INFO(describe("wireframe interior", 26, 26, wire));
-    REQUIRE(isClearChannel(wire.b, kSceneClear[2]));
-    REQUIRE(isClearChannel(wire.g, kSceneClear[1]));
-    REQUIRE(isClearChannel(wire.r, kSceneClear[0]));
+    requireClearPixel(wire);
     REQUIRE(wire.a == 255);
 }
 
 //======================================================================================================================
-// The corner pins one sRGB encode of the sky; a cube probe proves depth keeps geometry in front.
+// The corner pins the sky through the display transform; a cube probe proves depth keeps geometry
+// in front of it.
 TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -837,17 +984,27 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    // kSkyTexel is uploaded to a plain RGBA8Unorm cubemap, not an sRGB view, so the sampler hands
+    // the shader (0, 0.502, 1.0) as linear radiance and the sky shader passes it through untouched
+    // -- the display transform is the only thing between the texel and the target. Its peak
+    // channel is 1.0, above the 0.76 shoulder, so unlike the mid-grey probes this one exercises
+    // the compression *and* the desaturation that comes with it, which is what lifts the black
+    // channel off 0 (bytes 33, 179, 241).
+    const std::array<int, 3> skyBytes = lmx::test::displayBytes(
+        {kSkyTexel[0] / 255.0f, kSkyTexel[1] / 255.0f, kSkyTexel[2] / 255.0f});
     const Pixel corner = pixelAt(pixels, 2, 2);
     INFO(describe("sky corner", 2, 2, corner));
-    REQUIRE(channelNear(corner.r, 0, 4));
-    REQUIRE(channelNear(corner.g, 188, 6));
-    REQUIRE(channelNear(corner.b, 255, 4));
+    REQUIRE(channelNear(corner.r, skyBytes[0], 4));
+    REQUIRE(channelNear(corner.g, skyBytes[1], 6));
+    REQUIRE(channelNear(corner.b, skyBytes[2], 4));
     REQUIRE(corner.a == 255);
 
     const Pixel right = pixelAt(pixels, 48, 32);
     INFO(describe("blue cube under the sky", 48, 32, right));
     REQUIRE(right.b > 64);
-    REQUIRE(right.g < 188 - 6);
+    // Green separates the two: the sky is half-strength green, and the blue cube only picks up
+    // what its specular lobe and its environment reflection carry there.
+    REQUIRE(right.g < skyBytes[1] - 32);
 }
 
 //======================================================================================================================
@@ -880,9 +1037,10 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
     (*device)->endFrame(nullptr);
 
     const std::span<const PassTiming> timings = (*device)->passTimings();
-    REQUIRE(timings.size() == 2);
+    REQUIRE(timings.size() == 3);
     REQUIRE(timings[0].label == "lmx.pass.shadow");
     REQUIRE(timings[1].label == "lmx.pass.scene");
+    REQUIRE(timings[2].label == "lmx.pass.display");
     for (const PassTiming& timing : timings) {
         INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
         REQUIRE(timing.gpuMilliseconds > 0.0);

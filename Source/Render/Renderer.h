@@ -66,6 +66,11 @@ struct SceneView {
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF;
     bool wireframe = false;
+    // Manual exposure, in stops. The renderer turns it into exp2(exposureEv) and every fragment
+    // multiplies its linear output by that before the target sees it -- so the scene target holds
+    // pre-exposed radiance and the display transform reads one already-exposed image. Zero is
+    // unit exposure, which is what leaves a scene looking as it did before there was a slider.
+    float exposureEv = 0.0f;
 };
 
 // The light's view-projection and the same matrix with the NDC -> texcoord map baked in, which is
@@ -95,6 +100,16 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 // Renderer (a test, a tool) may call it directly.
 void registerUniformLayoutsForCapture();
 
+// The two colour formats the frame runs through, named because three places have to agree on
+// each: the texture the renderer creates, the pipeline compiled to render into it, and the format
+// declared when the graph imports it. A literal in any one of those is a trap -- the graph checks
+// attachment roles against what it was told, not against the texture.
+//
+// The scene renders in half float because that is what holds radiance above 1.0; the display
+// target is the 8-bit surface the viewport, the swapchain, and the screenshot all expect.
+constexpr rhi::Format kSceneColorFormat = rhi::Format::RGBA16Float;
+constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm;
+
 class Renderer {
 public:
     // cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
@@ -108,10 +123,10 @@ public:
     // free memory the GPU is reading.
     rhi::Result<void> resize(uint32_t width, uint32_t height);
 
-    // Declares this frame's shadow and scene(+sky) passes into `graph`, importing the renderer's
-    // own targets, and answers with the scene-colour version the scene pass produces -- the handle
-    // a caller declares its own pass against, so the editor's UI pass can read what the scene pass
-    // rendered and the offscreen path can export it.
+    // Declares this frame's shadow, scene(+sky), and display passes into `graph`, importing the
+    // renderer's own targets, and answers with the display-target version the display pass
+    // produces -- the handle a caller declares its own pass against, so the editor's UI pass can
+    // read the finished image and the offscreen path can export it.
     //
     // Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
     // `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
@@ -130,17 +145,24 @@ public:
     void render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                 bool barrierForSampling = true);
 
+    // The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     // Barriered to ShaderRead when render() returned with barrierForSampling == true.
     rhi::Texture& colorTarget();
+
+    // The scene-linear, pre-exposed image the display transform consumed, in kSceneColorFormat.
+    // Exposed for tests that need to read radiance rather than the picture made of it; the frame
+    // itself never touches it from outside declarePasses.
+    rhi::Texture& hdrColorTarget();
 
     uint32_t width() const { return m_width; }
     uint32_t height() const { return m_height; }
 
     // Public data, not setter pairs: plain per-frame knobs the Inspector edits in place.
     //
-    // clearColor is written by the hardware clear and therefore lands in the target *unencoded* --
-    // it is a display-space colour, like every other value the target ends up holding, just one
-    // that skips the shader that would have encoded it.
+    // clearColor is authored in display space -- it is what a colour picker hands over. The
+    // renderer decodes it once, when it declares the scene pass, so the hardware clear writes a
+    // scene-linear value into a scene-linear target and the clear reaches the display through the
+    // same transform every shaded pixel does.
     float clearColor[4] = {0.05f, 0.07f, 0.10f, 1.0f};
     // Uploaded as PassUniforms.time. No shipped shader reads it yet; it is fed from the App's
     // frame clock so the uniform block holds a real number rather than an unexplained zero.
@@ -154,10 +176,15 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_shadowPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
+    // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
+    // the two always share an extent and are replaced together by resize().
+    std::unique_ptr<rhi::Texture> m_hdrColor;
     std::unique_ptr<rhi::Texture> m_color;
     std::unique_ptr<rhi::Texture> m_depth;
     std::unique_ptr<rhi::Texture> m_shadowMap;

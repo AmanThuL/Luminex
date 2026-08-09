@@ -2,6 +2,7 @@
 
 #include "Core/Assert.h"
 #include "RHI/CaptureSchema.h"
+#include "Render/ColorTransfer.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -55,7 +56,8 @@ struct PassUniforms {
     glm::vec3 eyePos;          // 128
     float eyePadding;          // 140 -- the float3's tail
     float time;                // 144
-    float timePadding[3];      // 148 -- ambient realigns to 16
+    float preExposure;         // 148 -- fits in padding ambient's 16-byte alignment already left
+    float alignmentPadding[2]; // 152 -- ambient realigns to 16
     glm::vec4 ambient;         // 160
     DirLightUniform lights[3]; // 176
     int32_t shadowFilter;      // 272
@@ -65,11 +67,13 @@ static_assert(sizeof(PassUniforms) == 288, "must match ScenePass.slang's PassUni
 
 // Mirrors Shaders/Sky.slang's SkyUniforms.
 struct SkyUniforms {
-    glm::mat4 viewProj; // 0
-    glm::vec3 eyePos;   // 64
-    float eyePadding;   // 76
+    glm::mat4 viewProj;   // 0
+    glm::vec3 eyePos;     // 64
+    float eyePadding;     // 76 -- the float3's tail
+    float preExposure;    // 80
+    float tailPadding[3]; // 84 -- the struct's own 16-byte alignment
 };
-static_assert(sizeof(SkyUniforms) == 80, "must match Sky.slang's SkyUniforms");
+static_assert(sizeof(SkyUniforms) == 96, "must match Sky.slang's SkyUniforms");
 
 // ScenePass.slang's kFlagHasNormalMap.
 constexpr uint32_t kFlagHasNormalMap = 1u;
@@ -87,6 +91,10 @@ constexpr uint32_t kSkyTextureSlot = 2;
 constexpr uint32_t kShadowTextureSlot = 3;
 constexpr uint32_t kLinearSamplerSlot = 0;
 constexpr uint32_t kShadowSamplerSlot = 1;
+
+// DisplayTransform.slang's own resource set: one texture, its own index space, unrelated to the
+// scene pass's slots above.
+constexpr uint32_t kSceneColorTextureSlot = 0;
 
 constexpr uint32_t kShadowMapSize = 2048;
 
@@ -163,6 +171,7 @@ void registerUniformLayoutsForCapture() {
         {"shadowTransform", offsetof(PassUniforms, shadowTransform), "float4x4"},
         {"eyePos", offsetof(PassUniforms, eyePos), "float3"},
         {"time", offsetof(PassUniforms, time), "float"},
+        {"preExposure", offsetof(PassUniforms, preExposure), "float"},
         {"ambient", offsetof(PassUniforms, ambient), "float4"}};
     for (uint32_t light = 0; light < kLightCount; ++light) {
         const uint32_t base =
@@ -185,7 +194,8 @@ void registerUniformLayoutsForCapture() {
          .slot = kPassUniformsSlot,
          .sizeBytes = sizeof(SkyUniforms),
          .fields = {{"viewProj", offsetof(SkyUniforms, viewProj), "float4x4"},
-                    {"eyePos", offsetof(SkyUniforms, eyePos), "float3"}}});
+                    {"eyePos", offsetof(SkyUniforms, eyePos), "float3"},
+                    {"preExposure", offsetof(SkyUniforms, preExposure), "float"}}});
 }
 
 //======================================================================================================================
@@ -250,12 +260,17 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(library.error());
     }
+    if (auto library = device.loadShaderLibrary("Shaders/DisplayTransform"); library) {
+        self->m_displayLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
 
     const auto makeScenePipeline = [&](rhi::FillMode fill, const char* label) {
         return device.createGraphicsPipeline({.library = self->m_sceneLibrary.get(),
                                               .vertexEntry = "vertexMain",
                                               .fragmentEntry = "fragmentMain",
-                                              .colorFormat = rhi::Format::BGRA8Unorm,
+                                              .colorFormat = kSceneColorFormat,
                                               .depthFormat = rhi::Format::D32Float,
                                               .depthTestEnable = true,
                                               .depthWriteEnable = true,
@@ -302,7 +317,7 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     if (auto pipeline = device.createGraphicsPipeline({.library = self->m_skyLibrary.get(),
                                                        .vertexEntry = "vertexMain",
                                                        .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = rhi::Format::BGRA8Unorm,
+                                                       .colorFormat = kSceneColorFormat,
                                                        .depthFormat = rhi::Format::D32Float,
                                                        .depthTestEnable = true,
                                                        .depthWriteEnable = false,
@@ -311,6 +326,21 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                                        .label = "lmx.render.skyPipeline"});
         pipeline) {
         self->m_skyPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    // A fullscreen triangle over an already-rasterised image: no depth to test against and no
+    // face to cull, since the one primitive covers the target by construction.
+    if (auto pipeline = device.createGraphicsPipeline({.library = self->m_displayLibrary.get(),
+                                                       .vertexEntry = "vertexMain",
+                                                       .fragmentEntry = "fragmentMain",
+                                                       .colorFormat = kDisplayFormat,
+                                                       .depthFormat = rhi::Format::Unknown,
+                                                       .cullMode = rhi::CullMode::None,
+                                                       .label = "lmx.render.displayPipeline"});
+        pipeline) {
+        self->m_displayPipeline = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
@@ -381,13 +411,27 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
 rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::resize: width and height must be non-zero");
 
+    // Scene-linear radiance: rendered into by the scene and sky passes, sampled by the display
+    // pass. Readable on the same terms as the display target, because a caller that wants to
+    // inspect radiance rather than the picture has nowhere else to read it from.
+    auto hdrColor = m_device.createTexture({.width = width,
+                                            .height = height,
+                                            .format = kSceneColorFormat,
+                                            .renderTarget = true,
+                                            .sampled = true,
+                                            .cpuReadback = m_cpuReadback,
+                                            .label = "lmx.render.sceneColorHdr"});
+    if (!hdrColor) {
+        return std::unexpected(hdrColor.error());
+    }
+    // The display transform's output: what the viewport samples and a screenshot reads back.
     auto color = m_device.createTexture({.width = width,
                                          .height = height,
-                                         .format = rhi::Format::BGRA8Unorm,
+                                         .format = kDisplayFormat,
                                          .renderTarget = true,
                                          .sampled = true,
                                          .cpuReadback = m_cpuReadback,
-                                         .label = "lmx.render.sceneColor"});
+                                         .label = "lmx.render.displayColor"});
     if (!color) {
         return std::unexpected(color.error());
     }
@@ -401,7 +445,8 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
         return std::unexpected(depth.error());
     }
 
-    // Swap both targets only after both allocations succeed.
+    // Swap the targets only after every allocation succeeds.
+    m_hdrColor = std::move(*hdrColor);
     m_color = std::move(*color);
     m_depth = std::move(*depth);
     m_width = width;
@@ -412,7 +457,7 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
 //======================================================================================================================
 GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& commands,
                                      const Camera& camera, const SceneView& view) {
-    LMX_ASSERT(m_color && m_depth && m_shadowMap,
+    LMX_ASSERT(m_hdrColor && m_color && m_depth && m_shadowMap,
                "Renderer::declarePasses: targets are missing -- create() failed");
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
@@ -421,11 +466,14 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
 
     // The formats are declared here because the graph checks attachment roles against them and
-    // rhi::Texture does not report its own; these are the formats resize() and create() built.
+    // rhi::Texture does not report its own; the named constants are the same ones resize() and
+    // create() built these from, so the two statements cannot drift apart.
     const GraphTexture shadowMap =
         graph.importTexture(*m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(*m_color, rhi::Format::BGRA8Unorm, "lmx.render.sceneColor");
+        graph.importTexture(*m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr");
+    const GraphTexture displayColor =
+        graph.importTexture(*m_color, kDisplayFormat, "lmx.render.displayColor");
     const GraphTexture sceneDepth =
         graph.importTexture(*m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth");
 
@@ -447,11 +495,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
 
+    // One stop is one doubling, so the slider's unit becomes a multiply here and every fragment
+    // applies it to its linear output.
+    const float preExposure = std::exp2(view.exposureEv);
+
     PassUniforms passUniforms{};
     passUniforms.viewProj = viewProj;
     passUniforms.shadowTransform = shadow.shadowTransform;
     passUniforms.eyePos = camera.position;
     passUniforms.time = timeSeconds;
+    passUniforms.preExposure = preExposure;
     passUniforms.ambient = glm::vec4(view.ambient, 1.0f);
     for (size_t i = 0; i < std::size(passUniforms.lights); ++i) {
         passUniforms.lights[i] = toUniform(view.lights[i]);
@@ -461,13 +514,21 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     const GraphTexture shadowRead = nextVersion(shadowMap);
 
+    // The clear has to be the value a fragment writing that colour would have produced, or the
+    // background and the geometry would disagree about what space the target holds. That means
+    // both steps a fragment takes: the authored display-space colour decodes to linear (once,
+    // here), and it is pre-exposed like everything else -- without the second multiply the
+    // background would sit still while an exposure change moved every shaded pixel.
+    const glm::vec3 clearLinear =
+        srgbToLinear(glm::vec3(clearColor[0], clearColor[1], clearColor[2])) * preExposure;
+
     PassDesc sceneDesc;
     sceneDesc.textureReads.push_back(shadowRead);
     sceneDesc.color =
         ColorAttachment{.handle = sceneColor,
                         .load = LoadOp::Clear,
                         .store = StoreOp::Store,
-                        .clearColor = {clearColor[0], clearColor[1], clearColor[2], clearColor[3]}};
+                        .clearColor = {clearLinear.r, clearLinear.g, clearLinear.b, clearColor[3]}};
     // The scene pass is the only consumer of its own depth, so nothing keeps it past the pass.
     sceneDesc.depth = DepthAttachment{
         .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Discard, .clearDepth = 1.0f};
@@ -514,8 +575,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
             // clear.
             if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
-                const SkyUniforms sky{
-                    .viewProj = viewProj, .eyePos = passUniforms.eyePos, .eyePadding = 0.0f};
+                const SkyUniforms sky{.viewProj = viewProj,
+                                      .eyePos = passUniforms.eyePos,
+                                      .eyePadding = 0.0f,
+                                      .preExposure = passUniforms.preExposure,
+                                      .tailPadding = {}};
                 commands.bindPipeline(*m_skyPipeline);
                 commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
                 commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
@@ -523,16 +587,37 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             }
         });
 
-    return nextVersion(sceneColor);
+    const GraphTexture sceneColorRead = nextVersion(sceneColor);
+
+    PassDesc displayDesc;
+    // Declaring the read is what orders this pass after the scene pass and puts the scene
+    // target's transition to a shader read in front of it; nothing here places a barrier.
+    displayDesc.textureReads.push_back(sceneColorRead);
+    // The fullscreen triangle covers every pixel, so the clear only states an attachment load
+    // action the RHI requires; no fragment reads what it wrote.
+    displayDesc.color = ColorAttachment{
+        .handle = displayColor, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
+    graph.addPass("lmx.pass.display", std::move(displayDesc),
+                  [this, &commands, sceneColorRead](const PassResources& resources) {
+                      const GraphResult<rhi::Texture*> hdrTexture =
+                          resources.texture(sceneColorRead);
+                      LMX_ASSERT(hdrTexture.has_value(), hdrTexture.error().message);
+
+                      commands.bindPipeline(*m_displayPipeline);
+                      commands.bindTexture(kSceneColorTextureSlot, **hdrTexture);
+                      commands.draw(3);
+                  });
+
+    return nextVersion(displayColor);
 }
 
 //======================================================================================================================
 void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                       bool barrierForSampling) {
     RenderGraph graph;
-    const GraphTexture sceneColor = declarePasses(graph, commands, camera, view);
-    // The scene colour is this frame's whole result, so it is what the graph roots.
-    graph.exportTexture(sceneColor);
+    const GraphTexture displayColor = declarePasses(graph, commands, camera, view);
+    // The display-transformed image is this frame's whole result, so it is what the graph roots.
+    graph.exportTexture(displayColor);
     graph.execute(commands);
 
     if (barrierForSampling) {
@@ -547,6 +632,13 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera, const Sc
 rhi::Texture& Renderer::colorTarget() {
     LMX_ASSERT(m_color != nullptr, "Renderer::colorTarget: no color target -- create() failed");
     return *m_color;
+}
+
+//======================================================================================================================
+rhi::Texture& Renderer::hdrColorTarget() {
+    LMX_ASSERT(m_hdrColor != nullptr,
+               "Renderer::hdrColorTarget: no scene color target -- create() failed");
+    return *m_hdrColor;
 }
 
 } // namespace lmx::render

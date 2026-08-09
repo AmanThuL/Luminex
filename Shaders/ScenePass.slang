@@ -1,7 +1,7 @@
 // Forward linear-space Blinn-Phong pass with normal mapping, environment reflection, and light-0
-// shadows. Output is sRGB-encoded for the non-sRGB scene target.
+// shadows. Output is scene-linear radiance scaled by exposure; nothing here encodes, because the
+// target is a half-float scene-colour buffer and Shaders/DisplayTransform.slang owns the encode.
 // Slots: buffers 0/1/2, textures 0/1/2/3, samplers 0/1. Resource classes use separate index spaces.
-import Encode;
 import Lighting;
 import Shadow;
 
@@ -39,7 +39,8 @@ struct PassUniforms
     float4x4 viewProj;
     float4x4 shadowTransform; // light view-proj with the NDC → texcoord map baked in
     float3 eyePos;
-    float time;    // retained in the pass ABI; no current shader reads it
+    float time;        // retained in the pass ABI; no current shader reads it
+    float preExposure; // exp2(exposure in EV), applied to the fragment's linear output
     float4 ambient;
     DirLight lights[3];
     int shadowFilter; // Shadow.slang's kShadowFilterPcf / kShadowFilterPcss
@@ -136,6 +137,6 @@ float4 fragmentMain(VSOutput input): SV_Target
     float3 fresnelFactor = SchlickFresnel(gObject.fresnelR0, normalW, reflectDir);
     litColor += shininess * fresnelFactor * reflectionColor;
 
-    // Encode RGB only; alpha remains linear data.
-    return float4(linearToSrgb(litColor), diffuseAlbedo.a);
+    // Pre-exposed, still linear: the display transform is the only thing that leaves this space.
+    return float4(litColor * gPass.preExposure, diffuseAlbedo.a);
 }
