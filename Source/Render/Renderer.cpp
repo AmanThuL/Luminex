@@ -410,6 +410,123 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
+GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& commands,
+                                     const Camera& camera, const SceneView& view) {
+    LMX_ASSERT(m_color && m_depth && m_shadowMap,
+               "Renderer::declarePasses: targets are missing -- create() failed");
+    LMX_ASSERT(view.boundingSphere.w > 0.0f,
+               "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
+               "frustum is fitted to");
+
+    const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
+
+    // The formats are declared here because the graph checks attachment roles against them and
+    // rhi::Texture does not report its own; these are the formats resize() and create() built.
+    const GraphTexture shadowMap =
+        graph.importTexture(*m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap");
+    const GraphTexture sceneColor =
+        graph.importTexture(*m_color, rhi::Format::BGRA8Unorm, "lmx.render.sceneColor");
+    const GraphTexture sceneDepth =
+        graph.importTexture(*m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+
+    PassDesc shadowDesc;
+    shadowDesc.depth = DepthAttachment{
+        .handle = shadowMap, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 1.0f};
+    graph.addPass("lmx.pass.shadow", std::move(shadowDesc),
+                  [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
+                      commands.bindPipeline(*m_shadowPipeline);
+                      for (const DrawItem& item : view.items) {
+                          LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
+                          const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
+                          commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+                          commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+                          commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+                      }
+                  });
+
+    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+    const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
+
+    PassUniforms passUniforms{};
+    passUniforms.viewProj = viewProj;
+    passUniforms.shadowTransform = shadow.shadowTransform;
+    passUniforms.eyePos = camera.position;
+    passUniforms.time = timeSeconds;
+    passUniforms.ambient = glm::vec4(view.ambient, 1.0f);
+    for (size_t i = 0; i < std::size(passUniforms.lights); ++i) {
+        passUniforms.lights[i] = toUniform(view.lights[i]);
+    }
+    passUniforms.shadowFilter =
+        view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
+
+    const GraphTexture shadowRead = nextVersion(shadowMap);
+
+    PassDesc sceneDesc;
+    sceneDesc.textureReads.push_back(shadowRead);
+    sceneDesc.color =
+        ColorAttachment{.handle = sceneColor,
+                        .load = LoadOp::Clear,
+                        .store = StoreOp::Store,
+                        .clearColor = {clearColor[0], clearColor[1], clearColor[2], clearColor[3]}};
+    // The scene pass is the only consumer of its own depth, so nothing keeps it past the pass.
+    sceneDesc.depth = DepthAttachment{
+        .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Discard, .clearDepth = 1.0f};
+    graph.addPass(
+        "lmx.pass.scene", std::move(sceneDesc),
+        [this, &commands, view, passUniforms, viewProj,
+         shadowRead](const PassResources& resources) {
+            // Resolved rather than captured: the graph hands over the shadow map only because this
+            // pass declared reading it, which is what ordered it after the pass that wrote it.
+            const GraphResult<rhi::Texture*> shadowMapTexture = resources.texture(shadowRead);
+            LMX_ASSERT(shadowMapTexture.has_value(), shadowMapTexture.error().message);
+
+            commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline : *m_scenePipeline);
+            commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
+            commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
+            commands.bindTexture(kShadowTextureSlot, **shadowMapTexture);
+            commands.bindTexture(kSkyTextureSlot, view.skyCubemap != nullptr ? *view.skyCubemap
+                                                                             : *m_blackCubeTexture);
+            commands.setUniforms(kPassUniformsSlot, &passUniforms, sizeof(passUniforms));
+
+            for (const DrawItem& item : view.items) {
+                const Material& material = item.material;
+                ObjectUniforms uniforms{};
+                uniforms.mvp = viewProj * item.model;
+                uniforms.model = item.model;
+                uniforms.uvTransform = material.uvTransform;
+                uniforms.albedo = material.albedo;
+                uniforms.fresnelR0 = material.fresnelR0;
+                uniforms.roughness = material.roughness;
+                uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
+
+                commands.bindTexture(kDiffuseTextureSlot, material.diffuse != nullptr
+                                                              ? *material.diffuse
+                                                              : *m_whiteTexture);
+                commands.bindTexture(kNormalTextureSlot, material.normalMap != nullptr
+                                                             ? *material.normalMap
+                                                             : *m_flatNormalTexture);
+                commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+                // setUniforms copies into transient storage before the next draw rebinds the slot.
+                commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+                commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+            }
+
+            // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
+            // clear.
+            if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
+                const SkyUniforms sky{
+                    .viewProj = viewProj, .eyePos = passUniforms.eyePos, .eyePadding = 0.0f};
+                commands.bindPipeline(*m_skyPipeline);
+                commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
+                commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
+                commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);
+            }
+        });
+
+    return nextVersion(sceneColor);
+}
+
+//======================================================================================================================
 void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                       bool barrierForSampling) {
     LMX_ASSERT(m_color && m_depth && m_shadowMap,

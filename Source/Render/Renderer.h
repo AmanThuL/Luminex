@@ -2,6 +2,7 @@
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
+#include "Render/RenderGraph.h"
 
 #include <glm/glm.hpp>
 
@@ -106,6 +107,17 @@ public:
     // the old textures in their residency set and their encoders, and dropping them here would
     // free memory the GPU is reading.
     rhi::Result<void> resize(uint32_t width, uint32_t height);
+
+    // Declares this frame's shadow and scene(+sky) passes into `graph`, importing the renderer's
+    // own targets, and answers with the scene-colour version the scene pass produces -- the handle
+    // a caller declares its own pass against, so the editor's UI pass can read what the scene pass
+    // rendered and the offscreen path can export it.
+    //
+    // Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
+    // `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
+    // and everything `view` borrows must outlive that call.
+    GraphTexture declarePasses(RenderGraph& graph, rhi::CommandList& commands, const Camera& camera,
+                               const SceneView& view);
 
     void render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                 bool barrierForSampling = true);
