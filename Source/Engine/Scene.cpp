@@ -1,7 +1,9 @@
 #include "Engine/Scene.h"
 
 #include "Core/Assert.h"
+#include "Core/Log.h"
 #include "Engine/Color.h"
+#include "Engine/DdsLoader.h"
 #include "Engine/GeometryGenerator.h"
 #include "Engine/GltfLoader.h"
 
@@ -110,6 +112,17 @@ uint32_t mipLevelsFor(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
+// The offline bake (Tools/TextureBake, wired into `xmake setup`) writes each referenced image's
+// full mip chain to a sibling "Baked/image<N>.dds" beside the glTF file, keyed by the image's
+// index in the glTF/GLB "images" array -- the same index cgltf assigns and this loader already
+// threads through as `imageIndex`. Naming by index rather than by source filename is what lets one
+// scheme cover both Sponza (external, uniquely-named PNGs) and DamagedHelmet (a single .glb with
+// unnamed embedded images) without GltfImage having to carry a source filename at all.
+std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t imageIndex) {
+    return gltfPath.parent_path() / "Baked" / ("image" + std::to_string(imageIndex) + ".dds");
+}
+
+//======================================================================================================================
 // Builds shared glTF scene resources and bounds; each catalog scene supplies its camera pose.
 AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                                                         std::string_view relativeAssetPath,
@@ -132,6 +145,9 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
     // needs two views rather than forcing the normal-map read through an sRGB format.
     std::vector<rhi::Texture*> uploadedColor(gltfScene.images.size(), nullptr);
     std::vector<rhi::Texture*> uploadedLinear(gltfScene.images.size(), nullptr);
+    // Set the first time the fallback path below actually runs, so a scene with several unbaked
+    // images logs the warning once per build, not once per image.
+    bool warnedUnbakedFallback = false;
     const auto ensureUploaded = [&](int imageIndex, bool srgb) -> AssetResult<rhi::Texture*> {
         if (imageIndex < 0 || static_cast<size_t>(imageIndex) >= gltfScene.images.size()) {
             return std::unexpected(AssetError{AssetErrorCode::Malformed,
@@ -143,30 +159,48 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         if (uploaded[index] != nullptr) {
             return uploaded[index];
         }
+        const std::string label = std::string(sceneName) + ".image" + std::to_string(index) +
+                                  (srgb ? ".srgb" : ".linear");
+
+        // The baked DDS carries a deterministic, correctly-filtered full mip chain; prefer it
+        // whenever `xmake setup` has produced one.
+        const std::filesystem::path baked = bakedDdsPath(*path, index);
+        if (std::filesystem::exists(baked)) {
+            auto texture = createTextureFromDds(device, baked.string(), srgb, label);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            rhi::Texture* ptr = texture->get();
+            scene->textures.push_back(std::move(*texture));
+            uploaded[index] = ptr;
+            return ptr;
+        }
+
         const GltfImage& image = gltfScene.images[index];
         if (image.width == 0 || image.height == 0 || image.rgba8.empty()) {
             return std::unexpected(
                 AssetError{AssetErrorCode::Malformed,
                            std::string(sceneName) + " scene: referenced image was not decoded"});
         }
+        if (!warnedUnbakedFallback) {
+            LMX_LOG_WARN("{} scene: no baked mip chain beside '{}' -- uploading level 0 only "
+                         "until `xmake setup` bakes it (mip levels above 0 stay undefined)",
+                         sceneName, path->string());
+            warnedUnbakedFallback = true;
+        }
         const uint32_t mipLevels = mipLevelsFor(image.width, image.height);
-        std::vector<rhi::TextureMip> mips(mipLevels);
+        std::vector<rhi::TextureMip> mips(mipLevels); // levels above 0 stay null -- undefined
         mips[0] = {.data = image.rgba8.data(), .bytesPerRow = uint64_t{image.width} * 4};
-        // glTF image sources provide level zero; the GPU generates the remaining mip chain.
         auto texture = device.createTexture(
             {.width = image.width,
              .height = image.height,
              .format = srgb ? rhi::Format::RGBA8Unorm_sRGB : rhi::Format::RGBA8Unorm,
              .mipLevels = mipLevels,
              .sampled = true,
-             .label = std::string(sceneName) + ".image" + std::to_string(index) +
-                      (srgb ? ".srgb" : ".linear")},
+             .label = label},
             mips);
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
-        }
-        if (mipLevels > 1) {
-            device.generateMipmaps(**texture);
         }
         rhi::Texture* ptr = texture->get();
         scene->textures.push_back(std::move(*texture));
