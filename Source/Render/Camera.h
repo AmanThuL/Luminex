@@ -12,6 +12,10 @@ public:
     float pitch = 0.0f;
     float fovY = glm::radians(60.0f);
     float nearZ = 0.1f;
+    // Scene data, not a projection parameter: projectionMatrix is reversed with an *infinite*
+    // far plane and never reads this. It stays because a scene authors it (engine::SceneCamera
+    // carries it, the editor round-trips it) and because a caller that wants a distance to cull
+    // or fit against has nowhere else to read one from.
     float farZ = 100.0f;
     float moveSpeed = 3.0f;
 
@@ -20,7 +24,9 @@ public:
     void move(const glm::vec3& localDelta);      // x=right, y=world-up, z=forward (pre-scaled)
     void look(float yawDelta, float pitchDelta); // radians; pitch clamped to ±(π/2 − 0.01)
     glm::mat4 viewMatrix() const;
-    glm::mat4 projectionMatrix(float aspect) const; // perspectiveRH_ZO — Metal [0,1] depth
+    // Reversed infinite-far perspective for Metal's [0,1] clip depth: the near plane maps to 1
+    // and depth falls toward 0 with distance, never reaching it. Derived in Camera.cpp.
+    glm::mat4 projectionMatrix(float aspect) const;
 };
 
 } // namespace lmx::render

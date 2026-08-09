@@ -100,7 +100,14 @@ constexpr uint32_t kShadowMapSize = 2048;
 
 // The 25-texel PCF radius needs slope bias across the whole kernel, not one texel. GPU
 // measurements reached the unshadowed reference at 32; 64 provided no further improvement.
-constexpr rhi::DepthBias kShadowDepthBias{.constant = 4.0f, .slopeScale = 32.0f};
+//
+// Negative because depth is reversed: the bias has to push a caster's stored depth *away* from
+// the light so the surface stops shadowing itself, and away from the light is now the smaller
+// number. The magnitudes carry over unchanged -- the light's projection is orthographic, so its
+// depth is linear in light-space distance and reversing it negates the slope without changing
+// its size, which leaves the same 32 covering the same kernel. Tests/GpuRendererTests.cpp's
+// sloped-bias case is the instrument that pins the sign.
+constexpr rhi::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
 
 // Linear white is the neutral diffuse multiplier.
 constexpr std::array<uint8_t, 4> kWhiteTexel = {255, 255, 255, 255};
@@ -217,10 +224,20 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
     const glm::mat4 lightView = glm::lookAtRH(eye, center, up);
 
     const glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(center, 1.0f));
-    // Right-handed view space looks down -z, so positive near/far distances use -centerLS.z.
+    // Right-handed view space looks down -z, so positive near/far distances use -centerLS.z: the
+    // frustum runs from r to 3r about a centre 2r out.
+    //
+    // Reversed to match the camera (Camera.cpp): the near plane maps to 1, the far plane to 0, so
+    // "nearer to the light" is the numerically larger depth throughout -- the shadow map, the
+    // GreaterEqual comparison sampler that reads it, and the Greater depth test that fills it all
+    // agree on one direction. The reversal is expressed by handing orthoRH_ZO its far distance as
+    // near and vice versa, which is exactly a z negate-and-offset applied to the standard form and
+    // leaves the xy fit untouched.
+    const float nearDistance = -centerLS.z - radius;
+    const float farDistance = -centerLS.z + radius;
     const glm::mat4 lightProj =
         glm::orthoRH_ZO(centerLS.x - radius, centerLS.x + radius, centerLS.y - radius,
-                        centerLS.y + radius, -centerLS.z - radius, -centerLS.z + radius);
+                        centerLS.y + radius, farDistance, nearDistance);
 
     // Map NDC xy to texture coordinates and flip y; Metal depth already uses [0, 1].
     glm::mat4 ndcToTexcoord{1.0f};
@@ -276,6 +293,9 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                               .depthWriteEnable = true,
                                               .fillMode = fill,
                                               .cullMode = rhi::CullMode::Back,
+                                              // Reversed depth: the pass clears to 0 and the
+                                              // nearer fragment is the larger one.
+                                              .depthCompare = rhi::DepthCompare::Greater,
                                               .label = label});
     };
     if (auto pipeline = makeScenePipeline(rhi::FillMode::Solid, "lmx.render.scenePipeline");
@@ -304,6 +324,10 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                            .depthWriteEnable = true,
                                            // Store the light-facing surface, not the back face.
                                            .cullMode = rhi::CullMode::Back,
+                                           // fitShadowOrtho is reversed too, so the surface
+                                           // nearest the light is the largest depth and the map
+                                           // keeps what compares Greater against its 0 clear.
+                                           .depthCompare = rhi::DepthCompare::Greater,
                                            .depthBias = kShadowDepthBias,
                                            .label = "lmx.render.shadowPipeline"});
         pipeline) {
@@ -312,18 +336,19 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(pipeline.error());
     }
 
-    // Sky vertices force z == w: use LessEqual at the depth clear, render inside faces, and avoid
-    // rewriting the unchanged depth value.
-    if (auto pipeline = device.createGraphicsPipeline({.library = self->m_skyLibrary.get(),
-                                                       .vertexEntry = "vertexMain",
-                                                       .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = kSceneColorFormat,
-                                                       .depthFormat = rhi::Format::D32Float,
-                                                       .depthTestEnable = true,
-                                                       .depthWriteEnable = false,
-                                                       .cullMode = rhi::CullMode::None,
-                                                       .depthCompare = rhi::DepthCompare::LessEqual,
-                                                       .label = "lmx.render.skyPipeline"});
+    // Sky vertices force z == 0, the reversed far plane: use GreaterEqual so they survive the
+    // pass's own 0 clear, render inside faces, and avoid rewriting the unchanged depth value.
+    if (auto pipeline =
+            device.createGraphicsPipeline({.library = self->m_skyLibrary.get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = kSceneColorFormat,
+                                           .depthFormat = rhi::Format::D32Float,
+                                           .depthTestEnable = true,
+                                           .depthWriteEnable = false,
+                                           .cullMode = rhi::CullMode::None,
+                                           .depthCompare = rhi::DepthCompare::GreaterEqual,
+                                           .label = "lmx.render.skyPipeline"});
         pipeline) {
         self->m_skyPipeline = std::move(*pipeline);
     } else {
@@ -389,11 +414,14 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(sampler.error());
     }
-    // Clamp extends the 1.0 clear outside the fitted shadow footprint, keeping that region lit.
+    // GreaterEqual is the reversed-Z compare: the sampler answers "lit" where the receiver's own
+    // depth is at least the stored one, because nearer to the light is now the larger number.
+    // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
+    // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
     if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
                                              .addressMode = rhi::AddressMode::Clamp,
                                              .maxAnisotropy = 16,
-                                             .compare = rhi::CompareFunc::LessEqual,
+                                             .compare = rhi::CompareFunc::GreaterEqual,
                                              .label = "lmx.render.shadowSampler"});
         sampler) {
         self->m_shadowSampler = std::move(*sampler);
@@ -478,8 +506,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         graph.importTexture(*m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth");
 
     PassDesc shadowDesc;
+    // 0 is the reversed far plane: nothing in the light's frustum is farther, so every caster's
+    // Greater test passes against a cleared texel.
     shadowDesc.depth = DepthAttachment{
-        .handle = shadowMap, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 1.0f};
+        .handle = shadowMap, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
     graph.addPass("lmx.pass.shadow", std::move(shadowDesc),
                   [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
                       commands.bindPipeline(*m_shadowPipeline);
@@ -529,9 +559,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                         .load = LoadOp::Clear,
                         .store = StoreOp::Store,
                         .clearColor = {clearLinear.r, clearLinear.g, clearLinear.b, clearColor[3]}};
-    // The scene pass is the only consumer of its own depth, so nothing keeps it past the pass.
+    // 0 is the reversed projection's horizon -- no geometry is ever farther, so every fragment's
+    // Greater test passes against a cleared texel, and the sky's GreaterEqual matches it exactly.
     sceneDesc.depth = DepthAttachment{
-        .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Discard, .clearDepth = 1.0f};
+        .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Discard, .clearDepth = 0.0f};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
         [this, &commands, view, passUniforms, viewProj,

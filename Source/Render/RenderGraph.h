@@ -91,7 +91,12 @@ struct DepthAttachment {
     GraphTexture handle;
     LoadOp load = LoadOp::Clear;
     StoreOp store = StoreOp::Discard;
-    float clearDepth = 1.0f;
+    // 0 is the far plane, because depth is reversed everywhere above this layer (Camera.cpp
+    // derives it). It differs from rhi::RenderPassDesc's 1.0, which is the API's neutral default
+    // and belongs to no convention; this one belongs to the renderer's, so a pass that omits it
+    // clears to the value its Greater test will accept anything against rather than to the value
+    // that would reject every fragment it draws.
+    float clearDepth = 0.0f;
 };
 
 // Everything one pass touches. The graph validates and orders passes from this alone: a resource
