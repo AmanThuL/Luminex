@@ -1,0 +1,56 @@
+// Camera-centered sky sphere pinned to the far plane. The pipeline uses LessEqual depth and no
+// culling because the camera views the sphere from inside. Slots: buffers 0/2, texture 2, sampler 0.
+import Encode;
+
+struct Vertex
+{
+    float3 position;
+    float3 normal;
+    float4 tangent;
+    float2 uv;
+};
+
+[[vk::binding(0, 0)]]
+StructuredBuffer<Vertex> gVertices : register(t0); // → MSL [[buffer(0)]]
+
+// The dedicated 80-byte CPU mirror pads eyePos to a 16-byte constant-buffer slot.
+struct SkyUniforms
+{
+    float4x4 viewProj;
+    float3 eyePos;
+};
+
+[[vk::binding(2, 0)]]
+ConstantBuffer<SkyUniforms> gSky : register(b2); // → MSL [[buffer(2)]]
+
+[[vk::binding(2, 2)]]
+TextureCube gSkyCube : register(t2); // → MSL [[texture(2)]]
+
+[[vk::binding(0, 1)]]
+SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]
+
+struct VSOutput
+{
+    float4 position : SV_Position;
+    // Origin-centered sphere positions are cubemap directions.
+    float3 direction : TEXCOORD0;
+};
+
+[shader("vertex")]
+VSOutput vertexMain(uint vid: SV_VertexID)
+{
+    float3 local = gVertices[vid].position;
+    VSOutput o;
+    float4 clip = mul(gSky.viewProj, float4(local + gSky.eyePos, 1.0));
+    o.position = clip.xyww;
+    o.direction = local;
+    return o;
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input): SV_Target
+{
+    // Sampling decodes sRGB; encode again for the non-sRGB scene target.
+    float3 color = gSkyCube.Sample(gLinearSampler, normalize(input.direction)).rgb;
+    return float4(linearToSrgb(color), 1.0);
+}

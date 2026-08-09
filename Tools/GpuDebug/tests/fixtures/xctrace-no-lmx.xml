@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!-- A capture with real encoder rows, none of them ours; exercises the no-encoders-matched
+     anomaly (e.g. profiling was pointed at the wrong process, or a build predating the lmx.
+     label convention). Same trimmed 3-column shape as xctrace-sample.xml. -->
+<trace-query-result>
+  <node xpath='//trace-toc[1]/run[1]/data[1]/table[1]'>
+    <schema name="metal-application-encoders-list">
+      <col><mnemonic>start</mnemonic><name>Creation</name><engineering-type>start-time</engineering-type></col>
+      <col><mnemonic>duration</mnemonic><name>Duration</name><engineering-type>duration</engineering-type></col>
+      <col><mnemonic>encoder-label</mnemonic><name>Encoder</name><engineering-type>metal-object-label</engineering-type></col>
+    </schema>
+    <row>
+      <start-time id="1" fmt="00:00.001.000">1000000</start-time>
+      <duration id="2" fmt="500.00 us">500000</duration>
+      <metal-object-label id="3" fmt="SomeOtherApp.blit">SomeOtherApp.blit</metal-object-label>
+    </row>
+    <row>
+      <start-time ref="1"/>
+      <duration id="4" fmt="250.00 us">250000</duration>
+      <metal-object-label id="5" fmt="SomeOtherApp.present">SomeOtherApp.present</metal-object-label>
+    </row>
+  </node>
+</trace-query-result>
