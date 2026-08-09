@@ -2,56 +2,188 @@
 
 **Status**: Accepted
 
-The roadmap orders renderer capabilities by dependency and observable exit gates. Detailed evidence
-is preserved in the frozen research synthesis and supporting notebooks under `docs/research/`.
+This roadmap is the sole owner of current milestone identifiers, boundaries, dependency order,
+outcomes, exit gates, and explicit deferrals. Frozen research preserves the evidence and proposals
+that informed these decisions; if its milestone wording differs, this roadmap wins. Starting a
+milestone requires a separate `In progress` plan under `docs/plans/` that decomposes the boundary
+without expanding it.
 
 ## Current baseline
 
-M3 renders Sponza and Damaged Helmet through a shadow-mapped, normal-mapped,
-gamma-correct forward pipeline. M3.1 established the audited engineering baseline without adding a
-rendering feature; its shipped evidence and remaining limits are recorded in `docs/milestones/m3.1.md`.
+M3 renders Sponza and Damaged Helmet through a shadow-mapped, normal-mapped, gamma-correct forward
+pipeline. M3.1 established the audited engineering baseline without adding a rendering feature; its
+shipped evidence and remaining limits are recorded in `docs/milestones/m3.1.md`.
 
-## M4 — Image formation and render-graph foundation
+## M4 — Correct image formation
 
-Outcome: the current frame runs through a small validating render graph and produces a scene-linear
-HDR image with physically based glTF materials.
+**Outcome:** the current frame runs through a small validating render graph and produces a
+scene-linear HDR image with physically based glTF materials.
 
-- Add GPU timestamps, compute/storage contracts, and resource views/usages while preserving the
-  capture-readable pass labels established by the baseline.
-- Introduce a minimal dependency-aware render graph with validation and transient lifetime tracking.
-- Add correct filtered mip generation, tangent/normal transforms, metallic-roughness PBR, IBL,
-  reversed-Z, FP16 HDR, exposure, and a replaceable display transform.
-- Add `MaterialLab` as the deterministic material and lighting regression scene.
+**Deliver:**
 
-Exit: intermediates are inspectable; graph validation catches undeclared usage; Sponza and Helmet
-match reference material behavior; HDR/exposure is deterministic; GPU timings are reported per pass.
+- Introduce logical texture and buffer handles, imported and exported resources, declared pass uses,
+  read-before-write validation, a serial topological schedule, capture-readable labels, and GPU
+  timestamps. Migrate the shadow, scene, UI, and new output passes without changing ownership beyond
+  what the frame needs.
+- Add deterministic filtered mip and IBL assets, inverse-transpose normal and tangent-frame handling,
+  full glTF metallic-roughness inputs, GGX direct lighting, diffuse and specular IBL, and reversed-Z
+  depth.
+- Render into FP16 scene color with pre-exposure, manual exposure, a neutral tone map, and a
+  replaceable SDR display transform. Add `MaterialLab` for deterministic material, light, mip, depth,
+  and color checks.
 
-## M5 — Temporal contract
+**Exit gate:** Damaged Helmet and Sponza use their authored material inputs; mip, furnace,
+dielectric/conductor, depth-reconstruction, gradient, and known-color tests pass; scene shaders do
+not manually encode sRGB; undeclared graph use fails validation; unchanged passes match the M3
+reference; every pass reports a visible GPU timestamp.
 
-Outcome: every frame owns explicit current/previous state and a portable reconstruction path.
+**Defer:** general compute and storage execution, transient pooling, graph optimization, automatic
+exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
+tracing.
 
-- Add jitter, previous transforms, motion vectors, disocclusion/reactive masks, history invalidation,
-  dynamic resolution, and a reference TAA/TAAU implementation.
-- Integrate MetalFX through an adapter with the same inputs; retain the reference path for validation
-  and future backends.
+## M5 — Execution substrate and observability
 
-Exit: camera cuts, resize, scene changes, animation, and resolution changes invalidate history
-correctly; motion-vector and rejection buffers are independently visualizable.
+**Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and
+resource workloads required by later temporal and GPU-driven features.
 
-## M6 — GPU scene and visibility
+**Deliver:**
 
-Outcome: stable bindless scene data drives measured GPU visibility and indirect submission.
+- Add compute pipelines and dispatch, storage buffers and textures, general copies and barriers,
+  subresource uses, and the required view and synchronization contracts.
+- Add dead-pass culling, conservative transient pooling, graph dumps, resource lifetime and
+  transition inspection, and per-pass/transient memory reporting.
+- Exercise the substrate with histogram exposure and a bloom chain while preserving a deterministic
+  manual-exposure path.
 
-- Add stable instance/material/mesh IDs, GPU scene buffers, HZB, frustum/LOD/occlusion culling,
-  indirect work, and clustered light lists.
-- Keep a measured Forward+ reference path. Evaluate compact deferred or visibility-buffer paths only
-  after representative scenes expose a real bandwidth or material-diversity constraint.
+**Exit gate:** compute-to-sample and per-mip hazards pass conformance tests; resize and feature
+toggles neither leak nor reuse live resources; pooling on and off produces the same output; arbitrary
+intermediate mips and layers can be captured; pass time, transient high-water marks, and alias savings
+are visible.
 
-Exit: CPU submission no longer scales per visible draw; culling has correctness visualizations and
-timings; fallback behavior exists for missing optional capabilities.
+**Portability checkpoint A:** freeze semantic tests for upload and layout, resource views, sRGB,
+reversed-Z, storage hazards, load/store behavior, indirect arguments, and frame-slot retirement.
 
-## Later investigations
+**Defer:** motion/history semantics, dynamic resolution, GPU scene ownership, bindless materials,
+indirect visibility, and alternative opaque surface paths.
 
-Ray queries, denoising, ReSTIR, virtualized geometry, sparse resources, GI, and a reference path
-tracer remain research candidates. None is a baseline dependency until its required scene, fallback,
-performance budget, and debugging surfaces are named.
+## M6 — Temporal and display foundation
+
+**Outcome:** every frame owns explicit current and previous state, a portable reconstruction path,
+and a defined display boundary.
+
+**Deliver:**
+
+- Add previous camera and object transforms, jittered and unjittered matrices, motion vectors,
+  history resources and reset reasons, disocclusion and reactive masks, and render/output resolution
+  separation.
+- Add native TAA and TAAU, a dynamic-resolution controller, exposure adaptation, and a MetalFX
+  temporal adapter that consumes the same engine-owned inputs and reset policy.
+- Evaluate macOS EDR/HDR presentation without allowing the platform path to redefine scene, exposure,
+  temporal, or UI composition semantics.
+
+**Exit gate:** scripted camera cuts, resize, scene and render-scale changes, animation, and algorithm
+switching invalidate history correctly; rigid and camera motion reproject correctly; raw, native TAA,
+and MetalFX outputs can be compared from one capture; exposure changes do not pulse histories; UI is
+sharp and composed in its intended domain.
+
+**Portability gate B:** before M7 begins, bring up a minimal Vulkan backend that passes checkpoint A
+and renders the M6 PBR/HDR/TAA frame. Metal and Vulkan then evolve against shared scene, graph, and
+temporal semantics with explicit capability fallbacks; D3D12 may follow without redefining them.
+
+**Defer:** GPU-driven submission, clustered local lighting, scalable shadow systems, atmosphere, and
+opaque-path experiments.
+
+## M7 — Scalable scene and direct lighting
+
+**Outcome:** stable GPU scene data drives measured visibility, indirect submission, and bounded local
+lighting while retaining CPU and Forward+ reference paths.
+
+**Deliver:** stable instance, material, mesh, and texture identities; GPU scene tables; bindless
+materials; point, spot, and area-light records; clustered light lists with an overflow policy;
+Forward+ opaque PBR and basic sorted premultiplied transparency; current and previous HZB;
+frustum/LOD/occlusion culling; indirect work generation; and a CPU visibility oracle.
+
+**Exit gate:** CPU render submission grows mainly with passes and bins rather than object count; GPU
+visibility matches the CPU oracle or reports every difference; new and moving objects do not remain
+incorrectly occluded; synthetic local-light stress remains bounded with visible overflow; stable IDs
+survive remapping and residency fallback across three frames in flight; Metal and Vulkan pass the
+same semantic tests or use a documented capability fallback.
+
+**Defer:** cascaded and cached shadows, volumetrics, meshlets, alternative opaque surface paths, ray
+queries, and dynamic GI.
+
+## M8 — Scalable shadows, atmosphere, and transparency
+
+**Outcome:** dependable shadow, atmosphere, fog, and transparent-surface systems share the M7 scene,
+lighting, visibility, and temporal contracts.
+
+**Deliver:** stable cascaded sun shadows; per-cascade culling; a local-light shadow atlas and cache
+with update budgets; a corrected PCSS option; environment and LUT atmosphere; analytic and froxel
+fog; transparent fog integration; refraction and reactive masks; and baseline particles on the
+Forward+ transparent path.
+
+**Exit gate:** cascades remain stable during camera motion and expose their bias components; atlas
+allocation, eviction, and invalidation are deterministic; opaque and transparent atmosphere agrees;
+froxel quality can scale without catastrophic trails; alpha-test rules match depth, shadow, color,
+and motion passes.
+
+**Defer:** virtual shadow maps, mesh-shader dependence, opaque-path replacement, hardware ray
+queries, and stochastic many-light sampling.
+
+## M9 — Modern geometry and surface experiments
+
+**Outcome:** representative measurements, rather than architectural preference, select the default
+opaque geometry and surface path per platform while ordinary indirect raster remains correct.
+
+**Deliver:** offline LOD and meshlet data; cluster bounds and cones; instance-to-meshlet culling;
+optional mesh-shader execution; compact or tile-local deferred and visibility-buffer prototypes;
+derivative reconstruction and material classification; GTAO; and an SSR/probe reflection hierarchy.
+
+**Exit gate:** Forward+, compact deferred or tile-local, and visibility-buffer paths reproduce the
+material reference within stated tolerances; captures report bandwidth, tile spills, overdraw,
+occupancy, transient memory, and time on representative Metal and Vulkan hardware; alpha-tested and
+derivative stress scenes define limitations; a recorded decision selects the per-platform default
+without deleting the Forward+ oracle.
+
+**Defer:** acceleration structures, path tracing, real-time ray-traced signals, dynamic GI caches,
+and virtualized geometry streaming.
+
+## M10 — Hybrid scene query and reference transport
+
+**Outcome:** hardware ray queries are an optional scene service with visible fallbacks, and a
+deterministic reference transport path validates shared material and lighting semantics.
+
+**Deliver:** first add acceleration-structure resources and scheduling, inline ray queries, proxy
+classifications and mismatch views, canonical light and BSDF sampling, and a progressive path-trace
+oracle. After those costs and semantics are bounded, add ray-traced reflections behind the SSR/probe
+fallback hierarchy plus native and vendor-adapter denoising boundaries.
+
+**Exit gate:** acceleration-structure build, refit, compaction, and memory costs are bounded before
+the real-time signal begins; unsupported geometry has a visible fallback; raster and path-traced
+controlled scenes agree; reflection source and confidence are inspectable; invalid ray history does
+not survive motion or disocclusion; disabling ray tracing does not change material or light semantics.
+
+**Defer:** a ray-only default renderer, stochastic direct-light replacement, production dynamic GI,
+neural rendering, and mandatory sparse residency.
+
+## M11 — Dynamic GI and advanced residency
+
+**Outcome:** one measured dynamic indirect-lighting cache and bounded content streaming extend the
+shared scene-query and temporal architecture without making high-end capabilities mandatory.
+
+**Deliver:** a portable probe-volume floor; one measured cascaded-probe, surfel, or sparse-world
+radiance prototype using screen traces and optional scene queries; background I/O; mip and geometry
+streaming; and explicit residency budgets. Sparse pages require evidence that ordinary streaming is
+insufficient.
+
+**Exit gate:** GI reports source coverage, age, updates, leaks, rays, memory, and full composite cost;
+transparent and froxel lighting has a defined fallback; the prototype materially beats the portable
+floor on dynamic-light and occluder tests; forced residency budgets degrade to coarse resident data
+without holes or use-after-free.
+
+## Independent research after M11
+
+Virtual shadow maps, virtualized geometry streaming, stochastic direct lighting, ReSTIR, frame
+generation, and neural methods remain independent research programs. None becomes a baseline
+dependency until a representative scene, fallback, performance and memory budget, validation oracle,
+and debugging surface justify graduation into a future roadmap revision.
