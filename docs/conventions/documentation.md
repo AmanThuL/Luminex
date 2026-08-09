@@ -14,14 +14,15 @@ silently override an accepted higher-precedence decision.
 3. **Architecture or guide** (`docs/architecture/`, `docs/guides/`, `docs/frame-pipeline.md`): current
    system shape and operator workflow. These describe the repository as it exists now.
 4. **Roadmap** (`docs/roadmap.md`): accepted ordering, outcomes, gates, and explicit deferrals. It is
-   not an implementation transcript.
+   the sole owner of current milestone identifiers and boundaries, not an implementation transcript.
 5. **Active plan** (`docs/plans/`): an accepted change currently being executed. It may contain
    sequencing and exit criteria but does not become a permanent dependency of source comments.
 6. **Milestone record** (`docs/milestones/`): compact shipped behavior, evidence, known limits, and
    durable deviations at a boundary.
 7. **Postmortem** (`docs/postmortems/`): closed symptom, evidence, root cause, correction, prevention.
 8. **Research** (`docs/research/`): dated evidence and synthesis. It is frozen and non-normative;
-   decisions derived from it must be restated in an ADR or roadmap.
+   milestone sequences inside it are historical proposals, and decisions derived from it must be
+   restated in an ADR or roadmap.
 
 README and `AGENTS.md` are navigation and operation surfaces. They summarize; they do not introduce
 new architecture decisions. Implemented historical specs may remain as frozen design context, but
