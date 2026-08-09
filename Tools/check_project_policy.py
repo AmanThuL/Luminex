@@ -55,6 +55,9 @@ NON_IMPERATIVE_START = re.compile(
     r"(?i)^[^:]+:\s+(?:added|changed|created|documented|fixed|implemented|made|moved|"
     r"refactored|removed|renamed|updated)\b"
 )
+PUBLIC_COPY = {Path("README.md")}
+PUBLIC_PLANNING_LANGUAGE = re.compile(r"(?i)\bmilestones?\b|\bM\d+(?:\.\d+)?\b")
+PUBLIC_UNSHIPPED_BACKEND = re.compile(r"(?i)\b(?:D3D12|Direct3D\s*12|Vulkan)\b")
 
 
 def git(*args: str) -> str:
@@ -248,6 +251,22 @@ def check_process_narration(files: list[Path], errors: list[str]) -> None:
                 )
 
 
+def check_public_copy(files: list[Path], errors: list[str]) -> None:
+    for path in files:
+        if path not in PUBLIC_COPY:
+            continue
+        text = read_text(path)
+        if text is None:
+            continue
+        for pattern, description in (
+            (PUBLIC_PLANNING_LANGUAGE, "internal milestone language"),
+            (PUBLIC_UNSHIPPED_BACKEND, "unimplemented backend"),
+        ):
+            match = pattern.search(text)
+            if match:
+                errors.append(f"{path}:{line_number(text, match.start())}: {description} in public copy")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -268,6 +287,7 @@ def main() -> int:
         check_markdown(files, errors)
         check_line_budgets(files, errors)
         check_process_narration(files, errors)
+        check_public_copy(files, errors)
     except (OSError, RuntimeError) as exc:
         print(f"policy check could not run: {exc}", file=sys.stderr)
         return 2

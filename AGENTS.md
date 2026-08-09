@@ -1,7 +1,7 @@
 # Luminex
 
-Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple Silicon), thin RHI,
-future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
+Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple Silicon) with a
+thin RHI and one implemented backend.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
@@ -66,6 +66,10 @@ ShadowSmoke/FullscreenSample as test oracles). One frame end-to-end: `docs/frame
 - Lighting math runs in linear space; authored color constants decode via
   `engine::srgbToLinear` at scene build. The single exception is the clear color (written raw —
   the hardware clear bypasses the shader-side sRGB encode).
+- Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
+  rendering behavior and uses plain feature themes for future work. It never exposes milestone
+  numbers, task/plan status, or an unimplemented backend as a current capability. `CLAUDE.md`
+  imports this file, so the same rule applies to Codex and Claude Code.
 
 ## Update policy
-Refresh this file at every milestone boundary (M1 → M2 → …) and whenever a command or hard rule changes.
+Refresh this file whenever a command, architecture contract, or hard rule changes.

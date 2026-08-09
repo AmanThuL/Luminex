@@ -1,4 +1,4 @@
-# Luminex Upgrade — Design Spec
+# Luminex Foundation — Design Spec
 
 **Date**: 2026-08-07
 **Status**: Implemented
@@ -6,8 +6,8 @@
 
 ## 1. Purpose & Goals
 
-Luminex is the successor to a college-era DX12 renderer (shadow mapping with PCF/PCSS, sky,
-materials, and an ImGui inspector). The upgrade goals, in priority order:
+Luminex is a playground for modern rendering work, starting with a Metal 4-native foundation.
+The project goals, in priority order:
 
 1. **A playground for modern rendering features** that doubles as a **portfolio piece**.
 2. **Mature, native use of graphics APIs** — starting with **Metal 4** on macOS (Apple Silicon), the only dev machine available. Vulkan/D3D12 return later behind the RHI.
@@ -58,7 +58,8 @@ Luminex/
 
 - xrepo deps: `libsdl3`, `glm`, `imgui` (SDL3 + Metal 4 backends), `stb`, `nlohmann_json`, `spdlog`, `catch2`.
 - Existing submodules (glfw, cglm, imgui, stb, json), the Premake tree, `.bat` scripts, `Luminex.sln`, and the Vulkan triangle are **removed**. Vulkan returns later as backend #2 behind the RHI.
-- lumine's assets (sponza, DDS textures) and techniques (PCF/PCSS shadows, sky) migrate in milestone 3+ when a renderer exists to consume them.
+- Scene content and rendering techniques (PCF/PCSS shadows and sky rendering) arrive in milestone
+  3, once a renderer exists to consume them.
 
 ## 4. RHI design (`lmx::rhi`)
 
@@ -124,8 +125,8 @@ Explicit barriers (one pass), compute, multi-queue, dynamic residency (everythin
 - **M1 — Foundation + triangle through RHI (this spec's scope)**
   DoD: `xmake && xmake run App` opens an SDL3 window rendering the Metal 4 triangle through `lmx::rhi`; `xmake test` green (unit + local GPU smoke); format/lint clean; CLAUDE.md, ADRs 0001–0004, this spec committed; CI green.
 - **M2 — Renderer skeleton** (done 2026-08-07): `lmx::render` becomes real — mesh/camera/uniform plumbing, depth buffer, ImGui (Metal 4 + SDL3 backends) overlay.
-- **M3 — lumine content returns** (done 2026-08-08): full visual parity with lumine under a
-  gamma-corrected pipeline — its scene plus Sponza and Damaged Helmet behind a scene dropdown,
+- **M3 — Scene content and forward lighting** (done 2026-08-08): a gamma-corrected forward
+  pipeline with test scenes behind a scene dropdown,
   shadow mapping (PCF/PCSS), normal mapping, DDS/glTF/text asset loaders, and the new
   `Source/Engine` layer. The maintained forward path now lives in `docs/roadmap.md`.
 

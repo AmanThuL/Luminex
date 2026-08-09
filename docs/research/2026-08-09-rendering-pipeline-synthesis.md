@@ -1252,7 +1252,7 @@ architecture. Add small, purpose-built scenes before each milestone needs them.
 | `OutdoorLab` | Kilometer-scale terrain/objects, sun motion, foliage, atmosphere, fog and streaming cells | Depth precision, CSM/VSM need, aerial perspective, world caches and residency spikes |
 | `TransportLab` | Cornell-box-like rooms, thin walls, doors, dynamic emissive/light/occluder, glossy-to-rough surfaces and known path-traced references | Probe/cache leaking, screen/world/fallback coverage, GI/reflection correctness and denoising |
 | `TransparencyLab` | Layered glass, water, refraction, dense particles, alpha foliage crossing fog and bright emissives | Sorting/blend/OIT, reactive masks, transparent lighting, volumetric composition and frame interpolation inputs |
-| Existing Sponza, Damaged Helmet, Lumine Default | Real imported content and the current parity target | Integration regressions, content variance and continuity with M3 |
+| Existing Sponza and Damaged Helmet | Real imported content and the current scene baseline | Integration regressions and content variance |
 
 ### 12.1 Test layers
 
