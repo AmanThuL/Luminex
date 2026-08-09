@@ -1,0 +1,11 @@
+# Curated per spec D8: modernize/bugprone/performance, minus checks that fight the codebase's
+# deliberate style (trailing return types; metal-cpp's pointer conventions trip bugprone
+# easy-swappable trivially).
+Checks: >
+  modernize-*,
+  bugprone-*,
+  performance-*,
+  -modernize-use-trailing-return-type,
+  -bugprone-easily-swappable-parameters
+WarningsAsErrors: ''
+HeaderFilterRegex: '(Source|Tests)/.*'

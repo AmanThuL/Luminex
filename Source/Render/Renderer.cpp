@@ -1,0 +1,516 @@
+#include "Render/Renderer.h"
+
+#include "Core/Assert.h"
+#include "RHI/CaptureSchema.h"
+
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <array>
+#include <cmath>
+#include <cstddef>
+#include <format>
+#include <iterator>
+#include <span>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace lmx::render {
+
+namespace {
+
+// Mirrors Shaders/ScenePass.slang's ObjectUniforms.
+struct ObjectUniforms {
+    glm::mat4 mvp;         // 0
+    glm::mat4 model;       // 64
+    glm::mat4 uvTransform; // 128
+    glm::vec4 albedo;      // 192
+    glm::vec3 fresnelR0;   // 208
+    float fresnelPadding;  // 220 -- the float3's tail
+    float roughness;       // 224
+    uint32_t flags;        // 228
+    float tailPadding[2];  // 232 -- the struct's own 16-byte alignment
+};
+static_assert(sizeof(ObjectUniforms) == 240, "must match ScenePass.slang's ObjectUniforms");
+
+// Mirrors Shaders/ShadowPass.slang's ObjectUniforms.
+struct ShadowObjectUniforms {
+    glm::mat4 mvp;
+};
+static_assert(sizeof(ShadowObjectUniforms) == 64, "must match ShadowPass.slang's ObjectUniforms");
+
+// Mirrors Shaders/Lighting.slang's DirLight.
+struct DirLightUniform {
+    glm::vec3 strength;     // 0
+    float strengthPadding;  // 12
+    glm::vec3 direction;    // 16
+    float directionPadding; // 28
+};
+static_assert(sizeof(DirLightUniform) == 32, "must match Lighting.slang's DirLight");
+
+// Mirrors Shaders/ScenePass.slang's PassUniforms.
+struct PassUniforms {
+    glm::mat4 viewProj;        // 0
+    glm::mat4 shadowTransform; // 64
+    glm::vec3 eyePos;          // 128
+    float eyePadding;          // 140 -- the float3's tail
+    float time;                // 144
+    float timePadding[3];      // 148 -- ambient realigns to 16
+    glm::vec4 ambient;         // 160
+    DirLightUniform lights[3]; // 176
+    int32_t shadowFilter;      // 272
+    int32_t tailPadding[3];    // 276
+};
+static_assert(sizeof(PassUniforms) == 288, "must match ScenePass.slang's PassUniforms");
+
+// Mirrors Shaders/Sky.slang's SkyUniforms.
+struct SkyUniforms {
+    glm::mat4 viewProj; // 0
+    glm::vec3 eyePos;   // 64
+    float eyePadding;   // 76
+};
+static_assert(sizeof(SkyUniforms) == 80, "must match Sky.slang's SkyUniforms");
+
+// ScenePass.slang's kFlagHasNormalMap.
+constexpr uint32_t kFlagHasNormalMap = 1u;
+
+// Shaders/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
+constexpr int32_t kShadowFilterPcf = 0;
+constexpr int32_t kShadowFilterPcss = 1;
+
+constexpr uint32_t kVertexBufferSlot = 0;
+constexpr uint32_t kObjectUniformsSlot = 1;
+constexpr uint32_t kPassUniformsSlot = 2;
+constexpr uint32_t kDiffuseTextureSlot = 0;
+constexpr uint32_t kNormalTextureSlot = 1;
+constexpr uint32_t kSkyTextureSlot = 2;
+constexpr uint32_t kShadowTextureSlot = 3;
+constexpr uint32_t kLinearSamplerSlot = 0;
+constexpr uint32_t kShadowSamplerSlot = 1;
+
+constexpr uint32_t kShadowMapSize = 2048;
+
+// The 25-texel PCF radius needs slope bias across the whole kernel, not one texel. GPU
+// measurements reached the unshadowed reference at 32; 64 provided no further improvement.
+constexpr rhi::DepthBias kShadowDepthBias{.constant = 4.0f, .slopeScale = 32.0f};
+
+// Linear white is the neutral diffuse multiplier.
+constexpr std::array<uint8_t, 4> kWhiteTexel = {255, 255, 255, 255};
+// Encoded tangent-space (0, 0, 1); bound to keep every declared slot valid.
+constexpr std::array<uint8_t, 4> kFlatNormalTexel = {128, 128, 255, 255};
+// Black removes the cubemap reflection term when a scene has no sky.
+constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
+
+//======================================================================================================================
+rhi::Result<std::unique_ptr<rhi::Texture>> createFallbackTexture(rhi::Device& device,
+                                                                 const std::array<uint8_t, 4>& rgba,
+                                                                 rhi::TextureKind kind,
+                                                                 std::string_view label) {
+    const rhi::TextureMip mip{.data = rgba.data(), .bytesPerRow = 4};
+    const uint32_t faceCount = kind == rhi::TextureKind::Cube ? 6u : 1u;
+    // Cube fallbacks must cover every face with the same neutral texel.
+    const std::array<rhi::TextureMip, 6> mips = {mip, mip, mip, mip, mip, mip};
+    return device.createTexture({.width = 1,
+                                 .height = 1,
+                                 .format = rhi::Format::RGBA8Unorm,
+                                 .kind = kind,
+                                 .sampled = true,
+                                 .label = label},
+                                std::span{mips.data(), faceCount});
+}
+
+//======================================================================================================================
+DirLightUniform toUniform(const DirectionalLight& light) {
+    return {.strength = light.strength,
+            .strengthPadding = 0.0f,
+            .direction = light.direction,
+            .directionPadding = 0.0f};
+}
+
+} // namespace
+
+//======================================================================================================================
+// offsetof and sizeof keep capture metadata tied to the CPU mirrors; field names and types follow
+// the shader-facing layout and omit CPU-only padding.
+void registerUniformLayoutsForCapture() {
+    using rhi::debug::CaptureSchema;
+    using rhi::debug::SchemaUniformField;
+
+    CaptureSchema& schema = CaptureSchema::instance();
+
+    schema.registerUniformStruct(
+        {.name = "ObjectUniforms",
+         .slot = kObjectUniformsSlot,
+         .sizeBytes = sizeof(ObjectUniforms),
+         .fields = {{"mvp", offsetof(ObjectUniforms, mvp), "float4x4"},
+                    {"model", offsetof(ObjectUniforms, model), "float4x4"},
+                    {"uvTransform", offsetof(ObjectUniforms, uvTransform), "float4x4"},
+                    {"albedo", offsetof(ObjectUniforms, albedo), "float4"},
+                    {"fresnelR0", offsetof(ObjectUniforms, fresnelR0), "float3"},
+                    {"roughness", offsetof(ObjectUniforms, roughness), "float"},
+                    {"flags", offsetof(ObjectUniforms, flags), "uint"}}});
+
+    schema.registerUniformStruct(
+        {.name = "ShadowObjectUniforms",
+         .slot = kObjectUniformsSlot,
+         .sizeBytes = sizeof(ShadowObjectUniforms),
+         .fields = {{"mvp", offsetof(ShadowObjectUniforms, mvp), "float4x4"}}});
+
+    // Derive array offsets from the element stride to avoid duplicated layout literals.
+    constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
+    std::vector<SchemaUniformField> passFields{
+        {"viewProj", offsetof(PassUniforms, viewProj), "float4x4"},
+        {"shadowTransform", offsetof(PassUniforms, shadowTransform), "float4x4"},
+        {"eyePos", offsetof(PassUniforms, eyePos), "float3"},
+        {"time", offsetof(PassUniforms, time), "float"},
+        {"ambient", offsetof(PassUniforms, ambient), "float4"}};
+    for (uint32_t light = 0; light < kLightCount; ++light) {
+        const uint32_t base =
+            uint32_t{offsetof(PassUniforms, lights)} + light * uint32_t{sizeof(DirLightUniform)};
+        passFields.push_back({std::format("lights[{}].strength", light),
+                              base + uint32_t{offsetof(DirLightUniform, strength)}, "float3"});
+        passFields.push_back({std::format("lights[{}].direction", light),
+                              base + uint32_t{offsetof(DirLightUniform, direction)}, "float3"});
+    }
+    // Preserve offset order for comparison with raw capture bytes.
+    passFields.push_back(
+        {"shadowFilter", offsetof(PassUniforms, shadowFilter), "int"}); // kShadowFilterPcf/Pcss
+    schema.registerUniformStruct({.name = "PassUniforms",
+                                  .slot = kPassUniformsSlot,
+                                  .sizeBytes = sizeof(PassUniforms),
+                                  .fields = std::move(passFields)});
+
+    schema.registerUniformStruct(
+        {.name = "SkyUniforms",
+         .slot = kPassUniformsSlot,
+         .sizeBytes = sizeof(SkyUniforms),
+         .fields = {{"viewProj", offsetof(SkyUniforms, viewProj), "float4x4"},
+                    {"eyePos", offsetof(SkyUniforms, eyePos), "float3"}}});
+}
+
+//======================================================================================================================
+ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& lightDir) {
+    const glm::vec3 center{boundingSphere};
+    const float radius = boundingSphere.w;
+    LMX_ASSERT(radius > 0.0f, "fitShadowOrtho: the bounding sphere's radius must be positive");
+    LMX_ASSERT(glm::length(lightDir) > 0.0f,
+               "fitShadowOrtho: the light direction must not be the zero vector");
+
+    const glm::vec3 direction = glm::normalize(lightDir);
+    // Offset from the sphere center so translated scenes retain the same fitted light volume.
+    const glm::vec3 eye = center - 2.0f * radius * direction;
+
+    // Avoid lookAt's degenerate cross product when light direction is parallel to world up.
+    constexpr glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
+    const glm::vec3 up =
+        std::abs(glm::dot(direction, kWorldUp)) > 0.999f ? glm::vec3{0.0f, 0.0f, 1.0f} : kWorldUp;
+    const glm::mat4 lightView = glm::lookAtRH(eye, center, up);
+
+    const glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(center, 1.0f));
+    // Right-handed view space looks down -z, so positive near/far distances use -centerLS.z.
+    const glm::mat4 lightProj =
+        glm::orthoRH_ZO(centerLS.x - radius, centerLS.x + radius, centerLS.y - radius,
+                        centerLS.y + radius, -centerLS.z - radius, -centerLS.z + radius);
+
+    // Map NDC xy to texture coordinates and flip y; Metal depth already uses [0, 1].
+    glm::mat4 ndcToTexcoord{1.0f};
+    ndcToTexcoord[0][0] = 0.5f;
+    ndcToTexcoord[1][1] = -0.5f;
+    ndcToTexcoord[3][0] = 0.5f;
+    ndcToTexcoord[3][1] = 0.5f;
+
+    const glm::mat4 viewProj = lightProj * lightView;
+    return {.viewProj = viewProj, .shadowTransform = ndcToTexcoord * viewProj};
+}
+
+//======================================================================================================================
+rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uint32_t width,
+                                                        uint32_t height, bool cpuReadback) {
+    LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
+
+    // Registration is idempotent and keeps capture startup independent of Renderer state.
+    registerUniformLayoutsForCapture();
+
+    std::unique_ptr<Renderer> self(new Renderer(device, cpuReadback));
+
+    // Separate libraries prevent Slang from attaching the scene resource set to the depth-only
+    // entry points.
+    if (auto library = device.loadShaderLibrary("Shaders/ScenePass"); library) {
+        self->m_sceneLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/ShadowPass"); library) {
+        self->m_shadowLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/Sky"); library) {
+        self->m_skyLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+
+    const auto makeScenePipeline = [&](rhi::FillMode fill, const char* label) {
+        return device.createGraphicsPipeline({.library = self->m_sceneLibrary.get(),
+                                              .vertexEntry = "vertexMain",
+                                              .fragmentEntry = "fragmentMain",
+                                              .colorFormat = rhi::Format::BGRA8Unorm,
+                                              .depthFormat = rhi::Format::D32Float,
+                                              .depthTestEnable = true,
+                                              .depthWriteEnable = true,
+                                              .fillMode = fill,
+                                              .cullMode = rhi::CullMode::Back,
+                                              .label = label});
+    };
+    if (auto pipeline = makeScenePipeline(rhi::FillMode::Solid, "lmx.render.scenePipeline");
+        pipeline) {
+        self->m_scenePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    // Fill mode is baked into Metal pipeline state; compile both variants once.
+    if (auto pipeline =
+            makeScenePipeline(rhi::FillMode::Wireframe, "lmx.render.sceneWireframePipeline");
+        pipeline) {
+        self->m_sceneWireframePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    // Unknown color format matches the depth-only pass and its void fragment output.
+    if (auto pipeline =
+            device.createGraphicsPipeline({.library = self->m_shadowLibrary.get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = rhi::Format::Unknown,
+                                           .depthFormat = rhi::Format::D32Float,
+                                           .depthTestEnable = true,
+                                           .depthWriteEnable = true,
+                                           // Store the light-facing surface, not the back face.
+                                           .cullMode = rhi::CullMode::Back,
+                                           .depthBias = kShadowDepthBias,
+                                           .label = "lmx.render.shadowPipeline"});
+        pipeline) {
+        self->m_shadowPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    // Sky vertices force z == w: use LessEqual at the depth clear, render inside faces, and avoid
+    // rewriting the unchanged depth value.
+    if (auto pipeline = device.createGraphicsPipeline({.library = self->m_skyLibrary.get(),
+                                                       .vertexEntry = "vertexMain",
+                                                       .fragmentEntry = "fragmentMain",
+                                                       .colorFormat = rhi::Format::BGRA8Unorm,
+                                                       .depthFormat = rhi::Format::D32Float,
+                                                       .depthTestEnable = true,
+                                                       .depthWriteEnable = false,
+                                                       .cullMode = rhi::CullMode::None,
+                                                       .depthCompare = rhi::DepthCompare::LessEqual,
+                                                       .label = "lmx.render.skyPipeline"});
+        pipeline) {
+        self->m_skyPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    // The shadow map transitions from depth attachment to sampled texture each frame.
+    if (auto shadowMap = device.createTexture({.width = kShadowMapSize,
+                                               .height = kShadowMapSize,
+                                               .format = rhi::Format::D32Float,
+                                               .renderTarget = true,
+                                               .sampled = true,
+                                               .label = "lmx.render.shadowMap"});
+        shadowMap) {
+        self->m_shadowMap = std::move(*shadowMap);
+    } else {
+        return std::unexpected(shadowMap.error());
+    }
+
+    if (auto texture = createFallbackTexture(device, kWhiteTexel, rhi::TextureKind::Tex2D,
+                                             "lmx.render.whiteFallback");
+        texture) {
+        self->m_whiteTexture = std::move(*texture);
+    } else {
+        return std::unexpected(texture.error());
+    }
+    if (auto texture = createFallbackTexture(device, kFlatNormalTexel, rhi::TextureKind::Tex2D,
+                                             "lmx.render.flatNormalFallback");
+        texture) {
+        self->m_flatNormalTexture = std::move(*texture);
+    } else {
+        return std::unexpected(texture.error());
+    }
+    if (auto texture = createFallbackTexture(device, kBlackTexel, rhi::TextureKind::Cube,
+                                             "lmx.render.blackCubeFallback");
+        texture) {
+        self->m_blackCubeTexture = std::move(*texture);
+    } else {
+        return std::unexpected(texture.error());
+    }
+
+    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
+                                             .addressMode = rhi::AddressMode::Wrap,
+                                             .maxAnisotropy = 16,
+                                             .label = "lmx.render.linearSampler"});
+        sampler) {
+        self->m_linearSampler = std::move(*sampler);
+    } else {
+        return std::unexpected(sampler.error());
+    }
+    // Clamp extends the 1.0 clear outside the fitted shadow footprint, keeping that region lit.
+    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
+                                             .addressMode = rhi::AddressMode::Clamp,
+                                             .maxAnisotropy = 16,
+                                             .compare = rhi::CompareFunc::LessEqual,
+                                             .label = "lmx.render.shadowSampler"});
+        sampler) {
+        self->m_shadowSampler = std::move(*sampler);
+    } else {
+        return std::unexpected(sampler.error());
+    }
+
+    if (auto targets = self->resize(width, height); !targets) {
+        return std::unexpected(targets.error());
+    }
+    return self;
+}
+
+//======================================================================================================================
+rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
+    LMX_ASSERT(width > 0 && height > 0, "Renderer::resize: width and height must be non-zero");
+
+    auto color = m_device.createTexture({.width = width,
+                                         .height = height,
+                                         .format = rhi::Format::BGRA8Unorm,
+                                         .renderTarget = true,
+                                         .sampled = true,
+                                         .cpuReadback = m_cpuReadback,
+                                         .label = "lmx.render.sceneColor"});
+    if (!color) {
+        return std::unexpected(color.error());
+    }
+    // Keep scene depth render-target-only so the driver may use a compressed depth layout.
+    auto depth = m_device.createTexture({.width = width,
+                                         .height = height,
+                                         .format = rhi::Format::D32Float,
+                                         .renderTarget = true,
+                                         .label = "lmx.render.sceneDepth"});
+    if (!depth) {
+        return std::unexpected(depth.error());
+    }
+
+    // Swap both targets only after both allocations succeed.
+    m_color = std::move(*color);
+    m_depth = std::move(*depth);
+    m_width = width;
+    m_height = height;
+    return {};
+}
+
+//======================================================================================================================
+void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
+                      bool barrierForSampling) {
+    LMX_ASSERT(m_color && m_depth && m_shadowMap,
+               "Renderer::render: targets are missing -- create() failed");
+    LMX_ASSERT(view.boundingSphere.w > 0.0f,
+               "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
+               "frustum is fitted to");
+
+    const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
+
+    commands.beginRenderPass({.depthTarget = m_shadowMap.get(),
+                              .clearDepth = 1.0f,
+                              .storeDepth = true,
+                              .label = "lmx.pass.shadow"});
+    commands.bindPipeline(*m_shadowPipeline);
+    for (const DrawItem& item : view.items) {
+        LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
+        const ShadowObjectUniforms uniforms{.mvp = shadow.viewProj * item.model};
+        commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+        commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+        commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+    }
+    commands.endRenderPass();
+
+    commands.textureBarrier(*m_shadowMap, rhi::TextureUse::RenderTarget,
+                            rhi::TextureUse::ShaderRead);
+
+    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
+    const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
+
+    PassUniforms pass{};
+    pass.viewProj = viewProj;
+    pass.shadowTransform = shadow.shadowTransform;
+    pass.eyePos = camera.position;
+    pass.time = timeSeconds;
+    pass.ambient = glm::vec4(view.ambient, 1.0f);
+    for (size_t i = 0; i < std::size(pass.lights); ++i) {
+        pass.lights[i] = toUniform(view.lights[i]);
+    }
+    pass.shadowFilter =
+        view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
+
+    commands.beginRenderPass(
+        {.colorTarget = m_color.get(),
+         .clearColor = {clearColor[0], clearColor[1], clearColor[2], clearColor[3]},
+         .clear = true,
+         .depthTarget = m_depth.get(),
+         .clearDepth = 1.0f,
+         .label = "lmx.pass.scene"});
+
+    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline : *m_scenePipeline);
+    commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
+    commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
+    commands.bindTexture(kShadowTextureSlot, *m_shadowMap);
+    commands.bindTexture(kSkyTextureSlot,
+                         view.skyCubemap != nullptr ? *view.skyCubemap : *m_blackCubeTexture);
+    commands.setUniforms(kPassUniformsSlot, &pass, sizeof(pass));
+
+    for (const DrawItem& item : view.items) {
+        const Material& material = item.material;
+        ObjectUniforms uniforms{};
+        uniforms.mvp = viewProj * item.model;
+        uniforms.model = item.model;
+        uniforms.uvTransform = material.uvTransform;
+        uniforms.albedo = material.albedo;
+        uniforms.fresnelR0 = material.fresnelR0;
+        uniforms.roughness = material.roughness;
+        uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
+
+        commands.bindTexture(kDiffuseTextureSlot,
+                             material.diffuse != nullptr ? *material.diffuse : *m_whiteTexture);
+        commands.bindTexture(kNormalTextureSlot, material.normalMap != nullptr
+                                                     ? *material.normalMap
+                                                     : *m_flatNormalTexture);
+        commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+        // setUniforms copies into transient storage before the slot is rebound by the next draw.
+        commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+        commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+    }
+
+    // Draw the solid sky last so opaque geometry rejects covered fragments at the depth clear.
+    if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
+        const SkyUniforms sky{.viewProj = viewProj, .eyePos = camera.position, .eyePadding = 0.0f};
+        commands.bindPipeline(*m_skyPipeline);
+        commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
+        commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
+        commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);
+    }
+    commands.endRenderPass();
+
+    if (barrierForSampling) {
+        // Order a later same-frame sampling pass after the color attachment writes.
+        commands.textureBarrier(*m_color, rhi::TextureUse::RenderTarget,
+                                rhi::TextureUse::ShaderRead);
+    }
+}
+
+//======================================================================================================================
+rhi::Texture& Renderer::colorTarget() {
+    LMX_ASSERT(m_color != nullptr, "Renderer::colorTarget: no color target -- create() failed");
+    return *m_color;
+}
+
+} // namespace lmx::render

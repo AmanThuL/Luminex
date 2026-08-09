@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<!--
+Hand-written fixture approximating a REAL "xctrace export, xpath flag targeting table schema
+metal-application-encoders-list" document (verified against Xcode 16.0/17E202; see xctracelib.py's
+    module docstring for the measured table-name and encoder-label constraints
+"metal-driver-event-intervals"). Trimmed to 3 columns (start, duration, encoder-label) out of the
+real table's 13 (thread/process/gpu/frame-number/cmdbuffer-label(-indexed)/encoder-label-indexed/
+event-type/cmdbuffer-id/encoder-id also exist for real); xctracelib's parser is schema/col
+driven (zips schema/col order against each row's children), so the extra real-world columns
+are simply ignored rather than assumed away.
+-->
+<trace-query-result>
+  <node xpath='//trace-toc[1]/run[1]/data[1]/table[1]'>
+    <schema name="metal-application-encoders-list">
+      <col><mnemonic>start</mnemonic><name>Creation</name><engineering-type>start-time</engineering-type></col>
+      <col><mnemonic>duration</mnemonic><name>Duration</name><engineering-type>duration</engineering-type></col>
+      <col><mnemonic>encoder-label</mnemonic><name>Encoder</name><engineering-type>metal-object-label</engineering-type></col>
+    </schema>
+    <!-- Row 1: shadowPass interval #1 (1 ms). Defines the interned start-time id="1" and
+         metal-object-label id="3" that later rows reference by ref=. -->
+    <row>
+      <start-time id="1" fmt="00:00.001.000">1000000</start-time>
+      <duration id="2" fmt="1.00 ms">1000000</duration>
+      <metal-object-label id="3" fmt="lmx.render.shadowPass">lmx.render.shadowPass</metal-object-label>
+    </row>
+    <!-- Row 2: shadowPass interval #2 (3 ms). Reuses row 1's start-time AND label via ref=,
+         exercising interning on two different tags within the same row. -->
+    <row>
+      <start-time ref="1"/>
+      <duration id="4" fmt="3.00 ms">3000000</duration>
+      <metal-object-label ref="3"/>
+    </row>
+    <!-- Row 3: scenePass, 1 interval (2 ms). Reuses the same interned start-time id="1" (xctrace
+         interns by value, and a coincidentally-equal start is a fine ref exercise for a fixture)
+         but has its own duration and label, so ref resolution must be tag/value scoped, not
+         "whichever ref appears first wins for the whole row". -->
+    <row>
+      <start-time ref="1"/>
+      <duration id="5" fmt="2.00 ms">2000000</duration>
+      <metal-object-label id="6" fmt="lmx.render.scenePass">lmx.render.scenePass</metal-object-label>
+    </row>
+  </node>
+</trace-query-result>

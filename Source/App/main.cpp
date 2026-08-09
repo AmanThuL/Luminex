@@ -1,18 +1,325 @@
-#include "Application.h"
+#include "App/AppOptions.h"
+#include "App/EditorShell.h"
+#include "App/Screenshot.h"
+#include "Core/Log.h"
+#include "Engine/SceneLibrary.h"
+#include "RHI/CaptureSchema.h"
+#include "RHI/Metal4/Metal4Capture.h"
+#include "RHI/Metal4/Metal4ImGui.h"
+#include "RHI/RHI.h"
+#include "Render/Renderer.h"
 
-int main()
-{
-    Luminex::Application app;
+#include <SDL3/SDL.h>
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
 
-    try
-    {
-        app.run();
+#include <charconv>
+#include <cstdint>
+#include <cstdlib>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <vector>
+
+namespace {
+
+// SDL window dimensions are logical points.
+constexpr int kWindowWidth = 1280;
+constexpr int kWindowHeight = 720;
+
+// This color fills dockspace gaps; Renderer::clearColor belongs to the scene viewport.
+constexpr float kUiClearColor[4] = {0.06f, 0.06f, 0.07f, 1.0f};
+
+// Capture paths are relative to the process working directory unless overridden.
+constexpr std::string_view kCapturePath = "luminex-frame.gputrace";
+
+constexpr uint64_t kResizeDownFrame = 100;
+constexpr uint64_t kResizeUpFrame = 200;
+constexpr int kResizeDownWidth = 800;
+constexpr int kResizeDownHeight = 600;
+
+//======================================================================================================================
+// Zero disables frame-triggered behavior.
+uint64_t frameNumberFromEnv(const char* name) {
+    const char* raw = std::getenv(name);
+    if (raw == nullptr) {
+        return 0;
     }
-    catch (const std::exception& e)
-    {
-        std::cerr << e.what() << std::endl;
-        return EXIT_FAILURE;
+    const std::string_view text(raw);
+    uint64_t frames = 0;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), frames);
+    if (ec != std::errc{} || end != text.data() + text.size()) {
+        LMX_LOG_WARN("{}='{}' is not a number; ignoring it", name, text);
+        return 0;
+    }
+    return frames;
+}
+
+//======================================================================================================================
+// RHI and ImGui objects are scoped inside the lifetime of the SDL-owned Metal layer. Declaration
+// order keeps the device alive until every dependent object has been released.
+int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene) {
+    auto device = lmx::rhi::createDevice();
+    if (!device) {
+        LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
+        return 1;
+    }
+    LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
+
+    lmx::engine::SceneLibrary sceneLibrary(**device);
+
+    // Swapchain dimensions follow the backing store, not logical window points.
+    int pixelWidth = 0;
+    int pixelHeight = 0;
+    if (!SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight)) {
+        LMX_LOG_ERROR("SDL_GetWindowSizeInPixels failed: {}", SDL_GetError());
+        return 1;
     }
 
-    return EXIT_SUCCESS;
+    auto swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
+                                                 .width = static_cast<uint32_t>(pixelWidth),
+                                                 .height = static_cast<uint32_t>(pixelHeight),
+                                                 .format = lmx::rhi::Format::BGRA8Unorm});
+    if (!swapchain) {
+        LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
+        return 1;
+    }
+    LMX_LOG_INFO("swapchain: {}x{} pixels BGRA8Unorm", pixelWidth, pixelHeight);
+
+    // The viewport adopts its panel size after the first UI layout.
+    auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
+                                                  static_cast<uint32_t>(pixelHeight));
+    if (!renderer) {
+        LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
+        return 1;
+    }
+    (*renderer)->clearColor[0] = lmx::app::kSceneClearGray;
+    (*renderer)->clearColor[1] = lmx::app::kSceneClearGray;
+    (*renderer)->clearColor[2] = lmx::app::kSceneClearGray;
+    (*renderer)->clearColor[3] = 1.0f;
+
+    // EditorShell must release ImGui resources before the renderer and device.
+    auto shell = lmx::app::EditorShell::create(window, **device, sceneLibrary, initialScene);
+    if (!shell) {
+        return 1;
+    }
+
+    const uint64_t maxFrames = frameNumberFromEnv("LMX_MAX_FRAMES");
+    if (maxFrames > 0) {
+        LMX_LOG_INFO("LMX_MAX_FRAMES={}: exiting after that many frames", maxFrames);
+    }
+    const uint64_t captureAtFrame = frameNumberFromEnv("LMX_CAPTURE_AT_FRAME");
+    if (captureAtFrame > 0) {
+        LMX_LOG_INFO("LMX_CAPTURE_AT_FRAME={}: will capture that frame", captureAtFrame);
+    }
+    // beginCapture owns capture-path validation.
+    const char* capturePathEnv = std::getenv("LMX_CAPTURE_PATH");
+    const std::string capturePath = (capturePathEnv != nullptr && *capturePathEnv != '\0')
+                                        ? std::string(capturePathEnv)
+                                        : std::string(kCapturePath);
+    LMX_LOG_INFO("press 'c' to capture one frame to {} (needs MTL_CAPTURE_ENABLED=1)", capturePath);
+
+    uint64_t frameIndex = 0;
+    uint64_t presentedFrames = 0;
+    uint64_t skippedFrames = 0;
+    bool running = true;
+    // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
+    bool captureRequested = false;
+    uint64_t previousTicksNs = SDL_GetTicksNS();
+    // Accumulation in double avoids precision loss in the float shader time during long runs.
+    double elapsedSeconds = 0.0;
+
+    while (running) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            // ImGui must observe every event before input ownership is queried.
+            ImGui_ImplSDL3_ProcessEvent(&event);
+            switch (event.type) {
+            case SDL_EVENT_QUIT:
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                running = false;
+                break;
+            case SDL_EVENT_KEY_DOWN:
+                // Do not capture from key repeats or keyboard input owned by ImGui.
+                if (event.key.key == SDLK_C && !event.key.repeat &&
+                    !ImGui::GetIO().WantCaptureKeyboard) {
+                    captureRequested = true;
+                }
+                break;
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                // Minimized windows report a zero extent, which is invalid for a swapchain.
+                if (event.window.data1 > 0 && event.window.data2 > 0) {
+                    (*swapchain)
+                        ->resize(static_cast<uint32_t>(event.window.data1),
+                                 static_cast<uint32_t>(event.window.data2));
+                }
+                break;
+            default:
+                break;
+            }
+        }
+        if (!running) {
+            break;
+        }
+
+        ++frameIndex;
+
+        if (maxFrames > 0) {
+            if (frameIndex == kResizeDownFrame) {
+                SDL_SetWindowSize(window, kResizeDownWidth, kResizeDownHeight);
+            } else if (frameIndex == kResizeUpFrame) {
+                SDL_SetWindowSize(window, kWindowWidth, kWindowHeight);
+            }
+        }
+        if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
+            captureRequested = true;
+        }
+
+        const uint64_t nowNs = SDL_GetTicksNS();
+        const double deltaSecondsExact = static_cast<double>(nowNs - previousTicksNs) * 1e-9;
+        previousTicksNs = nowNs;
+        elapsedSeconds += deltaSecondsExact;
+        const float deltaSeconds = static_cast<float>(deltaSecondsExact);
+        const float timeSeconds = static_cast<float>(elapsedSeconds);
+
+        // Resize can drain and replace scene targets, so it precedes the ImGui frame that uses
+        // them.
+        shell->applyPendingViewportResize(**device, **renderer);
+
+        // Acquire before ImGui::NewFrame so a dropped drawable cannot leave an open ImGui frame.
+        auto target = (*swapchain)->acquireNextTexture();
+        if (!target) {
+            // Drawable starvation is transient; drop the frame without opening encoder state.
+            ++skippedFrames;
+            LMX_LOG_WARN("frame {} skipped: {}", frameIndex, target.error().message);
+            if (maxFrames > 0 && frameIndex >= maxFrames) {
+                running = false;
+            }
+            continue;
+        }
+
+        // Capture exactly one acquired frame. Failed requests are consumed rather than retried.
+        bool capturingThisFrame = false;
+        if (captureRequested) {
+            captureRequested = false;
+            capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, capturePath);
+        }
+
+        // The Metal backend prepares its frame before ImGui builds draw data and RHI encoding
+        // begins.
+        lmx::rhi::metal4::imguiNewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        shell->buildUI(**device, **renderer, deltaSeconds);
+        ImGui::Render();
+
+        lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        (*renderer)->timeSeconds = timeSeconds;
+        // The default sampling barrier makes the scene target visible to the UI pass.
+        (*renderer)->render(commands, shell->camera(), shell->sceneView());
+
+        // This attachment layout must match the pipeline configured by imguiInit().
+        commands.beginRenderPass(
+            {.colorTarget = *target,
+             .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]},
+             .clear = true,
+             .label = "lmx.pass.ui"});
+        // ImGui owns encoder state after this call, so no engine draw follows it.
+        lmx::rhi::metal4::imguiRender(commands);
+        commands.endRenderPass();
+        (*device)->endFrame(swapchain->get());
+        ++presentedFrames;
+
+        if (capturingThisFrame) {
+            {
+                const lmx::render::SceneView view = shell->sceneView();
+                lmx::rhi::debug::SchemaContext ctx;
+                ctx.sceneName = std::string(shell->activeSceneName());
+                ctx.frameIndex = frameIndex;
+                const glm::vec3 cameraPos = shell->camera().position;
+                ctx.cameraPos = {cameraPos.x, cameraPos.y, cameraPos.z};
+                ctx.boundingSphere = {view.boundingSphere.x, view.boundingSphere.y,
+                                      view.boundingSphere.z, view.boundingSphere.w};
+                const auto& light0 = view.lights[0];
+                ctx.light0Direction = {light0.direction.x, light0.direction.y, light0.direction.z};
+                ctx.light0Strength = {light0.strength.x, light0.strength.y, light0.strength.z};
+                ctx.ambient = {view.ambient.x, view.ambient.y, view.ambient.z};
+                ctx.shadowFilter =
+                    view.shadowFilter == lmx::render::ShadowFilter::PCSS ? "PCSS" : "PCF";
+                lmx::rhi::debug::CaptureSchema::instance().setContext(std::move(ctx));
+            }
+            // Captured work must complete before the trace document is finalized.
+            (*device)->waitIdle();
+            lmx::rhi::metal4::endCapture();
+        }
+
+        if (maxFrames > 0 && frameIndex >= maxFrames) {
+            running = false;
+        }
+    }
+
+    // Establish one explicit idle boundary before dependent resources unwind.
+    (*device)->waitIdle();
+
+    LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,
+                 skippedFrames, frameIndex);
+    return 0;
+}
+
+//======================================================================================================================
+int runWindowed(lmx::engine::SceneId initialScene) {
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        LMX_LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
+        return 1;
+    }
+
+    SDL_Window* window =
+        SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight,
+                         SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE);
+    if (window == nullptr) {
+        LMX_LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+
+    // SDL_MetalView owns the layer and outlives all RHI objects created by run().
+    SDL_MetalView view = SDL_Metal_CreateView(window);
+    if (view == nullptr) {
+        LMX_LOG_ERROR("SDL_Metal_CreateView failed: {}", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+
+    const int exitCode = run(window, SDL_Metal_GetLayer(view), initialScene);
+
+    SDL_Metal_DestroyView(view);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return exitCode;
+}
+
+} // namespace
+
+//======================================================================================================================
+int main(int argc, char** argv) {
+    lmx::log::init();
+
+    std::vector<std::string_view> arguments;
+    arguments.reserve(static_cast<size_t>(argc > 0 ? argc - 1 : 0));
+    for (int i = 1; i < argc; ++i) {
+        arguments.emplace_back(argv[i]);
+    }
+
+    const lmx::app::AppOptionsResult options = lmx::app::parseAppOptions(arguments);
+    if (!options) {
+        LMX_LOG_ERROR("{}", options.error().message);
+        return 1;
+    }
+
+    // Offscreen capture does not initialize SDL or create a window.
+    if (options->mode == lmx::app::RunMode::Screenshot) {
+        return lmx::app::runScreenshot(options->screenshotPath, options->initialScene);
+    }
+    return runWindowed(options->initialScene);
 }

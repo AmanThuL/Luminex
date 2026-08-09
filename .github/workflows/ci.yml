@@ -1,0 +1,112 @@
+name: CI
+on:
+  push: {branches: [main]}
+  pull_request:
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Project policy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BASE: ${{ github.event.before }}
+        run: |
+          args=()
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            args=(--commits "$PR_BASE..$PR_HEAD")
+          elif [[ -n "$PUSH_BASE" && ! "$PUSH_BASE" =~ ^0+$ ]]; then
+            if git merge-base --is-ancestor "$PUSH_BASE" HEAD; then
+              args=(--commits "$PUSH_BASE..HEAD")
+            else
+              common_base=$(git merge-base "$PUSH_BASE" HEAD)
+              args=(--commits "$common_base..HEAD")
+            fi
+          fi
+          python3 Tools/check_project_policy.py "${args[@]}"
+
+      - name: Policy checker tests
+        run: python3 -m unittest discover -s Tools/tests -v
+
+  build-test:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xmake and clang-format
+        run: brew install xmake clang-format
+
+      - name: Cache ThirdParty
+        uses: actions/cache@v4
+        with:
+          path: ThirdParty
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'Tools/Patches/**') }}
+
+      - name: Cache xmake packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.xmake/packages
+          key: ${{ runner.os }}-xrepo-${{ hashFiles('xmake.lua') }}
+
+      - name: Fetch pinned third-party deps
+        run: xmake setup
+
+      - name: Configure and generate compile_commands
+        run: |
+          xmake f -m release -y --ccache=n
+          xmake project -k compile_commands
+
+      - name: C++ layout policy
+        run: python3 Tools/check_cpp_layout.py
+
+      - name: Build
+        run: xmake -y
+
+      - name: Unit tests
+        run: xmake test Tests/unit
+
+      - name: GPU tests with Metal validation
+        env:
+          MTL_DEBUG_LAYER: 1
+        run: xmake test Tests/gpu
+
+      - name: Format check
+        run: xmake format --check
+
+  # Non-blocking per spec D8: reports style/modernization findings
+  # without failing the build. Metal4 backend TUs are excluded from the tidy sweep below —
+  # metal-cpp headers drown tidy in third-party noise; HeaderFilterRegex already keeps
+  # reports scoped to our own code.
+  clang-tidy:
+    runs-on: macos-26
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xmake and llvm
+        run: brew install xmake llvm
+      - name: Cache ThirdParty
+        uses: actions/cache@v4
+        with:
+          path: ThirdParty
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'Tools/Patches/**') }}
+      - name: Cache xmake packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.xmake/packages
+          key: ${{ runner.os }}-xrepo-${{ hashFiles('xmake.lua') }}
+      - name: Fetch pinned third-party deps
+        run: xmake setup
+      - name: Configure and generate compile_commands
+        run: |
+          xmake f -m debug -y --ccache=n
+          xmake project -k compile_commands
+      - name: clang-tidy (non-blocking)
+        run: |
+          $(brew --prefix llvm)/bin/clang-tidy --version
+          find Source -name '*.cpp' ! -path '*Metal4*' -print0 | \
+            xargs -0 $(brew --prefix llvm)/bin/clang-tidy -p .
