@@ -74,6 +74,26 @@ class ProjectPolicyTests(unittest.TestCase):
             policy.check_commit_messages("base..head", errors)
         self.assertEqual(errors, [])
 
+    def test_public_copy_rejects_internal_milestones_and_unshipped_backends(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(
+            policy,
+            "read_text",
+            return_value="M4 adds a Vulkan backend after the current renderer.",
+        ):
+            policy.check_public_copy([Path("README.md")], errors)
+        self.assertEqual(len(errors), 2)
+
+    def test_public_copy_accepts_shipped_features_and_plain_future_themes(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(
+            policy,
+            "read_text",
+            return_value="Metal 4 renderer. Next: HDR and physically based materials.",
+        ):
+            policy.check_public_copy([Path("README.md")], errors)
+        self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

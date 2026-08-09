@@ -51,20 +51,19 @@ no vertex descriptors in the pipeline.
 
 ## The lighting/shadow math, briefly
 
-Faithful ports of lumine's HLSL (constants identical, verified symbol-for-symbol in review):
+The forward-lighting baseline uses these deliberately preserved equations and constants:
 
 - **Blinn-Phong**: `m = shininess·256`, `(m+8)/8 · (N·H)^m` spec factor, Schlick Fresnel at the
   half-vector, `spec/(spec+1)` LDR clamp. Materials are scalar `fresnelR0` + `roughness` with a
   diffuse map — no metallic/roughness maps (glTF's metallic maps onto `fresnelR0` via
   `mix(0.04, baseColor, metallic)` at load).
-- **Reflection term**: `shininess · SchlickFresnel · skyCubemap(reflect(−toEye, N))` — lumine's
-  reflective material response.
+- **Reflection term**: `shininess · SchlickFresnel · skyCubemap(reflect(−toEye, N))`.
 - **Shadows**: one directional caster (light 0). Ortho frustum fit to the scene's bounding
   sphere (`center − 2r·dir` eye), 25-tap Poisson-disk PCF re-seeded per pixel from a hash of the
-  shadow UV (noisy by design — lumine's look), or PCSS (blocker search → penumbra → variable
+  shadow UV (intentionally noisy), or PCSS (blocker search → penumbra → variable
   PCF) as a runtime toggle. Depth bias tuned by measurement: constant 4.0, slope 32.0 (the PCF
   kernel spans ~25 texels; a constant bias of 1.0 was insufficient in measured captures).
-- **Gamma**: the M3-fixed lumine error. Color textures are sRGB formats (hardware-decode on
+- **Gamma**: color textures are sRGB formats (hardware-decode on
   sample), lighting runs linear, fragments encode on output. Authored color constants
   (light strengths, ambient, albedos) are decoded once at scene build. The one deliberate
   exception: the fog-gray clear (0.7) is written raw — the hardware clear bypasses the encode
@@ -88,7 +87,7 @@ Ordered roughly by how much they'd change the image, with the sharpest first:
 2. **Post-processing stack** — there is none: no tonemapping (LDR throughout), no bloom, no
    exposure. A HDR intermediate + tonemap would immediately lift Sponza's interior.
 3. **Shadow quality** — single 2048² map for the whole scene: cascades (CSM) for range,
-   and lumine's PCSS carries a preserved unit bug (view-space NEAR_PLANE mixed with NDC
+   and the current PCSS path carries a preserved unit bug (view-space NEAR_PLANE mixed with NDC
    z-receiver → blocker search sweeps ±190 texels, penumbra barely tracks occluder distance) —
    fixing its parameterization is cheap and visible. `CalcShadowFactor`'s perspective divide is
    untested (ortho w≡1) if spot/point shadows ever arrive.
