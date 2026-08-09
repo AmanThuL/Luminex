@@ -159,6 +159,13 @@ public:
     // itself never touches it from outside declarePasses.
     rhi::Texture& hdrColorTarget();
 
+    // The frame's depth buffer, D32Float and reversed (near = 1, falling toward 0 with distance).
+    // Held past the scene pass and sampled rather than discarded, so a caller can invert a texel
+    // back to a view-space distance as z_view = -nearZ / d -- which is what pins the projection's
+    // convention against real geometry. Barrier it to ShaderRead before sampling: render()
+    // declares no read of it, so the graph has emitted no transition.
+    rhi::Texture& depthTarget();
+
     uint32_t width() const { return m_width; }
     uint32_t height() const { return m_height; }
 

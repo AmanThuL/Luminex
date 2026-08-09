@@ -1,6 +1,8 @@
 #include "DisplayTransformOracle.h"
 #include "GpuTestSupport.h"
 
+#include "Engine/Scene.h"
+
 #include <catch2/catch_approx.hpp>
 
 #include <cstring>
@@ -1181,4 +1183,164 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
     REQUIRE(refusal->message.contains("lmx.pass.probe"));
     REQUIRE(refusal->message.contains("undeclaredTarget"));
     REQUIRE(refusal->message.contains("did not declare"));
+}
+
+namespace {
+
+// MaterialLab's three depth probes, mirrored from Source/Engine/MaterialLab.cpp: 0.5-unit cubes on
+// the initial camera's forward axis at these distances, offset laterally so each occupies its own
+// tangent-space band. `distance` is to the cube's *centre*; the surface the camera sees is its
+// front face, one half-extent nearer.
+struct DepthProbe {
+    const char* name;
+    float distance;
+    float lateralOffset;
+};
+constexpr std::array<DepthProbe, 3> kMaterialLabDepthProbes = {{
+    {"near", 2.0f, -0.4f},
+    {"mid", 10.0f, 1.0f},
+    {"far", 40.0f, 7.0f},
+}};
+constexpr float kMaterialLabCameraDistance = 80.0f;
+constexpr float kDepthProbeHalfExtent = 0.25f;
+
+// Big enough that the farthest probe's front face is several pixels across: it subtends
+// 2 * 0.25 / 39.75 = 0.0126 radians of tangent against a half-FOV tangent of tan(22.5 degrees),
+// which is 3% of the frame, so 512 puts about 15 pixels on it and its centre nowhere near an edge.
+constexpr uint32_t kDepthReconstructSize = 512;
+
+} // namespace
+
+//======================================================================================================================
+// The exit gate on the reversed projection: not that its matrix has the entries it should, which
+// Tests/RenderTests.cpp pins, but that the number a real frame leaves in the depth buffer inverts
+// back to the distance the geometry actually sits at.
+//
+// The projection emits clip.z = nearZ and clip.w = -z_view, so a fragment stores
+// d = nearZ / (-z_view) and the inverse is
+//
+//     z_view = -nearZ / d
+//
+// with no far plane anywhere in it -- which is the claim being tested, since a conventional or
+// finite-far projection would need farZ to invert and would land somewhere else at every probe.
+//
+// MaterialLab supplies the geometry: three cubes on the camera's forward axis at documented
+// distances, so the reference is arithmetic on numbers the scene wrote down rather than a second
+// measurement. Each probe's visible surface is its front face, one half-extent nearer than its
+// centre, and that face is perpendicular to the view axis -- so every pixel on it holds the same
+// depth and the reconstruction has no interpolation error to absorb.
+//
+// Tolerance: 2e-3 relative, roughly twice the worst case of the one lossy step. The depth itself
+// is D32Float (relative error ~6e-8, and depth is linear in screen space so the rasterizer's
+// interpolation across a plane is exact), but the probe pass has to carry it out through an
+// RGBA16Float target -- the only float format this RHI renders into, and D32Float has no packed
+// readback of its own. Binary16 keeps 11 significant bits, and the measured probes here all land
+// one binary16 ulp low rather than at the nearest value, so the bound is a whole ulp: at most
+// 2^-10 = 9.8e-4 relative. Measured at the three probes: 2.4e-4, 2.4e-4, 7.3e-4. The
+// reconstruction divides by d, which carries relative error through unchanged rather than
+// amplifying it, so that bound is the answer's bound too.
+TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's probes", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr uint32_t kSourceTextureSlot = 0;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    REQUIRE(scene.has_value());
+
+    auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    Camera camera;
+    camera.position = (*scene)->initialCamera.position;
+    camera.yaw = (*scene)->initialCamera.yaw;
+    camera.pitch = (*scene)->initialCamera.pitch;
+    camera.fovY = (*scene)->initialCamera.fovY;
+    camera.nearZ = (*scene)->initialCamera.nearZ;
+    camera.farZ = (*scene)->initialCamera.farZ;
+    REQUIRE(camera.position.z == kMaterialLabCameraDistance);
+
+    std::vector<DrawItem> items;
+    const SceneView view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
+
+    // The depth buffer is D32Float, which readback() has no packed texel size for, so the probe
+    // pass copies it into a half-float target that does.
+    auto probeImage = (*device)->createTexture({.width = kDepthReconstructSize,
+                                                .height = kDepthReconstructSize,
+                                                .format = Format::RGBA16Float,
+                                                .renderTarget = true,
+                                                .cpuReadback = true,
+                                                .label = "lmx.test.depthProbeImage"});
+    INFO(errorOf(probeImage));
+    REQUIRE(probeImage.has_value());
+
+    auto probeLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(errorOf(probeLibrary));
+    REQUIRE(probeLibrary.has_value());
+
+    auto probePipeline =
+        (*device)->createGraphicsPipeline({.library = probeLibrary->get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = Format::RGBA16Float,
+                                           .cullMode = CullMode::None,
+                                           .label = "lmx.test.depthProbePipeline"});
+    INFO(errorOf(probePipeline));
+    REQUIRE(probePipeline.has_value());
+
+    CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
+                            TextureUse::ShaderRead);
+    commands.beginRenderPass({.colorTarget = probeImage->get(),
+                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                              .clear = true,
+                              .label = "lmx.test.depthProbe.copy"});
+    commands.bindPipeline(**probePipeline);
+    commands.bindTexture(kSourceTextureSlot, (*renderer)->depthTarget());
+    commands.draw(3);
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint16_t> texels(size_t{kDepthReconstructSize} * kDepthReconstructSize * 4);
+    (*probeImage)->readback(texels.data(), texels.size() * sizeof(uint16_t));
+
+    const glm::mat4 viewProj = camera.projectionMatrix(1.0f) * camera.viewMatrix();
+    for (const DepthProbe& probe : kMaterialLabDepthProbes) {
+        INFO(std::string("probe: ") + probe.name);
+
+        // The point the camera actually sees: the centre of the cube's near face.
+        const float faceDistance = probe.distance - kDepthProbeHalfExtent;
+        const glm::vec3 world{probe.lateralOffset, 0.0f,
+                              kMaterialLabCameraDistance - probe.distance + kDepthProbeHalfExtent};
+
+        const glm::vec4 clip = viewProj * glm::vec4(world, 1.0f);
+        REQUIRE(clip.w > 0.0f);
+        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        INFO("ndc x " + std::to_string(ndc.x) + " y " + std::to_string(ndc.y));
+        REQUIRE(std::abs(ndc.x) < 1.0f);
+        REQUIRE(std::abs(ndc.y) < 1.0f);
+        const auto x = static_cast<uint32_t>((ndc.x * 0.5f + 0.5f) *
+                                             static_cast<float>(kDepthReconstructSize));
+        const auto y = static_cast<uint32_t>((0.5f - ndc.y * 0.5f) *
+                                             static_cast<float>(kDepthReconstructSize));
+
+        const size_t offset = (size_t{y} * kDepthReconstructSize + x) * 4;
+        const float sampled = floatOfHalfBits(texels[offset]);
+        INFO("sampled depth " + std::to_string(sampled) + " at pixel " + std::to_string(x) + "," +
+             std::to_string(y));
+        // A cleared texel would be 0, which the reconstruction cannot divide by -- and would mean
+        // the probe pixel found sky rather than the cube.
+        REQUIRE(sampled > 0.0f);
+
+        const float reconstructed = -camera.nearZ / sampled;
+        INFO("reconstructed z_view " + std::to_string(reconstructed) + ", reference " +
+             std::to_string(-faceDistance));
+        REQUIRE(reconstructed == Catch::Approx(-faceDistance).epsilon(2e-3));
+    }
 }

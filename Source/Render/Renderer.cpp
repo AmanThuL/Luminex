@@ -463,11 +463,16 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Keep scene depth render-target-only so the driver may use a compressed depth layout.
+    // Sampled as well as rendered into: the frame's own depth is the only record of where its
+    // geometry is, and a caller that wants to read a distance back out of the image -- the depth
+    // reconstruction the reversed projection is pinned by, and any later pass that shades from
+    // depth -- has nowhere else to get it. It costs the driver's lossless depth compression,
+    // which is why the flag is stated here rather than left on by habit.
     auto depth = m_device.createTexture({.width = width,
                                          .height = height,
                                          .format = rhi::Format::D32Float,
                                          .renderTarget = true,
+                                         .sampled = true,
                                          .label = "lmx.render.sceneDepth"});
     if (!depth) {
         return std::unexpected(depth.error());
@@ -561,8 +566,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                         .clearColor = {clearLinear.r, clearLinear.g, clearLinear.b, clearColor[3]}};
     // 0 is the reversed projection's horizon -- no geometry is ever farther, so every fragment's
     // Greater test passes against a cleared texel, and the sky's GreaterEqual matches it exactly.
+    //
+    // Stored rather than discarded: nothing in this frame reads it after the pass, but the buffer
+    // is the frame's own record of where its geometry is, and discarding leaves it undefined the
+    // moment the pass ends -- so depthTarget() would hand a caller garbage rather than depth.
     sceneDesc.depth = DepthAttachment{
-        .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Discard, .clearDepth = 0.0f};
+        .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
         [this, &commands, view, passUniforms, viewProj,
@@ -670,6 +679,12 @@ rhi::Texture& Renderer::hdrColorTarget() {
     LMX_ASSERT(m_hdrColor != nullptr,
                "Renderer::hdrColorTarget: no scene color target -- create() failed");
     return *m_hdrColor;
+}
+
+//======================================================================================================================
+rhi::Texture& Renderer::depthTarget() {
+    LMX_ASSERT(m_depth != nullptr, "Renderer::depthTarget: no depth target -- create() failed");
+    return *m_depth;
 }
 
 } // namespace lmx::render
