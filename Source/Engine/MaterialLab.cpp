@@ -2,6 +2,7 @@
 
 #include "Engine/Color.h"
 #include "Engine/GeometryGenerator.h"
+#include "Engine/TextureBake.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -144,6 +145,28 @@ std::vector<uint8_t> makeNormalMapPixels() {
     return pixels;
 }
 
+//======================================================================================================================
+// 64x64, one texel per checker, alternating black/white by (x+y) parity -- deliberately the
+// highest possible spatial frequency a box filter can still resolve. Every 2x2 block therefore
+// contains exactly two black and two white texels, so box-filtering it converges to an exact
+// uniform mid-gray from mip level 1 onward (Source/Engine/TextureBake.h's bakeMips); point-picking
+// instead of filtering samples the same parity every time it steps by a power of two, producing a
+// solid black or solid white mip instead. RGBA8Unorm_sRGB -- colour, not data, so it goes through
+// the same sRGB decode/filter/encode path as an authored base-color texture.
+std::vector<uint8_t> makeCheckerboardPixels() {
+    constexpr uint32_t kSize = 64;
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    for (uint32_t y = 0; y < kSize; ++y) {
+        for (uint32_t x = 0; x < kSize; ++x) {
+            const uint8_t v = ((x + y) % 2 == 0) ? 255 : 0;
+            const size_t offset = (size_t{y} * kSize + x) * 4;
+            pixels[offset + 0] = pixels[offset + 1] = pixels[offset + 2] = v;
+            pixels[offset + 3] = 255;
+        }
+    }
+    return pixels;
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -175,6 +198,11 @@ std::vector<uint8_t> makeNormalMapPixels() {
 //   three offsets above put each probe, and the grid, in its own non-overlapping tangent band
 //   with margin; Tests/EngineSceneTests.cpp verifies this by projecting each object's exact world
 //   AABB (all 8 corners) to screen space through initialCamera, not just its centre.
+//
+//   Mip probe: one unit quad at world Z = cameraZ + 15 (X = Y = 0), textured with the 64x64
+//   checkerboard above. Behind initialCamera's default view on purpose -- see
+//   makeCheckerboardPixels
+//   -- a dedicated GPU test supplies its own camera on the far side to read it minified.
 //
 //   initialCamera: (0, 0, 80) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. This is much
 //   farther back than framing the grid alone would need (the grid alone would fill most of the
@@ -367,6 +395,42 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
                                   .materialIndex = depthProbeMaterialIndex});
         expandAabb(position, glm::vec3(0.25f));
     }
+
+    // Mip-filtering probe: a 64x64 1-texel checkerboard, its full chain baked in memory by the
+    // same deterministic box filter Tools/TextureBake bakes to disk (Source/Engine/TextureBake.h)
+    // -- proof that a GPU test's minified read converges to mid-gray because mips came from
+    // filtering, not point-picking (a point-picked mip of a 1-texel checkerboard reads solid black
+    // or solid white instead). Positioned behind initialCamera's default view (world Z beyond the
+    // camera itself, which looks toward -Z) so it never appears in the default frame;
+    // Tests/EngineSceneTests.cpp's mip-check test supplies its own camera on the +Z side to see it.
+    const std::vector<uint8_t> checkerPixels = makeCheckerboardPixels();
+    const BakedMipChain checkerChain = bakeMips(checkerPixels, 64, 64, BakeMode::Srgb);
+    auto checkerTexture = device.createTexture({.width = checkerChain.width,
+                                                .height = checkerChain.height,
+                                                .format = rhi::Format::RGBA8Unorm_sRGB,
+                                                .mipLevels = checkerChain.mipLevels,
+                                                .sampled = true,
+                                                .label = "MaterialLab.mipCheckerboard"},
+                                               checkerChain.mips);
+    if (!checkerTexture) {
+        return std::unexpected(uploadFailure(std::move(checkerTexture.error())));
+    }
+    rhi::Texture* checkerTexturePtr = checkerTexture->get();
+    scene->textures.push_back(std::move(*checkerTexture));
+
+    render::Material checkerMaterial;
+    checkerMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
+    checkerMaterial.diffuse = checkerTexturePtr;
+    const auto checkerMaterialIndex = static_cast<uint32_t>(scene->materials.size());
+    scene->materials.push_back(checkerMaterial);
+
+    constexpr float kMipProbeZ = kCameraDistance + 15.0f;
+    const glm::vec3 mipProbePosition{0.0f, 0.0f, kMipProbeZ};
+    scene->objects.push_back({.name = "material-lab mip probe",
+                              .position = mipProbePosition,
+                              .meshIndex = unitQuadMeshIndex,
+                              .materialIndex = checkerMaterialIndex});
+    expandAabb(mipProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
     const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
     scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
