@@ -1,8 +1,7 @@
 # Luminex
 
 A Metal 4-native rendering playground and portfolio piece, built around a thin, honest RHI
-(`lmx::rhi`) that grows real backends — Vulkan and D3D12 — one feature at a time. Successor to
-"lumine", a college-era DX12 renderer.
+(`lmx::rhi`) designed to grow Vulkan and D3D12 backends one renderer feature at a time.
 
 Metal 4 · C++23 · Slang · xmake
 
@@ -80,9 +79,9 @@ MSL today, keeping the door open for SPIR-V/DXIL once Vulkan and D3D12 backends 
   Helmet** (a focused material sample), fetched and checksum-verified by `xmake setup`. Sponza is
   converted locally from its upstream OBJ+PNG distribution to core glTF.
 - Shadow mapping: depth-only pass into a 2048² map, 25-tap Poisson-disk PCF or PCSS at runtime,
-  ported constant-for-constant from lumine and proven by derivation-based GPU tests.
-- Gamma-correct forward Blinn-Phong in linear space (lumine's classic missing-sRGB error, fixed),
-  with normal mapping, a cubemap reflection term, and a far-plane sky pass.
+  with its sampling constants and coordinate transforms covered by derivation-based GPU tests.
+- Gamma-correct forward Blinn-Phong in linear space, with normal mapping, a cubemap reflection
+  term, and a far-plane sky pass.
 - Asset pipeline: DDS (BC1 + cubemaps) and glTF via cgltf + stb; loaders return Engine-owned asset
   errors and are covered by fixture unit tests.
 - Docked ImGui editor shell: Viewport, scene dropdown, per-light editing, wireframe and
@@ -102,7 +101,6 @@ and glTF PBR work. See the compact [accepted roadmap](docs/roadmap.md), current
 
 ## Credits
 
-- lumine — the college-era DX12 predecessor this project succeeds
 - Crytek Sponza — © 2010 Frank Meinl/Crytek, CC BY 3.0; downloaded from Morgan McGuire's
   [Computer Graphics Archive](https://casual-effects.com/data)
 - Apple's Metal 4 samples and documentation (*Drawing a triangle with Metal 4*, WWDC25 205/254/211)

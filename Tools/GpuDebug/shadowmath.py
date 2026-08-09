@@ -90,8 +90,7 @@ def determinant(m) -> float:
 
 
 def look_at_rh(eye, center, up) -> list:
-    """glm::lookAtRH, transcribed. Right-handed: the view axis is -z, which is the single place
-    this whole file differs from lumine's left-handed original."""
+    """glm::lookAtRH, transcribed. Right-handed: the view axis is -z."""
     f = normalize((center[0] - eye[0], center[1] - eye[1], center[2] - eye[2]))
     s = normalize(cross(f, up))
     u = cross(s, f)
@@ -150,16 +149,15 @@ def fit_shadow_ortho(bounding_sphere, light_dir):
     up = _FALLBACK_UP if abs(dot(direction, _WORLD_UP)) > _DEGENERATE_UP_DOT else _WORLD_UP
     light_view = look_at_rh(eye, center, up)
 
-    # By construction this is (0, 0, -2r); it is computed rather than assumed because that is
-    # lumine's shape and because it states the fit instead of restating the eye placement.
+    # By construction this is (0, 0, -2r); compute it so the code states the fit directly.
     center_ls = transform_point(light_view, center)
     # Right-handed view space looks down -z, so the distance to a point along the view axis is -z.
     light_proj = ortho_rh_zo(center_ls[0] - radius, center_ls[0] + radius,
                              center_ls[1] - radius, center_ls[1] + radius,
                              -center_ls[2] - radius, -center_ls[2] + radius)
 
-    # lumine's T: NDC x [-1,1] -> u [0,1], y [-1,1] -> v [1,0] (texture v runs down), and nothing
-    # for z -- Metal's clip depth is already the [0,1] a D32Float shadow map stores.
+    # NDC x [-1,1] maps to u [0,1], y [-1,1] maps to v [1,0] (texture v runs down), and z needs
+    # no remap because Metal clip depth is already the [0,1] a D32Float shadow map stores.
     ndc_to_texcoord = identity()
     ndc_to_texcoord[0][0] = 0.5
     ndc_to_texcoord[1][1] = -0.5

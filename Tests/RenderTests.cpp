@@ -158,9 +158,9 @@ TEST_CASE("fitShadowOrtho fits the bounding sphere exactly, off-origin too", "[r
 
 //======================================================================================================================
 TEST_CASE("fitShadowOrtho survives a light pointing straight down", "[render]") {
-    // lumine's literal launch state and the editor's reachable one: a direction parallel to the
-    // world up vector, where lookAt's cross product degenerates into a zero-length axis. The fit
-    // has to pick another up rather than emit NaNs -- a NaN matrix blanks the whole shadow map.
+    // A direction parallel to world up makes lookAt's cross product degenerate into a zero-length
+    // axis. The fit has to pick another up rather than emit NaNs -- a NaN matrix blanks the whole
+    // shadow map.
     const glm::vec4 sphere{0.0f, 5.0f, 0.0f, 10.0f};
     const ShadowMatrices matrices = fitShadowOrtho(sphere, {0.0f, -1.0f, 0.0f});
     const ClipExtent extent = sphereClipExtent(matrices.viewProj, sphere);
@@ -176,7 +176,7 @@ TEST_CASE("fitShadowOrtho bakes the NDC-to-texcoord map into shadowTransform", "
     const ShadowMatrices matrices =
         fitShadowOrtho(sphere, glm::normalize(glm::vec3{0.0f, -1.0f, 0.2f}));
 
-    // lumine's gShadowTransform convention, restated: x [-1,1] -> u [0,1]; y [-1,1] -> v [1,0],
+    // Shadow texcoords map x [-1,1] -> u [0,1] and y [-1,1] -> v [1,0],
     // because texture v runs down; z untouched, because Metal clip depth is already the [0,1] a
     // D32Float map stores. Checked on interior points as well as the origin so a wrong scale and
     // a wrong offset cannot cancel each other out.

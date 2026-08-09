@@ -3,7 +3,7 @@
 **Status**: Accepted (2026-08-07) · **Spec**: ../specs/2026-08-07-luminex-upgrade-design.md (D1)
 
 ## Context
-Lumine used Premake. Research (Aug 2026) found Premake still beta with decade-old Xcode/Metal gaps;
+The initial repository used Premake. Research (Aug 2026) found decade-old Xcode/Metal gaps;
 CMake excluded by owner preference; xmake is the most actively maintained option (~5–6 week cadence)
 with native Apple toolchain support and xrepo package management.
 

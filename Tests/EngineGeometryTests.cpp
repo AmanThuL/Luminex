@@ -73,8 +73,7 @@ TEST_CASE("grid triangles wind CCW as seen from outside (+Y)", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("cylinder(0.5,0.3,3.0,20,20) has the vertex/index counts lumine's port produces",
-          "[engine]") {
+TEST_CASE("cylinder(0.5,0.3,3.0,20,20) has the expected vertex and index counts", "[engine]") {
     const GeoData cyl = makeCylinder(0.5f, 0.3f, 3.0f, 20, 20);
     // Body: (stacks+1) rings * (slices+1) verts/ring = 21*21 = 441. Each cap adds slices+1 ring
     // verts + 1 center = 22. Body indices: stacks*slices*6 = 2400; each cap adds slices*3 = 60.
@@ -159,7 +158,7 @@ TEST_CASE("grid corner UVs run 0..1 with (0,0) at -X-Z and (1,1) at +X+Z", "[eng
 }
 
 //======================================================================================================================
-TEST_CASE("cylinder ring v-coordinate follows lumine's 1 - i/stacks inversion", "[engine]") {
+TEST_CASE("cylinder ring v-coordinate follows 1 - i/stacks", "[engine]") {
     constexpr uint32_t slices = 20, stacks = 20;
     const GeoData cyl = makeCylinder(0.5f, 0.3f, 3.0f, slices, stacks);
     const uint32_t ringVertexCount = slices + 1;
@@ -176,7 +175,7 @@ TEST_CASE("cylinder ring v-coordinate follows lumine's 1 - i/stacks inversion", 
 }
 
 //======================================================================================================================
-TEST_CASE("sphere(2,20,20) has the vertex/index counts lumine's port produces", "[engine]") {
+TEST_CASE("sphere(2,20,20) has the expected vertex and index counts", "[engine]") {
     const GeoData sphere = makeSphere(2.0f, 20, 20);
     // Poles: 2 verts. Rings: (stacks-1)=19 rings * (slices+1)=21 verts/ring.
     REQUIRE(sphere.vertices.size() == 1 + 19 * 21 + 1);

@@ -95,8 +95,8 @@ class FitShadowOrthoTests(unittest.TestCase):
         self.assertAlmostEqual(shadowmath.transform_point(view_proj, top_edge)[1], 1.0, places=5)
 
     def test_light_pointing_straight_down_stays_finite_and_still_fits(self):
-        """Property (c): lumine's literal launch state and one editor drag away -- a direction
-        parallel to world up, where lookAt's cross product degenerates into a zero-length axis.
+        """Property (c): a direction parallel to world up, where lookAt's cross product
+        degenerates into a zero-length axis.
         The guard has to pick another up (+Z) rather than emit NaNs; a NaN matrix blanks the whole
         shadow map, which is exactly the failure this tool exists to name."""
         sphere = (0.0, 5.0, 0.0, 10.0)
