@@ -116,7 +116,7 @@ target("Render")
     add_deps("Core", "RHI")
     add_packages("glm", {public = true})
 
--- Procedural mesh generators (lumine's GeometryGenerator port) on top of Render. glm is public
+-- Procedural mesh generators on top of Render. glm is public
 -- so App/Tests only need "Engine" in their own add_deps to inherit its include path (mirrors
 -- the Render target above).
 target("Engine")

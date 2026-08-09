@@ -20,7 +20,7 @@ struct Material {
     rhi::Texture* normalMap = nullptr;
     glm::vec4 albedo{1.0f};
     glm::vec3 fresnelR0{0.04f}; // dielectric default; metals get their own base colour
-    float roughness = 0.5f;     // shininess = 1 - roughness, as in lumine
+    float roughness = 0.5f;     // converted to shininess as 1 - roughness
     glm::mat4 uvTransform{1.0f};
 };
 
@@ -33,9 +33,8 @@ struct DrawItem {
     Material material;
 };
 
-// lumine's Light struct cut down to what a directional light reads, mirroring Lighting.slang's
-// DirLight. `strength` is linear radiance, `direction` is the way the rays travel (so a light
-// overhead points down).
+// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
+// rays travel (so a light overhead points down).
 struct DirectionalLight {
     glm::vec3 strength{0.5f};
     glm::vec3 direction{0.0f, -1.0f, 0.0f};
@@ -48,7 +47,7 @@ enum class ShadowFilter { PCF, PCSS };
 struct SceneView {
     std::span<const DrawItem> items;
     // Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
-    // multiplies. Lights 1 and 2 light without shadowing, exactly as in lumine.
+    // multiplies. Lights 1 and 2 contribute without shadowing.
     DirectionalLight lights[3];
     // Linear, per this header's own doctrine (see Material above). Pre-decoded as a literal --
     // rather than a call to engine::srgbToLinear -- because Render sits below Engine in the
@@ -75,16 +74,15 @@ struct ShadowMatrices {
     glm::mat4 shadowTransform;
 };
 
-// lumine's UpdateShadowTransform, restated for a right-handed camera and Metal's [0,1] clip
-// depth: put the light at -2r along its own direction, look at the sphere's centre, and fit an
+// For a right-handed camera and Metal's [0,1] clip depth, put the light at -2r along its own
+// direction, look at the sphere's centre, and fit an
 // orthographic frustum to the sphere exactly (extents +/-r, near r, far 3r).
 //
 // A free function because it is pure arithmetic on the scene's bounds -- unit-testable without a
 // device, which is where its coverage lives (Tests/RenderTests.cpp).
 //
 // `lightDir` is the direction the rays travel and need not be normalised. A direction parallel to
-// world up is handled rather than producing NaNs: it is lumine's literal launch state and the
-// editor can reach it.
+// world up is handled rather than producing NaNs because the editor can reach it.
 ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& lightDir);
 
 // Capture tooling, not part of rendering: publishes the four uniform-block layouts this file
@@ -124,9 +122,8 @@ public:
     // it is a display-space colour, like every other value the target ends up holding, just one
     // that skips the shader that would have encoded it.
     float clearColor[4] = {0.05f, 0.07f, 0.10f, 1.0f};
-    // Uploaded as PassUniforms.time. lumine's cbPass carried it and no shipped shader reads it
-    // yet; it is fed from the App's frame clock so the uniform block holds a real number rather
-    // than a zero that would have to be explained later.
+    // Uploaded as PassUniforms.time. No shipped shader reads it yet; it is fed from the App's
+    // frame clock so the uniform block holds a real number rather than an unexplained zero.
     float timeSeconds = 0.0f;
 
 private:

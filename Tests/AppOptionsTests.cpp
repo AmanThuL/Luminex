@@ -41,19 +41,13 @@ TEST_CASE("an empty screenshot path preserves windowed mode", "[app][options]") 
 }
 
 //======================================================================================================================
-TEST_CASE("app options reject unknown and retired scene IDs", "[app][options]") {
+TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
     constexpr std::array arguments = {std::string_view{"--scene"}, std::string_view{"Sponza"}};
     const AppOptionsResult result = parseAppOptions(arguments);
 
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet");
-
-    constexpr std::array retired = {std::string_view{"--scene"}, std::string_view{"lumine-parity"}};
-    const AppOptionsResult retiredResult = parseAppOptions(retired);
-    REQUIRE_FALSE(retiredResult);
-    REQUIRE(retiredResult.error().message ==
-            "unknown scene ID 'lumine-parity'; valid IDs: sponza, damaged-helmet");
 }
 
 //======================================================================================================================

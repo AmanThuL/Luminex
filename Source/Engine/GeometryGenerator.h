@@ -18,7 +18,7 @@ struct GeoData {
     std::vector<uint32_t> indices;
 };
 
-GeoData makeGrid(float width, float depth, uint32_t m, uint32_t n); // lumine CreateGrid port
+GeoData makeGrid(float width, float depth, uint32_t m, uint32_t n);
 GeoData makeCylinder(float bottomR, float topR, float height, uint32_t slices, uint32_t stacks);
 GeoData makeSphere(float radius, uint32_t slices, uint32_t stacks); // sky sphere
 

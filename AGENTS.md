@@ -1,7 +1,7 @@
 # Luminex
 
 Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple Silicon), thin RHI,
-future Vulkan/D3D12 backends. Successor to college project "lumine" (DX12).
+future Vulkan/D3D12 backends.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)

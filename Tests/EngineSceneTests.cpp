@@ -423,7 +423,6 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 TEST_CASE("scene IDs are stable and reject unknown input", "[engine]") {
     REQUIRE(sceneIdString(*parseSceneId("sponza")) == "sponza");
     REQUIRE(sceneIdString(*parseSceneId("damaged-helmet")) == "damaged-helmet");
-    REQUIRE_FALSE(parseSceneId("lumine-parity"));
     REQUIRE_FALSE(parseSceneId("3"));
     REQUIRE_FALSE(parseSceneId("Sponza"));
     REQUIRE(sceneIdString(defaultSceneId()) == "sponza");
