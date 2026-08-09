@@ -3,6 +3,8 @@
 #include "App/AppOptions.h"
 
 #include <array>
+#include <cstddef>
+#include <span>
 #include <string_view>
 
 using namespace lmx::app;
@@ -47,7 +49,7 @@ TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
 
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
-            "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet");
+            "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet, material-lab");
 }
 
 //======================================================================================================================
@@ -63,7 +65,7 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
             "--screenshot needs an output path: App --screenshot <out.bmp>");
     REQUIRE_FALSE(sceneResult);
     REQUIRE(sceneResult.error().message ==
-            "--scene needs an ID: App --scene <sponza|damaged-helmet>");
+            "--scene needs an ID: App --scene <sponza|damaged-helmet|material-lab>");
 }
 
 //======================================================================================================================
@@ -74,7 +76,20 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.bmp>] [--scene "
-            "<sponza|damaged-helmet>]");
+            "<sponza|damaged-helmet|material-lab>]");
+}
+
+//======================================================================================================================
+// The CLI text is generated from the catalog (Source/App/AppOptions.cpp's sceneIdList), not a
+// second hardcoded list -- this pins the catalog's own order/content so the two cannot drift.
+TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
+    const std::array<std::string_view, 3> expected = {"sponza", "damaged-helmet", "material-lab"};
+    const std::span<const std::string_view> ids = lmx::engine::sceneStableIds();
+
+    REQUIRE(ids.size() == expected.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        REQUIRE(ids[i] == expected[i]);
+    }
 }
 
 //======================================================================================================================

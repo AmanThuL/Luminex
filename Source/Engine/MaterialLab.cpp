@@ -110,6 +110,13 @@ std::vector<uint8_t> makeGradientRampPixels() {
 }
 
 //======================================================================================================================
+// Rounds rather than truncates: a flat normal's x/y component is exactly 0.5 before scaling to
+// [0,255], and truncation would encode 127 instead of the intended 128.
+uint8_t encodeUnitToByte(float unitComponent) {
+    return static_cast<uint8_t>(unitComponent * 255.0f + 0.5f);
+}
+
+//======================================================================================================================
 // 64x64 tangent-space normal map: a centred hemispherical bump of texel radius kBumpRadius, flat
 // {128,128,255,255} (local +Z, i.e. no perturbation) outside it. Data, not colour -- RGBA8Unorm,
 // no sRGB view.
@@ -128,9 +135,9 @@ std::vector<uint8_t> makeNormalMapPixels() {
                 normal = glm::normalize(glm::vec3{dx, dy, std::sqrt(1.0f - r2)});
             }
             const size_t offset = (size_t{y} * kSize + x) * 4;
-            pixels[offset + 0] = static_cast<uint8_t>((normal.x * 0.5f + 0.5f) * 255.0f);
-            pixels[offset + 1] = static_cast<uint8_t>((normal.y * 0.5f + 0.5f) * 255.0f);
-            pixels[offset + 2] = static_cast<uint8_t>((normal.z * 0.5f + 0.5f) * 255.0f);
+            pixels[offset + 0] = encodeUnitToByte(normal.x * 0.5f + 0.5f);
+            pixels[offset + 1] = encodeUnitToByte(normal.y * 0.5f + 0.5f);
+            pixels[offset + 2] = encodeUnitToByte(normal.z * 0.5f + 0.5f);
             pixels[offset + 3] = 255;
         }
     }
@@ -157,10 +164,24 @@ std::vector<uint8_t> makeNormalMapPixels() {
 //
 //   Depth probes: three 0.5-unit cubes on the camera's forward axis (y = camera y = 0), at
 //   world Z = cameraZ - distance for distance in {2, 10, 40}, laterally offset in X by
-//   {-0.5, 0.0, 0.5} respectively so none hides another at the same screen pixel.
+//   {-0.4, 1.0, 7.0} respectively. Offsets are sized in screen (tangent) space, not world space,
+//   and accounting for the *nearest* face of each 0.5-unit cube, not its centre: a corner at
+//   world offset o and distance d subtends tangent o/d, and the cube's own half-extent (0.25)
+//   shifts both o and d toward the camera on its nearest corner, so the worst-case tangent is
+//   (|offset|+0.25)/(distance-0.25), materially more than the naive offset/distance. The near
+//   probe (distance 2) is by far the most constrained: its 0.25-unit half-extent is 12.5% of its
+//   own distance, so the same 0.5 world-unit offset that comfortably separates the far probe
+//   (distance 40) both clips the frustum edge and fails to clear the grid at distance 2. The
+//   three offsets above put each probe, and the grid, in its own non-overlapping tangent band
+//   with margin; Tests/EngineSceneTests.cpp verifies this by projecting each object's exact world
+//   AABB (all 8 corners) to screen space through initialCamera, not just its centre.
 //
-//   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV -- frames the
-//   sphere grid with margin. Nothing else is guaranteed to lie inside this frustum.
+//   initialCamera: (0, 0, 80) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. This is much
+//   farther back than framing the grid alone would need (the grid alone would fill most of the
+//   frame at roughly a tenth of this distance): the near depth probe's worst-case corner tangent
+//   is fixed by its own distance and size regardless of camera placement, so the grid has to
+//   shrink -- via a farther camera -- to leave it room. Nothing but the grid and the depth probes
+//   is guaranteed to lie inside this frustum.
 AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     auto scene = std::make_unique<Scene>();
     scene->name = "MaterialLab";
@@ -317,9 +338,12 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
                               .materialIndex = normalMaterialIndex});
     expandAabb(normalProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
-    // Depth probes: three 0.5-unit cubes on the camera's forward axis at known distances,
-    // laterally offset so none hides another at the same screen pixel.
-    constexpr float kCameraDistance = 12.0f;
+    // Depth probes: three 0.5-unit cubes on the camera's forward axis at known distances. Lateral
+    // offsets are world-space numbers sized per-probe (accounting for each cube's nearest-corner
+    // amplification) so each lands in its own tangent-space band alongside the grid's -- see the
+    // file-level comment above for the derivation and the corresponding test in
+    // Tests/EngineSceneTests.cpp that verifies it in screen space.
+    constexpr float kCameraDistance = 80.0f;
     render::Material depthProbeMaterial; // default albedo/roughness/fresnel
     const auto depthProbeMaterialIndex = static_cast<uint32_t>(scene->materials.size());
     scene->materials.push_back(depthProbeMaterial);
@@ -330,9 +354,9 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
         float lateralOffset;
     };
     constexpr std::array<DepthProbe, 3> kDepthProbes = {{
-        {"near", 2.0f, -0.5f},
-        {"mid", 10.0f, 0.0f},
-        {"far", 40.0f, 0.5f},
+        {"near", 2.0f, -0.4f},
+        {"mid", 10.0f, 1.0f},
+        {"far", 40.0f, 7.0f},
     }};
     for (const DepthProbe& probe : kDepthProbes) {
         const glm::vec3 position{probe.lateralOffset, 0.0f, kCameraDistance - probe.distance};
