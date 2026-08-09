@@ -348,6 +348,85 @@ GraphResult<Schedule> RenderGraph::compile() const {
 }
 
 //======================================================================================================================
+void RenderGraph::execute(rhi::CommandList& commands) {
+    const GraphResult<Schedule> schedule = compile();
+    LMX_ASSERT(schedule.has_value(), schedule.error().message);
+
+    // Which resources hold contents a pass rendered, and which of those a barrier has already made
+    // readable. One transition serves every later reader; rendering into a resource again puts it
+    // back in the attachment state and so needs the transition again.
+    std::vector<bool> rendered(m_resources.size(), false);
+    std::vector<bool> readable(m_resources.size(), false);
+
+    for (const uint32_t passIndex : schedule->passes) {
+        const Pass& pass = m_passes[passIndex];
+        LMX_ASSERT(pass.desc.color.has_value() || pass.desc.depth.has_value(),
+                   std::format("pass '{}' declares no attachment: this graph encodes render "
+                               "passes, so a pass with nothing to render into cannot be run",
+                               pass.label));
+
+        for (const GraphTexture& read : pass.desc.textureReads) {
+            if (!rendered[read.index] || readable[read.index]) {
+                continue;
+            }
+            readable[read.index] = true;
+            commands.textureBarrier(*m_resources[read.index].texture, rhi::TextureUse::RenderTarget,
+                                    rhi::TextureUse::ShaderRead);
+        }
+
+        rhi::RenderPassDesc desc;
+        desc.label = pass.label;
+        if (pass.desc.color) {
+            const ColorAttachment& color = *pass.desc.color;
+            LMX_ASSERT(color.store == StoreOp::Store,
+                       std::format("pass '{}' discards its colour attachment, which this RHI "
+                                   "cannot express -- a colour attachment is always stored",
+                                   pass.label));
+            desc.colorTarget = m_resources[color.handle.index].texture;
+            desc.clear = color.load == LoadOp::Clear;
+            for (size_t channel = 0; channel < 4; ++channel) {
+                desc.clearColor[channel] = color.clearColor[channel];
+            }
+        }
+        if (pass.desc.depth) {
+            const DepthAttachment& depth = *pass.desc.depth;
+            LMX_ASSERT(depth.load == LoadOp::Clear,
+                       std::format("pass '{}' loads its depth attachment, which this RHI cannot "
+                                   "express -- no pass owns depth contents to load",
+                                   pass.label));
+            // One load action covers both attachments in this RHI, so a depth clear beside a
+            // colour load would silently clear the colour target too.
+            LMX_ASSERT(desc.clear,
+                       std::format("pass '{}' loads its colour attachment while clearing depth: "
+                                   "this RHI carries one load action for the whole pass",
+                                   pass.label));
+            LMX_ASSERT(pass.desc.color || depth.store == StoreOp::Store,
+                       std::format("pass '{}' is depth-only and discards its depth, leaving it no "
+                                   "output at all",
+                                   pass.label));
+            desc.depthTarget = m_resources[depth.handle.index].texture;
+            desc.clearDepth = depth.clearDepth;
+            desc.storeDepth = depth.store == StoreOp::Store;
+        }
+
+        commands.beginRenderPass(desc);
+        pass.execute(passResources(passIndex));
+        commands.endRenderPass();
+
+        const auto markRendered = [&](uint32_t resource) {
+            rendered[resource] = true;
+            readable[resource] = false;
+        };
+        if (pass.desc.color) {
+            markRendered(pass.desc.color->handle.index);
+        }
+        if (pass.desc.depth) {
+            markRendered(pass.desc.depth->handle.index);
+        }
+    }
+}
+
+//======================================================================================================================
 PassResources RenderGraph::passResources(uint32_t passIndex) const {
     LMX_ASSERT(passIndex < m_passes.size(), "pass index names no declared pass");
     return PassResources(*this, passIndex);

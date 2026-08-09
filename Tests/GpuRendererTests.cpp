@@ -72,7 +72,143 @@ void requireTwoCubeImage(const std::vector<uint8_t>& pixels, const char* label) 
     REQUIRE(right.b > right.g + 32);
 }
 
+//======================================================================================================================
+// Byte-for-byte, because a probe answers "does this look right" and a migration has to answer
+// "is this the same image". The index of the first disagreement is what says where to look.
+size_t firstDifferingByte(const std::vector<uint8_t>& lhs, const std::vector<uint8_t>& rhs) {
+    REQUIRE(lhs.size() == rhs.size());
+    for (size_t byte = 0; byte < lhs.size(); ++byte) {
+        if (lhs[byte] != rhs[byte]) {
+            return byte;
+        }
+    }
+    return lhs.size();
+}
+
+//======================================================================================================================
+// Two blank targets are byte-identical too; this is what keeps that from passing for agreement.
+bool isFlat(const std::vector<uint8_t>& bgra) {
+    for (size_t byte = 4; byte + 3 < bgra.size(); byte += 4) {
+        if (bgra[byte] != bgra[0] || bgra[byte + 1] != bgra[1] || bgra[byte + 2] != bgra[2]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+//======================================================================================================================
+std::vector<uint8_t> endFrameAndReadback(lmx::rhi::Device& device, Renderer& renderer) {
+    device.endFrame(nullptr);
+    device.waitIdle();
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    renderer.colorTarget().readback(pixels.data(), pixels.size());
+    return pixels;
+}
+
 } // namespace
+
+//======================================================================================================================
+// The migration gate: the same scene, encoded once by hand and once from the graph's declarations,
+// must land the same bytes in the target. Two renderers rather than two frames of one, so a graph
+// path that encoded nothing at all would be compared against an untouched target instead of
+// against the image the previous frame left behind.
+TEST_CASE("the graph path renders byte-identically to the hand-sequenced path", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.parityCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+    auto ground =
+        lmx::render::createMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.parityGround");
+    INFO(errorOf(ground));
+    REQUIRE(ground.has_value());
+    auto skySphere = lmx::render::createMesh(
+        **device, lmx::render::fromGeo(lmx::engine::makeSphere(0.5f, 20, 20)),
+        "lmx.test.paritySky");
+    INFO(errorOf(skySphere));
+    REQUIRE(skySphere.has_value());
+
+    constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
+    const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
+    const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
+    auto skyCubemap = (*device)->createTexture({.width = 1,
+                                                .height = 1,
+                                                .format = Format::RGBA8Unorm,
+                                                .kind = TextureKind::Cube,
+                                                .sampled = true,
+                                                .label = "lmx.test.parityCubemap"},
+                                               skyFaces);
+    INFO(errorOf(skyCubemap));
+    REQUIRE(skyCubemap.has_value());
+
+    auto legacyRenderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(legacyRenderer));
+    REQUIRE(legacyRenderer.has_value());
+    auto graphRenderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(graphRenderer));
+    REQUIRE(graphRenderer.has_value());
+
+    const auto requireSameImage = [&](const Camera& camera, const SceneView& view,
+                                      const char* what) {
+        CommandList& legacyCommands = (*device)->beginFrame();
+        (*legacyRenderer)->render(legacyCommands, camera, view, /*barrierForSampling=*/false);
+        const std::vector<uint8_t> legacy = endFrameAndReadback(**device, **legacyRenderer);
+
+        CommandList& graphCommands = (*device)->beginFrame();
+        lmx::render::RenderGraph graph;
+        const lmx::render::GraphTexture sceneColor =
+            (*graphRenderer)->declarePasses(graph, graphCommands, camera, view);
+        graph.exportTexture(sceneColor);
+        graph.execute(graphCommands);
+        const std::vector<uint8_t> throughGraph = endFrameAndReadback(**device, **graphRenderer);
+
+        INFO(std::string("scene: ") + what);
+        // A flat image would make the comparison below meaningless whichever way it came out.
+        REQUIRE_FALSE(isFlat(throughGraph));
+
+        const size_t difference = firstDifferingByte(legacy, throughGraph);
+        INFO("first differing byte: " + std::to_string(difference) + " of " +
+             std::to_string(legacy.size()));
+        REQUIRE(difference == legacy.size());
+    };
+
+    const std::array<DrawItem, 2> cubes = twoCubeScene(*cube);
+    requireSameImage(sceneCamera(), litSceneView(cubes), "two cubes, no shadow caster, no sky");
+
+    const std::array<DrawItem, 2> shadowed = {{
+        {.mesh = &*ground,
+         .model = glm::mat4{1.0f},
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+        {.mesh = &*cube,
+         .model = glm::translate(glm::mat4{1.0f}, glm::vec3{0.0f, 3.0f, 0.0f}) *
+                  glm::scale(glm::mat4{1.0f}, glm::vec3{2.0f}),
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+    }};
+    SceneView shadowedView;
+    shadowedView.items = shadowed;
+    shadowedView.lights[0] = {.strength = {0.8f, 0.8f, 0.8f},
+                              .direction = glm::normalize(glm::vec3{1.0f, -1.0f, 1.0f})};
+    shadowedView.lights[1].strength = {0.0f, 0.0f, 0.0f};
+    shadowedView.lights[2].strength = {0.0f, 0.0f, 0.0f};
+    shadowedView.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
+    shadowedView.skySphere = &*skySphere;
+    shadowedView.skyCubemap = skyCubemap->get();
+
+    Camera shadowCamera;
+    shadowCamera.position = {0.0f, 12.0f, 16.0f};
+    shadowCamera.pitch = -0.62f;
+    requireSameImage(shadowCamera, shadowedView, "cast shadow under a sky");
+
+    // The filter is a uniform the shader branches on, so it is the one scene input that changes
+    // what the shadow read does rather than what the shadow map holds.
+    SceneView pcssView = shadowedView;
+    pcssView.shadowFilter = lmx::render::ShadowFilter::PCSS;
+    requireSameImage(shadowCamera, pcssView, "cast shadow under a sky, PCSS");
+}
 
 //======================================================================================================================
 // Separated red and blue cubes catch argument-table last-write reuse across per-draw uniforms.

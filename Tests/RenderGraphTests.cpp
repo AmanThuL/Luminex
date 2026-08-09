@@ -2,6 +2,9 @@
 
 #include "Render/RenderGraph.h"
 
+#include <string>
+#include <vector>
+
 using namespace lmx;
 using namespace lmx::render;
 
@@ -9,10 +12,15 @@ namespace {
 // Texture is an interface, and the graph reads nothing from it but width()/height(): the extent is
 // the only texture property the attachment rules inspect, since the format is declared at import.
 // readback() is never reached, so it is left empty rather than faked.
+//
+// `name` is the test's own label for the texture, so a recorded barrier says which resource it
+// transitioned rather than printing a pointer.
 struct FakeTexture final : rhi::Texture {
+    std::string name;
 
     //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height) : m_width(width), m_height(height) {}
+    FakeTexture(uint32_t width, uint32_t height, std::string label = {})
+        : name(std::move(label)), m_width(width), m_height(height) {}
 
     //==================================================================================================================
     uint32_t width() const override { return m_width; }
@@ -45,6 +53,58 @@ private:
 // Passes here are declarations and nothing else: this layer stores the body without running it, so
 // every pass gets the same empty one.
 const ExecuteFn kNoWork = [](const PassResources&) {};
+
+//======================================================================================================================
+std::string useName(rhi::TextureUse use) {
+    return use == rhi::TextureUse::RenderTarget ? "RenderTarget" : "ShaderRead";
+}
+
+// What execute() produces is a sequence of RHI calls, so recording that sequence is what makes it
+// observable without a device. Only the calls execute() itself makes are recorded; the draw-level
+// binds a pass body might make are not this layer's output and are left as no-ops.
+struct RecordingCommandList final : rhi::CommandList {
+    // The order of passes and of the barriers between them, as one flat log -- both are ordering,
+    // and separate lists would not say which came first.
+    std::vector<std::string> events;
+    // Every begun pass, for the attachment assertions the log cannot carry.
+    std::vector<rhi::RenderPassDesc> passes;
+
+    //==================================================================================================================
+    void beginRenderPass(const rhi::RenderPassDesc& desc) override {
+        passes.push_back(desc);
+        events.push_back("begin " + std::string(desc.label));
+    }
+
+    //==================================================================================================================
+    void endRenderPass() override { events.push_back("end"); }
+
+    //==================================================================================================================
+    void textureBarrier(rhi::Texture& texture, rhi::TextureUse from, rhi::TextureUse to) override {
+        events.push_back("barrier " + static_cast<FakeTexture&>(texture).name + " " +
+                         useName(from) + "->" + useName(to));
+    }
+
+    //==================================================================================================================
+    void bindPipeline(rhi::GraphicsPipeline&) override {}
+
+    //==================================================================================================================
+    void bindBuffer(uint32_t, rhi::Buffer&) override {}
+
+    //==================================================================================================================
+    void bindTexture(uint32_t, rhi::Texture&) override {}
+
+    //==================================================================================================================
+    void bindSampler(uint32_t, rhi::Sampler&) override {}
+
+    //==================================================================================================================
+    void setUniforms(uint32_t, const void*, uint64_t) override {}
+
+    //==================================================================================================================
+    void draw(uint32_t, uint32_t) override {}
+
+    //==================================================================================================================
+    void drawIndexed(rhi::Buffer&, uint32_t, uint32_t) override {}
+};
 } // namespace
 
 //======================================================================================================================
@@ -401,4 +461,155 @@ TEST_CASE("PassResources resolves a declared buffer and refuses an undeclared on
     REQUIRE_FALSE(refused.has_value());
     REQUIRE(refused.error().message.contains("unused"));
     REQUIRE(refused.error().message.contains("did not declare"));
+}
+
+//======================================================================================================================
+// The whole encoding contract in one frame's shape: the declared order is the reverse of the
+// scheduled one, each pass becomes one labelled render pass carrying its own attachments, the body
+// runs inside it, and the shadow map's render-target-to-sampled transition lands between the two.
+TEST_CASE("execute encodes the schedule as labelled render passes", "[render][graph]") {
+    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture depth{64, 64, "sceneDepth"};
+    RenderGraph graph;
+    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+
+    RecordingCommandList commands;
+    rhi::Texture* resolvedShadow = nullptr;
+
+    PassDesc scene;
+    scene.textureReads.push_back(nextVersion(shadow));
+    scene.color = ColorAttachment{.handle = sceneColor, .clearColor = {0.05f, 0.07f, 0.10f, 1.0f}};
+    scene.depth = DepthAttachment{.handle = sceneDepth};
+    graph.addPass("lmx.pass.scene", scene, [&](const PassResources& resources) {
+        commands.events.push_back("body scene");
+        const auto texture = resources.texture(nextVersion(shadow));
+        REQUIRE(texture.has_value());
+        resolvedShadow = *texture;
+    });
+
+    PassDesc shadowPass;
+    shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
+    graph.addPass("lmx.pass.shadow", shadowPass,
+                  [&commands](const PassResources&) { commands.events.push_back("body shadow"); });
+
+    graph.execute(commands);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin lmx.pass.shadow", "body shadow", "end",
+                                     "barrier shadowMap RenderTarget->ShaderRead",
+                                     "begin lmx.pass.scene", "body scene", "end"});
+    REQUIRE(resolvedShadow == &shadowMap);
+
+    REQUIRE(commands.passes.size() == 2);
+    REQUIRE(commands.passes[0].colorTarget == nullptr);
+    REQUIRE(commands.passes[0].depthTarget == &shadowMap);
+    REQUIRE(commands.passes[0].storeDepth);
+    REQUIRE(commands.passes[0].clearDepth == 1.0f);
+
+    REQUIRE(commands.passes[1].colorTarget == &color);
+    REQUIRE(commands.passes[1].depthTarget == &depth);
+    REQUIRE(commands.passes[1].clear);
+    REQUIRE_FALSE(commands.passes[1].storeDepth);
+    REQUIRE(commands.passes[1].clearColor[0] == 0.05f);
+    REQUIRE(commands.passes[1].clearColor[1] == 0.07f);
+    REQUIRE(commands.passes[1].clearColor[2] == 0.10f);
+    REQUIRE(commands.passes[1].clearColor[3] == 1.0f);
+}
+
+//======================================================================================================================
+// The barrier is a state transition of the texture, not a property of one read: the second reader
+// finds the shadow map already readable, so a second barrier would be pure cost.
+TEST_CASE("execute transitions a sampled render target once", "[render][graph]") {
+    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    FakeTexture firstColor{64, 64, "first"};
+    FakeTexture secondColor{64, 64, "second"};
+    RenderGraph graph;
+    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture first = graph.importTexture(firstColor, rhi::Format::BGRA8Unorm, "first");
+    const GraphTexture second = graph.importTexture(secondColor, rhi::Format::BGRA8Unorm, "second");
+
+    PassDesc shadowPass;
+    shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
+    graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+
+    const auto reader = [&](GraphTexture target, const char* label) {
+        PassDesc desc;
+        desc.textureReads.push_back(nextVersion(shadow));
+        desc.color = ColorAttachment{.handle = target};
+        graph.addPass(label, desc, kNoWork);
+    };
+    reader(first, "lmx.pass.first");
+    reader(second, "lmx.pass.second");
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events == std::vector<std::string>{
+                                   "begin lmx.pass.shadow", "end",
+                                   "barrier shadowMap RenderTarget->ShaderRead",
+                                   "begin lmx.pass.first", "end", "begin lmx.pass.second", "end"});
+}
+
+//======================================================================================================================
+// Exporting roots a result for the caller to read once the queue drains, which is not a shader read
+// by another pass -- so it is not what the barrier is for.
+TEST_CASE("execute emits no barrier for a texture only exported", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
+}
+
+//======================================================================================================================
+// A pass that renders into a texture it earlier sampled needs the transition again: one barrier per
+// transition is not one barrier per texture.
+TEST_CASE("execute transitions a render target again after it is rewritten", "[render][graph]") {
+    FakeTexture pingPong{64, 64, "pingPong"};
+    FakeTexture other{64, 64, "other"};
+    RenderGraph graph;
+    const GraphTexture target = graph.importTexture(pingPong, rhi::Format::BGRA8Unorm, "pingPong");
+    const GraphTexture scratch = graph.importTexture(other, rhi::Format::BGRA8Unorm, "other");
+
+    PassDesc write;
+    write.color = ColorAttachment{.handle = target};
+    graph.addPass("lmx.pass.write", write, kNoWork);
+
+    PassDesc sample;
+    sample.textureReads.push_back(nextVersion(target));
+    sample.color = ColorAttachment{.handle = scratch};
+    graph.addPass("lmx.pass.sample", sample, kNoWork);
+
+    PassDesc rewrite;
+    rewrite.textureReads.push_back(nextVersion(scratch));
+    rewrite.color = ColorAttachment{.handle = nextVersion(target)};
+    graph.addPass("lmx.pass.rewrite", rewrite, kNoWork);
+
+    PassDesc resample;
+    resample.textureReads.push_back(GraphTexture{target.index, 2});
+    resample.color = ColorAttachment{.handle = nextVersion(scratch)};
+    graph.addPass("lmx.pass.resample", resample, kNoWork);
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{
+                "begin lmx.pass.write", "end", "barrier pingPong RenderTarget->ShaderRead",
+                "begin lmx.pass.sample", "end", "barrier other RenderTarget->ShaderRead",
+                "begin lmx.pass.rewrite", "end", "barrier pingPong RenderTarget->ShaderRead",
+                "begin lmx.pass.resample", "end"});
 }

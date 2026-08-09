@@ -191,6 +191,26 @@ public:
     // pass wrote; and a cycle, named by the passes it involves.
     GraphResult<Schedule> compile() const;
 
+    // Validates the declarations and runs them: every scheduled pass becomes one render pass built
+    // from its attachments and labelled with the pass's name, and the pass body is called between
+    // beginRenderPass and endRenderPass with the resources it declared.
+    //
+    // Compilation happens here rather than in the caller so that nothing can reach the GPU
+    // unvalidated. A frame that fails to compile is programmer error and aborts with compile()'s
+    // message; a caller that wants the failure as a value calls compile() itself.
+    //
+    // The one synchronisation this emits is the render-target-to-sampled transition: a texture an
+    // earlier pass rendered into and a later pass reads gets a single
+    // textureBarrier(RenderTarget, ShaderRead) before the first pass to read it, and another only
+    // if a later pass renders into it again. An export emits nothing -- it roots a result for the
+    // caller to read once the queue drains, which is not another pass sampling it.
+    //
+    // Every pass must declare an attachment, since this encodes render passes and models no
+    // compute. The RHI's own attachment rules bind here too and are asserted with the offending
+    // pass named: a colour attachment is always stored, a depth attachment always clears, a pass
+    // carrying both clears both, and a depth-only pass must store its depth.
+    void execute(rhi::CommandList& commands);
+
     // The resources pass `passIndex` declared, for the pass body to resolve handles through.
     // Resolution depends on declarations alone, so this is answerable before and independently of
     // compile(). `passIndex` must name a declared pass.
