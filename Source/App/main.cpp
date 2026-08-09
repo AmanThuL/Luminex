@@ -223,15 +223,17 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         const lmx::render::SceneView view = shell->sceneView();
 
         lmx::render::RenderGraph graph;
-        const lmx::render::GraphTexture sceneColor =
+        // The renderer's last pass is the display transform, so this is the finished image the
+        // viewport samples -- not the scene-linear buffer behind it.
+        const lmx::render::GraphTexture displayColor =
             (*renderer)->declarePasses(graph, commands, shell->camera(), view);
         const lmx::render::GraphTexture drawable =
             graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
 
         lmx::render::PassDesc ui;
-        // Declaring the read is the whole ordering statement: it puts this pass after the scene
-        // pass and the scene target's transition to a shader read in front of it.
-        ui.textureReads.push_back(sceneColor);
+        // Declaring the read is the whole ordering statement: it puts this pass after the display
+        // pass and that target's transition to a shader read in front of it.
+        ui.textureReads.push_back(displayColor);
         // This attachment layout must match the pipeline configured by imguiInit().
         ui.color = lmx::render::ColorAttachment{
             .handle = drawable,

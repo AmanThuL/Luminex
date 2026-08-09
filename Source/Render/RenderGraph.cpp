@@ -25,6 +25,10 @@ std::string_view formatName(rhi::Format format) {
         return "RGBA8Unorm";
     case rhi::Format::RGBA8Unorm_sRGB:
         return "RGBA8Unorm_sRGB";
+    case rhi::Format::RGBA16Float:
+        return "RGBA16Float";
+    case rhi::Format::RG16Float:
+        return "RG16Float";
     case rhi::Format::BC1Unorm:
         return "BC1Unorm";
     case rhi::Format::BC1Unorm_sRGB:
@@ -42,15 +46,18 @@ bool isDepthFormat(rhi::Format format) {
 
 //======================================================================================================================
 // The colour attachment role, on the same terms the RHI's own desc validation uses: 8-bit unorm
-// targets, sRGB included. A block-compressed format cannot be rendered into and a depth format
-// belongs in the other slot.
+// targets, sRGB included, plus the half-float scene-colour format. A block-compressed format
+// cannot be rendered into, RG16Float carries lookup data and is sampled rather than rendered
+// into, and a depth format belongs in the other slot.
 bool isColorRenderableFormat(rhi::Format format) {
     switch (format) {
     case rhi::Format::BGRA8Unorm:
     case rhi::Format::RGBA8Unorm:
     case rhi::Format::RGBA8Unorm_sRGB:
+    case rhi::Format::RGBA16Float:
         return true;
     case rhi::Format::Unknown:
+    case rhi::Format::RG16Float:
     case rhi::Format::BC1Unorm:
     case rhi::Format::BC1Unorm_sRGB:
     case rhi::Format::D32Float:

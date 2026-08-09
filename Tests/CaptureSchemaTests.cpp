@@ -100,4 +100,9 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     // Spot-check one offset the whole parser hangs off: shadowTransform at byte 64.
     REQUIRE(json.find("\"shadowTransform\"") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 288") != std::string::npos);
+    // preExposure folds into padding PassUniforms already carried, so the block's size is
+    // unchanged -- which is exactly why the sidecar has to be told about the field explicitly.
+    REQUIRE(json.find("\"preExposure\"") != std::string::npos);
+    // SkyUniforms carries the same field and does grow for it: 80 bytes to 96.
+    REQUIRE(json.find("\"sizeBytes\": 96") != std::string::npos);
 }

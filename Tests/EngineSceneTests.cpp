@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "DisplayTransformOracle.h"
 #include "Engine/Color.h"
 #include "Engine/Scene.h"
 #include "Engine/SceneLibrary.h"
@@ -486,12 +487,18 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
-    // The asset camera must produce pixels beyond the raw hardware clear value (13, 18, 26).
+    // The asset camera must produce pixels beyond the clear. The clear is authored in display
+    // space and decoded once at pass declaration, so what lands in the target is that colour
+    // through the display transform -- and readback hands back BGRA, so the channels arrive
+    // reversed from the authored order.
+    const std::array<int, 3> clearBytes = lmx::test::displayBytes(
+        {lmx::test::srgbDecode(0.05f), lmx::test::srgbDecode(0.07f), lmx::test::srgbDecode(0.10f)});
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
     bool sawNonClearPixel = false;
     for (size_t i = 0; i + 3 < pixels.size(); i += 4) {
-        if (pixels[i] != 13 || pixels[i + 1] != 18 || pixels[i + 2] != 26) {
+        if (pixels[i] != clearBytes[2] || pixels[i + 1] != clearBytes[1] ||
+            pixels[i + 2] != clearBytes[0]) {
             sawNonClearPixel = true;
             break;
         }
@@ -657,10 +664,24 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 }
 
 //======================================================================================================================
-// Ambient-only lighting isolates albedo/texture from directional shading, the same isolation
-// Tests/GpuRendererTests.cpp's sRGB-encode oracle uses (linear 0.5 -> byte 188).
-TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient ramp reads back "
-          "monotonic",
+// The whole colour pipeline end to end, on the scene built to hold it still. Ambient 1.0 with
+// every directional light dark and no sky bound makes the fragment's linear output exactly the
+// material's albedo -- which the scene decoded from an authored sRGB constant -- so each patch's
+// readback must be that constant decoded, tone mapped, and encoded, with nothing else in between.
+// A second decode or a second encode anywhere on that path moves every patch off its number.
+//
+// Derived expectations at exposure 0, from Tests/DisplayTransformOracle.h (bytes, rounded):
+//   red   (1,0,0)      -> linear (1, 0, 0)          -> 241, 33, 33
+//   green (0,1,0)      -> linear (0, 1, 0)          -> 33, 241, 33
+//   blue  (0,0,1)      -> linear (0, 0, 1)          -> 33, 33, 241
+//   gray18 (0.46)      -> linear 0.1789             -> 104, 104, 104
+//   white (1,1,1)      -> linear 1.0                -> 240, 240, 240
+//   black (0,0,0)      -> linear 0.0                -> 0, 0, 0
+// The saturated primaries land on 33 in their two dark channels rather than 0 because their peak
+// channel is above the tone map's 0.76 shoulder, where it desaturates toward the compressed peak;
+// the achromatic patches sit below it and lose only the constant 0.04 black offset.
+TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display transform and its "
+          "gradient ramp reads back monotonic",
           "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
@@ -668,8 +689,19 @@ TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient 
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
-    const SceneObject* whitePatch = findObject(**scene, "material-lab patch white");
-    REQUIRE(whitePatch != nullptr);
+    struct Patch {
+        const char* name;
+        glm::vec3 authoredSrgb;
+    };
+    const std::array<Patch, 6> kPatches = {{
+        {"red", {1.0f, 0.0f, 0.0f}},
+        {"green", {0.0f, 1.0f, 0.0f}},
+        {"blue", {0.0f, 0.0f, 1.0f}},
+        {"gray18", {0.46f, 0.46f, 0.46f}},
+        {"white", {1.0f, 1.0f, 1.0f}},
+        {"black", {0.0f, 0.0f, 0.0f}},
+    }};
+
     const SceneObject* ramp = findObject(**scene, "material-lab gradient ramp");
     REQUIRE(ramp != nullptr);
 
@@ -688,16 +720,25 @@ TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient 
     camera.farZ = 20.0f;
 
     std::vector<render::DrawItem> items;
-    items.push_back({.mesh = &(*scene)->meshes[whitePatch->meshIndex],
-                     .model = whitePatch->modelMatrix(),
-                     .material = (*scene)->materials[whitePatch->materialIndex]});
+    std::vector<glm::vec3> patchPositions;
+    for (const Patch& patch : kPatches) {
+        const SceneObject* object =
+            findObject(**scene, std::string("material-lab patch ") + patch.name);
+        REQUIRE(object != nullptr);
+        patchPositions.push_back(object->position);
+        items.push_back({.mesh = &(*scene)->meshes[object->meshIndex],
+                         .model = object->modelMatrix(),
+                         .material = (*scene)->materials[object->materialIndex]});
+    }
     items.push_back({.mesh = &(*scene)->meshes[ramp->meshIndex],
                      .model = ramp->modelMatrix(),
                      .material = (*scene)->materials[ramp->materialIndex]});
 
     render::SceneView view;
     view.items = items;
-    view.ambient = {0.5f, 0.5f, 0.5f};
+    // Unit ambient makes the fragment's linear output the albedo itself; no sky is bound, so the
+    // environment term is black and contributes nothing either.
+    view.ambient = {1.0f, 1.0f, 1.0f};
     for (render::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -711,29 +752,41 @@ TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient 
     std::vector<uint8_t> pixels(size_t{kProbeSize} * kProbeSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    // Readback hands back BGRA, so the channel at offset 0 is blue.
     const auto channelAt = [&](uint32_t x, uint32_t y, size_t channel) -> uint8_t {
         const size_t offset = (size_t{y} * kProbeSize + x) * 4;
         return pixels[offset + channel];
     };
+    constexpr std::array<size_t, 3> kRgbOffsets = {2, 1, 0};
 
-    // White patch: albedo 1 times ambient 0.5, sRGB-encoded -- the same expectation as the
-    // encode oracle. Channel order is left unspecified on purpose: white makes every channel
-    // equal, so the probe does not need to know it.
-    const ProjectedPixel patchPixel = projectScenePixel(camera, kProbeSize, whitePatch->position);
-    REQUIRE(patchPixel.x < kProbeSize);
-    REQUIRE(patchPixel.y < kProbeSize);
-    for (size_t channel = 0; channel < 3; ++channel) {
-        const int value = channelAt(patchPixel.x, patchPixel.y, channel);
-        INFO("white patch channel " + std::to_string(channel) + " = " + std::to_string(value));
-        REQUIRE(std::abs(value - 188) <= 6);
+    for (size_t i = 0; i < kPatches.size(); ++i) {
+        const glm::vec3 linear{srgbToLinear(kPatches[i].authoredSrgb)};
+        const std::array<int, 3> want = lmx::test::displayBytes(linear);
+        const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, patchPositions[i]);
+        REQUIRE(coord.x < kProbeSize);
+        REQUIRE(coord.y < kProbeSize);
+        for (size_t channel = 0; channel < 3; ++channel) {
+            const int value = channelAt(coord.x, coord.y, kRgbOffsets[channel]);
+            INFO(std::string(kPatches[i].name) + " patch channel " + std::to_string(channel) +
+                 " = " + std::to_string(value) + ", expected " + std::to_string(want[channel]));
+            REQUIRE(std::abs(value - want[channel]) <= 3);
+        }
     }
 
-    // Gradient ramp: byte i in all channels at texel column i, sampled left to right. The
-    // readback must be non-decreasing end to end, with a wide spread -- a probe that would also
-    // pass against a flat or empty ramp is not discriminating anything.
+    // Gradient ramp: byte i in all channels at texel column i, sampled left to right. The readback
+    // must be non-decreasing end to end, with a wide spread -- a probe that would also pass
+    // against a flat or empty ramp is not discriminating anything -- and no adjacent pair may jump
+    // by more than kMaxRampStep, which is what a posterised intermediate would show up as.
+    //
+    // kMaxRampStep is derived, not measured: these 24 probes span authored bytes 4..251, so the
+    // ideal chain moves 15.2 bytes at its steepest adjacent pair (just above the tone map's 0.08
+    // knee, where the black offset's slope in encoded space peaks). 22 leaves margin for the
+    // ramp's bilinear filtering and the target's own rounding without admitting a visible band.
+    constexpr int kRampSamples = 24;
+    constexpr int kMaxRampStep = 22;
     std::vector<int> samples;
-    for (int i = 0; i < 8; ++i) {
-        const float worldX = -2.9f + static_cast<float>(i) * (5.8f / 7.0f);
+    for (int i = 0; i < kRampSamples; ++i) {
+        const float worldX = -2.9f + static_cast<float>(i) * (5.8f / (kRampSamples - 1));
         const glm::vec3 world{worldX, ramp->position.y, ramp->position.z};
         const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, world);
         REQUIRE(coord.x < kProbeSize);
@@ -744,6 +797,7 @@ TEST_CASE("loadMaterialLabScene's white patch round-trips sRGB and its gradient 
         INFO("ramp sample " + std::to_string(i - 1) + "=" + std::to_string(samples[i - 1]) +
              ", sample " + std::to_string(i) + "=" + std::to_string(samples[i]));
         REQUIRE(samples[i] >= samples[i - 1]);
+        REQUIRE(samples[i] - samples[i - 1] <= kMaxRampStep);
     }
     INFO("ramp spread: " + std::to_string(samples.front()) + " -> " +
          std::to_string(samples.back()));

@@ -1,4 +1,6 @@
-// Shared linear-to-sRGB transfer for pipelines writing a non-sRGB scene target.
+// The linear-to-sRGB transfer, imported by the display transform -- the one pipeline that leaves
+// linear space. It stays a module of its own so the transform can be replaced without taking the
+// project's definition of the sRGB curve with it.
 module Encode;
 
 // Clamp before pow() because negative bases are invalid and the target saturates on write.
