@@ -953,9 +953,12 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // own material has diffuse = the checkerboard texture (sRGB) and albedo = white; with ambient =
 // (1,1,1) and every light off (the same "no light, no sky, ambient times diffuse" configuration as
 // this file's white-patch test above), the shaded linear value is exactly the sampled texel: 0.5.
-// sRGB-encoded, linear 0.5 lands at byte ~188 -- the same value pinned by this file's white-patch
-// test and by Tests/GpuRendererTests.cpp's encode oracle, derived there from the identical
-// linearToSrgb(0.5) computation.
+//
+// That linear 0.5 goes through the full display path (Tests/DisplayTransformOracle.h, mirroring
+// Shaders/DisplayTransform.slang's PBR Neutral tone map + Shaders/Encode.slang's sRGB encode), the
+// same chain this file's known-colour patches test documents for its gray18 patch: min channel
+// 0.5 >= 0.08, so the tone map subtracts the constant 0.04 black offset -> 0.46; 0.46 sits below
+// the 0.76 compression shoulder, so nothing else moves it; sRGB-encoded, 0.46 lands at byte ~181.
 TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {
@@ -1009,15 +1012,21 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     REQUIRE(coord.y < kProbeSize);
     const size_t offset = (static_cast<size_t>(coord.y) * kProbeSize + coord.x) * 4;
 
+    // Point-picking this pattern reads solid black or solid white pre-tonemap. Pushed through the
+    // same display path, black's offset is also 0 below the tone map's 0.08 knee (stays byte 0);
+    // white's peak sits above the compression shoulder (byte 240, matching this file's
+    // known-colour patches test). The filtered mid-gray byte sits well clear of both.
+    const int expected = lmx::test::displayByte(0.5f);
+    const int blackExtreme = lmx::test::displayByte(0.0f);
+    const int whiteExtreme = lmx::test::displayByte(1.0f);
+
     for (size_t channel = 0; channel < 3; ++channel) {
         const int value = pixels[offset + channel];
-        INFO("mip probe channel " + std::to_string(channel) + " = " + std::to_string(value));
-        REQUIRE(std::abs(value - 188) <= 6);
-        // Point-picking this pattern reads solid black (0) or solid white (255); mid-gray is far
-        // from both, so these hold with wide margin for a correctly filtered chain and fail for a
-        // point-picked one.
-        REQUIRE(value > 40);
-        REQUIRE(value < 215);
+        INFO("mip probe channel " + std::to_string(channel) + " = " + std::to_string(value) +
+             ", expected " + std::to_string(expected));
+        REQUIRE(std::abs(value - expected) <= 3);
+        REQUIRE(value > blackExtreme + 40);
+        REQUIRE(value < whiteExtreme - 40);
     }
 }
 
