@@ -167,6 +167,52 @@ bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
 }
 
 //======================================================================================================================
+// `range` with `cut`'s overlap removed, as up to four axis-aligned mip x layer rectangles -- a
+// write-after-read discharge must shrink a pending read to what the write did *not* touch rather
+// than drop the whole entry, or a read of mips 0-3 discharged by a write of mip 0 alone would stop
+// protecting mips 1-3 against a later write of just one of them. The four pieces are the two mip
+// strips outside `cut`'s mip span (full layer range) plus the two layer strips inside it (only
+// `cut`'s mip span, so the two families never overlap each other): a rectangle with a rectangular
+// hole cut from it, split the same way any such shape decomposes into disjoint rectangles. Returns
+// `range` unchanged when the two do not overlap at all, and nothing when `cut` encloses `range`.
+std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const ResolvedRange& cut) {
+    if (!rangesOverlap(range, cut)) {
+        return {range};
+    }
+    const uint32_t cutFirstMip = std::max(range.firstMip, cut.firstMip);
+    const uint32_t cutLastMip = std::min(range.lastMip, cut.lastMip);
+    const uint32_t cutFirstLayer = std::max(range.firstLayer, cut.firstLayer);
+    const uint32_t cutLastLayer = std::min(range.lastLayer, cut.lastLayer);
+
+    std::vector<ResolvedRange> remainder;
+    if (range.firstMip < cutFirstMip) {
+        remainder.push_back({.firstMip = range.firstMip,
+                             .lastMip = cutFirstMip - 1,
+                             .firstLayer = range.firstLayer,
+                             .lastLayer = range.lastLayer});
+    }
+    if (cutLastMip < range.lastMip) {
+        remainder.push_back({.firstMip = cutLastMip + 1,
+                             .lastMip = range.lastMip,
+                             .firstLayer = range.firstLayer,
+                             .lastLayer = range.lastLayer});
+    }
+    if (range.firstLayer < cutFirstLayer) {
+        remainder.push_back({.firstMip = cutFirstMip,
+                             .lastMip = cutLastMip,
+                             .firstLayer = range.firstLayer,
+                             .lastLayer = cutFirstLayer - 1});
+    }
+    if (cutLastLayer < range.lastLayer) {
+        remainder.push_back({.firstMip = cutFirstMip,
+                             .lastMip = cutLastMip,
+                             .firstLayer = cutLastLayer + 1,
+                             .lastLayer = range.lastLayer});
+    }
+    return remainder;
+}
+
+//======================================================================================================================
 // The canonical range covering both, expressed the way a whole-resource declaration is: a union
 // that reaches the end of the chain keeps the sentinel rather than a resolved count, so a barrier
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
@@ -1195,12 +1241,17 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
         // only: this pass's own reads (if any) are not recorded into `pendingReads` until the loop
         // below runs, which is what lets a pass read and write one resource through disjoint ranges
         // (bloom's downsample step, one buffer accumulate dispatch) without owing a barrier against
-        // itself. A write discharges *only* the pending ranges it overlaps, mutating `pendingReads`
-        // as each declaration is processed: a write of mip 3 must not discharge a still-pending
-        // read of mip 0 just because they share a resource, or a later write of mip 0 would wrongly
-        // find nothing owed against it (the hazard this fixes: A reads mip 0, B writes mip 3 --
-        // disjoint, no barrier, but a full per-resource clear here would erase mip 0's read anyway
-        // -- then C writes mip 0 and owes A's read a barrier it would otherwise never get).
+        // itself. Discharge is at *subresource* granularity, not whole-entry: a write shrinks each
+        // overlapping pending-read entry to the subresources it did not touch (`subtractRange`)
+        // rather than dropping the entry outright, and two hazards motivate that precision. First,
+        // one write must not discharge a disjoint pending read sharing only the resource, not any
+        // subresources: A reads mip 0, B writes mip 3 -- disjoint, no barrier, but clearing mip 0's
+        // whole entry anyway would leave C's later write of mip 0 wrongly finding nothing owed.
+        // Second, a write covering *part* of one read entry must not discharge the rest of that
+        // same entry: A reads mips 0-3 in one declaration, D writes mip 0 alone (the two overlap,
+        // so a barrier is owed before D) -- but erasing the whole 0-3 entry on that overlap would
+        // leave a later write of mip 2 by E wrongly finding nothing owed either, though A's read of
+        // mip 2 was never ordered against it.
         for (const Declaration& declaration : pass.declarations) {
             if (!declaration.isWrite) {
                 continue;
@@ -1221,11 +1272,22 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             } else if (reads.textureRead) {
                 const ResolvedRange writeRange =
                     resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
-                const size_t before = reads.ranges.size();
-                std::erase_if(reads.ranges, [&](const ResolvedRange& readRange) {
-                    return rangesOverlap(readRange, writeRange);
-                });
-                if (reads.ranges.size() != before) {
+                // Shrink each pending entry to what this write did not touch, rather than dropping
+                // an entry outright the moment any part of it overlaps -- see the comment above.
+                std::vector<ResolvedRange> remaining;
+                remaining.reserve(reads.ranges.size());
+                bool overlapsRead = false;
+                for (const ResolvedRange& readRange : reads.ranges) {
+                    if (rangesOverlap(readRange, writeRange)) {
+                        overlapsRead = true;
+                        const std::vector<ResolvedRange> remainder =
+                            subtractRange(readRange, writeRange);
+                        remaining.insert(remaining.end(), remainder.begin(), remainder.end());
+                    } else {
+                        remaining.push_back(readRange);
+                    }
+                }
+                if (overlapsRead) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Texture,
@@ -1233,6 +1295,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                                            .textureFrom = reads.textureUse,
                                            .textureTo = textureUseOf(pass.kind, declaration.role)});
                 }
+                reads.ranges = std::move(remaining);
                 reads.textureRead = !reads.ranges.empty();
             }
         }

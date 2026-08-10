@@ -893,6 +893,101 @@ TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint 
 }
 
 //======================================================================================================================
+// A write-after-read discharge must shrink a pending read to what the write did not touch, not drop
+// the whole entry the moment any part of it overlaps: A reads mips 0-3 in one declaration, D writes
+// mip 0 alone (overlaps, so it owes a barrier -- and the read shrinks to mips 1-3, not to nothing),
+// then E writes mip 2 and must still be barriered, because A's read of mip 2 was never discharged
+// -- only mip 0 was. Erasing the whole 0-3 entry on D's overlap (rather than subtracting mip 0 from
+// it) would leave E wrongly finding nothing owed.
+TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture other{64, 64, "other"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture sink = graph.importTexture(other, rhi::Format::BGRA8Unorm, "other");
+
+    static constexpr rhi::TextureSubresourceRange kMips0to3{.baseMipLevel = 0, .mipLevelCount = 4};
+    static constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    static constexpr rhi::TextureSubresourceRange kMip2{.baseMipLevel = 2, .mipLevelCount = 1};
+
+    // A: reads mips 0-3 in one declaration, and writes a separate texture so it is not dead work no
+    // sink reaches.
+    PassDesc readA;
+    readA.textureReads.push_back(TextureUseDesc(bloom, kMips0to3));
+    readA.color = ColorAttachment{.handle = sink};
+    graph.addPass("lmx.pass.a", readA, kNoWork);
+
+    // D: writes mip 0 alone -- overlaps A's read, so it owes a barrier, but must only discharge mip
+    // 0 of A's pending mips 0-3, not the whole entry.
+    ComputePassDesc writeD;
+    writeD.textureWrites.push_back(TextureUseDesc(bloom, kMip0));
+    graph.addComputePass("lmx.pass.d", writeD, kNoWork);
+
+    // E: writes mip 2 of the version D produced -- must still be barriered, since only mip 0 of A's
+    // read was ever discharged.
+    ComputePassDesc writeE;
+    writeE.textureWrites.push_back(TextureUseDesc(nextVersion(bloom), kMip2));
+    graph.addComputePass("lmx.pass.e", writeE, kNoWork);
+
+    graph.exportTexture(GraphTexture{bloom.index, 2});
+    graph.exportTexture(nextVersion(sink));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.events == std::vector<std::string>{
+                                   "begin lmx.pass.a", "end",
+                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "begin compute lmx.pass.d", "end compute",
+                                   "barrier chain mips[2..2] layers[0..] ShaderRead->StorageWrite",
+                                   "begin compute lmx.pass.e", "end compute"});
+}
+
+//======================================================================================================================
+// The companion to the case above: when a write fully covers a pending read (rather than only part
+// of it), the read is completely discharged and a later write of a different, disjoint range owes
+// nothing -- confirming the subtraction in the case above does not manufacture a spurious barrier
+// when there is truly nothing left pending.
+TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture other{64, 64, "other"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture sink = graph.importTexture(other, rhi::Format::BGRA8Unorm, "other");
+
+    static constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    static constexpr rhi::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+
+    // A: reads mip 0 only, and writes a separate texture so it is not dead work no sink reaches.
+    PassDesc readA;
+    readA.textureReads.push_back(TextureUseDesc(bloom, kMip0));
+    readA.color = ColorAttachment{.handle = sink};
+    graph.addPass("lmx.pass.a", readA, kNoWork);
+
+    // D: writes mip 0 -- exactly covers A's read, fully discharging it.
+    ComputePassDesc writeD;
+    writeD.textureWrites.push_back(TextureUseDesc(bloom, kMip0));
+    graph.addComputePass("lmx.pass.d", writeD, kNoWork);
+
+    // E: writes the disjoint mip 1 -- nothing is pending against it, so it owes no barrier.
+    ComputePassDesc writeE;
+    writeE.textureWrites.push_back(TextureUseDesc(nextVersion(bloom), kMip1));
+    graph.addComputePass("lmx.pass.e", writeE, kNoWork);
+
+    graph.exportTexture(GraphTexture{bloom.index, 2});
+    graph.exportTexture(nextVersion(sink));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.events == std::vector<std::string>{
+                                   "begin lmx.pass.a", "end",
+                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "begin compute lmx.pass.d", "end compute",
+                                   "begin compute lmx.pass.e", "end compute"});
+}
+
+//======================================================================================================================
 // The bloom step's shape: one pass reads mip 1 and writes mip 2 of the same chain. Under
 // whole-resource versions the write still produces the next version of the whole texture, and mip 1
 // carries forward into it untouched.
