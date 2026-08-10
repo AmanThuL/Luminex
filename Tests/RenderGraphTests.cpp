@@ -743,7 +743,10 @@ TEST_CASE("execute emits no barrier for a texture only exported", "[render][grap
 
 //======================================================================================================================
 // A pass that renders into a texture it earlier sampled needs the transition again: one barrier per
-// transition is not one barrier per texture.
+// transition is not one barrier per texture. It also needs a barrier *before* that pass, ordering
+// its write after the earlier read: "pingPong" was left in ShaderRead by "sample", so "rewrite"
+// owes a write-after-read barrier before it overwrites the texture, and "other" symmetrically owes
+// one before "resample" for the same reason.
 TEST_CASE("execute transitions a render target again after it is rewritten", "[render][graph]") {
     FakeTexture pingPong{64, 64, "pingPong"};
     FakeTexture other{64, 64, "other"};
@@ -779,8 +782,66 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
             std::vector<std::string>{
                 "begin lmx.pass.write", "end", "barrier pingPong RenderTarget->ShaderRead",
                 "begin lmx.pass.sample", "end", "barrier other RenderTarget->ShaderRead",
-                "begin lmx.pass.rewrite", "end", "barrier pingPong RenderTarget->ShaderRead",
-                "begin lmx.pass.resample", "end"});
+                "barrier pingPong ShaderRead->RenderTarget", "begin lmx.pass.rewrite", "end",
+                "barrier pingPong RenderTarget->ShaderRead",
+                "barrier other ShaderRead->RenderTarget", "begin lmx.pass.resample", "end"});
+}
+
+//======================================================================================================================
+// The exposure-buffer shape finding 1 named: one pass reads a buffer version and a later pass
+// writes the next version of it, with no other resource ordering them transitively. Without a
+// write-after-read barrier the write could retire before the read that depends on the prior
+// contents does; deriveTransitions now owes one before the writing pass.
+TEST_CASE("execute barriers a buffer write after an earlier read", "[render][graph]") {
+    FakeBuffer exposureBuffer{16, "exposure"};
+    FakeBuffer sceneColorBuffer{16, "sceneColor"};
+    RenderGraph graph;
+    const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
+    const GraphBuffer sceneColor = graph.importBuffer(sceneColorBuffer, "sceneColor");
+
+    // The scene pass reads the exposure buffer and, like the real renderer, also writes scene
+    // colour -- a pure read with no write of its own would be dead work no sink reaches.
+    ComputePassDesc scene;
+    scene.bufferReads.push_back(exposure);
+    scene.bufferWrites.push_back(sceneColor);
+    graph.addComputePass("lmx.pass.scene", scene, kNoWork);
+
+    ComputePassDesc resolve;
+    resolve.bufferWrites.push_back(exposure);
+    graph.addComputePass("lmx.pass.resolve", resolve, kNoWork);
+
+    graph.exportBuffer(nextVersion(sceneColor));
+    graph.exportBuffer(nextVersion(exposure));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin compute lmx.pass.scene", "end compute",
+                                     "barrier exposure StorageRead->StorageWrite",
+                                     "begin compute lmx.pass.resolve", "end compute"});
+}
+
+//======================================================================================================================
+// A pass reading and writing one buffer in the same dispatch (the histogram accumulate shape) must
+// not be barriered against itself: the read this pass records is not visible to its own write
+// check, only to a later pass's.
+TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[render][graph]") {
+    FakeBuffer histogram{1024, "histogram"};
+    RenderGraph graph;
+    const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
+
+    ComputePassDesc accumulate;
+    accumulate.bufferReads.push_back(bins);
+    accumulate.bufferWrites.push_back(bins);
+    graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
+    graph.exportBuffer(nextVersion(bins));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin compute lmx.pass.accumulate", "end compute"});
 }
 
 //======================================================================================================================

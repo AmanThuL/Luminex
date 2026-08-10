@@ -1058,6 +1058,22 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
         std::vector<ResolvedRange> covered;
     };
     std::vector<WriteState> pending(m_resources.size());
+
+    // Subresources read since the last write to a resource, not yet ordered against a future write.
+    // A write-after-read hazard is the mirror of the read-after-write one above: a pass that writes
+    // a version some earlier pass already read needs a barrier ordering it after that read, or the
+    // write could retire before the read that depends on the prior contents does. Tracking is
+    // per-resource rather than per-version because a write discharges every outstanding read the
+    // moment it is declared -- that write is exactly the barrier those reads were waiting for -- so
+    // there is never more than one write's worth of pending reads to track at a time.
+    struct ReadState {
+        bool textureRead = false;
+        bool bufferRead = false;
+        rhi::TextureUse textureUse = rhi::TextureUse::ShaderRead;
+        rhi::BufferUse bufferUse = rhi::BufferUse::ShaderRead;
+        std::vector<ResolvedRange> ranges;
+    };
+    std::vector<ReadState> pendingReads(m_resources.size());
     std::vector<DebugTransition> transitions;
 
     // What a resource is doing at one end of a reuse boundary: the earliest declaration of it in
@@ -1169,6 +1185,77 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 transition.textureTo = textureUseOf(pass.kind, read.role);
             }
             transitions.push_back(transition);
+        }
+
+        // A write-after-read barrier per resource this pass writes, owed once for whatever this
+        // pass's write declarations overlap -- not once per prior reader, since those readers
+        // needed no ordering among themselves and the write is what has to wait for the last of
+        // them. This checks reads recorded by *earlier* passes only: this pass's own reads (if any)
+        // are not recorded into `pendingReads` until the loop below runs, which is what lets a pass
+        // read and write one resource through disjoint ranges (bloom's downsample step, one buffer
+        // accumulate dispatch) without owing a barrier against itself. Resources this pass writes
+        // are collected first so several write declarations of one resource (disjoint mips, say)
+        // each get their own overlap check before any of them clears the resource's pending reads.
+        std::vector<uint32_t> writtenResources;
+        for (const Declaration& declaration : pass.declarations) {
+            if (!declaration.isWrite) {
+                continue;
+            }
+            const ReadState& reads = pendingReads[declaration.resource];
+            const Resource& resource = m_resources[declaration.resource];
+            if (resource.kind == ResourceKind::Buffer) {
+                if (reads.bufferRead) {
+                    transitions.push_back({.beforePass = passIndex,
+                                           .resource = declaration.resource,
+                                           .kind = GraphResourceKind::Buffer,
+                                           .bufferFrom = reads.bufferUse,
+                                           .bufferTo = bufferUseOf(pass.kind, declaration.role)});
+                }
+            } else if (reads.textureRead) {
+                const ResolvedRange writeRange =
+                    resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
+                bool overlapsRead = false;
+                for (const ResolvedRange& readRange : reads.ranges) {
+                    overlapsRead = overlapsRead || rangesOverlap(readRange, writeRange);
+                }
+                if (overlapsRead) {
+                    transitions.push_back({.beforePass = passIndex,
+                                           .resource = declaration.resource,
+                                           .kind = GraphResourceKind::Texture,
+                                           .range = declaration.range,
+                                           .textureFrom = reads.textureUse,
+                                           .textureTo = textureUseOf(pass.kind, declaration.role)});
+                }
+            }
+            if (!std::ranges::contains(writtenResources, declaration.resource)) {
+                writtenResources.push_back(declaration.resource);
+            }
+        }
+        for (const uint32_t resource : writtenResources) {
+            pendingReads[resource] = {};
+        }
+
+        // Record every read this pass makes, whatever wrote the version it names, so a later write
+        // to the same resource knows what it must be ordered after. Appended rather than
+        // deduplicated against what RAW already covered above: RAW orders a reader against its
+        // producer, this orders a future writer against the reader, and the two barriers answer
+        // different questions even when they happen to share a `from` use. Deliberately after the
+        // write-after-read check above, not before: this pass's own reads must not count as a prior
+        // reader of themselves.
+        for (const Declaration& read : pass.declarations) {
+            if (read.isWrite) {
+                continue;
+            }
+            const Resource& resource = m_resources[read.resource];
+            if (resource.kind == ResourceKind::Buffer) {
+                pendingReads[read.resource].bufferRead = true;
+                pendingReads[read.resource].bufferUse = bufferUseOf(pass.kind, read.role);
+            } else {
+                pendingReads[read.resource].textureRead = true;
+                pendingReads[read.resource].textureUse = textureUseOf(pass.kind, read.role);
+                pendingReads[read.resource].ranges.push_back(
+                    resolveRange(read.range, resource.mipLevels, resource.arrayLayers));
+            }
         }
 
         for (const Declaration& declaration : pass.declarations) {
