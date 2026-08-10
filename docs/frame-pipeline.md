@@ -1,20 +1,35 @@
-# Luminex — one frame, as of the M4 baseline (2026-08-10)
+# Luminex — one frame, as of the M5 execution substrate (2026-08-11)
 
 What the renderer does between `beginFrame` and `endFrame`, written for planning what to build
 next. Updated at milestone boundaries.
 
 ## The frame at a glance
 
-A `RenderGraph` is declared fresh every frame: it imports the renderer's own targets and the
-swapchain drawable, four passes declare their reads, attachments, and writes over them, and
-`compile()` proves the declarations form a DAG and answers a serial schedule before any of it
-reaches the GPU. `execute()` then runs that schedule, deriving the one render-target-to-sampled
-barrier each declared cross-pass read justifies.
+A `RenderGraph` is declared fresh every frame: it imports the renderer's own targets, the
+persistent histogram and exposure buffers, and the swapchain drawable; the shadow, scene+sky,
+exposure-feedback, bloom, and display passes declare their reads, attachments, and writes over
+them; `compile()` proves the declarations form a DAG and answers a serial schedule (with dead-pass
+culling) before any of it reaches the GPU. `execute()` then runs that schedule, deriving both the
+read-after-write and the write-after-read barrier each declared cross-pass dependency justifies.
+
+Below is the *default* frame — auto-exposure off (manual EV, the default mode), bloom on (its
+default). Auto-exposure and bloom are both ordinary declared passes either way; toggling either off
+does not remove it from the graph, it removes the one declaration that reaches a sink, and dead-pass
+culling drops the rest (`docs/guides/gpu-debugging.md`'s dump shows exactly this for a toggled-off
+frame).
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle invariant asserted)
 │
-├─ declare: import shadow map, scene color (HDR), scene depth, display color, swapchain drawable
+├─ declare: import shadow map, scene color (HDR), scene depth, display color, histogram buffer,
+│           exposure buffer, swapchain drawable
+│
+├─ [only when auto-exposure is on and a reset trigger fired this frame]
+│  0. lmx.pass.exposure.seed   compute, 1 thread → exposure buffer
+│       writes exp2(manualEV): the loop's one-frame feedback restarts from the manual value on the
+│       first frame, a scene switch, the auto-exposure enable transition, and a successful resize
+│       (spec 9; the four triggers reduce to one pure decision, App/ExposureReset.h's
+│       shouldResetExposure(), EditorShell calls at each site)
 │
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
 │       every opaque DrawItem, depth bias {-4.0, -32.0} (negated for reversed-Z), light 0 only
@@ -35,14 +50,54 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle in
 │       │    map, t7 irradiance, t8 prefiltered environment, t9 DFG LUT
 │       ├─ reads the shadow map's written version — the graph derives one
 │       │    textureBarrier(RenderTarget, ShaderRead) in front of this pass from that declaration
+│       ├─ auto-exposure only: binds ScenePassAuto.slang/SkyAuto.slang's pipelines instead of
+│       │    ScenePass.slang/Sky.slang's, and reads the exposure buffer directly (kExposureOverride,
+│       │    an ordinary buffer read, not a storage binding — raster passes have no storage
+│       │    bindings) in place of the manual `preExposure` uniform. Two shader files rather than
+│       │    one runtime branch, so the manual pipeline's compiled output stays provably identical
+│       │    to pre-M5 (ScenePassAuto.slang's header)
 │       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
-│            cull none, GreaterEqual, t2 cubemap, the same preExposure
+│            cull none, GreaterEqual, t2 cubemap, the same preExposure (or the same exposure-buffer
+│            read, in auto mode)
 │
-├─ 3. lmx.pass.display     fullscreen triangle: Load the scene color texel-for-texel (no filter)
+├─ 3. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
+├─ 4. lmx.pass.exposure.histogram        compute, reads scene color + exposure buffer
+│       → histogram buffer; log-luminance binning divides the pre-exposed pixel back down by this
+│       frame's preExposure to reconstruct scene-referred luminance before binning it (spec 9)
+├─ 5. lmx.pass.exposure.resolve          compute, 1 thread, reads histogram buffer
+│       → exposure buffer; percentile-trimmed weighted average around a target grey point, EV-
+│       clamped, becomes the value the *next* frame's scene/sky passes and step 0's seed above (on
+│       a reset frame) will read — the whole chain's one-frame lag (spec 9)
+│       │  declared every frame regardless of the toggle; `graph.exportBuffer` on the buffer this
+│       │  pass writes happens only when auto-exposure is on, which is the sink dead-pass culling
+│       │  needs to keep clearHistogram/histogram/resolve scheduled at all (`RenderGraphTests.cpp`:
+│       │  "exposure and bloom passes are culled when both features are off")
+│
+├─ 6. lmx.pass.bloom.threshold        compute, reads scene color
+│       → bloomChain mip 0 (half-res RGBA16Float): 2×2-box prefilter + soft threshold on
+│       pre-exposed luminance — bloom tracks what the display sees, so manual and auto exposure
+│       shift it consistently (spec 10)
+├─ 7. lmx.pass.bloom.downsample0..N-1  compute, one pass per level, mip L-1 → mip L of bloomChain
+│       2×2-box downsample; N = kMaxBloomDownsampleLevels (4), clamped so no mip collapses to 1×1
+│       early — a 32-wide bloom base (the common viewport size) reaches the full depth
+├─ 8. lmx.pass.bloom.upsampleN-1..0   compute, one pass per level, walks back to mip 0
+│       → bloomBlur (a second graph-created texture, one fewer mip than bloomChain): nearest 2×
+│       upsample + add, each step's "small" input the previous step's own output. A second texture
+│       rather than accumulating into bloomChain in place, because one compute pass may read and
+│       write one texture only through disjoint ranges (spec 6) and the accumulate step's base and
+│       small ranges would otherwise overlap if they shared a resource (`BloomUpsample.slang`'s
+│       header)
+│       │  both chains declared every frame; only the display pass's read of bloomBlur (below) is
+│       │  conditional, so bloom's six-to-many passes cull together when the toggle is off
+│
+├─ 9. lmx.pass.display     fullscreen triangle: Load the scene color texel-for-texel (no filter)
+│       → scene colour + bloomBlur mip 0 × bloomIntensity (bloom-off binds an exact-zero 1×1
+│       fallback and zeroes the intensity uniform, belt-and-suspenders, so the sum is bit-identical
+│       to no bloom at all — this is what keeps a bloom-off frame byte-identical to pre-M5 output)
 │       → Khronos PBR Neutral tone map → sRGB encode → display color (BGRA8Unorm, viewport-sized)
 │       Shaders/DisplayTransform.slang — the only shader in the frame that encodes sRGB
 │
-├─ 4. lmx.pass.ui          → swapchain drawable
+├─ 10. lmx.pass.ui          → swapchain drawable
 │       Dear ImGui (docked editor shell); the Viewport window samples the display color texture;
 │       App declares this pass itself and reads the display pass's output to join it
 │
@@ -60,18 +115,23 @@ no vertex descriptors in the pipeline.
 handles (`GraphTexture`/`GraphBuffer`) rather than as commands. A resource is either **imported** —
 `importTexture`/`importBuffer` bring in a texture or buffer the caller already owns, at version 0 —
 or **transient**: `createTexture`/`createBuffer` declare one the graph owns for exactly one frame
-(`docs/decisions/0008-transient-graph-resources.md`). A pass names every version it reads, at most
-one color and one depth attachment (each is a versioned write), and any non-attachment writes;
-`compile()` hard-fails a read of a version no pass wrote, two passes writing one version, a cycle,
-an attachment/format mismatch, a transient consumed before its first write, a sink naming a
-transient, or an export of a version nothing produced, and otherwise answers one serial topological
-order holding only the passes a declared sink reaches. `execute()` re-validates, then runs that
+(`docs/decisions/0008-transient-graph-resources.md`). A pass carries a kind (raster, compute, copy)
+and names every version it reads or writes, with per-subresource ranges where it matters (bloom's
+downsample/upsample steps read one mip and write another of one texture); `compile()` hard-fails a
+read of a version no pass wrote, two passes writing one version, overlapping read/write ranges in
+one pass, a cycle, an attachment/format mismatch, a transient consumed before its first write, a
+sink naming a transient, or an export of a version nothing produced, and otherwise answers one
+serial topological order holding only the passes a declared sink (`exportTexture`, `exportBuffer`,
+swapchain presentation, or a readback destination) reaches. `execute()` re-validates, then runs that
 schedule: each pass becomes one labelled render, compute, or copy pass, its body runs inside that
 scope with a `PassResources` that resolves only the handles the pass declared — an undeclared
-resolve is a reported failure, not a resolved pointer. Compilation answers with a
-`CompiledFrameRecord` describing everything it decided, which `Render/GraphDump.h` renders as
-deterministic text. A graph is declared fresh every frame; scheduling optimization beyond dead-pass
-culling and conservative transient pooling stays deliberately absent.
+resolve is a reported failure, not a resolved pointer. Barrier derivation covers both directions: a
+read after a write (the reader waits for the writer) and a write after a read (the writer waits for
+every reader of the version it is about to replace — the exposure buffer's scene-pass-reads-then-
+resolve-pass-writes shape is exactly this). Compilation answers with a `CompiledFrameRecord`
+describing everything it decided, which `Render/GraphDump.h` renders as deterministic text. A graph
+is declared fresh every frame; scheduling optimization beyond dead-pass culling and conservative
+transient pooling stays deliberately absent.
 
 Transients are placed in a `Render/TransientPool`: one placement heap per frame-in-flight slot,
 reused only after `Device::beginFrame()` has proved that slot's previous frame retired, and resized
@@ -81,12 +141,15 @@ size, and alignment, emits a whole-resource barrier wherever one transient takes
 and records every lifetime, assignment, the heap high-water mark, and the alias savings.
 `RenderGraph::setPoolingEnabled(false)` — the editor's Transient pooling checkbox — gives every
 transient its own bytes and cannot change the picture, because a transient holds nothing until a
-pass writes it.
+pass writes it. The histogram and exposure buffers are imported, not transient: both must outlive
+the frame that wrote them (the exposure buffer for a full frame, into the next one's shading).
 
 Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::passTimings()`
 reports each pass's label and GPU milliseconds for the most recently retired frame, and
 `passTimingsFrame()` names that frame. Both are populated by counter samples the Metal 4 backend
-takes at pass begin/end and resolved once the shared event proves that frame retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
+takes at pass begin/end and resolved once the shared event proves that frame retired. The editor's
+Stats panel lists every pass of the newest retired frame with its time; the Render Graph inspector
+panel shows the newest *compiled* frame's full declaration, schedule, culling, and barriers.
 
 The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
 Their implementation and validation live in `RHI/Source/`; the only backend lives in
@@ -104,7 +167,9 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   caller asks), scene depth (`D32Float`, kept sampled rather than discarded so a caller can
   reconstruct view-space distance from it), and display color (`BGRA8Unorm`, what the viewport and
   a screenshot read) all resize with the Viewport panel (debounced, GPU-drained); the shadow map
-  is fixed at 2048².
+  is fixed at 2048². The histogram buffer (256 × uint32) and the one-float exposure buffer are
+  fixed-size and persistent — a resize is one of spec 9's reset triggers precisely because the
+  histogram's binning covered a differently-sized image the frame before.
 - **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, textures,
   and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
   material-referenced images; decoded CPU image data is dropped before the builder returns.
@@ -132,14 +197,20 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   and metallic value rather than losing energy to single-scattering loss as roughness rises.
   Occlusion attenuates the image-based terms only — the shadow map already answers direct-light
   visibility, and applying occlusion to both would darken a lit surface twice.
-- **Exposure and display**: every fragment multiplies its linear output by `preExposure =
-  exp2(EV)` (a Render Settings slider, default 0) before the scene target sees it, so the scene
-  color holds pre-exposed scene-linear radiance. `Shaders/DisplayTransform.slang` is the frame's
-  one display boundary: Khronos PBR Neutral (identity minus a small black offset below its
-  compression start, then peak-channel compression and desaturation toward it) followed by the
-  sRGB encode. The editor's clear color is authored in display space and decoded-then-pre-exposed
-  once, at pass declaration, so the cleared background and every shaded pixel agree on what space
-  the target holds.
+- **Exposure and display**: every fragment multiplies its linear output by `preExposure` before the
+  scene target sees it, so the scene color holds pre-exposed scene-linear radiance. Manual mode (the
+  default) computes `preExposure = exp2(EV)` from the Render Settings slider on the CPU, unchanged
+  since before M5. Auto mode instead reads a persistent GPU exposure buffer that a one-frame
+  histogram feedback loop maintains (spec 9, diagrammed above) — the loop resolves an instantaneous
+  target only; adaptation and smoothing are M6. `Shaders/DisplayTransform.slang` is the frame's one
+  display boundary: bloom composites in first (pre-exposed luminance, so it shifts with exposure the
+  same way the rest of the frame does), then Khronos PBR Neutral (identity minus a small black
+  offset below its compression start, then peak-channel compression and desaturation toward it)
+  followed by the sRGB encode. The editor's clear color is authored in display space and
+  decoded-then-pre-exposed once, at pass declaration, so the cleared background and every shaded
+  pixel agree on what space the target holds; the clear always uses the *manual* exposure value even
+  in auto mode, since auto's actual value lives only in the GPU-side buffer and every scene with a
+  sky draws over the clear entirely.
 - **Reversed infinite-far depth**: `Camera::projectionMatrix` maps the near plane to 1 and lets
   depth fall toward 0 without ever reaching it, concentrating float precision at the far plane
   instead of the near one. Scene and shadow pipelines clear to 0 and keep the `Greater` fragment;
@@ -167,11 +238,11 @@ exits with an error instead of falling back.
 
 ## Known gaps / candidate techniques for the next milestone
 
-1. **Execution substrate** — the graph models render passes only; compute, storage resources,
-   general barriers, transient pooling, and graph-level optimization are M5 territory, deferred by
-   design rather than by oversight.
-2. **Automatic exposure and post-processing** — exposure is a manual slider; there is no histogram
-   adaptation, bloom, or temporal reconstruction yet.
+1. **Exposure adaptation and smoothing** — spec 9 resolves an instantaneous target only; temporal
+   adaptation, a history-reset framework, and automatic exposure as a default mode are M6.
+2. **Bloom's upsample is nearest-neighbour** — a deterministic, testable choice (spec 10), but it
+   produces a visibly blocky halo around small bright highlights at the current chain depth;
+   bilinear or a wider filter kernel is a candidate improvement, not a correctness fix.
 3. **PCSS parameterization** — the migrated blocker search still mixes a view-space near-plane
    constant with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
 4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load;
@@ -184,9 +255,12 @@ exits with an error instead of falling back.
    distinguish them, which it does not yet do.
 7. **Sponza startup is still synchronous** — decode and upload still block the window before it
    becomes responsive; asynchronous staging remains future work.
-8. **Portability** — Metal remains the only backend; the reversed-Z, HDR, and graph conventions
-   above are what a future D3D12 backend has to reproduce.
+8. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
+   conventions above are what a future D3D12 backend has to reproduce.
 
-Cross-references: `docs/milestones/m4.md`, `docs/decisions/0005-render-graph.md`,
+Cross-references: `docs/specs/2026-08-11-m5-execution-substrate-design.md` (sections 6/7/9/10 —
+subresource model, graph semantics, exposure feedback, features), `docs/decisions/0005-render-graph.md`,
 `docs/decisions/0006-scene-linear-image-formation.md`, and `Shaders/` (ScenePass.slang and
-Lighting.slang are the frame's shading core, DisplayTransform.slang its display boundary).
+Lighting.slang are the frame's shading core, HistogramAccumulate/ExposureResolve.slang the exposure
+chain, BloomThreshold/Downsample/Upsample.slang the bloom chain, DisplayTransform.slang its display
+boundary).
