@@ -224,7 +224,7 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         lmx::rhi::metal4::imguiNewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
-        shell->buildUI(**device, **renderer, deltaSeconds);
+        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();

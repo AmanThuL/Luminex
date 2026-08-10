@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/FrameRecordRing.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -73,7 +74,13 @@ public:
     /// Builds the whole UI for this frame and applies camera input. Between ImGui::NewFrame() and
     /// ImGui::Render(). Takes the device because selecting a new scene this frame drains the GPU
     /// (device.waitIdle()) before the library builds or hands back the scene.
-    void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds);
+    ///
+    /// `frameRecords` is read for the Render Graph panel alone: at the point this runs, the frame
+    /// loop has not yet declared or retained this frame's own record, so the panel shows the newest
+    /// retired frame as of the *previous* iteration -- the same one-iteration lag the Stats panel's
+    /// device.passTimings() already carries, and for the same reason.
+    void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
+                 const FrameRecordRing& frameRecords);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this
@@ -102,6 +109,10 @@ private:
     void buildLightsSection();
     void buildRenderSettingsSection();
     void buildObjectsSection();
+    // A separate top-level window, not an Inspector section: the Stats panel already summarizes a
+    // frame's pass timings, and this is the frame's full compiled shape -- passes, culling,
+    // transitions, transient placement -- which is too much detail to nest under it.
+    void buildGraphInspector(const FrameRecordRing& frameRecords);
     // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
     // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
     // the new scene's initial pose -- the only per-scene UI state this shell carries.
