@@ -5,6 +5,7 @@
 
 #include "App/AppOptions.h"
 #include "App/EditorShell.h"
+#include "App/FrameRecordRing.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "Engine/SceneLibrary.h"
@@ -128,6 +129,9 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 
     uint64_t frameIndex = 0;
     uint64_t presentedFrames = 0;
+    // The frames an observer can still ask about: the three that can be in flight, plus the one
+    // whose timings the next beginFrame() publishes.
+    lmx::app::FrameRecordRing frameRecords;
     uint64_t skippedFrames = 0;
     bool running = true;
     // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
@@ -254,7 +258,14 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 
         // A frame that cannot validate is a mis-declared frame, which is programmer error: execute
         // aborts with the graph's own message rather than encoding a hazard.
-        graph.execute(commands, (*device)->frameNumber());
+        //
+        // Retaining the record it answers with is what lets an observer describe a frame that has
+        // already been submitted: the timings of a frame are readable only once it retires, several
+        // frames after the declarations that explain them are gone.
+        frameRecords.retain(graph.execute(commands, (*device)->frameNumber()));
+        // Published by this frame's beginFrame() and naming a frame that has already retired, which
+        // is why the join is by number rather than by position.
+        frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 

@@ -1,5 +1,6 @@
 #include "GpuTestSupport.h"
 
+#include "App/FrameRecordRing.h"
 #include "Render/RenderGraph.h"
 
 namespace {
@@ -232,4 +233,76 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
         REQUIRE(channelNear(texel.b, 64, 1));
         REQUIRE(texel.a == 255);
     }
+}
+
+//======================================================================================================================
+// The join the editor's observability rests on, driven by a real device rather than by values a
+// test made up: several frames are declared and retained, and the frame the RHI eventually
+// publishes timings for is found in the ring by its number, with the labels of the passes that
+// frame declared. A ring that retained only the frames in flight would have evicted it.
+TEST_CASE("a retained frame record joins the timings of the frame it describes", "[gpu]") {
+    using namespace lmx::rhi;
+    using namespace lmx::render;
+
+    constexpr uint32_t kFrames = 6;
+    constexpr uint64_t kFillBytes = 256;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto storage = (*device)->createBuffer(
+        {.size = kFillBytes, .storageRead = true, .label = "lmx.test.graph.retained"}, nullptr);
+    INFO(errorOf(storage));
+    REQUIRE(storage.has_value());
+
+    lmx::app::FrameRecordRing records;
+
+    const auto declareFrame = [&] {
+        CommandList& commands = (*device)->beginFrame();
+        RenderGraph graph;
+        const GraphBuffer target = graph.importBuffer(**storage, "lmx.test.graph.retained");
+
+        CopyPassDesc clear;
+        clear.bufferDestinations.push_back(target);
+        graph.addCopyPass("lmx.test.graph.retainedClear", clear,
+                          [&](const PassResources& resources) {
+                              const GraphResult<Buffer*> buffer = resources.buffer(target);
+                              REQUIRE(buffer.has_value());
+                              commands.fillBuffer(**buffer, 0, kFillBytes, 0);
+                          });
+        graph.exportBuffer(nextVersion(target));
+
+        records.retain(graph.execute(commands, (*device)->frameNumber()));
+        records.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+        (*device)->endFrame(nullptr);
+    };
+
+    for (uint32_t frame = 0; frame < kFrames; ++frame) {
+        declareFrame();
+    }
+
+    // The one sequence passTimings() documents as publishing a specific frame: drain, then open one
+    // more frame, which publishes the frame that just retired.
+    (*device)->waitIdle();
+    (*device)->beginFrame();
+    const uint64_t measured = (*device)->passTimingsFrame();
+    REQUIRE(records.joinTimings(measured, (*device)->passTimings()));
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    const lmx::app::RetainedFrame* newest = records.newestTimedFrame();
+    REQUIRE(newest != nullptr);
+    REQUIRE(newest->record.frameId == measured);
+    REQUIRE(newest->timed);
+
+    // The record and the timings describe the same frame, so the pass the record scheduled is the
+    // pass the GPU measured.
+    REQUIRE(newest->record.debug.schedule.passes.size() == 1);
+    const DebugPass& scheduled =
+        newest->record.debug.passes[newest->record.debug.schedule.passes[0]];
+    REQUIRE(scheduled.label == "lmx.test.graph.retainedClear");
+    REQUIRE(newest->timings.size() == 1);
+    REQUIRE(newest->timings[0].label == scheduled.label);
+    REQUIRE(newest->timings[0].gpuMilliseconds >= 0.0);
 }
