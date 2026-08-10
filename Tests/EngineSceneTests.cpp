@@ -208,6 +208,26 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
     REQUIRE((*scene)->objects.size() == 1);
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
     REQUIRE((*scene)->skyCubemap != nullptr);
+
+    // Damaged Helmet ships metallic-roughness, occlusion, and emissive maps; Scene.cpp's material
+    // translation must upload and attach all three even though shading does not consume them yet.
+    bool foundMetallicRoughness = false;
+    bool foundOcclusion = false;
+    bool foundEmissive = false;
+    for (const render::Material& material : (*scene)->materials) {
+        if (material.metallicRoughness != nullptr) {
+            foundMetallicRoughness = true;
+        }
+        if (material.occlusion != nullptr) {
+            foundOcclusion = true;
+        }
+        if (material.emissiveMap != nullptr) {
+            foundEmissive = true;
+        }
+    }
+    REQUIRE(foundMetallicRoughness);
+    REQUIRE(foundOcclusion);
+    REQUIRE(foundEmissive);
 }
 
 namespace {
