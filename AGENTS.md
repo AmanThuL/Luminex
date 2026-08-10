@@ -8,15 +8,16 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m3.1.md` · Active plan:
-  `docs/plans/2026-08-10-m4-correct-image-formation.md`
+- Current baseline: `docs/milestones/m4.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
   slang, Dear ImGui docking-branch commit), Damaged Helmet, and the official ~78 MB Crytek Sponza
   OBJ+PNG archive into gitignored `Assets/Fetched/`, with upstream provenance/license metadata.
-  Setup deterministically converts Sponza to uncompressed core glTF; pins and hashes are in
-  `xmake.lua`. Optional:
+  Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
+  and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
+  (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
+  pins and hashes are in `xmake.lua`. Optional:
   `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
   fallback works without it).
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
@@ -28,12 +29,14 @@ thin RHI and one implemented backend.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
-  <sponza|damaged-helmet> --screenshot <out.bmp>`. Running the binary directly
+  <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
   requires CWD = its build dir (shaders resolve relative to CWD). Sponza's first load decodes its
   referenced textures — expect several seconds in a debug build.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
   (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Automated runs:
   `LMX_MAX_FRAMES=N` exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress.
+  The Inspector's Stats panel lists every render-graph pass of the newest retired frame with its
+  GPU milliseconds.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
@@ -48,14 +51,17 @@ thin RHI and one implemented backend.
 `Source/Core` (lmx:: log/assert) → `Source/RHI` (lmx::rhi interfaces; **no Metal types in public
 headers**) → `Source/RHI/Metal4` (the only backend: metal-cpp, 3 frames in flight, argument tables
 + per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-samplers, sRGB/BC1/cubemap formats, depth-only passes, `Metal4ImGui` glue) → `Source/Render`
-(lmx::render: `Camera`, `Mesh`, `Renderer` — shadow pass → scene+sky pass → barrier, consuming a
+per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only passes,
+`Metal4ImGui` glue) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the validating `RenderGraph`,
+`Renderer` — declares shadow, scene+sky, and display-transform passes into a graph consuming a
 plain `SceneView`; `fitShadowOrtho` and friends are free functions) → `Source/Engine` (lmx::engine:
-`Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF loaders, sRGB color utilities) →
-`Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light editor, render
-settings — frame loop, `--screenshot` path). Shaders: `Shaders/*.slang` — six files: Encode,
-Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky (+ Triangle/SamplerSmoke/CubeSmoke/
-ShadowSmoke/FullscreenSample as test oracles). One frame end-to-end: `docs/frame-pipeline.md`.
+`Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF loaders, sRGB color utilities, deterministic
+CPU-side image-based-lighting generation (`Ibl.h`), deterministic offline texture mip baking
+(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light
+editor, render settings — frame loop, joins its own UI pass to the graph, `--screenshot` path).
+Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky,
+DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as test oracles).
+One frame end-to-end: `docs/frame-pipeline.md`.
 
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
@@ -64,9 +70,10 @@ ShadowSmoke/FullscreenSample as test oracles). One frame end-to-end: `docs/frame
   Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
   relevant tests, and passes `xmake policy`.
-- Lighting math runs in linear space; authored color constants decode via
-  `engine::srgbToLinear` at scene build. The single exception is the clear color (written raw —
-  the hardware clear bypasses the shader-side sRGB encode).
+- Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
+  authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
+  (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or
+  pass declaration. Nothing upstream of `Shaders/DisplayTransform.slang` encodes sRGB.
 - Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
   rendering behavior and uses plain feature themes for future work. It never exposes milestone
   numbers, task/plan status, or an unimplemented backend as a current capability. `CLAUDE.md`
