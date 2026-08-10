@@ -640,11 +640,10 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
     // order tie-break, and it makes the schedule a function of the declarations alone. It runs over
     // every declared pass rather than the live ones, because a cycle is a property of the frame as
     // declared -- culling a cycle away would report a frame as valid that is not.
-    Schedule ordered;
-    ordered.passes.reserve(m_passes.size());
     Schedule schedule;
     std::vector<bool> scheduled(m_passes.size(), false);
-    while (ordered.passes.size() < m_passes.size()) {
+    size_t ordered = 0;
+    while (ordered < m_passes.size()) {
         uint32_t ready = static_cast<uint32_t>(m_passes.size());
         for (uint32_t pass = 0; pass < m_passes.size(); ++pass) {
             if (!scheduled[pass] && pendingDependencies[pass] == 0) {
@@ -664,7 +663,7 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
             return fail(std::format("render graph contains a cycle involving passes {}", involved));
         }
         scheduled[ready] = true;
-        ordered.passes.push_back(ready);
+        ++ordered;
         if (live[ready]) {
             schedule.passes.push_back(ready);
         }
