@@ -5,8 +5,10 @@
 
 #include "Engine/Scene.h"
 
+#include "Core/Log.h"
 #include "Engine/Color.h"
 #include "Engine/GeometryGenerator.h"
+#include "Engine/HdrEnvironment.h"
 #include "Engine/Ibl.h"
 #include "Engine/TextureBake.h"
 
@@ -16,7 +18,9 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
+#include <optional>
 #include <span>
 #include <string>
 #include <utility>
@@ -38,6 +42,35 @@ constexpr float kLightStrengths[3] = {0.7f, 0.2f, 0.2f};
 static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
               "kLightStrengths and kLightDirections must have the same length");
 
+// Stable lane centres make the scene readable as a horizontal strip: open on the material model,
+// then pan right without rotating to inspect authored-colour/texture and depth diagnostics.
+constexpr float kMaterialLaneX = 0.0f;
+constexpr float kTextureLaneX = 14.0f;
+constexpr float kDepthLaneX = 28.0f;
+constexpr float kCameraDistance = 12.0f;
+constexpr std::string_view kStudioEnvironmentPath =
+    "Assets/Fetched/MaterialLab/studio_small_09_1k.hdr";
+constexpr uint32_t kStudioEnvironmentFaceSize = 32;
+constexpr float kStudioEnvironmentYaw = 0.0f;
+constexpr float kStudioEnvironmentScale = 0.25f;
+
+//======================================================================================================================
+// Executables run below the repository root, so optional lookdev assets are found by walking up
+// from the working directory. MaterialLab remains available when the search reaches the root.
+std::optional<std::filesystem::path> findRepoAsset(std::string_view relative) {
+    std::filesystem::path dir = std::filesystem::current_path();
+    for (int i = 0; i < 8; ++i) {
+        if (std::filesystem::path candidate = dir / relative; std::filesystem::exists(candidate)) {
+            return candidate;
+        }
+        if (!dir.has_parent_path() || dir.parent_path() == dir) {
+            break;
+        }
+        dir = dir.parent_path();
+    }
+    return std::nullopt;
+}
+
 //======================================================================================================================
 AssetError uploadFailure(rhi::Error error) {
     return AssetError{AssetErrorCode::UploadFailed, std::move(error.message)};
@@ -52,29 +85,42 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
     }
     scene.skySphere = std::move(*sphere);
 
-    constexpr std::array<uint8_t, 4> kNeutralSky = {149, 170, 196, 255};
-    const rhi::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
-    const std::array<rhi::TextureMip, 6> faces = {face, face, face, face, face, face};
-    auto cubemap = device.createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm_sRGB,
-                                         .kind = rhi::TextureKind::Cube,
-                                         .mipLevels = 1,
-                                         .sampled = true,
-                                         .label = std::string(label) + ".sky"},
-                                        faces);
+    // The fetched studio is deliberately optional: a fresh checkout and hosted CI still get a
+    // deterministic scene, while `xmake setup` upgrades both the visible sky and its IBL from the
+    // exact same linear-light cubemap. The fallback is an authored neutral mid-gray bright enough
+    // to keep the roughness sweep readable without the studio asset.
+    ibl::CpuCubemap environment = ibl::makeConstantCubemap(srgbToLinear(glm::vec3(0.65f)), 1);
+    bool usingStudioEnvironment = false;
+    if (const auto path = findRepoAsset(kStudioEnvironmentPath)) {
+        auto decoded = loadRadianceHdr(path->string());
+        if (decoded) {
+            auto converted =
+                equirectangularToCubemap(*decoded, kStudioEnvironmentFaceSize,
+                                         kStudioEnvironmentYaw, kStudioEnvironmentScale);
+            if (converted) {
+                environment = std::move(*converted);
+                usingStudioEnvironment = true;
+            } else {
+                LMX_LOG_WARN("{}; using MaterialLab's neutral fallback environment",
+                             converted.error().message);
+            }
+        } else {
+            LMX_LOG_WARN("{}; using MaterialLab's neutral fallback environment",
+                         decoded.error().message);
+        }
+    } else {
+        LMX_LOG_WARN("MaterialLab environment '{}' was not found; run `xmake setup` to fetch the "
+                     "CC0 studio HDRI. Using the neutral fallback environment.",
+                     kStudioEnvironmentPath);
+    }
+
+    auto cubemap = ibl::uploadCubemap(device, environment, std::string(label) + ".sky");
     if (!cubemap) {
         return std::unexpected(uploadFailure(std::move(cubemap.error())));
     }
     scene.skyCubemap = std::move(*cubemap);
 
-    // Same single authored constant behind both the GPU sky cube and the generated IBL set; see
-    // Scene.cpp's attachSkyAndLights for why it is decoded here rather than read back.
-    const glm::vec3 skyRadiance = srgbToLinear(glm::vec3(static_cast<float>(kNeutralSky[0]),
-                                                         static_cast<float>(kNeutralSky[1]),
-                                                         static_cast<float>(kNeutralSky[2])) /
-                                               255.0f);
-    auto generated = ibl::generate(device, ibl::makeConstantCubemap(skyRadiance, 1), label);
+    auto generated = ibl::generate(device, environment, label);
     if (!generated) {
         return std::unexpected(uploadFailure(std::move(generated.error())));
     }
@@ -84,7 +130,10 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
 
     for (size_t i = 0; i < std::size(kLightDirections); ++i) {
         scene.lights[i].direction = kLightDirections[i];
-        scene.lights[i].strength = glm::vec3(srgbToLinear(kLightStrengths[i]));
+        // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep
+        // the asset-free fallback useful instead of double-lighting the fetched environment.
+        scene.lights[i].strength =
+            usingStudioEnvironment ? glm::vec3(0.0f) : glm::vec3(srgbToLinear(kLightStrengths[i]));
     }
     return {};
 }
@@ -189,12 +238,12 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 } // namespace
 
 //======================================================================================================================
-// Deterministic diagnostic scene, entirely code-generated -- no fetched assets, no randomness.
-// Exact placements (all on the Z=0 plane except the depth probes, which sit on the camera's
-// forward axis):
+// Deterministic diagnostic geometry with an optional fetched studio environment and no randomness.
+// Exact placements form three horizontal diagnostic lanes. The camera keeps the same Y, Z, yaw,
+// pitch, and FOV for every lane, so A/D movement alone is enough to move between them:
 //
-//   Sphere grid: 5x5 unit-diameter spheres, 1.5-unit spacing, centred at the origin. Column c
-//   (0..4, left to right) sweeps perceptual roughness 0.05->1.0; row r (0..4, bottom to top)
+//   Material lane (X=0): 5x5 unit-diameter spheres, 1.5-unit spacing, centred at the origin. Column
+//   c (0..4, left to right) sweeps perceptual roughness 0.05->1.0; row r (0..4, bottom to top)
 //   sweeps metallic 0->1. Albedo white. Occupies x,y in [-3.5, 3.5].
 //
 //   Those are the metallic-roughness model's own two axes, so the grid reads as the material space
@@ -203,38 +252,33 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   are the (physically unrealisable) mix the parameter admits. Both extreme rows are exactly the
 //   furnace test's two probes, so what that test measures is what this grid shows.
 //
-//   Known-colour patches: 6 unit quads at y=-4.5, 1.2-unit spacing, x = (i-2.5)*1.2 for i=0..5,
-//   albedo = srgbToLinear(red, green, blue, 18% gray (0.46), white, black) in that order.
+//   Texture lane (X=14): 6 unit known-colour patches at y=1.5, 1.2-unit spacing, local
+//   x = (i-2.5)*1.2 for i=0..5, albedo = srgbToLinear(red, green, blue, 18% gray (0.46), white,
+//   black) in that order. The 6x1 gradient ramp is centred at y=0 and the normal-map probe at
+//   y=-1.5, keeping the complete lane inside the same framing as the sphere grid.
 //
-//   Gradient ramp: one 6x1 quad at y=-6.0, textured with the 256x1 sRGB ramp above, albedo white.
-//
-//   Normal-map probe: one unit quad at y=-7.5, textured with the 64x64 normal map above.
-//
-//   Depth probes: three 0.5-unit cubes on the camera's forward axis (y = camera y = 0), at
+//   Depth lane (X=28): three 0.5-unit cubes on the camera's forward axis (y = camera y = 0), at
 //   world Z = cameraZ - distance for distance in {2, 10, 40}, laterally offset in X by
-//   {-0.4, 1.0, 7.0} respectively. Offsets are sized in screen (tangent) space, not world space,
-//   and accounting for the *nearest* face of each 0.5-unit cube, not its centre: a corner at
+//   laneX + {-0.4, 1.0, 7.0} respectively. Offsets are sized in screen (tangent) space, not world
+//   space, and accounting for the *nearest* face of each 0.5-unit cube, not its centre: a corner at
 //   world offset o and distance d subtends tangent o/d, and the cube's own half-extent (0.25)
 //   shifts both o and d toward the camera on its nearest corner, so the worst-case tangent is
 //   (|offset|+0.25)/(distance-0.25), materially more than the naive offset/distance. The near
 //   probe (distance 2) is by far the most constrained: its 0.25-unit half-extent is 12.5% of its
 //   own distance, so the same 0.5 world-unit offset that comfortably separates the far probe
 //   (distance 40) both clips the frustum edge and fails to clear the grid at distance 2. The
-//   three offsets above put each probe, and the grid, in its own non-overlapping tangent band
-//   with margin; Tests/EngineSceneTests.cpp verifies this by projecting each object's exact world
-//   AABB (all 8 corners) to screen space through initialCamera, not just its centre.
+//   three offsets above put each probe in its own non-overlapping tangent band with margin;
+//   Tests/EngineSceneTests.cpp verifies this by projecting each object's exact world AABB (all 8
+//   corners) after a horizontal camera pan, not just its centre.
 //
 //   Mip probe: one unit quad at world Z = cameraZ + 15 (X = Y = 0), textured with the 64x64
 //   checkerboard above. Behind initialCamera's default view on purpose -- see
 //   makeCheckerboardPixels
 //   -- a dedicated GPU test supplies its own camera on the far side to read it minified.
 //
-//   initialCamera: (0, 0, 80) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. This is much
-//   farther back than framing the grid alone would need (the grid alone would fill most of the
-//   frame at roughly a tenth of this distance): the near depth probe's worst-case corner tangent
-//   is fixed by its own distance and size regardless of camera placement, so the grid has to
-//   shrink -- via a farther camera -- to leave it room. Nothing but the grid and the depth probes
-//   is guaranteed to lie inside this frustum.
+//   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. The complete
+//   sphere matrix occupies roughly 70% of a square viewport's height while retaining comfortable
+//   edge clearance. The texture and depth lanes use the identical pose translated to their lane X.
 AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     auto scene = std::make_unique<Scene>();
     scene->name = "MaterialLab";
@@ -290,7 +334,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
             const auto materialIndex = static_cast<uint32_t>(scene->materials.size());
             scene->materials.push_back(material);
 
-            const glm::vec3 position{static_cast<float>(col - 2) * kGridSpacing,
+            const glm::vec3 position{kMaterialLaneX + static_cast<float>(col - 2) * kGridSpacing,
                                      static_cast<float>(row - 2) * kGridSpacing, 0.0f};
             scene->objects.push_back(
                 {.name = "material-lab sphere r" + std::to_string(row) + "c" + std::to_string(col),
@@ -301,7 +345,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
         }
     }
 
-    // Known-colour patches: a row of 6 unit quads below the grid.
+    // Texture lane: a row of 6 known-colour patches above the gradient and normal-map probes.
     struct PatchColor {
         const char* name;
         glm::vec3 srgb;
@@ -314,7 +358,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
         {"white", {1.0f, 1.0f, 1.0f}},
         {"black", {0.0f, 0.0f, 0.0f}},
     }};
-    constexpr float kPatchY = -4.5f;
+    constexpr float kPatchY = 1.5f;
     constexpr float kPatchSpacing = 1.2f;
     for (size_t i = 0; i < kPatchColors.size(); ++i) {
         render::Material material;
@@ -322,7 +366,8 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
         const auto materialIndex = static_cast<uint32_t>(scene->materials.size());
         scene->materials.push_back(material);
 
-        const glm::vec3 position{(static_cast<float>(i) - 2.5f) * kPatchSpacing, kPatchY, 0.0f};
+        const glm::vec3 position{kTextureLaneX + (static_cast<float>(i) - 2.5f) * kPatchSpacing,
+                                 kPatchY, 0.0f};
         scene->objects.push_back({.name = std::string("material-lab patch ") + kPatchColors[i].name,
                                   .position = position,
                                   .meshIndex = unitQuadMeshIndex,
@@ -352,8 +397,8 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     const auto rampMaterialIndex = static_cast<uint32_t>(scene->materials.size());
     scene->materials.push_back(rampMaterial);
 
-    constexpr float kRampY = -6.0f;
-    const glm::vec3 rampPosition{0.0f, kRampY, 0.0f};
+    constexpr float kRampY = 0.0f;
+    const glm::vec3 rampPosition{kTextureLaneX, kRampY, 0.0f};
     scene->objects.push_back({.name = "material-lab gradient ramp",
                               .position = rampPosition,
                               .meshIndex = rampMeshIndex,
@@ -382,8 +427,8 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     const auto normalMaterialIndex = static_cast<uint32_t>(scene->materials.size());
     scene->materials.push_back(normalMaterial);
 
-    constexpr float kNormalProbeY = -7.5f;
-    const glm::vec3 normalProbePosition{0.0f, kNormalProbeY, 0.0f};
+    constexpr float kNormalProbeY = -1.5f;
+    const glm::vec3 normalProbePosition{kTextureLaneX, kNormalProbeY, 0.0f};
     scene->objects.push_back({.name = "material-lab normal probe",
                               .position = normalProbePosition,
                               .meshIndex = unitQuadMeshIndex,
@@ -395,7 +440,6 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     // amplification) so each lands in its own tangent-space band alongside the grid's -- see the
     // file-level comment above for the derivation and the corresponding test in
     // Tests/EngineSceneTests.cpp that verifies it in screen space.
-    constexpr float kCameraDistance = 80.0f;
     render::Material depthProbeMaterial; // default albedo/roughness/fresnel
     const auto depthProbeMaterialIndex = static_cast<uint32_t>(scene->materials.size());
     scene->materials.push_back(depthProbeMaterial);
@@ -411,7 +455,8 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
         {"far", 40.0f, 7.0f},
     }};
     for (const DepthProbe& probe : kDepthProbes) {
-        const glm::vec3 position{probe.lateralOffset, 0.0f, kCameraDistance - probe.distance};
+        const glm::vec3 position{kDepthLaneX + probe.lateralOffset, 0.0f,
+                                 kCameraDistance - probe.distance};
         scene->objects.push_back({.name = std::string("material-lab depth probe ") + probe.name,
                                   .position = position,
                                   .scale = glm::vec3(0.5f),

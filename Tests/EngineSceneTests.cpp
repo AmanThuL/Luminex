@@ -240,8 +240,8 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 
 namespace {
 
-// Renames a directory aside for the scope's lifetime (forces Scene.cpp's unbaked fallback path on
-// an asset that is normally baked) and restores it on destruction.
+// Renames a fetched directory aside for the scope's lifetime to force an asset fallback, then
+// restores it on destruction.
 class TemporarilyHiddenDirectory {
 public:
     //==================================================================================================================
@@ -363,9 +363,10 @@ const SceneObject* findObject(const Scene& scene, std::string_view name) {
 } // namespace
 
 //======================================================================================================================
-// Deterministic and fully code-generated -- the whole point of MaterialLab -- so this loads with
-// no fetched-asset gate at all, unlike the Sponza/Helmet cases above.
-TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched assets", "[gpu]") {
+// Deterministic diagnostics with an internal neutral-environment fallback, so this loads with no
+// fetched-asset gate at all, unlike the Sponza/Helmet cases above.
+TEST_CASE("loadMaterialLabScene builds deterministic diagnostics without requiring fetched assets",
+          "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
@@ -395,9 +396,52 @@ TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched ass
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
     REQUIRE((*scene)->skyCubemap != nullptr);
 
-    REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 80.0f)));
+    REQUIRE(near3((*scene)->initialCamera.position, glm::vec3(0.0f, 0.0f, 12.0f)));
     REQUIRE((*scene)->initialCamera.yaw == 0.0f);
     REQUIRE((*scene)->initialCamera.pitch == 0.0f);
+}
+
+//======================================================================================================================
+TEST_CASE("loadMaterialLabScene uses its neutral fallback when the studio environment is absent",
+          "[gpu]") {
+    const auto loadAndCheckFallback = [] {
+        auto device = rhi::createDevice();
+        REQUIRE(device.has_value());
+        auto scene = loadMaterialLabScene(**device);
+        INFO(describeSceneError(scene));
+        REQUIRE(scene.has_value());
+        REQUIRE((*scene)->skyCubemap != nullptr);
+        REQUIRE((*scene)->irradianceMap != nullptr);
+        REQUIRE((*scene)->prefilteredEnvMap != nullptr);
+        REQUIRE((*scene)->dfgLut != nullptr);
+        REQUIRE(std::any_of(std::begin((*scene)->lights), std::end((*scene)->lights),
+                            [](const render::DirectionalLight& light) {
+                                return glm::length(light.strength) > 0.0f;
+                            }));
+    };
+
+    if (const auto directory = findRepoAsset("Assets/Fetched/MaterialLab")) {
+        const TemporarilyHiddenDirectory hidden(*directory);
+        loadAndCheckFallback();
+    } else {
+        loadAndCheckFallback();
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environment", "[gpu]") {
+    if (!findRepoAsset("Assets/Fetched/MaterialLab/studio_small_09_1k.hdr")) {
+        SKIP("Studio Small 09 is not present (xmake setup fetches it)");
+    }
+
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+    for (const render::DirectionalLight& light : (*scene)->lights) {
+        REQUIRE(near3(light.strength, glm::vec3(0.0f)));
+    }
 }
 
 //======================================================================================================================
@@ -466,16 +510,60 @@ bool disjoint(const ScreenBox& a, const ScreenBox& b) {
     return a.maxX < b.minX || b.maxX < a.minX || a.maxY < b.minY || b.maxY < a.minY;
 }
 
+//======================================================================================================================
+bool insideFrame(const ScreenBox& box, float size) {
+    return box.minX >= 0.0f && box.maxX <= size && box.minY >= 0.0f && box.maxY <= size;
+}
+
 } // namespace
 
 //======================================================================================================================
-// A pure projection check (no rendering): each depth probe's world AABB, and the sphere grid's,
-// projected to screen space through initialCamera. This is what would have caught the depth
-// probes' original placement, where the far probe's screen footprint sat entirely inside the mid
-// probe's (hiding it completely) and the near/mid probes both clipped into the sphere grid.
-TEST_CASE("loadMaterialLabScene's depth probes are simultaneously visible and occlude neither "
-          "each other nor the sphere grid from initialCamera",
+// A pure projection check (no rendering): panning the initial camera along +X to the depth lane
+// frames every probe without changing yaw, pitch, Y, Z, or FOV. This catches probe placements where
+// the far probe's screen footprint sits entirely inside the mid probe's and hides it completely.
+TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pan and its probes "
+          "do not occlude each other",
           "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    render::Camera camera;
+    camera.position = (*scene)->initialCamera.position;
+    camera.yaw = (*scene)->initialCamera.yaw;
+    camera.pitch = (*scene)->initialCamera.pitch;
+    camera.fovY = (*scene)->initialCamera.fovY;
+    camera.nearZ = (*scene)->initialCamera.nearZ;
+    camera.farZ = (*scene)->initialCamera.farZ;
+    camera.position.x = 28.0f;
+
+    constexpr uint32_t kSize = 256;
+    const auto boxOf = [&](std::string_view name, const glm::vec3& halfExtent) {
+        const SceneObject* object = findObject(**scene, name);
+        REQUIRE(object != nullptr);
+        return projectAabbToScreen(camera, kSize, object->position, halfExtent);
+    };
+
+    const ScreenBox nearBox = boxOf("material-lab depth probe near", glm::vec3(0.25f));
+    const ScreenBox midBox = boxOf("material-lab depth probe mid", glm::vec3(0.25f));
+    const ScreenBox farBox = boxOf("material-lab depth probe far", glm::vec3(0.25f));
+    for (const ScreenBox& box : {nearBox, midBox, farBox}) {
+        INFO("box: x[" + std::to_string(box.minX) + "," + std::to_string(box.maxX) + "] y[" +
+             std::to_string(box.minY) + "," + std::to_string(box.maxY) + "]");
+        REQUIRE(insideFrame(box, static_cast<float>(kSize)));
+    }
+
+    REQUIRE(disjoint(nearBox, midBox));
+    REQUIRE(disjoint(nearBox, farBox));
+    REQUIRE(disjoint(midBox, farBox));
+}
+
+//======================================================================================================================
+// The opening view is a lookdev view, not an inventory thumbnail: the complete sphere matrix must
+// be visible, yet large enough that roughness and reflection changes are immediately readable.
+TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent", "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
@@ -491,34 +579,57 @@ TEST_CASE("loadMaterialLabScene's depth probes are simultaneously visible and oc
     camera.farZ = (*scene)->initialCamera.farZ;
 
     constexpr uint32_t kSize = 256;
-    const auto boxOf = [&](std::string_view name, const glm::vec3& halfExtent) {
-        const SceneObject* object = findObject(**scene, name);
-        REQUIRE(object != nullptr);
-        return projectAabbToScreen(camera, kSize, object->position, halfExtent);
-    };
-
-    const ScreenBox nearBox = boxOf("material-lab depth probe near", glm::vec3(0.25f));
-    const ScreenBox midBox = boxOf("material-lab depth probe mid", glm::vec3(0.25f));
-    const ScreenBox farBox = boxOf("material-lab depth probe far", glm::vec3(0.25f));
-    // Sphere-inclusive: the grid's spheres sit at x,y in {-3,-1.5,0,1.5,3}, radius 0.5.
     const ScreenBox gridBox =
         projectAabbToScreen(camera, kSize, glm::vec3(0.0f), glm::vec3(3.5f, 3.5f, 0.5f));
+    REQUIRE(insideFrame(gridBox, static_cast<float>(kSize)));
+    REQUIRE((gridBox.maxY - gridBox.minY) / static_cast<float>(kSize) > 0.65f);
+    REQUIRE((gridBox.maxY - gridBox.minY) / static_cast<float>(kSize) < 0.80f);
+}
 
-    for (const ScreenBox& box : {nearBox, midBox, farBox}) {
-        INFO("box: x[" + std::to_string(box.minX) + "," + std::to_string(box.maxX) + "] y[" +
-             std::to_string(box.minY) + "," + std::to_string(box.maxY) + "]");
-        REQUIRE(box.minX >= 0.0f);
-        REQUIRE(box.maxX <= static_cast<float>(kSize));
-        REQUIRE(box.minY >= 0.0f);
-        REQUIRE(box.maxY <= static_cast<float>(kSize));
-    }
+//======================================================================================================================
+// The authored-colour and texture diagnostics share one framing reached solely by translating the
+// initial camera along X. Exact X centres also pin the left-to-right lane ordering as scene data.
+TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally pannable lane",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
 
-    REQUIRE(disjoint(nearBox, midBox));
-    REQUIRE(disjoint(nearBox, farBox));
-    REQUIRE(disjoint(midBox, farBox));
-    REQUIRE(disjoint(nearBox, gridBox));
-    REQUIRE(disjoint(midBox, gridBox));
-    REQUIRE(disjoint(farBox, gridBox));
+    render::Camera camera;
+    camera.position = (*scene)->initialCamera.position;
+    camera.position.x = 14.0f;
+    camera.yaw = (*scene)->initialCamera.yaw;
+    camera.pitch = (*scene)->initialCamera.pitch;
+    camera.fovY = (*scene)->initialCamera.fovY;
+    camera.nearZ = (*scene)->initialCamera.nearZ;
+    camera.farZ = (*scene)->initialCamera.farZ;
+
+    constexpr uint32_t kSize = 256;
+    const ScreenBox patches = projectAabbToScreen(camera, kSize, glm::vec3(14.0f, 1.5f, 0.0f),
+                                                  glm::vec3(3.5f, 0.5f, 0.0f));
+    const ScreenBox ramp = projectAabbToScreen(camera, kSize, glm::vec3(14.0f, 0.0f, 0.0f),
+                                               glm::vec3(3.0f, 0.5f, 0.0f));
+    const ScreenBox normal = projectAabbToScreen(camera, kSize, glm::vec3(14.0f, -1.5f, 0.0f),
+                                                 glm::vec3(0.5f, 0.5f, 0.0f));
+
+    REQUIRE(insideFrame(patches, static_cast<float>(kSize)));
+    REQUIRE(insideFrame(ramp, static_cast<float>(kSize)));
+    REQUIRE(insideFrame(normal, static_cast<float>(kSize)));
+
+    const SceneObject* red = findObject(**scene, "material-lab patch red");
+    const SceneObject* black = findObject(**scene, "material-lab patch black");
+    const SceneObject* rampObject = findObject(**scene, "material-lab gradient ramp");
+    const SceneObject* normalObject = findObject(**scene, "material-lab normal probe");
+    REQUIRE(red != nullptr);
+    REQUIRE(black != nullptr);
+    REQUIRE(rampObject != nullptr);
+    REQUIRE(normalObject != nullptr);
+    REQUIRE(red->position.x == Catch::Approx(11.0f));
+    REQUIRE(black->position.x == Catch::Approx(17.0f));
+    REQUIRE(rampObject->position.x == Catch::Approx(14.0f));
+    REQUIRE(normalObject->position.x == Catch::Approx(14.0f));
 }
 
 //======================================================================================================================
@@ -855,10 +966,10 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
 
-    // A bespoke camera framing just the patch row and the ramp beneath it -- the sphere grid,
-    // normal probe, and depth probes sit outside this frustum and are not drawn here at all.
+    // A bespoke camera centred between the patch row and ramp in their horizontal texture lane.
+    // Only those selected draw items are submitted, isolating the colour pipeline under test.
     render::Camera camera;
-    camera.position = {0.0f, -5.25f, 8.5f};
+    camera.position = {14.0f, 0.75f, 8.5f};
     camera.fovY = glm::radians(45.0f);
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
@@ -892,7 +1003,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     for (render::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
-    view.boundingSphere = {0.0f, -5.25f, 0.0f, 5.0f};
+    view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
 
     rhi::CommandList& commands = (*device)->beginFrame();
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
@@ -949,7 +1060,8 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     constexpr int kMaxRampStep = 22;
     std::vector<int> samples;
     for (int i = 0; i < kRampSamples; ++i) {
-        const float worldX = -2.9f + static_cast<float>(i) * (5.8f / (kRampSamples - 1));
+        const float worldX =
+            ramp->position.x - 2.9f + static_cast<float>(i) * (5.8f / (kRampSamples - 1));
         const glm::vec3 world{worldX, ramp->position.y, ramp->position.z};
         const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, world);
         REQUIRE(coord.x < kProbeSize);
@@ -1118,7 +1230,7 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     REQUIRE(library.entries()[1].available == helmetPresent);
     REQUIRE(library.entries()[1].hint.empty() == helmetPresent);
 
-    // MaterialLab is fully code-generated: available regardless of what this checkout has fetched.
+    // MaterialLab has a deterministic fallback: available regardless of what this checkout fetched.
     REQUIRE(library.entries()[2].available);
     REQUIRE(library.entries()[2].hint.empty());
 }

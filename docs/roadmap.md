@@ -12,8 +12,9 @@ without expanding it.
 
 M4.1 preserves M4's graph-declared, scene-linear HDR renderer while giving its RHI an explicit root
 component, domain-owned result contracts, self-contained public headers, and checked API
-documentation. Its shipped evidence and remaining limits are recorded in
-`docs/milestones/m4.1.md`.
+documentation. MaterialLab adds a pinned neutral studio environment, prominent default material
+framing, and horizontally pannable diagnostic groups. Shipped evidence and remaining limits are
+recorded in `docs/milestones/m4.1.md`.
 
 ## M4 — Correct image formation
 
@@ -42,10 +43,10 @@ reference; every pass reports a visible GPU timestamp.
 exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
 tracing.
 
-## M4.1 — RHI component boundary and maintenance
+## M4.1 — RHI foundation and reference lookdev
 
-**Outcome:** the shipped M4 renderer keeps the same behavior while its RHI, error ownership,
-includes, and API documentation form a clearer component boundary that can evolve independently.
+**Outcome:** the shipped M4 renderer gains a clearer RHI component boundary and a readable,
+license-clean material reference scene without changing its rendering model.
 
 **Deliver:**
 
@@ -59,11 +60,16 @@ includes, and API documentation form a clearer component boundary that can evolv
   the existing RHI `Error` and `Result<T>` through a focused, self-contained public header.
 - Make project headers self-contained, remove unnecessary or accidental transitive includes, and
   document every project C++ file and public API under the checked comment convention.
+- Replace MaterialLab's flat blue environment with a pinned CC0 neutral studio HDRI that drives the
+  visible sky and IBL together, while retaining an explicit deterministic asset-free fallback.
+- Reframe MaterialLab's complete roughness/metallic grid as the default view and arrange the
+  remaining diagnostics in horizontal lanes reachable without rotating the camera.
 
 **Exit gate:** M4 unit, GPU, and scene-smoke coverage remains green; core public RHI headers compile
 in isolation and expose no Metal or ImGui dependency; the optional adapter owns its ImGui-dependent
-include path; application code still includes `RHI/...` paths; the core RHI builds without that
-adapter; formatting, policy, include, and documentation checks pass.
+include path; the core RHI builds without that adapter; MaterialLab opens with every material sphere
+prominent under a neutral studio environment and reaches its other visible diagnostics through
+horizontal translation; formatting, policy, include, and documentation checks pass.
 
 **Defer:** new compute, storage, copy, barrier, view, graph, or rendering capabilities; a production
 second backend; publishing RHI as a standalone repository; a shared cross-domain error type; and

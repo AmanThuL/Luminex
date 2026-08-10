@@ -19,9 +19,9 @@ is a repository-root component; the other runtime layers remain under `Source/`:
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU.
-- **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF decoding, deterministic
-  image-based-lighting generation (`Ibl.h`), and deterministic offline texture mip baking
-  (`TextureBake.h`).
+- **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
+  deterministic equirectangular environment conversion and image-based-lighting generation
+  (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).
 - **App** owns SDL3, the editor shell, scene selection, startup error reporting, and the frame loop.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal

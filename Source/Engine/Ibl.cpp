@@ -26,6 +26,7 @@ namespace {
 // One RGBA16Float texel; the cube upload below writes rows of these.
 constexpr uint64_t kHalf4Stride = 8;
 constexpr uint64_t kHalf2Stride = 4;
+constexpr float kMaxHalf = 65504.0f;
 
 //======================================================================================================================
 // Van der Corput radical inverse in base 2: the low-discrepancy second coordinate of the
@@ -165,7 +166,7 @@ glm::vec2 integrateDfg(float nov, float alpha) {
 // Uploads a cube chain as RGBA16Float. `chain` is mip-major (chain[0] is the base level); the
 // staging buffers stay alive across createTexture because TextureMip only borrows their storage.
 rhi::Result<std::unique_ptr<rhi::Texture>>
-uploadCube(rhi::Device& device, std::span<const CpuCubemap> chain, const std::string& label) {
+uploadCubeChain(rhi::Device& device, std::span<const CpuCubemap> chain, const std::string& label) {
     LMX_ASSERT(!chain.empty(), "uploadCube: a cube needs at least its base level");
     const uint32_t mipCount = static_cast<uint32_t>(chain.size());
 
@@ -180,6 +181,9 @@ uploadCube(rhi::Device& device, std::span<const CpuCubemap> chain, const std::st
             std::vector<uint16_t> halves(texels.size() * 4);
             for (size_t texel = 0; texel < texels.size(); ++texel) {
                 for (int channel = 0; channel < 4; ++channel) {
+                    LMX_ASSERT(std::isfinite(texels[texel][channel]) &&
+                                   std::abs(texels[texel][channel]) <= kMaxHalf,
+                               "uploadCube: a component is not representable by binary16");
                     halves[texel * 4 + static_cast<size_t>(channel)] =
                         glm::packHalf1x16(texels[texel][channel]);
                 }
@@ -395,6 +399,13 @@ std::vector<glm::vec2> computeDfgLut(uint32_t size) {
 }
 
 //======================================================================================================================
+rhi::Result<std::unique_ptr<rhi::Texture>> uploadCubemap(rhi::Device& device, const CpuCubemap& env,
+                                                         std::string_view label) {
+    LMX_ASSERT(env.faceSize > 0, "uploadCubemap: the environment cube has no texels");
+    return uploadCubeChain(device, std::span<const CpuCubemap>(&env, 1), std::string(label));
+}
+
+//======================================================================================================================
 rhi::Result<IblTextures> generate(rhi::Device& device, const CpuCubemap& env,
                                   std::string_view label) {
     LMX_ASSERT(env.faceSize > 0, "ibl::generate: the environment cube has no texels");
@@ -403,7 +414,7 @@ rhi::Result<IblTextures> generate(rhi::Device& device, const CpuCubemap& env,
     const CpuCubemap irradiance = computeIrradiance(env, kIrradianceFaceSize);
     const std::array<CpuCubemap, 1> irradianceChain = {irradiance};
     auto irradianceTexture =
-        uploadCube(device, irradianceChain, std::string(label) + ".irradiance");
+        uploadCubeChain(device, irradianceChain, std::string(label) + ".irradiance");
     if (!irradianceTexture) {
         return std::unexpected(std::move(irradianceTexture.error()));
     }
@@ -412,7 +423,7 @@ rhi::Result<IblTextures> generate(rhi::Device& device, const CpuCubemap& env,
     const std::vector<CpuCubemap> prefiltered =
         prefilterSpecular(env, kSpecularBaseFaceSize, kSpecularMipCount);
     auto prefilteredTexture =
-        uploadCube(device, prefiltered, std::string(label) + ".prefilteredEnv");
+        uploadCubeChain(device, prefiltered, std::string(label) + ".prefilteredEnv");
     if (!prefilteredTexture) {
         return std::unexpected(std::move(prefilteredTexture.error()));
     }

@@ -288,8 +288,8 @@ TEST_CASE("the generators are byte-identical across runs", "[engine][ibl]") {
 }
 
 //======================================================================================================================
-// The uploaded set every catalog scene carries. MaterialLab needs no fetched asset, so this runs
-// wherever a Metal 4 device exists.
+// The uploaded set every catalog scene carries. MaterialLab has an asset-free fallback, so this
+// runs wherever a Metal 4 device exists.
 TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     auto device = lmx::rhi::createDevice();
     REQUIRE(device.has_value());

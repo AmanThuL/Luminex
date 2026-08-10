@@ -56,7 +56,8 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
-    // Sampling decodes sRGB; the result stays linear all the way to the display transform.
+    // The sampled result is scene-linear: sRGB views decode automatically, while float views
+    // already store linear radiance. It stays linear all the way to the display transform.
     float3 color = gSkyCube.Sample(gLinearSampler, normalize(input.direction)).rgb;
     return float4(color * gSky.preExposure, 1.0);
 }

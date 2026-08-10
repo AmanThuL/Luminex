@@ -86,9 +86,9 @@ AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device);
 /// floor -- a model showcase, floating near the origin.
 AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device);
 
-/// Deterministic, fully code-generated diagnostic scene: a material sweep sphere grid, known-color
-/// patches, a horizontal gradient ramp, depth probes at known view distances, and a normal-map
-/// probe quad. No fetched assets -- always available, byte-identical across runs.
+/// Deterministic code-generated diagnostics: a material sweep sphere grid plus horizontal color,
+/// texture, normal, and depth lanes. A fetched studio HDRI upgrades its lighting, with a neutral
+/// deterministic fallback that keeps the scene always available.
 AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device);
 
 } // namespace lmx::engine
