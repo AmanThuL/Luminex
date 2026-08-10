@@ -234,10 +234,82 @@ private:
 /// allowed to touch arrive as its argument.
 using ExecuteFn = std::function<void(const PassResources&)>;
 
-/// The order compile() proved: pass indices, numbered by addPass declaration order, arranged so
-/// every producer precedes its consumers. Serial -- the graph models one queue.
+/// The order compile() proved: pass indices, numbered by declaration order, arranged so every
+/// producer precedes its consumers. Serial -- the graph models one queue.
 struct Schedule {
     std::vector<uint32_t> passes; ///< Pass indices in validated execution order.
+};
+
+/// Which kind of resource a compiled-frame entry names. Textures and buffers share one index space,
+/// so the kind is what says which half of an entry to read.
+enum class GraphResourceKind {
+    Texture, ///< The entry names an imported texture.
+    Buffer   ///< The entry names an imported buffer.
+};
+
+/// One imported resource, in import order -- the index space every other compiled-frame entry uses.
+struct DebugResource {
+    std::string name;                                    ///< The name it was imported under.
+    GraphResourceKind kind = GraphResourceKind::Texture; ///< Texture or buffer.
+    rhi::Format format = rhi::Format::Unknown;           ///< Declared format; Unknown for a buffer.
+};
+
+/// One declared use of one resource version by one pass, in the order the pass declared it.
+struct DebugUse {
+    uint32_t resource = 0;              ///< Index into CompiledFrameDebug::resources.
+    uint32_t version = 0;               ///< The version the pass named.
+    UseRole role = UseRole::Read;       ///< What the pass does with it.
+    rhi::TextureSubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
+};
+
+/// One declared pass, in declaration order -- culled passes included, since a frame's declarations
+/// are what an observer needs to see and a culled pass is the most interesting kind.
+struct DebugPass {
+    std::string label;                ///< The label it was declared with.
+    PassKind kind = PassKind::Raster; ///< Which declaration path declared it.
+    std::vector<DebugUse> uses;       ///< Every resource version it named.
+};
+
+/// One barrier the graph derived, positioned by the pass it precedes.
+///
+/// `kind` says which of the two use pairs below is the meaningful one: a texture transition carries
+/// its `range` and the texture uses, a buffer transition the buffer uses. They share one struct
+/// because the transitions of a frame are one ordered sequence, and splitting them by resource kind
+/// would lose which came first.
+struct DebugTransition {
+    uint32_t beforePass = 0; ///< Index of the pass the barrier precedes.
+    uint32_t resource = 0;   ///< Index into CompiledFrameDebug::resources.
+    GraphResourceKind kind = GraphResourceKind::Texture; ///< Which use pair applies.
+    rhi::TextureSubresourceRange range;                  ///< Subresources covered; textures only.
+    rhi::TextureUse textureFrom = rhi::TextureUse::RenderTarget; ///< Producing texture use.
+    rhi::TextureUse textureTo = rhi::TextureUse::ShaderRead;     ///< Consuming texture use.
+    rhi::BufferUse bufferFrom = rhi::BufferUse::StorageWrite;    ///< Producing buffer use.
+    rhi::BufferUse bufferTo = rhi::BufferUse::StorageRead;       ///< Consuming buffer use.
+};
+
+/// Everything compilation decided about one frame, in a form an observer can read without the graph
+/// that produced it: what was imported, what each pass declared, the order that was proved, and the
+/// barriers derived from it.
+///
+/// It holds only values the compiler produces deterministically. GPU timings and driver-reported
+/// values are joined to it by an observer, never carried in it, so the same declarations always
+/// compile to the same record.
+struct CompiledFrameDebug {
+    std::vector<DebugResource> resources;     ///< Imported resources, in import order.
+    std::vector<DebugPass> passes;            ///< Declared passes, in declaration order.
+    Schedule schedule;                        ///< Pass indices in execution order.
+    std::vector<DebugTransition> transitions; ///< Derived barriers, in the order they are emitted.
+};
+
+/// A compiled frame together with the frame it belongs to.
+///
+/// `frameId` is the RHI device's number for the frame being recorded (rhi::Device::frameNumber()),
+/// which is the same numbering rhi::Device::passTimingsFrame() reports -- so an observer holding
+/// records for the frames in flight joins a retired frame's timings to the record that describes it
+/// by comparing the two numbers rather than by guessing at a lag.
+struct CompiledFrameRecord {
+    uint64_t frameId = 0;     ///< The device frame number this frame was compiled for.
+    CompiledFrameDebug debug; ///< What compilation decided.
 };
 
 /// A frame's passes, declared as resources rather than as commands.
@@ -302,6 +374,13 @@ public:
     /// one has to declare itself over the first's output version for the order to be stated at all.
     GraphResult<Schedule> compile() const;
 
+    /// The same compilation, answering with everything it decided rather than the order alone.
+    ///
+    /// `frameId` is the device frame number the record is stamped with; it takes no part in
+    /// compilation, so two frames declaring the same passes compile to records differing in nothing
+    /// else. Failures are compile()'s, in compile()'s order.
+    GraphResult<CompiledFrameRecord> compileFrame(uint64_t frameId) const;
+
     /// Validates the declarations and runs them: every scheduled pass becomes one RHI pass of its
     /// own kind, labelled with the pass's name, and the pass body is called between that scope's
     /// begin and end with the resources it declared. A raster pass's scope is built from its
@@ -323,7 +402,11 @@ public:
     /// too and are asserted with the offending pass named: a colour attachment is always stored, a
     /// depth attachment always clears, a pass carrying both clears both, and a depth-only pass must
     /// store its depth.
-    void execute(rhi::CommandList& commands);
+    ///
+    /// Answers with the record compileFrame(`frameId`) produced, which is the record of what this
+    /// call encoded: the barriers listed in it are the barriers emitted, because both come from the
+    /// one compilation rather than from two derivations that could drift apart.
+    CompiledFrameRecord execute(rhi::CommandList& commands, uint64_t frameId);
 
     /// The resources pass `passIndex` declared, for the pass body to resolve handles through.
     /// Resolution depends on declarations alone, so this is answerable before and independently of
@@ -377,6 +460,10 @@ private:
 
     // Whether pass `passIndex` named exactly this resource version anywhere in its declarations.
     bool passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint32_t version) const;
+
+    // The one place read-after-write barriers are decided. execute() emits what this recorded
+    // rather than deriving its own, so the record and the command stream cannot disagree.
+    std::vector<DebugTransition> deriveTransitions(const Schedule& schedule) const;
 
     std::vector<Resource> m_resources;
     std::vector<Pass> m_passes;

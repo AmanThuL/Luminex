@@ -113,7 +113,7 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
             commands.dispatch(kElements / kHazardThreadsPerGroup, 1, 1);
         });
 
-    graph.execute(commands);
+    graph.execute(commands, 1);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -209,7 +209,7 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
         commands.draw(3);
     });
 
-    graph.execute(commands);
+    graph.execute(commands, 1);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 

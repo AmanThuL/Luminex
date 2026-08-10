@@ -1152,7 +1152,7 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
                       commands.draw(3);
                   });
     graph.exportTexture(lmx::render::nextVersion(copyTarget));
-    graph.execute(commands);
+    graph.execute(commands, (*device)->frameNumber());
 
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
@@ -1198,7 +1198,7 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
                   });
 
     CommandList& commands = (*device)->beginFrame();
-    graph.execute(commands);
+    graph.execute(commands, (*device)->frameNumber());
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 

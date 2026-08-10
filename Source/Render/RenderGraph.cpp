@@ -412,6 +412,15 @@ bool RenderGraph::passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint3
 
 //======================================================================================================================
 GraphResult<Schedule> RenderGraph::compile() const {
+    GraphResult<CompiledFrameRecord> record = compileFrame(0);
+    if (!record) {
+        return std::unexpected(record.error());
+    }
+    return std::move(record->debug.schedule);
+}
+
+//======================================================================================================================
+GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) const {
     // Attachment roles and extents. These depend on one pass alone, so they are answered before any
     // cross-pass structure is built and cannot be masked by an ordering failure.
     for (const Pass& pass : m_passes) {
@@ -584,14 +593,35 @@ GraphResult<Schedule> RenderGraph::compile() const {
             --pendingDependencies[consumer];
         }
     }
-    return schedule;
+
+    CompiledFrameRecord record{.frameId = frameId, .debug = {}};
+    record.debug.resources.reserve(m_resources.size());
+    for (const Resource& resource : m_resources) {
+        record.debug.resources.push_back({.name = resource.name,
+                                          .kind = resource.kind == ResourceKind::Texture
+                                                      ? GraphResourceKind::Texture
+                                                      : GraphResourceKind::Buffer,
+                                          .format = resource.format});
+    }
+    record.debug.passes.reserve(m_passes.size());
+    for (const Pass& pass : m_passes) {
+        DebugPass entry{.label = pass.label, .kind = pass.kind, .uses = {}};
+        entry.uses.reserve(pass.declarations.size());
+        for (const Declaration& declaration : pass.declarations) {
+            entry.uses.push_back({.resource = declaration.resource,
+                                  .version = declaration.version,
+                                  .role = declaration.role,
+                                  .range = declaration.range});
+        }
+        record.debug.passes.push_back(std::move(entry));
+    }
+    record.debug.transitions = deriveTransitions(schedule);
+    record.debug.schedule = std::move(schedule);
+    return record;
 }
 
 //======================================================================================================================
-void RenderGraph::execute(rhi::CommandList& commands) {
-    const GraphResult<Schedule> schedule = compile();
-    LMX_ASSERT(schedule.has_value(), schedule.error().message);
-
+std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& schedule) const {
     // What each resource was last written as, until a barrier makes that write visible. One
     // transition serves every later reader; writing a resource again puts it back in a producing
     // state and so needs the transition again.
@@ -601,8 +631,9 @@ void RenderGraph::execute(rhi::CommandList& commands) {
         rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
     };
     std::vector<PendingWrite> pending(m_resources.size());
+    std::vector<DebugTransition> transitions;
 
-    for (const uint32_t passIndex : schedule->passes) {
+    for (const uint32_t passIndex : schedule.passes) {
         const Pass& pass = m_passes[passIndex];
 
         // One barrier per resource the pass reads, from the use that last wrote it. Several reads
@@ -624,10 +655,11 @@ void RenderGraph::execute(rhi::CommandList& commands) {
             }
 
             const Resource& resource = m_resources[read.resource];
+            DebugTransition transition{.beforePass = passIndex, .resource = read.resource};
             if (resource.kind == ResourceKind::Buffer) {
-                commands.bufferBarrier(*resource.buffer, rhi::BufferRange{},
-                                       pending[read.resource].bufferUse,
-                                       bufferUseOf(pass.kind, read.role));
+                transition.kind = GraphResourceKind::Buffer;
+                transition.bufferFrom = pending[read.resource].bufferUse;
+                transition.bufferTo = bufferUseOf(pass.kind, read.role);
             } else {
                 rhi::TextureSubresourceRange covered = read.range;
                 for (uint32_t later = index + 1; later < pass.declarations.size(); ++later) {
@@ -639,11 +671,51 @@ void RenderGraph::execute(rhi::CommandList& commands) {
                         unionRange(resolveRange(covered, *resource.texture),
                                    resolveRange(other.range, *resource.texture), *resource.texture);
                 }
-                commands.textureBarrier(*resource.texture, covered,
-                                        pending[read.resource].textureUse,
-                                        textureUseOf(pass.kind, read.role));
+                transition.kind = GraphResourceKind::Texture;
+                transition.range = covered;
+                transition.textureFrom = pending[read.resource].textureUse;
+                transition.textureTo = textureUseOf(pass.kind, read.role);
             }
+            transitions.push_back(transition);
             pending[read.resource].active = false;
+        }
+
+        for (const Declaration& declaration : pass.declarations) {
+            if (!declaration.isWrite) {
+                continue;
+            }
+            pending[declaration.resource] = {.active = true,
+                                             .textureUse =
+                                                 textureUseOf(pass.kind, declaration.role),
+                                             .bufferUse = bufferUseOf(pass.kind, declaration.role)};
+        }
+    }
+    return transitions;
+}
+
+//======================================================================================================================
+CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t frameId) {
+    GraphResult<CompiledFrameRecord> record = compileFrame(frameId);
+    LMX_ASSERT(record.has_value(), record.error().message);
+
+    // Transitions are recorded in schedule order and a pass's own are contiguous, so one cursor
+    // emits each exactly where compilation placed it.
+    size_t nextTransition = 0;
+    for (const uint32_t passIndex : record->debug.schedule.passes) {
+        const Pass& pass = m_passes[passIndex];
+
+        while (nextTransition < record->debug.transitions.size() &&
+               record->debug.transitions[nextTransition].beforePass == passIndex) {
+            const DebugTransition& transition = record->debug.transitions[nextTransition];
+            const Resource& resource = m_resources[transition.resource];
+            if (transition.kind == GraphResourceKind::Buffer) {
+                commands.bufferBarrier(*resource.buffer, rhi::BufferRange{}, transition.bufferFrom,
+                                       transition.bufferTo);
+            } else {
+                commands.textureBarrier(*resource.texture, transition.range, transition.textureFrom,
+                                        transition.textureTo);
+            }
+            ++nextTransition;
         }
 
         switch (pass.kind) {
@@ -704,17 +776,8 @@ void RenderGraph::execute(rhi::CommandList& commands) {
             commands.endCopyPass();
             break;
         }
-
-        for (const Declaration& declaration : pass.declarations) {
-            if (!declaration.isWrite) {
-                continue;
-            }
-            pending[declaration.resource] = {.active = true,
-                                             .textureUse =
-                                                 textureUseOf(pass.kind, declaration.role),
-                                             .bufferUse = bufferUseOf(pass.kind, declaration.role)};
-        }
     }
+    return std::move(*record);
 }
 
 //======================================================================================================================

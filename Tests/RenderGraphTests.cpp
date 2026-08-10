@@ -639,7 +639,7 @@ TEST_CASE("execute encodes the schedule as labelled render passes", "[render][gr
     graph.addPass("lmx.pass.shadow", shadowPass,
                   [&commands](const PassResources&) { commands.events.push_back("body shadow"); });
 
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin lmx.pass.shadow", "body shadow", "end",
@@ -691,7 +691,7 @@ TEST_CASE("execute transitions a sampled render target once", "[render][graph]")
     reader(second, "lmx.pass.second");
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events == std::vector<std::string>{
                                    "begin lmx.pass.shadow", "end",
@@ -714,7 +714,7 @@ TEST_CASE("execute emits no barrier for a texture only exported", "[render][grap
     graph.exportTexture(nextVersion(sceneColor));
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
 }
@@ -749,7 +749,7 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
     graph.addPass("lmx.pass.resample", resample, kNoWork);
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{
@@ -943,7 +943,7 @@ TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") 
     graph.addPass("lmx.pass.present", present, kNoWork);
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.fill",
                                                         "end compute",
@@ -969,7 +969,7 @@ TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][
     graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin copy lmx.pass.clear", "end copy",
@@ -997,11 +997,142 @@ TEST_CASE("a derived barrier carries the range the reader declared", "[render][g
     graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
 
     RecordingCommandList commands;
-    graph.execute(commands);
+    graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin compute lmx.pass.write", "end compute",
                                      "barrier chain mips[0..0] layers[0..] "
                                      "StorageWrite->StorageRead",
                                      "begin compute lmx.pass.downsample", "end compute"});
+}
+
+//======================================================================================================================
+// The record is the frame as compilation saw it: what was imported, what each pass declared, and in
+// which order it runs. An observer reads it without the graph, so everything it needs has to be in
+// it -- names included, since a resource index alone names nothing to a reader.
+TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]") {
+    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeBuffer storage{256, "instances"};
+    RenderGraph graph;
+    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphBuffer instances = graph.importBuffer(storage, "instances");
+
+    PassDesc scene;
+    scene.textureReads.push_back(nextVersion(shadow));
+    scene.bufferReads.push_back(instances);
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    PassDesc shadowPass;
+    shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
+    graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+
+    const auto record = graph.compileFrame(42);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+
+    REQUIRE(record->frameId == 42);
+
+    REQUIRE(record->debug.resources.size() == 3);
+    REQUIRE(record->debug.resources[0].name == "shadowMap");
+    REQUIRE(record->debug.resources[0].kind == GraphResourceKind::Texture);
+    REQUIRE(record->debug.resources[0].format == rhi::Format::D32Float);
+    REQUIRE(record->debug.resources[2].name == "instances");
+    REQUIRE(record->debug.resources[2].kind == GraphResourceKind::Buffer);
+
+    // Declaration order, not schedule order: the record describes the frame that was declared, and
+    // the schedule is a separate answer about it.
+    REQUIRE(record->debug.passes.size() == 2);
+    REQUIRE(record->debug.passes[0].label == "lmx.pass.scene");
+    REQUIRE(record->debug.passes[0].kind == PassKind::Raster);
+    REQUIRE(record->debug.passes[1].label == "lmx.pass.shadow");
+
+    const std::vector<DebugUse>& uses = record->debug.passes[0].uses;
+    REQUIRE(uses.size() == 3);
+    REQUIRE(uses[0].resource == shadow.index);
+    REQUIRE(uses[0].version == 1);
+    REQUIRE(uses[0].role == UseRole::Read);
+    REQUIRE(uses[1].resource == instances.index);
+    REQUIRE(uses[1].role == UseRole::Read);
+    REQUIRE(uses[2].resource == sceneColor.index);
+    REQUIRE(uses[2].role == UseRole::ColorAttachment);
+
+    REQUIRE(record->debug.schedule.passes == std::vector<uint32_t>{1, 0});
+}
+
+//======================================================================================================================
+// The record's transitions are the barriers, not a second opinion about them: execute() emits what
+// compilation recorded, so an inspector reading the record and a capture of the frame describe the
+// same synchronisation.
+TEST_CASE("execute emits exactly the transitions the record lists", "[render][graph]") {
+    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeBuffer storage{256, "histogram"};
+    RenderGraph graph;
+    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphBuffer bins = graph.importBuffer(storage, "histogram");
+
+    PassDesc shadowPass;
+    shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
+    graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+
+    CopyPassDesc clear;
+    clear.bufferDestinations.push_back(bins);
+    graph.addCopyPass("lmx.pass.clear", clear, kNoWork);
+
+    PassDesc scene;
+    scene.textureReads.push_back(nextVersion(shadow));
+    scene.bufferReads.push_back(nextVersion(bins));
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 7);
+
+    REQUIRE(record.debug.transitions.size() == 2);
+    REQUIRE(record.debug.transitions[0].beforePass == 2);
+    REQUIRE(record.debug.transitions[0].kind == GraphResourceKind::Texture);
+    REQUIRE(record.debug.transitions[0].resource == shadow.index);
+    REQUIRE(record.debug.transitions[0].textureFrom == rhi::TextureUse::RenderTarget);
+    REQUIRE(record.debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].kind == GraphResourceKind::Buffer);
+    REQUIRE(record.debug.transitions[1].resource == bins.index);
+    REQUIRE(record.debug.transitions[1].bufferFrom == rhi::BufferUse::CopyDestination);
+    REQUIRE(record.debug.transitions[1].bufferTo == rhi::BufferUse::ShaderRead);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin lmx.pass.shadow", "end", "begin copy lmx.pass.clear",
+                                     "end copy", "barrier shadowMap RenderTarget->ShaderRead",
+                                     "barrier histogram CopyDestination->ShaderRead",
+                                     "begin lmx.pass.scene", "end"});
+}
+
+//======================================================================================================================
+// The frame number stamps the record and takes no part in compiling it, so two frames declaring the
+// same passes differ in nothing else -- which is what lets a dump be compared across runs.
+TEST_CASE("the frame id changes nothing else about a record", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    const auto first = graph.compileFrame(1);
+    const auto second = graph.compileFrame(9001);
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+
+    REQUIRE(first->frameId != second->frameId);
+    REQUIRE(first->debug.schedule.passes == second->debug.schedule.passes);
+    REQUIRE(first->debug.passes.size() == second->debug.passes.size());
+    REQUIRE(first->debug.passes[0].label == second->debug.passes[0].label);
+    REQUIRE(first->debug.transitions.size() == second->debug.transitions.size());
 }

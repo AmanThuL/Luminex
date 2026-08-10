@@ -748,7 +748,7 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera, const Sc
     const GraphTexture displayColor = declarePasses(graph, commands, camera, view);
     // The display-transformed image is this frame's whole result, so it is what the graph roots.
     graph.exportTexture(displayColor);
-    graph.execute(commands);
+    graph.execute(commands, m_device.frameNumber());
 
     if (barrierForSampling) {
         // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there

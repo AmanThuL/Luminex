@@ -251,7 +251,7 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 
         // A frame that cannot validate is a mis-declared frame, which is programmer error: execute
         // aborts with the graph's own message rather than encoding a hazard.
-        graph.execute(commands);
+        graph.execute(commands, (*device)->frameNumber());
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 
