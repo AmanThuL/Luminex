@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <format>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -24,6 +25,9 @@ namespace {
 bool isDepthFormat(rhi::Format format) {
     return format == rhi::Format::D32Float;
 }
+
+// A cubemap's faces are its array layers, which is what a declared range addresses.
+constexpr uint32_t kCubeFaceCount = 6;
 
 //======================================================================================================================
 // The colour attachment role, on the same terms the RHI's own desc validation uses: 8-bit unorm
@@ -114,7 +118,11 @@ struct ResolvedRange {
 //======================================================================================================================
 // Resolution saturates rather than wrapping: a count past the end of the chain is caught by the
 // containment check below, and this must produce a comparable bound for that message to name.
-ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, const rhi::Texture& texture) {
+//
+// The counts are passed rather than read off an rhi::Texture because a transient has no texture
+// until the frame is executed, and every rule below has to answer the same way for both kinds.
+ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, uint32_t mipLevels,
+                           uint32_t arrayLayers) {
     const auto lastOf = [](uint32_t base, uint32_t count, uint32_t available) {
         if (count == rhi::kAllMipLevels) {
             return available > base ? available - 1 : base;
@@ -122,10 +130,9 @@ ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, const rhi:
         return count == 0 ? base : base + count - 1;
     };
     return {.firstMip = range.baseMipLevel,
-            .lastMip = lastOf(range.baseMipLevel, range.mipLevelCount, texture.mipLevels()),
+            .lastMip = lastOf(range.baseMipLevel, range.mipLevelCount, mipLevels),
             .firstLayer = range.baseArrayLayer,
-            .lastLayer =
-                lastOf(range.baseArrayLayer, range.arrayLayerCount, texture.arrayLayers())};
+            .lastLayer = lastOf(range.baseArrayLayer, range.arrayLayerCount, arrayLayers)};
 }
 
 //======================================================================================================================
@@ -136,8 +143,8 @@ bool isEmptyRange(const rhi::TextureSubresourceRange& range) {
 }
 
 //======================================================================================================================
-bool containsRange(const ResolvedRange& resolved, const rhi::Texture& texture) {
-    return resolved.lastMip < texture.mipLevels() && resolved.lastLayer < texture.arrayLayers();
+bool containsRange(const ResolvedRange& resolved, uint32_t mipLevels, uint32_t arrayLayers) {
+    return resolved.lastMip < mipLevels && resolved.lastLayer < arrayLayers;
 }
 
 //======================================================================================================================
@@ -164,17 +171,16 @@ bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
 // that reaches the end of the chain keeps the sentinel rather than a resolved count, so a barrier
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
 rhi::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
-                                        const rhi::Texture& texture) {
+                                        uint32_t mipLevels, uint32_t arrayLayers) {
     const uint32_t firstMip = std::min(a.firstMip, b.firstMip);
     const uint32_t lastMip = std::max(a.lastMip, b.lastMip);
     const uint32_t firstLayer = std::min(a.firstLayer, b.firstLayer);
     const uint32_t lastLayer = std::max(a.lastLayer, b.lastLayer);
     return {.baseMipLevel = firstMip,
-            .mipLevelCount =
-                lastMip + 1 >= texture.mipLevels() ? rhi::kAllMipLevels : lastMip - firstMip + 1,
+            .mipLevelCount = lastMip + 1 >= mipLevels ? rhi::kAllMipLevels : lastMip - firstMip + 1,
             .baseArrayLayer = firstLayer,
-            .arrayLayerCount = lastLayer + 1 >= texture.arrayLayers() ? rhi::kAllArrayLayers
-                                                                      : lastLayer - firstLayer + 1};
+            .arrayLayerCount =
+                lastLayer + 1 >= arrayLayers ? rhi::kAllArrayLayers : lastLayer - firstLayer + 1};
 }
 
 //======================================================================================================================
@@ -190,6 +196,62 @@ std::string_view sinkVerb(SinkKind kind) {
         return "read-back";
     }
     return "rooted";
+}
+
+//======================================================================================================================
+// The smallest multiple of `alignment` that is not below `value`. Alignments are powers of two in
+// practice, but the arithmetic does not assume it -- the value comes from the backend.
+uint64_t alignUp(uint64_t value, uint64_t alignment) {
+    return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
+}
+
+// Everything two transients must agree on before one may take the other's bytes (spec 11).
+//
+// Equality on every axis rather than a subset is deliberate conservatism: a placement that reuses
+// memory across differing layouts depends on how the driver tiles each one, which is exactly the
+// thing a heap does not promise. Storage mode is absent because it is not a variable -- a transient
+// is device-private by construction, since it can neither be uploaded to nor read back.
+struct AliasClass {
+    bool isTexture = true;
+    rhi::Format format = rhi::Format::Unknown;
+    rhi::TextureKind kind = rhi::TextureKind::Tex2D;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t mipLevels = 0;
+    bool renderTarget = false;
+    bool sampled = false;
+    bool storageRead = false;
+    bool storageWrite = false;
+    uint64_t bufferSize = 0;
+    // The backend's own answer for the descriptor, which is what the packing is actually built on.
+    uint64_t size = 0;
+    uint64_t alignment = 0;
+    friend bool operator==(const AliasClass&, const AliasClass&) = default;
+};
+
+//======================================================================================================================
+AliasClass aliasClassOf(bool isTexture, rhi::Format format, const TransientTextureDesc& texture,
+                        const TransientBufferDesc& buffer, const rhi::SizeAlign& footprint) {
+    if (!isTexture) {
+        return {.isTexture = false,
+                .storageRead = buffer.storageRead,
+                .storageWrite = buffer.storageWrite,
+                .bufferSize = buffer.size,
+                .size = footprint.size,
+                .alignment = footprint.alignment};
+    }
+    return {.isTexture = true,
+            .format = format,
+            .kind = texture.kind,
+            .width = texture.width,
+            .height = texture.height,
+            .mipLevels = texture.mipLevels,
+            .renderTarget = texture.renderTarget,
+            .sampled = texture.sampled,
+            .storageRead = texture.storageRead,
+            .storageWrite = texture.storageWrite,
+            .size = footprint.size,
+            .alignment = footprint.alignment};
 }
 
 //======================================================================================================================
@@ -276,6 +338,12 @@ GraphResult<rhi::Texture*> PassResources::texture(GraphTexture handle) const {
                                 m_graph->m_passes[m_passIndex].label, resource.name,
                                 handle.version));
     }
+    // A transient exists only while its frame is being executed, so resolving one outside execute()
+    // is a caller reaching for memory that was never asked for rather than a mis-declaration.
+    LMX_ASSERT(resource.texture != nullptr,
+               std::format("transient texture '{}' is not placed: a transient exists only while "
+                           "the graph that declared it is executing",
+                           resource.name));
     return resource.texture;
 }
 
@@ -292,16 +360,26 @@ GraphResult<rhi::Buffer*> PassResources::buffer(GraphBuffer handle) const {
                                 m_graph->m_passes[m_passIndex].label, resource.name,
                                 handle.version));
     }
+    LMX_ASSERT(resource.buffer != nullptr,
+               std::format("transient buffer '{}' is not placed: a transient exists only while "
+                           "the graph that declared it is executing",
+                           resource.name));
     return resource.buffer;
 }
 
 //======================================================================================================================
 GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format format,
                                         std::string_view name) {
+    // Shape is read once, here, because a texture's extent and chain are fixed for its lifetime and
+    // every later rule has to consult them the same way it consults a transient's descriptor.
     m_resources.push_back({.kind = ResourceKind::Texture,
                            .name = std::string(name),
                            .texture = &texture,
-                           .format = format});
+                           .format = format,
+                           .width = texture.width(),
+                           .height = texture.height(),
+                           .mipLevels = texture.mipLevels(),
+                           .arrayLayers = texture.arrayLayers()});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
 }
 
@@ -310,6 +388,62 @@ GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name
     m_resources.push_back(
         {.kind = ResourceKind::Buffer, .name = std::string(name), .buffer = &buffer});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
+GraphTexture RenderGraph::createTexture(const TransientTextureDesc& desc, std::string_view name) {
+    LMX_ASSERT(m_transients != nullptr,
+               std::format("transient texture '{}' is declared on a graph with no TransientPool: "
+                           "a graph that creates resources needs somewhere to place them",
+                           name));
+    m_resources.push_back({.kind = ResourceKind::Texture,
+                           .name = std::string(name),
+                           .format = desc.format,
+                           .width = desc.width,
+                           .height = desc.height,
+                           .mipLevels = desc.mipLevels,
+                           .arrayLayers = desc.kind == rhi::TextureKind::Cube ? kCubeFaceCount : 1,
+                           .transient = true,
+                           .textureDesc = desc});
+    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
+GraphBuffer RenderGraph::createBuffer(const TransientBufferDesc& desc, std::string_view name) {
+    LMX_ASSERT(m_transients != nullptr,
+               std::format("transient buffer '{}' is declared on a graph with no TransientPool: "
+                           "a graph that creates resources needs somewhere to place them",
+                           name));
+    m_resources.push_back({.kind = ResourceKind::Buffer,
+                           .name = std::string(name),
+                           .transient = true,
+                           .bufferDesc = desc});
+    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
+rhi::TextureDesc RenderGraph::textureDescOf(const Resource& resource) const {
+    const TransientTextureDesc& desc = resource.textureDesc;
+    return {.width = desc.width,
+            .height = desc.height,
+            .format = desc.format,
+            .kind = desc.kind,
+            .mipLevels = desc.mipLevels,
+            .renderTarget = desc.renderTarget,
+            .sampled = desc.sampled,
+            .storageRead = desc.storageRead,
+            .storageWrite = desc.storageWrite,
+            .cpuReadback = false,
+            .label = resource.name};
+}
+
+//======================================================================================================================
+rhi::BufferDesc RenderGraph::bufferDescOf(const Resource& resource) const {
+    return {.size = resource.bufferDesc.size,
+            .storageRead = resource.bufferDesc.storageRead,
+            .storageWrite = resource.bufferDesc.storageWrite,
+            .cpuReadback = false,
+            .label = resource.name};
 }
 
 //======================================================================================================================
@@ -499,13 +633,11 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
         if (pass.color && pass.depth) {
             const Resource& color = m_resources[pass.color->handle.index];
             const Resource& depth = m_resources[pass.depth->handle.index];
-            if (color.texture->width() != depth.texture->width() ||
-                color.texture->height() != depth.texture->height()) {
+            if (color.width != depth.width || color.height != depth.height) {
                 return fail(std::format("pass '{}' attachment extent mismatch: color '{}' is {}x{} "
                                         "and depth '{}' is {}x{}",
-                                        pass.label, color.name, color.texture->width(),
-                                        color.texture->height(), depth.name, depth.texture->width(),
-                                        depth.texture->height()));
+                                        pass.label, color.name, color.width, color.height,
+                                        depth.name, depth.width, depth.height));
             }
         }
     }
@@ -525,14 +657,14 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                         pass.label, roleName(declaration.role), resource.name,
                                         describeRange(declaration.range)));
             }
-            const ResolvedRange resolved = resolveRange(declaration.range, *resource.texture);
-            if (!containsRange(resolved, *resource.texture)) {
+            const ResolvedRange resolved =
+                resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
+            if (!containsRange(resolved, resource.mipLevels, resource.arrayLayers)) {
                 return fail(std::format("pass '{}' declares a {} of texture '{}' over {}, which "
                                         "runs past its {} mip levels and {} array layers",
                                         pass.label, roleName(declaration.role), resource.name,
-                                        describeRange(declaration.range),
-                                        resource.texture->mipLevels(),
-                                        resource.texture->arrayLayers()));
+                                        describeRange(declaration.range), resource.mipLevels,
+                                        resource.arrayLayers));
             }
         }
 
@@ -545,8 +677,9 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                     continue;
                 }
                 const Resource& resource = m_resources[read.resource];
-                if (!rangesOverlap(resolveRange(read.range, *resource.texture),
-                                   resolveRange(write.range, *resource.texture))) {
+                if (!rangesOverlap(
+                        resolveRange(read.range, resource.mipLevels, resource.arrayLayers),
+                        resolveRange(write.range, resource.mipLevels, resource.arrayLayers))) {
                     continue;
                 }
                 return fail(std::format(
@@ -556,6 +689,64 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                     roleName(write.role), describeRange(write.range)));
             }
         }
+    }
+
+    // Transient rules (spec 11). Both are what leaves a pooled frame indistinguishable from an
+    // unpooled one. A transient's version 0 is uninitialised memory rather than contents --
+    // whatever the previous occupant of those bytes left -- so consuming it is refused rather than
+    // allowed to depend on the packing; and a transient stops existing with the frame, so no sink
+    // can name one.
+    for (const Pass& pass : m_passes) {
+        for (const Declaration& declaration : pass.declarations) {
+            const Resource& resource = m_resources[declaration.resource];
+            if (!resource.transient || declaration.version > 0 || declaration.isWrite) {
+                continue;
+            }
+            return fail(std::format(
+                "pass '{}' declares a {} of transient {} '{}' version 0, whose contents no pass "
+                "produced: a transient holds nothing until a pass writes it",
+                pass.label, roleName(declaration.role),
+                resource.kind == ResourceKind::Texture ? "texture" : "buffer", resource.name));
+        }
+        // An attachment that loads consumes the version it names as well as writing it, which the
+        // flattened declaration above records as a write and so cannot catch.
+        const auto loadsTransient = [&](const std::optional<GraphTexture>& handle, LoadOp load,
+                                        std::string_view role) -> std::optional<std::string> {
+            if (!handle || load != LoadOp::Load) {
+                return std::nullopt;
+            }
+            const Resource& resource = m_resources[handle->index];
+            if (!resource.transient || handle->version > 0) {
+                return std::nullopt;
+            }
+            return std::format("pass '{}' loads transient texture '{}' version 0 as its {}, whose "
+                               "contents no pass produced: a transient holds nothing until a pass "
+                               "writes it",
+                               pass.label, resource.name, role);
+        };
+        if (const auto message =
+                loadsTransient(pass.color ? std::optional{pass.color->handle} : std::nullopt,
+                               pass.color ? pass.color->load : LoadOp::Clear, "color attachment")) {
+            return fail(*message);
+        }
+        if (const auto message =
+                loadsTransient(pass.depth ? std::optional{pass.depth->handle} : std::nullopt,
+                               pass.depth ? pass.depth->load : LoadOp::Clear, "depth attachment")) {
+            return fail(*message);
+        }
+    }
+
+    for (const Sink& sink : m_sinks) {
+        const Resource& resource = m_resources[sink.resource];
+        if (!resource.transient) {
+            continue;
+        }
+        return fail(std::format("{} {} '{}' is transient: a transient lives for exactly one frame, "
+                                "so nothing outside that frame can read it -- import a resource of "
+                                "your own for a result that has to survive",
+                                sinkVerb(sink.kind),
+                                resource.kind == ResourceKind::Texture ? "texture" : "buffer",
+                                resource.name));
     }
 
     // Who writes which version, and therefore who produces the version after it. One writer per
@@ -718,13 +909,139 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
         }
         record.debug.passes.push_back(std::move(entry));
     }
-    record.debug.transitions = deriveTransitions(schedule);
+    const AliasPlan plan = planTransients(schedule);
+    record.debug.transitions = deriveTransitions(schedule, plan);
+    record.debug.transients.reserve(plan.transients.size());
+    for (const TransientPlan& entry : plan.transients) {
+        record.debug.transients.push_back(
+            {.resource = entry.resource,
+             .used = entry.used,
+             // Positions are how lifetimes are compared; pass indices are how a reader names a
+             // pass, so the record carries what the rest of it is written in.
+             .firstPass = entry.used ? schedule.passes[entry.firstPosition] : 0,
+             .lastPass = entry.used ? schedule.passes[entry.lastPosition] : 0,
+             .offset = entry.offset,
+             .size = entry.size,
+             .alignment = entry.alignment,
+             .aliases = entry.aliases});
+    }
+    record.debug.memory = plan.memory;
+    record.debug.poolingEnabled = m_poolingEnabled;
     record.debug.schedule = std::move(schedule);
     return record;
 }
 
 //======================================================================================================================
-std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& schedule) const {
+RenderGraph::AliasPlan RenderGraph::planTransients(const Schedule& schedule) const {
+    AliasPlan plan;
+
+    // Lifetimes are intervals over execution order, not declaration order, so a pass's position in
+    // the schedule is what an interval is measured in. A culled pass has no position at all, which
+    // is exactly right: a transient only its culled readers named is one the frame does not
+    // allocate.
+    std::vector<AliasClass> classes;
+    for (uint32_t index = 0; index < m_resources.size(); ++index) {
+        const Resource& resource = m_resources[index];
+        if (!resource.transient) {
+            continue;
+        }
+        TransientPlan entry{.resource = index};
+        for (uint32_t position = 0; position < schedule.passes.size(); ++position) {
+            bool touches = false;
+            for (const Declaration& declaration :
+                 m_passes[schedule.passes[position]].declarations) {
+                touches = touches || declaration.resource == index;
+            }
+            if (!touches) {
+                continue;
+            }
+            entry.firstPosition = entry.used ? entry.firstPosition : position;
+            entry.lastPosition = position;
+            entry.used = true;
+        }
+
+        AliasClass klass;
+        if (entry.used) {
+            // The RHI is asked what the descriptor costs rather than the descriptor being measured
+            // here: only the backend knows the layout it will choose, and a plan built on a guess
+            // would place resources where they do not fit.
+            rhi::Device& device = m_transients->device();
+            const rhi::SizeAlign footprint = resource.kind == ResourceKind::Texture
+                                                 ? device.textureSizeAlign(textureDescOf(resource))
+                                                 : device.bufferSizeAlign(bufferDescOf(resource));
+            entry.size = footprint.size;
+            entry.alignment = footprint.alignment;
+            klass = aliasClassOf(resource.kind == ResourceKind::Texture, resource.format,
+                                 resource.textureDesc, resource.bufferDesc, footprint);
+        }
+        plan.transients.push_back(entry);
+        classes.push_back(klass);
+    }
+
+    // First fit, walked in lifetime order so a placement's occupants are compared against a
+    // candidate that starts no earlier than any of them: one high-water mark per placement is then
+    // all the overlap test needs. Ties in lifetime start are broken by declaration order, which is
+    // what makes the layout a function of the declarations alone.
+    std::vector<uint32_t> order;
+    for (uint32_t index = 0; index < plan.transients.size(); ++index) {
+        if (plan.transients[index].used) {
+            order.push_back(index);
+        }
+    }
+    std::stable_sort(order.begin(), order.end(), [&](uint32_t a, uint32_t b) {
+        return plan.transients[a].firstPosition < plan.transients[b].firstPosition;
+    });
+
+    struct Placement {
+        uint64_t offset = 0;
+        AliasClass klass;
+        // The last schedule position any occupant of these bytes reaches, and the occupant that
+        // reaches it -- the resource a newcomer's reuse barrier has to order against.
+        uint32_t lastPosition = 0;
+        uint32_t lastOccupant = 0;
+    };
+    std::vector<Placement> placements;
+    uint64_t highWater = 0;
+
+    for (const uint32_t index : order) {
+        TransientPlan& entry = plan.transients[index];
+        plan.memory.requested += entry.size;
+
+        bool reused = false;
+        if (m_poolingEnabled) {
+            for (Placement& placement : placements) {
+                if (!(placement.klass == classes[index]) ||
+                    placement.lastPosition >= entry.firstPosition) {
+                    continue;
+                }
+                entry.offset = placement.offset;
+                entry.aliases = true;
+                entry.aliasedFrom = placement.lastOccupant;
+                placement.lastPosition = entry.lastPosition;
+                placement.lastOccupant = entry.resource;
+                reused = true;
+                break;
+            }
+        }
+        if (!reused) {
+            entry.offset = alignUp(highWater, entry.alignment);
+            highWater = entry.offset + entry.size;
+            placements.push_back({.offset = entry.offset,
+                                  .klass = classes[index],
+                                  .lastPosition = entry.lastPosition,
+                                  .lastOccupant = entry.resource});
+        }
+    }
+
+    plan.memory.highWater = highWater;
+    plan.memory.aliasSavings =
+        plan.memory.requested > highWater ? plan.memory.requested - highWater : 0;
+    return plan;
+}
+
+//======================================================================================================================
+std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& schedule,
+                                                            const AliasPlan& plan) const {
     // What each resource was last written as, and which of its subresources a barrier has since
     // made visible to a reader. Writing a resource again puts it back in a producing state and
     // clears what was covered, so the transition is owed again.
@@ -743,8 +1060,56 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     std::vector<WriteState> pending(m_resources.size());
     std::vector<DebugTransition> transitions;
 
-    for (const uint32_t passIndex : schedule.passes) {
+    // What a resource is doing at one end of a reuse boundary: the earliest declaration of it in
+    // the pass that opens its lifetime, or the latest in the pass that closes it. One declaration
+    // rather than a union, because the two ends of the boundary are single points in the schedule.
+    const auto useAt = [&](uint32_t resource, uint32_t position, bool last) {
+        const Pass& pass = m_passes[schedule.passes[position]];
+        std::optional<Declaration> found;
+        for (const Declaration& declaration : pass.declarations) {
+            if (declaration.resource != resource) {
+                continue;
+            }
+            if (!found || last) {
+                found = declaration;
+            }
+        }
+        LMX_ASSERT(found.has_value(),
+                   "a transient's lifetime bound must name a pass that declares it");
+        return std::pair{pass.kind, found->role};
+    };
+
+    for (uint32_t position = 0; position < schedule.passes.size(); ++position) {
+        const uint32_t passIndex = schedule.passes[position];
         const Pass& pass = m_passes[passIndex];
+
+        // Reuse boundaries come first: they make the memory this pass's transients sit in available
+        // before anything else about the pass is ordered. Whole-resource whatever either side
+        // declared, because the hazard is over shared bytes rather than over subresources, and
+        // listed in declaration order so the sequence is a function of the declarations.
+        for (const TransientPlan& entry : plan.transients) {
+            if (!entry.aliasedFrom || entry.firstPosition != position) {
+                continue;
+            }
+            const TransientPlan& previous =
+                *std::ranges::find(plan.transients, *entry.aliasedFrom, &TransientPlan::resource);
+            const auto [fromKind, fromRole] = useAt(previous.resource, previous.lastPosition, true);
+            const auto [toKind, toRole] = useAt(entry.resource, entry.firstPosition, false);
+
+            DebugTransition transition{.beforePass = passIndex,
+                                       .resource = entry.resource,
+                                       .aliasedFrom = previous.resource};
+            if (m_resources[entry.resource].kind == ResourceKind::Buffer) {
+                transition.kind = GraphResourceKind::Buffer;
+                transition.bufferFrom = bufferUseOf(fromKind, fromRole);
+                transition.bufferTo = bufferUseOf(toKind, toRole);
+            } else {
+                transition.kind = GraphResourceKind::Texture;
+                transition.textureFrom = textureUseOf(fromKind, fromRole);
+                transition.textureTo = textureUseOf(toKind, toRole);
+            }
+            transitions.push_back(transition);
+        }
 
         // At most one barrier per resource the pass reads, from the use that last wrote it. Several
         // reads of one resource collapse into the range that covers them all, because the
@@ -783,11 +1148,13 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                     if (other.isWrite || other.resource != read.resource) {
                         continue;
                     }
-                    covered =
-                        unionRange(resolveRange(covered, *resource.texture),
-                                   resolveRange(other.range, *resource.texture), *resource.texture);
+                    covered = unionRange(
+                        resolveRange(covered, resource.mipLevels, resource.arrayLayers),
+                        resolveRange(other.range, resource.mipLevels, resource.arrayLayers),
+                        resource.mipLevels, resource.arrayLayers);
                 }
-                const ResolvedRange resolved = resolveRange(covered, *resource.texture);
+                const ResolvedRange resolved =
+                    resolveRange(covered, resource.mipLevels, resource.arrayLayers);
                 bool alreadyOrdered = false;
                 for (const ResolvedRange& emitted : pending[read.resource].covered) {
                     alreadyOrdered = alreadyOrdered || enclosesRange(emitted, resolved);
@@ -822,6 +1189,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
 CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t frameId) {
     GraphResult<CompiledFrameRecord> record = compileFrame(frameId);
     LMX_ASSERT(record.has_value(), record.error().message);
+    placeTransients(record->debug);
     dumpCompiledFrameIfRequested(*record);
 
     // Transitions are recorded in schedule order and a pass's own are contiguous, so one cursor
@@ -904,6 +1272,36 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
         }
     }
     return std::move(*record);
+}
+
+//======================================================================================================================
+void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
+    if (debug.memory.highWater == 0) {
+        return;
+    }
+    // Reserving before placing anything is what lets the pool decide in one step whether the frame
+    // fits the generation it holds -- and a failure here is a device that could not give the frame
+    // its memory, which no declaration can recover from.
+    const rhi::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
+    LMX_ASSERT(reserved.has_value(), reserved.error().message);
+
+    for (const DebugTransient& entry : debug.transients) {
+        if (!entry.used) {
+            continue;
+        }
+        Resource& resource = m_resources[entry.resource];
+        if (resource.kind == ResourceKind::Texture) {
+            const rhi::Result<rhi::Texture*> texture =
+                m_transients->placeTexture(textureDescOf(resource), entry.offset);
+            LMX_ASSERT(texture.has_value(), texture.error().message);
+            resource.texture = *texture;
+        } else {
+            const rhi::Result<rhi::Buffer*> buffer =
+                m_transients->placeBuffer(bufferDescOf(resource), entry.offset);
+            LMX_ASSERT(buffer.has_value(), buffer.error().message);
+            resource.buffer = *buffer;
+        }
+    }
 }
 
 //======================================================================================================================

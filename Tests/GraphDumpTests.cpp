@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "GraphTestSupport.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
+#include "Render/TransientPool.h"
 
 #include <filesystem>
 #include <fstream>
@@ -233,6 +235,69 @@ TEST_CASE("an empty frame's dump matches its golden file", "[render][graph]") {
     const auto record = graph.compileFrame(0);
     REQUIRE(record.has_value());
     requireMatchesGolden(dumpCompiledFrame(*record), "frame-empty.txt");
+}
+
+//======================================================================================================================
+// The transient frame: two graph-created textures whose lifetimes do not overlap sharing one
+// placement, a third the frame culled away and therefore never paid for, and the reuse boundary
+// between the two that alias. It is the case that would notice a change to how a plan is reported.
+TEST_CASE("a transient frame's dump matches its golden file", "[render][graph]") {
+    FakeDevice device;
+    TransientPool pool(device);
+    FakeTexture midTarget{64};
+    FakeTexture displayColor{64};
+    RenderGraph graph(pool);
+    const GraphTexture scene = graph.createTexture({.width = 64,
+                                                    .height = 64,
+                                                    .format = rhi::Format::RGBA16Float,
+                                                    .renderTarget = true,
+                                                    .sampled = true},
+                                                   "lmx.transient.sceneColor");
+    const GraphTexture bloom = graph.createTexture({.width = 64,
+                                                    .height = 64,
+                                                    .format = rhi::Format::RGBA16Float,
+                                                    .renderTarget = true,
+                                                    .sampled = true},
+                                                   "lmx.transient.bloom");
+    const GraphTexture unused = graph.createTexture({.width = 64,
+                                                     .height = 64,
+                                                     .format = rhi::Format::RGBA16Float,
+                                                     .renderTarget = true,
+                                                     .sampled = true},
+                                                    "lmx.transient.unused");
+    const GraphTexture mid = graph.importTexture(midTarget, rhi::Format::BGRA8Unorm, "lmx.mid");
+    const GraphTexture display =
+        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+
+    PassDesc writeScene;
+    writeScene.color = ColorAttachment{.handle = scene};
+    graph.addPass("lmx.pass.scene", writeScene, kNoWork);
+
+    PassDesc resolve;
+    resolve.textureReads.push_back(nextVersion(scene));
+    resolve.color = ColorAttachment{.handle = mid};
+    graph.addPass("lmx.pass.resolve", resolve, kNoWork);
+
+    PassDesc writeBloom;
+    writeBloom.color = ColorAttachment{.handle = bloom};
+    graph.addPass("lmx.pass.bloom", writeBloom, kNoWork);
+
+    PassDesc composite;
+    composite.textureReads.push_back(nextVersion(bloom));
+    composite.color = ColorAttachment{.handle = display};
+    graph.addPass("lmx.pass.composite", composite, kNoWork);
+
+    // Declared and never reached: the pass that would have filled it has no sink.
+    PassDesc dead;
+    dead.color = ColorAttachment{.handle = unused};
+    graph.addPass("lmx.pass.dead", dead, kNoWork);
+
+    graph.exportTexture(nextVersion(mid));
+    graph.presentTexture(nextVersion(display));
+
+    const auto record = graph.compileFrame(9);
+    REQUIRE(record.has_value());
+    requireMatchesGolden(dumpCompiledFrame(*record), "frame-transient.txt");
 }
 
 //======================================================================================================================

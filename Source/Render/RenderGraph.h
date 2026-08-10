@@ -5,6 +5,7 @@
 
 #pragma once
 #include "RHI/RHI.h"
+#include "Render/TransientPool.h"
 
 #include <cstdint>
 #include <expected>
@@ -71,6 +72,31 @@ constexpr GraphTexture nextVersion(GraphTexture handle) {
 constexpr GraphBuffer nextVersion(GraphBuffer handle) {
     return {.index = handle.index, .version = handle.version + 1};
 }
+
+/// Describes a texture the graph creates, owns, and destroys within one frame.
+///
+/// It mirrors rhi::TextureDesc minus the two things a transient cannot have: initial contents, and
+/// CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
+/// caller that needs to read a result back imports a texture of its own instead. The name is passed
+/// beside the descriptor, exactly as importTexture takes one, and becomes the GPU object's label.
+struct TransientTextureDesc {
+    uint32_t width = 0;                              ///< Extent in texels.
+    uint32_t height = 0;                             ///< Extent in texels.
+    rhi::Format format = rhi::Format::Unknown;       ///< Pixel format.
+    rhi::TextureKind kind = rhi::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
+    uint32_t mipLevels = 1;                          ///< Mip levels allocated for each face.
+    bool renderTarget = false;                       ///< Enables render-target use.
+    bool sampled = false;                            ///< Enables shader reads.
+    bool storageRead = false;                        ///< Enables storage-binding reads.
+    bool storageWrite = false;                       ///< Enables storage-binding writes.
+};
+
+/// The buffer counterpart of TransientTextureDesc, on the same terms.
+struct TransientBufferDesc {
+    uint64_t size = 0;         ///< Allocation size in bytes.
+    bool storageRead = false;  ///< Enables storage-binding reads.
+    bool storageWrite = false; ///< Enables storage-binding writes.
+};
 
 /// What kind of work a declared pass encodes, and therefore which RHI pass scope execute() opens
 /// for it. The kind is fixed by the declaration path -- addPass, addComputePass, addCopyPass -- so
@@ -322,6 +348,41 @@ struct DebugTransition {
     rhi::TextureUse textureTo = rhi::TextureUse::ShaderRead;     ///< Consuming texture use.
     rhi::BufferUse bufferFrom = rhi::BufferUse::StorageWrite;    ///< Producing buffer use.
     rhi::BufferUse bufferTo = rhi::BufferUse::StorageRead;       ///< Consuming buffer use.
+    /// Set when this is a transient reuse boundary rather than a read-after-write of one logical
+    /// resource: `resource` is placed in memory that the named transient held until this point, so
+    /// the barrier orders that resource's last use against this one's first. It covers the whole
+    /// resource whatever the two declared, because the hazard is over the bytes, not over the
+    /// subresources either side happened to name.
+    std::optional<uint32_t> aliasedFrom;
+};
+
+/// One graph-created transient's lifetime and the place in the frame's transient heap it was
+/// assigned.
+///
+/// A transient no scheduled pass touches -- one whose only readers were culled -- is reported with
+/// `used` false and no assignment at all: it is a declaration the frame did not need, and giving it
+/// memory would be paying for the pass that was dropped.
+struct DebugTransient {
+    uint32_t resource = 0;  ///< Index into CompiledFrameDebug::resources.
+    bool used = false;      ///< Whether any scheduled pass touches it, and so whether it is placed.
+    uint32_t firstPass = 0; ///< First scheduled pass that touches it.
+    uint32_t lastPass = 0;  ///< Last scheduled pass that touches it.
+    uint64_t offset = 0;    ///< Byte offset of its placement within the frame's transient heap.
+    uint64_t size = 0;      ///< Bytes the RHI reports the descriptor occupies in a heap.
+    uint64_t alignment = 0; ///< Alignment the RHI reports its heap offset must satisfy.
+    bool aliases = false;   ///< Whether it took memory an earlier transient's lifetime had freed.
+};
+
+/// What a frame's transients cost and what aliasing saved.
+///
+/// `aliasSavings` is `requested - highWater`, floored at zero: the alignment padding a packing
+/// forces counts against the saving, because it is memory the heap really holds. With pooling off
+/// every transient gets its own bytes, so the saving is zero by construction and the high-water
+/// mark is the whole footprint.
+struct TransientMemory {
+    uint64_t requested = 0;    ///< Sum of every placed transient's size.
+    uint64_t highWater = 0;    ///< Bytes the frame's transient heap must provide.
+    uint64_t aliasSavings = 0; ///< Bytes the heap does not have to hold because lifetimes reused.
 };
 
 /// Everything compilation decided about one frame, in a form an observer can read without the graph
@@ -332,11 +393,15 @@ struct DebugTransition {
 /// values are joined to it by an observer, never carried in it, so the same declarations always
 /// compile to the same record.
 struct CompiledFrameDebug {
-    std::vector<DebugResource> resources;     ///< Imported resources, in import order.
+    std::vector<DebugResource> resources;     ///< Declared resources, in declaration order.
     std::vector<DebugSink> sinks;             ///< Declared sinks, in declaration order.
     std::vector<DebugPass> passes;            ///< Declared passes, in declaration order.
     Schedule schedule;                        ///< Surviving pass indices in execution order.
     std::vector<DebugTransition> transitions; ///< Derived barriers, in the order they are emitted.
+    /// Graph-created transients, in declaration order, with their lifetimes and assignments.
+    std::vector<DebugTransient> transients;
+    TransientMemory memory;      ///< What the transients cost and what aliasing saved.
+    bool poolingEnabled = false; ///< Whether the assignment above was allowed to reuse memory.
 };
 
 /// A compiled frame together with the frame it belongs to.
@@ -357,15 +422,25 @@ struct CompiledFrameRecord {
 /// acyclic graph and answers with the order to run them in, so a mis-declared frame fails on the
 /// CPU with a message instead of on the GPU as a hazard.
 ///
-/// The graph borrows everything: an imported rhi::Texture or rhi::Buffer must outlive it, and the
-/// handles it issues mean nothing once it is gone. Declaring a fresh graph per frame is the
-/// intended use -- it owns no GPU memory and creates no GPU objects.
+/// The graph borrows what it does not own: an imported rhi::Texture or rhi::Buffer must outlive it,
+/// and the handles it issues mean nothing once it is gone. Declaring a fresh graph per frame is the
+/// intended use -- it holds no GPU memory of its own between frames.
 ///
-/// Resources are imported, never created. Transient allocation, aliasing, culling, and pass merging
-/// are deliberately absent: this is a validating declaration layer over resources the frame already
-/// holds, and it grows only when a feature needs it to.
+/// A resource is either imported or transient (ADR 0008). An imported one is the caller's for the
+/// caller's own reasons -- it persists, it can be exported, read back, or presented, and it is
+/// never pooled or aliased. A transient one is the graph's for exactly one frame: it is declared by
+/// descriptor, placed in a TransientPool's heap, may share bytes with another transient whose
+/// lifetime does not overlap it, and cannot leave the frame at all.
 class RenderGraph {
 public:
+    /// A graph that declares no transients, and asserts if one is declared on it.
+    RenderGraph() = default;
+
+    /// A graph whose transients are placed in `transients`, which must outlive it. The pool's
+    /// device is also what sizes the frame's transient descriptors, so a graph can plan its whole
+    /// heap layout at compile time without creating anything.
+    explicit RenderGraph(TransientPool& transients) : m_transients(&transients) {}
+
     /// Brings an existing texture into the graph as version 0. `format` is declared here because
     /// rhi::Texture does not report its own, and it is what the attachment rules check -- the
     /// caller is answerable for it matching the texture it created. `name` appears in validation
@@ -375,6 +450,28 @@ public:
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
     GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name);
+
+    /// Declares a texture the graph creates for this frame and nothing else, as version 0.
+    ///
+    /// Version 0 of a transient is uninitialised memory rather than contents, so naming it as
+    /// anything but a write -- a read, a copy source, a loaded attachment -- fails compilation.
+    /// That is what makes the picture the same with pooling on and off: nothing can observe what
+    /// the previous occupant of those bytes left behind.
+    ///
+    /// The graph must have been constructed with a TransientPool; declaring a transient without one
+    /// is misuse and asserts. `name` is copied and becomes the placed resource's label.
+    GraphTexture createTexture(const TransientTextureDesc& desc, std::string_view name);
+
+    /// The buffer counterpart of createTexture, on the same terms.
+    GraphBuffer createBuffer(const TransientBufferDesc& desc, std::string_view name);
+
+    /// Whether compilation may let two transients whose lifetimes do not overlap share bytes.
+    ///
+    /// On by default. Off gives every transient its own memory, which costs the frame the alias
+    /// savings and nothing else: the picture is identical either way, because a transient's
+    /// contents are undeclarable before its first write. It exists so the two can be compared
+    /// against each other -- in a test, and from the editor's render settings.
+    void setPoolingEnabled(bool enabled) { m_poolingEnabled = enabled; }
 
     /// Declares a raster pass. `label` names it in validation messages and is copied; `execute`
     /// must be non-empty. Declaration order is the pass index space Schedule reports, and is the
@@ -422,10 +519,12 @@ public:
     /// Hard failures, in the order they are reported: an attachment whose format does not match its
     /// role, or a colour and depth attachment of differing extents; a subresource range that is
     /// empty or runs past the texture it names; one pass reading and writing a texture through
-    /// overlapping ranges; two passes writing one version; a declaration naming a version no pass
-    /// writes (read before write); a sink naming a version no pass wrote; and a cycle, named by the
-    /// passes it involves. Validation covers every declared pass, culled ones included: a
-    /// mis-declared pass is mis-declared whether or not the frame needs it.
+    /// overlapping ranges; a transient consumed at version 0, whose contents nothing produced; a
+    /// sink naming a transient, which cannot outlive the frame; two passes writing one version; a
+    /// declaration naming a version no pass writes (read before write); a sink naming a version no
+    /// pass wrote; and a cycle, named by the passes it involves. Validation covers every declared
+    /// pass, culled ones included: a mis-declared pass is mis-declared whether or not the frame
+    /// needs it.
     ///
     /// The schedule holds only the passes a sink reaches. Liveness runs backwards from the declared
     /// sinks alone and follows the versions each live pass names, so it is a function of the
@@ -434,6 +533,15 @@ public:
     /// Subresource ranges narrow what a pass touches, not what a version covers (spec §6): two
     /// passes writing disjoint ranges of one version are still a double write, because the second
     /// one has to declare itself over the first's output version for the order to be stated at all.
+    ///
+    /// Compilation also answers where each transient lives. A transient's lifetime is the span of
+    /// the schedule between the first and last surviving pass that names it; two transients whose
+    /// lifetimes do not overlap may share bytes when their descriptors agree on every axis that
+    /// decides their layout -- resource kind, format, extent, mip count, usage, and the size and
+    /// alignment the RHI reports for them. Storage mode needs no comparison because a transient is
+    /// always device-private. Offsets are assigned first-fit in lifetime order, tie-broken by
+    /// declaration order, so the layout is a function of the declarations alone and two identical
+    /// frames plan identically.
     GraphResult<Schedule> compile() const;
 
     /// The same compilation, answering with everything it decided rather than the order alone.
@@ -452,12 +560,24 @@ public:
     /// unvalidated. A frame that fails to compile is programmer error and aborts with compile()'s
     /// message; a caller that wants the failure as a value calls compile() itself.
     ///
+    /// The frame's transients are placed before anything is encoded: the pool is asked for a heap
+    /// of the compiled high-water mark, and every used transient is created at the offset the plan
+    /// assigned it. They live until their frame slot comes round again, which is the pool's
+    /// contract, so nothing here has to know when the GPU finished with them.
+    ///
     /// The synchronisation this emits is read-after-write, derived from the declarations alone: a
     /// resource an earlier pass wrote and a later pass reads gets a barrier before that pass, from
-    /// the use that wrote it to the use that reads it. Write-after-write between two passes is
-    /// ordered by the version chain but emits no barrier of its own. An export emits nothing either
-    /// -- it roots a result for the caller to read once the queue drains, which is not another pass
-    /// reading it.
+    /// the use that wrote it to the use that reads it. Write-after-write within one logical
+    /// resource is ordered by the version chain and emits no barrier of its own. An export emits
+    /// nothing either -- it roots a result for the caller to read once the queue drains, which is
+    /// not another pass reading it.
+    ///
+    /// Reuse of transient memory is the one hazard the version chain cannot state, because the two
+    /// sides are different logical resources: where a transient takes bytes an earlier one held, a
+    /// whole-resource barrier is emitted before its first pass, from the earlier transient's last
+    /// use to this one's first. It is emitted whatever ranges either side declared -- the hazard is
+    /// over the memory, not over the subresources -- and it is what makes an aliased frame match an
+    /// unaliased one.
     ///
     /// Every reader's declared subresources are covered: a later reader is left unbarriered only
     /// when an already-emitted barrier for that same write named a range enclosing the whole of
@@ -488,12 +608,46 @@ private:
 
     enum class ResourceKind { Texture, Buffer };
 
+    // One declared resource, imported or transient. The shape fields are carried here rather than
+    // read back off the rhi::Texture because a transient has no texture until execute() places it,
+    // and the range and attachment rules have to answer the same way for both kinds.
     struct Resource {
         ResourceKind kind = ResourceKind::Texture;
         std::string name;
+        // Null for a transient until execute() places it; borrowed for an import.
         rhi::Texture* texture = nullptr;
         rhi::Buffer* buffer = nullptr;
         rhi::Format format = rhi::Format::Unknown;
+        uint32_t width = 0;
+        uint32_t height = 0;
+        uint32_t mipLevels = 1;
+        uint32_t arrayLayers = 1;
+        bool transient = false;
+        // Set for transients only, and the descriptor the placed resource is created from. The
+        // label is filled in from `name` at placement time rather than stored, so no view into
+        // this struct's own string can outlive a reallocation of the resource list.
+        TransientTextureDesc textureDesc;
+        TransientBufferDesc bufferDesc;
+    };
+
+    // Where one transient sits in the frame's heap, alongside the lifetime that justified it.
+    // Carried separately from Resource because it is compilation's answer, not a declaration.
+    struct TransientPlan {
+        uint32_t resource = 0;
+        bool used = false;
+        uint32_t firstPosition = 0; ///< Position in the schedule, not a pass index.
+        uint32_t lastPosition = 0;
+        uint64_t offset = 0;
+        uint64_t size = 0;
+        uint64_t alignment = 0;
+        bool aliases = false;
+        // The transient whose bytes this one took, when it took any.
+        std::optional<uint32_t> aliasedFrom;
+    };
+
+    struct AliasPlan {
+        std::vector<TransientPlan> transients;
+        TransientMemory memory;
     };
 
     // One resource version, flattened out of whichever declaration field named it. Validation, the
@@ -532,8 +686,24 @@ private:
     bool passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint32_t version) const;
 
     // The one place read-after-write barriers are decided. execute() emits what this recorded
-    // rather than deriving its own, so the record and the command stream cannot disagree.
-    std::vector<DebugTransition> deriveTransitions(const Schedule& schedule) const;
+    // rather than deriving its own, so the record and the command stream cannot disagree. The plan
+    // is taken as well as the schedule because a reuse boundary is a barrier the declarations
+    // alone cannot show.
+    std::vector<DebugTransition> deriveTransitions(const Schedule& schedule,
+                                                   const AliasPlan& plan) const;
+
+    // Lifetimes over the schedule, then first-fit offsets over the lifetimes. Deterministic in
+    // both halves; see compile()'s contract for the rules it implements.
+    AliasPlan planTransients(const Schedule& schedule) const;
+
+    // The RHI descriptors a transient's Resource compiles to, labelled with its name.
+    rhi::TextureDesc textureDescOf(const Resource& resource) const;
+    rhi::BufferDesc bufferDescOf(const Resource& resource) const;
+
+    // Reserves the frame's transient heap and places every used transient in it, filling in the
+    // resource pointers the pass bodies resolve. Failure is programmer error and aborts, on
+    // execute()'s terms.
+    void placeTransients(const CompiledFrameDebug& debug);
 
     struct Sink {
         SinkKind kind = SinkKind::Export;
@@ -548,6 +718,10 @@ private:
     std::vector<Resource> m_resources;
     std::vector<Pass> m_passes;
     std::vector<Sink> m_sinks;
+    // Null for an import-only graph; the pool a transient is placed in and the device its
+    // descriptors are sized against.
+    TransientPool* m_transients = nullptr;
+    bool m_poolingEnabled = true;
 };
 
 } // namespace lmx::render

@@ -27,3 +27,6 @@ transitions
   before p2 texture r0 mips[0..0] layers[0..] StorageWrite -> StorageRead
   before p3 texture r0 mips[0..] layers[0..] StorageWrite -> ShaderRead
   before p4 texture r1 mips[0..] layers[0..] RenderTarget -> CopySource
+transients
+memory
+  pooling on requested 0 high-water 0 saved 0

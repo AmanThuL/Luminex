@@ -20,3 +20,6 @@ culled
 transitions
   before p0 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p2 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
+transients
+memory
+  pooling on requested 0 high-water 0 saved 0

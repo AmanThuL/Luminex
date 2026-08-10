@@ -18,3 +18,6 @@ culled
     read r0 v1 mips[0..] layers[0..]
 transitions
   before p3 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
+transients
+memory
+  pooling on requested 0 high-water 0 saved 0

@@ -153,16 +153,41 @@ std::string dumpCompiledFrame(const CompiledFrameRecord& record) {
     out += "transitions\n";
     for (const DebugTransition& transition : debug.transitions) {
         if (transition.kind == GraphResourceKind::Texture) {
-            out += std::format("  before p{} texture r{} {} {} -> {}\n", transition.beforePass,
+            out += std::format("  before p{} texture r{} {} {} -> {}", transition.beforePass,
                                transition.resource, describeRange(transition.range),
                                textureUseName(transition.textureFrom),
                                textureUseName(transition.textureTo));
         } else {
-            out += std::format("  before p{} buffer r{} {} -> {}\n", transition.beforePass,
+            out += std::format("  before p{} buffer r{} {} -> {}", transition.beforePass,
                                transition.resource, bufferUseName(transition.bufferFrom),
                                bufferUseName(transition.bufferTo));
         }
+        // Present only on a reuse boundary, so an ordinary read-after-write line reads exactly as
+        // it did before transients existed.
+        if (transition.aliasedFrom) {
+            out += std::format(" alias-of r{}", *transition.aliasedFrom);
+        }
+        out += '\n';
     }
+
+    // A transient the frame did not need has no lifetime and no bytes, and says so rather than
+    // reporting an interval and an offset that mean nothing.
+    out += "transients\n";
+    for (const DebugTransient& transient : debug.transients) {
+        if (!transient.used) {
+            out += std::format("  r{} unused\n", transient.resource);
+            continue;
+        }
+        out +=
+            std::format("  r{} passes p{}..p{} offset {} size {} align {}{}\n", transient.resource,
+                        transient.firstPass, transient.lastPass, transient.offset, transient.size,
+                        transient.alignment, transient.aliases ? " aliased" : "");
+    }
+
+    out += "memory\n";
+    out += std::format("  pooling {} requested {} high-water {} saved {}\n",
+                       debug.poolingEnabled ? "on" : "off", debug.memory.requested,
+                       debug.memory.highWater, debug.memory.aliasSavings);
     return out;
 }
 
