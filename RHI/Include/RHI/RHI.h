@@ -359,9 +359,11 @@ public:
     /// Dispatches a grid of threadgroups; each argument is a count of *threadgroups*, not of
     /// threads, and the threads within one come from the bound pipeline's threadsPerThreadgroup.
     /// Every count must be greater than zero. Valid only inside a compute pass, after
-    /// bindComputePipeline. The dispatch is ordered after previously encoded work in the same pass
-    /// only through explicit barriers -- threadgroups of one dispatch may otherwise overlap
-    /// execution with a neighboring dispatch.
+    /// bindComputePipeline. Dispatches within one pass carry no ordering guarantee at all --
+    /// neighboring dispatches may overlap execution, and there is no barrier that orders them,
+    /// because textureBarrier is valid only between passes. A dispatch that must see another's
+    /// writes therefore belongs in a later pass: end this one, record the barrier, and begin the
+    /// next.
     /// Records a compute dispatch of the given threadgroup counts.
     virtual void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY,
                           uint32_t threadgroupsZ) = 0;
