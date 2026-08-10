@@ -78,8 +78,8 @@ xmake run App
 ```
 
 `xmake setup` fetches pinned dependencies and sample assets, verifies their hashes, converts the
-official Crytek Sponza OBJ distribution into the core glTF subset used at runtime, and bakes a
-deterministic offline mip chain for every referenced material image. Generated content remains
+official Crytek Sponza OBJ distribution into the core glTF subset used at runtime, and bakes every
+base-color and normal image into a deterministic offline mip chain. Generated content remains
 under the gitignored `Assets/Fetched/` directory.
 
 The editor opens on Sponza. Hold right mouse in the viewport and use WASD + Q/E to fly. Select

@@ -33,14 +33,14 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle in
 │       │    per-draw textures t0 base color / t1 normal / t4 metallic-roughness / t5 occlusion /
 │       │    t6 emissive (white/flat-normal fallbacks when unmapped); per-pass shared t3 shadow
 │       │    map, t7 irradiance, t8 prefiltered environment, t9 DFG LUT
-│       ├─ reads the shadow map's written version -- the graph derives one
+│       ├─ reads the shadow map's written version — the graph derives one
 │       │    textureBarrier(RenderTarget, ShaderRead) in front of this pass from that declaration
 │       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
 │            cull none, GreaterEqual, t2 cubemap, the same preExposure
 │
 ├─ 3. lmx.pass.display     fullscreen triangle: Load the scene color texel-for-texel (no filter)
 │       → Khronos PBR Neutral tone map → sRGB encode → display color (BGRA8Unorm, viewport-sized)
-│       Shaders/DisplayTransform.slang -- the only shader in the frame that encodes sRGB
+│       Shaders/DisplayTransform.slang — the only shader in the frame that encodes sRGB
 │
 ├─ 4. lmx.pass.ui          → swapchain drawable
 │       Dear ImGui (docked editor shell); the Viewport window samples the display color texture;
@@ -57,7 +57,7 @@ no vertex descriptors in the pipeline.
 ## The render graph
 
 `Source/Render/RenderGraph.h/.cpp` models a frame's passes as declarations over versioned logical
-handles (`GraphTexture`/`GraphBuffer`) rather than as commands. Resources are **imported only** --
+handles (`GraphTexture`/`GraphBuffer`) rather than as commands. Resources are **imported only** —
 `importTexture`/`importBuffer` bring in a texture or buffer the frame already owns at version 0;
 the graph creates no GPU objects and pools nothing. A pass names every version it reads, at most
 one color and one depth attachment (each is a versioned write), and any non-attachment writes;
@@ -65,7 +65,7 @@ one color and one depth attachment (each is a versioned write), and any non-atta
 an attachment/format mismatch, or an export of a version nothing produced, and otherwise answers
 one serial topological order. `execute()` re-validates, then runs that schedule: each pass becomes
 one labelled render pass, its body runs between `beginRenderPass`/`endRenderPass` with a
-`PassResources` that resolves only the handles the pass declared -- an undeclared resolve is a
+`PassResources` that resolves only the handles the pass declared — an undeclared resolve is a
 reported failure, not a resolved pointer. A graph is declared fresh every frame; at four passes,
 compile cost is trivial and scheduling optimization, transient pooling, and dead-pass culling stay
 deliberately absent (`docs/decisions/0005-render-graph.md`).
@@ -100,7 +100,7 @@ retired. The editor's Stats panel lists every pass of the newest retired frame w
   images decode/filter/re-encode; normal maps renormalize per level) and writes a DDS plus a
   manifest recording the source hash. `Scene` prefers the baked DDS beside a glTF file and falls
   back to the same filter computed in-process (slower load, not incorrect) when it is absent.
-  `Device::generateMipmaps` no longer exists -- Metal's blit variant was measured to point-pick.
+  `Device::generateMipmaps` no longer exists — Metal's blit variant was measured to point-pick.
 
 ## The math, briefly
 
@@ -112,7 +112,7 @@ retired. The editor's Stats panel lists every pass of the newest retired frame w
 - **Image-based lighting**: the split-sum reconstruction (Karis 2013) plus Fdez-Agüera's
   multiple-scattering compensation, so a white furnace returns its own radiance at every roughness
   and metallic value rather than losing energy to single-scattering loss as roughness rises.
-  Occlusion attenuates the image-based terms only -- the shadow map already answers direct-light
+  Occlusion attenuates the image-based terms only — the shadow map already answers direct-light
   visibility, and applying occlusion to both would darken a lit surface twice.
 - **Exposure and display**: every fragment multiplies its linear output by `preExposure =
   exp2(EV)` (a Render Settings slider, default 0) before the scene target sees it, so the scene
@@ -128,7 +128,7 @@ retired. The editor's Stats panel lists every pass of the newest retired frame w
   the sky pins every vertex to depth 0 and passes `GreaterEqual`; `fitShadowOrtho` reverses to
   match, and the shadow comparison sampler is `GreaterEqual`. View-space depth reconstructs from a
   sampled texel as `viewZ = -nearZ / d`.
-- **Shadows**: unchanged from M3's PCF/PCSS mechanics -- one directional caster (light 0), an
+- **Shadows**: unchanged from M3's PCF/PCSS mechanics — one directional caster (light 0), an
   ortho frustum fit to the scene's bounding sphere, 25-tap Poisson-disk PCF or PCSS (blocker
   search → penumbra → variable PCF) as a runtime toggle. The depth bias sign flipped with the
   reversed convention (now `{-4.0, -32.0}`); PCSS's own view/NDC unit mismatch is preserved rather
@@ -139,9 +139,9 @@ retired. The editor's Stats panel lists every pass of the newest retired frame w
 Three, behind the Inspector dropdown, drawn from one catalog (`--scene` accepts the same IDs):
 **Sponza** (`sponza`, the default world scene, converted deterministically from the official
 Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents), and
-**MaterialLab** (`material-lab`, always available, fully code-generated -- a roughness×metallic
+**MaterialLab** (`material-lab`, always available, fully code-generated — a roughness×metallic
 sphere grid, known-color patches, a gradient ramp, a normal-map probe, and near/mid/far depth
-probes for deterministic checks). All three use the same code-generated neutral-gray sky and its
+probes for deterministic checks). All three use the same code-generated neutral cubemap and its
 generated IBL set. Missing fetched assets disable the dropdown entry with setup guidance; an
 unavailable explicit CLI scene exits with an error instead of falling back.
 

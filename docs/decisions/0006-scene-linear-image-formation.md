@@ -23,4 +23,5 @@ float precision at the far plane instead of the near one.
 A later HDR-to-SDR technique replaces one pass rather than touching shading. Automatic exposure,
 bloom, and temporal reconstruction stay deferred to M5/M6. Every reversed-Z consumer (the shadow
 ortho fit, the sky's far-plane pin, PCSS) must agree on the convention; PCSS's preserved view/NDC
-unit mismatch from M3 remains unfixed — only its bias sign was re-tuned to match the reversal.
+unit mismatch from M3 remains unfixed — only the pipeline-level shadow depth bias
+(`kShadowDepthBias`, shared by PCF and PCSS) had its sign re-tuned to match the reversal.
