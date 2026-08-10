@@ -57,18 +57,31 @@ no vertex descriptors in the pipeline.
 ## The render graph
 
 `Source/Render/RenderGraph.h/.cpp` models a frame's passes as declarations over versioned logical
-handles (`GraphTexture`/`GraphBuffer`) rather than as commands. Resources are **imported only** —
-`importTexture`/`importBuffer` bring in a texture or buffer the frame already owns at version 0;
-the graph creates no GPU objects and pools nothing. A pass names every version it reads, at most
+handles (`GraphTexture`/`GraphBuffer`) rather than as commands. A resource is either **imported** —
+`importTexture`/`importBuffer` bring in a texture or buffer the caller already owns, at version 0 —
+or **transient**: `createTexture`/`createBuffer` declare one the graph owns for exactly one frame
+(`docs/decisions/0008-transient-graph-resources.md`). A pass names every version it reads, at most
 one color and one depth attachment (each is a versioned write), and any non-attachment writes;
 `compile()` hard-fails a read of a version no pass wrote, two passes writing one version, a cycle,
-an attachment/format mismatch, or an export of a version nothing produced, and otherwise answers
-one serial topological order. `execute()` re-validates, then runs that schedule: each pass becomes
-one labelled render pass, its body runs between `beginRenderPass`/`endRenderPass` with a
-`PassResources` that resolves only the handles the pass declared — an undeclared resolve is a
-reported failure, not a resolved pointer. A graph is declared fresh every frame; at four passes,
-compile cost is trivial and scheduling optimization, transient pooling, and dead-pass culling stay
-deliberately absent (`docs/decisions/0005-render-graph.md`).
+an attachment/format mismatch, a transient consumed before its first write, a sink naming a
+transient, or an export of a version nothing produced, and otherwise answers one serial topological
+order holding only the passes a declared sink reaches. `execute()` re-validates, then runs that
+schedule: each pass becomes one labelled render, compute, or copy pass, its body runs inside that
+scope with a `PassResources` that resolves only the handles the pass declared — an undeclared
+resolve is a reported failure, not a resolved pointer. Compilation answers with a
+`CompiledFrameRecord` describing everything it decided, which `Render/GraphDump.h` renders as
+deterministic text. A graph is declared fresh every frame; scheduling optimization beyond dead-pass
+culling and conservative transient pooling stays deliberately absent.
+
+Transients are placed in a `Render/TransientPool`: one placement heap per frame-in-flight slot,
+reused only after `Device::beginFrame()` has proved that slot's previous frame retired, and resized
+into a new generation when a frame's footprint changes. Compilation assigns offsets first-fit over
+lifetime-disjoint transients whose descriptors agree on kind, format, extent, mip count, usage,
+size, and alignment, emits a whole-resource barrier wherever one transient takes bytes another held,
+and records every lifetime, assignment, the heap high-water mark, and the alias savings.
+`RenderGraph::setPoolingEnabled(false)` — the editor's Transient pooling checkbox — gives every
+transient its own bytes and cannot change the picture, because a transient holds nothing until a
+pass writes it.
 
 Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::passTimings()`
 reports each pass's label and GPU milliseconds for the most recently retired frame, and

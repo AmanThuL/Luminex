@@ -13,16 +13,19 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   and domain-owned error contracts without Metal or ImGui dependencies.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables, a per-frame uniform ring, residency, shared-event pacing,
-  render, compute, and copy pass encoders, indirect draws and dispatches, per-pass GPU timing, and
-  capture support. The optional `RHIMetal4ImGui` target owns the adapter,
+  render, compute, and copy pass encoders, indirect draws and dispatches, untracked placement heaps
+  with resources created at explicit offsets, per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
   its ImGui-dependent public extension header, and the dependency on Dear ImGui; the core RHI does
   not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It
-  declares raster, compute, and copy passes over imported resources with per-subresource uses,
-  culls every pass no declared sink reaches, and answers with a `CompiledFrameRecord` describing
-  the frame it encoded; `GraphDump.h` renders that record as deterministic text.
+  declares raster, compute, and copy passes with per-subresource uses over resources it either
+  imports from a caller or creates as one-frame transients, culls every pass no declared sink
+  reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
+  heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
+  barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
+  record as deterministic text.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).

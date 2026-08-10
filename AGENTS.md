@@ -58,11 +58,15 @@ interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation
 per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only
 passes, compute passes with storage bindings, subresource views, and explicit texture and buffer
 barriers, copy passes with general copies and fills (the path to any subresource but level zero),
-and indirect draws and dispatches over RHI-owned argument layouts;
+indirect draws and dispatches over RHI-owned argument layouts, and untracked placement heaps whose
+resources are created at explicit offsets;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph` — raster/compute/copy passes over imported resources with per-subresource
-uses, dead-pass culling from declared sinks only, and a `CompiledFrameRecord` per frame that
-`GraphDump.h` renders as deterministic text; `Renderer` — declares shadow, scene+sky, and
+validating `RenderGraph` — raster/compute/copy passes with per-subresource uses over imported
+resources and over one-frame transients the graph creates, dead-pass culling from declared sinks
+only, conservative aliasing of lifetime-disjoint transients into `TransientPool`'s per-frame-slot
+placement heaps, and a `CompiledFrameRecord` per frame — schedule, barriers, transient lifetimes and
+assignments, memory totals — that `GraphDump.h` renders as deterministic text; `Renderer` — declares
+shadow, scene+sky, and
 display-transform passes into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends
 are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
