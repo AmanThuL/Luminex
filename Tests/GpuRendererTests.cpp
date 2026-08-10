@@ -1080,11 +1080,17 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
     (*device)->beginFrame();
     (*device)->endFrame(nullptr);
 
+    // Bloom is enabled by default (spec 10) and its three passes always schedule with it; auto
+    // exposure is off by default (spec 9), so the histogram/resolve passes are culled and do not
+    // appear here -- see the culling test in RenderGraphTests.cpp for that half of the picture.
     const std::span<const PassTiming> timings = (*device)->passTimings();
-    REQUIRE(timings.size() == 3);
+    REQUIRE(timings.size() == 6);
     REQUIRE(timings[0].label == "lmx.pass.shadow");
     REQUIRE(timings[1].label == "lmx.pass.scene");
-    REQUIRE(timings[2].label == "lmx.pass.display");
+    REQUIRE(timings[2].label == "lmx.pass.bloom.threshold");
+    REQUIRE(timings[3].label == "lmx.pass.bloom.downsample");
+    REQUIRE(timings[4].label == "lmx.pass.bloom.upsample");
+    REQUIRE(timings[5].label == "lmx.pass.display");
     for (const PassTiming& timing : timings) {
         INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
         REQUIRE(timing.gpuMilliseconds > 0.0);
@@ -1131,8 +1137,12 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     const std::array<DrawItem, 2> items = twoCubeScene(*cube);
     const SceneView view = litSceneView(items);
 
+    // declarePasses() always declares bloom's transients (spec 10), so a caller building its own
+    // graph around it needs a pool exactly as Renderer::render()'s convenience path does.
+    lmx::render::TransientPool transients(**device);
     CommandList& commands = (*device)->beginFrame();
-    lmx::render::RenderGraph graph;
+    transients.beginFrame();
+    lmx::render::RenderGraph graph(transients);
     const lmx::render::GraphTexture sceneColor =
         (*renderer)->declarePasses(graph, commands, sceneCamera(), view);
     const lmx::render::GraphTexture copyTarget =

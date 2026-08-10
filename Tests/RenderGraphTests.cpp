@@ -1944,3 +1944,123 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
     REQUIRE(reuse->bufferFrom == rhi::BufferUse::StorageRead);
     REQUIRE(reuse->bufferTo == rhi::BufferUse::StorageWrite);
 }
+
+//======================================================================================================================
+// Renderer::declarePasses() declares the exposure histogram/resolve chain and the bloom
+// threshold/downsample/upsample chain every frame regardless of either feature's toggle (spec
+// 9/10): what varies is whether anything reaches a sink. This mirrors that exact declaration
+// shape -- pass kinds, labels, and use lists -- with both toggles off, and asserts every one of
+// the six feature passes is culled while the three passes that are always live are not. It is the
+// culling half of the "declare honestly, let the graph decide" pattern the exposure and bloom
+// features exercise; Tests/GpuRendererTests.cpp's "pass timings name every pass the graph ran"
+// case is the schedule's positive half, with bloom (the default-on feature) live.
+TEST_CASE("exposure and bloom passes are culled when both features are off", "[render][graph]") {
+    FakeDevice device;
+    TransientPool pool(device);
+
+    FakeTexture sceneColorTexture{64, 64, "sceneColor"};
+    FakeTexture displayColorTexture{64, 64, "displayColor"};
+    FakeBuffer histogramBufferFake{1024, "histogram"};
+    FakeBuffer exposureBufferFake{4, "exposure"};
+
+    RenderGraph graph(pool);
+    const GraphTexture sceneColor = graph.importTexture(sceneColorTexture, rhi::Format::RGBA16Float,
+                                                        "lmx.render.sceneColorHdr");
+    const GraphTexture displayColor = graph.importTexture(
+        displayColorTexture, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+    const GraphBuffer histogramBuffer =
+        graph.importBuffer(histogramBufferFake, "lmx.render.histogramBuffer");
+    const GraphBuffer exposureBuffer =
+        graph.importBuffer(exposureBufferFake, "lmx.render.exposureBuffer");
+
+    PassDesc scenePass;
+    scenePass.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scenePass, kNoWork);
+    const GraphTexture sceneColorRead = nextVersion(sceneColor);
+
+    // Exposure chain: declared every frame, exported only when auto-exposure is on -- here it is
+    // not, so nothing roots the resolve pass's write.
+    CopyPassDesc clearDesc;
+    clearDesc.bufferDestinations.push_back(histogramBuffer);
+    graph.addCopyPass("lmx.pass.exposure.clearHistogram", clearDesc, kNoWork);
+    const GraphBuffer histogramCleared = nextVersion(histogramBuffer);
+
+    ComputePassDesc histogramDesc;
+    histogramDesc.textureReads.push_back(sceneColorRead);
+    histogramDesc.bufferWrites.push_back(histogramCleared);
+    graph.addComputePass("lmx.pass.exposure.histogram", histogramDesc, kNoWork);
+    const GraphBuffer histogramFinal = nextVersion(histogramCleared);
+
+    ComputePassDesc resolveDesc;
+    resolveDesc.bufferReads.push_back(histogramFinal);
+    resolveDesc.bufferWrites.push_back(exposureBuffer);
+    graph.addComputePass("lmx.pass.exposure.resolve", resolveDesc, kNoWork);
+    // No graph.exportBuffer(...) here: auto-exposure is off.
+
+    // Bloom chain: declared every frame, only the display pass's read of the result is
+    // conditional -- here it is not declared, so nothing roots the upsample pass's write.
+    const GraphTexture bloomChain = graph.createTexture({.width = 32,
+                                                         .height = 32,
+                                                         .format = rhi::Format::RGBA16Float,
+                                                         .mipLevels = 2,
+                                                         .storageRead = true,
+                                                         .storageWrite = true},
+                                                        "lmx.render.bloomChain");
+    const GraphTexture bloomBlur = graph.createTexture({.width = 32,
+                                                        .height = 32,
+                                                        .format = rhi::Format::RGBA16Float,
+                                                        .mipLevels = 1,
+                                                        .storageRead = true,
+                                                        .storageWrite = true},
+                                                       "lmx.render.bloomBlur");
+    constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    constexpr rhi::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+
+    ComputePassDesc thresholdDesc;
+    thresholdDesc.textureReads.push_back(sceneColorRead);
+    thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kMip0));
+    graph.addComputePass("lmx.pass.bloom.threshold", thresholdDesc, kNoWork);
+    const GraphTexture afterThreshold = nextVersion(bloomChain);
+
+    ComputePassDesc downsampleDesc;
+    downsampleDesc.textureReads.push_back(TextureUseDesc(afterThreshold, kMip0));
+    downsampleDesc.textureWrites.push_back(TextureUseDesc(afterThreshold, kMip1));
+    graph.addComputePass("lmx.pass.bloom.downsample", downsampleDesc, kNoWork);
+    const GraphTexture chainFinal = nextVersion(afterThreshold);
+
+    ComputePassDesc upsampleDesc;
+    upsampleDesc.textureReads.push_back(TextureUseDesc(chainFinal, kMip0));
+    upsampleDesc.textureReads.push_back(TextureUseDesc(chainFinal, kMip1));
+    upsampleDesc.textureWrites.push_back(bloomBlur);
+    graph.addComputePass("lmx.pass.bloom.upsample", upsampleDesc, kNoWork);
+    // bloomResult = nextVersion(bloomBlur) is declared by nothing below: bloom is off.
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(sceneColorRead);
+    displayPass.color = ColorAttachment{.handle = displayColor};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+    graph.exportTexture(nextVersion(displayColor));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+
+    const auto cullReasonOf = [&](std::string_view label) -> std::optional<CullReason> {
+        const auto found = std::ranges::find_if(
+            record->debug.passes, [&](const DebugPass& pass) { return pass.label == label; });
+        REQUIRE(found != record->debug.passes.end());
+        return found->cullReason;
+    };
+
+    for (std::string_view label :
+         {"lmx.pass.exposure.clearHistogram", "lmx.pass.exposure.histogram",
+          "lmx.pass.exposure.resolve", "lmx.pass.bloom.threshold", "lmx.pass.bloom.downsample",
+          "lmx.pass.bloom.upsample"}) {
+        INFO("pass: " << label);
+        const std::optional<CullReason> reason = cullReasonOf(label);
+        REQUIRE(reason.has_value());
+        REQUIRE(*reason == CullReason::NoSinkReachesIt);
+    }
+    REQUIRE_FALSE(cullReasonOf("lmx.pass.scene").has_value());
+    REQUIRE_FALSE(cullReasonOf("lmx.pass.display").has_value());
+}

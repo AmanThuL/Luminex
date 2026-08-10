@@ -84,8 +84,19 @@ public:
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this
-    /// SceneView is derived from.
+    /// SceneView is derived from. autoExposureOverride is left at its default (1.0); main.cpp
+    /// overwrites it with the App's own readback of the exposure buffer before declaring the
+    /// frame's passes -- this shell has no RHI handle to read it back with.
     render::SceneView sceneView();
+
+    /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
+    /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
+    /// what turns "a reset happened" into "the next frame's SceneView says so."
+    bool consumeExposureReset();
+
+    /// Whether the Render Settings auto-exposure checkbox is on. main.cpp reads this to decide
+    /// whether to read the exposure buffer back after the frame it declares.
+    bool autoExposureEnabled() const { return m_autoExposureEnabled; }
 
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }
@@ -138,6 +149,26 @@ private:
     // Transient pooling, on by default exactly as the graph's own default is. Editor state rather
     // than scene state, for the same reason the two above are.
     bool m_poolingEnabled = true;
+
+    // Auto-exposure (spec 9): opt-in, off by default so manual exposure stays the default mode.
+    bool m_autoExposureEnabled = false;
+    // Metering parameters, all editable in Render Settings; defaults match Renderer.h's SceneView.
+    float m_exposureLowPercentile = 50.0f;
+    float m_exposureHighPercentile = 95.0f;
+    float m_exposureTargetGrey = 0.18f;
+    float m_exposureEvMin = -8.0f;
+    float m_exposureEvMax = 8.0f;
+    float m_exposureCompensationEv = 0.0f;
+    // Set true by create() (first frame), selectScene() (scene switch), the auto-exposure
+    // checkbox's off->on transition, and a completed applyPendingViewportResize() (resize).
+    // consumeExposureReset() reads and clears it, which is what makes each trigger fire exactly
+    // once rather than on every frame the condition happens to still be true.
+    bool m_exposureResetPending = true;
+
+    // Bloom (spec 10): enabled by default, identically in the editor and --screenshot.
+    bool m_bloomEnabled = true;
+    float m_bloomThreshold = 1.0f;
+    float m_bloomIntensity = 0.2f;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

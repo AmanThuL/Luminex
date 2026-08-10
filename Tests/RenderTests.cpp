@@ -487,3 +487,48 @@ TEST_CASE("the BRDF stays finite and energy-bounded at its parameter limits", "[
         }
     }
 }
+
+//======================================================================================================================
+// spec 9's four reset triggers -- first frame, scene switch, auto-exposure enable, and resize --
+// are wired in EditorShell/main.cpp as calls into this one pure decision: `reset` true forces the
+// manual EV, exactly as manual mode always computes it, whatever a stale readback says. Each case
+// below names the trigger it stands for, even though all four collapse to the same boolean here --
+// that collapse is the point (main.cpp has one reset path, not four).
+TEST_CASE("the exposure override resets to the manual EV on every spec-9 trigger", "[render]") {
+    using lmx::render::resolveAutoExposureOverride;
+
+    constexpr float kManualEv = 2.0f;
+    constexpr float kExpected = 4.0f; // exp2(2)
+    // A stale value the feedback loop would otherwise have carried forward, standing in for
+    // whatever the previous scene/session/size left in the App's cache.
+    constexpr float kStalePrevious = 0.1f;
+
+    SECTION("first frame") {
+        // EditorShell::create() leaves m_exposureResetPending true from construction, so the very
+        // first call to consumeExposureReset() reports a reset without any trigger having "fired".
+        REQUIRE(resolveAutoExposureOverride(/*reset=*/true, kManualEv, kStalePrevious) ==
+                Catch::Approx(kExpected));
+    }
+    SECTION("scene switch") {
+        // EditorShell::selectScene() sets m_exposureResetPending on every successful switch.
+        REQUIRE(resolveAutoExposureOverride(/*reset=*/true, kManualEv, kStalePrevious) ==
+                Catch::Approx(kExpected));
+    }
+    SECTION("auto-exposure enable") {
+        // The Render Settings checkbox's off->on transition sets m_exposureResetPending.
+        REQUIRE(resolveAutoExposureOverride(/*reset=*/true, kManualEv, kStalePrevious) ==
+                Catch::Approx(kExpected));
+    }
+    SECTION("resize") {
+        // EditorShell::applyPendingViewportResize() sets m_exposureResetPending after a successful
+        // resize -- the histogram's binning covered a differently-sized image last frame.
+        REQUIRE(resolveAutoExposureOverride(/*reset=*/true, kManualEv, kStalePrevious) ==
+                Catch::Approx(kExpected));
+    }
+    SECTION("steady state carries the feedback loop's own value forward") {
+        // The negative case every trigger above is checked against: no reset this frame reads the
+        // App's cached readback rather than recomputing exp2(EV).
+        REQUIRE(resolveAutoExposureOverride(/*reset=*/false, kManualEv, kStalePrevious) ==
+                Catch::Approx(kStalePrevious));
+    }
+}

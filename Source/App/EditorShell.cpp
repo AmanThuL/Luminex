@@ -170,6 +170,9 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
                       resized.error().message);
         return;
     }
+    // A resize is a reset trigger (spec 9): the histogram's binning covered a differently-sized
+    // image last frame, so the feedback loop restarts from the manual EV.
+    m_exposureResetPending = true;
     LMX_LOG_INFO("scene target resized to {}x{} px", m_viewportWidth, m_viewportHeight);
 }
 
@@ -198,7 +201,27 @@ render::SceneView EditorShell::sceneView() {
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
     view.exposureEv = m_exposureEv;
+    view.autoExposureEnabled = m_autoExposureEnabled;
+    // autoExposureOverride is left at SceneView's default (1.0); main.cpp overwrites it with the
+    // App's own exposure-buffer readback before declaring passes, and with exp2(m_exposureEv)
+    // itself on a reset frame -- this shell has no RHI handle to perform either.
+    view.exposureLowPercentile = m_exposureLowPercentile;
+    view.exposureHighPercentile = m_exposureHighPercentile;
+    view.exposureTargetGrey = m_exposureTargetGrey;
+    view.exposureEvMin = m_exposureEvMin;
+    view.exposureEvMax = m_exposureEvMax;
+    view.exposureCompensationEv = m_exposureCompensationEv;
+    view.bloomEnabled = m_bloomEnabled;
+    view.bloomThreshold = m_bloomThreshold;
+    view.bloomIntensity = m_bloomIntensity;
     return view;
+}
+
+//======================================================================================================================
+bool EditorShell::consumeExposureReset() {
+    const bool pending = m_exposureResetPending;
+    m_exposureResetPending = false;
+    return pending;
 }
 
 //======================================================================================================================
@@ -290,6 +313,35 @@ void EditorShell::buildRenderSettingsSection() {
         // which is the whole range a manual exposure control is useful over here.
         ImGui::SliderFloat("Exposure (EV)", &m_exposureEv, -6.0f, 6.0f, "%.2f",
                            ImGuiSliderFlags_AlwaysClamp);
+        // Off->on is a reset trigger (spec 9): the feedback loop has produced nothing yet, so the
+        // first auto frame has to start from the manual EV exactly like a fresh scene would.
+        if (ImGui::Checkbox("Auto exposure", &m_autoExposureEnabled)) {
+            if (m_autoExposureEnabled) {
+                m_exposureResetPending = true;
+            }
+        }
+        if (m_autoExposureEnabled) {
+            ImGui::SliderFloat("Low percentile", &m_exposureLowPercentile, 0.0f,
+                               m_exposureHighPercentile, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("High percentile", &m_exposureHighPercentile,
+                               m_exposureLowPercentile, 100.0f, "%.0f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Target grey", &m_exposureTargetGrey, 0.01f, 1.0f, "%.3f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Auto EV min", &m_exposureEvMin, -12.0f, m_exposureEvMax, "%.2f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Auto EV max", &m_exposureEvMax, m_exposureEvMin, 12.0f, "%.2f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Exposure compensation", &m_exposureCompensationEv, -6.0f, 6.0f,
+                               "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        }
+        ImGui::Checkbox("Bloom", &m_bloomEnabled);
+        if (m_bloomEnabled) {
+            ImGui::SliderFloat("Bloom threshold", &m_bloomThreshold, 0.0f, 10.0f, "%.2f",
+                               ImGuiSliderFlags_AlwaysClamp);
+            ImGui::SliderFloat("Bloom intensity", &m_bloomIntensity, 0.0f, 2.0f, "%.2f",
+                               ImGuiSliderFlags_AlwaysClamp);
+        }
         // Off gives every transient its own memory. Nothing about the image changes -- a
         // transient cannot be read before it is written -- so what this compares is cost.
         ImGui::Checkbox("Transient pooling", &m_poolingEnabled);
@@ -494,6 +546,9 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_activeScene = *scene;
     // Camera pose is scene-local; render settings remain editor-local.
     m_camera = cameraFromScene(m_activeScene->initialCamera);
+    // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
+    // about the new one's content.
+    m_exposureResetPending = true;
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_activeScene->name,
                  m_activeScene->objects.size());
 }

@@ -81,6 +81,70 @@ struct SkyUniforms {
 };
 static_assert(sizeof(SkyUniforms) == 96, "must match Sky.slang's SkyUniforms");
 
+// Mirrors Shaders/HistogramAccumulate.slang's HistogramParams. Every field is a scalar, so HLSL
+// cbuffer packing (which Slang's Metal path still follows) leaves them contiguous -- no vector
+// field ever forces a gap here.
+struct HistogramParams {
+    float preExposure;
+    float logLuminanceMin;
+    float logLuminanceMax;
+    uint32_t width;
+    uint32_t height;
+};
+static_assert(sizeof(HistogramParams) == 20,
+              "must match HistogramAccumulate.slang's HistogramParams");
+
+// Mirrors Shaders/ExposureResolve.slang's ExposureResolveParams.
+struct ExposureResolveParams {
+    float lowPercentile;
+    float highPercentile;
+    float targetGrey;
+    float evMin;
+    float evMax;
+    float compensationEv;
+    float logLuminanceMin;
+    float logLuminanceMax;
+};
+static_assert(sizeof(ExposureResolveParams) == 32,
+              "must match ExposureResolve.slang's ExposureResolveParams");
+
+// Mirrors Shaders/BloomThreshold.slang's BloomThresholdParams.
+struct BloomThresholdParams {
+    float threshold;
+    uint32_t srcWidth;
+    uint32_t srcHeight;
+    uint32_t dstWidth;
+    uint32_t dstHeight;
+};
+static_assert(sizeof(BloomThresholdParams) == 20,
+              "must match BloomThreshold.slang's BloomThresholdParams");
+
+// Mirrors Shaders/BloomDownsample.slang's BloomDownsampleParams.
+struct BloomDownsampleParams {
+    uint32_t srcWidth;
+    uint32_t srcHeight;
+    uint32_t dstWidth;
+    uint32_t dstHeight;
+};
+static_assert(sizeof(BloomDownsampleParams) == 16,
+              "must match BloomDownsample.slang's BloomDownsampleParams");
+
+// Mirrors Shaders/BloomUpsample.slang's BloomUpsampleParams.
+struct BloomUpsampleParams {
+    uint32_t smallWidth;
+    uint32_t smallHeight;
+    uint32_t dstWidth;
+    uint32_t dstHeight;
+};
+static_assert(sizeof(BloomUpsampleParams) == 16,
+              "must match BloomUpsample.slang's BloomUpsampleParams");
+
+// Mirrors Shaders/DisplayTransform.slang's DisplayParams.
+struct DisplayParams {
+    float bloomIntensity;
+};
+static_assert(sizeof(DisplayParams) == 4, "must match DisplayTransform.slang's DisplayParams");
+
 // ScenePass.slang's kFlagHasNormalMap.
 constexpr uint32_t kFlagHasNormalMap = 1u;
 
@@ -113,9 +177,51 @@ constexpr uint32_t kLinearSamplerSlot = 0;
 constexpr uint32_t kShadowSamplerSlot = 1;
 constexpr uint32_t kIblSamplerSlot = 2;
 
-// DisplayTransform.slang's own resource set: one texture, its own index space, unrelated to the
-// scene pass's slots above.
+// DisplayTransform.slang's own resource set: unrelated to the scene pass's slots above.
 constexpr uint32_t kSceneColorTextureSlot = 0;
+constexpr uint32_t kDisplayBloomTextureSlot = 1;
+constexpr uint32_t kDisplayParamsSlot = 0;
+
+// HistogramAccumulate.slang's slot map.
+constexpr uint32_t kHistogramSceneColorSlot = 0; // texture
+constexpr uint32_t kHistogramBufferSlot = 0;     // buffer
+constexpr uint32_t kHistogramParamsSlot = 1;     // buffer
+
+// ExposureResolve.slang's slot map (buffer space only).
+constexpr uint32_t kResolveHistogramSlot = 0;
+constexpr uint32_t kResolveExposureSlot = 1;
+constexpr uint32_t kResolveParamsSlot = 2;
+
+// BloomThreshold.slang's slot map.
+constexpr uint32_t kBloomThresholdSceneColorSlot = 0; // texture
+constexpr uint32_t kBloomThresholdDstSlot = 1;        // texture
+constexpr uint32_t kBloomThresholdParamsSlot = 0;     // buffer
+
+// BloomDownsample.slang's slot map (texture space only, plus its own buffer 0).
+constexpr uint32_t kBloomDownsampleSrcSlot = 0;
+constexpr uint32_t kBloomDownsampleDstSlot = 1;
+constexpr uint32_t kBloomDownsampleParamsSlot = 0; // buffer
+
+// BloomUpsample.slang's slot map (texture space only, plus its own buffer 0).
+constexpr uint32_t kBloomUpsampleBaseSlot = 0;
+constexpr uint32_t kBloomUpsampleSmallSlot = 1;
+constexpr uint32_t kBloomUpsampleDstSlot = 2;
+constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
+
+constexpr uint32_t kHistogramBins = 256;
+constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint32_t);
+// Wide enough to cover everything from near-black shadow detail to a strongly overexposed
+// highlight without the metering formula ever needing to know a scene's real range in advance;
+// HistogramAccumulate.slang and ExposureResolve.slang must agree on both.
+constexpr float kExposureLogLuminanceMin = -12.0f;
+constexpr float kExposureLogLuminanceMax = 4.0f;
+
+constexpr uint32_t kComputeThreadsPerGroup2D = 8;
+
+//======================================================================================================================
+uint32_t divRoundUp(uint32_t value, uint32_t divisor) {
+    return (value + divisor - 1) / divisor;
+}
 
 constexpr uint32_t kShadowMapSize = 2048;
 
@@ -291,6 +397,12 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 }
 
 //======================================================================================================================
+float resolveAutoExposureOverride(bool reset, float manualExposureEv,
+                                  float previousResolvedExposure) {
+    return reset ? std::exp2(manualExposureEv) : previousResolvedExposure;
+}
+
+//======================================================================================================================
 rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uint32_t width,
                                                         uint32_t height, bool cpuReadback) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
@@ -319,6 +431,31 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     }
     if (auto library = device.loadShaderLibrary("Shaders/DisplayTransform"); library) {
         self->m_displayLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate"); library) {
+        self->m_histogramLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/ExposureResolve"); library) {
+        self->m_exposureResolveLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/BloomThreshold"); library) {
+        self->m_bloomThresholdLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/BloomDownsample"); library) {
+        self->m_bloomDownsampleLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/BloomUpsample"); library) {
+        self->m_bloomUpsampleLibrary = std::move(*library);
     } else {
         return std::unexpected(library.error());
     }
@@ -410,6 +547,57 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(pipeline.error());
     }
 
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_histogramLibrary.get(),
+             .computeEntry = "computeHistogramAccumulate",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.histogramPipeline"});
+        pipeline) {
+        self->m_histogramPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline =
+            device.createComputePipeline({.library = self->m_exposureResolveLibrary.get(),
+                                          .computeEntry = "computeExposureResolve",
+                                          .threadsPerThreadgroup = {1, 1, 1},
+                                          .label = "lmx.render.exposureResolvePipeline"});
+        pipeline) {
+        self->m_exposureResolvePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_bloomThresholdLibrary.get(),
+             .computeEntry = "computeBloomThreshold",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.bloomThresholdPipeline"});
+        pipeline) {
+        self->m_bloomThresholdPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_bloomDownsampleLibrary.get(),
+             .computeEntry = "computeBloomDownsample",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.bloomDownsamplePipeline"});
+        pipeline) {
+        self->m_bloomDownsamplePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_bloomUpsampleLibrary.get(),
+             .computeEntry = "computeBloomUpsample",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.bloomUpsamplePipeline"});
+        pipeline) {
+        self->m_bloomUpsamplePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
     // The shadow map transitions from depth attachment to sampled texture each frame.
     if (auto shadowMap = device.createTexture({.width = kShadowMapSize,
                                                .height = kShadowMapSize,
@@ -448,6 +636,51 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         self->m_zeroDfgTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
+    }
+    // Zero in kSceneColorFormat so "composite exactly x + 0" holds even without the intensity
+    // uniform's own zero (Shaders/DisplayTransform.slang).
+    {
+        const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
+        const rhi::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
+        if (auto texture = device.createTexture({.width = 1,
+                                                 .height = 1,
+                                                 .format = kSceneColorFormat,
+                                                 .sampled = true,
+                                                 .label = "lmx.render.blackBloomFallback"},
+                                                std::span{&mip, 1});
+            texture) {
+            self->m_blackBloomFallback = std::move(*texture);
+        } else {
+            return std::unexpected(texture.error());
+        }
+    }
+
+    if (auto buffer = device.createBuffer({.size = kHistogramBufferSize,
+                                           .storageRead = true,
+                                           .storageWrite = true,
+                                           .label = "lmx.render.histogramBuffer"},
+                                          nullptr);
+        buffer) {
+        self->m_histogramBuffer = std::move(*buffer);
+    } else {
+        return std::unexpected(buffer.error());
+    }
+    // One float; cpuReadback lets the App (main.cpp) read the resolved value back for the next
+    // frame's SceneView::autoExposureOverride (spec 9's feedback loop, realised as a CPU sync
+    // boundary rather than a same-timeline GPU buffer read -- see Renderer.h's exposureBuffer()).
+    {
+        constexpr float kInitialExposure = 1.0f;
+        if (auto buffer = device.createBuffer({.size = sizeof(float),
+                                               .storageRead = true,
+                                               .storageWrite = true,
+                                               .cpuReadback = true,
+                                               .label = "lmx.render.exposureBuffer"},
+                                              &kInitialExposure);
+            buffer) {
+            self->m_exposureBuffer = std::move(*buffer);
+        } else {
+            return std::unexpected(buffer.error());
+        }
     }
 
     if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
@@ -590,8 +823,13 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
 
     // One stop is one doubling, so the slider's unit becomes a multiply here and every fragment
-    // applies it to its linear output.
-    const float preExposure = std::exp2(view.exposureEv);
+    // applies it to its linear output. Manual mode (the default) keeps exactly this expression,
+    // unchanged from before auto-exposure existed -- parity with pre-M5 output when auto is off
+    // therefore follows from this branch never being taken, not from the two branches agreeing
+    // numerically. Auto mode substitutes the App's own readback of the exposure buffer (spec 9);
+    // see SceneView::autoExposureOverride and Renderer::exposureBuffer().
+    const float preExposure =
+        view.autoExposureEnabled ? view.autoExposureOverride : std::exp2(view.exposureEv);
 
     PassUniforms passUniforms{};
     passUniforms.viewProj = viewProj;
@@ -718,25 +956,245 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         });
 
     const GraphTexture sceneColorRead = nextVersion(sceneColor);
+    const uint32_t sceneWidth = m_width;
+    const uint32_t sceneHeight = m_height;
+
+    // ---- Exposure feedback (spec 9). Declared every frame; only exported when auto-exposure is
+    // on, so dead-pass culling drops the whole histogram -> resolve chain when it is off. Manual
+    // mode's shading above never reads any of this -- preExposure was already resolved by the
+    // ternary before the scene pass was declared.
+    const GraphBuffer histogramImport =
+        graph.importBuffer(*m_histogramBuffer, "lmx.render.histogramBuffer");
+    const GraphBuffer exposureImport =
+        graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer");
+
+    CopyPassDesc histogramClearDesc;
+    histogramClearDesc.bufferDestinations.push_back(histogramImport);
+    graph.addCopyPass("lmx.pass.exposure.clearHistogram", std::move(histogramClearDesc),
+                      [&commands, histogramImport](const PassResources& resources) {
+                          const GraphResult<rhi::Buffer*> histogram =
+                              resources.buffer(histogramImport);
+                          LMX_ASSERT(histogram.has_value(), histogram.error().message);
+                          commands.fillBuffer(**histogram, 0, kHistogramBufferSize, 0);
+                      });
+    const GraphBuffer histogramCleared = nextVersion(histogramImport);
+
+    ComputePassDesc histogramDesc;
+    histogramDesc.textureReads.push_back(sceneColorRead);
+    histogramDesc.bufferWrites.push_back(histogramCleared);
+    graph.addComputePass(
+        "lmx.pass.exposure.histogram", std::move(histogramDesc),
+        [this, &commands, sceneColorRead, histogramCleared, preExposure, sceneWidth,
+         sceneHeight](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> scene = resources.texture(sceneColorRead);
+            LMX_ASSERT(scene.has_value(), scene.error().message);
+            const GraphResult<rhi::Buffer*> histogram = resources.buffer(histogramCleared);
+            LMX_ASSERT(histogram.has_value(), histogram.error().message);
+
+            const HistogramParams params{.preExposure = preExposure,
+                                         .logLuminanceMin = kExposureLogLuminanceMin,
+                                         .logLuminanceMax = kExposureLogLuminanceMax,
+                                         .width = sceneWidth,
+                                         .height = sceneHeight};
+            commands.bindComputePipeline(*m_histogramPipeline);
+            commands.bindTexture(kHistogramSceneColorSlot, **scene);
+            commands.bindStorageBuffer(kHistogramBufferSlot, **histogram,
+                                       rhi::StorageAccess::ReadWrite);
+            commands.setUniforms(kHistogramParamsSlot, &params, sizeof(params));
+            commands.dispatch(divRoundUp(sceneWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(sceneHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    const GraphBuffer histogramFinal = nextVersion(histogramCleared);
+
+    ComputePassDesc resolveDesc;
+    resolveDesc.bufferReads.push_back(histogramFinal);
+    resolveDesc.bufferWrites.push_back(exposureImport);
+    graph.addComputePass(
+        "lmx.pass.exposure.resolve", std::move(resolveDesc),
+        [this, &commands, histogramFinal, exposureImport, view](const PassResources& resources) {
+            const GraphResult<rhi::Buffer*> histogram = resources.buffer(histogramFinal);
+            LMX_ASSERT(histogram.has_value(), histogram.error().message);
+            const GraphResult<rhi::Buffer*> exposure = resources.buffer(exposureImport);
+            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+
+            const ExposureResolveParams params{.lowPercentile = view.exposureLowPercentile,
+                                               .highPercentile = view.exposureHighPercentile,
+                                               .targetGrey = view.exposureTargetGrey,
+                                               .evMin = view.exposureEvMin,
+                                               .evMax = view.exposureEvMax,
+                                               .compensationEv = view.exposureCompensationEv,
+                                               .logLuminanceMin = kExposureLogLuminanceMin,
+                                               .logLuminanceMax = kExposureLogLuminanceMax};
+            commands.bindComputePipeline(*m_exposureResolvePipeline);
+            commands.bindStorageBuffer(kResolveHistogramSlot, **histogram,
+                                       rhi::StorageAccess::Read);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Write);
+            commands.setUniforms(kResolveParamsSlot, &params, sizeof(params));
+            commands.dispatch(1, 1, 1);
+        });
+    const GraphBuffer exposureResolved = nextVersion(exposureImport);
+    if (view.autoExposureEnabled) {
+        graph.exportBuffer(exposureResolved);
+    }
+
+    // ---- Bloom (spec 10). Two graph-created transients: `bloomChain`'s two mips hold the
+    // threshold and one downsample step, and `bloomBlur`'s one mip holds the upsample-accumulate
+    // result -- a second transient rather than accumulating into bloomChain in place, because one
+    // compute pass may read and write one texture only through disjoint ranges (spec 6), and the
+    // accumulate step's inputs (bloomChain's two mips) and output would otherwise name overlapping
+    // ranges of one resource. BloomUpsample.slang's header carries the same reasoning. Declared
+    // every frame; only the display pass's read of bloomBlur is conditional, so dead-pass culling
+    // drops threshold/downsample/upsample together when bloom is off.
+    const uint32_t bloomWidth = std::max(sceneWidth / 2u, 1u);
+    const uint32_t bloomHeight = std::max(sceneHeight / 2u, 1u);
+    const uint32_t bloomSmallWidth = std::max(bloomWidth / 2u, 1u);
+    const uint32_t bloomSmallHeight = std::max(bloomHeight / 2u, 1u);
+
+    const GraphTexture bloomChain = graph.createTexture({.width = bloomWidth,
+                                                         .height = bloomHeight,
+                                                         .format = kSceneColorFormat,
+                                                         .mipLevels = 2,
+                                                         .storageRead = true,
+                                                         .storageWrite = true},
+                                                        "lmx.render.bloomChain");
+    const GraphTexture bloomBlur = graph.createTexture({.width = bloomWidth,
+                                                        .height = bloomHeight,
+                                                        .format = kSceneColorFormat,
+                                                        .mipLevels = 1,
+                                                        .storageRead = true,
+                                                        .storageWrite = true},
+                                                       "lmx.render.bloomBlur");
+    static constexpr rhi::TextureSubresourceRange kBloomMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    static constexpr rhi::TextureSubresourceRange kBloomMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+
+    ComputePassDesc thresholdDesc;
+    thresholdDesc.textureReads.push_back(sceneColorRead);
+    thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kBloomMip0));
+    const float bloomThreshold = view.bloomThreshold;
+    graph.addComputePass(
+        "lmx.pass.bloom.threshold", std::move(thresholdDesc),
+        [this, &commands, sceneColorRead, bloomChain, sceneWidth, sceneHeight, bloomWidth,
+         bloomHeight, bloomThreshold](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> scene = resources.texture(sceneColorRead);
+            LMX_ASSERT(scene.has_value(), scene.error().message);
+            const GraphResult<rhi::Texture*> chain = resources.texture(bloomChain);
+            LMX_ASSERT(chain.has_value(), chain.error().message);
+
+            const BloomThresholdParams params{.threshold = bloomThreshold,
+                                              .srcWidth = sceneWidth,
+                                              .srcHeight = sceneHeight,
+                                              .dstWidth = bloomWidth,
+                                              .dstHeight = bloomHeight};
+            commands.bindComputePipeline(*m_bloomThresholdPipeline);
+            commands.bindTexture(kBloomThresholdSceneColorSlot, **scene);
+            commands.bindStorageTexture(kBloomThresholdDstSlot, **chain,
+                                        rhi::TextureViewDesc{.range = kBloomMip0},
+                                        rhi::StorageAccess::Write);
+            commands.setUniforms(kBloomThresholdParamsSlot, &params, sizeof(params));
+            commands.dispatch(divRoundUp(bloomWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(bloomHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    const GraphTexture bloomAfterThreshold = nextVersion(bloomChain);
+
+    ComputePassDesc downsampleDesc;
+    downsampleDesc.textureReads.push_back(TextureUseDesc(bloomAfterThreshold, kBloomMip0));
+    downsampleDesc.textureWrites.push_back(TextureUseDesc(bloomAfterThreshold, kBloomMip1));
+    graph.addComputePass(
+        "lmx.pass.bloom.downsample", std::move(downsampleDesc),
+        [this, &commands, bloomAfterThreshold, bloomWidth, bloomHeight, bloomSmallWidth,
+         bloomSmallHeight](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> chain = resources.texture(bloomAfterThreshold);
+            LMX_ASSERT(chain.has_value(), chain.error().message);
+
+            const BloomDownsampleParams params{.srcWidth = bloomWidth,
+                                               .srcHeight = bloomHeight,
+                                               .dstWidth = bloomSmallWidth,
+                                               .dstHeight = bloomSmallHeight};
+            commands.bindComputePipeline(*m_bloomDownsamplePipeline);
+            commands.bindStorageTexture(kBloomDownsampleSrcSlot, **chain,
+                                        rhi::TextureViewDesc{.range = kBloomMip0},
+                                        rhi::StorageAccess::Read);
+            commands.bindStorageTexture(kBloomDownsampleDstSlot, **chain,
+                                        rhi::TextureViewDesc{.range = kBloomMip1},
+                                        rhi::StorageAccess::Write);
+            commands.setUniforms(kBloomDownsampleParamsSlot, &params, sizeof(params));
+            commands.dispatch(divRoundUp(bloomSmallWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(bloomSmallHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    const GraphTexture bloomChainFinal = nextVersion(bloomAfterThreshold);
+
+    ComputePassDesc upsampleDesc;
+    upsampleDesc.textureReads.push_back(TextureUseDesc(bloomChainFinal, kBloomMip0));
+    upsampleDesc.textureReads.push_back(TextureUseDesc(bloomChainFinal, kBloomMip1));
+    upsampleDesc.textureWrites.push_back(bloomBlur);
+    graph.addComputePass(
+        "lmx.pass.bloom.upsample", std::move(upsampleDesc),
+        [this, &commands, bloomChainFinal, bloomBlur, bloomWidth, bloomHeight, bloomSmallWidth,
+         bloomSmallHeight](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> chain = resources.texture(bloomChainFinal);
+            LMX_ASSERT(chain.has_value(), chain.error().message);
+            const GraphResult<rhi::Texture*> blur = resources.texture(bloomBlur);
+            LMX_ASSERT(blur.has_value(), blur.error().message);
+
+            const BloomUpsampleParams params{.smallWidth = bloomSmallWidth,
+                                             .smallHeight = bloomSmallHeight,
+                                             .dstWidth = bloomWidth,
+                                             .dstHeight = bloomHeight};
+            commands.bindComputePipeline(*m_bloomUpsamplePipeline);
+            commands.bindStorageTexture(kBloomUpsampleBaseSlot, **chain,
+                                        rhi::TextureViewDesc{.range = kBloomMip0},
+                                        rhi::StorageAccess::Read);
+            commands.bindStorageTexture(kBloomUpsampleSmallSlot, **chain,
+                                        rhi::TextureViewDesc{.range = kBloomMip1},
+                                        rhi::StorageAccess::Read);
+            commands.bindStorageTexture(kBloomUpsampleDstSlot, **blur, rhi::TextureViewDesc{},
+                                        rhi::StorageAccess::Write);
+            commands.setUniforms(kBloomUpsampleParamsSlot, &params, sizeof(params));
+            commands.dispatch(divRoundUp(bloomWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(bloomHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    const GraphTexture bloomResult = nextVersion(bloomBlur);
 
     PassDesc displayDesc;
     // Declaring the read is what orders this pass after the scene pass and puts the scene
     // target's transition to a shader read in front of it; nothing here places a barrier.
     displayDesc.textureReads.push_back(sceneColorRead);
+    // Bloom's read is declared only when the toggle is on: an undeclared bloomResult reaches no
+    // sink through this pass, so dead-pass culling drops threshold/downsample/upsample together
+    // when it is off (spec 10) -- the same pattern the exposure passes above use.
+    const bool bloomEnabled = view.bloomEnabled;
+    if (bloomEnabled) {
+        displayDesc.textureReads.push_back(TextureUseDesc(
+            bloomResult, rhi::TextureSubresourceRange{.baseMipLevel = 0, .mipLevelCount = 1}));
+    }
     // The fullscreen triangle covers every pixel, so the clear only states an attachment load
     // action the RHI requires; no fragment reads what it wrote.
     displayDesc.color = ColorAttachment{
         .handle = displayColor, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
-    graph.addPass("lmx.pass.display", std::move(displayDesc),
-                  [this, &commands, sceneColorRead](const PassResources& resources) {
-                      const GraphResult<rhi::Texture*> hdrTexture =
-                          resources.texture(sceneColorRead);
-                      LMX_ASSERT(hdrTexture.has_value(), hdrTexture.error().message);
+    const float bloomIntensity = view.bloomIntensity;
+    graph.addPass(
+        "lmx.pass.display", std::move(displayDesc),
+        [this, &commands, sceneColorRead, bloomResult, bloomEnabled,
+         bloomIntensity](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> hdrTexture = resources.texture(sceneColorRead);
+            LMX_ASSERT(hdrTexture.has_value(), hdrTexture.error().message);
 
-                      commands.bindPipeline(*m_displayPipeline);
-                      commands.bindTexture(kSceneColorTextureSlot, **hdrTexture);
-                      commands.draw(3);
-                  });
+            commands.bindPipeline(*m_displayPipeline);
+            commands.bindTexture(kSceneColorTextureSlot, **hdrTexture);
+            // Disabled bloom binds a texture that is exactly zero and multiplies by exactly zero
+            // (belt and suspenders): scene color + 0 is bit-identical to scene color alone, which
+            // is what keeps a bloom-off frame byte-identical to pre-M5 output.
+            if (bloomEnabled) {
+                const GraphResult<rhi::Texture*> bloomTexture = resources.texture(bloomResult);
+                LMX_ASSERT(bloomTexture.has_value(), bloomTexture.error().message);
+                commands.bindTexture(kDisplayBloomTextureSlot, **bloomTexture);
+            } else {
+                commands.bindTexture(kDisplayBloomTextureSlot, *m_blackBloomFallback);
+            }
+            const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f};
+            commands.setUniforms(kDisplayParamsSlot, &params, sizeof(params));
+            commands.draw(3);
+        });
 
     return nextVersion(displayColor);
 }
@@ -744,7 +1202,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 //======================================================================================================================
 void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
                       bool barrierForSampling) {
-    RenderGraph graph;
+    // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
+    // whether or not a caller's own graph has a pool), so this convenience path needs one of its
+    // own -- the caller already opened this frame with Device::beginFrame() before calling here,
+    // which is what m_transientPool.beginFrame() requires.
+    m_transientPool.beginFrame();
+    RenderGraph graph(m_transientPool);
     const GraphTexture displayColor = declarePasses(graph, commands, camera, view);
     // The display-transformed image is this frame's whole result, so it is what the graph roots.
     graph.exportTexture(displayColor);
@@ -775,6 +1238,13 @@ rhi::Texture& Renderer::hdrColorTarget() {
 rhi::Texture& Renderer::depthTarget() {
     LMX_ASSERT(m_depth != nullptr, "Renderer::depthTarget: no depth target -- create() failed");
     return *m_depth;
+}
+
+//======================================================================================================================
+rhi::Buffer& Renderer::exposureBuffer() {
+    LMX_ASSERT(m_exposureBuffer != nullptr,
+               "Renderer::exposureBuffer: no exposure buffer -- create() failed");
+    return *m_exposureBuffer;
 }
 
 } // namespace lmx::render
