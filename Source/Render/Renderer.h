@@ -20,26 +20,29 @@ struct Material {
     // runs. The slot is still bound (to a flat-normal 1x1) so nothing dereferences an empty one.
     rhi::Texture* normalMap = nullptr;
     // glTF 2.0 channel convention: roughness = G, metallic = B (R and A unused). Null means the
-    // shared white fallback, so `metallic`/`roughness` alone apply. Bound but unread by the
-    // fragment until the GGX rewrite consumes it.
+    // shared white fallback, so `metallic`/`roughness` alone apply.
     rhi::Texture* metallicRoughness = nullptr;
     // glTF 2.0 channel convention: occlusion = R. Null means the shared white fallback (no
-    // occlusion). Bound but unread by the fragment until the GGX rewrite consumes it.
+    // occlusion). Attenuates the image-based terms only, never the analytic lights.
     rhi::Texture* occlusion = nullptr;
-    // Null means the shared white fallback, so `emissive` alone applies. Bound but unread by the
-    // fragment until the GGX rewrite consumes it.
+    // Null means the shared white fallback, so `emissive` alone applies.
     rhi::Texture* emissiveMap = nullptr;
+    // The glTF base colour: linear, and the input the shader derives both the diffuse albedo and a
+    // metal's F0 from -- which is why there is no separate reflectance field to keep in step with
+    // it.
     glm::vec4 albedo{1.0f};
-    glm::vec3 fresnelR0{0.04f}; // dielectric default; metals get their own base colour
-    float roughness = 0.5f;     // converted to shininess as 1 - roughness
-    // dielectric/metal mix; unread by the fragment until the GGX rewrite. Deliberately diverges
-    // from glTF's material default of 1.0 (GltfMaterial keeps that spec default, and Scene.cpp
-    // sets this explicitly for every glTF material): every non-glTF material here -- MaterialLab's
-    // sphere grid, known-color patches, ramp/probe materials, test materials -- relies on
-    // Material{} and never sets metallic, so this default has to agree with fresnelR0's dielectric
-    // default above or the GGX rewrite would render them all fully metallic.
+    // Perceptual roughness, squared to the GGX alpha in the shader. The shader floors it at
+    // Lighting.slang's kMinRoughness, so a 0 here is a near-mirror rather than a singular lobe.
+    float roughness = 0.5f;
+    // dielectric/metal mix. Deliberately diverges from glTF's material default of 1.0 (GltfMaterial
+    // keeps that spec default, and Scene.cpp sets this explicitly for every glTF material): every
+    // non-glTF material here -- MaterialLab's sphere grid, known-color patches, ramp/probe
+    // materials, test materials -- relies on Material{} and never sets metallic, so a metallic
+    // default would render all of them as conductors.
     float metallic = 0.0f;
-    glm::vec3 emissive{0.0f}; // linear; unread by the fragment until the GGX rewrite
+    // glTF occlusion strength: 0 ignores the map and 1 applies it fully.
+    float occlusionStrength = 1.0f;
+    glm::vec3 emissive{0.0f}; // linear radiance the surface emits, added after all lighting
     glm::mat4 uvTransform{1.0f};
 };
 
@@ -68,17 +71,24 @@ struct SceneView {
     // Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
     // multiplies. Lights 1 and 2 contribute without shadowing.
     DirectionalLight lights[3];
-    // Linear, per this header's own doctrine (see Material above). Pre-decoded as a literal --
-    // rather than a call to engine::srgbToLinear -- because Render sits below Engine in the
-    // dependency chain and cannot call it; this is engine::attachSkyAndLights's authored
-    // (0.25, 0.25, 0.35), decoded (Source/Engine/Scene.cpp) and rounded to 6 significant digits --
-    // that decode is the only place the sRGB constant itself is written down.
-    glm::vec3 ambient{0.050876f, 0.050876f, 0.100482f};
     // Both null or both set. A sky needs geometry to rasterise and a cubemap to sample; either
     // one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     // the pair.
     const Mesh* skySphere = nullptr;
     rhi::Texture* skyCubemap = nullptr;
+    // The scene's image-based lighting, generated from the same environment `skyCubemap` shows
+    // (Source/Engine/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,
+    // and the split-sum DFG table. This is what replaced the flat ambient term -- an environment
+    // the surface actually samples per normal and per reflection vector, rather than one constant
+    // added to every pixel.
+    //
+    // Independently nullable, and null is a supported state rather than an incomplete one: the
+    // renderer substitutes its black-cube and zero-DFG fallbacks, which make both image-based terms
+    // evaluate to zero. A caller that builds a SceneView by hand -- every test that probes direct
+    // lighting on its own -- therefore renders without constructing an IBL set.
+    rhi::Texture* irradiance = nullptr;
+    rhi::Texture* prefilteredEnv = nullptr;
+    rhi::Texture* dfgLut = nullptr;
     // xyz centre, w radius. The shadow ortho frustum is fitted to exactly this, so a sphere that
     // does not contain the scene loses the geometry outside it from the shadow map.
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
@@ -218,15 +228,19 @@ private:
     std::unique_ptr<rhi::Texture> m_color;
     std::unique_ptr<rhi::Texture> m_depth;
     std::unique_ptr<rhi::Texture> m_shadowMap;
-    // The three "nothing here" textures every draw binds when a material or a scene leaves a slot
-    // empty. They exist because the fragment shader reads all four texture slots unconditionally
-    // (Slang gives every entry point the file's whole global set), so an empty slot has to hold
-    // something that shades to the right answer rather than nothing at all.
+    // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
+    // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
+    // every entry point the file's whole global set), so an empty slot has to hold something that
+    // shades to the right answer rather than nothing at all: white is the identity for the material
+    // factors, a flat normal leaves the tangent frame alone, and a black cube plus a zero DFG table
+    // make both image-based terms vanish.
     std::unique_ptr<rhi::Texture> m_whiteTexture;
     std::unique_ptr<rhi::Texture> m_flatNormalTexture;
     std::unique_ptr<rhi::Texture> m_blackCubeTexture;
+    std::unique_ptr<rhi::Texture> m_zeroDfgTexture;
     std::unique_ptr<rhi::Sampler> m_linearSampler;
     std::unique_ptr<rhi::Sampler> m_shadowSampler;
+    std::unique_ptr<rhi::Sampler> m_iblSampler;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

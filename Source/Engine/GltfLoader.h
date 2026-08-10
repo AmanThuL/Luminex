@@ -20,6 +20,7 @@ struct GltfMaterial {
     int metallicRoughnessImage = -1;
     // glTF 2.0 packs ambient occlusion as R.
     int occlusionImage = -1;
+    float occlusionStrength = 1.0f;
     int emissiveImage = -1;
     glm::vec3 emissiveFactor{0.f}; // linear, per the glTF spec -- not an sRGB-authored constant
 };
@@ -58,7 +59,5 @@ struct GltfScene {
 // flattened after an active-scene traversal via cgltf's ancestor-chain composition; animation is
 // not evaluated.
 AssetResult<GltfScene> loadGltf(std::string_view path);
-
-glm::vec3 fresnelFromMetallic(const glm::vec4& baseColor, float metallic);
 
 } // namespace lmx::engine

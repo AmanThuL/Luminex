@@ -116,8 +116,6 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
         scene.lights[i].strength = glm::vec3(srgbToLinear(kLightStrengths[i]));
     }
 
-    // Authored ambient color crosses the sRGB-to-linear boundary at scene construction.
-    scene.ambient = srgbToLinear(glm::vec3(0.25f, 0.25f, 0.35f));
     return {};
 }
 
@@ -230,9 +228,9 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         render::Material material;
         // glTF factors are linear; texture color-space conversion happens in the texture view.
         material.albedo = src.baseColorFactor;
-        material.fresnelR0 = fresnelFromMetallic(src.baseColorFactor, src.metallic);
         material.roughness = src.roughness;
         material.metallic = src.metallic;
+        material.occlusionStrength = src.occlusionStrength;
         // glTF's emissiveFactor is linear as authored, unlike a display-space color constant --
         // do not run it through srgbToLinear.
         material.emissive = src.emissiveFactor;
@@ -386,13 +384,18 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
     for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
         sceneView.lights[i] = lights[i];
     }
-    sceneView.ambient = ambient;
     sceneView.boundingSphere = boundingSphere;
     // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
     if (skyCubemap != nullptr) {
         sceneView.skySphere = &skySphere;
         sceneView.skyCubemap = skyCubemap.get();
     }
+    // The IBL set is generated from that same sky and published with it, so a scene that shows a
+    // sky also lights from it. Forwarded unconditionally: unique_ptr::get() on an empty pointer is
+    // the null the renderer's fallbacks already handle.
+    sceneView.irradiance = irradianceMap.get();
+    sceneView.prefilteredEnv = prefilteredEnvMap.get();
+    sceneView.dfgLut = dfgLut.get();
     sceneView.shadowFilter = filter;
     sceneView.wireframe = wireframe;
     return sceneView;

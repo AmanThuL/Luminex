@@ -1,7 +1,10 @@
+#include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
 #include "GpuTestSupport.h"
 
+#include "Engine/Ibl.h"
 #include "Engine/Scene.h"
+#include "EngineTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -526,7 +529,6 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     view.lights[0] = {.strength = {0.8f, 0.8f, 0.8f}, .direction = lightDir};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
     view.lights[2].strength = {0.0f, 0.0f, 0.0f};
-    view.ambient = {0.05f, 0.05f, 0.05f};
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
 
     Camera camera;
@@ -549,22 +551,28 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     const Pixel lit = pixelAtWidth(pixels, kSceneProbeSize, litAt.x, litAt.y);
     INFO(describe("clear of the shadow", litAt.x, litAt.y, lit));
 
-    // The lit ground's radiance is what it always was; only the transform between it and the
-    // display target changed. Naming that radiance as the linear value behind the byte this probe
-    // used to read (189) keeps the expectation derived rather than re-measured: 189 decodes to
-    // 0.5089, which the tone map takes to 0.4689 and the encode returns as 182.
-    const int litByte = lmx::test::displayByte(lmx::test::linearOfSrgbByte(189));
-    REQUIRE(channelNear(lit.r, litByte, 6));
-    REQUIRE(channelNear(lit.g, litByte, 6));
-    REQUIRE(channelNear(lit.b, litByte, 6));
+    // Re-derived for the GGX model rather than carried over: under Blinn-Phong this probe read
+    // byte 189, which was albedo * lightStrength with no 1/pi and an ambient floor underneath it.
+    // The lit ground is now a white dielectric at the renderer's default roughness, lit by one
+    // directional light, with no environment bound -- so its radiance is exactly what the CPU
+    // mirror of the same BRDF returns for this geometry, pushed through the display transform.
+    const glm::vec3 groundPoint{-5.0f, 0.0f, -5.0f};
+    const glm::vec3 litRadiance = lmx::test::brdf::directionalLight(
+        view.lights[0].strength, view.lights[0].direction, glm::vec3{0.0f, 1.0f, 0.0f},
+        glm::normalize(camera.position - groundPoint), {.baseColor = glm::vec3(1.0f)});
+    const std::array<int, 3> litBytes = lmx::test::displayBytes(litRadiance);
+    INFO("expected lit bytes " << litBytes[0] << ", " << litBytes[1] << ", " << litBytes[2]);
+    REQUIRE(channelNear(lit.r, litBytes[0], 4));
+    REQUIRE(channelNear(lit.g, litBytes[1], 4));
+    REQUIRE(channelNear(lit.b, litBytes[2], 4));
 
     REQUIRE(shadowed.r * 4 < lit.r * 3);
     REQUIRE(shadowed.g * 4 < lit.g * 3);
     REQUIRE(shadowed.b * 4 < lit.b * 3);
-    // Fully shadowed ground still carries the ambient term (0.05 linear on a white albedo), which
-    // the transform lands on byte 34. A shadow that swallowed the ambient floor would read below
-    // it; partial PCF coverage can only read above.
-    REQUIRE(shadowed.r >= lmx::test::displayByte(view.ambient.r) - 2);
+    // No lower bound on the shadowed probe any more: the ambient floor it used to guard is gone,
+    // and this view binds no IBL, so a fully occluded fragment's only radiance is whatever partial
+    // PCF coverage lets through. What the environment now contributes in shadow is measured by the
+    // furnace case below, where it is the entire signal.
 
     const PixelCoord edgeAt = projectToPixel(camera, kSceneProbeSize, {4.0f, 0.0f, 4.0f});
     const Pixel edge = pixelAtWidth(pixels, kSceneProbeSize, edgeAt.x, edgeAt.y);
@@ -732,11 +740,17 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
 }
 
 //======================================================================================================================
-// Ambient 0.5 on a white albedo is linear 0.5 at the fragment. Nothing between there and the
-// display target may store it as a display-space number: the tone map subtracts its 0.04 black
-// offset (0.5 is above the 0.08 knee and below the 0.76 shoulder, so that is the whole of it) and
-// the encode turns the remaining 0.46 into byte 181. A scene shader that still encoded would put
-// 188 here, and an 8-bit intermediate would round it somewhere else again.
+// An emissive factor of 0.5 with every light off and no environment bound is linear 0.5 at the
+// fragment: emissive is radiance the surface produces, so it takes no lighting term and reaches the
+// target as itself. Nothing between there and the display target may store it as a display-space
+// number: the tone map subtracts its 0.04 black offset (0.5 is above the 0.08 knee and below the
+// 0.76 shoulder, so that is the whole of it) and the encode turns the remaining 0.46 into byte 181.
+// A scene shader that still encoded would put 188 here, and an 8-bit intermediate would round it
+// somewhere else again.
+//
+// Emissive is what carries this probe now that the ambient term is gone. It is the one input that
+// still puts a chosen linear value on a surface without routing it through a BRDF, which is what
+// keeps the display transform the only thing this case measures.
 TEST_CASE("the display transform tone maps and encodes the scene's linear output", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -756,7 +770,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     const std::array<DrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
-         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}}},
     }};
 
     SceneView view;
@@ -764,7 +778,6 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
-    view.ambient = {0.5f, 0.5f, 0.5f};
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
     CommandList& commands = (*device)->beginFrame();
@@ -777,7 +790,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
 
     const int want = lmx::test::displayByte(0.5f);
     const Pixel probe = pixelAt(pixels, 32, 32);
-    INFO(describe("ambient-only white", 32, 32, probe));
+    INFO(describe("emissive-only white", 32, 32, probe));
     REQUIRE(channelNear(probe.r, want, 6));
     REQUIRE(channelNear(probe.g, want, 6));
     REQUIRE(channelNear(probe.b, want, 6));
@@ -822,7 +835,7 @@ HalfPixel halfPixelAt(const std::vector<uint16_t>& rgba, uint32_t x, uint32_t y)
 //======================================================================================================================
 // The scene target is scene-linear and unbounded, and exposure is a multiply applied before it.
 //
-// Ambient 4.0 on a white albedo puts linear 4.0 at the fragment -- four times what an 8-bit unorm
+// An emissive factor of 4.0 puts linear 4.0 at the fragment -- four times what an 8-bit unorm
 // target can hold -- so the readback finding exactly 4.0 is what says no display-space
 // intermediate stands between the shading and the target. 4.0 and 8.0 are exact in binary16, so
 // these are equalities: raising exposure by one EV doubles the stored radiance and nothing else.
@@ -849,7 +862,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     const std::array<DrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
-         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}}},
     }};
 
     SceneView view;
@@ -857,7 +870,6 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
-    view.ambient = {4.0f, 4.0f, 4.0f};
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
     // An unset SceneView must render at unit exposure, or every existing probe in this file moves.
     REQUIRE(view.exposureEv == 0.0f);
@@ -883,7 +895,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     // Radiance of 4.0 reaches the display target as 253, not 255: the tone map's shoulder
     // compresses it. Clipping it to 1.0 anywhere upstream would have written 255 instead.
     const Pixel displayAtZero = pixelAt(pixels, 32, 32);
-    INFO(describe("ambient 4.0 through the display transform", 32, 32, displayAtZero));
+    INFO(describe("emissive 4.0 through the display transform", 32, 32, displayAtZero));
     REQUIRE(channelNear(displayAtZero.r, lmx::test::displayByte(4.0f), 2));
 
     // The renderer's authored clear is 0.05 in its red channel; scene-linear, that is 0.003936.
@@ -942,9 +954,21 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     renderWith(false);
     const Pixel solid = pixelAt(pixels, 26, 26);
     INFO(describe("solid interior", 26, 26, solid));
-    REQUIRE(solid.r > 128);
-    REQUIRE(solid.g > 128);
-    REQUIRE(solid.b > 128);
+    // Re-derived for the GGX model: under Blinn-Phong this probe only had to clear 128, which the
+    // old diffuse term (albedo times light strength, with no 1/pi) reached easily. The cube's front
+    // face is a white dielectric at the default roughness, lit head-on by litSceneView's only
+    // light, so the value is what the CPU mirror of the BRDF returns for N = L = V, through the
+    // display transform. The probe sits about 8 degrees off the view axis, which costs it a byte; 3
+    // covers that and the target's own rounding.
+    const int litByte =
+        lmx::test::displayByte(lmx::test::brdf::directionalLight(
+                                   {0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, 1.0f},
+                                   {0.0f, 0.0f, 1.0f}, {.baseColor = glm::vec3(1.0f)})
+                                   .r);
+    INFO("expected lit byte " << litByte);
+    REQUIRE(channelNear(solid.r, litByte, 3));
+    REQUIRE(channelNear(solid.g, litByte, 3));
+    REQUIRE(channelNear(solid.b, litByte, 3));
 
     renderWith(true);
     const Pixel wire = pixelAt(pixels, 26, 26);

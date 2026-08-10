@@ -306,6 +306,7 @@ TEST_CASE("loadGltf parses a minimal quad: mesh/material/instance", "[engine]") 
     // every new input keeps its default.
     REQUIRE(mat.metallicRoughnessImage == -1);
     REQUIRE(mat.occlusionImage == -1);
+    REQUIRE(mat.occlusionStrength == Catch::Approx(1.0f));
     REQUIRE(mat.emissiveImage == -1);
     REQUIRE(near3(mat.emissiveFactor, {0.0f, 0.0f, 0.0f}));
 
@@ -472,7 +473,8 @@ TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[engine]"
         REQUIRE(offset != std::string::npos);
         json.replace(offset, from.size(), to);
     };
-    replaceOnce("\"materials\": [{", "\"materials\": [{\"occlusionTexture\": {\"index\": 0},");
+    replaceOnce("\"materials\": [{",
+                "\"materials\": [{\"occlusionTexture\": {\"index\": 0, \"strength\": 0.35},");
     replaceOnce("\"baseColorFactor\"",
                 "\"metallicRoughnessTexture\": {\"index\": 0}, \"baseColorFactor\"");
     replaceOnce("  \"buffers\"", "  \"textures\": [{\"source\": 0}],\n"
@@ -486,6 +488,7 @@ TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[engine]"
     const GltfMaterial& mat = result->materials[0];
     REQUIRE(mat.metallicRoughnessImage == 0);
     REQUIRE(mat.occlusionImage == 0);
+    REQUIRE(mat.occlusionStrength == Catch::Approx(0.35f));
     REQUIRE(mat.emissiveImage == -1);
     REQUIRE(near3(mat.emissiveFactor, {0.0f, 0.0f, 0.0f}));
     REQUIRE(result->images[0].rgba8.size() == 4);
@@ -582,12 +585,6 @@ TEST_CASE("loadGltf fails descriptively when an index accessor's unpack fails "
     REQUIRE(result.error().message.find("indices") != std::string::npos);
 
     std::filesystem::remove_all(dir);
-}
-
-//======================================================================================================================
-TEST_CASE("fresnelFromMetallic pins the Blinn-Phong approximation", "[engine]") {
-    REQUIRE(near3(fresnelFromMetallic({0.2f, 0.4f, 0.6f, 1.0f}, 0.0f), {0.04f, 0.04f, 0.04f}));
-    REQUIRE(near3(fresnelFromMetallic({1.0f, 0.0f, 0.0f, 1.0f}, 1.0f), {1.0f, 0.0f, 0.0f}));
 }
 
 //======================================================================================================================

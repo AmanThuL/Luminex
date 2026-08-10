@@ -22,22 +22,19 @@ namespace {
 
 // Mirrors Shaders/ScenePass.slang's ObjectUniforms.
 struct ObjectUniforms {
-    glm::mat4 mvp;         // 0
-    glm::mat4 model;       // 64
-    glm::mat4 uvTransform; // 128
-    glm::vec4 albedo;      // 192
-    glm::vec3 fresnelR0;   // 208
-    float fresnelPadding;  // 220 -- the float3's tail
-    float roughness;       // 224
-    uint32_t flags;        // 228
-    // metallic/emissive are bound but unread by the fragment until the GGX rewrite (a later task)
-    // derives F0 from baseColor/metallic and adds the emissive term.
-    float metallic;        // 232 -- folds into the struct's former tail padding
-    float metallicPadding; // 236 -- pads up to emissive's 16-byte-aligned register
-    glm::vec3 emissive;    // 240
-    float emissivePadding; // 252 -- the float3's tail, rounds the struct to 256
+    glm::mat4 mvp;           // 0
+    glm::mat4 model;         // 64
+    glm::mat4 normalMatrix;  // 128 -- inverse transpose of model; 4x4 for one unambiguous layout
+    glm::mat4 uvTransform;   // 192
+    glm::vec4 albedo;        // 256
+    float roughness;         // 272
+    uint32_t flags;          // 276
+    float metallic;          // 280
+    float occlusionStrength; // 284 -- fills the register before emissive's 16-byte alignment
+    glm::vec3 emissive;      // 288
+    float emissivePadding;   // 300 -- the float3's tail, rounds the struct to 304
 };
-static_assert(sizeof(ObjectUniforms) == 256, "must match ScenePass.slang's ObjectUniforms");
+static_assert(sizeof(ObjectUniforms) == 304, "must match ScenePass.slang's ObjectUniforms");
 
 // Mirrors Shaders/ShadowPass.slang's ObjectUniforms.
 struct ShadowObjectUniforms {
@@ -61,14 +58,13 @@ struct PassUniforms {
     glm::vec3 eyePos;          // 128
     float eyePadding;          // 140 -- the float3's tail
     float time;                // 144
-    float preExposure;         // 148 -- fits in padding ambient's 16-byte alignment already left
-    float alignmentPadding[2]; // 152 -- ambient realigns to 16
-    glm::vec4 ambient;         // 160
-    DirLightUniform lights[3]; // 176
-    int32_t shadowFilter;      // 272
-    int32_t tailPadding[3];    // 276
+    float preExposure;         // 148
+    float alignmentPadding[2]; // 152 -- lights[] carries float3s and realigns to 16
+    DirLightUniform lights[3]; // 160
+    int32_t shadowFilter;      // 256
+    int32_t tailPadding[3];    // 260
 };
-static_assert(sizeof(PassUniforms) == 288, "must match ScenePass.slang's PassUniforms");
+static_assert(sizeof(PassUniforms) == 272, "must match ScenePass.slang's PassUniforms");
 
 // Mirrors Shaders/Sky.slang's SkyUniforms.
 struct SkyUniforms {
@@ -90,18 +86,27 @@ constexpr int32_t kShadowFilterPcss = 1;
 constexpr uint32_t kVertexBufferSlot = 0;
 constexpr uint32_t kObjectUniformsSlot = 1;
 constexpr uint32_t kPassUniformsSlot = 2;
+// The scene pass's texture slot map, which Shaders/ScenePass.slang's header documents in full.
+// Two groups share one index space: a per-draw material set rebound for every DrawItem, and a
+// per-pass shared set bound once before the draw loop.
+//
+// Slot 2 is the sky cubemap. Only Shaders/Sky.slang reads it, and the sky draws at the end of this
+// same render pass, so it is bound beside that draw rather than with the shared set -- the scene
+// fragment stopped sampling the sky when the prefiltered environment (slot 8) replaced its ad-hoc
+// mirror reflection.
 constexpr uint32_t kDiffuseTextureSlot = 0;
 constexpr uint32_t kNormalTextureSlot = 1;
 constexpr uint32_t kSkyTextureSlot = 2;
 constexpr uint32_t kShadowTextureSlot = 3;
-// Per-draw metallic-roughness/occlusion/emissive inputs: plumbed for the GGX rewrite (a later
-// task), unread by the current fragment shader. t7+ is reserved for the IBL set (prefiltered
-// specular, irradiance, DFG LUT) that a later task adds to the pass's shared resources.
 constexpr uint32_t kMetallicRoughnessTextureSlot = 4;
 constexpr uint32_t kOcclusionTextureSlot = 5;
 constexpr uint32_t kEmissiveTextureSlot = 6;
+constexpr uint32_t kIrradianceTextureSlot = 7;
+constexpr uint32_t kPrefilteredEnvTextureSlot = 8;
+constexpr uint32_t kDfgLutTextureSlot = 9;
 constexpr uint32_t kLinearSamplerSlot = 0;
 constexpr uint32_t kShadowSamplerSlot = 1;
+constexpr uint32_t kIblSamplerSlot = 2;
 
 // DisplayTransform.slang's own resource set: one texture, its own index space, unrelated to the
 // scene pass's slots above.
@@ -120,12 +125,15 @@ constexpr uint32_t kShadowMapSize = 2048;
 // sloped-bias case is the instrument that pins the sign.
 constexpr rhi::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
 
-// Linear white is the neutral diffuse multiplier.
+// Linear white is the neutral multiplier for every per-draw material factor.
 constexpr std::array<uint8_t, 4> kWhiteTexel = {255, 255, 255, 255};
 // Encoded tangent-space (0, 0, 1); bound to keep every declared slot valid.
 constexpr std::array<uint8_t, 4> kFlatNormalTexel = {128, 128, 255, 255};
-// Black removes the cubemap reflection term when a scene has no sky.
+// Black zeroes both image-based terms when a scene carries no IBL set.
 constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
+// The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
+// F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
+constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
 
 //======================================================================================================================
 rhi::Result<std::unique_ptr<rhi::Texture>> createFallbackTexture(rhi::Device& device,
@@ -143,6 +151,20 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createFallbackTexture(rhi::Device& de
                                  .sampled = true,
                                  .label = label},
                                 std::span{mips.data(), faceCount});
+}
+
+//======================================================================================================================
+// The DFG fallback needs its own creator: it is the one fallback that is neither RGBA8 nor a cube,
+// because the split-sum table it stands in for is RG16Float and a shader reading it as anything
+// else would find its two channels in the wrong place.
+rhi::Result<std::unique_ptr<rhi::Texture>> createZeroDfgTexture(rhi::Device& device) {
+    const rhi::TextureMip mip{.data = kZeroDfgTexel.data(), .bytesPerRow = sizeof(kZeroDfgTexel)};
+    return device.createTexture({.width = 1,
+                                 .height = 1,
+                                 .format = rhi::Format::RG16Float,
+                                 .sampled = true,
+                                 .label = "lmx.render.zeroDfgFallback"},
+                                std::span{&mip, 1});
 }
 
 //======================================================================================================================
@@ -170,12 +192,13 @@ void registerUniformLayoutsForCapture() {
          .sizeBytes = sizeof(ObjectUniforms),
          .fields = {{"mvp", offsetof(ObjectUniforms, mvp), "float4x4"},
                     {"model", offsetof(ObjectUniforms, model), "float4x4"},
+                    {"normalMatrix", offsetof(ObjectUniforms, normalMatrix), "float4x4"},
                     {"uvTransform", offsetof(ObjectUniforms, uvTransform), "float4x4"},
                     {"albedo", offsetof(ObjectUniforms, albedo), "float4"},
-                    {"fresnelR0", offsetof(ObjectUniforms, fresnelR0), "float3"},
                     {"roughness", offsetof(ObjectUniforms, roughness), "float"},
                     {"flags", offsetof(ObjectUniforms, flags), "uint"},
                     {"metallic", offsetof(ObjectUniforms, metallic), "float"},
+                    {"occlusionStrength", offsetof(ObjectUniforms, occlusionStrength), "float"},
                     {"emissive", offsetof(ObjectUniforms, emissive), "float3"}}});
 
     schema.registerUniformStruct(
@@ -191,8 +214,7 @@ void registerUniformLayoutsForCapture() {
         {"shadowTransform", offsetof(PassUniforms, shadowTransform), "float4x4"},
         {"eyePos", offsetof(PassUniforms, eyePos), "float3"},
         {"time", offsetof(PassUniforms, time), "float"},
-        {"preExposure", offsetof(PassUniforms, preExposure), "float"},
-        {"ambient", offsetof(PassUniforms, ambient), "float4"}};
+        {"preExposure", offsetof(PassUniforms, preExposure), "float"}};
     for (uint32_t light = 0; light < kLightCount; ++light) {
         const uint32_t base =
             uint32_t{offsetof(PassUniforms, lights)} + light * uint32_t{sizeof(DirLightUniform)};
@@ -417,6 +439,11 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(texture.error());
     }
+    if (auto texture = createZeroDfgTexture(device); texture) {
+        self->m_zeroDfgTexture = std::move(*texture);
+    } else {
+        return std::unexpected(texture.error());
+    }
 
     if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
                                              .addressMode = rhi::AddressMode::Wrap,
@@ -438,6 +465,20 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                              .label = "lmx.render.shadowSampler"});
         sampler) {
         self->m_shadowSampler = std::move(*sampler);
+    } else {
+        return std::unexpected(sampler.error());
+    }
+
+    // Clamped, not wrapped: the IBL set is read at the very edge of its domain -- the DFG table at
+    // N.V = 1 and at roughness 1 -- where a wrapping sampler would fold the opposite edge's texels
+    // into the result. Linear filtering carries the mip filter the prefiltered chain is sampled
+    // across; no anisotropy, because neither lookup has a screen-space footprint to be anisotropic
+    // about.
+    if (auto sampler = self->m_device.createSampler({.filter = rhi::FilterMode::Linear,
+                                                     .addressMode = rhi::AddressMode::Clamp,
+                                                     .label = "lmx.render.iblSampler"});
+        sampler) {
+        self->m_iblSampler = std::move(*sampler);
     } else {
         return std::unexpected(sampler.error());
     }
@@ -553,7 +594,6 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     passUniforms.eyePos = camera.position;
     passUniforms.time = timeSeconds;
     passUniforms.preExposure = preExposure;
-    passUniforms.ambient = glm::vec4(view.ambient, 1.0f);
     for (size_t i = 0; i < std::size(passUniforms.lights); ++i) {
         passUniforms.lights[i] = toUniform(view.lights[i]);
     }
@@ -597,9 +637,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline : *m_scenePipeline);
             commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
             commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
+            commands.bindSampler(kIblSamplerSlot, *m_iblSampler);
             commands.bindTexture(kShadowTextureSlot, **shadowMapTexture);
-            commands.bindTexture(kSkyTextureSlot, view.skyCubemap != nullptr ? *view.skyCubemap
-                                                                             : *m_blackCubeTexture);
+            // The pass-wide IBL set. Each slot falls back independently, so a SceneView that
+            // carries no environment still renders -- with both image-based terms at zero.
+            commands.bindTexture(kIrradianceTextureSlot, view.irradiance != nullptr
+                                                             ? *view.irradiance
+                                                             : *m_blackCubeTexture);
+            commands.bindTexture(kPrefilteredEnvTextureSlot, view.prefilteredEnv != nullptr
+                                                                 ? *view.prefilteredEnv
+                                                                 : *m_blackCubeTexture);
+            commands.bindTexture(kDfgLutTextureSlot,
+                                 view.dfgLut != nullptr ? *view.dfgLut : *m_zeroDfgTexture);
             commands.setUniforms(kPassUniformsSlot, &passUniforms, sizeof(passUniforms));
 
             for (const DrawItem& item : view.items) {
@@ -607,12 +656,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 ObjectUniforms uniforms{};
                 uniforms.mvp = viewProj * item.model;
                 uniforms.model = item.model;
+                // The inverse transpose, computed here rather than in the vertex shader because it
+                // is one value per draw and inverting a matrix per vertex would pay for it tens of
+                // thousands of times over. Taken on the 3x3 linear part: translation does not act
+                // on a direction, and inverting the full 4x4 would only divide it back out again.
+                uniforms.normalMatrix =
+                    glm::mat4(glm::transpose(glm::inverse(glm::mat3(item.model))));
                 uniforms.uvTransform = material.uvTransform;
                 uniforms.albedo = material.albedo;
-                uniforms.fresnelR0 = material.fresnelR0;
                 uniforms.roughness = material.roughness;
                 uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
                 uniforms.metallic = material.metallic;
+                uniforms.occlusionStrength = material.occlusionStrength;
                 uniforms.emissive = material.emissive;
 
                 commands.bindTexture(kDiffuseTextureSlot, material.diffuse != nullptr
@@ -648,6 +703,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                       .preExposure = passUniforms.preExposure,
                                       .tailPadding = {}};
                 commands.bindPipeline(*m_skyPipeline);
+                // Shaders/Sky.slang is the only reader of this slot, so it is bound here rather
+                // than with the pass's shared set.
+                commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
                 commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
                 commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
                 commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);

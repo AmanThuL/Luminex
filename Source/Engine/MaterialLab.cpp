@@ -81,7 +81,6 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
         scene.lights[i].direction = kLightDirections[i];
         scene.lights[i].strength = glm::vec3(srgbToLinear(kLightStrengths[i]));
     }
-    scene.ambient = srgbToLinear(glm::vec3(0.25f, 0.25f, 0.35f));
     return {};
 }
 
@@ -190,8 +189,14 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 // forward axis):
 //
 //   Sphere grid: 5x5 unit-diameter spheres, 1.5-unit spacing, centred at the origin. Column c
-//   (0..4, left to right) sweeps roughness 0.05->1.0; row r (0..4, bottom to top) sweeps
-//   fresnelR0 0.04->1.0. Albedo white. Occupies x,y in [-3.5, 3.5].
+//   (0..4, left to right) sweeps perceptual roughness 0.05->1.0; row r (0..4, bottom to top)
+//   sweeps metallic 0->1. Albedo white. Occupies x,y in [-3.5, 3.5].
+//
+//   Those are the metallic-roughness model's own two axes, so the grid reads as the material space
+//   it parameterizes: the bottom row is a white dielectric losing its highlight to roughness, the
+//   top row is a white conductor whose reflection blurs across the same sweep, and the rows between
+//   are the (physically unrealisable) mix the parameter admits. Both extreme rows are exactly the
+//   furnace test's two probes, so what that test measures is what this grid shows.
 //
 //   Known-colour patches: 6 unit quads at y=-4.5, 1.2-unit spacing, x = (i-2.5)*1.2 for i=0..5,
 //   albedo = srgbToLinear(red, green, blue, 18% gray (0.46), white, black) in that order.
@@ -267,7 +272,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     const auto cubeMeshIndex = static_cast<uint32_t>(scene->meshes.size());
     scene->meshes.push_back(std::move(*cubeMesh));
 
-    // Sphere grid: roughness sweeps columns, fresnelR0 sweeps rows.
+    // Sphere grid: perceptual roughness sweeps columns, metallic sweeps rows.
     constexpr int kGridSize = 5;
     constexpr float kGridSpacing = 1.5f;
     constexpr float kSphereRadius = 0.5f;
@@ -276,8 +281,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
             render::Material material;
             material.albedo = srgbToLinear(glm::vec4(1.0f));
             material.roughness = 0.05f + static_cast<float>(col) * (1.0f - 0.05f) / (kGridSize - 1);
-            material.fresnelR0 =
-                glm::vec3(0.04f + static_cast<float>(row) * (1.0f - 0.04f) / (kGridSize - 1));
+            material.metallic = static_cast<float>(row) / (kGridSize - 1);
             const auto materialIndex = static_cast<uint32_t>(scene->materials.size());
             scene->materials.push_back(material);
 
