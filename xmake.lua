@@ -96,17 +96,7 @@ target("ImGui")
     add_frameworks("Metal", "QuartzCore", "Cocoa")
     add_mxxflags("-fno-objc-arc")
 
--- add_files is non-recursive, so the Metal4 backend sources are listed explicitly.
--- metal-cpp is an implementation detail of this target: RHI.h never names an MTL type,
--- so the include dir stays private and only Source/ is public. ImGui is a dep (not just the
--- Metal renderer backend's headers): Source/RHI/Metal4/Metal4ImGui.* links it.
-target("RHI")
-    set_kind("static")
-    add_files("Source/RHI/*.cpp", "Source/RHI/Metal4/*.cpp")
-    add_includedirs("Source", {public = true})
-    add_includedirs("ThirdParty/metal-cpp")
-    add_frameworks("Metal", "QuartzCore", "Foundation")
-    add_deps("Core", "ImGui")
+includes("RHI/xmake.lua")
 
 -- Camera + procedural mesh helpers on top of RHI. glm is public so App/Tests only need
 -- "Render" in their own add_deps to inherit its include path.
@@ -140,7 +130,7 @@ target("TextureBake")
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp")
-    add_deps("Core", "RHI", "Render", "Engine", "ImGui")
+    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
     add_rules("slang2metallib")
@@ -371,6 +361,8 @@ task("format")
         if option.get("check") then table.insert(args, "--Werror") end
         for _, f in ipairs(os.files("Source/**.h")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Source/**.cpp")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("RHI/**.h")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("RHI/**.cpp")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Tests/**.cpp")) do table.insert(args, f) end
         os.execv("clang-format", args)
     end)
@@ -380,5 +372,7 @@ task("policy")
     on_run(function ()
         os.execv("python3", {"Tools/check_project_policy.py"})
         os.execv("xmake", {"project", "-k", "compile_commands"})
+        os.execv("python3", {"Tools/check_cpp_comments.py", "--public-api-docs", "error"})
+        os.execv("python3", {"Tools/check_rhi_headers.py"})
         os.execv("python3", {"Tools/check_cpp_layout.py"})
     end)

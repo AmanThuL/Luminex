@@ -131,8 +131,8 @@ command recording, synchronization, residency and swapchain contracts; rendering
 
 | Path | Responsibility |
 |---|---|
-| `Source/RHI` | Backend-neutral interfaces and validation |
-| `Source/RHI/Metal4` | Metal objects, frame lifetime, command encoding and ImGui integration |
+| `RHI/Include/RHI` | Backend-neutral interfaces and validation contracts |
+| `RHI/Backends/Metal4` | Metal objects, frame lifetime, command encoding and optional ImGui integration |
 | `Source/Render` | Camera, meshes, the validating render graph, shadow/scene/sky/display passes |
 | `Source/Engine` | Scene catalog, glTF/DDS loading, geometry, color handling, IBL generation, mip baking |
 | `Source/App` | SDL3 window, editor shell, CLI and offscreen screenshots |

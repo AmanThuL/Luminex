@@ -8,7 +8,7 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m4.md` · No active implementation plan
+- Current baseline: `docs/milestones/m4.1.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -48,17 +48,19 @@ thin RHI and one implemented backend.
   Tools/GpuDebug/profile.py`. Guide: `docs/guides/gpu-debugging.md`.
 
 ## Architecture
-`Source/Core` (lmx:: log/assert) → `Source/RHI` (lmx::rhi interfaces; **no Metal types in public
-headers**) → `Source/RHI/Metal4` (the only backend: metal-cpp, 3 frames in flight, argument tables
+`Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
+interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
+`RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only passes,
-`Metal4ImGui` glue) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the validating `RenderGraph`,
-`Renderer` — declares shadow, scene+sky, and display-transform passes into a graph consuming a
-plain `SceneView`; `fitShadowOrtho` and friends are free functions) → `Source/Engine` (lmx::engine:
-`Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF loaders, sRGB color utilities, deterministic
-CPU-side image-based-lighting generation (`Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light
-editor, render settings — frame loop, joins its own UI pass to the graph, `--screenshot` path).
+per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, and depth-only passes;
+`RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
+validating `RenderGraph`, `Renderer` — declares shadow, scene+sky, and display-transform passes into
+a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
+`Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF loaders, sRGB color
+utilities, deterministic CPU-side image-based-lighting generation (`Ibl.h`), deterministic offline
+texture mip baking (`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene
+dropdown, light editor, render settings — frame loop, joins its own UI pass to the graph,
+`--screenshot` path).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky,
 DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.

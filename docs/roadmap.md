@@ -10,9 +10,10 @@ without expanding it.
 
 ## Current baseline
 
-M4 renders Sponza, Damaged Helmet, and MaterialLab through a graph-declared, scene-linear HDR
-pipeline with physically based glTF materials, deterministic mip/IBL assets, and reversed-Z depth.
-Its shipped evidence and remaining limits are recorded in `docs/milestones/m4.md`.
+M4.1 preserves M4's graph-declared, scene-linear HDR renderer while giving its RHI an explicit root
+component, domain-owned result contracts, self-contained public headers, and checked API
+documentation. Its shipped evidence and remaining limits are recorded in
+`docs/milestones/m4.1.md`.
 
 ## M4 — Correct image formation
 
@@ -40,6 +41,33 @@ reference; every pass reports a visible GPU timestamp.
 **Defer:** general compute and storage execution, transient pooling, graph optimization, automatic
 exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
 tracing.
+
+## M4.1 — RHI component boundary and maintenance
+
+**Outcome:** the shipped M4 renderer keeps the same behavior while its RHI, error ownership,
+includes, and API documentation form a clearer component boundary that can evolve independently.
+
+**Deliver:**
+
+- Move the RHI to the repository-root `RHI/` component, with public headers under
+  `RHI/Include/RHI/`, implementation in `RHI/Source/`, and the Metal 4 backend in
+  `RHI/Backends/Metal4/Source/`. Keep Metal types out of public headers and preserve the existing
+  caller-facing contracts.
+- Give the component its own build description, keep backend implementation dependencies private,
+  and split the Dear ImGui adapter into the optional `RHIMetal4ImGui` target.
+- Keep `std::expected` as the common mechanism while each domain owns its error vocabulary; expose
+  the existing RHI `Error` and `Result<T>` through a focused, self-contained public header.
+- Make project headers self-contained, remove unnecessary or accidental transitive includes, and
+  document every project C++ file and public API under the checked comment convention.
+
+**Exit gate:** M4 unit, GPU, and scene-smoke coverage remains green; core public RHI headers compile
+in isolation and expose no Metal or ImGui dependency; the optional adapter owns its ImGui-dependent
+include path; application code still includes `RHI/...` paths; the core RHI builds without that
+adapter; formatting, policy, include, and documentation checks pass.
+
+**Defer:** new compute, storage, copy, barrier, view, graph, or rendering capabilities; a production
+second backend; publishing RHI as a standalone repository; a shared cross-domain error type; and
+the M5.1 API-model experiment.
 
 ## M5 — Execution substrate and observability
 

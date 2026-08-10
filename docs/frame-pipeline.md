@@ -75,6 +75,11 @@ label and GPU milliseconds for the most recently retired frame, populated by cou
 Metal 4 backend takes at pass begin/end and resolved once the shared event proves that frame
 retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
 
+The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
+Their implementation and validation live in `RHI/Source/`; the only backend lives in
+`RHI/Backends/Metal4/Source/`. Dear ImGui submission is an application-facing adapter in the
+optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI dependency surface.
+
 ## Resources and lifetime
 
 - **3 frames in flight.** Each in-flight slot owns an argument table, a bump allocator, and a

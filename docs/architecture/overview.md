@@ -2,16 +2,20 @@
 
 **Status**: Implemented
 
-Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack:
+Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI
+is a repository-root component; the other runtime layers remain under `Source/`:
 
 `Core → RHI → Render → Engine → App`
 
 - **Core** owns logging, assertions, and dependency-free utilities.
-- **RHI** exposes API-neutral resource, pipeline, command, and synchronization contracts. Its public
-  headers contain no Metal types.
-- **RHI/Metal4** implements the current backend with metal-cpp, three frames in flight, argument
-  tables, a per-frame uniform ring, residency, shared-event pacing, per-pass GPU timing, and
-  capture support.
+- **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
+  `RHI/Include/RHI/` and expose API-neutral resource, pipeline, command, synchronization, capture,
+  and domain-owned error contracts without Metal or ImGui dependencies.
+- **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
+  frames in flight, argument tables, a per-frame uniform ring, residency, shared-event pacing,
+  per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
+  its ImGui-dependent public extension header, and the dependency on Dear ImGui; the core RHI does
+  not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU.
@@ -24,8 +28,10 @@ Shaders are authored in Slang and compiled to readable MSL, then to a metallib w
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and
 resource transitions are documented in `docs/frame-pipeline.md`.
 
-The current RHI grows only when a rendering feature supplies a real portability requirement. Metal
-is the first implementation, not the public vocabulary: accepted contracts do not leak native
-handles upward. The roadmap reserves an API-model experiment after the next execution-substrate
-slice and before temporal and scalable-scene layers build on it. D3D12 is the intended second
-production backend; Vulkan remains research evidence rather than a planned target.
+The root component is a physical and build boundary, not yet a separately published library: it
+still participates in this repository's Core contracts and validation. The RHI grows only when a
+rendering feature supplies a real portability requirement. Metal is the first implementation, not
+the public vocabulary: accepted contracts do not leak native handles upward. The roadmap reserves
+an API-model experiment after the next execution-substrate slice and before temporal and
+scalable-scene layers build on it. D3D12 is the intended second production backend; Vulkan remains
+research evidence rather than a planned target.
