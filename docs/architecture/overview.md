@@ -24,6 +24,8 @@ Shaders are authored in Slang and compiled to readable MSL, then to a metallib w
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and
 resource transitions are documented in `docs/frame-pipeline.md`.
 
-The RHI grows only when a rendering feature supplies a real cross-backend requirement. Metal is the
-first implementation, not the public vocabulary: Vulkan and D3D12 must be able to implement each
-accepted contract without leaking their native handles upward.
+The current RHI grows only when a rendering feature supplies a real portability requirement. Metal
+is the first implementation, not the public vocabulary: accepted contracts do not leak native
+handles upward. The roadmap reserves an API-model experiment after the next execution-substrate
+slice and before temporal and scalable-scene layers build on it. D3D12 is the intended second
+production backend; Vulkan remains research evidence rather than a planned target.
