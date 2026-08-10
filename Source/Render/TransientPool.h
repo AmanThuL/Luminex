@@ -62,6 +62,10 @@ public:
     ///
     /// Exact rather than grow-only so a shrink gives the memory back: a frame's transient
     /// footprint changes when the caller changes what it declares, not from frame to frame.
+    ///
+    /// One reservation per frame, whatever it asks for: a second one is refused rather than handing
+    /// a second caller offsets into a heap the first caller's resources are still live in. Two
+    /// graphs that both declare transients therefore belong in two frames.
     rhi::Result<void> reserve(uint64_t bytes);
 
     /// Places a texture at `offset` in the open slot's heap and keeps it alive until that slot is
@@ -92,6 +96,10 @@ private:
     struct Slot {
         std::unique_ptr<rhi::Heap> heap;
         uint64_t bytes = 0;
+        // Whether the open frame has already reserved this slot. Tracked rather than inferred from
+        // the placed resources below, because a reservation that happens to ask for the bytes the
+        // slot already holds places nothing new and would leave nothing to infer from.
+        bool reserved = false;
         // The frame that most recently placed into `heap`, which is what dates the generation
         // when it is retired.
         uint64_t lastFrame = 0;

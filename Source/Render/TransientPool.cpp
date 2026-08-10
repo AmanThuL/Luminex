@@ -24,6 +24,7 @@ void TransientPool::beginFrame() {
     // The slot's previous occupant retired during Device::beginFrame()'s pacing wait, so its
     // resources are unreferenced and the heap under them is free to be re-placed into.
     Slot& slot = openSlot();
+    slot.reserved = false;
     slot.textures.clear();
     slot.buffers.clear();
 
@@ -35,14 +36,23 @@ void TransientPool::beginFrame() {
 rhi::Result<void> TransientPool::reserve(uint64_t bytes) {
     LMX_ASSERT(m_frame > 0, "TransientPool::reserve: no frame is open -- call beginFrame() first");
     Slot& slot = openSlot();
+    // Refused before the footprint is even looked at. A second reservation asking for the *same*
+    // bytes is the dangerous one: nothing about the heap changes, so it would quietly succeed and
+    // the two callers would place at the same offsets in memory the first one's resources are
+    // already live in -- aliasing across two frames' worth of work with no barrier between them.
+    if (slot.reserved) {
+        return std::unexpected(
+            rhi::Error{rhi::ErrorCode::InvalidDesc,
+                       "TransientPool::reserve: this frame has already reserved its transient "
+                       "memory -- one frame reserves once, so a second graph declaring transients "
+                       "in the same frame needs a frame of its own"});
+    }
+    slot.reserved = true;
+
     if (slot.bytes == bytes) {
         slot.lastFrame = m_frame;
         return {};
     }
-
-    LMX_ASSERT(slot.textures.empty() && slot.buffers.empty(),
-               "TransientPool::reserve: this frame has already placed resources in the slot's "
-               "heap -- one frame reserves its transient memory once, before placing anything");
 
     // The outgoing generation may still be under an in-flight frame's placed resources, so it is
     // dated rather than dropped. A generation whose slot has simply come round again is already

@@ -24,6 +24,24 @@ struct FakeDevice final : lmx::rhi::Device {
     static constexpr uint64_t kBufferAlignment = 256;
     static constexpr uint64_t kBytesPerTexel = 4;
 
+    // A heap that owns no memory. The pool's generation bookkeeping reads nothing but the size it
+    // was asked for, and nothing is ever placed in one here, so there is nothing else to fake.
+    struct FakeHeap final : lmx::rhi::Heap {
+
+        //==============================================================================================================
+        explicit FakeHeap(uint64_t bytes) : m_size(bytes) {}
+
+        //==============================================================================================================
+        uint64_t size() const override { return m_size; }
+
+    private:
+        uint64_t m_size = 0;
+    };
+
+    // The frame the pool sees, advanced by the test rather than by a frame loop: what a pool keys
+    // its slot rotation on is the number, not the work behind it.
+    uint64_t frame = 0;
+
     //==================================================================================================================
     static uint64_t alignUp(uint64_t value, uint64_t alignment) {
         return (value + alignment - 1) / alignment * alignment;
@@ -66,8 +84,9 @@ struct FakeDevice final : lmx::rhi::Device {
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Heap>> createHeap(const lmx::rhi::HeapDesc&) override {
-        std::abort();
+    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Heap>>
+    createHeap(const lmx::rhi::HeapDesc& desc) override {
+        return std::make_unique<FakeHeap>(desc.size);
     }
 
     //==================================================================================================================
@@ -122,7 +141,7 @@ struct FakeDevice final : lmx::rhi::Device {
     uint64_t passTimingsFrame() const override { return 0; }
 
     //==================================================================================================================
-    uint64_t frameNumber() const override { return 0; }
+    uint64_t frameNumber() const override { return frame; }
 
     //==================================================================================================================
     std::string_view deviceName() const override { return "lmx.test.fakeDevice"; }
