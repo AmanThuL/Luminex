@@ -8,6 +8,8 @@
 #include "RHI/CaptureSchema.h"
 
 #include <cstring>
+#include <string>
+#include <utility>
 
 namespace lmx::rhi::metal4 {
 
@@ -61,17 +63,75 @@ Metal4Texture::~Metal4Texture() {
 //======================================================================================================================
 void Metal4Texture::readback(void* out, uint64_t outSize) {
     LMX_ASSERT(out != nullptr, "Texture::readback: destination must not be null");
-    LMX_ASSERT(m_readbackBytesPerPixel > 0,
+    LMX_ASSERT(m_info.readbackBytesPerPixel > 0,
                "Texture::readback: texture was not created with TextureDesc.cpuReadback");
     // TextureDesc validation already refused every format without a packed texel size, so the
     // destination and the source rows share this one stride.
-    const uint64_t bytesPerRow = uint64_t{m_width} * m_readbackBytesPerPixel;
-    const uint64_t expected = bytesPerRow * m_height;
+    const uint64_t bytesPerRow = uint64_t{m_info.width} * m_info.readbackBytesPerPixel;
+    const uint64_t expected = bytesPerRow * m_info.height;
     LMX_ASSERT(outSize == expected,
                "Texture::readback: outSize must be width*height*bytesPerPixel(format)");
 
-    const MTL::Region region = MTL::Region::Make2D(0, 0, m_width, m_height);
+    const MTL::Region region = MTL::Region::Make2D(0, 0, m_info.width, m_info.height);
     m_texture->getBytes(out, bytesPerRow, region, 0);
+}
+
+//======================================================================================================================
+MTL::Texture* Metal4Texture::viewFor(const TextureViewDesc& desc) {
+    const uint32_t baseMip = desc.range.baseMipLevel;
+    const uint32_t mipCount = desc.range.mipLevelCount == kAllMipLevels ? m_info.mipLevels - baseMip
+                                                                        : desc.range.mipLevelCount;
+    const uint32_t baseLayer = desc.range.baseArrayLayer;
+    const uint32_t layerCount = desc.range.arrayLayerCount == kAllArrayLayers
+                                    ? m_info.arrayLayers - baseLayer
+                                    : desc.range.arrayLayerCount;
+    const MTL::PixelFormat format =
+        desc.format == Format::Unknown ? m_texture->pixelFormat() : toMTL(desc.format);
+
+    // The whole texture in its own format is the texture: a view of it would be an allocation and
+    // a cache entry that resolve to the same bits.
+    if (format == m_texture->pixelFormat() && baseMip == 0 && mipCount == m_info.mipLevels &&
+        baseLayer == 0 && layerCount == m_info.arrayLayers) {
+        return m_texture.get();
+    }
+
+    for (const View& cached : m_views) {
+        if (cached.baseMipLevel == baseMip && cached.mipLevelCount == mipCount &&
+            cached.baseArrayLayer == baseLayer && cached.arrayLayerCount == layerCount &&
+            cached.format == format) {
+            return cached.texture.get();
+        }
+    }
+
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    // A view keeps its parent's texture type, so a subrange of a cubemap's faces would have to be
+    // typed 2D to be legal in Metal. No binding needs one yet, and inventing the type mapping
+    // untested is worse than saying so.
+    LMX_ASSERT(layerCount == m_info.arrayLayers,
+               "TextureViewDesc: a view of part of a texture's array layers is not implemented -- "
+               "cover every layer");
+
+    NS::SharedPtr<MTL::Texture> view = NS::TransferPtr(m_texture->newTextureView(
+        format, m_texture->textureType(), NS::Range::Make(baseMip, mipCount),
+        NS::Range::Make(baseLayer, layerCount)));
+    LMX_ASSERT(view, "TextureViewDesc: Metal refused to create the requested texture view -- a "
+                     "reinterpreting view requires the texture to have been created with storage "
+                     "usage");
+    const NS::String* parentLabel = m_texture->label();
+    const char* utf8 = parentLabel != nullptr ? parentLabel->utf8String() : nullptr;
+    view->setLabel(makeString(std::string(utf8 != nullptr ? utf8 : "lmx.texture.unnamed") +
+                              ".view.mip" + std::to_string(baseMip) + "+" +
+                              std::to_string(mipCount))
+                       .get());
+
+    m_views.push_back({.baseMipLevel = baseMip,
+                       .mipLevelCount = mipCount,
+                       .baseArrayLayer = baseLayer,
+                       .arrayLayerCount = layerCount,
+                       .format = format,
+                       .texture = std::move(view)});
+    return m_views.back().texture.get();
 }
 
 } // namespace lmx::rhi::metal4

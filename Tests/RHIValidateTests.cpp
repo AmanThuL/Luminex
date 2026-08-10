@@ -13,13 +13,16 @@ struct DummyShaderLibrary : ShaderLibrary {};
 // checks it against nullptr.
 int dummyNativeLayer = 0;
 
-// Texture is an interface and validateRenderPassTargets reads nothing but width()/height(), so an
-// attachment of a given extent is expressible without a device. readback() is never reached --
-// the helper does not call it -- so it is left empty rather than faked.
+// Texture is an interface and the helpers under test read nothing but its reported shape, so a
+// texture of a given extent, format, and subresource count is expressible without a device.
+// readback() is never reached -- no helper calls it -- so it is left empty rather than faked.
 struct FakeTexture final : Texture {
 
     //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height) : m_width(width), m_height(height) {}
+    FakeTexture(uint32_t width, uint32_t height, Format format = Format::BGRA8Unorm,
+                uint32_t mipLevels = 1, uint32_t arrayLayers = 1)
+        : m_width(width), m_height(height), m_format(format), m_mipLevels(mipLevels),
+          m_arrayLayers(arrayLayers) {}
 
     //==================================================================================================================
     uint32_t width() const override { return m_width; }
@@ -28,11 +31,23 @@ struct FakeTexture final : Texture {
     uint32_t height() const override { return m_height; }
 
     //==================================================================================================================
+    Format format() const override { return m_format; }
+
+    //==================================================================================================================
+    uint32_t mipLevels() const override { return m_mipLevels; }
+
+    //==================================================================================================================
+    uint32_t arrayLayers() const override { return m_arrayLayers; }
+
+    //==================================================================================================================
     void readback(void*, uint64_t) override {}
 
 private:
     uint32_t m_width = 0;
     uint32_t m_height = 0;
+    Format m_format = Format::BGRA8Unorm;
+    uint32_t m_mipLevels = 1;
+    uint32_t m_arrayLayers = 1;
 };
 } // namespace
 
@@ -288,6 +303,136 @@ TEST_CASE("ComputePipelineDesc with a library, an entry, and threads is accepted
     desc.label = "histogram";
 
     REQUIRE(validate(desc).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("TextureDesc storage usage with an sRGB format is rejected", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::RGBA8Unorm_sRGB;
+    desc.storageWrite = true;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("storage"));
+}
+
+//======================================================================================================================
+TEST_CASE("TextureDesc storage usage with a storage format is accepted", "[rhi]") {
+    TextureDesc desc{};
+    desc.width = 64;
+    desc.height = 64;
+    desc.format = Format::RGBA16Float;
+    desc.storageRead = true;
+    desc.storageWrite = true;
+    desc.label = "bloomChain";
+
+    REQUIRE(validate(desc).has_value());
+}
+
+//======================================================================================================================
+// The default range is the whole resource, which is what every whole-resource declaration passes.
+TEST_CASE("a default subresource range covers the whole texture", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/4};
+
+    REQUIRE(validateSubresourceRange(texture, {}).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("a subresource range starting past the mip chain is rejected", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/4};
+    TextureSubresourceRange range{};
+    range.baseMipLevel = 4;
+
+    const auto r = validateSubresourceRange(texture, range);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("baseMipLevel"));
+}
+
+//======================================================================================================================
+TEST_CASE("a subresource range running past the mip chain is rejected", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/4};
+    TextureSubresourceRange range{};
+    range.baseMipLevel = 2;
+    range.mipLevelCount = 3;
+
+    const auto r = validateSubresourceRange(texture, range);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("3 mip level"));
+}
+
+//======================================================================================================================
+TEST_CASE("a subresource range covering no mip level is rejected", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/4};
+    TextureSubresourceRange range{};
+    range.mipLevelCount = 0;
+
+    const auto r = validateSubresourceRange(texture, range);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("at least one mip level"));
+}
+
+//======================================================================================================================
+TEST_CASE("a single-mip subresource range of a chain is accepted", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/4};
+    TextureSubresourceRange range{};
+    range.baseMipLevel = 3;
+    range.mipLevelCount = 1;
+
+    REQUIRE(validateSubresourceRange(texture, range).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("a subresource range past a cubemap's faces is rejected", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/1, /*arrayLayers=*/6};
+    TextureSubresourceRange range{};
+    range.baseArrayLayer = 4;
+    range.arrayLayerCount = 4;
+
+    const auto r = validateSubresourceRange(texture, range);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("layer"));
+}
+
+//======================================================================================================================
+// The sRGB sibling describes the same bits under a different transfer function, which is the only
+// reinterpretation a view may perform.
+TEST_CASE("a texture view may reinterpret a format's sRGB sibling", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm};
+    TextureViewDesc view{};
+    view.format = Format::RGBA8Unorm_sRGB;
+
+    REQUIRE(validateTextureView(texture, view).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("a texture view may not reinterpret a different format family", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm};
+    TextureViewDesc view{};
+    view.format = Format::RGBA16Float;
+
+    const auto r = validateTextureView(texture, view);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("format family"));
+}
+
+//======================================================================================================================
+TEST_CASE("a texture view reports the range problem before the format one", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/2};
+    TextureViewDesc view{};
+    view.range.baseMipLevel = 5;
+    view.format = Format::RGBA16Float;
+
+    const auto r = validateTextureView(texture, view);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().message.contains("baseMipLevel"));
 }
 
 //======================================================================================================================

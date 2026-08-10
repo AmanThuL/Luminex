@@ -284,6 +284,32 @@ void Metal4CommandList::bindStorageBuffer(uint32_t slot, Buffer& buffer, Storage
 }
 
 //======================================================================================================================
+void Metal4CommandList::bindStorageTexture(uint32_t slot, Texture& texture,
+                                           const TextureViewDesc& view, StorageAccess access) {
+    LMX_ASSERT(m_computeEncoder,
+               "bindStorageTexture must be called between beginComputePass and endComputePass");
+    auto& metalTexture = static_cast<Metal4Texture&>(texture);
+    const Result<void> viewOk = validateTextureView(texture, view);
+    LMX_ASSERT(viewOk.has_value(), viewOk.error().message);
+    LMX_ASSERT(isStorageFormat(view.format == Format::Unknown ? texture.format() : view.format),
+               "bindStorageTexture: the bound format must be one a storage binding can read and "
+               "write (RGBA8Unorm or RGBA16Float)");
+
+    // ResourceID hides usage from Metal validation, so reject a texture the shader's access would
+    // fault on before the bind rather than inside the dispatch.
+    const MTL::TextureUsage usage = metalTexture.handle()->usage();
+    const bool reads = access == StorageAccess::Read || access == StorageAccess::ReadWrite;
+    const bool writes = access == StorageAccess::Write || access == StorageAccess::ReadWrite;
+    LMX_ASSERT(!reads || (usage & MTL::TextureUsageShaderRead) != 0,
+               "bindStorageTexture: texture was not created with TextureDesc.storageRead");
+    LMX_ASSERT(!writes || (usage & MTL::TextureUsageShaderWrite) != 0,
+               "bindStorageTexture: texture was not created with TextureDesc.storageWrite");
+
+    // Texture, buffer, and sampler slots occupy separate arrays in the argument table.
+    m_argumentTable->setTexture(metalTexture.viewFor(view)->gpuResourceID(), slot);
+}
+
+//======================================================================================================================
 void Metal4CommandList::dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY,
                                  uint32_t threadgroupsZ) {
     LMX_ASSERT(m_computeEncoder,

@@ -93,6 +93,8 @@ public:
     void beginComputePass(std::string_view label) override;
     void bindComputePipeline(ComputePipeline& pipeline) override;
     void bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) override;
+    void bindStorageTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view,
+                            StorageAccess access) override;
     void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY, uint32_t threadgroupsZ) override;
     void endComputePass() override;
     void bindPipeline(GraphicsPipeline& pipeline) override;

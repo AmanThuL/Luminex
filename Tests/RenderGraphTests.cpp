@@ -28,6 +28,17 @@ struct FakeTexture final : rhi::Texture {
     //==================================================================================================================
     uint32_t height() const override { return m_height; }
 
+    // The graph declares formats itself and imports whole resources, so a fake needs no more shape
+    // than a single-layer, single-mip texture of the format the import states.
+    //==================================================================================================================
+    rhi::Format format() const override { return rhi::Format::BGRA8Unorm; }
+
+    //==================================================================================================================
+    uint32_t mipLevels() const override { return 1; }
+
+    //==================================================================================================================
+    uint32_t arrayLayers() const override { return 1; }
+
     //==================================================================================================================
     void readback(void*, uint64_t) override {}
 
@@ -97,6 +108,10 @@ struct RecordingCommandList final : rhi::CommandList {
 
     //==================================================================================================================
     void bindStorageBuffer(uint32_t, rhi::Buffer&, rhi::StorageAccess) override {}
+
+    //==================================================================================================================
+    void bindStorageTexture(uint32_t, rhi::Texture&, const rhi::TextureViewDesc&,
+                            rhi::StorageAccess) override {}
 
     //==================================================================================================================
     void dispatch(uint32_t x, uint32_t y, uint32_t z) override {

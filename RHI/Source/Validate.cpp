@@ -61,6 +61,30 @@ std::string extentOf(const Texture& texture) {
     return std::to_string(texture.width()) + "x" + std::to_string(texture.height());
 }
 
+//======================================================================================================================
+// Two formats belong to one family when they describe the same bits and differ only in the transfer
+// function applied on access, which is the only reinterpretation a view may perform: anything else
+// would reinterpret the memory itself.
+bool isSameFormatFamily(Format a, Format b) {
+    const auto linearOf = [](Format format) {
+        switch (format) {
+        case Format::RGBA8Unorm_sRGB:
+            return Format::RGBA8Unorm;
+        case Format::BC1Unorm_sRGB:
+            return Format::BC1Unorm;
+        default:
+            return format;
+        }
+    };
+    return linearOf(a) == linearOf(b);
+}
+
+//======================================================================================================================
+// Resolves a range's "everything from here on" sentinel against a concrete extent.
+uint32_t resolveCount(uint32_t count, uint32_t sentinel, uint32_t base, uint32_t total) {
+    return count == sentinel ? (base < total ? total - base : 0) : count;
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -83,6 +107,14 @@ uint32_t bytesPerPixel(Format format) {
         break;
     }
     return 0;
+}
+
+//======================================================================================================================
+// The read-write set Apple silicon supports, intersected with this RHI's formats: the sRGB and
+// block-compressed members are excluded because a storage access performs no decode, and the packed
+// depth and two-channel formats have no read-write support to expose.
+bool isStorageFormat(Format format) {
+    return format == Format::RGBA8Unorm || format == Format::RGBA16Float;
 }
 
 //======================================================================================================================
@@ -122,9 +154,15 @@ Result<void> validate(const TextureDesc& desc) {
         return invalid("TextureDesc.mipLevels exceeds the chain the extent allows "
                        "(floor(log2(max(width, height))) + 1)");
     }
-    if (!desc.renderTarget && !desc.sampled && !desc.cpuReadback) {
-        return invalid("TextureDesc has no usage: set at least one of renderTarget, sampled, or "
-                       "cpuReadback");
+    if (!desc.renderTarget && !desc.sampled && !desc.storageRead && !desc.storageWrite &&
+        !desc.cpuReadback) {
+        return invalid("TextureDesc has no usage: set at least one of renderTarget, sampled, "
+                       "storageRead, storageWrite, or cpuReadback");
+    }
+    if ((desc.storageRead || desc.storageWrite) && !isStorageFormat(desc.format)) {
+        return invalid("TextureDesc storage usage requires a format the hardware can read and "
+                       "write without conversion (RGBA8Unorm or RGBA16Float); sRGB, "
+                       "block-compressed, depth, and two-channel formats are not among them");
     }
     if (desc.renderTarget && !isColorRenderableFormat(desc.format) && !isDepthFormat(desc.format)) {
         return invalid("TextureDesc.renderTarget requires a color-renderable or depth format");
@@ -137,6 +175,61 @@ Result<void> validate(const TextureDesc& desc) {
     if (desc.cpuReadback && desc.kind == TextureKind::Cube) {
         return invalid("TextureDesc.cpuReadback: readback returns a single image, so it cannot "
                        "express a Cube's six faces");
+    }
+    return {};
+}
+
+//======================================================================================================================
+Result<void> validateSubresourceRange(const Texture& texture,
+                                      const TextureSubresourceRange& range) {
+    const uint32_t mipLevels = texture.mipLevels();
+    const uint32_t arrayLayers = texture.arrayLayers();
+    if (range.baseMipLevel >= mipLevels) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc,
+                  "TextureSubresourceRange.baseMipLevel " + std::to_string(range.baseMipLevel) +
+                      " is outside the texture's " + std::to_string(mipLevels) + " mip level(s)"});
+    }
+    if (range.baseArrayLayer >= arrayLayers) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc,
+                  "TextureSubresourceRange.baseArrayLayer " + std::to_string(range.baseArrayLayer) +
+                      " is outside the texture's " + std::to_string(arrayLayers) + " layer(s)"});
+    }
+    const uint32_t mipCount =
+        resolveCount(range.mipLevelCount, kAllMipLevels, range.baseMipLevel, mipLevels);
+    const uint32_t layerCount =
+        resolveCount(range.arrayLayerCount, kAllArrayLayers, range.baseArrayLayer, arrayLayers);
+    if (mipCount == 0 || layerCount == 0) {
+        return invalid("TextureSubresourceRange must cover at least one mip level and one array "
+                       "layer (use kAllMipLevels/kAllArrayLayers for the whole resource)");
+    }
+    // Compare against the remaining extent so an enormous count cannot overflow the sum.
+    if (mipCount > mipLevels - range.baseMipLevel) {
+        return std::unexpected(Error{ErrorCode::InvalidDesc,
+                                     "TextureSubresourceRange covers " + std::to_string(mipCount) +
+                                         " mip level(s) from level " +
+                                         std::to_string(range.baseMipLevel) +
+                                         ", past the texture's " + std::to_string(mipLevels)});
+    }
+    if (layerCount > arrayLayers - range.baseArrayLayer) {
+        return std::unexpected(Error{ErrorCode::InvalidDesc,
+                                     "TextureSubresourceRange covers " +
+                                         std::to_string(layerCount) + " layer(s) from layer " +
+                                         std::to_string(range.baseArrayLayer) +
+                                         ", past the texture's " + std::to_string(arrayLayers)});
+    }
+    return {};
+}
+
+//======================================================================================================================
+Result<void> validateTextureView(const Texture& texture, const TextureViewDesc& view) {
+    if (auto ok = validateSubresourceRange(texture, view.range); !ok) {
+        return ok;
+    }
+    if (view.format != Format::Unknown && !isSameFormatFamily(view.format, texture.format())) {
+        return invalid("TextureViewDesc.format must belong to the texture's format family -- a "
+                       "view may only reinterpret the sRGB transfer, not the bit layout");
     }
     return {};
 }

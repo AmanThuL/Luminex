@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <utility>
+#include <vector>
 
 namespace lmx::rhi::metal4 {
 
@@ -71,36 +72,65 @@ private:
     ResidencyRegistration m_residency;
 };
 
+// Everything a Metal4Texture reports about itself, gathered from the descriptor that created it.
+// readbackBytesPerPixel is rhi::bytesPerPixel of that format for a texture created with
+// TextureDesc.cpuReadback, and 0 for every other texture -- including the swapchain's drawables,
+// which are never read back. It is what readback() sizes its destination and row stride from.
+struct Metal4TextureInfo {
+    Format format = Format::Unknown;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t mipLevels = 1;
+    uint32_t arrayLayers = 1;
+    uint32_t readbackBytesPerPixel = 0;
+};
+
 class Metal4Texture final : public Texture {
 public:
-    // readbackBytesPerPixel is rhi::bytesPerPixel of the desc format for a texture created with
-    // TextureDesc.cpuReadback, and 0 for every other texture -- including the swapchain's
-    // drawables, which are never read back. It is what readback() sizes its destination and row
-    // stride from, so the format that produced it need not be carried any further.
-    Metal4Texture(NS::SharedPtr<MTL::Texture> texture, uint32_t width, uint32_t height,
-                  uint32_t readbackBytesPerPixel, NS::SharedPtr<MTL::ResidencySet> residency)
-        : m_texture(std::move(texture)), m_width(width), m_height(height),
-          m_readbackBytesPerPixel(readbackBytesPerPixel),
+    Metal4Texture(NS::SharedPtr<MTL::Texture> texture, const Metal4TextureInfo& info,
+                  NS::SharedPtr<MTL::ResidencySet> residency)
+        : m_texture(std::move(texture)), m_info(info),
           m_residency(std::move(residency), m_texture.get()) {}
 
     // Drops this texture's capture-schema entry -- same identity contract as ~Metal4Buffer, with
     // the MTL::Texture pointer Metal4Device::createTexture registered.
     ~Metal4Texture() override;
 
-    uint32_t width() const override { return m_width; }
-    uint32_t height() const override { return m_height; }
+    uint32_t width() const override { return m_info.width; }
+    uint32_t height() const override { return m_info.height; }
+    Format format() const override { return m_info.format; }
+    uint32_t mipLevels() const override { return m_info.mipLevels; }
+    uint32_t arrayLayers() const override { return m_info.arrayLayers; }
     void readback(void* out, uint64_t outSize) override;
 
     MTL::Texture* handle() const { return m_texture.get(); }
 
+    // The native texture a view of this texture binds: the texture itself when the view covers
+    // everything in the native format, and a cached MTL texture view otherwise.
+    //
+    // Views are cached rather than created per bind because a bind is a per-frame call and
+    // newTextureView is an allocation; caching them on the texture, rather than in a device-wide
+    // map, ties their lifetime to the parent's, so no entry can outlive what it is a view of.
+    // `desc` must already have passed rhi::validateTextureView against this texture.
+    MTL::Texture* viewFor(const TextureViewDesc& desc);
+
 private:
-    // Dimensions are cached from the desc rather than queried from MTL::Texture on every
-    // call: they are immutable for the texture's lifetime and the getters are hot enough
+    // Description is cached from the desc rather than queried from MTL::Texture on every
+    // call: it is immutable for the texture's lifetime and the getters are hot enough
     // (per-readback bounds math) that an objc_msgSend each is pure overhead.
     NS::SharedPtr<MTL::Texture> m_texture;
-    uint32_t m_width = 0;
-    uint32_t m_height = 0;
-    uint32_t m_readbackBytesPerPixel = 0;
+    Metal4TextureInfo m_info;
+
+    // One cached view, keyed by the resolved subresource range and native format that produced it.
+    struct View {
+        uint32_t baseMipLevel = 0;
+        uint32_t mipLevelCount = 0;
+        uint32_t baseArrayLayer = 0;
+        uint32_t arrayLayerCount = 0;
+        MTL::PixelFormat format = MTL::PixelFormatInvalid;
+        NS::SharedPtr<MTL::Texture> texture;
+    };
+    std::vector<View> m_views;
     // Declared last -- see the note in Metal4Buffer.
     ResidencyRegistration m_residency;
 };

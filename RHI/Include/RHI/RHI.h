@@ -73,8 +73,42 @@ struct TextureDesc {
     uint32_t mipLevels = 1;    ///< Number of mip levels allocated for each face.
     bool renderTarget = false; ///< Enables render-target use.
     bool sampled = false;      ///< Enables shader reads.
+    /// Enables shader reads through a storage binding. Distinct from `sampled` because a storage
+    /// read is an unfiltered fetch through a read-write binding, which restricts the format.
+    bool storageRead = false;
+    bool storageWrite = false; ///< Enables shader writes through a storage binding.
     bool cpuReadback = false;  ///< Enables blocking CPU readback through shared storage.
     std::string_view label;    ///< Diagnostic object label.
+};
+
+/// mipLevelCount: every level from baseMipLevel to the end of the chain.
+inline constexpr uint32_t kAllMipLevels = ~uint32_t{0};
+/// arrayLayerCount: every layer from baseArrayLayer to the last one.
+inline constexpr uint32_t kAllArrayLayers = ~uint32_t{0};
+
+/// Names the mip levels and array layers of a texture that a view, binding, or barrier covers.
+///
+/// The default covers the whole resource, which is what every whole-resource declaration uses; a
+/// narrower range is how a pass addresses one mip of a chain (a bloom step writing mip N+1 while
+/// reading mip N). Ranges are validated against the texture they are used with: an empty range, or
+/// one running past the end of the chain, is a caller error.
+struct TextureSubresourceRange {
+    uint32_t baseMipLevel = 0;                  ///< First mip level in the range.
+    uint32_t mipLevelCount = kAllMipLevels;     ///< Mip levels covered, or kAllMipLevels.
+    uint32_t baseArrayLayer = 0;                ///< First array layer (cube face) in the range.
+    uint32_t arrayLayerCount = kAllArrayLayers; ///< Layers covered, or kAllArrayLayers.
+};
+
+/// Describes the subresources and format a binding sees a texture through.
+///
+/// A default-constructed view is the whole texture in its own format, which is what a binding that
+/// wants no reinterpretation passes. `format` reinterprets the same bits under a different transfer
+/// function -- the sRGB and linear members of one format family -- and is validated against the
+/// texture's family: a view may not reinterpret a format as one with a different bit layout.
+struct TextureViewDesc {
+    TextureSubresourceRange range; ///< Subresources the view exposes.
+    /// Format the view reads and writes through, or Format::Unknown for the texture's own format.
+    Format format = Format::Unknown;
 };
 
 /// Describes the CPU upload payload for one mip level of one texture face.
@@ -106,6 +140,12 @@ public:
     virtual uint32_t width() const = 0;
     /// Returns the texture height in texels.
     virtual uint32_t height() const = 0;
+    /// Returns the pixel format the texture was created with.
+    virtual Format format() const = 0;
+    /// Returns the number of mip levels each face was allocated with.
+    virtual uint32_t mipLevels() const = 0;
+    /// Returns the number of array layers: one for a 2D texture, six for a cubemap's faces.
+    virtual uint32_t arrayLayers() const = 0;
     /// Blocking readback of the full texture (requires cpuReadback). out must hold exactly
     /// width * height * bytesPerPixel(format) bytes, tightly packed, in the format's own channel
     /// order -- see bytesPerPixel in RHI/Validate.h, which also decides which formats readback
@@ -305,6 +345,15 @@ public:
     /// earlier pass's writes needs an explicit barrier.
     /// Binds a storage buffer with declared access to an argument-table buffer slot.
     virtual void bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) = 0;
+    /// Binds a texture for shader reads and/or writes at the given argument-table texture slot --
+    /// the same index space bindTexture uses. `view` selects the subresources and format the
+    /// shader addresses, defaulting to the whole texture in its own format, and `access` declares
+    /// what the shader does with them; both must be granted by the texture's TextureDesc storage
+    /// flags and format. Valid only inside a compute pass. Like bindStorageBuffer, this implies no
+    /// ordering: a dispatch that must see an earlier pass's writes needs an explicit barrier.
+    /// Binds a storage texture view with declared access to an argument-table texture slot.
+    virtual void bindStorageTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view,
+                                    StorageAccess access) = 0;
     /// Dispatches a grid of threadgroups; each argument is a count of *threadgroups*, not of
     /// threads, and the threads within one come from the bound pipeline's threadsPerThreadgroup.
     /// Every count must be greater than zero. Valid only inside a compute pass, after

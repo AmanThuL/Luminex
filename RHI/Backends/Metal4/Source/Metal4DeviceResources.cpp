@@ -91,7 +91,8 @@ Result<std::unique_ptr<Swapchain>> Metal4Device::createSwapchain(const Swapchain
                      "residency handling");
     }
 
-    return std::make_unique<Metal4Swapchain>(std::move(layer), m_queue, std::move(layerResidency));
+    return std::make_unique<Metal4Swapchain>(std::move(layer), desc.format, m_queue,
+                                             std::move(layerResidency));
 }
 
 //======================================================================================================================
@@ -142,14 +143,24 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
     textureDesc->setWidth(desc.width);
     textureDesc->setHeight(desc.height);
     textureDesc->setMipmapLevelCount(desc.mipLevels);
-    MTL::TextureUsage usage =
-        desc.sampled || desc.cpuReadback ? MTL::TextureUsageShaderRead : MTL::TextureUsageUnknown;
+    MTL::TextureUsage usage = desc.sampled || desc.cpuReadback || desc.storageRead
+                                  ? MTL::TextureUsageShaderRead
+                                  : MTL::TextureUsageUnknown;
     if (desc.renderTarget) {
         usage |= MTL::TextureUsageRenderTarget;
     }
+    if (desc.storageWrite) {
+        usage |= MTL::TextureUsageShaderWrite;
+    }
+    // Only a storage texture can be bound through a reinterpreting view, and Metal requires the
+    // parent to opt into that at creation. Scoping the flag to storage textures leaves every
+    // sampled texture's lossless compression untouched.
+    if (desc.storageRead || desc.storageWrite) {
+        usage |= MTL::TextureUsagePixelFormatView;
+    }
     LMX_ASSERT(usage != MTL::TextureUsageUnknown,
-               "TextureDesc: a texture that is neither renderTarget, sampled, nor cpuReadback "
-               "has no reachable use");
+               "TextureDesc: a texture with no renderTarget, sampled, storage, or cpuReadback "
+               "usage has no reachable use");
     textureDesc->setUsage(usage);
     // CPU upload/readback requires Shared storage; otherwise retain the driver's Private-layout
     // freedom on unified memory.
@@ -187,9 +198,14 @@ Result<std::unique_ptr<Texture>> Metal4Device::createTexture(const TextureDesc& 
                                /*bytesPerImage=*/0);
     }
 
-    return std::make_unique<Metal4Texture>(std::move(texture), desc.width, desc.height,
-                                           desc.cpuReadback ? bytesPerPixel(desc.format) : 0,
-                                           m_residency);
+    const Metal4TextureInfo info{.format = desc.format,
+                                 .width = desc.width,
+                                 .height = desc.height,
+                                 .mipLevels = desc.mipLevels,
+                                 .arrayLayers = faceCount,
+                                 .readbackBytesPerPixel =
+                                     desc.cpuReadback ? bytesPerPixel(desc.format) : 0};
+    return std::make_unique<Metal4Texture>(std::move(texture), info, m_residency);
 }
 
 //======================================================================================================================
