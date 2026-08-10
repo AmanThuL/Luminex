@@ -1,7 +1,9 @@
 // Forward linear-space Blinn-Phong pass with normal mapping, environment reflection, and light-0
 // shadows. Output is scene-linear radiance scaled by exposure; nothing here encodes, because the
 // target is a half-float scene-colour buffer and Shaders/DisplayTransform.slang owns the encode.
-// Slots: buffers 0/1/2, textures 0/1/2/3, samplers 0/1. Resource classes use separate index spaces.
+// Slots: buffers 0/1/2, textures 0/1/2/3/4/5/6, samplers 0/1. Textures 4/5/6 (metallic-roughness,
+// occlusion, emissive) are bound every draw but unread by this fragment until the GGX rewrite
+// consumes them; t7+ is reserved for a later task's IBL set. Resource classes use separate index spaces.
 import Lighting;
 import Shadow;
 
@@ -26,6 +28,10 @@ struct ObjectUniforms
     float3 fresnelR0; // reflectance at normal incidence, per channel
     float roughness;
     uint flags;
+    // Bound but unread until the GGX rewrite (a later task) derives F0 from baseColor/metallic
+    // and adds the emissive term; plumbed now to keep the CPU/GPU ABI in lockstep.
+    float metallic;
+    float3 emissive;
 };
 
 // Bit 0 enables the texture-slot-1 normal map through a draw-uniform branch.
@@ -57,6 +63,16 @@ Texture2D gNormalMap : register(t1); // → MSL [[texture(1)]]
 TextureCube gSkyCube : register(t2); // → MSL [[texture(2)]]
 [[vk::binding(3, 2)]]
 Texture2D gShadowMap : register(t3); // → MSL [[texture(3)]]
+
+// Bound every draw with the shared white fallback when a material has no map; unread here until
+// the GGX rewrite consumes them. Channel conventions match glTF 2.0: metallic-roughness packs
+// roughness = G, metallic = B; occlusion packs R.
+[[vk::binding(4, 2)]]
+Texture2D gMetallicRoughness : register(t4); // → MSL [[texture(4)]]
+[[vk::binding(5, 2)]]
+Texture2D gOcclusion : register(t5); // → MSL [[texture(5)]]
+[[vk::binding(6, 2)]]
+Texture2D gEmissive : register(t6); // → MSL [[texture(6)]]
 
 [[vk::binding(0, 1)]]
 SamplerState gLinearSampler : register(s0); // → MSL [[sampler(0)]]

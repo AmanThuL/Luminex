@@ -105,4 +105,9 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"preExposure\"") != std::string::npos);
     // SkyUniforms carries the same field and does grow for it: 80 bytes to 96.
     REQUIRE(json.find("\"sizeBytes\": 96") != std::string::npos);
+    // ObjectUniforms grew for metallic/emissive (glTF metallic-roughness inputs, plumbed but
+    // unread until the GGX rewrite): 240 bytes to 256.
+    REQUIRE(json.find("\"metallic\"") != std::string::npos);
+    REQUIRE(json.find("\"emissive\"") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 256") != std::string::npos);
 }
