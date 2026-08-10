@@ -30,9 +30,14 @@ struct ObjectUniforms {
     float fresnelPadding;  // 220 -- the float3's tail
     float roughness;       // 224
     uint32_t flags;        // 228
-    float tailPadding[2];  // 232 -- the struct's own 16-byte alignment
+    // metallic/emissive are bound but unread by the fragment until the GGX rewrite (a later task)
+    // derives F0 from baseColor/metallic and adds the emissive term.
+    float metallic;        // 232 -- folds into the struct's former tail padding
+    float metallicPadding; // 236 -- pads up to emissive's 16-byte-aligned register
+    glm::vec3 emissive;    // 240
+    float emissivePadding; // 252 -- the float3's tail, rounds the struct to 256
 };
-static_assert(sizeof(ObjectUniforms) == 240, "must match ScenePass.slang's ObjectUniforms");
+static_assert(sizeof(ObjectUniforms) == 256, "must match ScenePass.slang's ObjectUniforms");
 
 // Mirrors Shaders/ShadowPass.slang's ObjectUniforms.
 struct ShadowObjectUniforms {
@@ -89,6 +94,12 @@ constexpr uint32_t kDiffuseTextureSlot = 0;
 constexpr uint32_t kNormalTextureSlot = 1;
 constexpr uint32_t kSkyTextureSlot = 2;
 constexpr uint32_t kShadowTextureSlot = 3;
+// Per-draw metallic-roughness/occlusion/emissive inputs: plumbed for the GGX rewrite (a later
+// task), unread by the current fragment shader. t7+ is reserved for the IBL set (prefiltered
+// specular, irradiance, DFG LUT) that a later task adds to the pass's shared resources.
+constexpr uint32_t kMetallicRoughnessTextureSlot = 4;
+constexpr uint32_t kOcclusionTextureSlot = 5;
+constexpr uint32_t kEmissiveTextureSlot = 6;
 constexpr uint32_t kLinearSamplerSlot = 0;
 constexpr uint32_t kShadowSamplerSlot = 1;
 
@@ -163,7 +174,9 @@ void registerUniformLayoutsForCapture() {
                     {"albedo", offsetof(ObjectUniforms, albedo), "float4"},
                     {"fresnelR0", offsetof(ObjectUniforms, fresnelR0), "float3"},
                     {"roughness", offsetof(ObjectUniforms, roughness), "float"},
-                    {"flags", offsetof(ObjectUniforms, flags), "uint"}}});
+                    {"flags", offsetof(ObjectUniforms, flags), "uint"},
+                    {"metallic", offsetof(ObjectUniforms, metallic), "float"},
+                    {"emissive", offsetof(ObjectUniforms, emissive), "float3"}}});
 
     schema.registerUniformStruct(
         {.name = "ShadowObjectUniforms",
@@ -599,6 +612,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 uniforms.fresnelR0 = material.fresnelR0;
                 uniforms.roughness = material.roughness;
                 uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
+                uniforms.metallic = material.metallic;
+                uniforms.emissive = material.emissive;
 
                 commands.bindTexture(kDiffuseTextureSlot, material.diffuse != nullptr
                                                               ? *material.diffuse
@@ -606,6 +621,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 commands.bindTexture(kNormalTextureSlot, material.normalMap != nullptr
                                                              ? *material.normalMap
                                                              : *m_flatNormalTexture);
+                // The shared white fallback lets each factor pass through unchanged when a
+                // material carries no map: unread by the fragment shader until the GGX rewrite.
+                commands.bindTexture(kMetallicRoughnessTextureSlot,
+                                     material.metallicRoughness != nullptr
+                                         ? *material.metallicRoughness
+                                         : *m_whiteTexture);
+                commands.bindTexture(kOcclusionTextureSlot, material.occlusion != nullptr
+                                                                ? *material.occlusion
+                                                                : *m_whiteTexture);
+                commands.bindTexture(kEmissiveTextureSlot, material.emissiveMap != nullptr
+                                                               ? *material.emissiveMap
+                                                               : *m_whiteTexture);
                 commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
                 // setUniforms copies into transient storage before the next draw rebinds the slot.
                 commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));

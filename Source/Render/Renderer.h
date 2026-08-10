@@ -19,9 +19,21 @@ struct Material {
     // Null means no normal mapping: the shader's flags bit 0 stays clear and its TBN path never
     // runs. The slot is still bound (to a flat-normal 1x1) so nothing dereferences an empty one.
     rhi::Texture* normalMap = nullptr;
+    // glTF 2.0 channel convention: roughness = G, metallic = B (R and A unused). Null means the
+    // shared white fallback, so `metallic`/`roughness` alone apply. Bound but unread by the
+    // fragment until the GGX rewrite consumes it.
+    rhi::Texture* metallicRoughness = nullptr;
+    // glTF 2.0 channel convention: occlusion = R. Null means the shared white fallback (no
+    // occlusion). Bound but unread by the fragment until the GGX rewrite consumes it.
+    rhi::Texture* occlusion = nullptr;
+    // Null means the shared white fallback, so `emissive` alone applies. Bound but unread by the
+    // fragment until the GGX rewrite consumes it.
+    rhi::Texture* emissiveMap = nullptr;
     glm::vec4 albedo{1.0f};
     glm::vec3 fresnelR0{0.04f}; // dielectric default; metals get their own base colour
     float roughness = 0.5f;     // converted to shininess as 1 - roughness
+    float metallic = 1.0f;    // dielectric/metal mix; unread by the fragment until the GGX rewrite
+    glm::vec3 emissive{0.0f}; // linear; unread by the fragment until the GGX rewrite
     glm::mat4 uvTransform{1.0f};
 };
 
