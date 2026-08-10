@@ -1,40 +1,79 @@
-# Luminex — one frame, as of the M3.1 baseline (2026-08-10)
+# Luminex — one frame, as of the M4 baseline (2026-08-10)
 
 What the renderer does between `beginFrame` and `endFrame`, written for planning what to build
 next. Updated at milestone boundaries.
 
 ## The frame at a glance
 
+A `RenderGraph` is declared fresh every frame: it imports the renderer's own targets and the
+swapchain drawable, four passes declare their reads, attachments, and writes over them, and
+`compile()` proves the declarations form a DAG and answers a serial schedule before any of it
+reaches the GPU. `execute()` then runs that schedule, deriving the one render-target-to-sampled
+barrier each declared cross-pass read justifies.
+
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle invariant asserted)
 │
-├─ 1. Shadow pass          depth-only → shadow map (2048², depth32Float, storeDepth)
-│       every opaque DrawItem, depth bias {-4.0, slope -32.0}, light 0 only
-│       reversed depth: clears to 0, keeps Greater, comparison sampler GreaterEqual
+├─ declare: import shadow map, scene color (HDR), scene depth, display color, swapchain drawable
 │
-├─ 2. Scene pass           → offscreen color (BGRA8Unorm) + depth (D32), viewport-sized
-│       │  per-pass uniforms (slot b2): viewProj, shadowTransform, eye, time, ambient,
+├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
+│       every opaque DrawItem, depth bias {-4.0, -32.0} (negated for reversed-Z), light 0 only
+│       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
+│
+├─ 2. lmx.pass.scene       → scene color (RGBA16Float) + scene depth (D32Float), viewport-sized
+│       │  per-pass uniforms (b2): viewProj, shadowTransform, eye, time, preExposure,
 │       │  3 directional lights, shadow filter
-│       ├─ opaque DrawItems: Blinn-Phong in linear space + cubemap reflection term
-│       │    + shadow factor (25-tap Poisson PCF or PCSS, comparison sampler s1)
-│       │    + normal mapping (TBN, uniform branch on material flag)
-│       │    per-draw uniforms (b1): mvp, model, uvTransform, albedo, fresnelR0, roughness, flags
-│       │    textures t0 diffuse / t1 normal (white / flat-normal fallbacks when unmapped)
-│       ├─ sky, drawn last: camera-centered sphere, z = 0 far-plane trick, GreaterEqual, cull none,
-│       │    cubemap t2
-│       └─ every fragment sRGB-encodes on output (Encode.slang) — the target stays non-sRGB
+│       ├─ opaque DrawItems: GGX metallic-roughness BRDF (direct lights) + diffuse/specular IBL
+│       │    (split-sum reconstruction with Fdez-Agüera multi-scatter compensation) + shadow
+│       │    factor (25-tap Poisson PCF or PCSS, comparison sampler s1) + normal mapping (TBN) +
+│       │    occlusion (image-based terms only) + emissive, summed and pre-exposed; nothing here
+│       │    encodes sRGB
+│       │    per-draw uniforms (b1): mvp, model, inverse-transpose normalMatrix, uvTransform,
+│       │    albedo, roughness, metallic, emissive, flags
+│       │    per-draw textures t0 base color / t1 normal / t4 metallic-roughness / t5 occlusion /
+│       │    t6 emissive (white/flat-normal fallbacks when unmapped); per-pass shared t3 shadow
+│       │    map, t7 irradiance, t8 prefiltered environment, t9 DFG LUT
+│       ├─ reads the shadow map's written version -- the graph derives one
+│       │    textureBarrier(RenderTarget, ShaderRead) in front of this pass from that declaration
+│       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
+│            cull none, GreaterEqual, t2 cubemap, the same preExposure
 │
-├─ textureBarrier            scene color: RenderTarget → ShaderRead
+├─ 3. lmx.pass.display     fullscreen triangle: Load the scene color texel-for-texel (no filter)
+│       → Khronos PBR Neutral tone map → sRGB encode → display color (BGRA8Unorm, viewport-sized)
+│       Shaders/DisplayTransform.slang -- the only shader in the frame that encodes sRGB
 │
-├─ 3. UI pass              → swapchain drawable
-│       Dear ImGui (docked editor shell); the Viewport window samples the scene color texture
+├─ 4. lmx.pass.ui          → swapchain drawable
+│       Dear ImGui (docked editor shell); the Viewport window samples the display color texture;
+│       App declares this pass itself and reads the display pass's output to join it
 │
-└─ endFrame → present (or endFrame(nullptr) for the offscreen --screenshot / test path)
+└─ graph.execute(commands) → endFrame → present (or endFrame(nullptr) for the offscreen
+     --screenshot / test path, which stops at lmx.pass.display and reads that target back)
 ```
 
 Vertex data is bindless vertex-pulling everywhere: a `StructuredBuffer<VertexPNTU>` at slot b0
 (48-byte pos/normal/tangent₄/uv), indices as plain uint32 buffers consumed per draw. There are
 no vertex descriptors in the pipeline.
+
+## The render graph
+
+`Source/Render/RenderGraph.h/.cpp` models a frame's passes as declarations over versioned logical
+handles (`GraphTexture`/`GraphBuffer`) rather than as commands. Resources are **imported only** --
+`importTexture`/`importBuffer` bring in a texture or buffer the frame already owns at version 0;
+the graph creates no GPU objects and pools nothing. A pass names every version it reads, at most
+one color and one depth attachment (each is a versioned write), and any non-attachment writes;
+`compile()` hard-fails a read of a version no pass wrote, two passes writing one version, a cycle,
+an attachment/format mismatch, or an export of a version nothing produced, and otherwise answers
+one serial topological order. `execute()` re-validates, then runs that schedule: each pass becomes
+one labelled render pass, its body runs between `beginRenderPass`/`endRenderPass` with a
+`PassResources` that resolves only the handles the pass declared -- an undeclared resolve is a
+reported failure, not a resolved pointer. A graph is declared fresh every frame; at four passes,
+compile cost is trivial and scheduling optimization, transient pooling, and dead-pass culling stay
+deliberately absent (`docs/decisions/0005-render-graph.md`).
+
+Every render pass is also a GPU timing boundary: `rhi::Device::passTimings()` reports each pass's
+label and GPU milliseconds for the most recently retired frame, populated by counter samples the
+Metal 4 backend takes at pass begin/end and resolved once the shared event proves that frame
+retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
 
 ## Resources and lifetime
 
@@ -43,68 +82,90 @@ no vertex descriptors in the pipeline.
   asserts (all builds) that the shared event proves the recycled slot's frame retired before
   reuse. A 12-frame GPU stress test attributes any cross-frame overwrite to its culprit by color.
 - **Everything lives in one residency set** attached to the queue; textures join at creation.
-- **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, and
-  textures build once on first selection, and scene switches never free GPU memory a recorded
-  frame could still name. Sponza uploads only material-referenced textures; decoded CPU image data
-  is dropped before the builder returns.
-- **Shadow map + offscreen color/depth are Renderer-owned.** The color/depth pair resizes with
-  the Viewport panel (debounced, GPU-drained); the shadow map is fixed at 2048².
+- **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable when the
+  caller asks), scene depth (`D32Float`, kept sampled rather than discarded so a caller can
+  reconstruct view-space distance from it), and display color (`BGRA8Unorm`, what the viewport and
+  a screenshot read) all resize with the Viewport panel (debounced, GPU-drained); the shadow map
+  is fixed at 2048².
+- **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, textures,
+  and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
+  material-referenced images; decoded CPU image data is dropped before the builder returns.
+- **IBL assets are per-scene and generated at build time** (`Source/Engine/Ibl.h`): a
+  cosine-convolved irradiance cube (16² faces), a GGX-prefiltered specular chain (64² base, 5
+  mips), and a split-sum DFG lookup table (64², `RG16Float`), all uploaded `RGBA16Float`/`RG16Float`
+  so radiance above 1.0 survives. A `SceneView` that carries none substitutes black-cube and
+  zero-DFG fallbacks rather than reading an unbound slot.
+- **Base-color and normal images bake offline when `xmake setup` runs**: `Tools/TextureBake`
+  (wrapping `Source/Engine/TextureBake.h`) box-filters a full mip chain in linear light (sRGB
+  images decode/filter/re-encode; normal maps renormalize per level) and writes a DDS plus a
+  manifest recording the source hash. `Scene` prefers the baked DDS beside a glTF file and falls
+  back to the same filter computed in-process (slower load, not incorrect) when it is absent.
+  `Device::generateMipmaps` no longer exists -- Metal's blit variant was measured to point-pick.
 
-## The lighting/shadow math, briefly
+## The math, briefly
 
-The forward-lighting baseline uses these deliberately preserved equations and constants:
-
-- **Blinn-Phong**: `m = shininess·256`, `(m+8)/8 · (N·H)^m` spec factor, Schlick Fresnel at the
-  half-vector, `spec/(spec+1)` LDR clamp. Materials are scalar `fresnelR0` + `roughness` with a
-  diffuse map — no metallic/roughness maps (glTF's metallic maps onto `fresnelR0` via
-  `mix(0.04, baseColor, metallic)` at load).
-- **Reflection term**: `shininess · SchlickFresnel · skyCubemap(reflect(−toEye, N))`.
-- **Shadows**: one directional caster (light 0). Ortho frustum fit to the scene's bounding
-  sphere (`center − 2r·dir` eye), 25-tap Poisson-disk PCF re-seeded per pixel from a hash of the
-  shadow UV (intentionally noisy), or PCSS (blocker search → penumbra → variable
-  PCF) as a runtime toggle. Depth bias tuned by measurement: constant 4.0, slope 32.0 (the PCF
-  kernel spans ~25 texels; a constant bias of 1.0 was insufficient in measured captures).
-- **Gamma**: color textures are sRGB formats (hardware-decode on
-  sample), lighting runs linear, fragments encode on output. Authored color constants
-  (light strengths, ambient, albedos) are decoded once at scene build. The one deliberate
-  exception: the fog-gray clear (0.7) is written raw — the hardware clear bypasses the encode
-  shader, so it must already be display-space.
+- **GGX metallic-roughness BRDF** (`Shaders/Lighting.slang`): Trowbridge-Reitz `D`, height-correlated
+  Smith `V` (combined `G / (4 N·V N·L)` form), Schlick `F` with `F0 = mix(0.04, baseColor,
+  metallic)`, energy-conserving Lambert diffuse `(1 - F)(1 - metallic) baseColor / π`. Perceptual
+  roughness is floored at 0.045 before squaring to `alpha`, bounding the specular lobe the raster
+  grid can resolve.
+- **Image-based lighting**: the split-sum reconstruction (Karis 2013) plus Fdez-Agüera's
+  multiple-scattering compensation, so a white furnace returns its own radiance at every roughness
+  and metallic value rather than losing energy to single-scattering loss as roughness rises.
+  Occlusion attenuates the image-based terms only -- the shadow map already answers direct-light
+  visibility, and applying occlusion to both would darken a lit surface twice.
+- **Exposure and display**: every fragment multiplies its linear output by `preExposure =
+  exp2(EV)` (a Render Settings slider, default 0) before the scene target sees it, so the scene
+  color holds pre-exposed scene-linear radiance. `Shaders/DisplayTransform.slang` is the frame's
+  one display boundary: Khronos PBR Neutral (identity minus a small black offset below its
+  compression start, then peak-channel compression and desaturation toward it) followed by the
+  sRGB encode. The editor's clear color is authored in display space and decoded-then-pre-exposed
+  once, at pass declaration, so the cleared background and every shaded pixel agree on what space
+  the target holds.
+- **Reversed infinite-far depth**: `Camera::projectionMatrix` maps the near plane to 1 and lets
+  depth fall toward 0 without ever reaching it, concentrating float precision at the far plane
+  instead of the near one. Scene and shadow pipelines clear to 0 and keep the `Greater` fragment;
+  the sky pins every vertex to depth 0 and passes `GreaterEqual`; `fitShadowOrtho` reverses to
+  match, and the shadow comparison sampler is `GreaterEqual`. View-space depth reconstructs from a
+  sampled texel as `viewZ = -nearZ / d`.
+- **Shadows**: unchanged from M3's PCF/PCSS mechanics -- one directional caster (light 0), an
+  ortho frustum fit to the scene's bounding sphere, 25-tap Poisson-disk PCF or PCSS (blocker
+  search → penumbra → variable PCF) as a runtime toggle. The depth bias sign flipped with the
+  reversed convention (now `{-4.0, -32.0}`); PCSS's own view/NDC unit mismatch is preserved rather
+  than fixed here.
 
 ## Scenes
 
-Two, behind the Inspector dropdown: **Sponza** (`sponza`, the default world scene, converted
-deterministically to core glTF from the official Crytek OBJ+PNG archive) and **Damaged Helmet**
-(`damaged-helmet`, glTF, generated tangents). Both use a code-generated neutral cubemap. Missing
-fetched assets disable the dropdown entry with setup guidance; an unavailable explicit CLI scene
-exits with an error instead of falling back.
+Three, behind the Inspector dropdown, drawn from one catalog (`--scene` accepts the same IDs):
+**Sponza** (`sponza`, the default world scene, converted deterministically from the official
+Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents), and
+**MaterialLab** (`material-lab`, always available, fully code-generated -- a roughness×metallic
+sphere grid, known-color patches, a gradient ramp, a normal-map probe, and near/mid/far depth
+probes for deterministic checks). All three use the same code-generated neutral-gray sky and its
+generated IBL set. Missing fetched assets disable the dropdown entry with setup guidance; an
+unavailable explicit CLI scene exits with an error instead of falling back.
 
 ## Known gaps / candidate techniques for the next milestone
 
-Ordered roughly by how much they'd change the image, with the sharpest first:
+1. **Execution substrate** — the graph models render passes only; compute, storage resources,
+   general barriers, transient pooling, and graph-level optimization are M5 territory, deferred by
+   design rather than by oversight.
+2. **Automatic exposure and post-processing** — exposure is a manual slider; there is no histogram
+   adaptation, bloom, or temporal reconstruction yet.
+3. **PCSS parameterization** — the migrated blocker search still mixes a view-space near-plane
+   constant with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
+4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load for
+   what is currently always a constant sky; cheap today, worth caching once environments vary.
+5. **Direct lighting is single-scatter** — the analytic BRDF has no multi-scatter compensation;
+   only the image-based term does.
+6. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
+   glTF file that reused one image in both a color and a data role would need the offline bake to
+   distinguish them, which it does not yet do.
+7. **Sponza startup is still synchronous** — decode and upload still block the window before it
+   becomes responsive; asynchronous staging remains future work.
+8. **Portability** — Metal remains the only backend; the reversed-Z, HDR, and graph conventions
+   above are what a future Vulkan backend has to reproduce.
 
-1. **True PBR** — the material model is Blinn-Phong with scalar Fresnel/roughness; Sponza and
-   Helmet ship metallic-roughness maps that currently collapse to per-material scalars.
-   The natural headline feature for M4.
-2. **Post-processing stack** — there is none: no tonemapping (LDR throughout), no bloom, no
-   exposure. A HDR intermediate + tonemap would immediately lift Sponza's interior.
-3. **Shadow quality** — single 2048² map for the whole scene: cascades (CSM) for range,
-   and the current PCSS path carries a preserved unit bug (view-space NEAR_PLANE mixed with NDC
-   z-receiver → blocker search sweeps ±190 texels, penumbra barely tracks occluder distance) —
-   fixing its parameterization is cheap and visible. `CalcShadowFactor`'s perspective divide is
-   untested (ortho w≡1) if spot/point shadows ever arrive.
-4. **Mip quality** — Metal 4's blit `generateMipmaps` was measured to point-pick, not box-filter:
-   Sponza's textures alias in minification. Candidates: offline mips (KTX2), a compute
-   downsample pass, or staging through a Private texture.
-5. **MSAA** — not implemented. The offscreen architecture needs resolve plumbing in the RHI.
-6. **Normal transform correctness** — the shader transforms normals by the model matrix's upper
-   3×3; only exact today because every non-uniform scale in shipped scenes is axis-aligned with
-   its normals. A future free-form non-uniform scale needs an inverse-transpose in
-   `ObjectUniforms`.
-7. **Frame-graph-ish growth** — passes are hand-sequenced in `Renderer::render`; a third pass
-   (post, cascades) is where explicit pass/resource description starts paying.
-8. **GPU-driven / modern-Metal candidates**: MetalFX upscaling, mesh shaders, GPU culling, and
-   Metal ray tracing remain roadmap choices with explicit feature gates.
-
-Cross-references: the M3 milestone record and `Shaders/` (the six pipeline/module files,
-plus the test-oracle shaders, are short and commented — ScenePass.slang is the frame's core in
-~200 lines).
+Cross-references: `docs/milestones/m4.md`, `docs/decisions/0005-render-graph.md`,
+`docs/decisions/0006-scene-linear-image-formation.md`, and `Shaders/` (ScenePass.slang and
+Lighting.slang are the frame's shading core, DisplayTransform.slang its display boundary).
