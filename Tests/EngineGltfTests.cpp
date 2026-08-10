@@ -302,6 +302,12 @@ TEST_CASE("loadGltf parses a minimal quad: mesh/material/instance", "[engine]") 
     REQUIRE(mat.roughness == Catch::Approx(0.5f));
     REQUIRE(mat.baseColorImage == -1);
     REQUIRE(mat.normalImage == -1);
+    // No metallicRoughnessTexture/occlusionTexture/emissiveTexture/emissiveFactor in the fixture:
+    // every new input keeps its default.
+    REQUIRE(mat.metallicRoughnessImage == -1);
+    REQUIRE(mat.occlusionImage == -1);
+    REQUIRE(mat.emissiveImage == -1);
+    REQUIRE(near3(mat.emissiveFactor, {0.0f, 0.0f, 0.0f}));
 
     REQUIRE(scene.instances.size() == 1);
     REQUIRE(scene.instances[0].meshIndex == 0);
@@ -419,6 +425,117 @@ TEST_CASE("loadGltf permits one image in base-color and normal slots", "[engine]
 }
 
 //======================================================================================================================
+// Factor-only: emissiveFactor with no emissive texture.
+TEST_CASE("loadGltf reads an emissive factor without an emissive texture", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-emissive-factor-test";
+    const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
+
+    std::ifstream input(gltfPath);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const size_t offset = json.find("\"pbrMetallicRoughness\"");
+    REQUIRE(offset != std::string::npos);
+    json.insert(offset, "\"emissiveFactor\": [0.5, 0.25, 0.75],\n    ");
+    writeFile(gltfPath, json);
+
+    const auto result = loadGltf(gltfPath.string());
+    REQUIRE(result.has_value());
+    REQUIRE(result->materials.size() == 1);
+    const GltfMaterial& mat = result->materials[0];
+    REQUIRE(near3(mat.emissiveFactor, {0.5f, 0.25f, 0.75f}));
+    REQUIRE(mat.emissiveImage == -1);
+    REQUIRE(mat.metallicRoughnessImage == -1);
+    REQUIRE(mat.occlusionImage == -1);
+
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+// Texture-only: metallic-roughness and occlusion images, no emissiveFactor override.
+TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-mr-occlusion-texture-test";
+    const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
+    {
+        std::ofstream image(dir / "mr.ppm", std::ios::binary | std::ios::trunc);
+        image << "P6\n1 1\n255\n";
+        const std::array<unsigned char, 3> pixel{0, 128, 200};
+        image.write(reinterpret_cast<const char*>(pixel.data()), pixel.size());
+    }
+
+    std::ifstream input(gltfPath);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const auto replaceOnce = [&](std::string_view from, std::string_view to) {
+        const size_t offset = json.find(from);
+        REQUIRE(offset != std::string::npos);
+        json.replace(offset, from.size(), to);
+    };
+    replaceOnce("\"materials\": [{", "\"materials\": [{\"occlusionTexture\": {\"index\": 0},");
+    replaceOnce("\"baseColorFactor\"",
+                "\"metallicRoughnessTexture\": {\"index\": 0}, \"baseColorFactor\"");
+    replaceOnce("  \"buffers\"", "  \"textures\": [{\"source\": 0}],\n"
+                                 "  \"images\": [{\"uri\": \"mr.ppm\"}],\n"
+                                 "  \"buffers\"");
+    writeFile(gltfPath, json);
+
+    const auto result = loadGltf(gltfPath.string());
+    REQUIRE(result.has_value());
+    REQUIRE(result->materials.size() == 1);
+    const GltfMaterial& mat = result->materials[0];
+    REQUIRE(mat.metallicRoughnessImage == 0);
+    REQUIRE(mat.occlusionImage == 0);
+    REQUIRE(mat.emissiveImage == -1);
+    REQUIRE(near3(mat.emissiveFactor, {0.0f, 0.0f, 0.0f}));
+    REQUIRE(result->images[0].rgba8.size() == 4);
+
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+// Both: an emissiveFactor and an emissive texture together, isolating that neither overwrites the
+// other.
+TEST_CASE("loadGltf reads an emissive factor together with an emissive texture", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-emissive-both-test";
+    const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
+    {
+        std::ofstream image(dir / "emissive.ppm", std::ios::binary | std::ios::trunc);
+        image << "P6\n1 1\n255\n";
+        const std::array<unsigned char, 3> pixel{255, 200, 100};
+        image.write(reinterpret_cast<const char*>(pixel.data()), pixel.size());
+    }
+
+    std::ifstream input(gltfPath);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const auto replaceOnce = [&](std::string_view from, std::string_view to) {
+        const size_t offset = json.find(from);
+        REQUIRE(offset != std::string::npos);
+        json.replace(offset, from.size(), to);
+    };
+    replaceOnce("\"materials\": [{", "\"materials\": [{\"emissiveTexture\": {\"index\": 0}, "
+                                     "\"emissiveFactor\": [0.2, 0.3, 0.4],");
+    replaceOnce("  \"buffers\"", "  \"textures\": [{\"source\": 0}],\n"
+                                 "  \"images\": [{\"uri\": \"emissive.ppm\"}],\n"
+                                 "  \"buffers\"");
+    writeFile(gltfPath, json);
+
+    const auto result = loadGltf(gltfPath.string());
+    REQUIRE(result.has_value());
+    REQUIRE(result->materials.size() == 1);
+    const GltfMaterial& mat = result->materials[0];
+    REQUIRE(mat.emissiveImage == 0);
+    REQUIRE(near3(mat.emissiveFactor, {0.2f, 0.3f, 0.4f}));
+    REQUIRE(mat.metallicRoughnessImage == -1);
+    REQUIRE(mat.occlusionImage == -1);
+    REQUIRE(result->images[0].rgba8.size() == 4);
+
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
 TEST_CASE("loadGltf generates tangents for a quad with no authored TANGENT", "[engine]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-loader-tangent-test";
@@ -501,24 +618,43 @@ TEST_CASE("loadGltf(DamagedHelmet.glb): one mesh, generated tangents (no authore
     REQUIRE_FALSE(scene.materials.empty());
     bool foundBaseColor = false;
     bool foundNormal = false;
+    bool foundMetallicRoughness = false;
+    bool foundOcclusion = false;
+    bool foundEmissive = false;
+    const auto checkPlausibleImage = [&](int imageIndex) {
+        const GltfImage& img = scene.images[static_cast<size_t>(imageIndex)];
+        REQUIRE(img.width > 0);
+        REQUIRE(img.height > 0);
+        REQUIRE(img.rgba8.size() == static_cast<size_t>(img.width) * img.height * 4);
+    };
     for (const GltfMaterial& mat : scene.materials) {
         if (mat.baseColorImage >= 0) {
             foundBaseColor = true;
-            const GltfImage& img = scene.images[static_cast<size_t>(mat.baseColorImage)];
-            REQUIRE(img.width > 0);
-            REQUIRE(img.height > 0);
-            REQUIRE(img.rgba8.size() == static_cast<size_t>(img.width) * img.height * 4);
+            checkPlausibleImage(mat.baseColorImage);
         }
         if (mat.normalImage >= 0) {
             foundNormal = true;
-            const GltfImage& img = scene.images[static_cast<size_t>(mat.normalImage)];
-            REQUIRE(img.width > 0);
-            REQUIRE(img.height > 0);
-            REQUIRE(img.rgba8.size() == static_cast<size_t>(img.width) * img.height * 4);
+            checkPlausibleImage(mat.normalImage);
+        }
+        if (mat.metallicRoughnessImage >= 0) {
+            foundMetallicRoughness = true;
+            checkPlausibleImage(mat.metallicRoughnessImage);
+        }
+        if (mat.occlusionImage >= 0) {
+            foundOcclusion = true;
+            checkPlausibleImage(mat.occlusionImage);
+        }
+        if (mat.emissiveImage >= 0) {
+            foundEmissive = true;
+            checkPlausibleImage(mat.emissiveImage);
         }
     }
     REQUIRE(foundBaseColor);
     REQUIRE(foundNormal);
+    // Damaged Helmet ships all three of these inputs.
+    REQUIRE(foundMetallicRoughness);
+    REQUIRE(foundOcclusion);
+    REQUIRE(foundEmissive);
 }
 
 //======================================================================================================================
