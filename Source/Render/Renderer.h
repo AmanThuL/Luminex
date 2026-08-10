@@ -104,28 +104,28 @@ struct SceneView {
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Runtime shadow sampling mode.
     bool wireframe = false;                        ///< Selects the wireframe scene pipeline.
-    /// Manual exposure, in stops. The renderer turns it into exp2(exposureEv) and every fragment
-    /// multiplies its linear output by that before the target sees it -- so the scene target holds
-    /// pre-exposed radiance and the display transform reads one already-exposed image. Zero is
-    /// unit exposure, which is what leaves a scene looking as it did before there was a slider.
-    /// Ignored when autoExposureEnabled is true, except as the value a reset frame forces.
+    /// Manual exposure, in stops. Every fragment multiplies its linear output by exp2(exposureEv)
+    /// before the target sees it -- so the scene target holds pre-exposed radiance and the display
+    /// transform reads one already-exposed image. Zero is unit exposure, which is what leaves a
+    /// scene looking as it did before there was a slider. This is what shading applies whenever
+    /// autoExposureEnabled is false, unchanged from before auto-exposure existed; it is also the
+    /// value a reset frame seeds the feedback buffer with when auto-exposure is true.
     float exposureEv = 0.0f;
 
     /// Histogram auto-exposure (spec 9), a Render Settings opt-in; manual exposure (above) stays
-    /// the default. When true, `autoExposureOverride` replaces exp2(exposureEv) as this frame's
-    /// applied preExposure. Manual mode never reads the feedback buffer: the exposure histogram
-    /// and resolve passes still declare every frame (so dead-pass culling has something to remove
-    /// when this is false), but nothing exports their result and nothing feeds it back.
+    /// the default. When true, the scene and sky passes switch to `ScenePassAuto.slang`/
+    /// `SkyAuto.slang`'s compiled pipelines, which read their applied exposure from the persistent
+    /// exposure buffer (declared as a graph read only in this mode) instead of `exposureEv` -- a
+    /// GPU-persistent value with a one-frame lag, never a CPU readback. The manual pipelines'
+    /// shader source is untouched by any of this: the exposure histogram and resolve passes still
+    /// declare every frame (so dead-pass culling has something to remove when this is false), but
+    /// nothing exports their result.
     bool autoExposureEnabled = false;
-    /// The linear exposure multiplier applied this frame when autoExposureEnabled is true. The App
-    /// is the only writer: a blocking readback of the exposure buffer, taken after the frame whose
-    /// resolve pass produced it, so the one-frame lag the spec describes is realised as a CPU/GPU
-    /// sync boundary rather than a same-timeline GPU buffer read. On the frame any of spec 9's four
-    /// reset triggers fires (first frame, scene switch, auto-exposure enable, resize), the App sets
-    /// this to resolveAutoExposureOverride's reset branch (exp2(exposureEv)) instead of the
-    /// readback, which is what the reset rule *is* -- there is no separate flag to track here
-    /// because the reset and the value it forces are the same decision. Ignored in manual mode.
-    float autoExposureOverride = 1.0f;
+    /// True on the frame the feedback loop must (re)seed the exposure buffer with exp2(exposureEv)
+    /// (spec 9's four reset triggers: first frame, scene switch, auto-exposure enable, resize).
+    /// Only meaningful when autoExposureEnabled is true; EditorShell/main.cpp track the triggers
+    /// and forward the result here every frame.
+    bool exposureReset = false;
     float exposureLowPercentile = 50.0f; ///< Percent of pixel count trimmed from the shadow end.
     float exposureHighPercentile =
         95.0f;                           ///< Percent of pixel count trimmed from the highlight end.
@@ -164,16 +164,6 @@ struct ShadowMatrices {
 /// `lightDir` is the direction the rays travel and need not be normalised. A direction parallel to
 /// world up is handled rather than producing NaNs because the editor can reach it.
 ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& lightDir);
-
-/// The value SceneView::autoExposureOverride takes this frame (spec 9's four reset rules -- first
-/// frame, scene switch, auto-exposure enable, and resize -- collapse to one decision: `reset` true
-/// forces the manual EV exactly as if auto-exposure were off, and false carries the App's cached
-/// readback of the exposure buffer forward unchanged). A free function because it is pure
-/// arithmetic on the App's own state, unit-testable without a device -- Tests/RenderTests.cpp is
-/// where its coverage lives, one case per named trigger. main.cpp calls it once per frame with
-/// `reset` from EditorShell::consumeExposureReset().
-float resolveAutoExposureOverride(bool reset, float manualExposureEv,
-                                  float previousResolvedExposure);
 
 /// Capture tooling, not part of rendering: publishes the four uniform-block layouts this file
 /// uploads (name, slot, size, every field's offset and type) to rhi::debug::CaptureSchema, so the
@@ -246,13 +236,6 @@ public:
     /// declares no read of it, so the graph has emitted no transition.
     rhi::Texture& depthTarget();
 
-    /// The persistent exposure buffer the resolve pass writes (spec 9): one float, the linear
-    /// exposure multiplier to apply next frame. The App reads it back (after waitIdle, once the
-    /// frame whose resolve pass wrote it has retired) to feed SceneView::autoExposureOverride the
-    /// following frame -- the one-frame feedback loop's CPU/GPU sync boundary. Valid content only
-    /// once a frame with autoExposureEnabled true has actually scheduled the resolve pass.
-    rhi::Buffer& exposureBuffer();
-
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
     /// Returns the current target height in pixels.
@@ -281,21 +264,34 @@ private:
     // above rather than assigned.
     TransientPool m_transientPool;
     std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
+    // ScenePassAuto.slang: byte-for-byte ScenePass.slang except the final multiply reads the
+    // persistent exposure buffer instead of PassUniforms.preExposure (spec 9). A separate library
+    // and pipeline -- not a runtime branch in one shader -- because a branch that is never taken
+    // still gives the compiler a different fragment to schedule around: an M5 parity check failed
+    // by one rounding bit in one pixel the one time this shared a file with the manual path. See
+    // ScenePassAuto.slang's header for the full reasoning.
+    std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_skyAutoLibrary; // SkyAuto.slang; same reasoning as above
     std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_histogramLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_exposureResolveLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_exposureSeedLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
+    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_shadowPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_bloomThresholdPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_bloomDownsamplePipeline;
     std::unique_ptr<rhi::ComputePipeline> m_bloomUpsamplePipeline;

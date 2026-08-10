@@ -4,14 +4,18 @@
 // 256 log-spaced bins via an atomic add. The buffer is cleared to zero by a declared copy pass
 // (fillBuffer) before this kernel runs; ExposureResolve.slang is the only reader of the result.
 //
-// Slots: texture 0 scene color; buffers 0 histogram (read-write, atomic), 1 params.
+// This frame's applied preExposure is read from the persistent exposure buffer (gExposure) rather
+// than a CPU uniform: it is the same buffer ScenePass.slang/Sky.slang read when auto-exposure is
+// on, so the histogram's reconstruction agrees with what shading actually used by construction --
+// Renderer.cpp declares this pass's read against the exact version those raster passes read too.
+//
+// Slots: texture 0 scene color; buffers 0 histogram (read-write, atomic), 1 exposure (read), 2
+// params.
 
 struct HistogramParams
 {
-    float preExposure;      // This frame's applied preExposure -- divides displayed luminance back
-                             // to scene-referred before it is binned.
-    float logLuminanceMin;  // Lower edge of the binned log2(luminance) range.
-    float logLuminanceMax;  // Upper edge of the binned log2(luminance) range.
+    float logLuminanceMin; // Lower edge of the binned log2(luminance) range.
+    float logLuminanceMax; // Upper edge of the binned log2(luminance) range.
     uint width;              // Scene color extent -- dispatches may overshoot at the edges.
     uint height;
 };
@@ -23,7 +27,10 @@ Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
 RWStructuredBuffer<uint> gHistogram : register(u0); // → MSL [[buffer(0)]]
 
 [[vk::binding(1, 0)]]
-ConstantBuffer<HistogramParams> gParams : register(b1); // → MSL [[buffer(1)]]
+StructuredBuffer<float> gExposure : register(t1); // → MSL [[buffer(1)]]
+
+[[vk::binding(2, 0)]]
+ConstantBuffer<HistogramParams> gParams : register(b2); // → MSL [[buffer(2)]]
 
 static const uint kHistogramBins = 256;
 // Rec. 709 luma weights -- the same perceptual-luminance convention the display transform's
@@ -39,11 +46,12 @@ void computeHistogramAccumulate(uint3 tid: SV_DispatchThreadID)
         return;
     }
 
+    float preExposure = gExposure[0];
     float3 displayedColor = gSceneColor.Load(int3(int2(tid.xy), 0)).rgb;
     float displayedLuminance = dot(displayedColor, kLuminanceWeights);
     // Scene color is pre-exposed (AGENTS.md); dividing by this frame's own preExposure recovers
     // the scene-referred value the metering formula needs.
-    float sceneLuminance = displayedLuminance / max(gParams.preExposure, 1e-6);
+    float sceneLuminance = displayedLuminance / max(preExposure, 1e-6);
     float logLuminance = log2(max(sceneLuminance, 1e-6));
 
     float range = max(gParams.logLuminanceMax - gParams.logLuminanceMin, 1e-6);

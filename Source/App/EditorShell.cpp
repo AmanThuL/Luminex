@@ -202,9 +202,8 @@ render::SceneView EditorShell::sceneView() {
     // described itself -- the same way the wireframe and shadow-filter settings are.
     view.exposureEv = m_exposureEv;
     view.autoExposureEnabled = m_autoExposureEnabled;
-    // autoExposureOverride is left at SceneView's default (1.0); main.cpp overwrites it with the
-    // App's own exposure-buffer readback before declaring passes, and with exp2(m_exposureEv)
-    // itself on a reset frame -- this shell has no RHI handle to perform either.
+    // exposureReset is left at SceneView's default (false); main.cpp sets it from
+    // consumeExposureReset() before declaring passes.
     view.exposureLowPercentile = m_exposureLowPercentile;
     view.exposureHighPercentile = m_exposureHighPercentile;
     view.exposureTargetGrey = m_exposureTargetGrey;

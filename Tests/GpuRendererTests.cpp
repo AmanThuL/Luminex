@@ -8,6 +8,7 @@
 
 #include <catch2/catch_approx.hpp>
 
+#include <cmath>
 #include <cstring>
 
 namespace {
@@ -918,6 +919,75 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
 }
 
 //======================================================================================================================
+// Auto-exposure's cross-frame read through the real Renderer graph -- not a kernel dispatched in
+// isolation (Tests/GpuExposureBloomTests.cpp covers the kernels) but the actual scene pass, over
+// two real frames, with no CPU readback anywhere in the loop (spec 9, per the coordinator's
+// correction: bindBuffer inside the raster pass, not a blocking Buffer::readback). Frame 1 is a
+// reset (Renderer::declarePasses' computeExposureSeed writes exp2(manual EV) into the buffer
+// before the scene pass reads it, all within that one frame's graph), which shading must apply
+// exactly like the manual path above does -- a direct check that the GPU-buffer route and the
+// CPU-uniform route agree numerically when they are supposed to. Frame 2 carries no reset, so the
+// scene pass reads whatever frame 1's resolve pass wrote for it -- a real cross-command-buffer
+// read this test doesn't predict the exact value of (the histogram covers the whole target, clear
+// included), only that it lands finite and positive: MTL_DEBUG_LAYER's validation passing this
+// case is what actually proves the read is hazard-free, since a race would show up there before
+// it showed up in a wrong pixel value.
+TEST_CASE("auto exposure applies through the real scene pass with no CPU readback", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane = lmx::render::createMesh(**device, lmx::render::makePlane(2.0f),
+                                         "lmx.test.autoExposurePlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {{
+        {.mesh = &*plane,
+         .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}}},
+    }};
+
+    SceneView view;
+    view.items = items;
+    for (DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
+    view.autoExposureEnabled = true;
+    view.exposureEv = 0.0f; // reset frame's manual value: exp2(0) == 1
+
+    std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
+    const auto renderAndReadLitTexel = [&]() {
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+        return halfPixelAt(texels, 32, 32);
+    };
+
+    view.exposureReset = true;
+    const HalfPixel frame1 = renderAndReadLitTexel();
+    REQUIRE(frame1.r == halfBits(4.0f)); // exp2(manual EV 0) == 1, applied through the GPU buffer
+    REQUIRE(frame1.g == halfBits(4.0f));
+    REQUIRE(frame1.b == halfBits(4.0f));
+
+    view.exposureReset = false;
+    const HalfPixel frame2 = renderAndReadLitTexel();
+    const float frame2R = floatOfHalfBits(frame2.r);
+    INFO("frame 2 lit texel r = " << frame2R);
+    REQUIRE(std::isfinite(frame2R));
+    REQUIRE(frame2R > 0.0f);
+}
+
+//======================================================================================================================
 // An interior probe and total coverage bound distinguish wireframe from empty and solid output.
 TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]") {
     using namespace lmx::rhi;
@@ -1080,17 +1150,25 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
     (*device)->beginFrame();
     (*device)->endFrame(nullptr);
 
-    // Bloom is enabled by default (spec 10) and its three passes always schedule with it; auto
-    // exposure is off by default (spec 9), so the histogram/resolve passes are culled and do not
-    // appear here -- see the culling test in RenderGraphTests.cpp for that half of the picture.
+    // Bloom is enabled by default (spec 10) and its passes always schedule with it -- kSize == 64
+    // gives a 32-wide bloom base, which clamps to Renderer.cpp's full kMaxBloomDownsampleLevels ==
+    // 4: threshold, 4 downsample passes, 4 upsample passes. Auto exposure is off by default (spec
+    // 9), so the histogram/resolve/seed passes are culled and do not appear here -- see the
+    // culling test in RenderGraphTests.cpp for that half of the picture.
     const std::span<const PassTiming> timings = (*device)->passTimings();
-    REQUIRE(timings.size() == 6);
+    REQUIRE(timings.size() == 12);
     REQUIRE(timings[0].label == "lmx.pass.shadow");
     REQUIRE(timings[1].label == "lmx.pass.scene");
     REQUIRE(timings[2].label == "lmx.pass.bloom.threshold");
-    REQUIRE(timings[3].label == "lmx.pass.bloom.downsample");
-    REQUIRE(timings[4].label == "lmx.pass.bloom.upsample");
-    REQUIRE(timings[5].label == "lmx.pass.display");
+    REQUIRE(timings[3].label == "lmx.pass.bloom.downsample0");
+    REQUIRE(timings[4].label == "lmx.pass.bloom.downsample1");
+    REQUIRE(timings[5].label == "lmx.pass.bloom.downsample2");
+    REQUIRE(timings[6].label == "lmx.pass.bloom.downsample3");
+    REQUIRE(timings[7].label == "lmx.pass.bloom.upsample3");
+    REQUIRE(timings[8].label == "lmx.pass.bloom.upsample2");
+    REQUIRE(timings[9].label == "lmx.pass.bloom.upsample1");
+    REQUIRE(timings[10].label == "lmx.pass.bloom.upsample0");
+    REQUIRE(timings[11].label == "lmx.pass.display");
     for (const PassTiming& timing : timings) {
         INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
         REQUIRE(timing.gpuMilliseconds > 0.0);

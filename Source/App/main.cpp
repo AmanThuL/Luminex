@@ -143,10 +143,6 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
     uint64_t previousTicksNs = SDL_GetTicksNS();
     // Accumulation in double avoids precision loss in the float shader time during long runs.
     double elapsedSeconds = 0.0;
-    // The App's cache of the exposure buffer's most recent resolved value (spec 9); read back
-    // after the frame whose resolve pass produced it, fed into the *next* frame's
-    // SceneView::autoExposureOverride. Unit exposure until auto-exposure has run at least once.
-    float lastAutoExposure = 1.0f;
 
     while (running) {
         SDL_Event event;
@@ -241,15 +237,11 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         // Named rather than passed inline: the pass bodies borrow this view and run when the
         // graph executes, which is past the end of the statement that would hold a temporary.
         lmx::render::SceneView view = shell->sceneView();
-        // The one-frame exposure feedback loop's CPU/GPU sync boundary (spec 9): on any of the
-        // four reset triggers this frame forces the manual value, exactly as manual mode always
-        // would; otherwise it carries forward the readback taken after the frame whose resolve
-        // pass produced it (below). EditorShell has no RHI handle to do either itself.
-        const bool exposureReset = shell->consumeExposureReset();
-        if (view.autoExposureEnabled) {
-            view.autoExposureOverride = lmx::render::resolveAutoExposureOverride(
-                exposureReset, view.exposureEv, lastAutoExposure);
-        }
+        // Spec 9's four reset triggers, forwarded to Renderer::declarePasses: on the frame any of
+        // them fires, it seeds the persistent exposure buffer with exp2(exposureEv) itself (an
+        // ordinary compute dispatch), rather than main.cpp reading anything back -- the feedback
+        // loop lives entirely on the GPU timeline.
+        view.exposureReset = shell->consumeExposureReset();
 
         lmx::render::RenderGraph graph(transientPool);
         graph.setPoolingEnabled(shell->poolingEnabled());
@@ -289,16 +281,6 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
-
-        // Auto-exposure's one-frame feedback loop, closed here: a blocking readback of this
-        // frame's resolved exposure, cached for the *next* frame's SceneView::autoExposureOverride.
-        // waitIdle drains the pipeline -- acceptable for M5's correctness-only scope (adaptation
-        // and smoothing, and the perf work a fully async readback would need, are M6 per the
-        // roadmap); manual mode (the default) never reaches this branch at all.
-        if (shell->autoExposureEnabled()) {
-            (*device)->waitIdle();
-            (*renderer)->exposureBuffer().readback(&lastAutoExposure, sizeof(lastAutoExposure));
-        }
 
         if (capturingThisFrame) {
             {

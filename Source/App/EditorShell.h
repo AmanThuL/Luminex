@@ -84,19 +84,14 @@ public:
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this
-    /// SceneView is derived from. autoExposureOverride is left at its default (1.0); main.cpp
-    /// overwrites it with the App's own readback of the exposure buffer before declaring the
-    /// frame's passes -- this shell has no RHI handle to read it back with.
+    /// SceneView is derived from. exposureReset is left at its default (false); main.cpp sets it
+    /// from consumeExposureReset() before declaring the frame's passes.
     render::SceneView sceneView();
 
     /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
     /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
     /// what turns "a reset happened" into "the next frame's SceneView says so."
     bool consumeExposureReset();
-
-    /// Whether the Render Settings auto-exposure checkbox is on. main.cpp reads this to decide
-    /// whether to read the exposure buffer back after the frame it declares.
-    bool autoExposureEnabled() const { return m_autoExposureEnabled; }
 
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }

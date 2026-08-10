@@ -216,16 +216,21 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
                                              nullptr);
     INFO(errorOf(histogram));
     REQUIRE(histogram.has_value());
+    // The kernel reads this frame's applied preExposure from a buffer, not a uniform (spec 9: the
+    // same buffer ScenePass.slang/Sky.slang read in auto mode). A plain initial-data buffer stands
+    // in for it here.
+    auto exposure = (*device)->createBuffer(
+        {.size = sizeof(float), .label = "lmx.test.histogramExposureBuffer"}, &kPreExposure);
+    INFO(errorOf(exposure));
+    REQUIRE(exposure.has_value());
 
     struct HistogramParams {
-        float preExposure;
         float logLuminanceMin;
         float logLuminanceMax;
         uint32_t width;
         uint32_t height;
     };
-    const HistogramParams params{.preExposure = kPreExposure,
-                                 .logLuminanceMin = kLogLuminanceMin,
+    const HistogramParams params{.logLuminanceMin = kLogLuminanceMin,
                                  .logLuminanceMax = kLogLuminanceMax,
                                  .width = kWidth,
                                  .height = kHeight};
@@ -240,7 +245,8 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
     commands.bindComputePipeline(**pipeline);
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
-    commands.setUniforms(1, &params, sizeof(params));
+    commands.bindBuffer(1, **exposure);
+    commands.setUniforms(2, &params, sizeof(params));
     commands.dispatch(1, 1, 1); // 4x4 fits one 8x8 threadgroup; the kernel bounds-checks the rest.
     commands.endComputePass();
     (*device)->endFrame(nullptr);
@@ -324,6 +330,15 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
                                              nullptr);
     INFO(errorOf(histogram));
     REQUIRE(histogram.has_value());
+    // The buffer the histogram kernel reads "this frame's applied preExposure" from (spec 9) --
+    // separate from `exposure` below (what the resolve pass writes for *next* frame), exactly as
+    // Renderer.cpp's two-buffer-role read/write is, just without the graph's version-chain naming
+    // both roles onto one physical buffer.
+    auto appliedExposure = (*device)->createBuffer(
+        {.size = sizeof(float), .label = "lmx.test.convergenceAppliedExposureBuffer"},
+        &kPreExposure);
+    INFO(errorOf(appliedExposure));
+    REQUIRE(appliedExposure.has_value());
     auto exposure = (*device)->createBuffer({.size = sizeof(float),
                                              .storageWrite = true,
                                              .cpuReadback = true,
@@ -333,7 +348,6 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     REQUIRE(exposure.has_value());
 
     struct HistogramParams {
-        float preExposure;
         float logLuminanceMin;
         float logLuminanceMax;
         uint32_t width;
@@ -343,8 +357,7 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
         float lowPercentile, highPercentile, targetGrey, evMin, evMax, compensationEv;
         float logLuminanceMin, logLuminanceMax;
     };
-    const HistogramParams histogramParams{.preExposure = kPreExposure,
-                                          .logLuminanceMin = kLogLuminanceMin,
+    const HistogramParams histogramParams{.logLuminanceMin = kLogLuminanceMin,
                                           .logLuminanceMax = kLogLuminanceMax,
                                           .width = kWidth,
                                           .height = kHeight};
@@ -367,7 +380,8 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     commands.bindComputePipeline(**histogramPipeline);
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
-    commands.setUniforms(1, &histogramParams, sizeof(histogramParams));
+    commands.bindBuffer(1, **appliedExposure);
+    commands.setUniforms(2, &histogramParams, sizeof(histogramParams));
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 
@@ -399,11 +413,90 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
 }
 
 //======================================================================================================================
-// Below-threshold content contributes nothing (an exact CPU match, since the formula has no
-// binning quantization to blur the comparison), and a bright probe's energy after the full
-// threshold -> downsample -> upsample-accumulate chain matches a CPU port of the same three
-// kernels within a stated tolerance -- spec 10's bloom energy oracle.
-TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
+// spec 9's four reset triggers -- first frame, scene switch, auto-exposure enable, and resize --
+// all resolve to the same GPU work in Renderer::declarePasses: an ordinary
+// computeExposureSeed dispatch that writes exp2(manualEV) into the persistent exposure buffer, no
+// CPU readback involved. Each section names the trigger it stands for and drives the real kernel,
+// not a CPU stand-in for it -- the collapse to one dispatch is the point (Renderer.cpp has one
+// reset path, not four), but the kernel itself is what has to be right.
+TEST_CASE("the exposure seed kernel writes exp2(manual EV) on every spec-9 reset trigger",
+          "[gpu]") {
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/ExposureSeed");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
+                                                      .computeEntry = "computeExposureSeed",
+                                                      .threadsPerThreadgroup = {1, 1, 1},
+                                                      .label = "lmx.test.exposureSeedPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    struct ExposureSeedParams {
+        float exposure;
+    };
+
+    const auto runSeed = [&](float manualEv) {
+        // A stale value the buffer might otherwise still hold, standing in for whatever the
+        // previous scene/session/size left in it -- the seed dispatch must overwrite it
+        // regardless of what it was.
+        constexpr float kStaleValue = 0.1f;
+        auto exposure = (*device)->createBuffer({.size = sizeof(float),
+                                                 .storageWrite = true,
+                                                 .cpuReadback = true,
+                                                 .label = "lmx.test.seedExposureBuffer"},
+                                                &kStaleValue);
+        const ExposureSeedParams params{.exposure = std::exp2(manualEv)};
+
+        CommandList& commands = (*device)->beginFrame();
+        commands.beginComputePass("lmx.test.exposureSeed");
+        commands.bindComputePipeline(**pipeline);
+        commands.bindStorageBuffer(0, **exposure, StorageAccess::Write);
+        commands.setUniforms(1, &params, sizeof(params));
+        commands.dispatch(1, 1, 1);
+        commands.endComputePass();
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+
+        float result = 0.0f;
+        (*exposure)->readback(&result, sizeof(result));
+        return result;
+    };
+
+    constexpr float kManualEv = 2.0f;
+    constexpr float kExpected = 4.0f; // exp2(2)
+
+    SECTION("first frame") {
+        // EditorShell::create() leaves m_exposureResetPending true from construction, so the very
+        // first frame declares this pass without any trigger having "fired".
+        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
+    }
+    SECTION("scene switch") {
+        // EditorShell::selectScene() sets m_exposureResetPending on every successful switch.
+        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
+    }
+    SECTION("auto-exposure enable") {
+        // The Render Settings checkbox's off->on transition sets m_exposureResetPending.
+        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
+    }
+    SECTION("resize") {
+        // EditorShell::applyPendingViewportResize() sets m_exposureResetPending after a
+        // successful resize -- the histogram's binning covered a differently-sized image last
+        // frame.
+        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
+    }
+}
+
+//======================================================================================================================
+// Below-threshold content contributes nothing (an exact CPU match against every mip-0 texel the
+// CPU chain also computes as zero, not just an ad hoc "elsewhere"), and a bright probe's energy
+// after the full chain matches a CPU port of the same kernels within a stated tolerance -- spec
+// 10's bloom energy oracle. Runs Renderer.cpp's own chain depth (kMaxBloomDownsampleLevels == 4,
+// clamped for the extent), not a shortened stand-in, so the oracle covers what actually ships.
+TEST_CASE("bloom threshold and the full four-level chain match a CPU reference", "[gpu]") {
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -439,11 +532,20 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
     INFO(errorOf(upsamplePipeline));
     REQUIRE(upsamplePipeline.has_value());
 
-    // 8x8 scene color -> 4x4 bloomChain mip0 -> 2x2 mip1 -> 4x4 bloomBlur mip0. One bright probe
-    // texel (16, well above threshold), a uniform background at luminance 1 (well below it).
-    constexpr uint32_t kSceneSize = 8, kMip0Size = 4, kMip1Size = 2;
+    // 64x64 scene -> bloomChain mip 0..4 (32, 16, 8, 4, 2) -- Renderer.cpp's own
+    // kMaxBloomDownsampleLevels -- -> bloomBlur mip 0..3 (32, 16, 8, 4). One bright probe texel,
+    // well above threshold; a uniform background well below it.
+    constexpr uint32_t kSceneSize = 64;
+    constexpr uint32_t kLevels = 4; // downsample steps; mirrors Renderer.cpp's constant
+    constexpr uint32_t kMip0Size = kSceneSize / 2;
     constexpr float kThreshold = 4.0f;
     constexpr uint32_t kProbeX = 0, kProbeY = 0; // scene texel; lands at bloom mip0 texel (0, 0)
+
+    std::array<uint32_t, kLevels + 1> chainSize{};
+    chainSize[0] = kMip0Size;
+    for (uint32_t level = 1; level <= kLevels; ++level) {
+        chainSize[level] = chainSize[level - 1] / 2;
+    }
 
     std::vector<glm::vec3> scenePixels(size_t{kSceneSize} * kSceneSize, glm::vec3(1.0f));
     scenePixels[kProbeY * kSceneSize + kProbeX] = glm::vec3(16.0f);
@@ -465,7 +567,7 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
     auto bloomChain = (*device)->createTexture({.width = kMip0Size,
                                                 .height = kMip0Size,
                                                 .format = Format::RGBA16Float,
-                                                .mipLevels = 2,
+                                                .mipLevels = kLevels + 1,
                                                 .storageRead = true,
                                                 .storageWrite = true,
                                                 .label = "lmx.test.bloomChain"});
@@ -474,6 +576,7 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
     auto bloomBlur = (*device)->createTexture({.width = kMip0Size,
                                                .height = kMip0Size,
                                                .format = Format::RGBA16Float,
+                                               .mipLevels = kLevels,
                                                .storageRead = true,
                                                .storageWrite = true,
                                                .cpuReadback = true,
@@ -491,59 +594,76 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
     struct UpsampleParams {
         uint32_t smallWidth, smallHeight, dstWidth, dstHeight;
     };
+    const auto mipView = [](uint32_t level) {
+        return TextureViewDesc{.range = {.baseMipLevel = level, .mipLevelCount = 1}};
+    };
+
+    CommandList& commands = (*device)->beginFrame();
+
     const ThresholdParams thresholdParams{.threshold = kThreshold,
                                           .srcWidth = kSceneSize,
                                           .srcHeight = kSceneSize,
                                           .dstWidth = kMip0Size,
                                           .dstHeight = kMip0Size};
-    const DownsampleParams downsampleParams{.srcWidth = kMip0Size,
-                                            .srcHeight = kMip0Size,
-                                            .dstWidth = kMip1Size,
-                                            .dstHeight = kMip1Size};
-    const UpsampleParams upsampleParams{.smallWidth = kMip1Size,
-                                        .smallHeight = kMip1Size,
-                                        .dstWidth = kMip0Size,
-                                        .dstHeight = kMip0Size};
-    const TextureViewDesc mip0View{.range = {.baseMipLevel = 0, .mipLevelCount = 1}};
-    const TextureViewDesc mip1View{.range = {.baseMipLevel = 1, .mipLevelCount = 1}};
-
-    CommandList& commands = (*device)->beginFrame();
     commands.beginComputePass("lmx.test.bloomThreshold");
     commands.bindComputePipeline(**thresholdPipeline);
     commands.bindTexture(0, **sceneColor);
-    commands.bindStorageTexture(1, **bloomChain, mip0View, StorageAccess::Write);
+    commands.bindStorageTexture(1, **bloomChain, mipView(0), StorageAccess::Write);
     commands.setUniforms(0, &thresholdParams, sizeof(thresholdParams));
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 
+    // Downsample chain: mip (L - 1) -> mip L, one pass per level.
+    for (uint32_t level = 1; level <= kLevels; ++level) {
+        commands.textureBarrier(**bloomChain, TextureUse::StorageWrite, TextureUse::StorageRead);
+        const DownsampleParams params{.srcWidth = chainSize[level - 1],
+                                      .srcHeight = chainSize[level - 1],
+                                      .dstWidth = chainSize[level],
+                                      .dstHeight = chainSize[level]};
+        commands.beginComputePass("lmx.test.bloomDownsample");
+        commands.bindComputePipeline(**downsamplePipeline);
+        commands.bindStorageTexture(0, **bloomChain, mipView(level - 1), StorageAccess::Read);
+        commands.bindStorageTexture(1, **bloomChain, mipView(level), StorageAccess::Write);
+        commands.setUniforms(0, &params, sizeof(params));
+        commands.dispatch(1, 1, 1);
+        commands.endComputePass();
+    }
+
+    // Upsample-accumulate: walks kLevels back down to mip 0, one pass per level. The first step's
+    // "small" input is bloomChain's own smallest mip; every later step's is the previous step's
+    // own bloomBlur output.
     commands.textureBarrier(**bloomChain, TextureUse::StorageWrite, TextureUse::StorageRead);
-
-    commands.beginComputePass("lmx.test.bloomDownsample");
-    commands.bindComputePipeline(**downsamplePipeline);
-    commands.bindStorageTexture(0, **bloomChain, mip0View, StorageAccess::Read);
-    commands.bindStorageTexture(1, **bloomChain, mip1View, StorageAccess::Write);
-    commands.setUniforms(0, &downsampleParams, sizeof(downsampleParams));
-    commands.dispatch(1, 1, 1);
-    commands.endComputePass();
-
-    commands.textureBarrier(**bloomChain, TextureUse::StorageWrite, TextureUse::StorageRead);
-
-    commands.beginComputePass("lmx.test.bloomUpsample");
-    commands.bindComputePipeline(**upsamplePipeline);
-    commands.bindStorageTexture(0, **bloomChain, mip0View, StorageAccess::Read);
-    commands.bindStorageTexture(1, **bloomChain, mip1View, StorageAccess::Read);
-    commands.bindStorageTexture(2, **bloomBlur, TextureViewDesc{}, StorageAccess::Write);
-    commands.setUniforms(0, &upsampleParams, sizeof(upsampleParams));
-    commands.dispatch(1, 1, 1);
-    commands.endComputePass();
+    for (uint32_t stepsRemaining = kLevels; stepsRemaining > 0; --stepsRemaining) {
+        const uint32_t level = stepsRemaining - 1; // walks kLevels - 1 down to 0
+        const bool smallFromChain = level == kLevels - 1;
+        const UpsampleParams params{.smallWidth = chainSize[level + 1],
+                                    .smallHeight = chainSize[level + 1],
+                                    .dstWidth = chainSize[level],
+                                    .dstHeight = chainSize[level]};
+        commands.beginComputePass("lmx.test.bloomUpsample");
+        commands.bindComputePipeline(**upsamplePipeline);
+        commands.bindStorageTexture(0, **bloomChain, mipView(level), StorageAccess::Read);
+        if (smallFromChain) {
+            commands.bindStorageTexture(1, **bloomChain, mipView(level + 1), StorageAccess::Read);
+        } else {
+            commands.bindStorageTexture(1, **bloomBlur, mipView(level + 1), StorageAccess::Read);
+        }
+        commands.bindStorageTexture(2, **bloomBlur, mipView(level), StorageAccess::Write);
+        commands.setUniforms(0, &params, sizeof(params));
+        commands.dispatch(1, 1, 1);
+        commands.endComputePass();
+        if (level > 0) {
+            commands.textureBarrier(**bloomBlur, TextureUse::StorageWrite, TextureUse::StorageRead);
+        }
+    }
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
     std::vector<uint16_t> blurHalf(size_t{kMip0Size} * kMip0Size * 4);
     (*bloomBlur)->readback(blurHalf.data(), blurHalf.size() * sizeof(uint16_t));
 
-    // Half -> float via the standard library's own round trip: only the four values this test
-    // ever produces (0, 1, 3, 15, and sums thereof) are read back, all exactly representable.
+    // Half -> float via the standard library's own round trip: only values this test produces (0,
+    // sums of powers of two) are read back, all exactly representable.
     const auto toFloat = [](uint16_t half) {
         const uint32_t sign = (half >> 15) & 1u;
         const uint32_t exponent = (half >> 10) & 0x1Fu;
@@ -563,7 +683,7 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
                          toFloat(blurHalf[base + 2]));
     };
 
-    // CPU reference: the same three kernels, run on the same scene pixels.
+    // CPU reference: the same kernels, over the same levels, run on the same scene pixels.
     Grid sceneGrid(kSceneSize, kSceneSize);
     for (uint32_t y = 0; y < kSceneSize; ++y) {
         for (uint32_t x = 0; x < kSceneSize; ++x) {
@@ -579,19 +699,30 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
             mip0.at(x, y) = cpuThreshold(sum * 0.25f, kThreshold);
         }
     }
-    const Grid mip1 = cpuDownsample(mip0, kMip1Size, kMip1Size);
-    const Grid expectedBlur = cpuUpsampleAccumulate(mip0, mip1);
+    std::vector<Grid> chainMips;
+    chainMips.push_back(mip0);
+    for (uint32_t level = 1; level <= kLevels; ++level) {
+        chainMips.push_back(cpuDownsample(chainMips.back(), chainSize[level], chainSize[level]));
+    }
+    Grid accumulated = chainMips[kLevels]; // the smallest mip, as its own "previous step" result
+    for (uint32_t stepsRemaining = kLevels; stepsRemaining > 0; --stepsRemaining) {
+        const uint32_t level = stepsRemaining - 1;
+        accumulated = cpuUpsampleAccumulate(chainMips[level], accumulated);
+    }
+    const Grid& expectedBlur = accumulated;
 
-    // Below-threshold background: the box filters give the probe's energy a 2x2-texel footprint
-    // (its own mip0 quadrant, x < 2 && y < 2), so every mip0 texel *outside* that footprint is
-    // built entirely from below-threshold source pixels through every stage of the chain -- the
-    // bloom counterpart of the histogram test's exact CPU match, proving "below-threshold
-    // contributes nothing" rather than merely "the probe contributes something".
+    // Below-threshold background: every mip-0 texel the CPU reference itself computed as exactly
+    // zero has to read back as exactly zero from the GPU too -- the bloom counterpart of the
+    // histogram test's exact CPU match, proving "below-threshold contributes nothing" over the
+    // whole image rather than a hand-picked region.
+    bool sawAZeroTexel = false;
     for (uint32_t y = 0; y < kMip0Size; ++y) {
         for (uint32_t x = 0; x < kMip0Size; ++x) {
-            if (x < 2 && y < 2) {
-                continue; // the probe's own footprint; checked separately below
+            const glm::vec3 expected = expectedBlur.load(x, y);
+            if (expected.r != 0.0f || expected.g != 0.0f || expected.b != 0.0f) {
+                continue;
             }
+            sawAZeroTexel = true;
             const glm::vec3 gpu = texelAt(x, y);
             INFO("below-threshold-only texel (" << x << "," << y << ")");
             REQUIRE(gpu.r == 0.0f);
@@ -599,6 +730,10 @@ TEST_CASE("bloom threshold and the full chain match a CPU reference", "[gpu]") {
             REQUIRE(gpu.b == 0.0f);
         }
     }
+    // The probe's footprint doubles each upsample level (2^kLevels texels wide out of kMip0Size),
+    // so most of a 32-wide mip 0 is still background; this is the oracle's own sanity that the
+    // zero check above actually exercised something.
+    REQUIRE(sawAZeroTexel);
 
     // The probe: GPU result within 1% of the CPU chain's own prediction.
     const glm::vec3 gpuProbe = texelAt(0, 0);
