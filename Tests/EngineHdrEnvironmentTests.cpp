@@ -20,6 +20,7 @@ namespace {
 
 class TempHdr {
 public:
+    //==================================================================================================================
     explicit TempHdr(const std::string& bytes) {
         static std::atomic<uint32_t> counter{0};
         m_path = std::filesystem::temp_directory_path() /
@@ -28,11 +29,15 @@ public:
         output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
     }
 
+    //==================================================================================================================
     ~TempHdr() { std::filesystem::remove(m_path); }
 
+    //==================================================================================================================
     TempHdr(const TempHdr&) = delete;
+    //==================================================================================================================
     TempHdr& operator=(const TempHdr&) = delete;
 
+    //==================================================================================================================
     const std::filesystem::path& path() const { return m_path; }
 
 private:
