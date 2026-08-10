@@ -159,7 +159,9 @@ public:
 /// Identifies texture use on either side of an explicit barrier.
 enum class TextureUse {
     RenderTarget, ///< Written as a render-pass attachment.
-    ShaderRead    ///< Read by a shader.
+    ShaderRead,   ///< Read by a shader.
+    StorageRead,  ///< Read through a storage binding.
+    StorageWrite  ///< Written through a storage binding.
 };
 
 /// Selects nearest or linear texture filtering.
@@ -407,8 +409,27 @@ public:
     virtual void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex = 0) = 0;
     /// Ends the active render pass.
     virtual void endRenderPass() = 0;
-    /// Transitions a texture between the supported pass-boundary usages.
-    virtual void textureBarrier(Texture& texture, TextureUse from, TextureUse to) = 0;
+    /// Orders the given subresources of `texture` between two uses, and makes the writes of the
+    /// earlier use visible to the later one. Valid only between passes.
+    ///
+    /// At least one side must be a write: two reads have no hazard to order. Which passes the
+    /// barrier separates is positional -- everything encoded before this call is the producer, and
+    /// the next pass to open is the consumer -- so a barrier recorded with no pass after it is a
+    /// dependency nothing consumes and is a caller error.
+    ///
+    /// `range` states the subresources the dependency covers, which is what a caller declares and
+    /// what a graph reasons about. A backend may synchronize more than the range asks for: this
+    /// one does, because Metal 4 tracks no resource state and its barriers order pipeline stages
+    /// rather than subresources, so every barrier is at least a whole-queue stage dependency.
+    /// Orders a texture's subresources between a producing and a consuming use.
+    virtual void textureBarrier(Texture& texture, const TextureSubresourceRange& range,
+                                TextureUse from, TextureUse to) = 0;
+    /// Same, for the whole texture -- the common case, and what a pass that declares no
+    /// subresource detail means.
+    /// Orders a whole texture between a producing and a consuming use.
+    void textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
+        textureBarrier(texture, TextureSubresourceRange{}, from, to);
+    }
 };
 
 /// Describes a swapchain bound to a native presentation layer.

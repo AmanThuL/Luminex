@@ -70,7 +70,17 @@ const ExecuteFn kNoWork = [](const PassResources&) {};
 
 //======================================================================================================================
 std::string useName(rhi::TextureUse use) {
-    return use == rhi::TextureUse::RenderTarget ? "RenderTarget" : "ShaderRead";
+    switch (use) {
+    case rhi::TextureUse::RenderTarget:
+        return "RenderTarget";
+    case rhi::TextureUse::ShaderRead:
+        return "ShaderRead";
+    case rhi::TextureUse::StorageRead:
+        return "StorageRead";
+    case rhi::TextureUse::StorageWrite:
+        return "StorageWrite";
+    }
+    return "unknown";
 }
 
 // What execute() produces is a sequence of RHI calls, so recording that sequence is what makes it
@@ -120,9 +130,16 @@ struct RecordingCommandList final : rhi::CommandList {
     }
 
     //==================================================================================================================
-    void textureBarrier(rhi::Texture& texture, rhi::TextureUse from, rhi::TextureUse to) override {
-        events.push_back("barrier " + static_cast<FakeTexture&>(texture).name + " " +
-                         useName(from) + "->" + useName(to));
+    void textureBarrier(rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
+                        rhi::TextureUse from, rhi::TextureUse to) override {
+        // The graph declares whole resources, so the range is logged only when it is not the
+        // whole-resource default -- an unexpected narrowing would then show up in the log.
+        const bool wholeResource =
+            range.baseMipLevel == 0 && range.mipLevelCount == rhi::kAllMipLevels &&
+            range.baseArrayLayer == 0 && range.arrayLayerCount == rhi::kAllArrayLayers;
+        events.push_back("barrier " + static_cast<FakeTexture&>(texture).name +
+                         (wholeResource ? "" : " (subrange)") + " " + useName(from) + "->" +
+                         useName(to));
     }
 
     //==================================================================================================================

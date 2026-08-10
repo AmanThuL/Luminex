@@ -105,7 +105,8 @@ public:
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
     void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex) override;
     void endRenderPass() override;
-    void textureBarrier(Texture& texture, TextureUse from, TextureUse to) override;
+    void textureBarrier(Texture& texture, const TextureSubresourceRange& range, TextureUse from,
+                        TextureUse to) override;
 
     // beginFrame's half of the per-frame rotation: point this command list at the frame's
     // argument table, uniform ring and timestamp slot. `uniformOffset` is the device's bump cursor
@@ -163,7 +164,9 @@ private:
     // Metal takes that shape at dispatch rather than at bind. Null outside a compute pass and
     // until the pass binds one; the pipeline itself is owned by the caller and outlives the frame.
     const Metal4ComputePipeline* m_computePipeline = nullptr;
-    bool m_pendingBarrier = false;
+    // The union of the queue stages the barriers recorded since the last pass produce from. Empty
+    // means no barrier is pending; the next encoder to open emits one barrier for all of them.
+    MTL::Stages m_pendingBarrierStages{};
 };
 
 } // namespace lmx::rhi::metal4

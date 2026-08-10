@@ -13,6 +13,30 @@
 #include <cstring>
 
 namespace lmx::rhi::metal4 {
+namespace {
+
+//======================================================================================================================
+// Which queue stage performs a use. Metal 4 barriers name stages rather than resources, so this is
+// the whole translation from the RHI's use vocabulary to what a barrier can express: attachment
+// writes and shader reads happen in the fragment stage, storage access in a dispatch.
+MTL::Stages stagesOf(TextureUse use) {
+    switch (use) {
+    case TextureUse::RenderTarget:
+    case TextureUse::ShaderRead:
+        return MTL::StageFragment;
+    case TextureUse::StorageRead:
+    case TextureUse::StorageWrite:
+        return MTL::StageDispatch;
+    }
+    return MTL::StageAll;
+}
+
+//======================================================================================================================
+bool isWrite(TextureUse use) {
+    return use == TextureUse::RenderTarget || use == TextureUse::StorageWrite;
+}
+
+} // namespace
 
 //======================================================================================================================
 void Metal4CommandList::beginTimedPass(std::string_view label) {
@@ -95,13 +119,13 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     m_encoder->setLabel(makeString(label).get());
 
     // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
-    // consumer encoder as its first command.
-    if (m_pendingBarrier) {
-        // Queue stages refer to prior encoders; beforeStages covers every fragment read encoded
-        // after this point. Render-target writes also belong to the fragment stage in Metal.
-        m_encoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageFragment,
+    // consumer encoder as its first command. Queue stages refer to prior encoders; beforeStages is
+    // this encoder's own stage, because the pass that opens is the barrier's consumer by
+    // construction. Render-target writes also belong to the fragment stage in Metal.
+    if (m_pendingBarrierStages != MTL::Stages{}) {
+        m_encoder->barrierAfterQueueStages(m_pendingBarrierStages, MTL::StageFragment,
                                            MTL4::VisibilityOptionDevice);
-        m_pendingBarrier = false;
+        m_pendingBarrierStages = MTL::Stages{};
     }
 
     // Set the viewport explicitly so later sub-region passes cannot inherit an attachment-derived
@@ -244,12 +268,12 @@ void Metal4CommandList::beginComputePass(std::string_view label) {
     LMX_ASSERT(m_computeEncoder, "beginComputePass: failed to create a compute command encoder");
     m_computeEncoder->setLabel(makeString(passLabel).get());
 
-    // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
-    // consumer encoder as its first command.
-    if (m_pendingBarrier) {
-        m_computeEncoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageDispatch,
+    // See beginRenderPass: the consuming encoder emits the pending barrier, and its own stage is
+    // the consumer side.
+    if (m_pendingBarrierStages != MTL::Stages{}) {
+        m_computeEncoder->barrierAfterQueueStages(m_pendingBarrierStages, MTL::StageDispatch,
                                                   MTL4::VisibilityOptionDevice);
-        m_pendingBarrier = false;
+        m_pendingBarrierStages = MTL::Stages{};
     }
 
     m_computeEncoder->setArgumentTable(m_argumentTable);
@@ -338,15 +362,22 @@ void Metal4CommandList::endComputePass() {
 }
 
 //======================================================================================================================
-void Metal4CommandList::textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
-    (void)texture; // Metal 4 barriers are stage-scoped rather than resource-scoped.
+void Metal4CommandList::textureBarrier(Texture& texture, const TextureSubresourceRange& range,
+                                       TextureUse from, TextureUse to) {
     LMX_ASSERT(!inPass(), "textureBarrier must be called between passes, not inside one");
     // Reject barriers outside a frame so a pending edge cannot leak into the next frame.
     LMX_ASSERT(m_argumentTable != nullptr, "textureBarrier must be called inside a frame");
-    LMX_ASSERT(from == TextureUse::RenderTarget && to == TextureUse::ShaderRead,
-               "textureBarrier: only RenderTarget -> ShaderRead is implemented (grown per demand)");
-    // The next consumer encoder emits the pending barrier.
-    m_pendingBarrier = true;
+    const Result<void> rangeOk = validateSubresourceRange(texture, range);
+    LMX_ASSERT(rangeOk.has_value(), rangeOk.error().message);
+    LMX_ASSERT(isWrite(from) || isWrite(to),
+               "textureBarrier: at least one side must be a write -- two reads of the same "
+               "contents have no hazard to order");
+
+    // The range is a caller-facing declaration only: Metal 4's barriers order queue *stages*, so
+    // the emitted dependency covers everything the producing stage wrote, this texture included.
+    // Accumulating the producing stages lets several barriers between the same pair of passes
+    // collapse into the single barrier the consuming encoder emits.
+    m_pendingBarrierStages |= stagesOf(from);
 }
 
 //======================================================================================================================
@@ -370,7 +401,8 @@ void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::B
 //======================================================================================================================
 void Metal4CommandList::endFrameReset() {
     // A pending barrier at commit is an unconsumed dependency edge, not disposable state.
-    LMX_ASSERT(!m_pendingBarrier, "textureBarrier recorded but no later pass consumed it");
+    LMX_ASSERT(m_pendingBarrierStages == MTL::Stages{},
+               "textureBarrier recorded but no later pass consumed it");
     // Clearing per-frame pointers makes use outside a frame detectable.
     m_argumentTable = nullptr;
     m_uniformRing = nullptr;
@@ -379,7 +411,7 @@ void Metal4CommandList::endFrameReset() {
     // The slot itself outlives the frame -- the device reads its labels when the frame retires --
     // but this list must not be able to append to it outside a frame.
     m_timestamps = nullptr;
-    m_pendingBarrier = false;
+    m_pendingBarrierStages = MTL::Stages{};
 }
 
 //======================================================================================================================
