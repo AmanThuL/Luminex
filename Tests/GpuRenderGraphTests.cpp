@@ -113,7 +113,11 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
             commands.dispatch(kElements / kHazardThreadsPerGroup, 1, 1);
         });
 
-    graph.execute(commands, 1);
+    // The readback below is the frame's whole point, and declaring it is what keeps the two passes
+    // that produce it out of the cull.
+    graph.readbackBuffer(nextVersion(output));
+
+    graph.execute(commands, (*device)->frameNumber());
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -209,7 +213,9 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
         commands.draw(3);
     });
 
-    graph.execute(commands, 1);
+    graph.readbackTexture(nextVersion(color));
+
+    graph.execute(commands, (*device)->frameNumber());
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 

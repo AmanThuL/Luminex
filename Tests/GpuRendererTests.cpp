@@ -1196,6 +1196,7 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
                           refusal = texture.error();
                       }
                   });
+    graph.exportTexture(lmx::render::nextVersion(declared));
 
     CommandList& commands = (*device)->beginFrame();
     graph.execute(commands, (*device)->frameNumber());

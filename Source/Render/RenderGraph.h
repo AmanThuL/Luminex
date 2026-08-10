@@ -247,6 +247,17 @@ enum class GraphResourceKind {
     Buffer   ///< The entry names an imported buffer.
 };
 
+/// How a rooted result leaves the frame.
+///
+/// The three are the whole list on purpose (spec §7): there is no generic side-effect flag a pass
+/// can raise to exempt itself from culling, because such a flag is a way to keep work alive without
+/// saying what it is for, and a frame nobody can read the output of is a frame with a missing sink.
+enum class SinkKind {
+    Export,  ///< Read by the caller after the frame, through the resource it imported.
+    Present, ///< Handed to the swapchain as the image to present.
+    Readback ///< Copied back to the CPU once the frame's work completes.
+};
+
 /// One imported resource, in import order -- the index space every other compiled-frame entry uses.
 struct DebugResource {
     std::string name;                                    ///< The name it was imported under.
@@ -262,12 +273,33 @@ struct DebugUse {
     rhi::TextureSubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
 };
 
+/// Why a compiled frame left a declared pass out of its schedule.
+///
+/// Both reasons are honest failures of a frame to say what it wanted, and they are fixed
+/// differently: a pass that produces nothing is missing a write declaration, and a pass no sink
+/// reaches is missing a sink -- or is genuinely dead work the frame is right to drop.
+enum class CullReason {
+    ProducesNothing, ///< The pass writes no version, so nothing can name its output.
+    NoSinkReachesIt  ///< No sink depends, however indirectly, on any version it produces.
+};
+
 /// One declared pass, in declaration order -- culled passes included, since a frame's declarations
 /// are what an observer needs to see and a culled pass is the most interesting kind.
 struct DebugPass {
-    std::string label;                ///< The label it was declared with.
-    PassKind kind = PassKind::Raster; ///< Which declaration path declared it.
-    std::vector<DebugUse> uses;       ///< Every resource version it named.
+    std::string label;                    ///< The label it was declared with.
+    PassKind kind = PassKind::Raster;     ///< Which declaration path declared it.
+    std::vector<DebugUse> uses;           ///< Every resource version it named.
+    std::optional<CullReason> cullReason; ///< Why it was culled, or empty if it is scheduled.
+};
+
+/// One declared sink, in declaration order. Sinks are the only culling roots: a version no sink
+/// reaches, directly or through the passes that consume it, is a version nothing in the frame asked
+/// for.
+struct DebugSink {
+    SinkKind kind = SinkKind::Export; ///< How the result leaves the frame.
+    GraphResourceKind resourceKind = GraphResourceKind::Texture; ///< Texture or buffer.
+    uint32_t resource = 0; ///< Index into CompiledFrameDebug::resources.
+    uint32_t version = 0;  ///< The version the sink roots.
 };
 
 /// One barrier the graph derived, positioned by the pass it precedes.
@@ -296,8 +328,9 @@ struct DebugTransition {
 /// compile to the same record.
 struct CompiledFrameDebug {
     std::vector<DebugResource> resources;     ///< Imported resources, in import order.
+    std::vector<DebugSink> sinks;             ///< Declared sinks, in declaration order.
     std::vector<DebugPass> passes;            ///< Declared passes, in declaration order.
-    Schedule schedule;                        ///< Pass indices in execution order.
+    Schedule schedule;                        ///< Surviving pass indices in execution order.
     std::vector<DebugTransition> transitions; ///< Derived barriers, in the order they are emitted.
 };
 
@@ -355,10 +388,29 @@ public:
     /// so the body records copies and fills and binds nothing.
     void addCopyPass(std::string_view label, CopyPassDesc desc, ExecuteFn execute);
 
-    /// Roots a result so it survives the frame. The version must be one a pass produced: exporting
-    /// an imported texture that no pass ever wrote fails compilation, since the graph produced
-    /// nothing to root.
+    /// Roots a result so it survives the frame, for the caller to read through the texture it
+    /// imported. The version must be one a pass produced: exporting an imported texture that no
+    /// pass ever wrote fails compilation, since the graph produced nothing to root.
+    ///
+    /// Rooting is also what keeps work alive. A pass reaches a sink or it is culled, so a frame
+    /// whose result nothing exports, presents, or reads back schedules nothing at all.
     void exportTexture(GraphTexture handle);
+
+    /// The buffer counterpart of exportTexture, on the same terms -- the way a buffer a pass filled
+    /// stays meaningful past the frame that filled it.
+    void exportBuffer(GraphBuffer handle);
+
+    /// Roots the version handed to the swapchain. It is a sink of its own rather than an export
+    /// because presentation is what the frame is for, and because a graph must never infer that a
+    /// result is live from the fact that something outside it happens to be looking.
+    void presentTexture(GraphTexture handle);
+
+    /// Roots a version the caller reads back to the CPU once the frame's work completes. Stated on
+    /// the graph so the passes producing it survive culling; the readback itself is the caller's.
+    void readbackTexture(GraphTexture handle);
+
+    /// The buffer counterpart of readbackTexture.
+    void readbackBuffer(GraphBuffer handle);
 
     /// Validates every declaration and answers with the serial order to execute the passes in.
     ///
@@ -366,8 +418,13 @@ public:
     /// role, or a colour and depth attachment of differing extents; a subresource range that is
     /// empty or runs past the texture it names; one pass reading and writing a texture through
     /// overlapping ranges; two passes writing one version; a declaration naming a version no pass
-    /// writes (read before write); an export of a version no pass wrote; and a cycle, named by the
-    /// passes it involves.
+    /// writes (read before write); a sink naming a version no pass wrote; and a cycle, named by the
+    /// passes it involves. Validation covers every declared pass, culled ones included: a
+    /// mis-declared pass is mis-declared whether or not the frame needs it.
+    ///
+    /// The schedule holds only the passes a sink reaches. Liveness runs backwards from the declared
+    /// sinks alone and follows the versions each live pass names, so it is a function of the
+    /// declarations and answers the same way every time.
     ///
     /// Subresource ranges narrow what a pass touches, not what a version covers (spec §6): two
     /// passes writing disjoint ranges of one version are still a double write, because the second
@@ -465,9 +522,19 @@ private:
     // rather than deriving its own, so the record and the command stream cannot disagree.
     std::vector<DebugTransition> deriveTransitions(const Schedule& schedule) const;
 
+    struct Sink {
+        SinkKind kind = SinkKind::Export;
+        ResourceKind resourceKind = ResourceKind::Texture;
+        uint32_t resource = 0;
+        uint32_t version = 0;
+    };
+
+    // Records one sink of any kind; the five public declaration paths differ only in the kind.
+    void addSink(SinkKind kind, ResourceKind resourceKind, uint32_t resource, uint32_t version);
+
     std::vector<Resource> m_resources;
     std::vector<Pass> m_passes;
-    std::vector<GraphTexture> m_exports;
+    std::vector<Sink> m_sinks;
 };
 
 } // namespace lmx::render

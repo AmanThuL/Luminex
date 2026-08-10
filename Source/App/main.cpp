@@ -247,7 +247,10 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
             lmx::rhi::metal4::imguiRender(commands);
         });
-        graph.exportTexture(lmx::render::nextVersion(drawable));
+        // The drawable this frame presents, and the only sink the frame declares: everything the
+        // renderer put in front of it is live because this pass reads it, so nothing here has to
+        // repeat what the display transform already rooted.
+        graph.presentTexture(lmx::render::nextVersion(drawable));
 
         // A frame that cannot validate is a mis-declared frame, which is programmer error: execute
         // aborts with the graph's own message rather than encoding a hazard.

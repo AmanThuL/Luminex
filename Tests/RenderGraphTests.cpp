@@ -292,7 +292,10 @@ TEST_CASE("a producer is scheduled before its consumer whatever the declaration 
     shadowPass.depth = DepthAttachment{.handle = shadow};
     graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
 
+    graph.exportTexture(nextVersion(sceneColor));
+
     const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
     REQUIRE(schedule.has_value());
     REQUIRE(schedule->passes == std::vector<uint32_t>{1, 0});
 }
@@ -314,7 +317,11 @@ TEST_CASE("independent passes keep their declaration order", "[render][graph]") 
     writeB.color = ColorAttachment{.handle = b};
     graph.addPass("lmx.pass.b", writeB, kNoWork);
 
+    graph.exportTexture(nextVersion(a));
+    graph.exportTexture(nextVersion(b));
+
     const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
     REQUIRE(schedule.has_value());
     REQUIRE(schedule->passes == std::vector<uint32_t>{0, 1});
 }
@@ -323,18 +330,24 @@ TEST_CASE("independent passes keep their declaration order", "[render][graph]") 
 // Buffers carry the same version chain as textures, so a buffer write orders its reader too.
 TEST_CASE("a buffer write orders the pass that reads its result", "[render][graph]") {
     FakeBuffer storage{256};
+    FakeBuffer result{256};
     RenderGraph graph;
     const GraphBuffer buffer = graph.importBuffer(storage, "instances");
+    const GraphBuffer resolved = graph.importBuffer(result, "resolved");
 
     PassDesc consumer;
     consumer.bufferReads.push_back(nextVersion(buffer));
+    consumer.bufferWrites.push_back(resolved);
     graph.addPass("lmx.pass.consumer", consumer, kNoWork);
 
     PassDesc producer;
     producer.bufferWrites.push_back(buffer);
     graph.addPass("lmx.pass.producer", producer, kNoWork);
 
+    graph.exportBuffer(nextVersion(resolved));
+
     const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
     REQUIRE(schedule.has_value());
     REQUIRE(schedule->passes == std::vector<uint32_t>{1, 0});
 }
@@ -639,6 +652,8 @@ TEST_CASE("execute encodes the schedule as labelled render passes", "[render][gr
     graph.addPass("lmx.pass.shadow", shadowPass,
                   [&commands](const PassResources&) { commands.events.push_back("body shadow"); });
 
+    graph.exportTexture(nextVersion(sceneColor));
+
     graph.execute(commands, 1);
 
     REQUIRE(commands.events ==
@@ -689,6 +704,8 @@ TEST_CASE("execute transitions a sampled render target once", "[render][graph]")
     };
     reader(first, "lmx.pass.first");
     reader(second, "lmx.pass.second");
+    graph.exportTexture(nextVersion(first));
+    graph.exportTexture(nextVersion(second));
 
     RecordingCommandList commands;
     graph.execute(commands, 1);
@@ -748,6 +765,8 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
     resample.color = ColorAttachment{.handle = nextVersion(scratch)};
     graph.addPass("lmx.pass.resample", resample, kNoWork);
 
+    graph.exportTexture(GraphTexture{scratch.index, 2});
+
     RecordingCommandList commands;
     graph.execute(commands, 1);
 
@@ -772,6 +791,7 @@ TEST_CASE("a compute pass reads and writes disjoint mips of one texture", "[rend
     downsample.textureReads.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
     downsample.textureWrites.push_back({bloom, {.baseMipLevel = 2, .mipLevelCount = 1}});
     graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
+    graph.exportTexture(nextVersion(bloom));
 
     const auto schedule = graph.compile();
     INFO(errorOf(schedule));
@@ -832,6 +852,7 @@ TEST_CASE("ranges on different array layers do not overlap", "[render][graph]") 
     perFace.textureReads.push_back({faces, {.baseArrayLayer = 0, .arrayLayerCount = 1}});
     perFace.textureWrites.push_back({faces, {.baseArrayLayer = 1, .arrayLayerCount = 1}});
     graph.addComputePass("lmx.pass.face", perFace, kNoWork);
+    graph.exportTexture(nextVersion(faces));
 
     const auto schedule = graph.compile();
     INFO(errorOf(schedule));
@@ -916,6 +937,7 @@ TEST_CASE("a read inherits the subresources its producer did not write", "[rende
     read.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
     read.color = ColorAttachment{.handle = target};
     graph.addPass("lmx.pass.read", read, kNoWork);
+    graph.exportTexture(nextVersion(target));
 
     const auto schedule = graph.compile();
     INFO(errorOf(schedule));
@@ -941,6 +963,7 @@ TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") 
     present.textureReads.push_back(nextVersion(written));
     present.color = ColorAttachment{.handle = color};
     graph.addPass("lmx.pass.present", present, kNoWork);
+    graph.exportTexture(nextVersion(color));
 
     RecordingCommandList commands;
     graph.execute(commands, 1);
@@ -966,7 +989,9 @@ TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][
 
     ComputePassDesc accumulate;
     accumulate.bufferReads.push_back(nextVersion(bins));
+    accumulate.bufferWrites.push_back(nextVersion(bins));
     graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
+    graph.exportBuffer(GraphBuffer{bins.index, 2});
 
     RecordingCommandList commands;
     graph.execute(commands, 1);
@@ -995,6 +1020,7 @@ TEST_CASE("a derived barrier carries the range the reader declared", "[render][g
     downsample.textureWrites.push_back(
         {nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 1}});
     graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
+    graph.exportTexture(GraphTexture{bloom.index, 2});
 
     RecordingCommandList commands;
     graph.execute(commands, 1);
@@ -1029,6 +1055,7 @@ TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]"
     PassDesc shadowPass;
     shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
     graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
 
     const auto record = graph.compileFrame(42);
     INFO(errorOf(record));
@@ -1090,6 +1117,7 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     scene.bufferReads.push_back(nextVersion(bins));
     scene.color = ColorAttachment{.handle = sceneColor};
     graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
 
     RecordingCommandList commands;
     const CompiledFrameRecord record = graph.execute(commands, 7);
@@ -1124,6 +1152,7 @@ TEST_CASE("the frame id changes nothing else about a record", "[render][graph]")
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
     graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
 
     const auto first = graph.compileFrame(1);
     const auto second = graph.compileFrame(9001);
@@ -1135,4 +1164,248 @@ TEST_CASE("the frame id changes nothing else about a record", "[render][graph]")
     REQUIRE(first->debug.passes.size() == second->debug.passes.size());
     REQUIRE(first->debug.passes[0].label == second->debug.passes[0].label);
     REQUIRE(first->debug.transitions.size() == second->debug.transitions.size());
+}
+
+//======================================================================================================================
+// Nothing roots this frame, so nothing in it is asked for. The passes are valid, and that is the
+// point: culling is about what the frame is for, not about whether it is well formed.
+TEST_CASE("a graph with no sink schedules nothing", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.schedule.passes.empty());
+    REQUIRE(record->debug.passes[0].cullReason == CullReason::NoSinkReachesIt);
+}
+
+//======================================================================================================================
+// The frame that says what culling is for: a chain that reaches the export survives whole, and a
+// chain that does not is dropped whole. Both reasons appear, and the record keeps the culled passes
+// in declaration order so an observer can see what was left out and why.
+TEST_CASE("only the passes a sink reaches are scheduled", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture displayed{64, 64, "displayColor"};
+    FakeTexture unused{64, 64, "unusedTarget"};
+    FakeBuffer probe{256, "probe"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture displayColor =
+        graph.importTexture(displayed, rhi::Format::BGRA8Unorm, "displayColor");
+    const GraphTexture orphan =
+        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+    const GraphBuffer stats = graph.importBuffer(probe, "probe");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    // Writes a target nothing else names: valid work with no consumer and no sink.
+    PassDesc orphaned;
+    orphaned.color = ColorAttachment{.handle = orphan};
+    graph.addPass("lmx.pass.orphan", orphaned, kNoWork);
+
+    // Reads the scene colour and writes nothing at all, so no sink could name its output even in
+    // principle -- a different mistake from the orphan's, and recorded as one.
+    ComputePassDesc observer;
+    observer.textureReads.push_back(nextVersion(sceneColor));
+    observer.bufferReads.push_back(stats);
+    graph.addComputePass("lmx.pass.observer", observer, kNoWork);
+
+    PassDesc display;
+    display.textureReads.push_back(nextVersion(sceneColor));
+    display.color = ColorAttachment{.handle = displayColor};
+    graph.addPass("lmx.pass.display", display, kNoWork);
+
+    graph.exportTexture(nextVersion(displayColor));
+
+    const auto record = graph.compileFrame(3);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+
+    REQUIRE(record->debug.schedule.passes == std::vector<uint32_t>{0, 3});
+    REQUIRE_FALSE(record->debug.passes[0].cullReason.has_value());
+    REQUIRE(record->debug.passes[1].cullReason == CullReason::NoSinkReachesIt);
+    REQUIRE(record->debug.passes[2].cullReason == CullReason::ProducesNothing);
+    REQUIRE_FALSE(record->debug.passes[3].cullReason.has_value());
+
+    // The culled passes are still declared, so the record still describes them in full.
+    REQUIRE(record->debug.passes.size() == 4);
+    REQUIRE(record->debug.passes[2].label == "lmx.pass.observer");
+    REQUIRE(record->debug.passes[2].uses.size() == 2);
+
+    REQUIRE(record->debug.sinks.size() == 1);
+    REQUIRE(record->debug.sinks[0].kind == SinkKind::Export);
+    REQUIRE(record->debug.sinks[0].resource == displayColor.index);
+    REQUIRE(record->debug.sinks[0].version == 1);
+}
+
+//======================================================================================================================
+// Culling is a function of the declarations, so the same declarations answer the same way whichever
+// order the sinks were declared in and however many times compilation is asked.
+TEST_CASE("culling answers the same way every time", "[render][graph]") {
+    const auto build = [](RenderGraph& graph, FakeTexture& first, FakeTexture& second,
+                          bool exportFirst) {
+        const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "a");
+        const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "b");
+        PassDesc writeA;
+        writeA.color = ColorAttachment{.handle = a};
+        graph.addPass("lmx.pass.a", writeA, kNoWork);
+        PassDesc writeB;
+        writeB.color = ColorAttachment{.handle = b};
+        graph.addPass("lmx.pass.b", writeB, kNoWork);
+        if (exportFirst) {
+            graph.exportTexture(nextVersion(a));
+            graph.exportTexture(nextVersion(b));
+        } else {
+            graph.exportTexture(nextVersion(b));
+            graph.exportTexture(nextVersion(a));
+        }
+    };
+
+    FakeTexture first{64, 64, "a"};
+    FakeTexture second{64, 64, "b"};
+
+    RenderGraph forward;
+    build(forward, first, second, true);
+    RenderGraph reversed;
+    build(reversed, first, second, false);
+
+    const auto once = forward.compileFrame(1);
+    const auto twice = forward.compileFrame(1);
+    const auto other = reversed.compileFrame(1);
+    REQUIRE(once.has_value());
+    REQUIRE(twice.has_value());
+    REQUIRE(other.has_value());
+
+    REQUIRE(once->debug.schedule.passes == std::vector<uint32_t>{0, 1});
+    REQUIRE(twice->debug.schedule.passes == once->debug.schedule.passes);
+    REQUIRE(other->debug.schedule.passes == once->debug.schedule.passes);
+}
+
+//======================================================================================================================
+// A culled pass emits nothing at all -- not the scope, not the body, and not the barrier a read of
+// its output would otherwise have justified.
+TEST_CASE("execute runs none of a culled pass", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture unused{64, 64, "unusedTarget"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture orphan =
+        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+
+    bool orphanRan = false;
+    PassDesc orphaned;
+    orphaned.color = ColorAttachment{.handle = orphan};
+    graph.addPass("lmx.pass.orphan", orphaned,
+                  [&orphanRan](const PassResources&) { orphanRan = true; });
+
+    PassDesc scene;
+    scene.textureReads.push_back(nextVersion(orphan));
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    // Roots the orphan's own output rather than the scene's, so the scene pass is the culled one
+    // and the transition its read would have justified goes with it.
+    graph.exportTexture(nextVersion(orphan));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(orphanRan);
+    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.orphan", "end"});
+}
+
+//======================================================================================================================
+// Presentation and readback root work exactly as an export does; they are separate kinds because
+// what a frame does with a result is part of what the frame declared, not a detail of the export.
+TEST_CASE("presentation and readback root work like an export", "[render][graph]") {
+    FakeTexture drawable{64, 64, "drawable"};
+    FakeBuffer histogram{1024, "histogram"};
+    RenderGraph graph;
+    const GraphTexture backbuffer =
+        graph.importTexture(drawable, rhi::Format::BGRA8Unorm, "drawable");
+    const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
+
+    PassDesc ui;
+    ui.color = ColorAttachment{.handle = backbuffer};
+    graph.addPass("lmx.pass.ui", ui, kNoWork);
+
+    ComputePassDesc metering;
+    metering.bufferWrites.push_back(bins);
+    graph.addComputePass("lmx.pass.metering", metering, kNoWork);
+
+    graph.presentTexture(nextVersion(backbuffer));
+    graph.readbackBuffer(nextVersion(bins));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.schedule.passes == std::vector<uint32_t>{0, 1});
+    REQUIRE(record->debug.sinks[0].kind == SinkKind::Present);
+    REQUIRE(record->debug.sinks[0].resourceKind == GraphResourceKind::Texture);
+    REQUIRE(record->debug.sinks[1].kind == SinkKind::Readback);
+    REQUIRE(record->debug.sinks[1].resourceKind == GraphResourceKind::Buffer);
+}
+
+//======================================================================================================================
+// Every sink kind roots a version a pass produced, and says which kind of declaration it was: a
+// presented drawable nothing drew into is as broken as an exported one, and the message has to name
+// the declaration the caller actually made.
+TEST_CASE("a sink naming a version no pass wrote is rejected", "[render][graph]") {
+    FakeTexture drawable{64, 64, "drawable"};
+    FakeBuffer histogram{1024, "histogram"};
+
+    RenderGraph presented;
+    const GraphTexture backbuffer =
+        presented.importTexture(drawable, rhi::Format::BGRA8Unorm, "drawable");
+    presented.presentTexture(nextVersion(backbuffer));
+    const auto presentFailure = presented.compile();
+    REQUIRE_FALSE(presentFailure.has_value());
+    REQUIRE(presentFailure.error().message.contains("presented texture 'drawable'"));
+    REQUIRE(presentFailure.error().message.contains("not written by any pass"));
+
+    RenderGraph exported;
+    const GraphBuffer bins = exported.importBuffer(histogram, "histogram");
+    exported.exportBuffer(nextVersion(bins));
+    const auto exportFailure = exported.compile();
+    REQUIRE_FALSE(exportFailure.has_value());
+    REQUIRE(exportFailure.error().message.contains("exported buffer 'histogram'"));
+}
+
+//======================================================================================================================
+// Validation covers every declared pass, not only the scheduled ones: a pass that would never run
+// is still a pass the caller wrote down wrong, and reporting it only once a sink happens to reach
+// it would make the failure depend on unrelated declarations.
+TEST_CASE("a culled pass is still validated", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture shadowMap{1024, 1024, "shadowMap"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
+
+    // Unreachable from the export, and mis-declared: a depth texture in the colour slot.
+    PassDesc broken;
+    broken.color = ColorAttachment{.handle = shadow};
+    graph.addPass("lmx.pass.broken", broken, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("lmx.pass.broken"));
+    REQUIRE(schedule.error().message.contains("D32Float"));
 }

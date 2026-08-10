@@ -194,6 +194,21 @@ rhi::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRa
 }
 
 //======================================================================================================================
+// How a sink names itself in a validation message: "exported texture 'x' ... is not written by any
+// pass" reads as the declaration the caller made.
+std::string_view sinkVerb(SinkKind kind) {
+    switch (kind) {
+    case SinkKind::Export:
+        return "exported";
+    case SinkKind::Present:
+        return "presented";
+    case SinkKind::Readback:
+        return "read-back";
+    }
+    return "rooted";
+}
+
+//======================================================================================================================
 // A (resource, version) pair as one hashable key. Both halves are 32-bit, so the pair is lossless.
 uint64_t versionKey(uint32_t resource, uint32_t version) {
     return (static_cast<uint64_t>(resource) << 32) | version;
@@ -394,9 +409,40 @@ void RenderGraph::addCopyPass(std::string_view label, CopyPassDesc desc, Execute
 }
 
 //======================================================================================================================
+void RenderGraph::addSink(SinkKind kind, ResourceKind resourceKind, uint32_t resource,
+                          uint32_t version) {
+    m_sinks.push_back(
+        {.kind = kind, .resourceKind = resourceKind, .resource = resource, .version = version});
+}
+
+//======================================================================================================================
 void RenderGraph::exportTexture(GraphTexture handle) {
     checkTexture(handle);
-    m_exports.push_back(handle);
+    addSink(SinkKind::Export, ResourceKind::Texture, handle.index, handle.version);
+}
+
+//======================================================================================================================
+void RenderGraph::exportBuffer(GraphBuffer handle) {
+    checkBuffer(handle);
+    addSink(SinkKind::Export, ResourceKind::Buffer, handle.index, handle.version);
+}
+
+//======================================================================================================================
+void RenderGraph::presentTexture(GraphTexture handle) {
+    checkTexture(handle);
+    addSink(SinkKind::Present, ResourceKind::Texture, handle.index, handle.version);
+}
+
+//======================================================================================================================
+void RenderGraph::readbackTexture(GraphTexture handle) {
+    checkTexture(handle);
+    addSink(SinkKind::Readback, ResourceKind::Texture, handle.index, handle.version);
+}
+
+//======================================================================================================================
+void RenderGraph::readbackBuffer(GraphBuffer handle) {
+    checkBuffer(handle);
+    addSink(SinkKind::Readback, ResourceKind::Buffer, handle.index, handle.version);
 }
 
 //======================================================================================================================
@@ -555,20 +601,50 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
         }
     }
 
-    for (const GraphTexture& exported : m_exports) {
-        const Resource& resource = m_resources[exported.index];
-        if (!producerOfVersion.contains(versionKey(exported.index, exported.version))) {
-            return fail(std::format("exported texture '{}' version {} is not written by any pass",
-                                    resource.name, exported.version));
+    for (const Sink& sink : m_sinks) {
+        const Resource& resource = m_resources[sink.resource];
+        if (!producerOfVersion.contains(versionKey(sink.resource, sink.version))) {
+            return fail(
+                std::format("{} {} '{}' version {} is not written by any pass", sinkVerb(sink.kind),
+                            sink.resourceKind == ResourceKind::Texture ? "texture" : "buffer",
+                            resource.name, sink.version));
+        }
+    }
+
+    // Reverse reachability from the declared sinks, and from nothing else. A pass is live when a
+    // sink names a version it produced, or when a live pass names one; a live pass's own reads pull
+    // in whatever produced them, which is what carries liveness back down a chain.
+    std::vector<bool> live(m_passes.size(), false);
+    std::vector<uint32_t> reachable;
+    const auto reach = [&](uint32_t resource, uint32_t version) {
+        const auto producer = producerOfVersion.find(versionKey(resource, version));
+        if (producer != producerOfVersion.end() && !live[producer->second]) {
+            live[producer->second] = true;
+            reachable.push_back(producer->second);
+        }
+    };
+    for (const Sink& sink : m_sinks) {
+        reach(sink.resource, sink.version);
+    }
+    while (!reachable.empty()) {
+        const uint32_t pass = reachable.back();
+        reachable.pop_back();
+        for (const Declaration& declaration : m_passes[pass].declarations) {
+            if (declaration.version > 0) {
+                reach(declaration.resource, declaration.version);
+            }
         }
     }
 
     // Kahn's algorithm, taking the lowest-numbered ready pass each round: that is the declaration
-    // order tie-break, and it makes the schedule a function of the declarations alone.
+    // order tie-break, and it makes the schedule a function of the declarations alone. It runs over
+    // every declared pass rather than the live ones, because a cycle is a property of the frame as
+    // declared -- culling a cycle away would report a frame as valid that is not.
+    Schedule ordered;
+    ordered.passes.reserve(m_passes.size());
     Schedule schedule;
-    schedule.passes.reserve(m_passes.size());
     std::vector<bool> scheduled(m_passes.size(), false);
-    while (schedule.passes.size() < m_passes.size()) {
+    while (ordered.passes.size() < m_passes.size()) {
         uint32_t ready = static_cast<uint32_t>(m_passes.size());
         for (uint32_t pass = 0; pass < m_passes.size(); ++pass) {
             if (!scheduled[pass] && pendingDependencies[pass] == 0) {
@@ -588,7 +664,10 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
             return fail(std::format("render graph contains a cycle involving passes {}", involved));
         }
         scheduled[ready] = true;
-        schedule.passes.push_back(ready);
+        ordered.passes.push_back(ready);
+        if (live[ready]) {
+            schedule.passes.push_back(ready);
+        }
         for (uint32_t consumer : consumers[ready]) {
             --pendingDependencies[consumer];
         }
@@ -603,15 +682,30 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                                       : GraphResourceKind::Buffer,
                                           .format = resource.format});
     }
+    record.debug.sinks.reserve(m_sinks.size());
+    for (const Sink& sink : m_sinks) {
+        record.debug.sinks.push_back({.kind = sink.kind,
+                                      .resourceKind = sink.resourceKind == ResourceKind::Texture
+                                                          ? GraphResourceKind::Texture
+                                                          : GraphResourceKind::Buffer,
+                                      .resource = sink.resource,
+                                      .version = sink.version});
+    }
     record.debug.passes.reserve(m_passes.size());
-    for (const Pass& pass : m_passes) {
-        DebugPass entry{.label = pass.label, .kind = pass.kind, .uses = {}};
+    for (uint32_t index = 0; index < m_passes.size(); ++index) {
+        const Pass& pass = m_passes[index];
+        DebugPass entry{.label = pass.label, .kind = pass.kind, .uses = {}, .cullReason = {}};
         entry.uses.reserve(pass.declarations.size());
+        bool writes = false;
         for (const Declaration& declaration : pass.declarations) {
+            writes = writes || declaration.isWrite;
             entry.uses.push_back({.resource = declaration.resource,
                                   .version = declaration.version,
                                   .role = declaration.role,
                                   .range = declaration.range});
+        }
+        if (!live[index]) {
+            entry.cullReason = writes ? CullReason::NoSinkReachesIt : CullReason::ProducesNothing;
         }
         record.debug.passes.push_back(std::move(entry));
     }
