@@ -48,11 +48,6 @@ public:
     std::vector<render::Material> materials; // texture pointers reach into `textures`
     std::vector<SceneObject> objects;
     render::DirectionalLight lights[3];
-    // Linear, like every other colour Engine hands to Render (Color.h's rule) -- attachSkyAndLights
-    // (Scene.cpp) always overwrites this for a real scene, so the default here only keeps a bare,
-    // never-built Scene well-defined rather than expressing an authored choice of its own: zero,
-    // not a copy of the authored (0.25, 0.25, 0.35) triple Render.h's SceneView::ambient carries.
-    glm::vec3 ambient{0.0f};
     glm::vec4 boundingSphere{0.f};
     render::Mesh skySphere;
     std::unique_ptr<rhi::Texture> skyCubemap;

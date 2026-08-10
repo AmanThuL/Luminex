@@ -4,6 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
 #include "Engine/Color.h"
 #include "Engine/Scene.h"
@@ -147,16 +148,20 @@ TEST_CASE("decomposeTransform still round-trips both fetched assets' single-axis
 }
 
 //======================================================================================================================
-// Empty objects make ambient forwarding observable without constructing a GPU device.
-TEST_CASE("Scene::view forwards Scene::ambient into SceneView::ambient", "[engine]") {
+// A Scene with no IBL attached must still publish a renderable view. Empty objects make the
+// forwarding observable without constructing a GPU device -- and a bare Scene is exactly the case
+// where all three IBL pointers are null, which the renderer's fallbacks are what make legal.
+TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricating one",
+          "[engine]") {
     Scene scene;
-    scene.ambient = {0.1f, 0.2f, 0.3f};
 
     std::vector<render::DrawItem> items;
     const render::SceneView view =
         scene.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
 
-    REQUIRE(near3(view.ambient, scene.ambient));
+    REQUIRE(view.irradiance == nullptr);
+    REQUIRE(view.prefilteredEnv == nullptr);
+    REQUIRE(view.dfgLut == nullptr);
 }
 
 //======================================================================================================================
@@ -213,7 +218,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
     REQUIRE((*scene)->skyCubemap != nullptr);
 
     // Damaged Helmet ships metallic-roughness, occlusion, and emissive maps; Scene.cpp's material
-    // translation must upload and attach all three even though shading does not consume them yet.
+    // translation must upload and attach all three for the GGX shader to consume.
     bool foundMetallicRoughness = false;
     bool foundOcclusion = false;
     bool foundEmissive = false;
@@ -396,7 +401,7 @@ TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched ass
 }
 
 //======================================================================================================================
-TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns and fresnelR0 "
+TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns and metallic "
           "across rows",
           "[gpu]") {
     auto device = rhi::createDevice();
@@ -413,9 +418,11 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
 
     REQUIRE(materialOf("material-lab sphere r0c0").roughness == Catch::Approx(0.05f));
     REQUIRE(materialOf("material-lab sphere r0c4").roughness == Catch::Approx(1.0f));
-    REQUIRE(materialOf("material-lab sphere r0c0").fresnelR0.x == Catch::Approx(0.04f));
-    REQUIRE(materialOf("material-lab sphere r4c0").fresnelR0.x == Catch::Approx(1.0f));
-    // Albedo stays white across the whole grid -- only roughness and fresnelR0 sweep.
+    // The two rows the furnace case probes: a pure dielectric and a pure conductor.
+    REQUIRE(materialOf("material-lab sphere r0c0").metallic == Catch::Approx(0.0f));
+    REQUIRE(materialOf("material-lab sphere r4c0").metallic == Catch::Approx(1.0f));
+    REQUIRE(materialOf("material-lab sphere r2c2").metallic == Catch::Approx(0.5f));
+    // Albedo stays white across the whole grid -- only roughness and metallic sweep.
     REQUIRE(near3(glm::vec3(materialOf("material-lab sphere r2c2").albedo), glm::vec3(1.0f)));
 }
 
@@ -739,7 +746,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     for (size_t i = 0; i < distinctDiffuse.size(); ++i) {
         const glm::vec3 center{startX + spacing * static_cast<float>(i), 0.0f, 0.0f};
         centers.push_back(center);
-        render::Material material; // default albedo/roughness/fresnel; only diffuse differs
+        render::Material material; // default albedo/roughness/metallic; only diffuse differs
         material.diffuse = distinctDiffuse[i];
         items.push_back({.mesh = &*quad,
                          .model = glm::translate(glm::mat4(1.0f), center),
@@ -748,11 +755,14 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
     render::SceneView view;
     view.items = items;
-    // Ambient-only lighting isolates texture differences from directional shading.
-    view.ambient = {1.0f, 1.0f, 1.0f};
+    // One head-on light, no environment. Every quad is coplanar and shares a normal, so each sees
+    // the same N.L, the same N.V and the same BRDF -- which isolates texture differences from
+    // shading exactly as the flat ambient term used to, without needing a term that no longer
+    // exists.
     for (render::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
+    view.lights[0] = {.strength = {1.0f, 1.0f, 1.0f}, .direction = {0.0f, 0.0f, -1.0f}};
     view.boundingSphere = {0.0f, 0.0f, 0.0f,
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
@@ -870,9 +880,15 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 
     render::SceneView view;
     view.items = items;
-    // Unit ambient makes the fragment's linear output the albedo itself; no sky is bound, so the
-    // environment term is black and contributes nothing either.
-    view.ambient = {1.0f, 1.0f, 1.0f};
+    // A white uniform environment and no analytic lights: every patch is lit only by the
+    // image-based terms, which for a constant environment are that environment's own radiance
+    // (Engine/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
+    // about the geometry of a light rig enters the expectation.
+    const lmx::engine::ibl::IblTextures environment =
+        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.patchFurnace");
+    view.irradiance = environment.irradiance.get();
+    view.prefilteredEnv = environment.prefilteredEnv.get();
+    view.dfgLut = environment.dfgLut.get();
     for (render::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -893,9 +909,22 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     };
     constexpr std::array<size_t, 3> kRgbOffsets = {2, 1, 0};
 
+    // Each patch is a quad in the Z = 0 plane, so its normal is +Z and its view vector is fixed by
+    // the camera's offset from it. Under a unit environment the shaded radiance is the split-sum
+    // reconstruction of that surface -- a white patch returns the environment exactly (it absorbs
+    // nothing), a black one returns only its 4% dielectric Fresnel share, and the coloured patches
+    // land between -- so the authored colour still round-trips, now through the material model
+    // instead of past it.
     for (size_t i = 0; i < kPatches.size(); ++i) {
         const glm::vec3 linear{srgbToLinear(kPatches[i].authoredSrgb)};
-        const std::array<int, 3> want = lmx::test::displayBytes(linear);
+        const glm::vec3 toEye = glm::normalize(camera.position - patchPositions[i]);
+        const lmx::test::brdf::Surface surface{.baseColor = linear};
+        const glm::vec3 radiance = lmx::test::brdf::imageBasedLight(
+            glm::vec3(1.0f), glm::vec3(1.0f),
+            lmx::test::brdf::sampleDfg(glm::dot(glm::vec3(0.0f, 0.0f, 1.0f), toEye),
+                                       surface.perceptualRoughness),
+            surface);
+        const std::array<int, 3> want = lmx::test::displayBytes(radiance);
         const ProjectedPixel coord = projectScenePixel(camera, kProbeSize, patchPositions[i]);
         REQUIRE(coord.x < kProbeSize);
         REQUIRE(coord.y < kProbeSize);
@@ -950,15 +979,16 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // against a 64px target and 45-degree vertical FOV, covers roughly 8 screen pixels while sampling
 // a 64-texel-wide texture, comfortably selecting a mip level above 0 (texel/pixel ratio ~8, so LOD
 // ~3) while still covering enough pixels that rasterization cannot miss every sample. The probe's
-// own material has diffuse = the checkerboard texture (sRGB) and albedo = white; with ambient =
-// (1,1,1) and every light off (the same "no light, no sky, ambient times diffuse" configuration as
-// this file's white-patch test above), the shaded linear value is exactly the sampled texel: 0.5.
+// own material has diffuse = the checkerboard texture (sRGB) and albedo = white, so the base colour
+// the shader sees at this probe is the sampled texel: 0.5 for a correctly filtered mip.
 //
-// That linear 0.5 goes through the full display path (Tests/DisplayTransformOracle.h, mirroring
-// Shaders/DisplayTransform.slang's PBR Neutral tone map + Shaders/Encode.slang's sRGB encode), the
-// same chain this file's known-colour patches test documents for its gray18 patch: min channel
-// 0.5 >= 0.08, so the tone map subtracts the constant 0.04 black offset -> 0.46; 0.46 sits below
-// the 0.76 compression shoulder, so nothing else moves it; sRGB-encoded, 0.46 lands at byte ~181.
+// Lighting is a white uniform environment and no analytic lights -- the same configuration as this
+// file's known-colour patch test above -- so the shaded radiance is that base colour's split-sum
+// reconstruction, stated here through the same CPU mirror of the BRDF (Tests/BrdfOracle.h) and then
+// through the full display path (Tests/DisplayTransformOracle.h, mirroring the PBR Neutral tone map
+// and the sRGB encode). What matters to this case is only that the three outcomes stay well
+// separated: a point-picked mip lands on the black or the white end, and a filtered one lands
+// between them.
 TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {
@@ -993,7 +1023,11 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
 
     render::SceneView view;
     view.items = items;
-    view.ambient = {1.0f, 1.0f, 1.0f};
+    const lmx::engine::ibl::IblTextures environment =
+        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
+    view.irradiance = environment.irradiance.get();
+    view.prefilteredEnv = environment.prefilteredEnv.get();
+    view.dfgLut = environment.dfgLut.get();
     for (render::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -1012,13 +1046,20 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     REQUIRE(coord.y < kProbeSize);
     const size_t offset = (static_cast<size_t>(coord.y) * kProbeSize + coord.x) * 4;
 
-    // Point-picking this pattern reads solid black or solid white pre-tonemap. Pushed through the
-    // same display path, black's offset is also 0 below the tone map's 0.08 knee (stays byte 0);
-    // white's peak sits above the compression shoulder (byte 240, matching this file's
-    // known-colour patches test). The filtered mid-gray byte sits well clear of both.
-    const int expected = lmx::test::displayByte(0.5f);
-    const int blackExtreme = lmx::test::displayByte(0.0f);
-    const int whiteExtreme = lmx::test::displayByte(1.0f);
+    // Point-picking this pattern reads solid black or solid white as the base colour. Each of the
+    // three candidates is pushed through the same BRDF and the same display path, so the comparison
+    // below is between what the shader would produce in each case rather than between raw texels.
+    // The probe quad faces the camera head-on, so N.V is 1.
+    const auto displayByteOfBaseColor = [](float baseColor) {
+        const lmx::test::brdf::Surface surface{.baseColor = glm::vec3(baseColor)};
+        const glm::vec3 radiance = lmx::test::brdf::imageBasedLight(
+            glm::vec3(1.0f), glm::vec3(1.0f),
+            lmx::test::brdf::sampleDfg(1.0f, surface.perceptualRoughness), surface);
+        return lmx::test::displayBytes(radiance)[0];
+    };
+    const int expected = displayByteOfBaseColor(0.5f);
+    const int blackExtreme = displayByteOfBaseColor(0.0f);
+    const int whiteExtreme = displayByteOfBaseColor(1.0f);
 
     for (size_t channel = 0; channel < 3; ++channel) {
         const int value = pixels[offset + channel];

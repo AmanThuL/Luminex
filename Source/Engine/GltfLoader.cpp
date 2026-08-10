@@ -496,6 +496,9 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
             return std::unexpected(occlusionIndex.error());
         }
         out.occlusionImage = *occlusionIndex;
+        if (mat.occlusion_texture.texture != nullptr) {
+            out.occlusionStrength = mat.occlusion_texture.scale;
+        }
         auto emissiveIndex = imageIndex(mat.emissive_texture, "emissive texture");
         if (!emissiveIndex) {
             return std::unexpected(emissiveIndex.error());
@@ -588,11 +591,6 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
     }
 
     return scene;
-}
-
-//======================================================================================================================
-glm::vec3 fresnelFromMetallic(const glm::vec4& baseColor, float metallic) {
-    return glm::mix(glm::vec3(0.04f), glm::vec3(baseColor), metallic);
 }
 
 } // namespace lmx::engine

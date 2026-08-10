@@ -262,7 +262,6 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
                 const auto& light0 = view.lights[0];
                 ctx.light0Direction = {light0.direction.x, light0.direction.y, light0.direction.z};
                 ctx.light0Strength = {light0.strength.x, light0.strength.y, light0.strength.z};
-                ctx.ambient = {view.ambient.x, view.ambient.y, view.ambient.z};
                 ctx.shadowFilter =
                     view.shadowFilter == lmx::render::ShadowFilter::PCSS ? "PCSS" : "PCF";
                 lmx::rhi::debug::CaptureSchema::instance().setContext(std::move(ctx));
