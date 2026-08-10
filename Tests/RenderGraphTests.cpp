@@ -845,6 +845,54 @@ TEST_CASE("a pass reading and writing one buffer owes itself no barrier", "[rend
 }
 
 //======================================================================================================================
+// A write-after-read barrier must survive an unrelated write to a disjoint range sitting between
+// the read and the write that actually needs ordering: A reads mip 0, B writes the disjoint mip 3
+// (no barrier -- B touches nothing A read), then C writes mip 0 and must still be ordered after A's
+// read. Discharging a resource's *entire* pending-read record on any write to it (rather than only
+// the ranges that write overlaps) would let B's write erase A's still-pending mip 0 read, leaving C
+// with nothing to barrier against.
+TEST_CASE("a write-after-read barrier survives an unrelated write to a disjoint range",
+          "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture other{64, 64, "other"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture sink = graph.importTexture(other, rhi::Format::BGRA8Unorm, "other");
+
+    static constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    static constexpr rhi::TextureSubresourceRange kMip3{.baseMipLevel = 3, .mipLevelCount = 1};
+
+    // A: reads mip 0, and writes a separate texture so it is not dead work no sink reaches.
+    PassDesc readA;
+    readA.textureReads.push_back(TextureUseDesc(bloom, kMip0));
+    readA.color = ColorAttachment{.handle = sink};
+    graph.addPass("lmx.pass.a", readA, kNoWork);
+
+    // B: writes mip 3 only -- disjoint from what A read, so it owes no barrier and must not discard
+    // A's still-pending read of mip 0.
+    ComputePassDesc writeB;
+    writeB.textureWrites.push_back(TextureUseDesc(bloom, kMip3));
+    graph.addComputePass("lmx.pass.b", writeB, kNoWork);
+
+    // C: writes mip 0 of the version B produced -- must still be barriered after A's read.
+    ComputePassDesc writeC;
+    writeC.textureWrites.push_back(TextureUseDesc(nextVersion(bloom), kMip0));
+    graph.addComputePass("lmx.pass.c", writeC, kNoWork);
+
+    graph.exportTexture(GraphTexture{bloom.index, 2});
+    graph.exportTexture(nextVersion(sink));
+
+    RecordingCommandList commands;
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.events == std::vector<std::string>{
+                                   "begin lmx.pass.a", "end", "begin compute lmx.pass.b",
+                                   "end compute",
+                                   "barrier chain mips[0..0] layers[0..] ShaderRead->StorageWrite",
+                                   "begin compute lmx.pass.c", "end compute"});
+}
+
+//======================================================================================================================
 // The bloom step's shape: one pass reads mip 1 and writes mip 2 of the same chain. Under
 // whole-resource versions the write still produces the next version of the whole texture, and mip 1
 // carries forward into it untouched.

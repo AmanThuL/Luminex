@@ -1059,13 +1059,15 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     };
     std::vector<WriteState> pending(m_resources.size());
 
-    // Subresources read since the last write to a resource, not yet ordered against a future write.
-    // A write-after-read hazard is the mirror of the read-after-write one above: a pass that writes
-    // a version some earlier pass already read needs a barrier ordering it after that read, or the
-    // write could retire before the read that depends on the prior contents does. Tracking is
-    // per-resource rather than per-version because a write discharges every outstanding read the
-    // moment it is declared -- that write is exactly the barrier those reads were waiting for -- so
-    // there is never more than one write's worth of pending reads to track at a time.
+    // Subresources read since the last write that touched them, not yet ordered against a future
+    // write. A write-after-read hazard is the mirror of the read-after-write one above: a pass that
+    // writes a version some earlier pass already read needs a barrier ordering it after that read,
+    // or the write could retire before the read that depends on the prior contents does. A write
+    // discharges only the ranges it actually overlaps -- a write of mip 3 says nothing about a read
+    // of mip 0, so mip 0's read stays owed to whichever later write does overlap it. Tracking is
+    // still per-resource rather than per-version, because whole-resource writes (every raster pass
+    // here) discharge everything in one step and are the common case; ranged writes discharge in
+    // parts instead of all at once, which is the property a full per-resource reset would lose.
     struct ReadState {
         bool textureRead = false;
         bool bufferRead = false;
@@ -1187,38 +1189,43 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             transitions.push_back(transition);
         }
 
-        // A write-after-read barrier per resource this pass writes, owed once for whatever this
-        // pass's write declarations overlap -- not once per prior reader, since those readers
-        // needed no ordering among themselves and the write is what has to wait for the last of
-        // them. This checks reads recorded by *earlier* passes only: this pass's own reads (if any)
-        // are not recorded into `pendingReads` until the loop below runs, which is what lets a pass
-        // read and write one resource through disjoint ranges (bloom's downsample step, one buffer
-        // accumulate dispatch) without owing a barrier against itself. Resources this pass writes
-        // are collected first so several write declarations of one resource (disjoint mips, say)
-        // each get their own overlap check before any of them clears the resource's pending reads.
-        std::vector<uint32_t> writtenResources;
+        // A write-after-read barrier per write declaration that overlaps a pending read -- not once
+        // per prior reader, since those readers needed no ordering among themselves and the write
+        // is what has to wait for the last of them. This checks reads recorded by *earlier* passes
+        // only: this pass's own reads (if any) are not recorded into `pendingReads` until the loop
+        // below runs, which is what lets a pass read and write one resource through disjoint ranges
+        // (bloom's downsample step, one buffer accumulate dispatch) without owing a barrier against
+        // itself. A write discharges *only* the pending ranges it overlaps, mutating `pendingReads`
+        // as each declaration is processed: a write of mip 3 must not discharge a still-pending
+        // read of mip 0 just because they share a resource, or a later write of mip 0 would wrongly
+        // find nothing owed against it (the hazard this fixes: A reads mip 0, B writes mip 3 --
+        // disjoint, no barrier, but a full per-resource clear here would erase mip 0's read anyway
+        // -- then C writes mip 0 and owes A's read a barrier it would otherwise never get).
         for (const Declaration& declaration : pass.declarations) {
             if (!declaration.isWrite) {
                 continue;
             }
-            const ReadState& reads = pendingReads[declaration.resource];
+            ReadState& reads = pendingReads[declaration.resource];
             const Resource& resource = m_resources[declaration.resource];
             if (resource.kind == ResourceKind::Buffer) {
+                // Buffers carry no subresource ranges, so any pending read is the whole resource
+                // and every write discharges it completely -- there is no partial case to preserve.
                 if (reads.bufferRead) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Buffer,
                                            .bufferFrom = reads.bufferUse,
                                            .bufferTo = bufferUseOf(pass.kind, declaration.role)});
+                    reads.bufferRead = false;
                 }
             } else if (reads.textureRead) {
                 const ResolvedRange writeRange =
                     resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
-                bool overlapsRead = false;
-                for (const ResolvedRange& readRange : reads.ranges) {
-                    overlapsRead = overlapsRead || rangesOverlap(readRange, writeRange);
-                }
-                if (overlapsRead) {
+                const size_t before = reads.ranges.size();
+                std::erase_if(reads.ranges, [&](const ResolvedRange& readRange) {
+                    return rangesOverlap(readRange, writeRange);
+                });
+                if (reads.ranges.size() != before) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Texture,
@@ -1226,13 +1233,8 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                                            .textureFrom = reads.textureUse,
                                            .textureTo = textureUseOf(pass.kind, declaration.role)});
                 }
+                reads.textureRead = !reads.ranges.empty();
             }
-            if (!std::ranges::contains(writtenResources, declaration.resource)) {
-                writtenResources.push_back(declaration.resource);
-            }
-        }
-        for (const uint32_t resource : writtenResources) {
-            pendingReads[resource] = {};
         }
 
         // Record every read this pass makes, whatever wrote the version it names, so a later write
