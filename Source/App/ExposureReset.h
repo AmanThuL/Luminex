@@ -23,7 +23,7 @@ struct ExposureResetContext {
     std::optional<engine::SceneId> sceneId; ///< The active scene, or unset before one has loaded.
     bool autoExposureEnabled = false;       ///< Whether auto-exposure is the current mode.
     uint32_t width = 0;                     ///< Scene target extent the metering last covered.
-    uint32_t height = 0;
+    uint32_t height = 0;                    ///< Scene target extent the metering last covered.
 };
 
 /// Whether the exposure feedback loop must restart from the manual EV rather than continue

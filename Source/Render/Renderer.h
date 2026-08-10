@@ -127,8 +127,8 @@ struct SceneView {
     /// and forward the result here every frame.
     bool exposureReset = false;
     float exposureLowPercentile = 50.0f; ///< Percent of pixel count trimmed from the shadow end.
-    float exposureHighPercentile =
-        95.0f;                           ///< Percent of pixel count trimmed from the highlight end.
+    /// Percent of pixel count trimmed from the highlight end.
+    float exposureHighPercentile = 95.0f;
     float exposureTargetGrey = 0.18f;    ///< Scene-referred luminance metering maps to unit output.
     float exposureEvMin = -8.0f;         ///< Clamp on the resolved exposure, in stops.
     float exposureEvMax = 8.0f;          ///< Clamp on the resolved exposure, in stops.

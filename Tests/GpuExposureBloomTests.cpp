@@ -1,11 +1,13 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GpuExposureBloomTests.cpp
-/// @brief GPU conformance tests for the histogram exposure and bloom compute kernels (spec 9/10),
-///        run directly against CPU reference implementations that mirror the shaders line for
-///        line -- Shaders/HistogramAccumulate.slang, Shaders/ExposureResolve.slang, and
-///        Shaders/BloomThreshold.slang -- rather than through Renderer::declarePasses(), so a
-///        failure here points at one kernel's math instead of the whole frame's wiring.
+/// @brief GPU conformance tests for the histogram exposure and bloom kernels vs CPU references.
 //----------------------------------------------------------------------------------------------------------------------
+
+// Run directly against CPU reference implementations that mirror the shaders line for line --
+// Shaders/HistogramAccumulate.slang, Shaders/ExposureResolve.slang, and
+// Shaders/BloomThreshold.slang
+// -- rather than through Renderer::declarePasses(), so a failure here points at one kernel's math
+// instead of the whole frame's wiring (spec 9/10).
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -25,6 +27,7 @@ namespace {
 
 using namespace lmx::rhi;
 
+//======================================================================================================================
 template <typename T>
 std::string errorOf(const Result<T>& result) {
     return result ? std::string{} : result.error().message;
@@ -37,12 +40,14 @@ constexpr glm::vec3 kLuminanceWeights{0.2126f, 0.7152f, 0.0722f};
 constexpr float kLogLuminanceMin = -12.0f;
 constexpr float kLogLuminanceMax = 4.0f;
 
+//======================================================================================================================
 // A half-float bit pattern for 2^exponent, exact because every power of two in the normal range
 // has a zero mantissa -- so uploads need no float-to-half rounding logic to reason about.
 constexpr uint16_t halfPow2(int exponent) {
     return static_cast<uint16_t>((exponent + 15) << 10);
 }
 
+//======================================================================================================================
 // Mirrors HistogramAccumulate.slang's computeHistogramAccumulate, texel for texel.
 std::array<uint32_t, kBins> cpuHistogram(std::span<const glm::vec3> pixels, float preExposure) {
     std::array<uint32_t, kBins> bins{};
@@ -59,6 +64,7 @@ std::array<uint32_t, kBins> cpuHistogram(std::span<const glm::vec3> pixels, floa
     return bins;
 }
 
+//======================================================================================================================
 // Mirrors ExposureResolve.slang's computeExposureResolve, statement for statement.
 float cpuResolveExposure(const std::array<uint32_t, kBins>& bins, float lowPercentile,
                          float highPercentile, float targetGrey, float evMin, float evMax,
@@ -98,6 +104,7 @@ float cpuResolveExposure(const std::array<uint32_t, kBins>& bins, float lowPerce
     return exposure;
 }
 
+//======================================================================================================================
 // Mirrors BloomThreshold.slang's per-texel formula (the 2x2 box read is the caller's job below,
 // since it is identical for every probe pixel this file constructs).
 glm::vec3 cpuThreshold(glm::vec3 color, float threshold) {
@@ -113,8 +120,13 @@ struct Grid {
     uint32_t height = 0;
     std::vector<glm::vec3> texels;
 
+    //==================================================================================================================
     Grid(uint32_t w, uint32_t h) : width(w), height(h), texels(size_t{w} * h, glm::vec3(0.0f)) {}
+
+    //==================================================================================================================
     glm::vec3& at(uint32_t x, uint32_t y) { return texels[size_t{y} * width + x]; }
+
+    //==================================================================================================================
     glm::vec3 load(uint32_t x, uint32_t y) const {
         const uint32_t cx = std::min(x, width - 1);
         const uint32_t cy = std::min(y, height - 1);
@@ -122,6 +134,7 @@ struct Grid {
     }
 };
 
+//======================================================================================================================
 // Mirrors BloomDownsample.slang.
 Grid cpuDownsample(const Grid& src, uint32_t dstWidth, uint32_t dstHeight) {
     Grid dst(dstWidth, dstHeight);
@@ -136,6 +149,7 @@ Grid cpuDownsample(const Grid& src, uint32_t dstWidth, uint32_t dstHeight) {
     return dst;
 }
 
+//======================================================================================================================
 // Mirrors BloomUpsample.slang.
 Grid cpuUpsampleAccumulate(const Grid& base, const Grid& small) {
     Grid dst(base.width, base.height);
@@ -149,6 +163,7 @@ Grid cpuUpsampleAccumulate(const Grid& base, const Grid& small) {
     return dst;
 }
 
+//======================================================================================================================
 Result<std::unique_ptr<Texture>> makeSceneColorTexture(Device& device, uint32_t width,
                                                        uint32_t height,
                                                        std::span<const uint16_t> rgbaHalf,
