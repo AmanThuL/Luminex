@@ -181,6 +181,10 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         material.albedo = src.baseColorFactor;
         material.fresnelR0 = fresnelFromMetallic(src.baseColorFactor, src.metallic);
         material.roughness = src.roughness;
+        material.metallic = src.metallic;
+        // glTF's emissiveFactor is linear as authored, unlike a display-space color constant --
+        // do not run it through srgbToLinear.
+        material.emissive = src.emissiveFactor;
         if (src.baseColorImage >= 0) {
             auto texture = ensureUploaded(src.baseColorImage, true);
             if (!texture) {
@@ -194,6 +198,30 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                 return std::unexpected(texture.error());
             }
             material.normalMap = *texture;
+        }
+        if (src.metallicRoughnessImage >= 0) {
+            // Roughness (G) and metallic (B) are sampled data, not color -- linear, no sRGB decode.
+            auto texture = ensureUploaded(src.metallicRoughnessImage, false);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.metallicRoughness = *texture;
+        }
+        if (src.occlusionImage >= 0) {
+            // Occlusion is sampled data too.
+            auto texture = ensureUploaded(src.occlusionImage, false);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.occlusion = *texture;
+        }
+        if (src.emissiveImage >= 0) {
+            // Emissive is an authored color texture: sRGB-decode through the texture view.
+            auto texture = ensureUploaded(src.emissiveImage, true);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.emissiveMap = *texture;
         }
         scene->materials.push_back(material);
     }
