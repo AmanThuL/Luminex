@@ -9,9 +9,10 @@ using namespace lmx;
 using namespace lmx::render;
 
 namespace {
-// Texture is an interface, and the graph reads nothing from it but width()/height(): the extent is
-// the only texture property the attachment rules inspect, since the format is declared at import.
-// readback() is never reached, so it is left empty rather than faked.
+// Texture is an interface, and the graph reads three things from it: the extent, which is what the
+// attachment rules inspect since the format is declared at import, and the mip and layer counts,
+// which a declared subresource range is resolved and bounds-checked against. readback() is never
+// reached, so it is left empty rather than faked.
 //
 // `name` is the test's own label for the texture, so a recorded barrier says which resource it
 // transitioned rather than printing a pointer.
@@ -19,8 +20,10 @@ struct FakeTexture final : rhi::Texture {
     std::string name;
 
     //==================================================================================================================
-    FakeTexture(uint32_t width, uint32_t height, std::string label = {})
-        : name(std::move(label)), m_width(width), m_height(height) {}
+    FakeTexture(uint32_t width, uint32_t height, std::string label = {}, uint32_t mips = 1,
+                uint32_t layers = 1)
+        : name(std::move(label)), m_width(width), m_height(height), m_mipLevels(mips),
+          m_arrayLayers(layers) {}
 
     //==================================================================================================================
     uint32_t width() const override { return m_width; }
@@ -28,16 +31,15 @@ struct FakeTexture final : rhi::Texture {
     //==================================================================================================================
     uint32_t height() const override { return m_height; }
 
-    // The graph declares formats itself and imports whole resources, so a fake needs no more shape
-    // than a single-layer, single-mip texture of the format the import states.
+    // The graph declares formats itself, so the fake's own format is never consulted.
     //==================================================================================================================
     rhi::Format format() const override { return rhi::Format::BGRA8Unorm; }
 
     //==================================================================================================================
-    uint32_t mipLevels() const override { return 1; }
+    uint32_t mipLevels() const override { return m_mipLevels; }
 
     //==================================================================================================================
-    uint32_t arrayLayers() const override { return 1; }
+    uint32_t arrayLayers() const override { return m_arrayLayers; }
 
     //==================================================================================================================
     void readback(void*, uint64_t) override {}
@@ -45,14 +47,18 @@ struct FakeTexture final : rhi::Texture {
 private:
     uint32_t m_width = 0;
     uint32_t m_height = 0;
+    uint32_t m_mipLevels = 1;
+    uint32_t m_arrayLayers = 1;
 };
 
-// The graph never reads a buffer's size either -- buffers carry no attachment rules at all -- so
-// this exists only to give importBuffer a real object to borrow.
+// The graph never reads a buffer's size -- buffers carry no attachment or subresource rules at all
+// -- so this exists to give importBuffer a real object to borrow and to name itself in a barrier.
 struct FakeBuffer final : rhi::Buffer {
+    std::string name;
 
     //==================================================================================================================
-    explicit FakeBuffer(uint64_t size) : m_size(size) {}
+    explicit FakeBuffer(uint64_t size, std::string label = {})
+        : name(std::move(label)), m_size(size) {}
 
     //==================================================================================================================
     uint64_t size() const override { return m_size; }
@@ -67,6 +73,15 @@ private:
 // Passes here are declarations and nothing else: this layer stores the body without running it, so
 // every pass gets the same empty one.
 const ExecuteFn kNoWork = [](const PassResources&) {};
+
+// REQUIRE(result.has_value()) on its own reports "false != true"; the graph's message is the only
+// thing that says *why*, so it is pulled out for INFO before the assertion.
+template <typename T>
+
+//======================================================================================================================
+std::string errorOf(const GraphResult<T>& result) {
+    return result ? std::string{} : result.error().message;
+}
 
 //======================================================================================================================
 std::string useName(rhi::TextureUse use) {
@@ -83,6 +98,25 @@ std::string useName(rhi::TextureUse use) {
         return "CopySource";
     case rhi::TextureUse::CopyDestination:
         return "CopyDestination";
+    }
+    return "unknown";
+}
+
+//======================================================================================================================
+std::string useName(rhi::BufferUse use) {
+    switch (use) {
+    case rhi::BufferUse::ShaderRead:
+        return "ShaderRead";
+    case rhi::BufferUse::StorageRead:
+        return "StorageRead";
+    case rhi::BufferUse::StorageWrite:
+        return "StorageWrite";
+    case rhi::BufferUse::CopySource:
+        return "CopySource";
+    case rhi::BufferUse::CopyDestination:
+        return "CopyDestination";
+    case rhi::BufferUse::IndirectArgument:
+        return "IndirectArgument";
     }
     return "unknown";
 }
@@ -106,8 +140,9 @@ struct RecordingCommandList final : rhi::CommandList {
     //==================================================================================================================
     void endRenderPass() override { events.push_back("end"); }
 
-    // The graph declares no compute work yet; these log rather than ignore, so a pass kind the
-    // graph starts emitting shows up in the event assertions instead of disappearing.
+    // Compute pass boundaries are part of the ordering this log exists to show, so they share the
+    // event list with the render ones; the dispatches inside a body are the body's output, not
+    // execute()'s, and are logged only so a stray one is visible.
 
     //==================================================================================================================
     void beginComputePass(std::string_view label) override {
@@ -136,8 +171,8 @@ struct RecordingCommandList final : rhi::CommandList {
     //==================================================================================================================
     void dispatchIndirect(rhi::Buffer&, uint64_t) override {}
 
-    // The graph declares no copy work yet either; the pass boundaries log for the same reason the
-    // compute ones do, and the copies themselves are left as no-ops until a pass emits one.
+    // Copy pass boundaries log for the same reason the compute ones do; the copies a body records
+    // are the body's own output and are left as no-ops.
 
     //==================================================================================================================
     void beginCopyPass(std::string_view label) override {
@@ -166,20 +201,24 @@ struct RecordingCommandList final : rhi::CommandList {
     void fillBuffer(rhi::Buffer&, uint64_t, uint64_t, uint8_t) override {}
 
     //==================================================================================================================
-    void bufferBarrier(rhi::Buffer&, const rhi::BufferRange&, rhi::BufferUse,
-                       rhi::BufferUse) override {}
+    void bufferBarrier(rhi::Buffer& buffer, const rhi::BufferRange&, rhi::BufferUse from,
+                       rhi::BufferUse to) override {
+        events.push_back("barrier " + static_cast<FakeBuffer&>(buffer).name + " " + useName(from) +
+                         "->" + useName(to));
+    }
 
     //==================================================================================================================
     void textureBarrier(rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
                         rhi::TextureUse from, rhi::TextureUse to) override {
-        // The graph declares whole resources, so the range is logged only when it is not the
-        // whole-resource default -- an unexpected narrowing would then show up in the log.
+        // A whole-resource range is what a pass with no subresource detail declares and is the
+        // common case, so it is left out of the log; a narrowed one is spelled out, because a
+        // barrier covering the wrong subresources is exactly what these cases are looking for.
         const bool wholeResource =
             range.baseMipLevel == 0 && range.mipLevelCount == rhi::kAllMipLevels &&
             range.baseArrayLayer == 0 && range.arrayLayerCount == rhi::kAllArrayLayers;
         events.push_back("barrier " + static_cast<FakeTexture&>(texture).name +
-                         (wholeResource ? "" : " (subrange)") + " " + useName(from) + "->" +
-                         useName(to));
+                         (wholeResource ? "" : " " + describeRange(range)) + " " + useName(from) +
+                         "->" + useName(to));
     }
 
     //==================================================================================================================
@@ -718,4 +757,251 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
                 "begin lmx.pass.sample", "end", "barrier other RenderTarget->ShaderRead",
                 "begin lmx.pass.rewrite", "end", "barrier pingPong RenderTarget->ShaderRead",
                 "begin lmx.pass.resample", "end"});
+}
+
+//======================================================================================================================
+// The bloom step's shape: one pass reads mip 1 and writes mip 2 of the same chain. Under
+// whole-resource versions the write still produces the next version of the whole texture, and mip 1
+// carries forward into it untouched.
+TEST_CASE("a compute pass reads and writes disjoint mips of one texture", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc downsample;
+    downsample.textureReads.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
+    downsample.textureWrites.push_back({bloom, {.baseMipLevel = 2, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
+
+    const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
+    REQUIRE(schedule.has_value());
+    REQUIRE(schedule->passes == std::vector<uint32_t>{0});
+}
+
+//======================================================================================================================
+// The same shape with the ranges made to share mip 2. No ordering between passes can fix a pass
+// racing against itself, so it is a declaration failure -- and the message has to carry both ranges
+// or it cannot say which end to move.
+TEST_CASE("a pass reading and writing overlapping ranges is rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc overlapping;
+    overlapping.textureReads.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 2}});
+    overlapping.textureWrites.push_back({bloom, {.baseMipLevel = 2, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.overlap", overlapping, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("lmx.pass.overlap"));
+    REQUIRE(schedule.error().message.contains("bloom"));
+    REQUIRE(schedule.error().message.contains("mips[1..2]"));
+    REQUIRE(schedule.error().message.contains("mips[2..2]"));
+    REQUIRE(schedule.error().message.contains("disjoint"));
+}
+
+//======================================================================================================================
+// Whole-resource ranges are the default, so a pass that names one texture as both a read and a
+// write without narrowing either declares the maximal overlap there is.
+TEST_CASE("a whole-resource read beside a whole-resource write is rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc inPlace;
+    inPlace.textureReads.push_back(bloom);
+    inPlace.textureWrites.push_back(bloom);
+    graph.addComputePass("lmx.pass.inPlace", inPlace, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("overlap"));
+}
+
+//======================================================================================================================
+// Layers are the other axis: the same mip of two different faces is two different subresources, so
+// the pair is disjoint and the rule must not collapse to a mip comparison.
+TEST_CASE("ranges on different array layers do not overlap", "[render][graph]") {
+    FakeTexture cube{64, 64, "cube", 1, 6};
+    RenderGraph graph;
+    const GraphTexture faces = graph.importTexture(cube, rhi::Format::RGBA16Float, "faces");
+
+    ComputePassDesc perFace;
+    perFace.textureReads.push_back({faces, {.baseArrayLayer = 0, .arrayLayerCount = 1}});
+    perFace.textureWrites.push_back({faces, {.baseArrayLayer = 1, .arrayLayerCount = 1}});
+    graph.addComputePass("lmx.pass.face", perFace, kNoWork);
+
+    const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
+    REQUIRE(schedule.has_value());
+}
+
+//======================================================================================================================
+// A range is checked against the texture it names, so a mip the chain does not have is caught on
+// the CPU with the pass named rather than by the RHI when the barrier is finally recorded.
+TEST_CASE("a subresource range past the end of the texture is rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 3};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc tooFar;
+    tooFar.textureWrites.push_back({bloom, {.baseMipLevel = 3, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.tooFar", tooFar, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("lmx.pass.tooFar"));
+    REQUIRE(schedule.error().message.contains("mips[3..3]"));
+    REQUIRE(schedule.error().message.contains("3 mip levels"));
+}
+
+//======================================================================================================================
+// A zero count is not "the whole resource", it is nothing at all -- a binding addressing no
+// subresource is a declaration that says the pass touches something while touching nothing.
+TEST_CASE("an empty subresource range is rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 3};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc empty;
+    empty.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 0}});
+    graph.addComputePass("lmx.pass.empty", empty, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("covers no subresource"));
+}
+
+//======================================================================================================================
+// Subresource ranges narrow what a pass touches, not what a version covers. Two passes writing
+// different mips of version 0 would both produce version 1, so the second one still has to declare
+// itself over the first's output -- the double-write rule does not soften into a range comparison.
+TEST_CASE("two passes writing disjoint ranges of one version are rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc first;
+    first.textureWrites.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.first", first, kNoWork);
+
+    ComputePassDesc second;
+    second.textureWrites.push_back({bloom, {.baseMipLevel = 2, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.second", second, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("both write"));
+    REQUIRE(schedule.error().message.contains("bloom"));
+}
+
+//======================================================================================================================
+// Untouched-subresource inheritance, stated as a schedule: the writer touched mip 1 only, and a
+// reader of mip 0 of the version it produced is reading contents carried forward from version 0.
+// That is a legal read, and it is still ordered after the writer.
+TEST_CASE("a read inherits the subresources its producer did not write", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture output{64, 64, "output"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture target = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+
+    ComputePassDesc write;
+    write.textureWrites.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.write", write, kNoWork);
+
+    PassDesc read;
+    read.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
+    read.color = ColorAttachment{.handle = target};
+    graph.addPass("lmx.pass.read", read, kNoWork);
+
+    const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
+    REQUIRE(schedule.has_value());
+    REQUIRE(schedule->passes == std::vector<uint32_t>{0, 1});
+}
+
+//======================================================================================================================
+// Each declaration path opens its own RHI scope, and the barrier between them is derived from the
+// declared uses on both sides: a storage write followed by a sampled read.
+TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") {
+    FakeTexture storage{64, 64, "storage"};
+    FakeTexture target{64, 64, "target"};
+    RenderGraph graph;
+    const GraphTexture written = graph.importTexture(storage, rhi::Format::RGBA16Float, "storage");
+    const GraphTexture color = graph.importTexture(target, rhi::Format::BGRA8Unorm, "target");
+
+    ComputePassDesc fill;
+    fill.textureWrites.push_back(written);
+    graph.addComputePass("lmx.pass.fill", fill, kNoWork);
+
+    PassDesc present;
+    present.textureReads.push_back(nextVersion(written));
+    present.color = ColorAttachment{.handle = color};
+    graph.addPass("lmx.pass.present", present, kNoWork);
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.fill",
+                                                        "end compute",
+                                                        "barrier storage StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.present", "end"});
+}
+
+//======================================================================================================================
+// A copy pass's destination is a write like any other, so a compute pass reading it afterwards gets
+// the copy-to-storage transition -- and buffers get one of their own, because a hazard on bytes has
+// no texture edge to borrow.
+TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][graph]") {
+    FakeBuffer histogram{1024, "histogram"};
+    RenderGraph graph;
+    const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
+
+    CopyPassDesc clear;
+    clear.bufferDestinations.push_back(bins);
+    graph.addCopyPass("lmx.pass.clear", clear, kNoWork);
+
+    ComputePassDesc accumulate;
+    accumulate.bufferReads.push_back(nextVersion(bins));
+    graph.addComputePass("lmx.pass.accumulate", accumulate, kNoWork);
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin copy lmx.pass.clear", "end copy",
+                                     "barrier histogram CopyDestination->StorageRead",
+                                     "begin compute lmx.pass.accumulate", "end compute"});
+}
+
+//======================================================================================================================
+// The derived barrier carries the subresources the consumer declared, so a reader of one mip does
+// not describe itself as depending on the whole chain.
+TEST_CASE("a derived barrier carries the range the reader declared", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc write;
+    write.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.write", write, kNoWork);
+
+    ComputePassDesc downsample;
+    downsample.textureReads.push_back(
+        {nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
+    downsample.textureWrites.push_back(
+        {nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.downsample", downsample, kNoWork);
+
+    RecordingCommandList commands;
+    graph.execute(commands);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin compute lmx.pass.write", "end compute",
+                                     "barrier chain mips[0..0] layers[0..] "
+                                     "StorageWrite->StorageRead",
+                                     "begin compute lmx.pass.downsample", "end compute"});
 }
