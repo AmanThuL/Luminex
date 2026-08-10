@@ -10,9 +10,10 @@ without expanding it.
 
 ## Current baseline
 
-M4 renders Sponza, Damaged Helmet, and MaterialLab through a graph-declared, scene-linear HDR
-pipeline with physically based glTF materials, deterministic mip/IBL assets, and reversed-Z depth.
-Its shipped evidence and remaining limits are recorded in `docs/milestones/m4.md`.
+M4.1 preserves M4's graph-declared, scene-linear HDR renderer while giving its RHI an explicit root
+component, domain-owned result contracts, self-contained public headers, and checked API
+documentation. Its shipped evidence and remaining limits are recorded in
+`docs/milestones/m4.1.md`.
 
 ## M4 — Correct image formation
 
@@ -41,6 +42,33 @@ reference; every pass reports a visible GPU timestamp.
 exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
 tracing.
 
+## M4.1 — RHI component boundary and maintenance
+
+**Outcome:** the shipped M4 renderer keeps the same behavior while its RHI, error ownership,
+includes, and API documentation form a clearer component boundary that can evolve independently.
+
+**Deliver:**
+
+- Move the RHI to the repository-root `RHI/` component, with public headers under
+  `RHI/Include/RHI/`, implementation in `RHI/Source/`, and the Metal 4 backend in
+  `RHI/Backends/Metal4/Source/`. Keep Metal types out of public headers and preserve the existing
+  caller-facing contracts.
+- Give the component its own build description, keep backend implementation dependencies private,
+  and split the Dear ImGui adapter into the optional `RHIMetal4ImGui` target.
+- Keep `std::expected` as the common mechanism while each domain owns its error vocabulary; expose
+  the existing RHI `Error` and `Result<T>` through a focused, self-contained public header.
+- Make project headers self-contained, remove unnecessary or accidental transitive includes, and
+  document every project C++ file and public API under the checked comment convention.
+
+**Exit gate:** M4 unit, GPU, and scene-smoke coverage remains green; core public RHI headers compile
+in isolation and expose no Metal or ImGui dependency; the optional adapter owns its ImGui-dependent
+include path; application code still includes `RHI/...` paths; the core RHI builds without that
+adapter; formatting, policy, include, and documentation checks pass.
+
+**Defer:** new compute, storage, copy, barrier, view, graph, or rendering capabilities; a production
+second backend; publishing RHI as a standalone repository; a shared cross-domain error type; and
+the M5.1 API-model experiment.
+
 ## M5 — Execution substrate and observability
 
 **Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and
@@ -50,21 +78,60 @@ resource workloads required by later temporal and GPU-driven features.
 
 - Add compute pipelines and dispatch, storage buffers and textures, general copies and barriers,
   subresource uses, and the required view and synchronization contracts.
-- Add dead-pass culling, conservative transient pooling, graph dumps, resource lifetime and
-  transition inspection, and per-pass/transient memory reporting.
+- Add dead-pass culling and conservative transient pooling, with deterministic graph dumps and a
+  read-only editor Render Graph inspector for pass/resource uses, schedule and culling, lifetimes,
+  transitions, logical-to-physical reuse, per-pass timing, and transient memory.
 - Exercise the substrate with histogram exposure and a bloom chain while preserving a deterministic
   manual-exposure path.
 
 **Exit gate:** compute-to-sample and per-mip hazards pass conformance tests; resize and feature
 toggles neither leak nor reuse live resources; pooling on and off produces the same output; arbitrary
-intermediate mips and layers can be captured; pass time, transient high-water marks, and alias savings
-are visible.
+intermediate mips and layers can be captured; the same compiled frame is inspectable through a
+deterministic dump and the editor; pass time, transient high-water marks, and alias savings are
+visible.
 
 **Portability checkpoint A:** freeze semantic tests for upload and layout, resource views, sRGB,
 reversed-Z, storage hazards, load/store behavior, indirect arguments, and frame-slot retirement.
 
 **Defer:** motion/history semantics, dynamic resolution, GPU scene ownership, bindless materials,
 indirect visibility, and alternative opaque surface paths.
+
+## M5.1 — GPU-native interface experiment (placeholder)
+
+**Outcome:** a measured prototype decides whether Luminex should retain, partially reshape, or
+replace its object-shaped RHI with a smaller GPU-address-first execution interface that translates
+honestly to Metal 4 and D3D12.
+
+This boundary is reserved, but its implementation scope is intentionally not designed in this
+roadmap revision. Before an `In progress` plan can start, an accepted design spec must turn the
+following minimum research boundary into concrete deliverables and an exit gate:
+
+- Compare the maintained RHI with the data-oriented "No Graphics API" model described by Sebastian
+  Aaltonen's [article](https://www.sebastianaaltonen.com/blog/no-graphics-api),
+  [extended presentation](https://www.youtube.com/watch?v=aQv9pUl9PBM), and
+  [SIGGRAPH course slides](https://community.arm.com/cfs-file/__key/communityserver-blogs-components-weblogfiles/00-00-00-20-66/6763.2026_2D00_mmg_2D00_seb_2D00_gfx_2D00_api.pdf).
+  Cover allocation and address semantics, root data, resource handles, shader and pipeline
+  boundaries, commands, render-pass attachments, synchronization, residency, capabilities,
+  debugging, and failure behavior without removing the render graph's logical ownership.
+- Translate one representative M5 graphics/compute/copy graph through a non-default Metal 4
+  prototype and record a Metal 4/D3D12 mapping and gap matrix. Vulkan extensions are comparative
+  evidence, not a backend commitment.
+- Pre-register a workload matrix that combines maintained M5 frames with scalable binding,
+  compute/storage-hazard, upload/resize, and indirect-work stress cases. The design spec sets the
+  concrete scales, measurements, and adoption thresholds after the M5 baseline is available and
+  before prototype results are evaluated.
+- Compare API surface, CPU encoding work, binding traffic, pipeline permutations and cache behavior,
+  barrier commands, allocation behavior, validation coverage, and capture quality against the
+  maintained RHI.
+
+**Decision required before M6:** checkpoint A remains green; the prototype reproduces the chosen
+graph's output, failure behavior, and three-frame lifetime rules; every emulation, fallback,
+shader-language constraint, and unsupported operation is recorded; and an ADR selects adopt,
+partially adopt, or reject. If adoption requires a larger migration, add that migration as a
+separately accepted milestone before M6; do not leave an unowned parallel API.
+
+**Defer:** a production D3D12 backend, Vulkan/Linux support, multi-queue optimization, ray tracing,
+and later rendering features.
 
 ## M6 — Temporal and display foundation
 
@@ -86,9 +153,11 @@ switching invalidate history correctly; rigid and camera motion reproject correc
 and MetalFX outputs can be compared from one capture; exposure changes do not pulse histories; UI is
 sharp and composed in its intended domain.
 
-**Portability gate B:** before M7 begins, bring up a minimal Vulkan backend that passes checkpoint A
-and renders the M6 PBR/HDR/TAA frame. Metal and Vulkan then evolve against shared scene, graph, and
-temporal semantics with explicit capability fallbacks; D3D12 may follow without redefining them.
+**Interface gate B:** before M7 begins, close M5.1's interface decision and freeze the resulting
+GPU-scene, root-data, binding, synchronization, and capability semantics. A second production
+backend is not a prerequisite. When one is scheduled, D3D12 is the intended target and must pass
+checkpoint A and render the M6 PBR/HDR/TAA frame without redefining shared scene, graph, or temporal
+semantics.
 
 **Defer:** GPU-driven submission, clustered local lighting, scalable shadow systems, atmosphere, and
 opaque-path experiments.
@@ -106,8 +175,8 @@ frustum/LOD/occlusion culling; indirect work generation; and a CPU visibility or
 **Exit gate:** CPU render submission grows mainly with passes and bins rather than object count; GPU
 visibility matches the CPU oracle or reports every difference; new and moving objects do not remain
 incorrectly occluded; synthetic local-light stress remains bounded with visible overflow; stable IDs
-survive remapping and residency fallback across three frames in flight; Metal and Vulkan pass the
-same semantic tests or use a documented capability fallback.
+survive remapping and residency fallback across three frames in flight; every implemented backend
+passes the same semantic tests or uses a documented capability fallback.
 
 **Defer:** cascaded and cached shadows, volumetrics, meshlets, alternative opaque surface paths, ray
 queries, and dynamic GI.
@@ -141,9 +210,10 @@ derivative reconstruction and material classification; GTAO; and an SSR/probe re
 
 **Exit gate:** Forward+, compact deferred or tile-local, and visibility-buffer paths reproduce the
 material reference within stated tolerances; captures report bandwidth, tile spills, overdraw,
-occupancy, transient memory, and time on representative Metal and Vulkan hardware; alpha-tested and
-derivative stress scenes define limitations; a recorded decision selects the per-platform default
-without deleting the Forward+ oracle.
+occupancy, transient memory, and time on representative target hardware; once D3D12 exists, the same
+suite also runs on representative Windows hardware. Alpha-tested and derivative stress scenes define
+limitations; a recorded decision selects the per-platform default without deleting the Forward+
+oracle.
 
 **Defer:** acceleration structures, path tracing, real-time ray-traced signals, dynamic GI caches,
 and virtualized geometry streaming.
@@ -183,7 +253,7 @@ without holes or use-after-free.
 
 ## Independent research after M11
 
-Virtual shadow maps, virtualized geometry streaming, stochastic direct lighting, ReSTIR, frame
-generation, and neural methods remain independent research programs. None becomes a baseline
-dependency until a representative scene, fallback, performance and memory budget, validation oracle,
-and debugging surface justify graduation into a future roadmap revision.
+A Vulkan backend, virtual shadow maps, virtualized geometry streaming, stochastic direct lighting,
+ReSTIR, frame generation, and neural methods remain independent research programs. None becomes a
+baseline dependency until a representative target, scene, fallback, performance and memory budget,
+validation oracle, and debugging surface justify graduation into a future roadmap revision.

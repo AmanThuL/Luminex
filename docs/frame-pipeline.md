@@ -75,6 +75,11 @@ label and GPU milliseconds for the most recently retired frame, populated by cou
 Metal 4 backend takes at pass begin/end and resolved once the shared event proves that frame
 retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
 
+The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
+Their implementation and validation live in `RHI/Source/`; the only backend lives in
+`RHI/Backends/Metal4/Source/`. Dear ImGui submission is an application-facing adapter in the
+optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI dependency surface.
+
 ## Resources and lifetime
 
 - **3 frames in flight.** Each in-flight slot owns an argument table, a bump allocator, and a
@@ -164,7 +169,7 @@ unavailable explicit CLI scene exits with an error instead of falling back.
 7. **Sponza startup is still synchronous** — decode and upload still block the window before it
    becomes responsive; asynchronous staging remains future work.
 8. **Portability** — Metal remains the only backend; the reversed-Z, HDR, and graph conventions
-   above are what a future Vulkan backend has to reproduce.
+   above are what a future D3D12 backend has to reproduce.
 
 Cross-references: `docs/milestones/m4.md`, `docs/decisions/0005-render-graph.md`,
 `docs/decisions/0006-scene-linear-image-formation.md`, and `Shaders/` (ScenePass.slang and
