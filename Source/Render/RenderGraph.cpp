@@ -6,6 +6,7 @@
 #include "Render/RenderGraph.h"
 
 #include "Core/Assert.h"
+#include "Render/GraphDump.h"
 
 #include <algorithm>
 #include <format>
@@ -18,33 +19,6 @@
 
 namespace lmx::render {
 namespace {
-
-//======================================================================================================================
-// Enumerator names verbatim, so a message says D32Float rather than an integer. Omitting default
-// lets -Wswitch catch a newly added format.
-std::string_view formatName(rhi::Format format) {
-    switch (format) {
-    case rhi::Format::Unknown:
-        return "Unknown";
-    case rhi::Format::BGRA8Unorm:
-        return "BGRA8Unorm";
-    case rhi::Format::RGBA8Unorm:
-        return "RGBA8Unorm";
-    case rhi::Format::RGBA8Unorm_sRGB:
-        return "RGBA8Unorm_sRGB";
-    case rhi::Format::RGBA16Float:
-        return "RGBA16Float";
-    case rhi::Format::RG16Float:
-        return "RG16Float";
-    case rhi::Format::BC1Unorm:
-        return "BC1Unorm";
-    case rhi::Format::BC1Unorm_sRGB:
-        return "BC1Unorm_sRGB";
-    case rhi::Format::D32Float:
-        return "D32Float";
-    }
-    return "Unknown";
-}
 
 //======================================================================================================================
 bool isDepthFormat(rhi::Format format) {
@@ -238,6 +212,32 @@ std::string_view roleName(UseRole role) {
         return "copy destination";
     }
     return "use";
+}
+
+//======================================================================================================================
+// Omitting default lets -Wswitch catch a newly added format.
+std::string_view formatName(rhi::Format format) {
+    switch (format) {
+    case rhi::Format::Unknown:
+        return "Unknown";
+    case rhi::Format::BGRA8Unorm:
+        return "BGRA8Unorm";
+    case rhi::Format::RGBA8Unorm:
+        return "RGBA8Unorm";
+    case rhi::Format::RGBA8Unorm_sRGB:
+        return "RGBA8Unorm_sRGB";
+    case rhi::Format::RGBA16Float:
+        return "RGBA16Float";
+    case rhi::Format::RG16Float:
+        return "RG16Float";
+    case rhi::Format::BC1Unorm:
+        return "BC1Unorm";
+    case rhi::Format::BC1Unorm_sRGB:
+        return "BC1Unorm_sRGB";
+    case rhi::Format::D32Float:
+        return "D32Float";
+    }
+    return "Unknown";
 }
 
 //======================================================================================================================
@@ -791,6 +791,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
 CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t frameId) {
     GraphResult<CompiledFrameRecord> record = compileFrame(frameId);
     LMX_ASSERT(record.has_value(), record.error().message);
+    dumpCompiledFrameIfRequested(*record);
 
     // Transitions are recorded in schedule order and a pass's own are contiguous, so one cursor
     // emits each exactly where compilation placed it.

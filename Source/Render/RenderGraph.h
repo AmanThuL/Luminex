@@ -98,6 +98,11 @@ enum class UseRole {
 /// Names a role in validation messages and frame dumps, in the wording the graph's diagnostics use.
 std::string_view roleName(UseRole role);
 
+/// Names a format as its enumerator, so a message says D32Float rather than an integer. It lives
+/// here rather than in the RHI because naming an enumerator is a diagnostic concern and the graph
+/// is what has the diagnostics.
+std::string_view formatName(rhi::Format format);
+
 /// Formats a subresource range as `mips[first..last] layers[first..last]`, with the last bound left
 /// open -- `mips[1..]` -- where the range runs to the end of the chain. Shared by the graph's
 /// validation messages and the frame dump so one range reads the same in both.

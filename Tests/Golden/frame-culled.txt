@@ -1,0 +1,20 @@
+render-graph frame 1
+resources
+  r0 texture "lmx.sceneColor" RGBA16Float
+  r1 texture "lmx.displayColor" BGRA8Unorm
+  r2 texture "lmx.debugOverlay" BGRA8Unorm
+sinks
+  export r1 v1
+passes
+  p0 raster "lmx.pass.scene"
+    color attachment r0 v0 mips[0..] layers[0..]
+  p3 raster "lmx.pass.display"
+    read r0 v1 mips[0..] layers[0..]
+    color attachment r1 v0 mips[0..] layers[0..]
+culled
+  p1 raster "lmx.pass.overlay" no-sink-reaches-it
+    color attachment r2 v0 mips[0..] layers[0..]
+  p2 compute "lmx.pass.histogram" produces-nothing
+    read r0 v1 mips[0..] layers[0..]
+transitions
+  before p3 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
