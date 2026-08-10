@@ -113,6 +113,12 @@ struct IblTextures {
     std::unique_ptr<rhi::Texture> dfgLut;         ///< Split-sum DFG lookup table.
 };
 
+/// Uploads a single-level linear-light cubemap as an RGBA16Float sampled texture. Every component
+/// must be finite and representable by binary16. `label` is copied into the GPU object's debug
+/// label; `env` remains owned by the caller and need only stay alive for this call.
+rhi::Result<std::unique_ptr<rhi::Texture>> uploadCubemap(rhi::Device& device, const CpuCubemap& env,
+                                                         std::string_view label);
+
 /// Generates all three assets from `env` and uploads them. `label` is the scene name; the textures
 /// are labelled "<label>.irradiance", "<label>.prefilteredEnv" and "<label>.dfgLut", alongside the
 /// scene's "<label>.sky".

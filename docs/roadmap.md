@@ -12,8 +12,9 @@ without expanding it.
 
 M4.1 preserves M4's graph-declared, scene-linear HDR renderer while giving its RHI an explicit root
 component, domain-owned result contracts, self-contained public headers, and checked API
-documentation. Its shipped evidence and remaining limits are recorded in
-`docs/milestones/m4.1.md`.
+documentation. MaterialLab adds a pinned neutral studio environment, prominent default material
+framing, and horizontally pannable diagnostic groups. Shipped evidence and remaining limits are
+recorded in `docs/milestones/m4.1.md`.
 
 ## M4 — Correct image formation
 

@@ -171,6 +171,10 @@ local sponza_info_url = "https://casual-effects.com/g3d/data10/common/model/cryt
 local sponza_archive_sha256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
 local sponza_info_sha256 = "c584c17ae5514e6218c2f19127f06106d81f472320a8f9a17a94cedfd119a16e"
 local sponza_sha256 = "9f1960875b3a4781a012f9745a88576aaf596acccff4d48d6947674618f9a4a0"
+local material_lab_environment_url =
+    "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr"
+local material_lab_environment_sha256 =
+    "e7cfda5f4e98e623db12b8bfd0184e048488e4855d9c83e2751fb44a32e80c45"
 
 task("setup")
     -- An explicit (even empty) options table is required for -P to work with this task: a
@@ -267,6 +271,44 @@ task("setup")
                 os.mv(part, destination)
             end
         end
+        local material_lab_dir = "Assets/Fetched/MaterialLab"
+        local material_lab_environment = path.join(material_lab_dir, "studio_small_09_1k.hdr")
+        os.mkdir(material_lab_dir)
+        if not os.isfile(material_lab_environment) then
+            -- Publish the environment only after curl has completed it successfully.
+            local part = material_lab_environment .. ".part"
+            os.tryrm(part)
+            os.execv("curl", {"-L", "--fail", "--max-time", "600", "-o", part,
+                              material_lab_environment_url})
+            os.mv(part, material_lab_environment)
+        end
+        local material_lab_environment_hash =
+            os.iorunv("shasum", {"-a", "256", material_lab_environment}):match("^(%x+)")
+        assert(material_lab_environment_hash == material_lab_environment_sha256,
+               format("MaterialLab environment checksum mismatch; expected %s",
+                      material_lab_environment_sha256))
+        io.writefile(path.join(material_lab_dir, "LICENSE.txt"), [[
+Studio Small 09 is published by Poly Haven under CC0 1.0 Universal.
+
+Asset page: https://polyhaven.com/a/studio_small_09
+Poly Haven license: https://polyhaven.com/license
+CC0 legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Attribution is not required under CC0. Original author: Sergej Majboroda.
+]])
+        io.writefile(path.join(material_lab_dir, "metadata.json"), format([[
+{
+  "name": "Studio Small 09",
+  "author": "Sergej Majboroda",
+  "provider": "Poly Haven",
+  "assetPage": "https://polyhaven.com/a/studio_small_09",
+  "downloadUrl": "%s",
+  "file": "studio_small_09_1k.hdr",
+  "sha256": "%s",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://polyhaven.com/license"
+}
+]], material_lab_environment_url, material_lab_environment_sha256))
         if not os.isfile("Assets/Fetched/Sponza/Sponza.gltf")
            or not os.isfile("Assets/Fetched/Sponza/ARCHIVE_INFO.js")
            or not os.isfile("Assets/Fetched/Sponza/COPYRIGHT.txt") then
@@ -347,8 +389,9 @@ task("setup")
         os.execv("python3", {"Tools/bake_gltf_textures.py",
                              "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", texturebake_bin})
 
-        print("setup done: metal-cpp %s, slang %s, imgui %s, Sponza archive %s, helmet %s",
-              metalcpp_pin, slang_pin, imgui_pin, sponza_archive_sha256, helmet_pin)
+        print("setup done: metal-cpp %s, slang %s, imgui %s, Sponza archive %s, helmet %s, " ..
+              "MaterialLab environment %s", metalcpp_pin, slang_pin, imgui_pin,
+              sponza_archive_sha256, helmet_pin, material_lab_environment_sha256)
     end)
 
 task("format")

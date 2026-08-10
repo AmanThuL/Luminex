@@ -8,13 +8,13 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m4.1.md` · Active plan:
-  `docs/plans/2026-08-10-m4.1-material-lab-lookdev.md`
+- Current baseline: `docs/milestones/m4.1.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
-  slang, Dear ImGui docking-branch commit), Damaged Helmet, and the official ~78 MB Crytek Sponza
-  OBJ+PNG archive into gitignored `Assets/Fetched/`, with upstream provenance/license metadata.
+  slang, Dear ImGui docking-branch commit), Damaged Helmet, the CC0 Studio Small 09 HDRI, and the
+  official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored `Assets/Fetched/`, with upstream
+  provenance/license metadata.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
   and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
   (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
@@ -57,9 +57,10 @@ per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, and depth-o
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
 validating `RenderGraph`, `Renderer` — declares shadow, scene+sky, and display-transform passes into
 a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
-`Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF loaders, sRGB color
-utilities, deterministic CPU-side image-based-lighting generation (`Ibl.h`), deterministic offline
-texture mip baking (`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene
+`Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
+loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
+generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
+(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene
 dropdown, light editor, render settings — frame loop, joins its own UI pass to the graph,
 `--screenshot` path).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky,

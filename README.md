@@ -27,7 +27,7 @@ inspectable codebase.
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
 | Content | Deterministically converted Crytek Sponza and Khronos Damaged Helmet through a focused glTF loader, plus deterministic offline mip baking |
 | Editor | Scene selection, fly camera, light and object transforms, exposure, wireframe and shadow-filter controls, per-pass GPU timings |
-| Diagnostics | A code-generated material lab scene, object/pass labels, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
+| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, object/pass labels, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
 <p align="center">
   <img src="docs/media/damaged-helmet.png" alt="Khronos Damaged Helmet rendered by Luminex" width="760">
@@ -77,10 +77,10 @@ xmake
 xmake run App
 ```
 
-`xmake setup` fetches pinned dependencies and sample assets, verifies their hashes, converts the
-official Crytek Sponza OBJ distribution into the core glTF subset used at runtime, and bakes every
-base-color and normal image into a deterministic offline mip chain. Generated content remains
-under the gitignored `Assets/Fetched/` directory.
+`xmake setup` fetches pinned dependencies, sample assets, and the CC0 Studio Small 09 HDRI; verifies
+their hashes; converts the official Crytek Sponza OBJ distribution into the core glTF subset used
+at runtime; and bakes every base-color and normal image into a deterministic offline mip chain.
+Generated content remains under the gitignored `Assets/Fetched/` directory.
 
 The editor opens on Sponza. Hold right mouse in the viewport and use WASD + Q/E to fly. Select
 Damaged Helmet or the diagnostic material lab scene from the Inspector, or render any scene

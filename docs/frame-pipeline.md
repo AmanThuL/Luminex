@@ -144,11 +144,13 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
 Three, behind the Inspector dropdown, drawn from one catalog (`--scene` accepts the same IDs):
 **Sponza** (`sponza`, the default world scene, converted deterministically from the official
 Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents), and
-**MaterialLab** (`material-lab`, always available, fully code-generated — a roughness×metallic
-sphere grid, known-color patches, a gradient ramp, a normal-map probe, and near/mid/far depth
-probes for deterministic checks). All three use the same code-generated neutral cubemap and its
-generated IBL set. Missing fetched assets disable the dropdown entry with setup guidance; an
-unavailable explicit CLI scene exits with an error instead of falling back.
+**MaterialLab** (`material-lab`, always available — a code-generated roughness×metallic sphere
+grid plus horizontally arranged color, texture, normal, and depth diagnostics). MaterialLab uses
+the pinned CC0 Studio Small 09 HDRI for both its visible sky and generated IBL when setup has
+fetched it, and logs before falling back to a deterministic neutral environment otherwise. Sponza
+and Damaged Helmet retain the shared code-generated neutral cubemap and IBL set. Missing required
+glTF assets disable their dropdown entries with setup guidance; an unavailable explicit CLI scene
+exits with an error instead of falling back.
 
 ## Known gaps / candidate techniques for the next milestone
 
@@ -159,8 +161,9 @@ unavailable explicit CLI scene exits with an error instead of falling back.
    adaptation, bloom, or temporal reconstruction yet.
 3. **PCSS parameterization** — the migrated blocker search still mixes a view-space near-plane
    constant with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
-4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load for
-   what is currently always a constant sky; cheap today, worth caching once environments vary.
+4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load;
+   MaterialLab now supplies a small studio environment, so caching becomes worthwhile if more
+   authored environments or faster scene switching arrive.
 5. **Direct lighting is single-scatter** — the analytic BRDF has no multi-scatter compensation;
    only the image-based term does.
 6. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
