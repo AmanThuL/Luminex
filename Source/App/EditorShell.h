@@ -83,6 +83,11 @@ public:
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }
 
+    /// Whether the frame's render graph may let transients whose lifetimes do not overlap share
+    /// memory. Edited by the Render Settings checkbox; the picture is the same either way, so what
+    /// it changes is the frame's transient high-water mark and its alias savings.
+    bool poolingEnabled() const { return m_poolingEnabled; }
+
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
         return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
@@ -119,6 +124,9 @@ private:
     // Manual exposure in stops, written onto every SceneView this shell builds. Zero is unit
     // exposure; the range matches the slider in the Render Settings section.
     float m_exposureEv = 0.0f;
+    // Transient pooling, on by default exactly as the graph's own default is. Editor state rather
+    // than scene state, for the same reason the two above are.
+    bool m_poolingEnabled = true;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

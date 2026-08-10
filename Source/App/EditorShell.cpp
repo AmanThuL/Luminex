@@ -283,6 +283,9 @@ void EditorShell::buildRenderSettingsSection() {
         // which is the whole range a manual exposure control is useful over here.
         ImGui::SliderFloat("Exposure (EV)", &m_exposureEv, -6.0f, 6.0f, "%.2f",
                            ImGuiSliderFlags_AlwaysClamp);
+        // Off gives every transient its own memory. Nothing about the image changes -- a
+        // transient cannot be read before it is written -- so what this compares is cost.
+        ImGui::Checkbox("Transient pooling", &m_poolingEnabled);
         int filterIndex = static_cast<int>(m_shadowFilter);
         constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
         if (ImGui::Combo("Shadow filter", &filterIndex, kFilterNames,

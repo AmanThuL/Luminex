@@ -132,6 +132,9 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
     // The frames an observer can still ask about: the three that can be in flight, plus the one
     // whose timings the next beginFrame() publishes.
     lmx::app::FrameRecordRing frameRecords;
+    // Outlives every per-frame graph, because a frame's transients stay placed in it until the
+    // slot they were placed in comes round again.
+    lmx::render::TransientPool transientPool(**device);
     uint64_t skippedFrames = 0;
     bool running = true;
     // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
@@ -225,13 +228,17 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        // Immediately after beginFrame, which is where the frame slot this pool rotates on has
+        // just been proved retired.
+        transientPool.beginFrame();
         (*renderer)->timeSeconds = timeSeconds;
 
         // Named rather than passed inline: the pass bodies borrow this view and run when the
         // graph executes, which is past the end of the statement that would hold a temporary.
         const lmx::render::SceneView view = shell->sceneView();
 
-        lmx::render::RenderGraph graph;
+        lmx::render::RenderGraph graph(transientPool);
+        graph.setPoolingEnabled(shell->poolingEnabled());
         // The renderer's last pass is the display transform, so this is the finished image the
         // viewport samples -- not the scene-linear buffer behind it.
         const lmx::render::GraphTexture displayColor =
