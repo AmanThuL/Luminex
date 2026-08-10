@@ -13,7 +13,7 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   and domain-owned error contracts without Metal or ImGui dependencies.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables, a per-frame uniform ring, residency, shared-event pacing,
-  per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
+  render and compute pass encoders, per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
   its ImGui-dependent public extension header, and the dependency on Dear ImGui; the core RHI does
   not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/

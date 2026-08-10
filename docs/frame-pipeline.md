@@ -70,10 +70,10 @@ reported failure, not a resolved pointer. A graph is declared fresh every frame;
 compile cost is trivial and scheduling optimization, transient pooling, and dead-pass culling stay
 deliberately absent (`docs/decisions/0005-render-graph.md`).
 
-Every render pass is also a GPU timing boundary: `rhi::Device::passTimings()` reports each pass's
-label and GPU milliseconds for the most recently retired frame, populated by counter samples the
-Metal 4 backend takes at pass begin/end and resolved once the shared event proves that frame
-retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
+Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::passTimings()`
+reports each pass's label and GPU milliseconds for the most recently retired frame, and
+`passTimingsFrame()` names that frame. Both are populated by counter samples the Metal 4 backend
+takes at pass begin/end and resolved once the shared event proves that frame retired. The editor's Stats panel lists every pass of the newest retired frame with its time.
 
 The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
 Their implementation and validation live in `RHI/Source/`; the only backend lives in

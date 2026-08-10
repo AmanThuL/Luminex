@@ -53,7 +53,8 @@ thin RHI and one implemented backend.
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, and depth-only passes;
+per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only
+passes, and compute passes with storage bindings, subresource views, and explicit barriers;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
 validating `RenderGraph`, `Renderer` — declares shadow, scene+sky, and display-transform passes into
 a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions) →

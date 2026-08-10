@@ -533,6 +533,13 @@ public:
     /// Returns the newest retired frame's pass timings until the next beginFrame call.
     virtual std::span<const PassTiming> passTimings() const = 0;
 
+    /// Which frame passTimings() describes, so a caller can attribute a measurement to the frame
+    /// it came from rather than to "some frame a few back". Frames are numbered in beginFrame()
+    /// order starting at one, so a caller that counts its own beginFrame() calls shares the
+    /// numbering; zero means nothing has been published yet.
+    /// Returns the frame number the current pass timings were measured on.
+    virtual uint64_t passTimingsFrame() const = 0;
+
     /// Returns the backend device's human-readable name.
     virtual std::string_view deviceName() const = 0;
 };

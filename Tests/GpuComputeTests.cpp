@@ -437,3 +437,69 @@ TEST_CASE("a storage texture view addresses a single mip level", "[gpu]") {
     probeLevel(**level1Destination, kMipExtent);
     probeLevel(**level0Destination, kSize);
 }
+
+//======================================================================================================================
+// A frame with one pass of each kind: both are timed, in encode order, and the publication names
+// the frame it measured rather than leaving the caller to guess how far the readout trails.
+TEST_CASE("pass timings cover a compute pass and name the frame they measured", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr uint32_t kElements = 64;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+    REQUIRE((*device)->passTimingsFrame() == 0);
+
+    auto library = (*device)->loadShaderLibrary("Shaders/ComputeSmoke");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline =
+        (*device)->createComputePipeline({.library = library->get(),
+                                          .computeEntry = "computeFillBuffer",
+                                          .threadsPerThreadgroup = {kFillThreadsPerGroup, 1, 1},
+                                          .label = "lmx.test.compute.timingPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    auto storage = (*device)->createBuffer({.size = sizeof(uint32_t) * kElements,
+                                            .storageWrite = true,
+                                            .label = "lmx.test.compute.timingStorage"},
+                                           nullptr);
+    INFO(errorOf(storage));
+    REQUIRE(storage.has_value());
+
+    auto target = makeProbeTarget(**device, "lmx.test.compute.timingTarget");
+    INFO(errorOf(target));
+    REQUIRE(target.has_value());
+
+    const ComputeParams params{.bias = 1, .extent = 0};
+
+    CommandList& commands = (*device)->beginFrame();
+    commands.beginRenderPass({.colorTarget = target->get(),
+                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                              .clear = true,
+                              .label = "lmx.test.timing.render"});
+    commands.endRenderPass();
+    commands.beginComputePass("lmx.test.timing.compute");
+    commands.bindComputePipeline(**pipeline);
+    commands.bindStorageBuffer(0, **storage, StorageAccess::Write);
+    commands.setUniforms(1, &params, sizeof(params));
+    commands.dispatch(kElements / kFillThreadsPerGroup, 1, 1);
+    commands.endComputePass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
+    (*device)->beginFrame();
+    (*device)->endFrame(nullptr);
+
+    const std::span<const PassTiming> timings = (*device)->passTimings();
+    REQUIRE(timings.size() == 2);
+    REQUIRE(timings[0].label == "lmx.test.timing.render");
+    REQUIRE(timings[1].label == "lmx.test.timing.compute");
+    REQUIRE(timings[1].gpuMilliseconds > 0.0);
+    // The measured frame is the first one this device opened, whatever the readout lag.
+    REQUIRE((*device)->passTimingsFrame() == 1);
+}
