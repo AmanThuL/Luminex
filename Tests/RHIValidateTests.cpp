@@ -1362,3 +1362,31 @@ TEST_CASE("a texture copy between disjoint regions of one subresource is accepte
                                 {.x = 32, .y = 32, .width = 32, .height = 32})
                 .has_value());
 }
+
+//======================================================================================================================
+TEST_CASE("indirect arguments at an aligned in-bounds offset are accepted", "[rhi]") {
+    const FakeBuffer buffer{256};
+
+    REQUIRE(validateIndirectArgs(buffer, 64, sizeof(DrawIndexedIndirectArgs)).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("indirect arguments at an unaligned offset are rejected", "[rhi]") {
+    const FakeBuffer buffer{256};
+
+    const auto r = validateIndirectArgs(buffer, 6, sizeof(DispatchIndirectArgs));
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("multiple of 4"));
+}
+
+//======================================================================================================================
+// The whole struct has to fit: an offset four bytes short of the end is in bounds by itself and
+// still reads past the allocation.
+TEST_CASE("indirect arguments running past the buffer are rejected", "[rhi]") {
+    const FakeBuffer buffer{16};
+
+    const auto r = validateIndirectArgs(buffer, 8, sizeof(DrawIndirectArgs));
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().message.contains("past the buffer's"));
+}

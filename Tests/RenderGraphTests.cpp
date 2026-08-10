@@ -133,6 +133,9 @@ struct RecordingCommandList final : rhi::CommandList {
                          std::to_string(z));
     }
 
+    //==================================================================================================================
+    void dispatchIndirect(rhi::Buffer&, uint64_t) override {}
+
     // The graph declares no copy work yet either; the pass boundaries log for the same reason the
     // compute ones do, and the copies themselves are left as no-ops until a pass emits one.
 
@@ -199,6 +202,12 @@ struct RecordingCommandList final : rhi::CommandList {
 
     //==================================================================================================================
     void drawIndexed(rhi::Buffer&, uint32_t, uint32_t) override {}
+
+    //==================================================================================================================
+    void drawIndirect(rhi::Buffer&, uint64_t) override {}
+
+    //==================================================================================================================
+    void drawIndexedIndirect(rhi::Buffer&, rhi::Buffer&, uint64_t) override {}
 };
 } // namespace
 

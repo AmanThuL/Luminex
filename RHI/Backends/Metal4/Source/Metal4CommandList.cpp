@@ -16,8 +16,9 @@ namespace lmx::rhi::metal4 {
 namespace {
 
 // A render pass consumes a dependency at the earliest render stage a barrier can name, not at the
-// fragment stage: vertex pulling reads its buffer in the vertex stage, so naming only StageFragment
-// would let that read pass the barrier.
+// fragment stage: vertex pulling reads its buffer there, and the arguments of an indirect draw are
+// fetched before either stage runs. Naming only StageFragment would let those reads pass the
+// barrier.
 constexpr MTL::Stages kRenderStages = MTL::StageVertex | MTL::StageFragment;
 
 // Which stage a copy runs in. Metal 4 has no blit encoder -- copies are recorded on a compute
@@ -48,8 +49,8 @@ MTL::Stages stagesOf(TextureUse use) {
 
 //======================================================================================================================
 // The same translation for buffers. A shader read of a buffer is a vertex or fragment stage read
-// -- vertex pulling, indices, uniforms -- and the storage and copy uses match their texture
-// counterparts.
+// -- vertex pulling, indices, uniforms -- and indirect arguments are fetched when the draw or
+// dispatch is issued, which is the earliest stage of whichever encoder consumes them.
 MTL::Stages stagesOf(BufferUse use) {
     switch (use) {
     case BufferUse::ShaderRead:
@@ -60,6 +61,8 @@ MTL::Stages stagesOf(BufferUse use) {
     case BufferUse::CopySource:
     case BufferUse::CopyDestination:
         return kCopyStages;
+    case BufferUse::IndirectArgument:
+        return MTL::StageVertex | MTL::StageDispatch;
     }
     return MTL::StageAll;
 }
@@ -295,6 +298,36 @@ void Metal4CommandList::drawIndexed(Buffer& indexBuffer, uint32_t indexCount, ui
 }
 
 //======================================================================================================================
+void Metal4CommandList::drawIndirect(Buffer& argumentBuffer, uint64_t offset) {
+    LMX_ASSERT(m_encoder, "drawIndirect must be called between beginRenderPass and endRenderPass");
+    const Result<void> argsOk =
+        validateIndirectArgs(argumentBuffer, offset, sizeof(DrawIndirectArgs));
+    LMX_ASSERT(argsOk.has_value(), argsOk.error().message);
+    // Metal 4 takes the arguments by GPU address, so the RHI's byte offset is plain pointer
+    // arithmetic rather than a separate encoder parameter.
+    m_encoder->drawPrimitives(MTL::PrimitiveTypeTriangle,
+                              static_cast<Metal4Buffer&>(argumentBuffer).handle()->gpuAddress() +
+                                  offset);
+}
+
+//======================================================================================================================
+void Metal4CommandList::drawIndexedIndirect(Buffer& indexBuffer, Buffer& argumentBuffer,
+                                            uint64_t offset) {
+    LMX_ASSERT(m_encoder,
+               "drawIndexedIndirect must be called between beginRenderPass and endRenderPass");
+    const Result<void> argsOk =
+        validateIndirectArgs(argumentBuffer, offset, sizeof(DrawIndexedIndirectArgs));
+    LMX_ASSERT(argsOk.has_value(), argsOk.error().message);
+    auto& indices = static_cast<Metal4Buffer&>(indexBuffer);
+    // The first index lives in the arguments, so the whole index buffer is what the draw is given
+    // -- unlike drawIndexed, which folds its firstIndex into the address it passes.
+    m_encoder->drawIndexedPrimitives(
+        MTL::PrimitiveTypeTriangle, MTL::IndexTypeUInt32, indices.handle()->gpuAddress(),
+        indices.handle()->length(),
+        static_cast<Metal4Buffer&>(argumentBuffer).handle()->gpuAddress() + offset);
+}
+
+//======================================================================================================================
 void Metal4CommandList::endRenderPass() {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -394,6 +427,22 @@ void Metal4CommandList::dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY,
                "dispatch: no compute pipeline is bound -- call bindComputePipeline first");
     m_computeEncoder->dispatchThreadgroups(
         MTL::Size::Make(threadgroupsX, threadgroupsY, threadgroupsZ),
+        m_computePipeline->threadsPerThreadgroup());
+}
+
+//======================================================================================================================
+void Metal4CommandList::dispatchIndirect(Buffer& argumentBuffer, uint64_t offset) {
+    LMX_ASSERT(m_computeEncoder,
+               "dispatchIndirect must be called between beginComputePass and endComputePass");
+    LMX_ASSERT(m_computePipeline != nullptr,
+               "dispatchIndirect: no compute pipeline is bound -- call bindComputePipeline first");
+    const Result<void> argsOk =
+        validateIndirectArgs(argumentBuffer, offset, sizeof(DispatchIndirectArgs));
+    LMX_ASSERT(argsOk.has_value(), argsOk.error().message);
+    // Only the threadgroup counts come from the buffer; the threads within one still come from the
+    // bound pipeline, exactly as they do for the direct dispatch above.
+    m_computeEncoder->dispatchThreadgroups(
+        static_cast<Metal4Buffer&>(argumentBuffer).handle()->gpuAddress() + offset,
         m_computePipeline->threadsPerThreadgroup());
 }
 

@@ -417,6 +417,17 @@ Result<void> validateTextureCopy(const Texture& source, const TextureCopyRegion&
 }
 
 //======================================================================================================================
+Result<void> validateIndirectArgs(const Buffer& buffer, uint64_t offset, uint64_t argsSize) {
+    if (offset % kIndirectArgsAlignment != 0) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "an indirect argument offset must be a multiple of " +
+                                              std::to_string(kIndirectArgsAlignment) +
+                                              " bytes, not " + std::to_string(offset)});
+    }
+    return validateBufferBytes(buffer, offset, argsSize);
+}
+
+//======================================================================================================================
 Result<void> validate(const SamplerDesc& desc) {
     if (desc.maxAnisotropy < kMinAnisotropy || desc.maxAnisotropy > kMaxAnisotropy) {
         return invalid("SamplerDesc.maxAnisotropy must be within Metal's anisotropy range of "

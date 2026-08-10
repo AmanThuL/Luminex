@@ -59,6 +59,9 @@ Result<void> validateTextureCopy(const Texture& source, const TextureCopyRegion&
                                  const Texture& destination,
                                  const TextureCopyRegion& destinationRegion);
 
+/// Validates that `argsSize` bytes of indirect arguments sit at an aligned, in-bounds offset.
+Result<void> validateIndirectArgs(const Buffer& buffer, uint64_t offset, uint64_t argsSize);
+
 /// Returns the extent of a mip level of a texture whose level-zero extent is `base`, floored at one
 /// texel exactly as the hardware's chain is.
 uint32_t mipExtent(uint32_t base, uint32_t level);

@@ -99,6 +99,7 @@ public:
     void bindStorageTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view,
                             StorageAccess access) override;
     void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY, uint32_t threadgroupsZ) override;
+    void dispatchIndirect(Buffer& argumentBuffer, uint64_t offset) override;
     void endComputePass() override;
     void beginCopyPass(std::string_view label) override;
     void copyBuffer(Buffer& source, uint64_t sourceOffset, Buffer& destination,
@@ -118,6 +119,8 @@ public:
     void setUniforms(uint32_t slot, const void* data, uint64_t size) override;
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
     void drawIndexed(Buffer& indexBuffer, uint32_t indexCount, uint32_t firstIndex) override;
+    void drawIndirect(Buffer& argumentBuffer, uint64_t offset) override;
+    void drawIndexedIndirect(Buffer& indexBuffer, Buffer& argumentBuffer, uint64_t offset) override;
     void endRenderPass() override;
     void textureBarrier(Texture& texture, const TextureSubresourceRange& range, TextureUse from,
                         TextureUse to) override;
