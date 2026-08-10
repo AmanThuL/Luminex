@@ -182,7 +182,11 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
 
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
-    return m_activeScene->view(m_drawItems, m_shadowFilter, m_wireframe);
+    render::SceneView view = m_activeScene->view(m_drawItems, m_shadowFilter, m_wireframe);
+    // Exposure is a shell knob rather than scene data, so it is applied after the scene has
+    // described itself -- the same way the wireframe and shadow-filter settings are.
+    view.exposureEv = m_exposureEv;
+    return view;
 }
 
 //======================================================================================================================
@@ -270,6 +274,10 @@ void EditorShell::buildLightsSection() {
 void EditorShell::buildRenderSettingsSection() {
     if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::Checkbox("Wireframe", &m_wireframe);
+        // Six stops each way: enough to drive a scene to black or to the tone map's shoulder,
+        // which is the whole range a manual exposure control is useful over here.
+        ImGui::SliderFloat("Exposure (EV)", &m_exposureEv, -6.0f, 6.0f, "%.2f",
+                           ImGuiSliderFlags_AlwaysClamp);
         int filterIndex = static_cast<int>(m_shadowFilter);
         constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
         if (ImGui::Combo("Shadow filter", &filterIndex, kFilterNames,
@@ -337,6 +345,11 @@ void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer
                              static_cast<int>(m_frameTimesMs.size()),
                              static_cast<int>(m_frameTimeCursor), "frame time (ms)", 0.0f,
                              kFrameTimePlotCeilingMs, ImVec2(0.0f, 60.0f));
+            // Every pass of the newest retired frame, in the order the graph ran them. The list is
+            // empty until a frame retires, which is a fact about the counters rather than a gap.
+            for (const rhi::PassTiming& timing : device.passTimings()) {
+                ImGui::Text("%s: %.2f ms", timing.label.c_str(), timing.gpuMilliseconds);
+            }
         }
 
         if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {

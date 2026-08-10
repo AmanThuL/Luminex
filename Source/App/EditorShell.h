@@ -106,6 +106,9 @@ private:
     // state, not scene state -- switching scenes does not reset either one.
     bool m_wireframe = false;
     render::ShadowFilter m_shadowFilter = render::ShadowFilter::PCF;
+    // Manual exposure in stops, written onto every SceneView this shell builds. Zero is unit
+    // exposure; the range matches the slider in the Render Settings section.
+    float m_exposureEv = 0.0f;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

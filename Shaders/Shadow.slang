@@ -1,5 +1,9 @@
 // PCF/PCSS filtering module. Resources arrive as parameters, so importers own slot layout.
 // Constants preserve the regression scene's filter calibration.
+//
+// Depth is reversed throughout: fitShadowOrtho (Source/Render/Renderer.cpp) maps the light's near
+// plane to 1 and its far plane to 0, so the surface *nearer* the light holds the *larger* value,
+// and the comparison sampler this module is handed is GreaterEqual.
 module Shadow;
 
 static const float kEps = 1e-3;
@@ -54,7 +58,18 @@ void PoissonDiskSamples(const in float2 randomSeed)
     }
 }
 
-// Average blocker depth in the PCSS search region around uv.
+// The light's projection is orthographic, so its depth is linear in light-space distance and
+// `1 - d` is exactly the near-to-far depth the reversal was applied to. PCSS's search width and
+// penumbra ratio are calibrated in that direction; converting once at the two points where PCSS
+// reads a depth keeps its arithmetic -- and its output -- identical to what it produced before
+// the convention flipped, rather than smearing a sign change through every comparison inside it.
+float NearToFarDepth(float reversedDepth)
+{
+    return 1.0 - reversedDepth;
+}
+
+// Average blocker depth in the PCSS search region around uv. Both zReceiver and the returned
+// average are near-to-far depths, not the reversed depths the map stores.
 // Clamp point loads to prevent out-of-range zero depth from creating border blockers.
 float FindBlocker(float2 uv, float zReceiver, Texture2D shadowMap)
 {
@@ -74,7 +89,7 @@ float FindBlocker(float2 uv, float zReceiver, Texture2D shadowMap)
         float2 offset = gPoissonDisk[i] * searchWidth * dx;
         int2 texel = clamp(int2((uv + offset) * float2(width, height)), int2(0),
                            int2(int(width) - 1, int(height) - 1));
-        float shadowMapDepth = shadowMap.Load(int3(texel, 0)).r;
+        float shadowMapDepth = NearToFarDepth(shadowMap.Load(int3(texel, 0)).r);
         if (shadowMapDepth < zReceiver - kShadowDepthBias)
         {
             blockerSum += shadowMapDepth;
@@ -104,9 +119,13 @@ float PCF(float4 coords, float filterRadiusUV, Texture2D shadowMap, SamplerCompa
     for (int i = 0; i < kPcfNumSamples; ++i)
     {
         float2 offset = gPoissonDisk[i] * 5 * dx * filterRadiusUV;
+        // Added, not subtracted: the bias has to move the reference *toward* the light so a
+        // surface stops shadowing itself, and toward the light is the larger reversed depth. The
+        // magnitude carries over unchanged because the light's ortho depth is linear, so
+        // reversing it negates the direction without rescaling the distance.
         percentLit += shadowMap
                           .SampleCmpLevelZero(samp, coords.xy + offset,
-                                              currentDepth - kShadowDepthBias)
+                                              currentDepth + kShadowDepthBias)
                           .r;
     }
 
@@ -117,7 +136,9 @@ float PCF(float4 coords, float filterRadiusUV, Texture2D shadowMap, SamplerCompa
 float PCSS(float4 coords, Texture2D shadowMap, SamplerComparisonState samp)
 {
     float2 uv = coords.xy;
-    float zReceiver = coords.z;
+    // The blocker search and the penumbra ratio below both run in near-to-far depth; only the
+    // hardware comparison in PCF consumes the reversed value, and it gets the untouched coords.
+    float zReceiver = NearToFarDepth(coords.z);
 
     float avgBlockerDepth = FindBlocker(uv, zReceiver, shadowMap);
 
@@ -130,7 +151,7 @@ float PCSS(float4 coords, Texture2D shadowMap, SamplerComparisonState samp)
 }
 
 // Return visible light in [0,1]. shadowPosH is homogeneous after NDC-to-UV * lightViewProj;
-// Metal's zero-to-one clip depth already matches the D32 shadow map.
+// Metal's zero-to-one clip depth already matches the D32 shadow map, reversed on both sides.
 public float CalcShadowFactor(float4 shadowPosH, Texture2D shadowMap, SamplerComparisonState samp,
                               int filter)
 {

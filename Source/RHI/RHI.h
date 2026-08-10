@@ -23,11 +23,16 @@ struct Error {
 template <typename T>
 using Result = std::expected<T, Error>;
 
+// RGBA16Float is the scene-linear color format: half precision keeps radiance above 1.0 that an
+// 8-bit unorm target would clamp away. RG16Float carries two-channel lookup tables and is sampled
+// only -- like the rest of this header it grows per real demand (ADR 0004).
 enum class Format {
     Unknown,
     BGRA8Unorm,
     RGBA8Unorm,
     RGBA8Unorm_sRGB,
+    RGBA16Float,
+    RG16Float,
     BC1Unorm,
     BC1Unorm_sRGB,
     D32Float
@@ -55,8 +60,9 @@ struct TextureDesc {
     // six of them.
     TextureKind kind = TextureKind::Tex2D;
     // 1..floor(log2(max(width, height))) + 1 -- the full chain down to a single texel. Levels
-    // beyond 0 are filled either by the createTexture upload below or by
-    // Device::generateMipmaps.
+    // beyond 0 are filled by the createTexture upload below; a caller with only level 0 in hand
+    // (Engine/Scene.cpp's unbaked-DDS fallback) passes a full mipLevels-sized span with the
+    // remaining entries null, leaving those levels' GPU content undefined until a future upload.
     uint32_t mipLevels = 1;
     bool renderTarget = false;
     bool sampled = false;     // bound for shader reads after rendering (scene RT, shadow maps)
@@ -76,9 +82,9 @@ struct TextureDesc {
 // The RHI deliberately does not derive any of this: a decoder that hands over a padded or
 // block-aligned buffer would then have to un-pad it first.
 //
-// data == nullptr leaves that level untouched. That is what makes generateMipmaps usable: a
-// caller with only level 0 in hand still passes a full mipLevels * faceCount span, with the
-// generated levels left empty.
+// data == nullptr leaves that level untouched -- undefined GPU content until something else
+// uploads it. A caller with only level 0 in hand still passes a full mipLevels * faceCount span,
+// with the remaining entries left null.
 struct TextureMip {
     const void* data = nullptr;
     uint64_t bytesPerRow = 0;
@@ -89,9 +95,10 @@ public:
     virtual ~Texture() = default;
     virtual uint32_t width() const = 0;
     virtual uint32_t height() const = 0;
-    // Blocking readback of the full texture (requires cpuReadback). out must hold
-    // width*height*4 bytes for 8-bit formats. Caller ensures GPU work completed
-    // (Device::waitIdle).
+    // Blocking readback of the full texture (requires cpuReadback). out must hold exactly
+    // width * height * bytesPerPixel(format) bytes, tightly packed, in the format's own channel
+    // order -- see bytesPerPixel in RHI/Validate.h, which also decides which formats readback
+    // accepts at all. Caller ensures GPU work completed (Device::waitIdle).
     virtual void readback(void* out, uint64_t outSize) = 0;
 };
 
@@ -101,7 +108,9 @@ enum class TextureUse { RenderTarget, ShaderRead };
 
 enum class FilterMode { Nearest, Linear };
 enum class AddressMode { Wrap, Clamp };
-enum class CompareFunc { Never, LessEqual }; // grows per demand; LessEqual = shadow compare
+// Grows per demand. LessEqual is the shadow compare for a conventional depth buffer; GreaterEqual
+// is its reversed-Z counterpart, where the larger stored depth is the nearer surface.
+enum class CompareFunc { Never, LessEqual, GreaterEqual };
 struct SamplerDesc {
     FilterMode filter = FilterMode::Linear;      // min/mag/mip together (thin on purpose)
     AddressMode addressMode = AddressMode::Wrap; // all axes
@@ -131,8 +140,10 @@ enum class FillMode { Solid, Wireframe };
 enum class CullMode { None, Back };
 // The depth comparison a pipeline draws with, when depthTestEnable is set. LessEqual exists for
 // the sky, which is drawn at exactly the far plane (the z = w trick) and would fail a strict Less
-// against a cleared depth buffer.
-enum class DepthCompare { Less, LessEqual };
+// against a cleared depth buffer. Greater and GreaterEqual are the reversed-Z pair: with the near
+// plane at 1 and the far plane at 0, the nearer fragment is the numerically larger one, so a pass
+// clears depth to 0 and keeps what compares Greater.
+enum class DepthCompare { Less, LessEqual, Greater, GreaterEqual };
 // Offsets a fragment's depth to keep a surface from shadowing itself. constant is in units of the
 // depth format's smallest resolvable difference; slopeScale multiplies the polygon's depth slope,
 // which is what covers steeply-angled geometry; clamp caps the total (0 = uncapped).
@@ -237,6 +248,19 @@ public:
     virtual void resize(uint32_t width, uint32_t height) = 0;
 };
 
+// How long the GPU spent on one render pass, measured on the device timeline by timestamps the
+// backend writes at the pass boundaries -- callers record nothing.
+//
+// label is the RenderPassDesc label the pass was begun with, with the backend's unnamed-pass
+// fallback substituted for an empty one. gpuMilliseconds covers the whole pass, load and store
+// actions included, and is wall time on the GPU rather than a sum of shader costs: a pass that
+// overlaps another still reports its own span, so times across a frame may add up to more than
+// the frame took.
+struct PassTiming {
+    std::string label;
+    double gpuMilliseconds = 0.0;
+};
+
 struct DeviceDesc {
     bool enableValidation = true;
 };
@@ -246,10 +270,10 @@ public:
     virtual Result<std::unique_ptr<Swapchain>> createSwapchain(const SwapchainDesc&) = 0;
     virtual Result<std::unique_ptr<Buffer>> createBuffer(const BufferDesc&,
                                                          const void* initialData) = 0;
-    // mips uploads initial content. Empty = no upload (a render target, or a texture
-    // generateMipmaps or a later pass fills). Otherwise mips.size() must be
-    // mipLevels * faceCount (6 for Cube, 1 for Tex2D), ordered mip-major per face:
-    // face0[mip0..N], face1[mip0..N], ... Anything else is a caller error and asserts.
+    // mips uploads initial content. Empty = no upload (a render target, or a texture a later pass
+    // fills). Otherwise mips.size() must be mipLevels * faceCount (6 for Cube, 1 for Tex2D),
+    // ordered mip-major per face: face0[mip0..N], face1[mip0..N], ... Anything else is a caller
+    // error and asserts.
     virtual Result<std::unique_ptr<Texture>>
     createTexture(const TextureDesc&, std::span<const TextureMip> mips = {}) = 0;
     virtual Result<std::unique_ptr<Sampler>> createSampler(const SamplerDesc&) = 0;
@@ -266,7 +290,24 @@ public:
     virtual void endFrame(Swapchain* presentTo) = 0;
     virtual void waitIdle() = 0;
 
-    virtual void generateMipmaps(Texture& texture) = 0;
+    // Per-pass GPU times of one past frame, in the order that frame began its passes.
+    //
+    // The reported frame is the newest one the GPU had finished by the time of the most recent
+    // beginFrame(). That lag is not an implementation detail to be tuned away: a frame's timestamps
+    // are written by the GPU as it executes, so they are readable only once that frame retires, and
+    // this RHI resolves them at the one point retirement is already proven -- beginFrame's pacing
+    // wait. Reading them any earlier would mean stalling the CPU on the GPU mid-frame.
+    //
+    // Consequences a caller can rely on:
+    //   - empty until a beginFrame() observes a retired frame, so the whole first frame reports
+    //     nothing;
+    //   - to obtain the timings of a *specific* frame, end it, waitIdle(), then call beginFrame()
+    //     once more -- that call publishes exactly that frame;
+    //   - in a continuous loop the readout trails the open frame by a few frames and never stalls.
+    // A frame with no passes reports an empty span, not the previous frame's numbers.
+    //
+    // The span is owned by the device and is invalidated by the next beginFrame().
+    virtual std::span<const PassTiming> passTimings() const = 0;
 
     virtual std::string_view deviceName() const = 0;
 };

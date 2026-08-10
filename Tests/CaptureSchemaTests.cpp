@@ -99,5 +99,19 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     }
     // Spot-check one offset the whole parser hangs off: shadowTransform at byte 64.
     REQUIRE(json.find("\"shadowTransform\"") != std::string::npos);
-    REQUIRE(json.find("\"sizeBytes\": 288") != std::string::npos);
+    REQUIRE(json.find("\"preExposure\"") != std::string::npos);
+    // PassUniforms lost the ambient float4 when image-based lighting replaced the flat ambient
+    // term, and the 16 bytes it occupied went with it: 288 bytes to 272.
+    REQUIRE(json.find("\"sizeBytes\": 272") != std::string::npos);
+    REQUIRE(json.find("\"ambient\"") == std::string::npos);
+    // SkyUniforms carries preExposure and grew for it: 80 bytes to 96.
+    REQUIRE(json.find("\"sizeBytes\": 96") != std::string::npos);
+    // ObjectUniforms traded fresnelR0 (16 bytes, now derived in-shader from albedo and metallic)
+    // for a 64-byte inverse-transpose normal matrix: 256 bytes to 304.
+    REQUIRE(json.find("\"metallic\"") != std::string::npos);
+    REQUIRE(json.find("\"occlusionStrength\"") != std::string::npos);
+    REQUIRE(json.find("\"emissive\"") != std::string::npos);
+    REQUIRE(json.find("\"normalMatrix\"") != std::string::npos);
+    REQUIRE(json.find("\"fresnelR0\"") == std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 304") != std::string::npos);
 }

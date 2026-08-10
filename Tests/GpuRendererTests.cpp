@@ -1,4 +1,14 @@
+#include "BrdfOracle.h"
+#include "DisplayTransformOracle.h"
 #include "GpuTestSupport.h"
+
+#include "Engine/Ibl.h"
+#include "Engine/Scene.h"
+#include "EngineTestSupport.h"
+
+#include <catch2/catch_approx.hpp>
+
+#include <cstring>
 
 namespace {
 
@@ -33,9 +43,22 @@ SceneView litSceneView(std::span<const DrawItem> items) {
 }
 
 //======================================================================================================================
-bool isClearChannel(uint8_t actual, float expected) {
-    const int want = static_cast<int>(expected * 255.0f + 0.5f);
-    return std::abs(int{actual} - want) <= 2;
+// kSceneClear is authored in display space, and the renderer decodes it once when it declares the
+// scene pass. It therefore reaches the display target the same way a fragment writing that linear
+// colour would -- through the tone map and the encode -- rather than landing in the target
+// verbatim, which is what it did while the scene pass owned the encode.
+std::array<int, 3> sceneClearBytes() {
+    return lmx::test::displayBytes({lmx::test::srgbDecode(kSceneClear[0]),
+                                    lmx::test::srgbDecode(kSceneClear[1]),
+                                    lmx::test::srgbDecode(kSceneClear[2])});
+}
+
+//======================================================================================================================
+void requireClearPixel(const Pixel& pixel) {
+    const std::array<int, 3> want = sceneClearBytes();
+    REQUIRE(channelNear(pixel.r, want[0], 2));
+    REQUIRE(channelNear(pixel.g, want[1], 2));
+    REQUIRE(channelNear(pixel.b, want[2], 2));
 }
 
 //======================================================================================================================
@@ -54,9 +77,7 @@ std::array<DrawItem, 2> twoCubeScene(const Mesh& cube) {
 void requireTwoCubeImage(const std::vector<uint8_t>& pixels, const char* label) {
     const Pixel corner = pixelAt(pixels, 2, 2);
     INFO(describe(label, 2, 2, corner));
-    REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
-    REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
-    REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+    requireClearPixel(corner);
     REQUIRE(corner.a == 255);
 
     const Pixel left = pixelAt(pixels, 16, 32);
@@ -154,9 +175,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 
         const Pixel corner = pixelAt(pixels, 2, 2);
         INFO(describe("corner", 2, 2, corner));
-        REQUIRE(isClearChannel(corner.b, kSceneClear[2]));
-        REQUIRE(isClearChannel(corner.g, kSceneClear[1]));
-        REQUIRE(isClearChannel(corner.r, kSceneClear[0]));
+        requireClearPixel(corner);
     }
 }
 
@@ -328,6 +347,9 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
                                            .depthFormat = Format::D32Float,
                                            .depthTestEnable = true,
                                            .depthWriteEnable = true,
+                                           // Reversed-Z: the map clears to 0 and the nearest
+                                           // surface to the light is the largest depth.
+                                           .depthCompare = DepthCompare::Greater,
                                            .label = "lmx.test.shadowDepthPipeline"});
     INFO(errorOf(depthPipeline));
     REQUIRE(depthPipeline.has_value());
@@ -344,14 +366,18 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     auto shadowSampler = (*device)->createSampler({.filter = FilterMode::Linear,
                                                    .addressMode = AddressMode::Clamp,
                                                    .maxAnisotropy = 16,
-                                                   .compare = CompareFunc::LessEqual,
+                                                   .compare = CompareFunc::GreaterEqual,
                                                    .label = "lmx.test.shadowCompareSampler"});
     INFO(errorOf(shadowSampler));
     REQUIRE(shadowSampler.has_value());
 
     const glm::mat4 lightView =
         glm::lookAtRH(glm::vec3{0.0f, 0.0f, 2.0f}, glm::vec3{0.0f}, glm::vec3{0.0f, 1.0f, 0.0f});
-    const glm::mat4 lightProj = glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 1.0f, 3.0f);
+    // Reversed, the same way fitShadowOrtho reverses: near and far handed to orthoRH_ZO the other
+    // way round, so the light's near plane (distance 1) is depth 1 and its far plane (3) is 0.
+    // The occluder quad sits at world z = 0.2, i.e. 1.8 from the light, and so writes
+    // (3 - 1.8) / 2 = 0.6; the receiver plane at z = 0 is 2 away and reads 0.5. Nearer is larger.
+    const glm::mat4 lightProj = glm::orthoRH_ZO(-1.0f, 1.0f, -1.0f, 1.0f, 3.0f, 1.0f);
     const glm::mat4 lightViewProj = lightProj * lightView;
 
     glm::mat4 ndcToTexcoord{1.0f};
@@ -369,7 +395,7 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
     CommandList& commands = (*device)->beginFrame();
 
     commands.beginRenderPass({.depthTarget = shadowMap->get(),
-                              .clearDepth = 1.0f,
+                              .clearDepth = 0.0f,
                               .storeDepth = true,
                               .label = "lmx.test.shadowSmoke.map"});
     commands.bindPipeline(**depthPipeline);
@@ -503,7 +529,6 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     view.lights[0] = {.strength = {0.8f, 0.8f, 0.8f}, .direction = lightDir};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
     view.lights[2].strength = {0.0f, 0.0f, 0.0f};
-    view.ambient = {0.05f, 0.05f, 0.05f};
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
 
     Camera camera;
@@ -526,14 +551,28 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     const Pixel lit = pixelAtWidth(pixels, kSceneProbeSize, litAt.x, litAt.y);
     INFO(describe("clear of the shadow", litAt.x, litAt.y, lit));
 
-    REQUIRE(channelNear(lit.r, 189, 6));
-    REQUIRE(channelNear(lit.g, 189, 6));
-    REQUIRE(channelNear(lit.b, 189, 6));
+    // Re-derived for the GGX model rather than carried over: under Blinn-Phong this probe read
+    // byte 189, which was albedo * lightStrength with no 1/pi and an ambient floor underneath it.
+    // The lit ground is now a white dielectric at the renderer's default roughness, lit by one
+    // directional light, with no environment bound -- so its radiance is exactly what the CPU
+    // mirror of the same BRDF returns for this geometry, pushed through the display transform.
+    const glm::vec3 groundPoint{-5.0f, 0.0f, -5.0f};
+    const glm::vec3 litRadiance = lmx::test::brdf::directionalLight(
+        view.lights[0].strength, view.lights[0].direction, glm::vec3{0.0f, 1.0f, 0.0f},
+        glm::normalize(camera.position - groundPoint), {.baseColor = glm::vec3(1.0f)});
+    const std::array<int, 3> litBytes = lmx::test::displayBytes(litRadiance);
+    INFO("expected lit bytes " << litBytes[0] << ", " << litBytes[1] << ", " << litBytes[2]);
+    REQUIRE(channelNear(lit.r, litBytes[0], 4));
+    REQUIRE(channelNear(lit.g, litBytes[1], 4));
+    REQUIRE(channelNear(lit.b, litBytes[2], 4));
 
     REQUIRE(shadowed.r * 4 < lit.r * 3);
     REQUIRE(shadowed.g * 4 < lit.g * 3);
     REQUIRE(shadowed.b * 4 < lit.b * 3);
-    REQUIRE(shadowed.r > 30);
+    // No lower bound on the shadowed probe any more: the ambient floor it used to guard is gone,
+    // and this view binds no IBL, so a fully occluded fragment's only radiance is whatever partial
+    // PCF coverage lets through. What the environment now contributes in shadow is measured by the
+    // furnace case below, where it is the entire signal.
 
     const PixelCoord edgeAt = projectToPixel(camera, kSceneProbeSize, {4.0f, 0.0f, 4.0f});
     const Pixel edge = pixelAtWidth(pixels, kSceneProbeSize, edgeAt.x, edgeAt.y);
@@ -543,6 +582,12 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
 
 //======================================================================================================================
 // A sloped ramp exposes depth bias; a flat control keeps unrelated depth behavior pinned.
+//
+// The bias is the renderer's own sign, negative, because depth is reversed: kShadowDepthBias in
+// Renderer.cpp pushes a shadow caster's stored depth *away* from the light so the surface stops
+// shadowing itself, and away from the light is now the smaller number. This case is the
+// instrument that says so -- a bias that kept the conventional sign would move the ramp the other
+// way and read here as a positive difference.
 TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -583,6 +628,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
                                                   .depthTestEnable = true,
                                                   .depthWriteEnable = true,
                                                   .cullMode = CullMode::None,
+                                                  .depthCompare = DepthCompare::Greater,
                                                   .depthBias = bias,
                                                   .label = label});
     };
@@ -590,7 +636,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(unbiasedPipeline));
     REQUIRE(unbiasedPipeline.has_value());
     auto biasedPipeline =
-        makeDepthPipeline({.constant = 4.0f, .slopeScale = 1.0f}, "lmx.test.biasedDepthPipeline");
+        makeDepthPipeline({.constant = -4.0f, .slopeScale = -1.0f}, "lmx.test.biasedDepthPipeline");
     INFO(errorOf(biasedPipeline));
     REQUIRE(biasedPipeline.has_value());
 
@@ -637,7 +683,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     CommandList& commands = (*device)->beginFrame();
     const auto depthPass = [&](Texture& target, GraphicsPipeline& pipeline) {
         commands.beginRenderPass({.depthTarget = &target,
-                                  .clearDepth = 1.0f,
+                                  .clearDepth = 0.0f,
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
@@ -678,8 +724,12 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     const Pixel rampBiased = pixelAt(biased, 32, 3);
     INFO(describe("ramp, unbiased", 32, 3, rampUnbiased));
     INFO(describe("ramp, biased", 32, 3, rampBiased));
+    // The unbiased reading is the vertex depth this probe interpolates and is unchanged by the
+    // convention flip: the quads are given in clip space, so reversing what the *projection*
+    // emits does not move them. Only the bias direction changed, and the assertion below is the
+    // previous one with its operands swapped.
     REQUIRE(channelNear(rampUnbiased.r, 116, 6));
-    REQUIRE(int{rampBiased.r} - int{rampUnbiased.r} > 12);
+    REQUIRE(int{rampUnbiased.r} - int{rampBiased.r} > 12);
 
     const Pixel flatUnbiased = pixelAt(unbiased, 32, 60);
     const Pixel flatBiased = pixelAt(biased, 32, 60);
@@ -690,8 +740,18 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
 }
 
 //======================================================================================================================
-// Linear 0.5 should read back near sRGB byte 188, separating shader encode from raw storage.
-TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
+// An emissive factor of 0.5 with every light off and no environment bound is linear 0.5 at the
+// fragment: emissive is radiance the surface produces, so it takes no lighting term and reaches the
+// target as itself. Nothing between there and the display target may store it as a display-space
+// number: the tone map subtracts its 0.04 black offset (0.5 is above the 0.08 knee and below the
+// 0.76 shoulder, so that is the whole of it) and the encode turns the remaining 0.46 into byte 181.
+// A scene shader that still encoded would put 188 here, and an 8-bit intermediate would round it
+// somewhere else again.
+//
+// Emissive is what carries this probe now that the ambient term is gone. It is the one input that
+// still puts a chosen linear value on a surface without routing it through a BRDF, which is what
+// keeps the display transform the only thing this case measures.
+TEST_CASE("the display transform tone maps and encodes the scene's linear output", "[gpu]") {
     using namespace lmx::rhi;
 
     auto device = createDevice();
@@ -710,7 +770,7 @@ TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
     const std::array<DrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
-         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}}},
     }};
 
     SceneView view;
@@ -718,7 +778,6 @@ TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
-    view.ambient = {0.5f, 0.5f, 0.5f};
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
     CommandList& commands = (*device)->beginFrame();
@@ -729,12 +788,133 @@ TEST_CASE("the scene pass encodes its linear output to sRGB", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    const int want = lmx::test::displayByte(0.5f);
     const Pixel probe = pixelAt(pixels, 32, 32);
-    INFO(describe("ambient-only white", 32, 32, probe));
-    REQUIRE(channelNear(probe.r, 188, 6));
-    REQUIRE(channelNear(probe.g, 188, 6));
-    REQUIRE(channelNear(probe.b, 188, 6));
+    INFO(describe("emissive-only white", 32, 32, probe));
+    REQUIRE(channelNear(probe.r, want, 6));
+    REQUIRE(channelNear(probe.g, want, 6));
+    REQUIRE(channelNear(probe.b, want, 6));
     REQUIRE(probe.a == 255);
+}
+
+namespace {
+
+//======================================================================================================================
+// Bit pattern of `value` in binary16 -- the layout an RGBA16Float readback hands back. The
+// round-trip check pins every caller to a value binary16 holds exactly, which is what lets the
+// probes below compare readback bits for equality rather than within a tolerance.
+uint16_t halfBits(float value) {
+    const _Float16 half = static_cast<_Float16>(value);
+    REQUIRE(static_cast<float>(half) == value);
+    uint16_t bits = 0;
+    std::memcpy(&bits, &half, sizeof(bits));
+    return bits;
+}
+
+//======================================================================================================================
+// The other direction, for values binary16 only approximates -- a decoded clear colour, say.
+float floatOfHalfBits(uint16_t bits) {
+    _Float16 half = 0;
+    std::memcpy(&half, &bits, sizeof(half));
+    return static_cast<float>(half);
+}
+
+// One RGBA16Float texel, in the channel order readback() produces.
+struct HalfPixel {
+    uint16_t r = 0, g = 0, b = 0, a = 0;
+};
+
+//======================================================================================================================
+HalfPixel halfPixelAt(const std::vector<uint16_t>& rgba, uint32_t x, uint32_t y) {
+    const size_t offset = (size_t{y} * kSize + x) * 4;
+    return {rgba[offset], rgba[offset + 1], rgba[offset + 2], rgba[offset + 3]};
+}
+
+} // namespace
+
+//======================================================================================================================
+// The scene target is scene-linear and unbounded, and exposure is a multiply applied before it.
+//
+// An emissive factor of 4.0 puts linear 4.0 at the fragment -- four times what an 8-bit unorm
+// target can hold -- so the readback finding exactly 4.0 is what says no display-space
+// intermediate stands between the shading and the target. 4.0 and 8.0 are exact in binary16, so
+// these are equalities: raising exposure by one EV doubles the stored radiance and nothing else.
+//
+// The clear is probed on the same terms. It is authored in display space, decoded once when the
+// pass is declared, and pre-exposed with everything else -- if it were not, an exposure change
+// would move the shaded pixels and leave the background behind, which is the failure this pins.
+TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exactly", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.exposurePlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {{
+        {.mesh = &*plane,
+         .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
+         .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}}},
+    }};
+
+    SceneView view;
+    view.items = items;
+    for (DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
+    // An unset SceneView must render at unit exposure, or every existing probe in this file moves.
+    REQUIRE(view.exposureEv == 0.0f);
+
+    std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    const auto renderAtExposure = [&](float exposureEv) {
+        view.exposureEv = exposureEv;
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    };
+
+    renderAtExposure(0.0f);
+    const HalfPixel litAtZero = halfPixelAt(texels, 32, 32);
+    REQUIRE(litAtZero.r == halfBits(4.0f));
+    REQUIRE(litAtZero.g == halfBits(4.0f));
+    REQUIRE(litAtZero.b == halfBits(4.0f));
+
+    // Radiance of 4.0 reaches the display target as 253, not 255: the tone map's shoulder
+    // compresses it. Clipping it to 1.0 anywhere upstream would have written 255 instead.
+    const Pixel displayAtZero = pixelAt(pixels, 32, 32);
+    INFO(describe("emissive 4.0 through the display transform", 32, 32, displayAtZero));
+    REQUIRE(channelNear(displayAtZero.r, lmx::test::displayByte(4.0f), 2));
+
+    // The renderer's authored clear is 0.05 in its red channel; scene-linear, that is 0.003936.
+    const HalfPixel clearAtZero = halfPixelAt(texels, 2, 2);
+    INFO(describe("scene clear, exposure 0", 2, 2, displayAtZero));
+    REQUIRE(floatOfHalfBits(clearAtZero.r) ==
+            Catch::Approx(lmx::test::srgbDecode(kSceneClear[0])).epsilon(0.001));
+
+    renderAtExposure(1.0f);
+    const HalfPixel litAtOne = halfPixelAt(texels, 32, 32);
+    REQUIRE(litAtOne.r == halfBits(8.0f));
+    REQUIRE(litAtOne.g == halfBits(8.0f));
+    REQUIRE(litAtOne.b == halfBits(8.0f));
+
+    // Doubling a binary16 value is exact, so the clear's two readings compare without a tolerance.
+    const HalfPixel clearAtOne = halfPixelAt(texels, 2, 2);
+    REQUIRE(floatOfHalfBits(clearAtOne.r) == 2.0f * floatOfHalfBits(clearAtZero.r));
+    REQUIRE(floatOfHalfBits(clearAtOne.g) == 2.0f * floatOfHalfBits(clearAtZero.g));
+    REQUIRE(floatOfHalfBits(clearAtOne.b) == 2.0f * floatOfHalfBits(clearAtZero.b));
 }
 
 //======================================================================================================================
@@ -774,21 +954,32 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     renderWith(false);
     const Pixel solid = pixelAt(pixels, 26, 26);
     INFO(describe("solid interior", 26, 26, solid));
-    REQUIRE(solid.r > 128);
-    REQUIRE(solid.g > 128);
-    REQUIRE(solid.b > 128);
+    // Re-derived for the GGX model: under Blinn-Phong this probe only had to clear 128, which the
+    // old diffuse term (albedo times light strength, with no 1/pi) reached easily. The cube's front
+    // face is a white dielectric at the default roughness, lit head-on by litSceneView's only
+    // light, so the value is what the CPU mirror of the BRDF returns for N = L = V, through the
+    // display transform. The probe sits about 8 degrees off the view axis, which costs it a byte; 3
+    // covers that and the target's own rounding.
+    const int litByte =
+        lmx::test::displayByte(lmx::test::brdf::directionalLight(
+                                   {0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, 1.0f},
+                                   {0.0f, 0.0f, 1.0f}, {.baseColor = glm::vec3(1.0f)})
+                                   .r);
+    INFO("expected lit byte " << litByte);
+    REQUIRE(channelNear(solid.r, litByte, 3));
+    REQUIRE(channelNear(solid.g, litByte, 3));
+    REQUIRE(channelNear(solid.b, litByte, 3));
 
     renderWith(true);
     const Pixel wire = pixelAt(pixels, 26, 26);
     INFO(describe("wireframe interior", 26, 26, wire));
-    REQUIRE(isClearChannel(wire.b, kSceneClear[2]));
-    REQUIRE(isClearChannel(wire.g, kSceneClear[1]));
-    REQUIRE(isClearChannel(wire.r, kSceneClear[0]));
+    requireClearPixel(wire);
     REQUIRE(wire.a == 255);
 }
 
 //======================================================================================================================
-// The corner pins one sRGB encode of the sky; a cube probe proves depth keeps geometry in front.
+// The corner pins the sky through the display transform; a cube probe proves depth keeps geometry
+// in front of it.
 TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -837,15 +1028,596 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
+    // kSkyTexel is uploaded to a plain RGBA8Unorm cubemap, not an sRGB view, so the sampler hands
+    // the shader (0, 0.502, 1.0) as linear radiance and the sky shader passes it through untouched
+    // -- the display transform is the only thing between the texel and the target. Its peak
+    // channel is 1.0, above the 0.76 shoulder, so unlike the mid-grey probes this one exercises
+    // the compression *and* the desaturation that comes with it, which is what lifts the black
+    // channel off 0 (bytes 33, 179, 241).
+    const std::array<int, 3> skyBytes = lmx::test::displayBytes(
+        {kSkyTexel[0] / 255.0f, kSkyTexel[1] / 255.0f, kSkyTexel[2] / 255.0f});
     const Pixel corner = pixelAt(pixels, 2, 2);
     INFO(describe("sky corner", 2, 2, corner));
-    REQUIRE(channelNear(corner.r, 0, 4));
-    REQUIRE(channelNear(corner.g, 188, 6));
-    REQUIRE(channelNear(corner.b, 255, 4));
+    REQUIRE(channelNear(corner.r, skyBytes[0], 4));
+    REQUIRE(channelNear(corner.g, skyBytes[1], 6));
+    REQUIRE(channelNear(corner.b, skyBytes[2], 4));
     REQUIRE(corner.a == 255);
 
     const Pixel right = pixelAt(pixels, 48, 32);
     INFO(describe("blue cube under the sky", 48, 32, right));
     REQUIRE(right.b > 64);
-    REQUIRE(right.g < 188 - 6);
+    // Green separates the two: the sky is half-strength green, and the blue cube only picks up
+    // what its specular lobe and its environment reflection carry there.
+    REQUIRE(right.g < skyBytes[1] - 32);
+}
+
+//======================================================================================================================
+// The editor reads these labels straight out of the device, so the frame's passes have to arrive
+// named and in the order the graph ran them -- an unnamed or missing pass is an invisible pass.
+TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.timedCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+
+    CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, sceneCamera(), litSceneView(items), /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    // waitIdle retires the measured frame; the next beginFrame is what publishes its counters.
+    (*device)->beginFrame();
+    (*device)->endFrame(nullptr);
+
+    const std::span<const PassTiming> timings = (*device)->passTimings();
+    REQUIRE(timings.size() == 3);
+    REQUIRE(timings[0].label == "lmx.pass.shadow");
+    REQUIRE(timings[1].label == "lmx.pass.scene");
+    REQUIRE(timings[2].label == "lmx.pass.display");
+    for (const PassTiming& timing : timings) {
+        INFO(timing.label + ": " + std::to_string(timing.gpuMilliseconds) + " ms");
+        REQUIRE(timing.gpuMilliseconds > 0.0);
+    }
+}
+
+//======================================================================================================================
+// The editor's frame shape: the scene passes plus one joined pass that reads what they rendered.
+// Nothing here places a barrier -- the read declaration is the only thing standing between the
+// scene pass's writes and this pass's sample, so a correct image is what proves the graph derived
+// the transition.
+TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.joinedCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/false);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    auto destination = makeProbeTarget(**device, "lmx.test.joinedDestination");
+    INFO(errorOf(destination));
+    REQUIRE(destination.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto copyPipeline = (*device)->createGraphicsPipeline({.library = library->get(),
+                                                           .vertexEntry = "vertexMain",
+                                                           .fragmentEntry = "fragmentMain",
+                                                           .colorFormat = Format::BGRA8Unorm,
+                                                           .label = "lmx.test.joinedCopyPipeline"});
+    INFO(errorOf(copyPipeline));
+    REQUIRE(copyPipeline.has_value());
+
+    constexpr uint32_t kSourceTextureSlot = 0;
+
+    const std::array<DrawItem, 2> items = twoCubeScene(*cube);
+    const SceneView view = litSceneView(items);
+
+    CommandList& commands = (*device)->beginFrame();
+    lmx::render::RenderGraph graph;
+    const lmx::render::GraphTexture sceneColor =
+        (*renderer)->declarePasses(graph, commands, sceneCamera(), view);
+    const lmx::render::GraphTexture copyTarget =
+        graph.importTexture(**destination, Format::BGRA8Unorm, "destination");
+
+    lmx::render::PassDesc copy;
+    copy.textureReads.push_back(sceneColor);
+    // Magenta makes a pass that drew nothing at all obvious rather than merely wrong.
+    copy.color =
+        lmx::render::ColorAttachment{.handle = copyTarget, .clearColor = {1.0f, 0.0f, 1.0f, 1.0f}};
+    graph.addPass("lmx.pass.copy", std::move(copy),
+                  [&](const lmx::render::PassResources& resources) {
+                      const auto source = resources.texture(sceneColor);
+                      REQUIRE(source.has_value());
+                      commands.bindPipeline(**copyPipeline);
+                      commands.bindTexture(kSourceTextureSlot, **source);
+                      commands.draw(3);
+                  });
+    graph.exportTexture(lmx::render::nextVersion(copyTarget));
+    graph.execute(commands);
+
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*destination)->readback(pixels.data(), pixels.size());
+    requireTwoCubeImage(pixels, "clear sampled through the graph");
+}
+
+//======================================================================================================================
+// Validation has to be live in the path the frame actually takes, not only in a unit test of the
+// declaration layer: a pass body reaching for a resource it never declared is refused mid-frame,
+// with the pass and the resource named.
+TEST_CASE("a pass resolving an undeclared texture is refused while the frame runs", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto declaredTarget = makeProbeTarget(**device, "lmx.test.declaredTarget");
+    INFO(errorOf(declaredTarget));
+    REQUIRE(declaredTarget.has_value());
+    auto undeclaredTarget = makeProbeTarget(**device, "lmx.test.undeclaredTarget");
+    INFO(errorOf(undeclaredTarget));
+    REQUIRE(undeclaredTarget.has_value());
+
+    lmx::render::RenderGraph graph;
+    const lmx::render::GraphTexture declared =
+        graph.importTexture(**declaredTarget, Format::BGRA8Unorm, "declaredTarget");
+    const lmx::render::GraphTexture undeclared =
+        graph.importTexture(**undeclaredTarget, Format::BGRA8Unorm, "undeclaredTarget");
+
+    std::optional<lmx::render::GraphError> refusal;
+    lmx::render::PassDesc probe;
+    probe.color = lmx::render::ColorAttachment{.handle = declared};
+    graph.addPass("lmx.pass.probe", std::move(probe),
+                  [&](const lmx::render::PassResources& resources) {
+                      const auto texture = resources.texture(undeclared);
+                      if (!texture) {
+                          refusal = texture.error();
+                      }
+                  });
+
+    CommandList& commands = (*device)->beginFrame();
+    graph.execute(commands);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    REQUIRE(refusal.has_value());
+    INFO(refusal->message);
+    REQUIRE(refusal->message.contains("lmx.pass.probe"));
+    REQUIRE(refusal->message.contains("undeclaredTarget"));
+    REQUIRE(refusal->message.contains("did not declare"));
+}
+
+namespace {
+
+// MaterialLab's three depth probes, mirrored from Source/Engine/MaterialLab.cpp: 0.5-unit cubes on
+// the initial camera's forward axis at these distances, offset laterally so each occupies its own
+// tangent-space band. `distance` is to the cube's *centre*; the surface the camera sees is its
+// front face, one half-extent nearer.
+struct DepthProbe {
+    const char* name;
+    float distance;
+    float lateralOffset;
+};
+constexpr std::array<DepthProbe, 3> kMaterialLabDepthProbes = {{
+    {"near", 2.0f, -0.4f},
+    {"mid", 10.0f, 1.0f},
+    {"far", 40.0f, 7.0f},
+}};
+constexpr float kMaterialLabCameraDistance = 80.0f;
+constexpr float kDepthProbeHalfExtent = 0.25f;
+
+// Big enough that the farthest probe's front face is several pixels across: it subtends
+// 2 * 0.25 / 39.75 = 0.0126 radians of tangent against a half-FOV tangent of tan(22.5 degrees),
+// which is 3% of the frame, so 512 puts about 15 pixels on it and its centre nowhere near an edge.
+constexpr uint32_t kDepthReconstructSize = 512;
+
+} // namespace
+
+//======================================================================================================================
+// The exit gate on the reversed projection: not that its matrix has the entries it should, which
+// Tests/RenderTests.cpp pins, but that the number a real frame leaves in the depth buffer inverts
+// back to the distance the geometry actually sits at.
+//
+// The projection emits clip.z = nearZ and clip.w = -z_view, so a fragment stores
+// d = nearZ / (-z_view) and the inverse is
+//
+//     z_view = -nearZ / d
+//
+// with no far plane anywhere in it -- which is the claim being tested, since a conventional or
+// finite-far projection would need farZ to invert and would land somewhere else at every probe.
+//
+// MaterialLab supplies the geometry: three cubes on the camera's forward axis at documented
+// distances, so the reference is arithmetic on numbers the scene wrote down rather than a second
+// measurement. Each probe's visible surface is its front face, one half-extent nearer than its
+// centre, and that face is perpendicular to the view axis -- so every pixel on it holds the same
+// depth and the reconstruction has no interpolation error to absorb.
+//
+// Tolerance: 2e-3 relative, roughly twice the worst case of the one lossy step. The depth itself
+// is D32Float (relative error ~6e-8, and depth is linear in screen space so the rasterizer's
+// interpolation across a plane is exact), but the probe pass has to carry it out through an
+// RGBA16Float target -- the only float format this RHI renders into, and D32Float has no packed
+// readback of its own. Binary16 keeps 11 significant bits, and the measured probes here all land
+// one binary16 ulp low rather than at the nearest value, so the bound is a whole ulp: at most
+// 2^-10 = 9.8e-4 relative. Measured at the three probes: 2.4e-4, 2.4e-4, 7.3e-4. The
+// reconstruction divides by d, which carries relative error through unchanged rather than
+// amplifying it, so that bound is the answer's bound too.
+TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's probes", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr uint32_t kSourceTextureSlot = 0;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    REQUIRE(scene.has_value());
+
+    auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    Camera camera;
+    camera.position = (*scene)->initialCamera.position;
+    camera.yaw = (*scene)->initialCamera.yaw;
+    camera.pitch = (*scene)->initialCamera.pitch;
+    camera.fovY = (*scene)->initialCamera.fovY;
+    camera.nearZ = (*scene)->initialCamera.nearZ;
+    camera.farZ = (*scene)->initialCamera.farZ;
+    REQUIRE(camera.position.z == kMaterialLabCameraDistance);
+
+    std::vector<DrawItem> items;
+    const SceneView view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
+
+    // The depth buffer is D32Float, which readback() has no packed texel size for, so the probe
+    // pass copies it into a half-float target that does.
+    auto probeImage = (*device)->createTexture({.width = kDepthReconstructSize,
+                                                .height = kDepthReconstructSize,
+                                                .format = Format::RGBA16Float,
+                                                .renderTarget = true,
+                                                .cpuReadback = true,
+                                                .label = "lmx.test.depthProbeImage"});
+    INFO(errorOf(probeImage));
+    REQUIRE(probeImage.has_value());
+
+    auto probeLibrary = (*device)->loadShaderLibrary("Shaders/FullscreenSample");
+    INFO(errorOf(probeLibrary));
+    REQUIRE(probeLibrary.has_value());
+
+    auto probePipeline =
+        (*device)->createGraphicsPipeline({.library = probeLibrary->get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = Format::RGBA16Float,
+                                           .cullMode = CullMode::None,
+                                           .label = "lmx.test.depthProbePipeline"});
+    INFO(errorOf(probePipeline));
+    REQUIRE(probePipeline.has_value());
+
+    CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
+                            TextureUse::ShaderRead);
+    commands.beginRenderPass({.colorTarget = probeImage->get(),
+                              .clearColor = {0.0f, 0.0f, 0.0f, 1.0f},
+                              .clear = true,
+                              .label = "lmx.test.depthProbe.copy"});
+    commands.bindPipeline(**probePipeline);
+    commands.bindTexture(kSourceTextureSlot, (*renderer)->depthTarget());
+    commands.draw(3);
+    commands.endRenderPass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint16_t> texels(size_t{kDepthReconstructSize} * kDepthReconstructSize * 4);
+    (*probeImage)->readback(texels.data(), texels.size() * sizeof(uint16_t));
+
+    const glm::mat4 viewProj = camera.projectionMatrix(1.0f) * camera.viewMatrix();
+    for (const DepthProbe& probe : kMaterialLabDepthProbes) {
+        INFO(std::string("probe: ") + probe.name);
+
+        // The point the camera actually sees: the centre of the cube's near face.
+        const float faceDistance = probe.distance - kDepthProbeHalfExtent;
+        const glm::vec3 world{probe.lateralOffset, 0.0f,
+                              kMaterialLabCameraDistance - probe.distance + kDepthProbeHalfExtent};
+
+        const glm::vec4 clip = viewProj * glm::vec4(world, 1.0f);
+        REQUIRE(clip.w > 0.0f);
+        const glm::vec3 ndc = glm::vec3(clip) / clip.w;
+        INFO("ndc x " + std::to_string(ndc.x) + " y " + std::to_string(ndc.y));
+        REQUIRE(std::abs(ndc.x) < 1.0f);
+        REQUIRE(std::abs(ndc.y) < 1.0f);
+        const auto x = static_cast<uint32_t>((ndc.x * 0.5f + 0.5f) *
+                                             static_cast<float>(kDepthReconstructSize));
+        const auto y = static_cast<uint32_t>((0.5f - ndc.y * 0.5f) *
+                                             static_cast<float>(kDepthReconstructSize));
+
+        const size_t offset = (size_t{y} * kDepthReconstructSize + x) * 4;
+        const float sampled = floatOfHalfBits(texels[offset]);
+        INFO("sampled depth " + std::to_string(sampled) + " at pixel " + std::to_string(x) + "," +
+             std::to_string(y));
+        // A cleared texel would be 0, which the reconstruction cannot divide by -- and would mean
+        // the probe pixel found sky rather than the cube.
+        REQUIRE(sampled > 0.0f);
+
+        const float reconstructed = -camera.nearZ / sampled;
+        INFO("reconstructed z_view " + std::to_string(reconstructed) + ", reference " +
+             std::to_string(-faceDistance));
+        REQUIRE(reconstructed == Catch::Approx(-faceDistance).epsilon(2e-3));
+    }
+}
+
+namespace {
+
+constexpr uint32_t kBrdfProbeSize = 128;
+
+//======================================================================================================================
+// One RGBA16Float texel of an arbitrarily sized target, as float.
+glm::vec3 hdrTexelAt(const std::vector<uint16_t>& rgba, uint32_t width, uint32_t x, uint32_t y) {
+    const size_t offset = (size_t{y} * width + x) * 4;
+    const auto decode = [&](size_t channel) {
+        _Float16 half = 0;
+        std::memcpy(&half, &rgba[offset + channel], sizeof(half));
+        return static_cast<float>(half);
+    };
+    return {decode(0), decode(1), decode(2)};
+}
+
+//======================================================================================================================
+// A camera far enough back, with a narrow enough field of view, that the view direction is the same
+// vector across the whole probe: the pinned-angle cases below state N.V exactly, so a probe pixel
+// whose own view ray had drifted a degree off the axis would be comparing against the wrong angle.
+// At 60 units and 5 degrees, half a pixel of a 128-wide target subtends 0.0007 radians.
+Camera pinnedAngleCamera() {
+    Camera camera;
+    camera.position = {0.0f, 0.0f, 60.0f};
+    camera.fovY = glm::radians(5.0f);
+    camera.nearZ = 1.0f;
+    camera.farZ = 200.0f;
+    return camera;
+}
+
+} // namespace
+
+//======================================================================================================================
+// Exit gate: the white furnace. A surface with albedo 1 in a uniform environment of radiance E has
+// to return exactly E -- it absorbs nothing, so every photon that arrived leaves again -- and that
+// is true whatever its roughness and whichever way it is facing.
+//
+// The environment is built through the production generators on a constant white cube, so this
+// exercises the same irradiance convolution, prefiltered chain and RG16Float DFG table a real scene
+// carries; both generators reproduce a constant environment exactly at every roughness
+// (Source/Engine/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading is 1.0 with no
+// integration error folded into it. Lights are off and exposure is 0, which leaves the image-based
+// terms as the entire signal, and the HDR target is read directly so no tone map stands in the way.
+//
+// The bound is derived from the quantization chain rather than chosen. E = 1.0 is exact in binary16
+// and survives the cube upload unchanged; the DFG table's own half-precision error cancels
+// algebraically, because the diffuse term is defined as the energy the two specular terms did not
+// take and every one of the three reads the same (scale, bias) pair; the shader itself computes in
+// float32. That leaves the RGBA16Float scene target's single rounding, whose spacing at 1.0 is
+// 2^-10. Four of those is 0.0039 -- the bound below, and roughly an eighth of the milestone gate's
+// +/- 0.03 window.
+//
+// Only the dielectric and conductor rows are held to that equality. The rows between them are a
+// blend of two materials rather than a material, so no furnace closes there (see
+// Tests/RenderTests.cpp's furnace case); what they must still honour is that nothing creates
+// energy, which is asserted across the whole grid.
+TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    INFO(errorOf(scene));
+    REQUIRE(scene.has_value());
+
+    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+                                     /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const lmx::engine::ibl::IblTextures environment =
+        lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.whiteFurnace");
+
+    // Only the sphere grid: the patches, ramp and depth probes sit outside this frustum anyway, and
+    // leaving them out keeps every drawn pixel one of the 25 materials under test.
+    std::vector<DrawItem> items;
+    std::vector<glm::vec3> centers;
+    std::vector<const lmx::engine::SceneObject*> spheres;
+    for (const lmx::engine::SceneObject& object : (*scene)->objects) {
+        if (!object.name.starts_with("material-lab sphere ")) {
+            continue;
+        }
+        spheres.push_back(&object);
+        centers.push_back(object.position);
+        items.push_back({.mesh = &(*scene)->meshes[object.meshIndex],
+                         .model = object.modelMatrix(),
+                         .material = (*scene)->materials[object.materialIndex]});
+    }
+    REQUIRE(items.size() == 25);
+
+    SceneView view;
+    view.items = items;
+    for (DirectionalLight& light : view.lights) {
+        light.strength = {0.0f, 0.0f, 0.0f};
+    }
+    view.irradiance = environment.irradiance.get();
+    view.prefilteredEnv = environment.prefilteredEnv.get();
+    view.dfgLut = environment.dfgLut.get();
+    view.boundingSphere = {0.0f, 0.0f, 0.0f, 6.0f};
+    REQUIRE(view.exposureEv == 0.0f);
+
+    // Close enough that each unit-diameter sphere covers around 26 pixels, so a probe at a
+    // projected centre lands well inside one.
+    Camera camera;
+    camera.position = {0.0f, 0.0f, 12.0f};
+
+    CommandList& commands = (*device)->beginFrame();
+    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
+    (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+
+    // Four RGBA16Float roundings at 1.0; see this case's derivation above.
+    constexpr float kFurnaceTolerance = 4.0f / 1024.0f;
+
+    for (size_t i = 0; i < spheres.size(); ++i) {
+        const PixelCoord at = projectToPixel(camera, kBrdfProbeSize, centers[i]);
+        const glm::vec3 radiance = hdrTexelAt(texels, kBrdfProbeSize, at.x, at.y);
+        const lmx::render::Material& material = (*scene)->materials[spheres[i]->materialIndex];
+        INFO(spheres[i]->name << ": roughness " << material.roughness << ", metallic "
+                              << material.metallic << ", read (" << radiance.r << ", " << radiance.g
+                              << ", " << radiance.b << ")");
+
+        // Nothing anywhere on the grid may reflect more than it received.
+        REQUIRE(radiance.r <= 1.0f + kFurnaceTolerance);
+        REQUIRE(radiance.g <= 1.0f + kFurnaceTolerance);
+        REQUIRE(radiance.b <= 1.0f + kFurnaceTolerance);
+
+        const bool pureDielectric = material.metallic == 0.0f;
+        const bool pureConductor = material.metallic == 1.0f;
+        if (pureDielectric || pureConductor) {
+            REQUIRE(radiance.r == Catch::Approx(1.0f).margin(kFurnaceTolerance));
+            REQUIRE(radiance.g == Catch::Approx(1.0f).margin(kFurnaceTolerance));
+            REQUIRE(radiance.b == Catch::Approx(1.0f).margin(kFurnaceTolerance));
+        }
+    }
+}
+
+//======================================================================================================================
+// Exit gate: dielectric and conductor probes against a CPU evaluation of the same BRDF at pinned
+// angles.
+//
+// A quad rotated about X gives an exactly known shading normal, and a distant narrow-FOV camera on
+// the +Z axis gives an exactly known view vector at the quad's centre, so each case below names its
+// N.V and N.L rather than approximating them off a sphere's silhouette. No environment is bound, so
+// the probe measures the analytic lobe alone -- the image-based half of the model is what the
+// furnace case above measures, and separating them means a failure here names which one broke.
+//
+// The reference is Tests/BrdfOracle.h, a CPU mirror written from the same published formulations
+// rather than transliterated from the shader.
+TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned angles", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto quad =
+        lmx::render::createMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.brdfProbeQuad");
+    INFO(errorOf(quad));
+    REQUIRE(quad.has_value());
+
+    auto renderer = Renderer::create(**device, kBrdfProbeSize, kBrdfProbeSize,
+                                     /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    struct Case {
+        const char* name;
+        float viewAngleDegrees; // angle between the surface normal and the view axis
+        glm::vec3 lightDirection;
+        glm::vec3 baseColor;
+        float roughness;
+        float metallic;
+    };
+    // Two pinned working points, then the parameter limits the shader's clamps exist for.
+    const Case cases[] = {
+        {"facing dielectric", 0.0f, {0.0f, -0.6f, -0.8f}, {0.8f, 0.8f, 0.8f}, 0.3f, 0.0f},
+        {"oblique conductor", 40.0f, {0.0f, 0.0f, -1.0f}, {0.95f, 0.64f, 0.54f}, 0.2f, 1.0f},
+        {"rough dielectric", 25.0f, {0.0f, -0.7071f, -0.7071f}, {0.5f, 0.2f, 0.1f}, 1.0f, 0.0f},
+        {"roughness at the floor", 20.0f, {0.0f, -0.5f, -0.866f}, {0.9f, 0.9f, 0.9f}, 0.0f, 0.0f},
+        {"rough conductor", 15.0f, {0.0f, -0.3f, -0.954f}, {1.0f, 1.0f, 1.0f}, 1.0f, 1.0f},
+        {"grazing view", 80.0f, {0.0f, -0.9f, -0.436f}, {0.8f, 0.8f, 0.8f}, 0.4f, 0.0f},
+    };
+
+    const Camera camera = pinnedAngleCamera();
+    constexpr glm::vec3 kLightStrength{2.0f, 2.0f, 2.0f};
+
+    for (const Case& probe : cases) {
+        INFO(probe.name);
+
+        // Rotating the +Y plane about X by (90 - viewAngle) tilts its normal that many degrees off
+        // the +Z view axis, so N.V is the cosine of the case's own angle by construction.
+        const float rotation = glm::radians(90.0f - probe.viewAngleDegrees);
+        const glm::mat4 model = glm::rotate(glm::mat4{1.0f}, rotation, glm::vec3{1.0f, 0.0f, 0.0f});
+        const glm::vec3 normal =
+            glm::normalize(glm::vec3(model * glm::vec4{0.0f, 1.0f, 0.0f, 0.0f}));
+        const glm::vec3 toEye = glm::vec3{0.0f, 0.0f, 1.0f};
+        REQUIRE(glm::dot(normal, toEye) ==
+                Catch::Approx(std::cos(glm::radians(probe.viewAngleDegrees))).margin(1e-5));
+
+        const std::array<DrawItem, 1> items = {{
+            {.mesh = &*quad,
+             .model = model,
+             .material = {.albedo = glm::vec4(probe.baseColor, 1.0f),
+                          .roughness = probe.roughness,
+                          .metallic = probe.metallic}},
+        }};
+
+        SceneView view;
+        view.items = items;
+        for (DirectionalLight& light : view.lights) {
+            light.strength = {0.0f, 0.0f, 0.0f};
+        }
+        // Light 1 rather than light 0: light 0 is the shadow caster, and a plane that shadows
+        // itself at the bias limit would put the shadow filter into a BRDF measurement.
+        view.lights[1] = {.strength = kLightStrength,
+                          .direction = glm::normalize(probe.lightDirection)};
+        view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
+
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+
+        std::vector<uint16_t> texels(size_t{kBrdfProbeSize} * kBrdfProbeSize * 4);
+        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+        const glm::vec3 radiance =
+            hdrTexelAt(texels, kBrdfProbeSize, kBrdfProbeSize / 2, kBrdfProbeSize / 2);
+
+        const glm::vec3 expected = lmx::test::brdf::directionalLight(
+            kLightStrength, view.lights[1].direction, normal, toEye,
+            {.baseColor = probe.baseColor,
+             .perceptualRoughness = probe.roughness,
+             .metallic = probe.metallic});
+        INFO("N.L " << glm::dot(normal, -glm::normalize(probe.lightDirection)) << ", expected ("
+                    << expected.r << ", " << expected.g << ", " << expected.b << "), read ("
+                    << radiance.r << ", " << radiance.g << ", " << radiance.b << ")");
+
+        // Relative, because these span two orders of magnitude between a rough diffuse lobe and a
+        // near-mirror highlight. 1% covers the RGBA16Float target's ~0.05% storage step, the
+        // half-pixel view-vector drift the camera above bounds at 0.0007 radians, and the vertex
+        // interpolation of a normal the rasterizer reconstructs per fragment.
+        REQUIRE(radiance.r == Catch::Approx(expected.r).epsilon(0.01).margin(1e-4));
+        REQUIRE(radiance.g == Catch::Approx(expected.g).epsilon(0.01).margin(1e-4));
+        REQUIRE(radiance.b == Catch::Approx(expected.b).epsilon(0.01).margin(1e-4));
+    }
 }

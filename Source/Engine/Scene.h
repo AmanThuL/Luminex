@@ -48,14 +48,16 @@ public:
     std::vector<render::Material> materials; // texture pointers reach into `textures`
     std::vector<SceneObject> objects;
     render::DirectionalLight lights[3];
-    // Linear, like every other colour Engine hands to Render (Color.h's rule) -- attachSkyAndLights
-    // (Scene.cpp) always overwrites this for a real scene, so the default here only keeps a bare,
-    // never-built Scene well-defined rather than expressing an authored choice of its own: zero,
-    // not a copy of the authored (0.25, 0.25, 0.35) triple Render.h's SceneView::ambient carries.
-    glm::vec3 ambient{0.0f};
     glm::vec4 boundingSphere{0.f};
     render::Mesh skySphere;
     std::unique_ptr<rhi::Texture> skyCubemap;
+    // Image-based lighting generated from the same authored sky radiance skyCubemap carries
+    // (Engine/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain, and the
+    // split-sum DFG table. Published together with the sky by the scene-build path, so a scene that
+    // has a skyCubemap has all three.
+    std::unique_ptr<rhi::Texture> irradianceMap;
+    std::unique_ptr<rhi::Texture> prefilteredEnvMap;
+    std::unique_ptr<rhi::Texture> dfgLut;
     SceneCamera initialCamera{};
 
     // Fills `items` (cleared first, one DrawItem per object, in object order) and returns the
@@ -73,5 +75,10 @@ AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device);
 // Khronos' DamagedHelmet sample (Assets/Fetched/DamagedHelmet, fetched by `xmake setup`). No
 // floor -- a model showcase, floating near the origin.
 AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device);
+
+// Deterministic, fully code-generated diagnostic scene: a material sweep sphere grid, known-color
+// patches, a horizontal gradient ramp, depth probes at known view distances, and a normal-map
+// probe quad. No fetched assets -- always available, byte-identical across runs.
+AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device);
 
 } // namespace lmx::engine

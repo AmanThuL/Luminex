@@ -1,9 +1,13 @@
 #include "Engine/Scene.h"
 
 #include "Core/Assert.h"
+#include "Core/Log.h"
 #include "Engine/Color.h"
+#include "Engine/DdsLoader.h"
 #include "Engine/GeometryGenerator.h"
 #include "Engine/GltfLoader.h"
+#include "Engine/Ibl.h"
+#include "Engine/TextureBake.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -17,6 +21,7 @@
 #include <filesystem>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -90,23 +95,39 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
     }
     scene.skyCubemap = std::move(*cubemap);
 
+    // One authored constant reaches both consumers: the sRGB texture view above decodes those
+    // bytes on the GPU, and the same decode runs here so the generated IBL describes the sky the
+    // renderer actually samples. Deriving it rather than reading the cube back keeps the two from
+    // drifting apart.
+    const glm::vec3 skyRadiance = srgbToLinear(glm::vec3(static_cast<float>(kNeutralSky[0]),
+                                                         static_cast<float>(kNeutralSky[1]),
+                                                         static_cast<float>(kNeutralSky[2])) /
+                                               255.0f);
+    auto generated = ibl::generate(device, ibl::makeConstantCubemap(skyRadiance, 1), label);
+    if (!generated) {
+        return std::unexpected(uploadFailure(std::move(generated.error())));
+    }
+    scene.irradianceMap = std::move(generated->irradiance);
+    scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
+    scene.dfgLut = std::move(generated->dfgLut);
+
     for (size_t i = 0; i < std::size(kLightDirections); ++i) {
         scene.lights[i].direction = kLightDirections[i];
         scene.lights[i].strength = glm::vec3(srgbToLinear(kLightStrengths[i]));
     }
 
-    // Authored ambient color crosses the sRGB-to-linear boundary at scene construction.
-    scene.ambient = srgbToLinear(glm::vec3(0.25f, 0.25f, 0.35f));
     return {};
 }
 
 //======================================================================================================================
-uint32_t mipLevelsFor(uint32_t width, uint32_t height) {
-    uint32_t levels = 1;
-    for (uint32_t extent = std::max(width, height); extent > 1; extent >>= 1) {
-        ++levels;
-    }
-    return levels;
+// The offline bake (Tools/TextureBake, wired into `xmake setup`) writes each referenced image's
+// full mip chain to a sibling "Baked/image<N>.dds" beside the glTF file, keyed by the image's
+// index in the glTF/GLB "images" array -- the same index cgltf assigns and this loader already
+// threads through as `imageIndex`. Naming by index rather than by source filename is what lets one
+// scheme cover both Sponza (external, uniquely-named PNGs) and DamagedHelmet (a single .glb with
+// unnamed embedded images) without GltfImage having to carry a source filename at all.
+std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t imageIndex) {
+    return gltfPath.parent_path() / "Baked" / ("image" + std::to_string(imageIndex) + ".dds");
 }
 
 //======================================================================================================================
@@ -132,6 +153,9 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
     // needs two views rather than forcing the normal-map read through an sRGB format.
     std::vector<rhi::Texture*> uploadedColor(gltfScene.images.size(), nullptr);
     std::vector<rhi::Texture*> uploadedLinear(gltfScene.images.size(), nullptr);
+    // Set the first time the fallback path below actually runs, so a scene with several unbaked
+    // images logs the warning once per build, not once per image.
+    bool warnedUnbakedFallback = false;
     const auto ensureUploaded = [&](int imageIndex, bool srgb) -> AssetResult<rhi::Texture*> {
         if (imageIndex < 0 || static_cast<size_t>(imageIndex) >= gltfScene.images.size()) {
             return std::unexpected(AssetError{AssetErrorCode::Malformed,
@@ -143,30 +167,60 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         if (uploaded[index] != nullptr) {
             return uploaded[index];
         }
+        const std::string label = std::string(sceneName) + ".image" + std::to_string(index) +
+                                  (srgb ? ".srgb" : ".linear");
+
+        // The baked DDS carries a deterministic, correctly-filtered full mip chain; prefer it
+        // whenever `xmake setup` has produced one.
+        const std::filesystem::path baked = bakedDdsPath(*path, index);
+        if (std::filesystem::exists(baked)) {
+            auto texture = createTextureFromDds(device, baked.string(), srgb, label);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            rhi::Texture* ptr = texture->get();
+            scene->textures.push_back(std::move(*texture));
+            uploaded[index] = ptr;
+            return ptr;
+        }
+
         const GltfImage& image = gltfScene.images[index];
         if (image.width == 0 || image.height == 0 || image.rgba8.empty()) {
             return std::unexpected(
                 AssetError{AssetErrorCode::Malformed,
                            std::string(sceneName) + " scene: referenced image was not decoded"});
         }
-        const uint32_t mipLevels = mipLevelsFor(image.width, image.height);
-        std::vector<rhi::TextureMip> mips(mipLevels);
-        mips[0] = {.data = image.rgba8.data(), .bytesPerRow = uint64_t{image.width} * 4};
-        // glTF image sources provide level zero; the GPU generates the remaining mip chain.
+        if (!warnedUnbakedFallback) {
+            LMX_LOG_WARN("{} scene: no baked mip chain beside '{}' -- computing mips at load "
+                         "time instead of using `xmake setup`'s offline bake (slower startup; "
+                         "matches the offline bake for color/data images, but a normal map here "
+                         "skips the offline bake's per-level renormalization)",
+                         sceneName, path->string());
+            warnedUnbakedFallback = true;
+        }
+        // Same box filter the offline bake uses, just run in-process. srgb selects the
+        // colour-space transform; a data image (srgb == false) has no normal-map flag reaching
+        // this lambda, so Linear -- filter raw bytes, no transform -- is the choice made here,
+        // matching how generateMipmaps used to treat every non-colour texture before this
+        // fallback replaced it. That choice is exact for base color and other color/data images,
+        // but not for normal maps: the offline bake's `--normal-map` role renormalizes each
+        // generated level (see BakeMode::NormalMap), and this fallback has no way to request
+        // that mode, so a normal map computed here diverges from its offline bake. Both shipped
+        // scenes' normal maps are pre-baked by `xmake setup`, so the divergence is latent.
+        const std::span<const uint8_t> rgba8(reinterpret_cast<const uint8_t*>(image.rgba8.data()),
+                                             image.rgba8.size());
+        const BakedMipChain bakedChain =
+            bakeMips(rgba8, image.width, image.height, srgb ? BakeMode::Srgb : BakeMode::Linear);
         auto texture = device.createTexture(
-            {.width = image.width,
-             .height = image.height,
+            {.width = bakedChain.width,
+             .height = bakedChain.height,
              .format = srgb ? rhi::Format::RGBA8Unorm_sRGB : rhi::Format::RGBA8Unorm,
-             .mipLevels = mipLevels,
+             .mipLevels = bakedChain.mipLevels,
              .sampled = true,
-             .label = std::string(sceneName) + ".image" + std::to_string(index) +
-                      (srgb ? ".srgb" : ".linear")},
-            mips);
+             .label = label},
+            bakedChain.mips);
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
-        }
-        if (mipLevels > 1) {
-            device.generateMipmaps(**texture);
         }
         rhi::Texture* ptr = texture->get();
         scene->textures.push_back(std::move(*texture));
@@ -179,8 +233,12 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         render::Material material;
         // glTF factors are linear; texture color-space conversion happens in the texture view.
         material.albedo = src.baseColorFactor;
-        material.fresnelR0 = fresnelFromMetallic(src.baseColorFactor, src.metallic);
         material.roughness = src.roughness;
+        material.metallic = src.metallic;
+        material.occlusionStrength = src.occlusionStrength;
+        // glTF's emissiveFactor is linear as authored, unlike a display-space color constant --
+        // do not run it through srgbToLinear.
+        material.emissive = src.emissiveFactor;
         if (src.baseColorImage >= 0) {
             auto texture = ensureUploaded(src.baseColorImage, true);
             if (!texture) {
@@ -194,6 +252,30 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                 return std::unexpected(texture.error());
             }
             material.normalMap = *texture;
+        }
+        if (src.metallicRoughnessImage >= 0) {
+            // Roughness (G) and metallic (B) are sampled data, not color -- linear, no sRGB decode.
+            auto texture = ensureUploaded(src.metallicRoughnessImage, false);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.metallicRoughness = *texture;
+        }
+        if (src.occlusionImage >= 0) {
+            // Occlusion is sampled data too.
+            auto texture = ensureUploaded(src.occlusionImage, false);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.occlusion = *texture;
+        }
+        if (src.emissiveImage >= 0) {
+            // Emissive is an authored color texture: sRGB-decode through the texture view.
+            auto texture = ensureUploaded(src.emissiveImage, true);
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
+            material.emissiveMap = *texture;
         }
         scene->materials.push_back(material);
     }
@@ -307,13 +389,18 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
     for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
         sceneView.lights[i] = lights[i];
     }
-    sceneView.ambient = ambient;
     sceneView.boundingSphere = boundingSphere;
     // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
     if (skyCubemap != nullptr) {
         sceneView.skySphere = &skySphere;
         sceneView.skyCubemap = skyCubemap.get();
     }
+    // The IBL set is generated from that same sky and published with it, so a scene that shows a
+    // sky also lights from it. Forwarded unconditionally: unique_ptr::get() on an empty pointer is
+    // the null the renderer's fallbacks already handle.
+    sceneView.irradiance = irradianceMap.get();
+    sceneView.prefilteredEnv = prefilteredEnvMap.get();
+    sceneView.dfgLut = dfgLut.get();
     sceneView.shadowFilter = filter;
     sceneView.wireframe = wireframe;
     return sceneView;

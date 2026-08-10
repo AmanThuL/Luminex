@@ -13,7 +13,10 @@ using device_detail::fail;
 using device_detail::toStdString;
 
 constexpr NS::UInteger kMaxBufferBindCount = 8;
-constexpr NS::UInteger kMaxTextureBindCount = 8;
+// The texture slot budget holds a pass-wide set and a per-draw material set at the same time, and
+// eight no longer covers both. Buffers and samplers keep their own index spaces at eight; neither
+// of those grew.
+constexpr NS::UInteger kMaxTextureBindCount = 16;
 constexpr NS::UInteger kMaxSamplerStateBindCount = 8;
 
 //======================================================================================================================
@@ -150,6 +153,34 @@ Result<std::unique_ptr<Device>> Metal4Device::create(const DeviceDesc& desc) {
     }
     // A residency commit republishes the full set, so batch all ring additions into one commit.
     self->m_residency->commit();
+
+    // Pass timings are read back through the CPU-side resolve on the heap itself, so the heaps
+    // need no residency registration and no staging buffer.
+    self->m_timestampTicksPerSecond = self->m_device->queryTimestampFrequency();
+    if (self->m_timestampTicksPerSecond == 0) {
+        return fail(ErrorCode::DeviceUnsupported,
+                    "device '" + self->m_deviceName +
+                        "' reports a zero GPU timestamp frequency, so pass timings would have no "
+                        "unit");
+    }
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+        auto heapDesc = NS::TransferPtr(MTL4::CounterHeapDescriptor::alloc()->init());
+        heapDesc->setType(MTL4::CounterHeapTypeTimestamp);
+        heapDesc->setCount(kTimestampsPerFrame);
+        error = nullptr;
+        Metal4FrameTimestamps& timestamps = self->m_frameTimestamps[i];
+        timestamps.heap = NS::TransferPtr(self->m_device->newCounterHeap(heapDesc.get(), &error));
+        if (!timestamps.heap) {
+            return fail(ErrorCode::DeviceUnsupported, "failed to create timestamp counter heap " +
+                                                          std::to_string(i) + ": " +
+                                                          describe(error));
+        }
+        timestamps.heap->setLabel(
+            makeString("lmx.device.timestampHeap." + std::to_string(i)).get());
+        // A heap starts with undefined contents; the sentinel is what makes an unwritten entry
+        // detectable rather than plausible.
+        timestamps.heap->invalidateCounterRange(NS::Range::Make(0, kTimestampsPerFrame));
+    }
 
     // Per-frame table and ring pointers are attached only while a frame is open.
     self->m_commandList.emplace(self->m_commandBuffer.get());

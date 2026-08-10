@@ -28,6 +28,10 @@ constexpr std::array kSceneDescriptors{
     SceneDescriptor{"damaged-helmet", "Damaged Helmet", SceneRole::Sample,
                     "Khronos DamagedHelmet sample",
                     "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", false, &loadHelmetScene},
+    // Fully code-generated: no asset requirement, so an empty availabilityPath makes it always
+    // available (see repoPathExists below).
+    SceneDescriptor{"material-lab", "MaterialLab", SceneRole::Diagnostic, "", "", false,
+                    &loadMaterialLabScene},
 };
 
 static_assert([] {
@@ -85,6 +89,19 @@ std::optional<SceneId> parseSceneId(std::string_view stableId) {
 //======================================================================================================================
 std::string_view sceneIdString(SceneId id) {
     return kSceneDescriptors[descriptorIndex(id)].stableId;
+}
+
+//======================================================================================================================
+std::span<const std::string_view> sceneStableIds() {
+    static const std::vector<std::string_view> ids = [] {
+        std::vector<std::string_view> result;
+        result.reserve(kSceneDescriptors.size());
+        for (const SceneDescriptor& descriptor : kSceneDescriptors) {
+            result.push_back(descriptor.stableId);
+        }
+        return result;
+    }();
+    return ids;
 }
 
 //======================================================================================================================
