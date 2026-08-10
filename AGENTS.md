@@ -46,7 +46,9 @@ thin RHI and one implemented backend.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
-  Tools/GpuDebug/profile.py`. Guide: `docs/guides/gpu-debugging.md`.
+  Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
+  App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
+  (absolute path, written once). Guide: `docs/guides/gpu-debugging.md`.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
@@ -58,8 +60,11 @@ passes, compute passes with storage bindings, subresource views, and explicit te
 barriers, copy passes with general copies and fills (the path to any subresource but level zero),
 and indirect draws and dispatches over RHI-owned argument layouts;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph`, `Renderer` — declares shadow, scene+sky, and display-transform passes into
-a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
+validating `RenderGraph` — raster/compute/copy passes over imported resources with per-subresource
+uses, dead-pass culling from declared sinks only, and a `CompiledFrameRecord` per frame that
+`GraphDump.h` renders as deterministic text; `Renderer` — declares shadow, scene+sky, and
+display-transform passes into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends
+are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking

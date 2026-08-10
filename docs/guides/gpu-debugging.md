@@ -2,8 +2,25 @@
 
 **Status**: Implemented
 
-Use a capture when rendered output is wrong and a timing trace when the question is performance.
-Both workflows depend on meaningful GPU object and pass labels.
+Use a capture when rendered output is wrong, a timing trace when the question is performance, and a
+render-graph dump when the question is what the frame declared. All three depend on meaningful GPU
+object and pass labels.
+
+## Dump the compiled frame
+
+```bash
+LMX_GRAPH_DUMP=/tmp/luminex-frame.txt xmake run App
+```
+
+The path must be absolute. The first frame the run compiles is written and no later one is, so the
+file is the same whether the run lasted one frame or ten thousand. It lists the imported resources,
+the declared sinks, each scheduled pass with its uses in schedule order, each culled pass with the
+reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
+driver-reported value, so it answers "was this pass declared, ordered, and kept?" — not "how long did
+it take", which is the timing trace's question.
+
+Reach for it first when a pass appears to do nothing: a pass listed under `culled` never ran, and
+its reason says whether it produces nothing or no sink reaches it.
 
 ## Capture and inspect a frame
 

@@ -19,7 +19,10 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
-  declared fresh every frame and validates its declarations before any of them reach the GPU.
+  declared fresh every frame and validates its declarations before any of them reach the GPU. It
+  declares raster, compute, and copy passes over imported resources with per-subresource uses,
+  culls every pass no declared sink reaches, and answers with a `CompiledFrameRecord` describing
+  the frame it encoded; `GraphDump.h` renders that record as deterministic text.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).
