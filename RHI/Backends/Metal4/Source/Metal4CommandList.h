@@ -13,10 +13,9 @@ namespace lmx::rhi::metal4 {
 
 class Metal4ComputePipeline;
 
-// How many passes of one frame carry timestamps, counting every kind. Sized like kUniformRingBytes
-// -- a fixed
-// per-frame budget that a real frame is expected to stay under, and whose exhaustion is a hard
-// error rather than a silently dropped measurement.
+// How many passes of one frame carry timestamps, counting every pass kind. Sized like
+// kUniformRingBytes -- a fixed per-frame budget that a real frame is expected to stay under, and
+// whose exhaustion is a hard error rather than a silently dropped measurement.
 inline constexpr uint32_t kMaxTimedPassesPerFrame = 16;
 
 // Two timestamps per pass: one before its encoder opens, one after it closes.
@@ -45,10 +44,10 @@ struct Metal4FrameTimestamps {
 //
 // It owns nothing that outlives a frame. The command buffer, the argument table and the uniform
 // ring belong to the device (which outlives every command list it hands out), so all three are
-// held as raw pointers; only the render command encoder -- created and destroyed inside a single
-// beginRenderPass/endRenderPass pair -- is reference-counted here, because
-// renderCommandEncoder() returns an autoreleased (+0) object that must survive the local
-// autorelease pool it was created in.
+// held as raw pointers; only the pass encoders -- each created and destroyed inside a single
+// begin/end pair -- are reference-counted here, because renderCommandEncoder() and
+// computeCommandEncoder() return autoreleased (+0) objects that must survive the local autorelease
+// pool they were created in.
 //
 // Those per-frame pointers are *not* fixed at construction: the device owns one argument table,
 // one uniform ring and one timestamp slot per frame in flight and hands this list the current
@@ -73,14 +72,17 @@ struct Metal4FrameTimestamps {
 // send, MTL4ArgumentTable.hpp:80); bindSampler is MTL::SamplerState::gpuResourceID() (a scalar
 // send, MTLSampler.hpp:337) into MTL4::ArgumentTable::setSamplerState() (a void send,
 // MTL4ArgumentTable.hpp:179). So no path produces a +0 object.
-// textureBarrier records a flag and touches Metal not at all; the barrier it defers
-// is MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside
-// beginRenderPass's existing pool.
+// bindStorageBuffer and bindStorageTexture add only scalar sends of the same kind, and
+// bindStorageTexture's view lookup creates its own pool on the one path that allocates a view.
+// textureBarrier accumulates queue stages and touches Metal not at all; the barrier it defers is
+// MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside the opening
+// pass's existing pool.
 //
-// Exactly one pool is load-bearing, in beginRenderPass: renderCommandEncoder() is the only
-// selector here that returns +0. endRenderPass keeps a pool too (symmetry, and cheap insurance
-// against a teardown path that starts autoreleasing) but it is *not* currently carrying
-// anything -- endEncoding() is a void sendMessage and the encoder reset is a plain release.
+// Two pools are load-bearing, in beginRenderPass and beginComputePass: the encoder factories are
+// the only selectors here that return +0. The matching end calls keep a pool too (symmetry, and
+// cheap insurance against a teardown path that starts autoreleasing) but neither is *currently*
+// carrying anything -- endEncoding() is a void sendMessage and the encoder reset is a plain
+// release.
 class Metal4CommandList final : public CommandList {
 public:
     explicit Metal4CommandList(MTL4::CommandBuffer* commandBuffer)
