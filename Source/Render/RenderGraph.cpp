@@ -141,6 +141,16 @@ bool containsRange(const ResolvedRange& resolved, const rhi::Texture& texture) {
 }
 
 //======================================================================================================================
+// Whether every subresource of `inner` is one of `outer`'s. Ranges are rectangles, so this is exact
+// on a single range and deliberately not extended to a union of several: two barriers whose ranges
+// together cover a reader do not each order it, and treating them as if they did is the mistake
+// this check exists to avoid.
+bool enclosesRange(const ResolvedRange& outer, const ResolvedRange& inner) {
+    return outer.firstMip <= inner.firstMip && inner.lastMip <= outer.lastMip &&
+           outer.firstLayer <= inner.firstLayer && inner.lastLayer <= outer.lastLayer;
+}
+
+//======================================================================================================================
 // Two ranges overlap only when they share a subresource, which takes both axes intersecting: mip 1
 // of layer 0 and mip 1 of layer 1 are different subresources.
 bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
@@ -715,41 +725,54 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
 
 //======================================================================================================================
 std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& schedule) const {
-    // What each resource was last written as, until a barrier makes that write visible. One
-    // transition serves every later reader; writing a resource again puts it back in a producing
-    // state and so needs the transition again.
-    struct PendingWrite {
-        bool active = false;
+    // What each resource was last written as, and which of its subresources a barrier has since
+    // made visible to a reader. Writing a resource again puts it back in a producing state and
+    // clears what was covered, so the transition is owed again.
+    //
+    // Coverage is per emitted range rather than per resource: a barrier orders the passes it sits
+    // between, so a reader of mip 1 is not ordered by a barrier that named mip 0 for an earlier
+    // reader. Whole-resource declarations -- what every raster pass here makes -- produce one
+    // whole-resource range that encloses every later whole-resource reader, so one transition still
+    // serves them all.
+    struct WriteState {
+        bool written = false;
         rhi::TextureUse textureUse = rhi::TextureUse::RenderTarget;
         rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
+        std::vector<ResolvedRange> covered;
     };
-    std::vector<PendingWrite> pending(m_resources.size());
+    std::vector<WriteState> pending(m_resources.size());
     std::vector<DebugTransition> transitions;
 
     for (const uint32_t passIndex : schedule.passes) {
         const Pass& pass = m_passes[passIndex];
 
-        // One barrier per resource the pass reads, from the use that last wrote it. Several reads
-        // of one resource collapse into the range that covers them all, because the transition
-        // belongs to the resource rather than to any single binding.
+        // At most one barrier per resource the pass reads, from the use that last wrote it. Several
+        // reads of one resource collapse into the range that covers them all, because the
+        // transition belongs to the resource rather than to any single binding.
         for (uint32_t index = 0; index < pass.declarations.size(); ++index) {
             const Declaration& read = pass.declarations[index];
-            if (read.isWrite || !pending[read.resource].active) {
+            if (read.isWrite || !pending[read.resource].written) {
                 continue;
             }
-            bool alreadyCovered = false;
+            bool declaredEarlier = false;
             for (uint32_t earlier = 0; earlier < index; ++earlier) {
-                alreadyCovered =
-                    alreadyCovered || (!pass.declarations[earlier].isWrite &&
-                                       pass.declarations[earlier].resource == read.resource);
+                declaredEarlier =
+                    declaredEarlier || (!pass.declarations[earlier].isWrite &&
+                                        pass.declarations[earlier].resource == read.resource);
             }
-            if (alreadyCovered) {
+            if (declaredEarlier) {
                 continue;
             }
 
             const Resource& resource = m_resources[read.resource];
             DebugTransition transition{.beforePass = passIndex, .resource = read.resource};
             if (resource.kind == ResourceKind::Buffer) {
+                // A buffer declaration names no byte range, so the first barrier covers everything
+                // a later reader could ask for.
+                if (!pending[read.resource].covered.empty()) {
+                    continue;
+                }
+                pending[read.resource].covered.push_back({});
                 transition.kind = GraphResourceKind::Buffer;
                 transition.bufferFrom = pending[read.resource].bufferUse;
                 transition.bufferTo = bufferUseOf(pass.kind, read.role);
@@ -764,23 +787,32 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                         unionRange(resolveRange(covered, *resource.texture),
                                    resolveRange(other.range, *resource.texture), *resource.texture);
                 }
+                const ResolvedRange resolved = resolveRange(covered, *resource.texture);
+                bool alreadyOrdered = false;
+                for (const ResolvedRange& emitted : pending[read.resource].covered) {
+                    alreadyOrdered = alreadyOrdered || enclosesRange(emitted, resolved);
+                }
+                if (alreadyOrdered) {
+                    continue;
+                }
+                pending[read.resource].covered.push_back(resolved);
                 transition.kind = GraphResourceKind::Texture;
                 transition.range = covered;
                 transition.textureFrom = pending[read.resource].textureUse;
                 transition.textureTo = textureUseOf(pass.kind, read.role);
             }
             transitions.push_back(transition);
-            pending[read.resource].active = false;
         }
 
         for (const Declaration& declaration : pass.declarations) {
             if (!declaration.isWrite) {
                 continue;
             }
-            pending[declaration.resource] = {.active = true,
+            pending[declaration.resource] = {.written = true,
                                              .textureUse =
                                                  textureUseOf(pass.kind, declaration.role),
-                                             .bufferUse = bufferUseOf(pass.kind, declaration.role)};
+                                             .bufferUse = bufferUseOf(pass.kind, declaration.role),
+                                             .covered = {}};
         }
     }
     return transitions;

@@ -1409,3 +1409,95 @@ TEST_CASE("a culled pass is still validated", "[render][graph]") {
     REQUIRE(schedule.error().message.contains("lmx.pass.broken"));
     REQUIRE(schedule.error().message.contains("D32Float"));
 }
+
+//======================================================================================================================
+// A barrier orders the passes it sits between, so the range it names has to cover the reader it
+// sits in front of. One writer of the whole chain and two readers of different mips is the case
+// that tells the two rules apart: "one transition per write" would leave the second reader
+// unordered, and only the second reader's own barrier states the dependency it actually has.
+TEST_CASE("each reader of a distinct range gets its own transition", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture first{64, 64, "first"};
+    FakeTexture second{64, 64, "second"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "first");
+    const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "second");
+
+    ComputePassDesc write;
+    write.textureWrites.push_back(bloom);
+    graph.addComputePass("lmx.pass.write", write, kNoWork);
+
+    PassDesc readMip0;
+    readMip0.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 0, .mipLevelCount = 1}});
+    readMip0.color = ColorAttachment{.handle = a};
+    graph.addPass("lmx.pass.readMip0", readMip0, kNoWork);
+
+    PassDesc readMip1;
+    readMip1.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    readMip1.color = ColorAttachment{.handle = b};
+    graph.addPass("lmx.pass.readMip1", readMip1, kNoWork);
+
+    graph.exportTexture(nextVersion(a));
+    graph.exportTexture(nextVersion(b));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.size() == 2);
+    REQUIRE(record.debug.transitions[0].beforePass == 1);
+    REQUIRE(record.debug.transitions[0].range.baseMipLevel == 0);
+    REQUIRE(record.debug.transitions[1].beforePass == 2);
+    REQUIRE(record.debug.transitions[1].range.baseMipLevel == 1);
+
+    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.write",
+                                                        "end compute",
+                                                        "barrier chain mips[0..0] layers[0..] "
+                                                        "StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.readMip0", "end",
+                                                        "barrier chain mips[1..1] layers[0..] "
+                                                        "StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.readMip1", "end"});
+}
+
+//======================================================================================================================
+// The other half of the same rule, and what keeps the shipped frame's barrier count where M4 left
+// it: a reader whose subresources an earlier barrier already named is already ordered, so a second
+// barrier would be pure cost. The first reader here takes the whole chain, which encloses the
+// second reader's single mip.
+TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture first{64, 64, "first"};
+    FakeTexture second{64, 64, "second"};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "first");
+    const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "second");
+
+    ComputePassDesc write;
+    write.textureWrites.push_back(bloom);
+    graph.addComputePass("lmx.pass.write", write, kNoWork);
+
+    PassDesc readAll;
+    readAll.textureReads.push_back(nextVersion(bloom));
+    readAll.color = ColorAttachment{.handle = a};
+    graph.addPass("lmx.pass.readAll", readAll, kNoWork);
+
+    PassDesc readMip2;
+    readMip2.textureReads.push_back({nextVersion(bloom), {.baseMipLevel = 2, .mipLevelCount = 1}});
+    readMip2.color = ColorAttachment{.handle = b};
+    graph.addPass("lmx.pass.readMip2", readMip2, kNoWork);
+
+    graph.exportTexture(nextVersion(a));
+    graph.exportTexture(nextVersion(b));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.size() == 1);
+    REQUIRE(commands.events == std::vector<std::string>{"begin compute lmx.pass.write",
+                                                        "end compute",
+                                                        "barrier chain StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.readAll", "end",
+                                                        "begin lmx.pass.readMip2", "end"});
+}

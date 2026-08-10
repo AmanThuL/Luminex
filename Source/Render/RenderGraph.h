@@ -453,11 +453,19 @@ public:
     /// message; a caller that wants the failure as a value calls compile() itself.
     ///
     /// The synchronisation this emits is read-after-write, derived from the declarations alone: a
-    /// resource an earlier pass wrote and a later pass reads gets one barrier before the first pass
-    /// to read it, from the use that wrote it to the use that reads it, and another only if a later
-    /// pass writes it again. Write-after-write between two passes is ordered by the version chain
-    /// but emits no barrier of its own. An export emits nothing either -- it roots a result for the
-    /// caller to read once the queue drains, which is not another pass reading it.
+    /// resource an earlier pass wrote and a later pass reads gets a barrier before that pass, from
+    /// the use that wrote it to the use that reads it. Write-after-write between two passes is
+    /// ordered by the version chain but emits no barrier of its own. An export emits nothing either
+    /// -- it roots a result for the caller to read once the queue drains, which is not another pass
+    /// reading it.
+    ///
+    /// Every reader's declared subresources are covered: a later reader is left unbarriered only
+    /// when an already-emitted barrier for that same write named a range enclosing the whole of
+    /// what it reads. A barrier orders the passes it sits between, so one that named mip 0 for an
+    /// earlier reader does not order a later reader of mip 1, and that reader gets its own.
+    /// Whole-resource declarations -- what every raster pass here makes -- yield one whole-resource
+    /// barrier that encloses every later whole-resource read, so the common frame still transitions
+    /// once. Writing the resource again clears what was covered and owes the transition afresh.
     ///
     /// A raster pass must declare an attachment; a pass with no attachment is a compute or copy
     /// pass and is declared through the path that says so. The RHI's own attachment rules bind here
