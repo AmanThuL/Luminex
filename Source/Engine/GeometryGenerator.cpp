@@ -1,3 +1,8 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file GeometryGenerator.cpp
+/// @brief Implements deterministic procedural geometry generation.
+//----------------------------------------------------------------------------------------------------------------------
+
 #include "Engine/GeometryGenerator.h"
 
 #include "Core/Assert.h"

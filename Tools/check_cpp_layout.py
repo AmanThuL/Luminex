@@ -14,10 +14,11 @@ from typing import Any, BinaryIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CPP_ROOTS = ("Source", "Tests")
+CPP_ROOTS = ("Source", "RHI", "Tests")
 FUNCTION_SYMBOL_KINDS = {6, 9, 12}  # Method, Constructor, Function (LSP SymbolKind)
 RULER = re.compile(r"^\s*//.*(?:={8,}|-{8,})")
 SEPARATOR_BODY = re.compile(r"^//={100,}$")
+FILE_RULER = "//" + "-" * 118
 
 
 class LayoutSetupError(RuntimeError):
@@ -174,7 +175,7 @@ def check_layout(path: Path, text: str, starts: set[int]) -> list[str]:
             indent = line[: len(line) - len(stripped)]
             if line != expected_separator(indent) or len(line) != 120:
                 errors.append(f"{path}:{index + 1}: malformed function separator")
-        elif RULER.match(line):
+        elif RULER.match(line) and not (index in {0, 3} and line == FILE_RULER):
             errors.append(f"{path}:{index + 1}: alternate decorative ruler")
 
     for index in sorted(separators - claimed):

@@ -1,6 +1,6 @@
 """Load and validate a Luminex capture-schema sidecar (<bundle>.gputrace.schema.json, version 1).
 
-The sidecar is written by Source/RHI/CaptureSchema.cpp on every endCapture() call. This module
+The sidecar is written by RHI/Source/CaptureSchema.cpp on every endCapture() call. This module
 loads the versioned JSON into plain dataclasses and validates its required keys; geometry and
 content cross-checks against the bundle live in bundlelib.join().
 
@@ -12,7 +12,7 @@ import pathlib
 
 SUPPORTED_VERSION = 1
 
-# The sidecar is written next to the bundle by every App-driven capture (Source/RHI/
+# The sidecar is written next to the bundle by every App-driven capture (RHI/Source/
 # CaptureSchema.cpp's writeJson, called from Metal4Capture's endCapture()). Every SchemaError
 # below carries this alongside the offending path -- the usual cause of a schema failure is "the
 # sidecar doesn't exist / is stale" rather than a bug in this module.

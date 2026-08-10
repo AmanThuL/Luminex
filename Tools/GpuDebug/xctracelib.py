@@ -221,7 +221,7 @@ def check_anomalies(aggregate_result: dict) -> list:
             f"0 of {len(observed)} observed encoder label(s) contain {LMX_LABEL_MARKER!r}{seen}",
             "check the right App binary/scene was profiled, and that its render passes still "
             "label their command encoders with an 'lmx.' prefix "
-            "(Source/RHI/Metal4/Metal4CommandList.cpp)")]
+            "(RHI/Backends/Metal4/Source/Metal4CommandList.cpp)")]
 
     anomalies = []
     for label in sorted(lmx_labelled):

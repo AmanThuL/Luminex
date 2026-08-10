@@ -1,3 +1,8 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file SceneLibrary.cpp
+/// @brief Implements the scene catalog and lazy scene construction.
+//----------------------------------------------------------------------------------------------------------------------
+
 #include "Engine/SceneLibrary.h"
 
 #include "Core/Assert.h"
@@ -28,8 +33,8 @@ constexpr std::array kSceneDescriptors{
     SceneDescriptor{"damaged-helmet", "Damaged Helmet", SceneRole::Sample,
                     "Khronos DamagedHelmet sample",
                     "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", false, &loadHelmetScene},
-    // Fully code-generated: no asset requirement, so an empty availabilityPath makes it always
-    // available (see repoPathExists below).
+    // Code-generated diagnostics with an internal environment fallback: no catalog-level asset
+    // requirement, so an empty availabilityPath keeps it always available (see repoPathExists).
     SceneDescriptor{"material-lab", "MaterialLab", SceneRole::Diagnostic, "", "", false,
                     &loadMaterialLabScene},
 };

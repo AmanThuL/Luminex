@@ -1211,10 +1211,10 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
 
 namespace {
 
-// MaterialLab's three depth probes, mirrored from Source/Engine/MaterialLab.cpp: 0.5-unit cubes on
-// the initial camera's forward axis at these distances, offset laterally so each occupies its own
-// tangent-space band. `distance` is to the cube's *centre*; the surface the camera sees is its
-// front face, one half-extent nearer.
+// MaterialLab's three depth probes, mirrored from Source/Engine/MaterialLab.cpp: 0.5-unit cubes in
+// the X=28 depth lane at these distances, offset laterally so each occupies its own tangent-space
+// band. `distance` is to the cube's *centre*; the surface the camera sees is its front face, one
+// half-extent nearer.
 struct DepthProbe {
     const char* name;
     float distance;
@@ -1225,7 +1225,8 @@ constexpr std::array<DepthProbe, 3> kMaterialLabDepthProbes = {{
     {"mid", 10.0f, 1.0f},
     {"far", 40.0f, 7.0f},
 }};
-constexpr float kMaterialLabCameraDistance = 80.0f;
+constexpr float kMaterialLabCameraDistance = 12.0f;
+constexpr float kMaterialLabDepthLaneX = 28.0f;
 constexpr float kDepthProbeHalfExtent = 0.25f;
 
 // Big enough that the farthest probe's front face is several pixels across: it subtends
@@ -1287,6 +1288,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     camera.nearZ = (*scene)->initialCamera.nearZ;
     camera.farZ = (*scene)->initialCamera.farZ;
     REQUIRE(camera.position.z == kMaterialLabCameraDistance);
+    camera.position.x = kMaterialLabDepthLaneX;
 
     std::vector<DrawItem> items;
     const SceneView view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
@@ -1340,7 +1342,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 
         // The point the camera actually sees: the centre of the cube's near face.
         const float faceDistance = probe.distance - kDepthProbeHalfExtent;
-        const glm::vec3 world{probe.lateralOffset, 0.0f,
+        const glm::vec3 world{kMaterialLabDepthLaneX + probe.lateralOffset, 0.0f,
                               kMaterialLabCameraDistance - probe.distance + kDepthProbeHalfExtent};
 
         const glm::vec4 clip = viewProj * glm::vec4(world, 1.0f);

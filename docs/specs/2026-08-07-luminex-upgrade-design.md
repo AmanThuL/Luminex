@@ -3,6 +3,8 @@
 **Date**: 2026-08-07
 **Status**: Implemented
 **Supersedes**: the current repo state (Premake + GLFW + Vulkan triangle test), which is treated as disposable.
+**Current sequencing**: decisions D1–D10 remain binding; [ADR 0007](../decisions/0007-d3d12-backend-target.md)
+and the [roadmap](../roadmap.md) supersede this historical spec's future-backend ordering.
 
 ## 1. Purpose & Goals
 

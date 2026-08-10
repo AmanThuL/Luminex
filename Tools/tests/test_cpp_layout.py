@@ -12,7 +12,20 @@ def separator(indent: str = "") -> str:
     return indent + "//" + "=" * (118 - len(indent))
 
 
+def file_header(name: str) -> list[str]:
+    return [layout.FILE_RULER, f"/// @file {name}", "/// @brief Describes this file.", layout.FILE_RULER]
+
+
 class CppLayoutTests(unittest.TestCase):
+    def test_file_header_hyphen_envelope_is_not_a_decorative_ruler(self) -> None:
+        lines = [*file_header("Empty.cpp"), "", "#include <metal>"]
+        self.assertEqual(layout.check_layout(Path("Source/Empty.cpp"), "\n".join(lines), set()), [])
+
+    def test_hyphen_ruler_outside_file_header_is_rejected(self) -> None:
+        lines = [*file_header("Empty.cpp"), "", layout.FILE_RULER]
+        errors = layout.check_layout(Path("Source/Empty.cpp"), "\n".join(lines), set())
+        self.assertTrue(any("alternate" in error for error in errors))
+
     def test_function_and_rationale_comment_claim_one_separator(self) -> None:
         text = "\n".join([separator(), "// Explains a lifetime invariant.", "void draw() {}"])
         self.assertEqual(layout.check_layout(Path("Source/Draw.cpp"), text, {2}), [])

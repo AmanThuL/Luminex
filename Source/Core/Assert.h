@@ -1,9 +1,14 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file Assert.h
+/// @brief Defines process-fatal contract assertions used throughout Luminex.
+//----------------------------------------------------------------------------------------------------------------------
+
 #pragma once
 #include "Core/Log.h"
 
 #include <cstdlib>
 
-// Fatal contract check — enabled in ALL build configs (spec §6).
+/// Fatal contract check — enabled in ALL build configs (spec §6).
 #define LMX_ASSERT(cond, msg)                                                                      \
     do {                                                                                           \
         if (!(cond)) {                                                                             \

@@ -1,3 +1,8 @@
+//----------------------------------------------------------------------------------------------------------------------
+/// @file main.cpp
+/// @brief Runs the windowed editor or offscreen screenshot application.
+//----------------------------------------------------------------------------------------------------------------------
+
 #include "App/AppOptions.h"
 #include "App/EditorShell.h"
 #include "App/Screenshot.h"
