@@ -32,7 +32,13 @@ struct Material {
     glm::vec4 albedo{1.0f};
     glm::vec3 fresnelR0{0.04f}; // dielectric default; metals get their own base colour
     float roughness = 0.5f;     // converted to shininess as 1 - roughness
-    float metallic = 1.0f;    // dielectric/metal mix; unread by the fragment until the GGX rewrite
+    // dielectric/metal mix; unread by the fragment until the GGX rewrite. Deliberately diverges
+    // from glTF's material default of 1.0 (GltfMaterial keeps that spec default, and Scene.cpp
+    // sets this explicitly for every glTF material): every non-glTF material here -- MaterialLab's
+    // sphere grid, known-color patches, ramp/probe materials, test materials -- relies on
+    // Material{} and never sets metallic, so this default has to agree with fresnelR0's dielectric
+    // default above or the GGX rewrite would render them all fully metallic.
+    float metallic = 0.0f;
     glm::vec3 emissive{0.0f}; // linear; unread by the fragment until the GGX rewrite
     glm::mat4 uvTransform{1.0f};
 };
