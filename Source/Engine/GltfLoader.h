@@ -16,6 +16,12 @@ struct GltfMaterial {
     glm::vec4 baseColorFactor{1.f};
     int baseColorImage = -1, normalImage = -1; // indices into images
     float metallic = 1.f, roughness = 1.f;
+    // glTF 2.0 packs this single texture as roughness = G, metallic = B (R and A unused).
+    int metallicRoughnessImage = -1;
+    // glTF 2.0 packs ambient occlusion as R.
+    int occlusionImage = -1;
+    int emissiveImage = -1;
+    glm::vec3 emissiveFactor{0.f}; // linear, per the glTF spec -- not an sRGB-authored constant
 };
 
 // stb-decoded, always tightly packed RGBA8 (4 bytes/pixel, no row padding). Entries not referenced
@@ -43,8 +49,9 @@ struct GltfScene {
 };
 
 // Loads a .glb (embedded buffers/images) or .gltf (+ external .bin and image files, resolved
-// relative to path's directory) via cgltf + stb_image. Only meshes, materials, and base-color or
-// normal images reachable from the active scene are decoded. Every used primitive becomes GeoData;
+// relative to path's directory) via cgltf + stb_image. Only meshes, materials, and base-color,
+// normal, metallic-roughness, occlusion, or emissive images reachable from the active scene are
+// decoded. Every used primitive becomes GeoData;
 // primitives without a TANGENT attribute get one generated (per-triangle from UV deltas,
 // accumulated per-vertex, Gram-Schmidt orthogonalized against the normal, w from the bitangent
 // cross sign; degenerate/absent UVs fall back to cross(up, normal)). Node transforms are

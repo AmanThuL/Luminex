@@ -480,12 +480,29 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
                 return std::unexpected(index.error());
             }
             out.baseColorImage = *index;
+            auto mrIndex = imageIndex(pbr.metallic_roughness_texture, "metallic-roughness texture");
+            if (!mrIndex) {
+                return std::unexpected(mrIndex.error());
+            }
+            out.metallicRoughnessImage = *mrIndex;
         }
         auto normalIndex = imageIndex(mat.normal_texture, "normal texture");
         if (!normalIndex) {
             return std::unexpected(normalIndex.error());
         }
         out.normalImage = *normalIndex;
+        auto occlusionIndex = imageIndex(mat.occlusion_texture, "occlusion texture");
+        if (!occlusionIndex) {
+            return std::unexpected(occlusionIndex.error());
+        }
+        out.occlusionImage = *occlusionIndex;
+        auto emissiveIndex = imageIndex(mat.emissive_texture, "emissive texture");
+        if (!emissiveIndex) {
+            return std::unexpected(emissiveIndex.error());
+        }
+        out.emissiveImage = *emissiveIndex;
+        out.emissiveFactor =
+            glm::vec3(mat.emissive_factor[0], mat.emissive_factor[1], mat.emissive_factor[2]);
         materialFlatIndex[i] = static_cast<uint32_t>(scene.materials.size());
         scene.materials.push_back(out);
         if (out.baseColorImage >= 0) {
@@ -493,6 +510,15 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
         }
         if (out.normalImage >= 0) {
             referencedImages[static_cast<size_t>(out.normalImage)] = true;
+        }
+        if (out.metallicRoughnessImage >= 0) {
+            referencedImages[static_cast<size_t>(out.metallicRoughnessImage)] = true;
+        }
+        if (out.occlusionImage >= 0) {
+            referencedImages[static_cast<size_t>(out.occlusionImage)] = true;
+        }
+        if (out.emissiveImage >= 0) {
+            referencedImages[static_cast<size_t>(out.emissiveImage)] = true;
         }
     }
     const uint32_t defaultMaterialIndex = static_cast<uint32_t>(scene.materials.size());
