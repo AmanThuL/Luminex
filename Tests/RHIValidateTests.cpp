@@ -50,6 +50,20 @@ private:
     uint32_t m_arrayLayers = 1;
 };
 
+// Heap is an interface and validatePlacement reads nothing but its size, so the bound a placement
+// is checked against is expressible without a device.
+struct FakeHeap final : Heap {
+
+    //==================================================================================================================
+    explicit FakeHeap(uint64_t size) : m_size(size) {}
+
+    //==================================================================================================================
+    uint64_t size() const override { return m_size; }
+
+private:
+    uint64_t m_size = 0;
+};
+
 // The same for buffers: the copy, fill, and barrier helpers read nothing but the allocation size,
 // and identity comparisons between two of these stand in for "the same buffer twice".
 struct FakeBuffer final : Buffer {
@@ -1389,4 +1403,32 @@ TEST_CASE("indirect arguments running past the buffer are rejected", "[rhi]") {
     const auto r = validateIndirectArgs(buffer, 8, sizeof(DrawIndirectArgs));
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().message.contains("past the buffer's"));
+}
+
+//======================================================================================================================
+// A heap with no bytes is a heap nothing can be placed in, which is a caller error rather than an
+// empty success.
+TEST_CASE("HeapDesc requires a size", "[rhi][validate]") {
+    REQUIRE_FALSE(validate(HeapDesc{.size = 0}).has_value());
+    REQUIRE(validate(HeapDesc{.size = 4096, .label = "lmx.test.heap"}).has_value());
+}
+
+//======================================================================================================================
+// The three ways a placement can be wrong, each caught before the driver sees it: a resource the
+// backend declined to size, an offset the resource's alignment does not divide, and a footprint
+// running off the end of the heap. The last is checked at the exact boundary from both sides,
+// because that is where an off-by-one lives.
+TEST_CASE("a placement is checked against its heap and its alignment", "[rhi][validate]") {
+    const FakeHeap heap{4096};
+
+    REQUIRE_FALSE(validatePlacement(heap, 0, {.size = 0, .alignment = 256}).has_value());
+    REQUIRE_FALSE(validatePlacement(heap, 0, {.size = 256, .alignment = 0}).has_value());
+
+    REQUIRE_FALSE(validatePlacement(heap, 128, {.size = 256, .alignment = 256}).has_value());
+    REQUIRE(validatePlacement(heap, 256, {.size = 256, .alignment = 256}).has_value());
+
+    // Exactly filling the heap is legal; one byte of size past it is not.
+    REQUIRE(validatePlacement(heap, 3840, {.size = 256, .alignment = 256}).has_value());
+    REQUIRE_FALSE(validatePlacement(heap, 3840, {.size = 512, .alignment = 256}).has_value());
+    REQUIRE_FALSE(validatePlacement(heap, 4096, {.size = 256, .alignment = 256}).has_value());
 }

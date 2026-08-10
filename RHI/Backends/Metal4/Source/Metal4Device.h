@@ -42,6 +42,13 @@ public:
                                                  const void* initialData) override;
     Result<std::unique_ptr<Texture>> createTexture(const TextureDesc& desc,
                                                    std::span<const TextureMip> mips) override;
+    Result<std::unique_ptr<Heap>> createHeap(const HeapDesc& desc) override;
+    Result<std::unique_ptr<Texture>> createPlacedTexture(Heap& heap, uint64_t offset,
+                                                         const TextureDesc& desc) override;
+    Result<std::unique_ptr<Buffer>> createPlacedBuffer(Heap& heap, uint64_t offset,
+                                                       const BufferDesc& desc) override;
+    SizeAlign textureSizeAlign(const TextureDesc& desc) const override;
+    SizeAlign bufferSizeAlign(const BufferDesc& desc) const override;
     Result<std::unique_ptr<Sampler>> createSampler(const SamplerDesc& desc) override;
     Result<std::unique_ptr<ShaderLibrary>> loadShaderLibrary(std::string_view pathNoExt) override;
     Result<std::unique_ptr<GraphicsPipeline>>

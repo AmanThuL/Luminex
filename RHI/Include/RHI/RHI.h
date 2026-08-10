@@ -209,6 +209,43 @@ public:
     virtual void readback(void* out, uint64_t outSize) = 0;
 };
 
+/// What one resource costs inside a heap: the bytes it occupies and the alignment its placement
+/// offset must satisfy. Both are the backend's answer for that exact descriptor, so a caller that
+/// packs resources into a heap asks rather than assuming a texel-count-times-size arithmetic that
+/// no driver promises.
+struct SizeAlign {
+    uint64_t size = 0;      ///< Bytes the resource occupies in a heap.
+    uint64_t alignment = 0; ///< Alignment, in bytes, its heap offset must be a multiple of.
+};
+
+/// Describes a placement heap: one device allocation resources are created inside at explicit
+/// offsets.
+struct HeapDesc {
+    uint64_t size = 0;      ///< Allocation size in bytes.
+    std::string_view label; ///< Diagnostic object label.
+};
+
+/// Owns one block of device-private memory that placed resources are created inside at
+/// caller-chosen offsets.
+///
+/// Placement is explicit and the heap tracks no hazards of its own: two resources whose byte ranges
+/// overlap share those bytes, and nothing in the backend orders one against the other. Every
+/// ordering between a placed resource and whatever last used the memory under it is the caller's,
+/// stated through the barriers on CommandList -- which is exactly what makes a heap the substrate a
+/// render graph aliases transients in, and what makes an unstated overlap silent corruption rather
+/// than a stall.
+///
+/// A Heap must outlive every resource placed in it, and must not outlive the Device that created
+/// it. Destroying it while the GPU still reads a resource placed in it is a caller error: the
+/// three-frames-in-flight pacing is what a caller proves retirement with.
+class Heap {
+public:
+    /// Destroys the heap after its owning device has finished using it.
+    virtual ~Heap() = default;
+    /// Returns the heap's size in bytes.
+    virtual uint64_t size() const = 0;
+};
+
 /// How a texture is being used at a barrier boundary. Grows per real feature demand, exactly
 /// like the rest of this header (ADR 0004).
 /// Identifies texture use on either side of an explicit barrier.
@@ -718,6 +755,29 @@ public:
     /// error and asserts.
     virtual Result<std::unique_ptr<Texture>>
     createTexture(const TextureDesc&, std::span<const TextureMip> mips = {}) = 0;
+
+    /// Creates a placement heap for resources the caller positions itself. See Heap for the
+    /// hazard-tracking contract the placed resources inherit.
+    virtual Result<std::unique_ptr<Heap>> createHeap(const HeapDesc&) = 0;
+
+    /// Creates a texture occupying `heap` from `offset`, which must be a multiple of the alignment
+    /// textureSizeAlign(desc) reports and must leave that call's size within the heap. The texture
+    /// has no initial contents -- a placed resource is device-private, so `desc` may not ask for
+    /// cpuReadback and there is no upload span -- and it must not outlive the heap.
+    virtual Result<std::unique_ptr<Texture>> createPlacedTexture(Heap&, uint64_t offset,
+                                                                 const TextureDesc&) = 0;
+    /// The buffer counterpart of createPlacedTexture, on the same terms and with bufferSizeAlign as
+    /// the size and alignment source.
+    virtual Result<std::unique_ptr<Buffer>> createPlacedBuffer(Heap&, uint64_t offset,
+                                                               const BufferDesc&) = 0;
+
+    /// Reports what `desc` costs inside a heap. Answered by the backend for that exact descriptor
+    /// and stable for the device's lifetime, so a caller may plan a whole heap's layout from it
+    /// before creating anything.
+    virtual SizeAlign textureSizeAlign(const TextureDesc&) const = 0;
+    /// The buffer counterpart of textureSizeAlign.
+    virtual SizeAlign bufferSizeAlign(const BufferDesc&) const = 0;
+
     /// Creates an immutable sampler.
     virtual Result<std::unique_ptr<Sampler>> createSampler(const SamplerDesc&) = 0;
     /// pathNoExt: resolves "<pathNoExt>.metallib" (precompiled) first, else

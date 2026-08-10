@@ -508,6 +508,40 @@ Result<void> validate(const SwapchainDesc& desc) {
 }
 
 //======================================================================================================================
+Result<void> validate(const HeapDesc& desc) {
+    if (desc.size == 0) {
+        return invalid("HeapDesc.size must be greater than zero");
+    }
+    return {};
+}
+
+//======================================================================================================================
+// A zero footprint is checked as well as the bounds: it means the backend declined to size the
+// descriptor, and placing at an alignment of zero would divide by it below.
+Result<void> validatePlacement(const Heap& heap, uint64_t offset, const SizeAlign& footprint) {
+    if (footprint.size == 0 || footprint.alignment == 0) {
+        return invalid("a placed resource must have a non-zero size and alignment; this descriptor "
+                       "has none, so it cannot be positioned in a heap");
+    }
+    if (offset % footprint.alignment != 0) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc,
+                  "placement offset " + std::to_string(offset) + " is not a multiple of the " +
+                      std::to_string(footprint.alignment) + "-byte alignment this resource needs"});
+    }
+    // Subtraction rather than offset + size so a caller-supplied offset near the top of the range
+    // cannot wrap past the comparison.
+    if (offset > heap.size() || footprint.size > heap.size() - offset) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "a placement of " + std::to_string(footprint.size) +
+                                              " bytes at offset " + std::to_string(offset) +
+                                              " runs past the end of a " +
+                                              std::to_string(heap.size()) + "-byte heap"});
+    }
+    return {};
+}
+
+//======================================================================================================================
 Result<void> validateRenderPassTargets(const Texture* color, const Texture* depth) {
     if (color == nullptr && depth == nullptr) {
         return invalid("RenderPassDesc: a pass needs at least one attachment -- set colorTarget, "

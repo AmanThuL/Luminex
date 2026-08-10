@@ -72,6 +72,25 @@ private:
     ResidencyRegistration m_residency;
 };
 
+// The placement heap behind rhi::Heap. Registered in the residency set as a whole: a heap is an
+// MTL::Allocation, and making it resident makes every resource placed in it resident too, so the
+// placed wrappers below carry no registration of their own and no per-frame membership churn
+// follows a frame's transients.
+class Metal4Heap final : public Heap {
+public:
+    Metal4Heap(NS::SharedPtr<MTL::Heap> heap, NS::SharedPtr<MTL::ResidencySet> residency)
+        : m_heap(std::move(heap)), m_residency(std::move(residency), m_heap.get()) {}
+
+    uint64_t size() const override { return m_heap->size(); }
+
+    MTL::Heap* handle() const { return m_heap.get(); }
+
+private:
+    // Declared before m_residency for the reason given in Metal4Buffer.
+    NS::SharedPtr<MTL::Heap> m_heap;
+    ResidencyRegistration m_residency;
+};
+
 // Everything a Metal4Texture reports about itself, gathered from the descriptor that created it.
 // readbackBytesPerPixel is rhi::bytesPerPixel of that format for a texture created with
 // TextureDesc.cpuReadback, and 0 for every other texture -- including the swapchain's drawables,

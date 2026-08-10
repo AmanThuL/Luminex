@@ -19,6 +19,12 @@ Result<void> validate(const GraphicsPipelineDesc& desc);
 Result<void> validate(const ComputePipelineDesc& desc);
 /// Validates a swapchain descriptor before backend object creation.
 Result<void> validate(const SwapchainDesc& desc);
+/// Validates a heap descriptor before backend object creation.
+Result<void> validate(const HeapDesc& desc);
+
+/// Validates one placement: that `footprint` is a real size and alignment, that `offset` satisfies
+/// the alignment, and that the whole footprint fits inside `heap`.
+Result<void> validatePlacement(const Heap& heap, uint64_t offset, const SizeAlign& footprint);
 
 /// Validates the attachment combination for a render pass.
 Result<void> validateRenderPassTargets(const Texture* color, const Texture* depth);
