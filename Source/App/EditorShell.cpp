@@ -362,6 +362,11 @@ void drawPassRow(const app::GraphInspectorPassRow& pass, std::optional<uint32_t>
     if (pass.cullReason) {
         header += std::format(" -- culled: {}", cullReasonLabel(*pass.cullReason));
     }
+    // TreeNode with no explicit ID derives one from the whole label, so a label that changes every
+    // frame (the GPU time above) would reopen a fresh, always-collapsed node each frame. "###"
+    // tells ImGui to hash only what follows it for the ID while still displaying everything before
+    // it, so the visible text can keep changing while the node's open/closed state stays put.
+    header += std::format("###p{}", pass.index);
     ImGui::PushID(static_cast<int>(pass.index));
     if (ImGui::TreeNode(header.c_str())) {
         for (const app::GraphInspectorUseRow& use : pass.uses) {
