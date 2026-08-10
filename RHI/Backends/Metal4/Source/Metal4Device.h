@@ -57,6 +57,8 @@ public:
 
     uint64_t passTimingsFrame() const override { return m_resolvedFrame; }
 
+    uint64_t frameNumber() const override { return m_frameNumber; }
+
     std::string_view deviceName() const override { return m_deviceName; }
 
     // Backend-internal, same role as the handle() on every resource wrapper: sibling Metal 4

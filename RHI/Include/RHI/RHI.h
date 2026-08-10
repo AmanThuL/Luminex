@@ -771,6 +771,18 @@ public:
     /// Returns the frame number the current pass timings were measured on.
     virtual uint64_t passTimingsFrame() const = 0;
 
+    /// The newest frame beginFrame() has opened, in the same numbering passTimingsFrame() reports:
+    /// frames count from one in beginFrame() order, and zero means beginFrame() has not been called
+    /// yet. It names the frame being *built* where passTimingsFrame() names the frame most recently
+    /// *measured*, so the two are equal only in the degenerate case of a drained device, and a
+    /// caller joining CPU-side per-frame state to retired GPU timings compares one against the
+    /// other rather than assuming they agree.
+    ///
+    /// The value does not change while a frame is open, so everything recorded between beginFrame()
+    /// and endFrame() belongs to the number this reports.
+    /// Returns the number of the newest frame beginFrame has opened.
+    virtual uint64_t frameNumber() const = 0;
+
     /// Returns the backend device's human-readable name.
     virtual std::string_view deviceName() const = 0;
 };
