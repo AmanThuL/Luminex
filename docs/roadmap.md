@@ -10,9 +10,9 @@ without expanding it.
 
 ## Current baseline
 
-M3 renders Sponza and Damaged Helmet through a shadow-mapped, normal-mapped, gamma-correct forward
-pipeline. M3.1 established the audited engineering baseline without adding a rendering feature; its
-shipped evidence and remaining limits are recorded in `docs/milestones/m3.1.md`.
+M4 renders Sponza, Damaged Helmet, and MaterialLab through a graph-declared, scene-linear HDR
+pipeline with physically based glTF materials, deterministic mip/IBL assets, and reversed-Z depth.
+Its shipped evidence and remaining limits are recorded in `docs/milestones/m4.md`.
 
 ## M4 — Correct image formation
 
