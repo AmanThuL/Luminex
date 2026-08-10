@@ -318,7 +318,8 @@ private:
     // refilled every frame, and a one-float exposure result that survives across frames (spec 9's
     // feedback buffer). Neither is a graph transient because both must outlive the frame that
     // wrote them -- the histogram to be read by the same frame's resolve pass, the exposure result
-    // to be read back by the App for the *next* frame.
+    // to be read directly, GPU-side, by the *next* frame's scene and sky passes (never a CPU
+    // readback -- that would stall the three-frames-in-flight pipeline every auto-exposure frame).
     std::unique_ptr<rhi::Buffer> m_histogramBuffer;
     std::unique_ptr<rhi::Buffer> m_exposureBuffer;
     std::unique_ptr<rhi::Sampler> m_linearSampler;

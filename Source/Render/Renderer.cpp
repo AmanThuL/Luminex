@@ -728,15 +728,15 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(buffer.error());
     }
-    // One float; cpuReadback lets the App (main.cpp) read the resolved value back for the next
-    // frame's SceneView::autoExposureOverride (spec 9's feedback loop, realised as a CPU sync
-    // boundary rather than a same-timeline GPU buffer read -- see Renderer.h's exposureBuffer()).
+    // One float, persistent across frames (spec 9's feedback buffer): the resolve pass writes it,
+    // and -- when auto-exposure is on -- the *next* frame's scene and sky passes read it directly
+    // as a storage buffer (declarePasses()'s exposureCurrent/bufferReads below), never through a
+    // CPU readback. No cpuReadback flag: nothing on the App side ever reads this buffer back.
     {
         constexpr float kInitialExposure = 1.0f;
         if (auto buffer = device.createBuffer({.size = sizeof(float),
                                                .storageRead = true,
                                                .storageWrite = true,
-                                               .cpuReadback = true,
                                                .label = "lmx.render.exposureBuffer"},
                                               &kInitialExposure);
             buffer) {
