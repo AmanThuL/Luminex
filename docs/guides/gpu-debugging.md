@@ -71,3 +71,40 @@ python3 -m unittest discover -s Tools/GpuDebug/tests -v
 
 These tests validate the parsers and report generation without requiring a GPU capture session.
 
+## Parity checks
+
+M5 added histogram auto-exposure and bloom as passes that run every frame by default; with both
+features off, `--screenshot` output must stay byte-identical to what the pre-M5 tip rendered.
+There is no golden-image automation for this -- the procedure below, re-run by hand, is the
+accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
+`LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Screenshot.cpp`), an undocumented-to-users env var that
+exists solely for this check.
+
+Build the baseline from the commit before the change under test (substitute the actual parent
+commit), then the tip, capturing all three scenes both times:
+
+```bash
+git worktree add /tmp/lmx-baseline <baseline-commit>
+cd /tmp/lmx-baseline && xmake setup -P . && xmake -P .
+for scene in sponza damaged-helmet material-lab; do
+  LMX_SCREENSHOT_NO_BLOOM=1 xmake run -P . App --scene "$scene" \
+    --screenshot "/tmp/lmx-baseline-$scene.bmp"
+done
+
+cd <worktree-under-test> && xmake -P .
+for scene in sponza damaged-helmet material-lab; do
+  LMX_SCREENSHOT_NO_BLOOM=1 xmake run -P . App --scene "$scene" \
+    --screenshot "/tmp/lmx-tip-$scene.bmp"
+done
+
+for scene in sponza damaged-helmet material-lab; do
+  cmp "/tmp/lmx-baseline-$scene.bmp" "/tmp/lmx-tip-$scene.bmp" && echo "$scene: IDENTICAL"
+done
+```
+
+`cmp` exits non-zero and names the first differing byte offset on any mismatch, so silence-implies-
+identical does not apply -- check that all three scenes actually printed `IDENTICAL`. Bloom's own
+effect is checked the opposite way: capture once more without `LMX_SCREENSHOT_NO_BLOOM` and confirm
+the file differs from the bloom-off capture (`cmp` reports a byte offset) and opens as a plausible
+image (no full-screen white, no NaN speckle) rather than asserting a specific diff.
+
