@@ -57,8 +57,20 @@ constexpr uint32_t kMinAnisotropy = 1;
 constexpr uint32_t kMaxAnisotropy = 16;
 
 //======================================================================================================================
+std::string extentOf(uint64_t width, uint64_t height) {
+    return std::to_string(width) + "x" + std::to_string(height);
+}
+
+//======================================================================================================================
 std::string extentOf(const Texture& texture) {
-    return std::to_string(texture.width()) + "x" + std::to_string(texture.height());
+    return extentOf(texture.width(), texture.height());
+}
+
+//======================================================================================================================
+// Whether two half-open intervals share a byte or a texel. Sizes are added in 64 bits so a texel
+// interval taken from 32-bit extents cannot wrap.
+bool overlaps(uint64_t firstStart, uint64_t firstSize, uint64_t secondStart, uint64_t secondSize) {
+    return firstStart < secondStart + secondSize && secondStart < firstStart + firstSize;
 }
 
 //======================================================================================================================
@@ -230,6 +242,176 @@ Result<void> validateTextureView(const Texture& texture, const TextureViewDesc& 
     if (view.format != Format::Unknown && !isSameFormatFamily(view.format, texture.format())) {
         return invalid("TextureViewDesc.format must belong to the texture's format family -- a "
                        "view may only reinterpret the sRGB transfer, not the bit layout");
+    }
+    return {};
+}
+
+//======================================================================================================================
+// Integer shifts again, for the same reason maxMipLevels uses them: a mip extent is exact integer
+// arithmetic, and the chain floors at one texel rather than at zero.
+uint32_t mipExtent(uint32_t base, uint32_t level) {
+    const uint32_t extent = base >> level;
+    return extent > 0 ? extent : 1;
+}
+
+//======================================================================================================================
+Result<void> validateBufferRange(const Buffer& buffer, const BufferRange& range) {
+    const uint64_t bufferSize = buffer.size();
+    if (range.offset >= bufferSize) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "BufferRange.offset " + std::to_string(range.offset) +
+                                              " is outside the buffer's " +
+                                              std::to_string(bufferSize) + " bytes"});
+    }
+    const uint64_t size = range.size == kWholeBuffer ? bufferSize - range.offset : range.size;
+    return validateBufferBytes(buffer, range.offset, size);
+}
+
+//======================================================================================================================
+Result<void> validateBufferBytes(const Buffer& buffer, uint64_t offset, uint64_t size) {
+    const uint64_t bufferSize = buffer.size();
+    if (size == 0) {
+        return invalid("a buffer range must cover at least one byte (use kWholeBuffer for the "
+                       "whole allocation)");
+    }
+    if (offset >= bufferSize) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "a buffer range starts at byte " +
+                                              std::to_string(offset) + ", outside the buffer's " +
+                                              std::to_string(bufferSize) + " bytes"});
+    }
+    // Compare against the remaining bytes so an enormous size cannot overflow the sum.
+    if (size > bufferSize - offset) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "a buffer range covers " + std::to_string(size) +
+                                              " bytes from byte " + std::to_string(offset) +
+                                              ", past the buffer's " + std::to_string(bufferSize)});
+    }
+    return {};
+}
+
+//======================================================================================================================
+Result<void> validateBufferCopy(const Buffer& source, uint64_t sourceOffset,
+                                const Buffer& destination, uint64_t destinationOffset,
+                                uint64_t size) {
+    if (auto ok = validateBufferBytes(source, sourceOffset, size); !ok) {
+        return ok;
+    }
+    if (auto ok = validateBufferBytes(destination, destinationOffset, size); !ok) {
+        return ok;
+    }
+    // Metal leaves an overlapping self-copy undefined rather than defining a direction for it.
+    if (&source == &destination && overlaps(sourceOffset, size, destinationOffset, size)) {
+        return invalid("copyBuffer: the source and destination ranges of one buffer overlap -- a "
+                       "copy has no defined direction, so the result would depend on the hardware");
+    }
+    return {};
+}
+
+//======================================================================================================================
+Result<void> validateTextureCopyRegion(const Texture& texture, const TextureCopyRegion& region) {
+    if (region.mipLevel >= texture.mipLevels()) {
+        return std::unexpected(Error{ErrorCode::InvalidDesc,
+                                     "TextureCopyRegion.mipLevel " +
+                                         std::to_string(region.mipLevel) +
+                                         " is outside the texture's " +
+                                         std::to_string(texture.mipLevels()) + " mip level(s)"});
+    }
+    if (region.arrayLayer >= texture.arrayLayers()) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "TextureCopyRegion.arrayLayer " +
+                                              std::to_string(region.arrayLayer) +
+                                              " is outside the texture's " +
+                                              std::to_string(texture.arrayLayers()) + " layer(s)"});
+    }
+    if (region.z != 0 || region.depth != 1) {
+        return invalid("TextureCopyRegion.z must be 0 and .depth must be 1 -- this RHI models no "
+                       "3D texture kind, so there is no third dimension to address");
+    }
+    if (region.width == 0 || region.height == 0) {
+        return invalid("TextureCopyRegion must cover at least one texel in width and height");
+    }
+    const uint32_t levelWidth = mipExtent(texture.width(), region.mipLevel);
+    const uint32_t levelHeight = mipExtent(texture.height(), region.mipLevel);
+    if (uint64_t{region.x} + region.width > levelWidth ||
+        uint64_t{region.y} + region.height > levelHeight) {
+        return std::unexpected(Error{
+            ErrorCode::InvalidDesc,
+            "TextureCopyRegion covers " + extentOf(region.width, region.height) + " texels from (" +
+                std::to_string(region.x) + "," + std::to_string(region.y) + "), past mip level " +
+                std::to_string(region.mipLevel) + "'s " + extentOf(levelWidth, levelHeight)});
+    }
+    return {};
+}
+
+//======================================================================================================================
+Result<void> validateBufferTextureCopy(const Buffer& buffer, const BufferTextureLayout& layout,
+                                       const Texture& texture, const TextureCopyRegion& region) {
+    if (auto ok = validateTextureCopyRegion(texture, region); !ok) {
+        return ok;
+    }
+    const uint64_t texelBytes = bytesPerPixel(texture.format());
+    if (texelBytes == 0) {
+        return invalid("a buffer<->texture copy needs a format with a packed texel size; the "
+                       "block-compressed and packed depth formats have none, and no caller needs "
+                       "the block arithmetic they would require");
+    }
+    // Metal addresses both the buffer offset and the row stride in whole texels.
+    if (layout.offset % texelBytes != 0 || layout.bytesPerRow % texelBytes != 0) {
+        return invalid("BufferTextureLayout.offset and .bytesPerRow must both be multiples of the "
+                       "format's texel size");
+    }
+    const uint64_t rowBytes = uint64_t{region.width} * texelBytes;
+    if (layout.bytesPerRow < rowBytes) {
+        return std::unexpected(Error{ErrorCode::InvalidDesc,
+                                     "BufferTextureLayout.bytesPerRow " +
+                                         std::to_string(layout.bytesPerRow) +
+                                         " is narrower than the region's " +
+                                         std::to_string(rowBytes) + " bytes of texels per row"});
+    }
+    const uint64_t packedSlice = layout.bytesPerRow * region.height;
+    if (layout.bytesPerSlice != 0 && layout.bytesPerSlice < packedSlice) {
+        return invalid("BufferTextureLayout.bytesPerSlice is smaller than the rows of one slice "
+                       "occupy (use 0 for a single-slice copy)");
+    }
+    const uint64_t sliceBytes = layout.bytesPerSlice != 0 ? layout.bytesPerSlice : packedSlice;
+    return validateBufferBytes(buffer, layout.offset, sliceBytes * region.depth);
+}
+
+//======================================================================================================================
+Result<void> validateTextureCopy(const Texture& source, const TextureCopyRegion& sourceRegion,
+                                 const Texture& destination,
+                                 const TextureCopyRegion& destinationRegion) {
+    if (auto ok = validateTextureCopyRegion(source, sourceRegion); !ok) {
+        return ok;
+    }
+    if (auto ok = validateTextureCopyRegion(destination, destinationRegion); !ok) {
+        return ok;
+    }
+    if (sourceRegion.width != destinationRegion.width ||
+        sourceRegion.height != destinationRegion.height ||
+        sourceRegion.depth != destinationRegion.depth) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc,
+                  "copyTexture: the regions must have the same extent (source " +
+                      extentOf(sourceRegion.width, sourceRegion.height) + ", destination " +
+                      extentOf(destinationRegion.width, destinationRegion.height) +
+                      ") -- a copy neither filters nor rescales"});
+    }
+    // Reinterpreting one format's bits as another's is what a texture view is for; a copy that did
+    // it silently would make the destination's contents depend on the pair of formats involved.
+    if (source.format() != destination.format()) {
+        return invalid("copyTexture: the source and destination must have the same format");
+    }
+    if (&source == &destination && sourceRegion.mipLevel == destinationRegion.mipLevel &&
+        sourceRegion.arrayLayer == destinationRegion.arrayLayer &&
+        overlaps(sourceRegion.x, sourceRegion.width, destinationRegion.x,
+                 destinationRegion.width) &&
+        overlaps(sourceRegion.y, sourceRegion.height, destinationRegion.y,
+                 destinationRegion.height)) {
+        return invalid("copyTexture: the source and destination regions of one subresource overlap "
+                       "-- a copy has no defined direction, so the result would depend on the "
+                       "hardware");
     }
     return {};
 }

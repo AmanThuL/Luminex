@@ -15,6 +15,18 @@
 namespace lmx::rhi::metal4 {
 namespace {
 
+// A render pass consumes a dependency at the earliest render stage a barrier can name, not at the
+// fragment stage: vertex pulling reads its buffer in the vertex stage, so naming only StageFragment
+// would let that read pass the barrier.
+constexpr MTL::Stages kRenderStages = MTL::StageVertex | MTL::StageFragment;
+
+// Which stage a copy runs in. Metal 4 has no blit encoder -- copies are recorded on a compute
+// encoder -- and the public headers do not say whether those retire in StageBlit (the stage that
+// exists for exactly this work and has no other encoder left to describe) or in StageDispatch
+// alongside the encoder's dispatches. Naming both is correct under either answer, and the cost of
+// being wrong in the other direction is a missed dependency rather than a slow one.
+constexpr MTL::Stages kCopyStages = MTL::StageBlit | MTL::StageDispatch;
+
 //======================================================================================================================
 // Which queue stage performs a use. Metal 4 barriers name stages rather than resources, so this is
 // the whole translation from the RHI's use vocabulary to what a barrier can express: attachment
@@ -27,13 +39,50 @@ MTL::Stages stagesOf(TextureUse use) {
     case TextureUse::StorageRead:
     case TextureUse::StorageWrite:
         return MTL::StageDispatch;
+    case TextureUse::CopySource:
+    case TextureUse::CopyDestination:
+        return kCopyStages;
+    }
+    return MTL::StageAll;
+}
+
+//======================================================================================================================
+// The same translation for buffers. A shader read of a buffer is a vertex or fragment stage read
+// -- vertex pulling, indices, uniforms -- and the storage and copy uses match their texture
+// counterparts.
+MTL::Stages stagesOf(BufferUse use) {
+    switch (use) {
+    case BufferUse::ShaderRead:
+        return kRenderStages;
+    case BufferUse::StorageRead:
+    case BufferUse::StorageWrite:
+        return MTL::StageDispatch;
+    case BufferUse::CopySource:
+    case BufferUse::CopyDestination:
+        return kCopyStages;
     }
     return MTL::StageAll;
 }
 
 //======================================================================================================================
 bool isWrite(TextureUse use) {
-    return use == TextureUse::RenderTarget || use == TextureUse::StorageWrite;
+    return use == TextureUse::RenderTarget || use == TextureUse::StorageWrite ||
+           use == TextureUse::CopyDestination;
+}
+
+//======================================================================================================================
+bool isWrite(BufferUse use) {
+    return use == BufferUse::StorageWrite || use == BufferUse::CopyDestination;
+}
+
+//======================================================================================================================
+MTL::Origin originOf(const TextureCopyRegion& region) {
+    return MTL::Origin::Make(region.x, region.y, region.z);
+}
+
+//======================================================================================================================
+MTL::Size extentOf(const TextureCopyRegion& region) {
+    return MTL::Size::Make(region.width, region.height, region.depth);
 }
 
 } // namespace
@@ -58,6 +107,21 @@ void Metal4CommandList::endTimedPass() {
     // Closes the pair beginTimedPass opened; the label pushed there names this index.
     const size_t passIndex = m_timestamps->passLabels.size() - 1;
     m_commandBuffer->writeTimestampIntoHeap(m_timestamps->heap.get(), passIndex * 2 + 1);
+}
+
+//======================================================================================================================
+void Metal4CommandList::emitPendingBarrier(MTL4::CommandEncoder* encoder,
+                                           MTL::Stages consumerStages) {
+    // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
+    // consumer encoder as its first command. Queue stages refer to prior encoders; beforeStages is
+    // this encoder's own stage, because the pass that opens is the barrier's consumer by
+    // construction.
+    if (m_pendingBarrierStages == MTL::Stages{}) {
+        return;
+    }
+    encoder->barrierAfterQueueStages(m_pendingBarrierStages, consumerStages,
+                                     MTL4::VisibilityOptionDevice);
+    m_pendingBarrierStages = MTL::Stages{};
 }
 
 //======================================================================================================================
@@ -118,15 +182,7 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     LMX_ASSERT(m_encoder, "beginRenderPass: failed to create a render command encoder");
     m_encoder->setLabel(makeString(label).get());
 
-    // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
-    // consumer encoder as its first command. Queue stages refer to prior encoders; beforeStages is
-    // this encoder's own stage, because the pass that opens is the barrier's consumer by
-    // construction. Render-target writes also belong to the fragment stage in Metal.
-    if (m_pendingBarrierStages != MTL::Stages{}) {
-        m_encoder->barrierAfterQueueStages(m_pendingBarrierStages, MTL::StageFragment,
-                                           MTL4::VisibilityOptionDevice);
-        m_pendingBarrierStages = MTL::Stages{};
-    }
+    emitPendingBarrier(m_encoder.get(), kRenderStages);
 
     // Set the viewport explicitly so later sub-region passes cannot inherit an attachment-derived
     // default that no longer matches their render area.
@@ -268,13 +324,7 @@ void Metal4CommandList::beginComputePass(std::string_view label) {
     LMX_ASSERT(m_computeEncoder, "beginComputePass: failed to create a compute command encoder");
     m_computeEncoder->setLabel(makeString(passLabel).get());
 
-    // See beginRenderPass: the consuming encoder emits the pending barrier, and its own stage is
-    // the consumer side.
-    if (m_pendingBarrierStages != MTL::Stages{}) {
-        m_computeEncoder->barrierAfterQueueStages(m_pendingBarrierStages, MTL::StageDispatch,
-                                                  MTL4::VisibilityOptionDevice);
-        m_pendingBarrierStages = MTL::Stages{};
-    }
+    emitPendingBarrier(m_computeEncoder.get(), MTL::StageDispatch);
 
     m_computeEncoder->setArgumentTable(m_argumentTable);
 }
@@ -362,6 +412,105 @@ void Metal4CommandList::endComputePass() {
 }
 
 //======================================================================================================================
+void Metal4CommandList::beginCopyPass(std::string_view label) {
+    // computeCommandEncoder() returns an autoreleased (+0) object; see beginComputePass.
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(m_argumentTable != nullptr && m_uniformRing != nullptr && m_timestamps != nullptr,
+               "beginCopyPass: no frame is open -- this command list is only valid between "
+               "Device::beginFrame and Device::endFrame");
+    LMX_ASSERT(!inPass(), "beginCopyPass: a pass is already open on this command list");
+
+    const std::string_view passLabel = label.empty() ? "lmx.pass.unnamed" : label;
+
+    beginTimedPass(passLabel);
+
+    // Metal 4 records copies on a compute encoder. No argument table is set on it: a copy pass has
+    // no bindings, so handing it the frame's table would advertise a scope it does not have.
+    m_copyEncoder = NS::RetainPtr(m_commandBuffer->computeCommandEncoder());
+    LMX_ASSERT(m_copyEncoder, "beginCopyPass: failed to create a copy command encoder");
+    m_copyEncoder->setLabel(makeString(passLabel).get());
+
+    emitPendingBarrier(m_copyEncoder.get(), kCopyStages);
+}
+
+//======================================================================================================================
+void Metal4CommandList::copyBuffer(Buffer& source, uint64_t sourceOffset, Buffer& destination,
+                                   uint64_t destinationOffset, uint64_t size) {
+    LMX_ASSERT(m_copyEncoder, "copyBuffer must be called between beginCopyPass and endCopyPass");
+    const Result<void> copyOk =
+        validateBufferCopy(source, sourceOffset, destination, destinationOffset, size);
+    LMX_ASSERT(copyOk.has_value(), copyOk.error().message);
+    m_copyEncoder->copyFromBuffer(static_cast<Metal4Buffer&>(source).handle(), sourceOffset,
+                                  static_cast<Metal4Buffer&>(destination).handle(),
+                                  destinationOffset, size);
+}
+
+//======================================================================================================================
+void Metal4CommandList::copyBufferToTexture(Buffer& source, const BufferTextureLayout& layout,
+                                            Texture& destination, const TextureCopyRegion& region) {
+    LMX_ASSERT(m_copyEncoder,
+               "copyBufferToTexture must be called between beginCopyPass and endCopyPass");
+    const Result<void> copyOk = validateBufferTextureCopy(source, layout, destination, region);
+    LMX_ASSERT(copyOk.has_value(), copyOk.error().message);
+    m_copyEncoder->copyFromBuffer(static_cast<Metal4Buffer&>(source).handle(), layout.offset,
+                                  layout.bytesPerRow, layout.bytesPerSlice, extentOf(region),
+                                  static_cast<Metal4Texture&>(destination).handle(),
+                                  region.arrayLayer, region.mipLevel, originOf(region));
+}
+
+//======================================================================================================================
+void Metal4CommandList::copyTextureToBuffer(Texture& source, const TextureCopyRegion& region,
+                                            Buffer& destination,
+                                            const BufferTextureLayout& layout) {
+    LMX_ASSERT(m_copyEncoder,
+               "copyTextureToBuffer must be called between beginCopyPass and endCopyPass");
+    const Result<void> copyOk = validateBufferTextureCopy(destination, layout, source, region);
+    LMX_ASSERT(copyOk.has_value(), copyOk.error().message);
+    m_copyEncoder->copyFromTexture(static_cast<Metal4Texture&>(source).handle(), region.arrayLayer,
+                                   region.mipLevel, originOf(region), extentOf(region),
+                                   static_cast<Metal4Buffer&>(destination).handle(), layout.offset,
+                                   layout.bytesPerRow, layout.bytesPerSlice);
+}
+
+//======================================================================================================================
+void Metal4CommandList::copyTexture(Texture& source, const TextureCopyRegion& sourceRegion,
+                                    Texture& destination,
+                                    const TextureCopyRegion& destinationRegion) {
+    LMX_ASSERT(m_copyEncoder, "copyTexture must be called between beginCopyPass and endCopyPass");
+    const Result<void> copyOk =
+        validateTextureCopy(source, sourceRegion, destination, destinationRegion);
+    LMX_ASSERT(copyOk.has_value(), copyOk.error().message);
+    // The destination takes an origin only: validation has already established that the two regions
+    // describe the same extent, so Metal is given the source's.
+    m_copyEncoder->copyFromTexture(
+        static_cast<Metal4Texture&>(source).handle(), sourceRegion.arrayLayer,
+        sourceRegion.mipLevel, originOf(sourceRegion), extentOf(sourceRegion),
+        static_cast<Metal4Texture&>(destination).handle(), destinationRegion.arrayLayer,
+        destinationRegion.mipLevel, originOf(destinationRegion));
+}
+
+//======================================================================================================================
+void Metal4CommandList::fillBuffer(Buffer& buffer, uint64_t offset, uint64_t size, uint8_t value) {
+    LMX_ASSERT(m_copyEncoder, "fillBuffer must be called between beginCopyPass and endCopyPass");
+    const Result<void> rangeOk = validateBufferBytes(buffer, offset, size);
+    LMX_ASSERT(rangeOk.has_value(), rangeOk.error().message);
+    m_copyEncoder->fillBuffer(static_cast<Metal4Buffer&>(buffer).handle(),
+                              NS::Range::Make(offset, size), value);
+}
+
+//======================================================================================================================
+void Metal4CommandList::endCopyPass() {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(m_copyEncoder, "endCopyPass: no copy pass is open on this command list");
+    m_copyEncoder->endEncoding();
+    m_copyEncoder.reset();
+
+    endTimedPass();
+}
+
+//======================================================================================================================
 void Metal4CommandList::textureBarrier(Texture& texture, const TextureSubresourceRange& range,
                                        TextureUse from, TextureUse to) {
     LMX_ASSERT(!inPass(), "textureBarrier must be called between passes, not inside one");
@@ -377,6 +526,24 @@ void Metal4CommandList::textureBarrier(Texture& texture, const TextureSubresourc
     // the emitted dependency covers everything the producing stage wrote, this texture included.
     // Accumulating the producing stages lets several barriers between the same pair of passes
     // collapse into the single barrier the consuming encoder emits.
+    m_pendingBarrierStages |= stagesOf(from);
+}
+
+//======================================================================================================================
+void Metal4CommandList::bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
+                                      BufferUse to) {
+    LMX_ASSERT(!inPass(), "bufferBarrier must be called between passes, not inside one");
+    // Reject barriers outside a frame so a pending edge cannot leak into the next frame.
+    LMX_ASSERT(m_argumentTable != nullptr, "bufferBarrier must be called inside a frame");
+    const Result<void> rangeOk = validateBufferRange(buffer, range);
+    LMX_ASSERT(rangeOk.has_value(), rangeOk.error().message);
+    LMX_ASSERT(isWrite(from) || isWrite(to),
+               "bufferBarrier: at least one side must be a write -- two reads of the same "
+               "contents have no hazard to order");
+
+    // The range is a caller-facing declaration only, exactly as textureBarrier's is: Metal 4's
+    // barriers order queue *stages*, so the emitted dependency covers everything the producing
+    // stage wrote, these bytes included.
     m_pendingBarrierStages |= stagesOf(from);
 }
 
@@ -402,7 +569,7 @@ void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::B
 void Metal4CommandList::endFrameReset() {
     // A pending barrier at commit is an unconsumed dependency edge, not disposable state.
     LMX_ASSERT(m_pendingBarrierStages == MTL::Stages{},
-               "textureBarrier recorded but no later pass consumed it");
+               "a textureBarrier or bufferBarrier was recorded but no later pass consumed it");
     // Clearing per-frame pointers makes use outside a frame detectable.
     m_argumentTable = nullptr;
     m_uniformRing = nullptr;

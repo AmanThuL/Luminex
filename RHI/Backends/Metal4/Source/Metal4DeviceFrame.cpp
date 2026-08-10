@@ -128,6 +128,8 @@ void Metal4Device::endFrame(Swapchain* presentTo) {
                "endFrame: a render pass is still open -- call endRenderPass first");
     LMX_ASSERT(!m_commandList->inComputePass(),
                "endFrame: a compute pass is still open -- call endComputePass first");
+    LMX_ASSERT(!m_commandList->inCopyPass(),
+               "endFrame: a copy pass is still open -- call endCopyPass first");
 
     m_commandBuffer->endCommandBuffer();
 

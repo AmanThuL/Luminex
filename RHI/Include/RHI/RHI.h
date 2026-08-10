@@ -59,6 +59,20 @@ public:
     virtual void readback(void* out, uint64_t outSize) = 0;
 };
 
+/// BufferRange::size: every byte from `offset` to the end of the allocation.
+inline constexpr uint64_t kWholeBuffer = ~uint64_t{0};
+
+/// Names the bytes of a buffer that a barrier covers.
+///
+/// The default covers the whole allocation, which is what a caller with no sub-range detail means;
+/// a narrower range is how one pass's slice of a shared buffer is ordered against another's. Ranges
+/// are validated against the buffer they are used with: an empty range, or one running past the end
+/// of the allocation, is a caller error.
+struct BufferRange {
+    uint64_t offset = 0;          ///< First byte in the range.
+    uint64_t size = kWholeBuffer; ///< Bytes covered, or kWholeBuffer.
+};
+
 /// Describes a GPU texture allocation and its allowed usages.
 struct TextureDesc {
     uint32_t width = 0, height = 0;     ///< Extent in texels; cubemaps require equal dimensions.
@@ -111,6 +125,45 @@ struct TextureViewDesc {
     Format format = Format::Unknown;
 };
 
+/// Names the rectangle of one subresource that a copy command reads or writes.
+///
+/// A region addresses exactly one mip level of one array layer: a copy spanning several is several
+/// copy calls, which is what keeps the addressing unambiguous. The origin and extent are in texels
+/// of `mipLevel`, not of level zero, so copying mip 2 of a 64x64 chain uses a 16x16 extent.
+///
+/// `z` and `depth` complete the vocabulary a volume texture needs. This RHI models no 3D texture
+/// kind, so until one exists `z` must be 0 and `depth` must be 1; they are stated here rather than
+/// omitted so that adding the kind does not change the shape of every copy call.
+///
+/// The extent has no whole-mip default on purpose: a copy that silently resized itself to whatever
+/// the texture happened to be is the kind of thing that works until the texture changes.
+struct TextureCopyRegion {
+    uint32_t mipLevel = 0;   ///< Mip level the region addresses.
+    uint32_t arrayLayer = 0; ///< Array layer -- a cube face -- the region addresses.
+    uint32_t x = 0;          ///< Origin x in texels of `mipLevel`.
+    uint32_t y = 0;          ///< Origin y in texels of `mipLevel`.
+    uint32_t z = 0;          ///< Origin z; must be 0 until a 3D texture kind exists.
+    uint32_t width = 0;      ///< Extent width in texels of `mipLevel`.
+    uint32_t height = 0;     ///< Extent height in texels of `mipLevel`.
+    uint32_t depth = 1;      ///< Extent depth; must be 1 until a 3D texture kind exists.
+};
+
+/// Describes how a region's texels are laid out on the buffer side of a buffer<->texture copy.
+///
+/// `bytesPerRow` is the caller's for the same reason TextureMip::bytesPerRow is: only the caller
+/// knows whether its rows are tightly packed or padded, and deriving a stride here would force a
+/// caller holding a padded buffer to un-pad it first. It is a stride of the *region*, so a copy of
+/// a 16x16 rectangle of RGBA8 texels is tightly packed at 64 bytes, whatever the texture's width.
+///
+/// `bytesPerSlice` is the distance between two array slices. Every copy this RHI can express covers
+/// a single slice, so zero -- meaning "one slice, no image stride" -- is the value to pass; it is
+/// named because a future array or volume copy has nowhere else to state it.
+struct BufferTextureLayout {
+    uint64_t offset = 0;        ///< First byte of the region's texels within the buffer.
+    uint64_t bytesPerRow = 0;   ///< Distance in bytes between the starts of two rows.
+    uint64_t bytesPerSlice = 0; ///< Distance in bytes between two slices, or 0 for a single slice.
+};
+
 /// Describes the CPU upload payload for one mip level of one texture face.
 ///
 /// bytesPerRow is the caller's because only the caller knows the source layout: for an
@@ -158,10 +211,24 @@ public:
 /// like the rest of this header (ADR 0004).
 /// Identifies texture use on either side of an explicit barrier.
 enum class TextureUse {
-    RenderTarget, ///< Written as a render-pass attachment.
-    ShaderRead,   ///< Read by a shader.
-    StorageRead,  ///< Read through a storage binding.
-    StorageWrite  ///< Written through a storage binding.
+    RenderTarget,   ///< Written as a render-pass attachment.
+    ShaderRead,     ///< Read by a shader.
+    StorageRead,    ///< Read through a storage binding.
+    StorageWrite,   ///< Written through a storage binding.
+    CopySource,     ///< Read by a copy command.
+    CopyDestination ///< Written by a copy command.
+};
+
+/// The same, for buffers -- the resource kind fillBuffer, the storage bindings, and the indirect
+/// argument reads all hazard on, and which no texture edge can honestly stand in for.
+/// Identifies buffer use on either side of an explicit barrier.
+enum class BufferUse {
+    /// Read by a shader through a non-storage binding: uniforms, vertex pulling, or indices.
+    ShaderRead,
+    StorageRead,    ///< Read through a storage binding.
+    StorageWrite,   ///< Written through a storage binding.
+    CopySource,     ///< Read by a copy command.
+    CopyDestination ///< Written by a copy command or by fillBuffer.
 };
 
 /// Selects nearest or linear texture filtering.
@@ -319,7 +386,7 @@ struct RenderPassDesc {
     std::string_view label;
 };
 
-/// Records one frame's render and compute passes, bindings, barriers, dispatches, and draws.
+/// Records one frame's render, compute, and copy passes, bindings, barriers, dispatches, and draws.
 ///
 /// Exactly one pass is open at a time: every command below documents the scope it is valid in, and
 /// calling it outside that scope is a sequencing bug the backend asserts on rather than a failure
@@ -332,10 +399,10 @@ public:
     virtual ~CommandList() = default;
     /// Begins a render pass using the supplied attachments and load actions.
     virtual void beginRenderPass(const RenderPassDesc& desc) = 0;
-    /// Begins a compute pass. Inside it, bindComputePipeline, bindStorageBuffer, the read-only
-    /// texture/sampler/buffer binds, setUniforms, and dispatch are valid; render-pass commands are
-    /// not. `label` names the pass in GPU captures, validation diagnostics, and passTimings();
-    /// backends substitute a stable fallback for an empty one.
+    /// Begins a compute pass. Inside it, bindComputePipeline, bindStorageBuffer,
+    /// bindStorageTexture, the read-only texture/sampler/buffer binds, setUniforms, and dispatch
+    /// are valid; render-pass commands are not. `label` names the pass in GPU captures, validation
+    /// diagnostics, and passTimings(); backends substitute a stable fallback for an empty one.
     /// Begins a labeled compute pass on this command list.
     virtual void beginComputePass(std::string_view label) = 0;
     /// Binds a compute pipeline for subsequent dispatches. Valid only inside a compute pass.
@@ -369,6 +436,54 @@ public:
                           uint32_t threadgroupsZ) = 0;
     /// Ends the active compute pass.
     virtual void endComputePass() = 0;
+
+    /// Begins a copy pass. Inside it, copyBuffer, copyBufferToTexture, copyTextureToBuffer,
+    /// copyTexture, and fillBuffer are valid, and nothing else is: a copy pass has no pipeline and
+    /// no bindings, so binds, draws, and dispatches all belong to one of the other two scopes.
+    /// `label` names the pass in GPU captures, validation diagnostics, and passTimings() exactly as
+    /// the other two pass kinds' labels do, and a copy pass is timed like them.
+    ///
+    /// Copies within one pass carry no ordering guarantee against each other, for the same reason
+    /// dispatch() states: ordering between two pieces of work is what a barrier between two passes
+    /// expresses, and there is no in-pass barrier. Copies of disjoint ranges are the normal
+    /// contents of one pass.
+    /// Begins a labeled copy pass on this command list.
+    virtual void beginCopyPass(std::string_view label) = 0;
+    /// Copies `size` bytes between two buffers, or between two ranges of one buffer as long as the
+    /// ranges do not overlap. Both ranges must lie inside their allocation. Valid only inside a
+    /// copy pass.
+    /// Copies a byte range from one buffer into another.
+    virtual void copyBuffer(Buffer& source, uint64_t sourceOffset, Buffer& destination,
+                            uint64_t destinationOffset, uint64_t size) = 0;
+    /// Copies texels out of a buffer into one rectangle of one subresource. `layout` describes the
+    /// buffer side -- where the texels start and how their rows are strided -- and `region` the
+    /// texture side. The bytes the two together address must lie inside the buffer, and the region
+    /// inside the addressed mip level. Valid only inside a copy pass.
+    /// Copies buffer bytes into a texture subresource region.
+    virtual void copyBufferToTexture(Buffer& source, const BufferTextureLayout& layout,
+                                     Texture& destination, const TextureCopyRegion& region) = 0;
+    /// The reverse, and the way an arbitrary mip level or array layer is read back: copy the
+    /// subresource into a buffer created with BufferDesc.cpuReadback, then read that buffer once
+    /// the GPU work has completed. Texture::readback covers only the whole of level zero, so this
+    /// is the only path to any other subresource. Valid only inside a copy pass.
+    /// Copies a texture subresource region into buffer bytes.
+    virtual void copyTextureToBuffer(Texture& source, const TextureCopyRegion& region,
+                                     Buffer& destination, const BufferTextureLayout& layout) = 0;
+    /// Copies one subresource rectangle to another, in the same texture or a different one. The two
+    /// regions must have the same extent -- a copy does not filter or rescale -- and the two
+    /// formats must have the same texel size. Overlapping regions of one texture are a caller
+    /// error. Valid only inside a copy pass.
+    /// Copies a texture subresource region into another texture subresource region.
+    virtual void copyTexture(Texture& source, const TextureCopyRegion& sourceRegion,
+                             Texture& destination, const TextureCopyRegion& destinationRegion) = 0;
+    /// Writes `value` into every one of the `size` bytes starting at `offset`. The value is a
+    /// *byte*, not a word: filling with a 32-bit pattern is not something this expresses, and the
+    /// use it exists for is clearing an accumulation buffer to zero. The range must lie inside the
+    /// buffer and must not be empty. Valid only inside a copy pass.
+    /// Fills a buffer range with a repeated byte value.
+    virtual void fillBuffer(Buffer& buffer, uint64_t offset, uint64_t size, uint8_t value) = 0;
+    /// Ends the active copy pass.
+    virtual void endCopyPass() = 0;
     /// Binds a graphics pipeline for subsequent draws.
     virtual void bindPipeline(GraphicsPipeline& pipeline) = 0;
     /// Binds a buffer at the given argument-table buffer slot -- vertex buffers, read here by
@@ -431,6 +546,21 @@ public:
     /// Orders a whole texture between a producing and a consuming use.
     void textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
         textureBarrier(texture, TextureSubresourceRange{}, from, to);
+    }
+    /// The same contract for a buffer: the range, the at-least-one-write rule, the positional
+    /// producer and consumer, and the backend's freedom to synchronize more than the range asks for
+    /// all read exactly as textureBarrier's do. It exists because a buffer hazard has no texture to
+    /// borrow -- a fillBuffer whose zeros an accumulating dispatch must see, or arguments a compute
+    /// pass writes for a later indirect draw, are dependencies on bytes, and expressing them
+    /// through some unrelated texture's edge would be a lie a graph would later reason from.
+    /// Orders a buffer's byte range between a producing and a consuming use.
+    virtual void bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
+                               BufferUse to) = 0;
+    /// Same, for the whole buffer -- the common case, and what a pass that declares no byte-range
+    /// detail means.
+    /// Orders a whole buffer between a producing and a consuming use.
+    void bufferBarrier(Buffer& buffer, BufferUse from, BufferUse to) {
+        bufferBarrier(buffer, BufferRange{}, from, to);
     }
 };
 

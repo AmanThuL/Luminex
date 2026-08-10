@@ -74,15 +74,16 @@ struct Metal4FrameTimestamps {
 // MTL4ArgumentTable.hpp:179). So no path produces a +0 object.
 // bindStorageBuffer and bindStorageTexture add only scalar sends of the same kind, and
 // bindStorageTexture's view lookup creates its own pool on the one path that allocates a view.
-// textureBarrier accumulates queue stages and touches Metal not at all; the barrier it defers is
-// MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside the opening
-// pass's existing pool.
+// textureBarrier and bufferBarrier accumulate queue stages and touch Metal not at all; the barrier
+// they defer is MTL4::CommandEncoder::barrierAfterQueueStages(), also a void send, encoded inside
+// the opening pass's existing pool. The copy commands are the same story again -- the copy and fill
+// selectors are void sends on an already-retained encoder, over gpuAddress()/length() scalar sends.
 //
-// Two pools are load-bearing, in beginRenderPass and beginComputePass: the encoder factories are
-// the only selectors here that return +0. The matching end calls keep a pool too (symmetry, and
-// cheap insurance against a teardown path that starts autoreleasing) but neither is *currently*
-// carrying anything -- endEncoding() is a void sendMessage and the encoder reset is a plain
-// release.
+// Three pools are load-bearing, in beginRenderPass, beginComputePass and beginCopyPass: the encoder
+// factories are the only selectors here that return +0. The matching end calls keep a pool too
+// (symmetry, and cheap insurance against a teardown path that starts autoreleasing) but none is
+// *currently* carrying anything -- endEncoding() is a void sendMessage and the encoder reset is a
+// plain release.
 class Metal4CommandList final : public CommandList {
 public:
     explicit Metal4CommandList(MTL4::CommandBuffer* commandBuffer)
@@ -99,6 +100,17 @@ public:
                             StorageAccess access) override;
     void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY, uint32_t threadgroupsZ) override;
     void endComputePass() override;
+    void beginCopyPass(std::string_view label) override;
+    void copyBuffer(Buffer& source, uint64_t sourceOffset, Buffer& destination,
+                    uint64_t destinationOffset, uint64_t size) override;
+    void copyBufferToTexture(Buffer& source, const BufferTextureLayout& layout,
+                             Texture& destination, const TextureCopyRegion& region) override;
+    void copyTextureToBuffer(Texture& source, const TextureCopyRegion& region, Buffer& destination,
+                             const BufferTextureLayout& layout) override;
+    void copyTexture(Texture& source, const TextureCopyRegion& sourceRegion, Texture& destination,
+                     const TextureCopyRegion& destinationRegion) override;
+    void fillBuffer(Buffer& buffer, uint64_t offset, uint64_t size, uint8_t value) override;
+    void endCopyPass() override;
     void bindPipeline(GraphicsPipeline& pipeline) override;
     void bindBuffer(uint32_t slot, Buffer& buffer) override;
     void bindTexture(uint32_t slot, Texture& texture) override;
@@ -109,6 +121,8 @@ public:
     void endRenderPass() override;
     void textureBarrier(Texture& texture, const TextureSubresourceRange& range, TextureUse from,
                         TextureUse to) override;
+    void bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
+                       BufferUse to) override;
 
     // beginFrame's half of the per-frame rotation: point this command list at the frame's
     // argument table, uniform ring and timestamp slot. `uniformOffset` is the device's bump cursor
@@ -131,6 +145,12 @@ public:
     // name the pass kind the caller left open.
     bool inComputePass() const { return static_cast<bool>(m_computeEncoder); }
 
+    // And for a copy pass. Metal 4 records copies on a compute encoder -- there is no MTL4 blit
+    // encoder -- but the RHI scope is its own, so the two encoders are held separately and this
+    // predicate is what keeps "dispatch inside a copy pass" a reported bug rather than a silent
+    // success.
+    bool inCopyPass() const { return static_cast<bool>(m_copyEncoder); }
+
     // Backend-internal, the same role handle() plays on every resource wrapper: a sibling Metal 4
     // file reaches the native objects through them, and the RHI CommandList interface has neither.
     // Metal4ImGui needs both, because Dear ImGui's Metal 4 backend records into the open encoder
@@ -151,9 +171,17 @@ private:
     // Writes the closing timestamp of the pass beginTimedPass most recently opened.
     void endTimedPass();
 
-    // True while any pass is open. Bindings and the frame's uniform ring are shared by both pass
-    // kinds, so their scope check is "a pass is open" rather than a specific encoder.
-    bool inPass() const { return inRenderPass() || inComputePass(); }
+    // Emits the barrier the textureBarrier/bufferBarrier calls since the last pass accumulated, as
+    // the first command of the pass that just opened. `consumerStages` are the stages of the
+    // opening encoder, which is the consumer side by construction. Clears the pending set, so a
+    // second pass does not re-wait on a dependency already satisfied.
+    void emitPendingBarrier(MTL4::CommandEncoder* encoder, MTL::Stages consumerStages);
+
+    // True while any pass is open. Bindings and the frame's uniform ring are shared by the render
+    // and compute pass kinds, so their scope check is "a pass is open" rather than a specific
+    // encoder; the barriers, which are valid only *between* passes, check the same thing inverted,
+    // and a copy pass counts for that.
+    bool inPass() const { return inRenderPass() || inComputePass() || inCopyPass(); }
 
     MTL4::CommandBuffer* m_commandBuffer = nullptr;
     MTL4::ArgumentTable* m_argumentTable = nullptr;
@@ -162,6 +190,9 @@ private:
     Metal4FrameTimestamps* m_timestamps = nullptr;
     NS::SharedPtr<MTL4::RenderCommandEncoder> m_encoder;
     NS::SharedPtr<MTL4::ComputeCommandEncoder> m_computeEncoder;
+    // Metal 4 has no blit encoder: copies and fills are recorded on a compute encoder, so a copy
+    // pass opens one of those and never binds a pipeline or the argument table to it.
+    NS::SharedPtr<MTL4::ComputeCommandEncoder> m_copyEncoder;
     // The compute pipeline bound in the open compute pass, borrowed for its threadgroup shape --
     // Metal takes that shape at dispatch rather than at bind. Null outside a compute pass and
     // until the pass binds one; the pipeline itself is owned by the caller and outlives the frame.

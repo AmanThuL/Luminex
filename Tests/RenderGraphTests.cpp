@@ -79,6 +79,10 @@ std::string useName(rhi::TextureUse use) {
         return "StorageRead";
     case rhi::TextureUse::StorageWrite:
         return "StorageWrite";
+    case rhi::TextureUse::CopySource:
+        return "CopySource";
+    case rhi::TextureUse::CopyDestination:
+        return "CopyDestination";
     }
     return "unknown";
 }
@@ -128,6 +132,39 @@ struct RecordingCommandList final : rhi::CommandList {
         events.push_back("dispatch " + std::to_string(x) + "," + std::to_string(y) + "," +
                          std::to_string(z));
     }
+
+    // The graph declares no copy work yet either; the pass boundaries log for the same reason the
+    // compute ones do, and the copies themselves are left as no-ops until a pass emits one.
+
+    //==================================================================================================================
+    void beginCopyPass(std::string_view label) override {
+        events.push_back("begin copy " + std::string(label));
+    }
+
+    //==================================================================================================================
+    void endCopyPass() override { events.push_back("end copy"); }
+
+    //==================================================================================================================
+    void copyBuffer(rhi::Buffer&, uint64_t, rhi::Buffer&, uint64_t, uint64_t) override {}
+
+    //==================================================================================================================
+    void copyBufferToTexture(rhi::Buffer&, const rhi::BufferTextureLayout&, rhi::Texture&,
+                             const rhi::TextureCopyRegion&) override {}
+
+    //==================================================================================================================
+    void copyTextureToBuffer(rhi::Texture&, const rhi::TextureCopyRegion&, rhi::Buffer&,
+                             const rhi::BufferTextureLayout&) override {}
+
+    //==================================================================================================================
+    void copyTexture(rhi::Texture&, const rhi::TextureCopyRegion&, rhi::Texture&,
+                     const rhi::TextureCopyRegion&) override {}
+
+    //==================================================================================================================
+    void fillBuffer(rhi::Buffer&, uint64_t, uint64_t, uint8_t) override {}
+
+    //==================================================================================================================
+    void bufferBarrier(rhi::Buffer&, const rhi::BufferRange&, rhi::BufferUse,
+                       rhi::BufferUse) override {}
 
     //==================================================================================================================
     void textureBarrier(rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
