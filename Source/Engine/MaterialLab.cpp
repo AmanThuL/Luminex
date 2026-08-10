@@ -2,6 +2,7 @@
 
 #include "Engine/Color.h"
 #include "Engine/GeometryGenerator.h"
+#include "Engine/Ibl.h"
 #include "Engine/TextureBake.h"
 
 #include <glm/glm.hpp>
@@ -61,6 +62,20 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
         return std::unexpected(uploadFailure(std::move(cubemap.error())));
     }
     scene.skyCubemap = std::move(*cubemap);
+
+    // Same single authored constant behind both the GPU sky cube and the generated IBL set; see
+    // Scene.cpp's attachSkyAndLights for why it is decoded here rather than read back.
+    const glm::vec3 skyRadiance = srgbToLinear(glm::vec3(static_cast<float>(kNeutralSky[0]),
+                                                         static_cast<float>(kNeutralSky[1]),
+                                                         static_cast<float>(kNeutralSky[2])) /
+                                               255.0f);
+    auto generated = ibl::generate(device, ibl::makeConstantCubemap(skyRadiance, 1), label);
+    if (!generated) {
+        return std::unexpected(uploadFailure(std::move(generated.error())));
+    }
+    scene.irradianceMap = std::move(generated->irradiance);
+    scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
+    scene.dfgLut = std::move(generated->dfgLut);
 
     for (size_t i = 0; i < std::size(kLightDirections); ++i) {
         scene.lights[i].direction = kLightDirections[i];

@@ -1,4 +1,5 @@
 #include "Engine/Ibl.h"
+#include "Engine/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -284,4 +285,31 @@ TEST_CASE("the generators are byte-identical across runs", "[engine][ibl]") {
     REQUIRE(lutA.size() == 256);
     REQUIRE(lutB.size() == lutA.size());
     REQUIRE(std::memcmp(lutA.data(), lutB.data(), lutA.size() * sizeof(glm::vec2)) == 0);
+}
+
+//======================================================================================================================
+// The uploaded set every catalog scene carries. MaterialLab needs no fetched asset, so this runs
+// wherever a Metal 4 device exists.
+TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
+    auto device = lmx::rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMaterialLabScene(**device);
+    REQUIRE(scene.has_value());
+
+    REQUIRE((*scene)->irradianceMap != nullptr);
+    REQUIRE((*scene)->irradianceMap->width() == kIrradianceFaceSize);
+    REQUIRE((*scene)->irradianceMap->height() == kIrradianceFaceSize);
+
+    REQUIRE((*scene)->prefilteredEnvMap != nullptr);
+    REQUIRE((*scene)->prefilteredEnvMap->width() == kSpecularBaseFaceSize);
+    REQUIRE((*scene)->prefilteredEnvMap->height() == kSpecularBaseFaceSize);
+
+    REQUIRE((*scene)->dfgLut != nullptr);
+    REQUIRE((*scene)->dfgLut->width() == kDfgLutSize);
+    REQUIRE((*scene)->dfgLut->height() == kDfgLutSize);
+    // rhi::Texture exposes no mip count, so the prefiltered chain's kSpecularMipCount levels stay
+    // pinned CPU-side by the prefilterSpecular case above rather than read back off the device.
+
+    // The sky the set was generated from is still uploaded alongside it, unchanged.
+    REQUIRE((*scene)->skyCubemap != nullptr);
 }
