@@ -375,7 +375,7 @@ TEST_CASE("loadMaterialLabScene builds a deterministic scene without fetched ass
     // 5x5 sphere grid (25) + 6 colour patches + 1 gradient ramp + 1 normal-map probe + 3 depth
     // probes + 1 mip probe.
     REQUIRE((*scene)->objects.size() == 37);
-    // One material per sphere (25, distinct roughness/fresnelR0) + 6 patches + the ramp + the
+    // One material per sphere (25, distinct roughness/metallic) + 6 patches + the ramp + the
     // normal probe + one material shared by the three depth probes + the mip probe.
     REQUIRE((*scene)->materials.size() == 35);
     // Sphere, unit quad (shared by the patches, the normal probe, and the mip probe), gradient

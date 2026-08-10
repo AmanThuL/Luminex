@@ -677,7 +677,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                                              ? *material.normalMap
                                                              : *m_flatNormalTexture);
                 // The shared white fallback lets each factor pass through unchanged when a
-                // material carries no map: unread by the fragment shader until the GGX rewrite.
+                // material carries no map -- white is the identity for all three.
                 commands.bindTexture(kMetallicRoughnessTextureSlot,
                                      material.metallicRoughness != nullptr
                                          ? *material.metallicRoughness
