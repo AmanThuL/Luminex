@@ -192,16 +192,21 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         }
         if (!warnedUnbakedFallback) {
             LMX_LOG_WARN("{} scene: no baked mip chain beside '{}' -- computing mips at load "
-                         "time instead of using `xmake setup`'s offline bake (slower startup, "
-                         "not incorrect)",
+                         "time instead of using `xmake setup`'s offline bake (slower startup; "
+                         "matches the offline bake for color/data images, but a normal map here "
+                         "skips the offline bake's per-level renormalization)",
                          sceneName, path->string());
             warnedUnbakedFallback = true;
         }
-        // Same box filter the offline bake uses, just run in-process: correct mips, not merely
-        // present ones. srgb selects the colour-space transform; a data image (srgb == false)
-        // has no normal-map flag reaching this lambda, so Linear -- filter raw bytes, no
-        // transform -- is the correct conservative choice, matching how generateMipmaps used to
-        // treat every non-colour texture before this fallback replaced it.
+        // Same box filter the offline bake uses, just run in-process. srgb selects the
+        // colour-space transform; a data image (srgb == false) has no normal-map flag reaching
+        // this lambda, so Linear -- filter raw bytes, no transform -- is the choice made here,
+        // matching how generateMipmaps used to treat every non-colour texture before this
+        // fallback replaced it. That choice is exact for base color and other color/data images,
+        // but not for normal maps: the offline bake's `--normal-map` role renormalizes each
+        // generated level (see BakeMode::NormalMap), and this fallback has no way to request
+        // that mode, so a normal map computed here diverges from its offline bake. Both shipped
+        // scenes' normal maps are pre-baked by `xmake setup`, so the divergence is latent.
         const std::span<const uint8_t> rgba8(reinterpret_cast<const uint8_t*>(image.rgba8.data()),
                                              image.rgba8.size());
         const BakedMipChain bakedChain =
