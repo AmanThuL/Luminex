@@ -556,8 +556,9 @@ public:
                                      Buffer& destination, const BufferTextureLayout& layout) = 0;
     /// Copies one subresource rectangle to another, in the same texture or a different one. The two
     /// regions must have the same extent -- a copy does not filter or rescale -- and the two
-    /// formats must have the same texel size. Overlapping regions of one texture are a caller
-    /// error. Valid only inside a copy pass.
+    /// textures the same format: reinterpreting one format's bits as another's is what a texture
+    /// view is for. Overlapping regions of one subresource are a caller error. Valid only inside a
+    /// copy pass.
     /// Copies a texture subresource region into another texture subresource region.
     virtual void copyTexture(Texture& source, const TextureCopyRegion& sourceRegion,
                              Texture& destination, const TextureCopyRegion& destinationRegion) = 0;

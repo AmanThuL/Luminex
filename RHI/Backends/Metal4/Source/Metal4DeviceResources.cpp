@@ -26,12 +26,6 @@ using device_detail::resolveLabel;
 constexpr uint32_t kCubeFaceCount = 6;
 
 //======================================================================================================================
-NS::UInteger mipExtent(uint32_t base, uint32_t level) {
-    const uint32_t extent = base >> level;
-    return extent > 0 ? extent : 1;
-}
-
-//======================================================================================================================
 MTL::SamplerMinMagFilter toMTLMinMag(FilterMode filter) {
     return filter == FilterMode::Linear ? MTL::SamplerMinMagFilterLinear
                                         : MTL::SamplerMinMagFilterNearest;
