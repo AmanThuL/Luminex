@@ -6,6 +6,7 @@
 #include "Engine/DdsLoader.h"
 #include "Engine/GeometryGenerator.h"
 #include "Engine/GltfLoader.h"
+#include "Engine/TextureBake.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -19,6 +20,7 @@
 #include <filesystem>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 
@@ -103,15 +105,6 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
 }
 
 //======================================================================================================================
-uint32_t mipLevelsFor(uint32_t width, uint32_t height) {
-    uint32_t levels = 1;
-    for (uint32_t extent = std::max(width, height); extent > 1; extent >>= 1) {
-        ++levels;
-    }
-    return levels;
-}
-
-//======================================================================================================================
 // The offline bake (Tools/TextureBake, wired into `xmake setup`) writes each referenced image's
 // full mip chain to a sibling "Baked/image<N>.dds" beside the glTF file, keyed by the image's
 // index in the glTF/GLB "images" array -- the same index cgltf assigns and this loader already
@@ -183,22 +176,29 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                            std::string(sceneName) + " scene: referenced image was not decoded"});
         }
         if (!warnedUnbakedFallback) {
-            LMX_LOG_WARN("{} scene: no baked mip chain beside '{}' -- uploading level 0 only "
-                         "until `xmake setup` bakes it (mip levels above 0 stay undefined)",
+            LMX_LOG_WARN("{} scene: no baked mip chain beside '{}' -- computing mips at load "
+                         "time instead of using `xmake setup`'s offline bake (slower startup, "
+                         "not incorrect)",
                          sceneName, path->string());
             warnedUnbakedFallback = true;
         }
-        const uint32_t mipLevels = mipLevelsFor(image.width, image.height);
-        std::vector<rhi::TextureMip> mips(mipLevels); // levels above 0 stay null -- undefined
-        mips[0] = {.data = image.rgba8.data(), .bytesPerRow = uint64_t{image.width} * 4};
+        // Same box filter the offline bake uses, just run in-process: correct mips, not merely
+        // present ones. srgb selects the colour-space transform; a data image (srgb == false)
+        // has no normal-map flag reaching this lambda, so Linear -- filter raw bytes, no
+        // transform -- is the correct conservative choice, matching how generateMipmaps used to
+        // treat every non-colour texture before this fallback replaced it.
+        const std::span<const uint8_t> rgba8(reinterpret_cast<const uint8_t*>(image.rgba8.data()),
+                                             image.rgba8.size());
+        const BakedMipChain bakedChain =
+            bakeMips(rgba8, image.width, image.height, srgb ? BakeMode::Srgb : BakeMode::Linear);
         auto texture = device.createTexture(
-            {.width = image.width,
-             .height = image.height,
+            {.width = bakedChain.width,
+             .height = bakedChain.height,
              .format = srgb ? rhi::Format::RGBA8Unorm_sRGB : rhi::Format::RGBA8Unorm,
-             .mipLevels = mipLevels,
+             .mipLevels = bakedChain.mipLevels,
              .sampled = true,
              .label = label},
-            mips);
+            bakedChain.mips);
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
         }
