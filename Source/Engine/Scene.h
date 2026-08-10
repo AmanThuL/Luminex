@@ -56,6 +56,13 @@ public:
     glm::vec4 boundingSphere{0.f};
     render::Mesh skySphere;
     std::unique_ptr<rhi::Texture> skyCubemap;
+    // Image-based lighting generated from the same authored sky radiance skyCubemap carries
+    // (Engine/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain, and the
+    // split-sum DFG table. Published together with the sky by the scene-build path, so a scene that
+    // has a skyCubemap has all three.
+    std::unique_ptr<rhi::Texture> irradianceMap;
+    std::unique_ptr<rhi::Texture> prefilteredEnvMap;
+    std::unique_ptr<rhi::Texture> dfgLut;
     SceneCamera initialCamera{};
 
     // Fills `items` (cleared first, one DrawItem per object, in object order) and returns the

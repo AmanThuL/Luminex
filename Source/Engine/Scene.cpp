@@ -6,6 +6,7 @@
 #include "Engine/DdsLoader.h"
 #include "Engine/GeometryGenerator.h"
 #include "Engine/GltfLoader.h"
+#include "Engine/Ibl.h"
 #include "Engine/TextureBake.h"
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -93,6 +94,22 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
         return std::unexpected(uploadFailure(std::move(cubemap.error())));
     }
     scene.skyCubemap = std::move(*cubemap);
+
+    // One authored constant reaches both consumers: the sRGB texture view above decodes those
+    // bytes on the GPU, and the same decode runs here so the generated IBL describes the sky the
+    // renderer actually samples. Deriving it rather than reading the cube back keeps the two from
+    // drifting apart.
+    const glm::vec3 skyRadiance = srgbToLinear(glm::vec3(static_cast<float>(kNeutralSky[0]),
+                                                         static_cast<float>(kNeutralSky[1]),
+                                                         static_cast<float>(kNeutralSky[2])) /
+                                               255.0f);
+    auto generated = ibl::generate(device, ibl::makeConstantCubemap(skyRadiance, 1), label);
+    if (!generated) {
+        return std::unexpected(uploadFailure(std::move(generated.error())));
+    }
+    scene.irradianceMap = std::move(generated->irradiance);
+    scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
+    scene.dfgLut = std::move(generated->dfgLut);
 
     for (size_t i = 0; i < std::size(kLightDirections); ++i) {
         scene.lights[i].direction = kLightDirections[i];
