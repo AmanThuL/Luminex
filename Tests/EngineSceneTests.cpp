@@ -8,7 +8,9 @@
 #include "Engine/Color.h"
 #include "Engine/Scene.h"
 #include "Engine/SceneLibrary.h"
+#include "Engine/TextureBake.h"
 #include "EngineTestSupport.h"
+#include "GpuTestSupport.h"
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
@@ -22,6 +24,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -228,6 +231,116 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
     REQUIRE(foundMetallicRoughness);
     REQUIRE(foundOcclusion);
     REQUIRE(foundEmissive);
+}
+
+namespace {
+
+// Renames a directory aside for the scope's lifetime (forces Scene.cpp's unbaked fallback path on
+// an asset that is normally baked) and restores it on destruction.
+class TemporarilyHiddenDirectory {
+public:
+    //==================================================================================================================
+    explicit TemporarilyHiddenDirectory(std::filesystem::path directory)
+        : m_original(std::move(directory)), m_hidden(m_original.string() + ".hidden-for-test") {
+        if (std::filesystem::exists(m_original)) {
+            std::filesystem::rename(m_original, m_hidden);
+            m_renamed = true;
+        }
+    }
+
+    //==================================================================================================================
+    ~TemporarilyHiddenDirectory() {
+        if (m_renamed) {
+            std::filesystem::rename(m_hidden, m_original);
+        }
+    }
+
+    //==================================================================================================================
+    TemporarilyHiddenDirectory(const TemporarilyHiddenDirectory&) = delete;
+    //==================================================================================================================
+    TemporarilyHiddenDirectory& operator=(const TemporarilyHiddenDirectory&) = delete;
+
+private:
+    std::filesystem::path m_original, m_hidden;
+    bool m_renamed = false;
+};
+
+//======================================================================================================================
+// Renders one texture's exact mip level 1 into a 64x64 target via Shaders/SamplerSmoke.slang's
+// SampleLevel-forcing entry point, independent of geometry or camera -- the same oracle the
+// deleted generateMipmaps GPU test used, repurposed here to compare two textures' mip content
+// directly.
+std::vector<uint8_t> readMipLevel1(rhi::Device& device, rhi::Texture& texture) {
+    auto destination = makeProbeTarget(device, "lmx.test.fallbackMipDestination");
+    REQUIRE(destination.has_value());
+    auto library = device.loadShaderLibrary("Shaders/SamplerSmoke");
+    REQUIRE(library.has_value());
+    auto pipeline = device.createGraphicsPipeline({.library = library->get(),
+                                                   .vertexEntry = "vertexMain",
+                                                   .fragmentEntry = "fragmentMipLevel1",
+                                                   .colorFormat = rhi::Format::BGRA8Unorm,
+                                                   .label = "lmx.test.fallbackMipPipeline"});
+    REQUIRE(pipeline.has_value());
+    auto sampler = device.createSampler(
+        {.addressMode = rhi::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
+    REQUIRE(sampler.has_value());
+    return renderSampledImage(device, **pipeline, /*textureSlot=*/0, texture, **sampler,
+                              **destination);
+}
+
+} // namespace
+
+//======================================================================================================================
+// The unbaked fallback runs the identical bakeMips box filter in-process rather than leaving mip
+// levels above 0 as undefined GPU memory (a minified sample would otherwise read stale VRAM), so
+// this proves the two paths agree: load Helmet normally (baked DDS present), then again with
+// Baked/ renamed aside (forcing the fallback), and require the two textures' level-1 mips are
+// byte-identical -- compared as hashes so a mismatch stays diagnosable rather than asking Catch2
+// to print a 16KB byte vector (see Tests/EngineAssetTests.cpp's determinism test for the same
+// reasoning). Both loads start from the same stb_image-decoded JPEG bytes and run through the
+// same bakeMips code (Source/Engine/TextureBake.h), so equality is exact, not approximate.
+TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offline bake would",
+          "[gpu]") {
+    const std::optional<std::filesystem::path> path =
+        findRepoAsset("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb");
+    if (!path) {
+        SKIP("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb not present (xmake setup fetches "
+             "it) -- skipping the asset-gated pin");
+    }
+    const std::filesystem::path bakedDir = path->parent_path() / "Baked";
+    if (!std::filesystem::exists(bakedDir)) {
+        SKIP("Assets/Fetched/DamagedHelmet/Baked not present (xmake setup bakes it) -- skipping "
+             "the asset-gated pin");
+    }
+
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+
+    auto bakedScene = loadHelmetScene(**device);
+    INFO(describeSceneError(bakedScene));
+    REQUIRE(bakedScene.has_value());
+    rhi::Texture* bakedDiffuse =
+        (*bakedScene)->materials[(*bakedScene)->objects[0].materialIndex].diffuse;
+    REQUIRE(bakedDiffuse != nullptr);
+    const std::vector<uint8_t> bakedMip1 = readMipLevel1(**device, *bakedDiffuse);
+
+    std::vector<uint8_t> fallbackMip1;
+    {
+        const TemporarilyHiddenDirectory hidden(bakedDir);
+        auto fallbackScene = loadHelmetScene(**device);
+        INFO(describeSceneError(fallbackScene));
+        REQUIRE(fallbackScene.has_value());
+        rhi::Texture* fallbackDiffuse =
+            (*fallbackScene)->materials[(*fallbackScene)->objects[0].materialIndex].diffuse;
+        REQUIRE(fallbackDiffuse != nullptr);
+        fallbackMip1 = readMipLevel1(**device, *fallbackDiffuse);
+    }
+
+    REQUIRE(bakedMip1.size() == fallbackMip1.size());
+    INFO(describe("baked mip1 centre", 32, 32, pixelAt(bakedMip1, 32, 32)));
+    INFO(describe("fallback mip1 centre", 32, 32, pixelAt(fallbackMip1, 32, 32)));
+    REQUIRE(sha256Hex(std::as_bytes(std::span(bakedMip1))) ==
+            sha256Hex(std::as_bytes(std::span(fallbackMip1))));
 }
 
 namespace {
