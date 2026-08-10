@@ -414,13 +414,14 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
 
 //======================================================================================================================
 // spec 9's four reset triggers -- first frame, scene switch, auto-exposure enable, and resize --
-// all resolve to the same GPU work in Renderer::declarePasses: an ordinary
-// computeExposureSeed dispatch that writes exp2(manualEV) into the persistent exposure buffer, no
-// CPU readback involved. Each section names the trigger it stands for and drives the real kernel,
-// not a CPU stand-in for it -- the collapse to one dispatch is the point (Renderer.cpp has one
-// reset path, not four), but the kernel itself is what has to be right.
-TEST_CASE("the exposure seed kernel writes exp2(manual EV) on every spec-9 reset trigger",
-          "[gpu]") {
+// all resolve to the same GPU work in Renderer::declarePasses whenever EditorShell's
+// shouldResetExposure() (App/ExposureReset.h, Tests/AppExposureResetTests.cpp) says a reset is
+// pending: an ordinary computeExposureSeed dispatch that writes exp2(manualEV) into the persistent
+// exposure buffer, no CPU readback involved, and no reason to run the same kernel four times over
+// -- which trigger fired is a CPU-only decision this test does not need to remake. What belongs
+// here is the one thing shouldResetExposure()'s unit tests cannot cover: that the kernel a reset
+// actually dispatches does the right GPU-side thing with the seed value it is given.
+TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is applied", "[gpu]") {
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -469,25 +470,7 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) on every spec-9 reset
     constexpr float kManualEv = 2.0f;
     constexpr float kExpected = 4.0f; // exp2(2)
 
-    SECTION("first frame") {
-        // EditorShell::create() leaves m_exposureResetPending true from construction, so the very
-        // first frame declares this pass without any trigger having "fired".
-        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
-    }
-    SECTION("scene switch") {
-        // EditorShell::selectScene() sets m_exposureResetPending on every successful switch.
-        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
-    }
-    SECTION("auto-exposure enable") {
-        // The Render Settings checkbox's off->on transition sets m_exposureResetPending.
-        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
-    }
-    SECTION("resize") {
-        // EditorShell::applyPendingViewportResize() sets m_exposureResetPending after a
-        // successful resize -- the histogram's binning covered a differently-sized image last
-        // frame.
-        REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
-    }
+    REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
 }
 
 //======================================================================================================================

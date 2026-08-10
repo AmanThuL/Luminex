@@ -131,6 +131,11 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     self->m_activeScene = *scene;
     self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
 
+    ExposureResetContext initial = self->m_exposureContext;
+    initial.sceneId = initialScene;
+    self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
+    self->m_exposureContext = initial;
+
     self->m_buildDefaultLayout = !hadIniFile;
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
                  hadIniFile ? "restoring the docked layout from imgui.ini"
@@ -164,7 +169,9 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     // Remove the old target from ImGui's persistent residency set before freeing it.
     rhi::metal4::imguiForgetTexture(renderer.colorTarget());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
-        // Keep the prior targets and restart the debounce to avoid retrying every frame.
+        // Keep the prior targets and restart the debounce to avoid retrying every frame. Failure
+        // means the resize never took effect, so m_exposureContext is left naming the old extent
+        // and shouldResetExposure() is never asked about this attempt at all.
         m_stableFrames = 0;
         LMX_LOG_ERROR("viewport resize to {}x{} failed: {}", m_viewportWidth, m_viewportHeight,
                       resized.error().message);
@@ -172,7 +179,13 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     }
     // A resize is a reset trigger (spec 9): the histogram's binning covered a differently-sized
     // image last frame, so the feedback loop restarts from the manual EV.
-    m_exposureResetPending = true;
+    ExposureResetContext candidate = m_exposureContext;
+    candidate.width = m_viewportWidth;
+    candidate.height = m_viewportHeight;
+    if (shouldResetExposure(m_exposureContext, candidate)) {
+        m_exposureResetPending = true;
+    }
+    m_exposureContext = candidate;
     LMX_LOG_INFO("scene target resized to {}x{} px", m_viewportWidth, m_viewportHeight);
 }
 
@@ -314,10 +327,14 @@ void EditorShell::buildRenderSettingsSection() {
                            ImGuiSliderFlags_AlwaysClamp);
         // Off->on is a reset trigger (spec 9): the feedback loop has produced nothing yet, so the
         // first auto frame has to start from the manual EV exactly like a fresh scene would.
+        // On->off is not: shouldResetExposure() only fires on the false->true edge.
         if (ImGui::Checkbox("Auto exposure", &m_autoExposureEnabled)) {
-            if (m_autoExposureEnabled) {
+            ExposureResetContext candidate = m_exposureContext;
+            candidate.autoExposureEnabled = m_autoExposureEnabled;
+            if (shouldResetExposure(m_exposureContext, candidate)) {
                 m_exposureResetPending = true;
             }
+            m_exposureContext = candidate;
         }
         if (m_autoExposureEnabled) {
             ImGui::SliderFloat("Low percentile", &m_exposureLowPercentile, 0.0f,
@@ -547,7 +564,12 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_camera = cameraFromScene(m_activeScene->initialCamera);
     // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
     // about the new one's content.
-    m_exposureResetPending = true;
+    ExposureResetContext candidate = m_exposureContext;
+    candidate.sceneId = id;
+    if (shouldResetExposure(m_exposureContext, candidate)) {
+        m_exposureResetPending = true;
+    }
+    m_exposureContext = candidate;
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_activeScene->name,
                  m_activeScene->objects.size());
 }

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
@@ -154,11 +155,18 @@ private:
     float m_exposureEvMin = -8.0f;
     float m_exposureEvMax = 8.0f;
     float m_exposureCompensationEv = 0.0f;
-    // Set true by create() (first frame), selectScene() (scene switch), the auto-exposure
-    // checkbox's off->on transition, and a completed applyPendingViewportResize() (resize).
-    // consumeExposureReset() reads and clears it, which is what makes each trigger fire exactly
-    // once rather than on every frame the condition happens to still be true.
-    bool m_exposureResetPending = true;
+    // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
+    // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
+    // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline
+    // condition, so the trigger rules live in one pure, unit-tested place. create() always sets it
+    // true (m_exposureContext starts with sceneId unset, so the pure function agrees), which is why
+    // the default here does not have to. consumeExposureReset() reads and clears it, which is what
+    // makes each trigger fire exactly once rather than on every frame the condition still holds.
+    bool m_exposureResetPending = false;
+    // The state shouldResetExposure() last compared against, updated at each of the four trigger
+    // sites after the decision is made. Starts with sceneId unset, which is what makes the very
+    // first call at create() read as "first frame" without a separate flag to keep in sync.
+    ExposureResetContext m_exposureContext;
 
     // Bloom (spec 10): enabled by default, identically in the editor and --screenshot.
     bool m_bloomEnabled = true;
