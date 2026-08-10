@@ -32,10 +32,18 @@ enum class TextureKind {
     Cube   ///< Six square faces sampled by direction.
 };
 
-/// Describes a GPU buffer allocation.
+/// Describes a GPU buffer allocation and its allowed usages.
+///
+/// Vertex, index, and uniform reads need no usage flag: they are what a buffer is for. The storage
+/// flags below are the ones a shader's read-write bindings need, and they exist so that a
+/// bindStorageBuffer with an access the buffer was never created for is a caller error with a
+/// message rather than undefined shader behavior.
 struct BufferDesc {
-    uint64_t size = 0;      ///< Allocation size in bytes.
-    std::string_view label; ///< Diagnostic object label.
+    uint64_t size = 0;         ///< Allocation size in bytes.
+    bool storageRead = false;  ///< Enables shader reads through a storage binding.
+    bool storageWrite = false; ///< Enables shader writes through a storage binding.
+    bool cpuReadback = false;  ///< Enables blocking CPU readback of the buffer's contents.
+    std::string_view label;    ///< Diagnostic object label.
 };
 /// Provides access to an immutable-size GPU buffer.
 class Buffer {
@@ -44,6 +52,11 @@ public:
     virtual ~Buffer() = default;
     /// Returns the allocation size in bytes.
     virtual uint64_t size() const = 0;
+    /// Blocking readback of the buffer's leading bytes (requires cpuReadback). outSize must not
+    /// exceed size(), and the caller is responsible for having completed the GPU work that wrote
+    /// the range (Device::waitIdle) -- this call performs no synchronization of its own.
+    /// Copies the first `outSize` bytes of the buffer into `out` after GPU work has completed.
+    virtual void readback(void* out, uint64_t outSize) = 0;
 };
 
 /// Describes a GPU texture allocation and its allowed usages.
@@ -219,6 +232,38 @@ public:
     virtual ~GraphicsPipeline() = default;
 };
 
+/// Describes the kernel and threadgroup shape of a compute pipeline.
+///
+/// threadsPerThreadgroup restates the kernel's own `[numthreads]` because the Slang-to-Metal path
+/// does not carry it into the compiled library: the shading language expects the host to supply the
+/// threadgroup size at dispatch. Stating it once here keeps CommandList::dispatch a count of
+/// threadgroups rather than a second place where the shader's shape has to be repeated. It is the
+/// caller's job to keep the two in step -- a mismatch is a shader that reads out of its own bounds,
+/// not a pipeline-creation failure.
+struct ComputePipelineDesc {
+    ShaderLibrary* library = nullptr; ///< Shader library containing the kernel.
+    std::string_view computeEntry;    ///< Compute-stage entry-point name.
+    /// Threads per threadgroup in x, y, z; must equal the kernel's `[numthreads]` and each
+    /// component must be at least one.
+    uint32_t threadsPerThreadgroup[3] = {1, 1, 1};
+    std::string_view label; ///< Diagnostic object label.
+};
+/// Represents an immutable compute pipeline.
+class ComputePipeline {
+public:
+    /// Destroys the compute pipeline.
+    virtual ~ComputePipeline() = default;
+};
+
+/// Declares what a shader does with a storage binding, so that validation and a future backend's
+/// state tracking know the intent without inspecting the shader. This backend does not track
+/// resource state, so the declaration constrains only which resources may be bound where.
+enum class StorageAccess {
+    Read,     ///< The shader only reads the binding.
+    Write,    ///< The shader only writes the binding.
+    ReadWrite ///< The shader both reads and writes the binding.
+};
+
 /// Describes render-pass attachments, clear operations, and its diagnostic label.
 struct RenderPassDesc {
     Texture* colorTarget = nullptr; ///< Color attachment, or null for a depth-only pass.
@@ -232,13 +277,45 @@ struct RenderPassDesc {
     std::string_view label;
 };
 
-/// Records one frame's render passes, bindings, barriers, and draw commands.
+/// Records one frame's render and compute passes, bindings, barriers, dispatches, and draws.
+///
+/// Exactly one pass is open at a time: every command below documents the scope it is valid in, and
+/// calling it outside that scope is a sequencing bug the backend asserts on rather than a failure
+/// it reports. Bindings live in the frame's argument table and therefore survive across passes of
+/// the frame; a pass that depends on a slot binds it rather than inheriting whatever an earlier
+/// pass left there.
 class CommandList {
 public:
     /// Destroys the command list through its owning device.
     virtual ~CommandList() = default;
     /// Begins a render pass using the supplied attachments and load actions.
     virtual void beginRenderPass(const RenderPassDesc& desc) = 0;
+    /// Begins a compute pass. Inside it, bindComputePipeline, bindStorageBuffer, the read-only
+    /// texture/sampler/buffer binds, setUniforms, and dispatch are valid; render-pass commands are
+    /// not. `label` names the pass in GPU captures, validation diagnostics, and passTimings();
+    /// backends substitute a stable fallback for an empty one.
+    /// Begins a labeled compute pass on this command list.
+    virtual void beginComputePass(std::string_view label) = 0;
+    /// Binds a compute pipeline for subsequent dispatches. Valid only inside a compute pass.
+    virtual void bindComputePipeline(ComputePipeline& pipeline) = 0;
+    /// Binds a buffer for shader reads and/or writes at the given argument-table buffer slot --
+    /// the same index space bindBuffer and setUniforms use. `access` declares what the shader does
+    /// with it and must be granted by the buffer's BufferDesc storage flags. Valid only inside a
+    /// compute pass. Ordering against other passes is not implied: a dispatch that must see an
+    /// earlier pass's writes needs an explicit barrier.
+    /// Binds a storage buffer with declared access to an argument-table buffer slot.
+    virtual void bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) = 0;
+    /// Dispatches a grid of threadgroups; each argument is a count of *threadgroups*, not of
+    /// threads, and the threads within one come from the bound pipeline's threadsPerThreadgroup.
+    /// Every count must be greater than zero. Valid only inside a compute pass, after
+    /// bindComputePipeline. The dispatch is ordered after previously encoded work in the same pass
+    /// only through explicit barriers -- threadgroups of one dispatch may otherwise overlap
+    /// execution with a neighboring dispatch.
+    /// Records a compute dispatch of the given threadgroup counts.
+    virtual void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY,
+                          uint32_t threadgroupsZ) = 0;
+    /// Ends the active compute pass.
+    virtual void endComputePass() = 0;
     /// Binds a graphics pipeline for subsequent draws.
     virtual void bindPipeline(GraphicsPipeline& pipeline) = 0;
     /// Binds a buffer at the given argument-table buffer slot -- vertex buffers, read here by
@@ -247,26 +324,27 @@ public:
     /// setUniforms below: slot 0 here and slot 0 in setUniforms are the same binding, so two
     /// different resources must not be bound to the same slot index within one pass. Texture and
     /// sampler slots (bindTexture, bindSampler) are separate index spaces again -- slot 0 in any
-    /// one of the three does not collide with slot 0 in either other. Valid only inside a render
-    /// pass.
-    /// Binds a buffer to an argument-table buffer slot in the active render pass.
+    /// one of the three does not collide with slot 0 in either other. Valid inside a render or a
+    /// compute pass.
+    /// Binds a buffer to an argument-table buffer slot in the active pass.
     virtual void bindBuffer(uint32_t slot, Buffer& buffer) = 0;
     /// Binds a texture for shader reads at the given argument-table texture slot. Texture slots
-    /// are their own index space -- slot 0 here and buffer slot 0 coexist. Valid only inside a
-    /// render pass; the texture must carry shader-read usage. This backend grants shader-read
-    /// usage for both sampled = true and cpuReadback = true descriptors (so a texture created for
-    /// CPU readback may be sampled from).
+    /// are their own index space -- slot 0 here and buffer slot 0 coexist. Valid inside a render
+    /// or a compute pass; the texture must carry shader-read usage. This backend grants
+    /// shader-read usage for sampled = true, storageRead = true, and cpuReadback = true
+    /// descriptors (so a texture created for CPU readback may be sampled from).
     /// Binds a shader-readable texture to an argument-table texture slot.
     virtual void bindTexture(uint32_t slot, Texture& texture) = 0;
     /// Binds a sampler at the given argument-table sampler slot. Sampler slots are their own
     /// index space, like texture slots -- so slot 0 here coexists with texture slot 0 and buffer
-    /// slot 0. Valid only inside a render pass.
+    /// slot 0. Valid inside a render or a compute pass.
     /// Binds a sampler to an argument-table sampler slot.
     virtual void bindSampler(uint32_t slot, Sampler& sampler) = 0;
     /// Copies `size` bytes into the frame's transient uniform ring and binds the copy's GPU
     /// address at the given argument-table buffer slot for subsequent draws -- the same index
     /// space bindBuffer above binds into. The data is captured at call time -- the caller may
-    /// reuse or free its buffer immediately. Valid only inside a render pass. Ring capacity is a
+    /// reuse or free its buffer immediately. Valid inside a render or a compute pass. Ring
+    /// capacity is a
     /// fixed per-frame budget; exhausting it is fatal (LMX_ASSERT) -- grow the backend constant
     /// when a real scene hits it.
     /// Copies transient uniform data and binds it to an argument-table buffer slot.
@@ -305,15 +383,15 @@ public:
     virtual void resize(uint32_t width, uint32_t height) = 0;
 };
 
-/// How long the GPU spent on one render pass, measured on the device timeline by timestamps the
-/// backend writes at the pass boundaries -- callers record nothing.
+/// How long the GPU spent on one pass of any kind, measured on the device timeline by timestamps
+/// the backend writes at the pass boundaries -- callers record nothing.
 ///
-/// label is the RenderPassDesc label the pass was begun with, with the backend's unnamed-pass
-/// fallback substituted for an empty one. gpuMilliseconds covers the whole pass, load and store
-/// actions included, and is wall time on the GPU rather than a sum of shader costs: a pass that
-/// overlaps another still reports its own span, so times across a frame may add up to more than
-/// the frame took.
-/// Reports the GPU duration associated with one labeled render pass.
+/// label is the label the pass was begun with, with the backend's unnamed-pass fallback
+/// substituted for an empty one. gpuMilliseconds covers the whole pass, load and store actions
+/// included, and is wall time on the GPU rather than a sum of shader costs: a pass that overlaps
+/// another still reports its own span, so times across a frame may add up to more than the frame
+/// took.
+/// Reports the GPU duration associated with one labeled pass.
 struct PassTiming {
     std::string label;            ///< Render-pass diagnostic label.
     double gpuMilliseconds = 0.0; ///< Measured GPU wall time in milliseconds.
@@ -350,6 +428,10 @@ public:
     virtual Result<std::unique_ptr<GraphicsPipeline>>
     /// Creates a graphics pipeline from the supplied descriptor.
     createGraphicsPipeline(const GraphicsPipelineDesc&) = 0;
+    /// Creates an immutable compute pipeline.
+    virtual Result<std::unique_ptr<ComputePipeline>>
+    /// Creates a compute pipeline from the supplied descriptor.
+    createComputePipeline(const ComputePipelineDesc&) = 0;
 
     /// Frame loop: beginFrame blocks on pacing (3 in flight), returns the frame CommandList.
     /// endFrame commits; if presentTo != nullptr, presents its acquired texture.

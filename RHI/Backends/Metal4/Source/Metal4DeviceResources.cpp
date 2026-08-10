@@ -119,7 +119,7 @@ Result<std::unique_ptr<Buffer>> Metal4Device::createBuffer(const BufferDesc& des
     debug::CaptureSchema::instance().registerBuffer(buffer.get(), label, desc.size);
 
     // ResidencyRegistration removes the allocation when the wrapper dies.
-    return std::make_unique<Metal4Buffer>(std::move(buffer), m_residency);
+    return std::make_unique<Metal4Buffer>(std::move(buffer), desc, m_residency);
 }
 
 //======================================================================================================================

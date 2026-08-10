@@ -15,6 +15,8 @@ Result<void> validate(const TextureDesc& desc);
 Result<void> validate(const SamplerDesc& desc);
 /// Validates a graphics pipeline descriptor before backend object creation.
 Result<void> validate(const GraphicsPipelineDesc& desc);
+/// Validates a compute pipeline descriptor before backend object creation.
+Result<void> validate(const ComputePipelineDesc& desc);
 /// Validates a swapchain descriptor before backend object creation.
 Result<void> validate(const SwapchainDesc& desc);
 

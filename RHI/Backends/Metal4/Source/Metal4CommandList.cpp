@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Metal4CommandList.cpp
-/// @brief Encodes render passes, bindings, draws, and barriers into Metal 4 command buffers.
+/// @brief Encodes render and compute passes, bindings, draws, dispatches, and barriers.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Metal4CommandList.h"
 
@@ -15,6 +15,28 @@
 namespace lmx::rhi::metal4 {
 
 //======================================================================================================================
+void Metal4CommandList::beginTimedPass(std::string_view label) {
+    // Timestamps are written on the command buffer rather than inside the encoder, which is what
+    // makes them pass boundaries: an encoder-stage timestamp would be ordered against a shader
+    // stage, and a render pass's load and clear work happens before any stage runs. Both writes of
+    // a pass therefore straddle the encoder -- this one, and the one endTimedPass makes after
+    // endEncoding.
+    const size_t passIndex = m_timestamps->passLabels.size();
+    LMX_ASSERT(passIndex < kMaxTimedPassesPerFrame,
+               "beginPass: this frame has more passes than the per-frame timestamp heap holds -- "
+               "grow kMaxTimedPassesPerFrame");
+    m_timestamps->passLabels.emplace_back(label);
+    m_commandBuffer->writeTimestampIntoHeap(m_timestamps->heap.get(), passIndex * 2);
+}
+
+//======================================================================================================================
+void Metal4CommandList::endTimedPass() {
+    // Closes the pair beginTimedPass opened; the label pushed there names this index.
+    const size_t passIndex = m_timestamps->passLabels.size() - 1;
+    m_commandBuffer->writeTimestampIntoHeap(m_timestamps->heap.get(), passIndex * 2 + 1);
+}
+
+//======================================================================================================================
 void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
@@ -22,7 +44,7 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
     LMX_ASSERT(m_argumentTable != nullptr && m_uniformRing != nullptr && m_timestamps != nullptr,
                "beginRenderPass: no frame is open -- this command list is only valid between "
                "Device::beginFrame and Device::endFrame");
-    LMX_ASSERT(!m_encoder, "beginRenderPass: a render pass is already open on this command list");
+    LMX_ASSERT(!inPass(), "beginRenderPass: a pass is already open on this command list");
     const Result<void> targets = validateRenderPassTargets(desc.colorTarget, desc.depthTarget);
     LMX_ASSERT(targets.has_value(), targets.error().message);
     // Discarding the only attachment would make a depth-only pass produce no observable output.
@@ -66,17 +88,7 @@ void Metal4CommandList::beginRenderPass(const RenderPassDesc& desc) {
 
     passDesc->setDefaultRasterSampleCount(1);
 
-    // Timestamps are written on the command buffer rather than inside the encoder, which is what
-    // makes them pass boundaries: an encoder-stage timestamp would be ordered against a shader
-    // stage, and the pass's load and clear work happens before any stage runs. Both writes of a
-    // pass therefore straddle the encoder -- this one, and the one endRenderPass makes after
-    // endEncoding.
-    const size_t passIndex = m_timestamps->passLabels.size();
-    LMX_ASSERT(passIndex < kMaxTimedPassesPerFrame,
-               "beginRenderPass: this frame has more render passes than the per-frame timestamp "
-               "heap holds -- grow kMaxTimedPassesPerFrame");
-    m_timestamps->passLabels.emplace_back(label);
-    m_commandBuffer->writeTimestampIntoHeap(m_timestamps->heap.get(), passIndex * 2);
+    beginTimedPass(label);
 
     m_encoder = NS::RetainPtr(m_commandBuffer->renderCommandEncoder(passDesc.get()));
     LMX_ASSERT(m_encoder, "beginRenderPass: failed to create a render command encoder");
@@ -126,7 +138,7 @@ void Metal4CommandList::bindPipeline(GraphicsPipeline& pipeline) {
 
 //======================================================================================================================
 void Metal4CommandList::bindBuffer(uint32_t slot, Buffer& buffer) {
-    LMX_ASSERT(m_encoder, "bindBuffer must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(inPass(), "bindBuffer must be called inside a render or compute pass");
 
     // Argument tables hold raw addresses; ResidencyRegistration keeps the allocation resident.
     m_argumentTable->setAddress(static_cast<Metal4Buffer&>(buffer).handle()->gpuAddress(), slot);
@@ -134,7 +146,7 @@ void Metal4CommandList::bindBuffer(uint32_t slot, Buffer& buffer) {
 
 //======================================================================================================================
 void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture) {
-    LMX_ASSERT(m_encoder, "bindTexture must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(inPass(), "bindTexture must be called inside a render or compute pass");
     auto& metalTexture = static_cast<Metal4Texture&>(texture);
     // ResourceID hides usage from Metal validation, so reject non-readable textures before bind.
     LMX_ASSERT((metalTexture.handle()->usage() & MTL::TextureUsageShaderRead) != 0,
@@ -146,7 +158,7 @@ void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture) {
 
 //======================================================================================================================
 void Metal4CommandList::bindSampler(uint32_t slot, Sampler& sampler) {
-    LMX_ASSERT(m_encoder, "bindSampler must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(inPass(), "bindSampler must be called inside a render or compute pass");
     // Samplers use ResourceID but need no residency registration because they are not allocations.
     m_argumentTable->setSamplerState(static_cast<Metal4Sampler&>(sampler).handle()->gpuResourceID(),
                                      slot);
@@ -154,7 +166,7 @@ void Metal4CommandList::bindSampler(uint32_t slot, Sampler& sampler) {
 
 //======================================================================================================================
 void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size) {
-    LMX_ASSERT(m_encoder, "setUniforms must be called between beginRenderPass and endRenderPass");
+    LMX_ASSERT(inPass(), "setUniforms must be called inside a render or compute pass");
     LMX_ASSERT(data != nullptr && size > 0, "setUniforms: data must be non-null and non-empty");
     const uint64_t offset = *m_uniformOffset;
     const uint64_t capacity = m_uniformRing->length();
@@ -210,15 +222,99 @@ void Metal4CommandList::endRenderPass() {
     m_encoder->endEncoding();
     m_encoder.reset();
 
-    // Closes the pair beginRenderPass opened; the label pushed there names this index.
-    const size_t passIndex = m_timestamps->passLabels.size() - 1;
-    m_commandBuffer->writeTimestampIntoHeap(m_timestamps->heap.get(), passIndex * 2 + 1);
+    endTimedPass();
+}
+
+//======================================================================================================================
+void Metal4CommandList::beginComputePass(std::string_view label) {
+    // computeCommandEncoder() returns an autoreleased (+0) object, exactly like the render
+    // encoder, so this pool is load-bearing rather than symmetric.
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(m_argumentTable != nullptr && m_uniformRing != nullptr && m_timestamps != nullptr,
+               "beginComputePass: no frame is open -- this command list is only valid between "
+               "Device::beginFrame and Device::endFrame");
+    LMX_ASSERT(!inPass(), "beginComputePass: a pass is already open on this command list");
+
+    const std::string_view passLabel = label.empty() ? "lmx.pass.unnamed" : label;
+
+    beginTimedPass(passLabel);
+
+    m_computeEncoder = NS::RetainPtr(m_commandBuffer->computeCommandEncoder());
+    LMX_ASSERT(m_computeEncoder, "beginComputePass: failed to create a compute command encoder");
+    m_computeEncoder->setLabel(makeString(passLabel).get());
+
+    // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
+    // consumer encoder as its first command.
+    if (m_pendingBarrier) {
+        m_computeEncoder->barrierAfterQueueStages(MTL::StageFragment, MTL::StageDispatch,
+                                                  MTL4::VisibilityOptionDevice);
+        m_pendingBarrier = false;
+    }
+
+    m_computeEncoder->setArgumentTable(m_argumentTable);
+}
+
+//======================================================================================================================
+void Metal4CommandList::bindComputePipeline(ComputePipeline& pipeline) {
+    LMX_ASSERT(m_computeEncoder,
+               "bindComputePipeline must be called between beginComputePass and endComputePass");
+    auto& metalPipeline = static_cast<Metal4ComputePipeline&>(pipeline);
+    m_computeEncoder->setComputePipelineState(metalPipeline.handle());
+    // Metal takes the threadgroup shape at dispatch, not at bind, so the bound pipeline is
+    // remembered until the pass ends.
+    m_computePipeline = &metalPipeline;
+}
+
+//======================================================================================================================
+void Metal4CommandList::bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) {
+    LMX_ASSERT(m_computeEncoder,
+               "bindStorageBuffer must be called between beginComputePass and endComputePass");
+    auto& metalBuffer = static_cast<Metal4Buffer&>(buffer);
+    // Metal buffers carry no usage bits, so the desc flags are the only record of what the caller
+    // meant this allocation to be -- and the only place a mismatch can be caught at all.
+    const bool reads = access == StorageAccess::Read || access == StorageAccess::ReadWrite;
+    const bool writes = access == StorageAccess::Write || access == StorageAccess::ReadWrite;
+    LMX_ASSERT(!reads || metalBuffer.storageRead(),
+               "bindStorageBuffer: buffer was not created with BufferDesc.storageRead");
+    LMX_ASSERT(!writes || metalBuffer.storageWrite(),
+               "bindStorageBuffer: buffer was not created with BufferDesc.storageWrite");
+    // Argument tables hold raw addresses; ResidencyRegistration keeps the allocation resident.
+    m_argumentTable->setAddress(metalBuffer.handle()->gpuAddress(), slot);
+}
+
+//======================================================================================================================
+void Metal4CommandList::dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY,
+                                 uint32_t threadgroupsZ) {
+    LMX_ASSERT(m_computeEncoder,
+               "dispatch must be called between beginComputePass and endComputePass");
+    LMX_ASSERT(threadgroupsX > 0 && threadgroupsY > 0 && threadgroupsZ > 0,
+               "dispatch: every threadgroup count must be greater than zero");
+    LMX_ASSERT(m_computePipeline != nullptr,
+               "dispatch: no compute pipeline is bound -- call bindComputePipeline first");
+    m_computeEncoder->dispatchThreadgroups(
+        MTL::Size::Make(threadgroupsX, threadgroupsY, threadgroupsZ),
+        m_computePipeline->threadsPerThreadgroup());
+}
+
+//======================================================================================================================
+void Metal4CommandList::endComputePass() {
+    NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
+
+    LMX_ASSERT(m_computeEncoder, "endComputePass: no compute pass is open on this command list");
+    m_computeEncoder->endEncoding();
+    m_computeEncoder.reset();
+    // The pipeline's threadgroup shape belongs to the pass that bound it; carrying it into the
+    // next pass would let a dispatch inherit a shape no bind in that pass ever asked for.
+    m_computePipeline = nullptr;
+
+    endTimedPass();
 }
 
 //======================================================================================================================
 void Metal4CommandList::textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
     (void)texture; // Metal 4 barriers are stage-scoped rather than resource-scoped.
-    LMX_ASSERT(!m_encoder, "textureBarrier must be called between render passes, not inside one");
+    LMX_ASSERT(!inPass(), "textureBarrier must be called between passes, not inside one");
     // Reject barriers outside a frame so a pending edge cannot leak into the next frame.
     LMX_ASSERT(m_argumentTable != nullptr, "textureBarrier must be called inside a frame");
     LMX_ASSERT(from == TextureUse::RenderTarget && to == TextureUse::ShaderRead,
@@ -231,7 +327,7 @@ void Metal4CommandList::textureBarrier(Texture& texture, TextureUse from, Textur
 void Metal4CommandList::resetForFrame(MTL4::ArgumentTable* argumentTable, MTL::Buffer* uniformRing,
                                       uint64_t* uniformOffset, Metal4FrameTimestamps* timestamps) {
     // Never retarget per-frame storage while an encoder can still reference the old slot.
-    LMX_ASSERT(!m_encoder, "resetForFrame: a render pass is still open from the previous frame");
+    LMX_ASSERT(!inPass(), "resetForFrame: a pass is still open from the previous frame");
     LMX_ASSERT(argumentTable != nullptr, "resetForFrame: argument table must not be null");
     LMX_ASSERT(uniformRing != nullptr && uniformOffset != nullptr,
                "resetForFrame: uniform ring and its offset cursor must not be null");
@@ -253,6 +349,7 @@ void Metal4CommandList::endFrameReset() {
     m_argumentTable = nullptr;
     m_uniformRing = nullptr;
     m_uniformOffset = nullptr;
+    m_computePipeline = nullptr;
     // The slot itself outlives the frame -- the device reads its labels when the frame retires --
     // but this list must not be able to append to it outside a frame.
     m_timestamps = nullptr;

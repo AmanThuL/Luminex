@@ -37,8 +37,15 @@ private:
 
 class Metal4Buffer final : public Buffer {
 public:
-    Metal4Buffer(NS::SharedPtr<MTL::Buffer> buffer, NS::SharedPtr<MTL::ResidencySet> residency)
-        : m_buffer(std::move(buffer)), m_residency(std::move(residency), m_buffer.get()) {}
+    // storage/readback flags are carried from the desc rather than re-derived from Metal: this
+    // backend allocates every buffer Shared and stores no usage on MTL::Buffer, so the desc is the
+    // only place a bind's declared access or a readback can be checked against what the caller
+    // asked for.
+    Metal4Buffer(NS::SharedPtr<MTL::Buffer> buffer, const BufferDesc& desc,
+                 NS::SharedPtr<MTL::ResidencySet> residency)
+        : m_buffer(std::move(buffer)), m_storageRead(desc.storageRead),
+          m_storageWrite(desc.storageWrite), m_cpuReadback(desc.cpuReadback),
+          m_residency(std::move(residency), m_buffer.get()) {}
 
     // Drops this buffer's capture-schema entry. Identity contract with
     // Metal4Device::createBuffer: the key is the MTL::Buffer pointer, which is m_buffer.get()
@@ -47,13 +54,20 @@ public:
     ~Metal4Buffer() override;
 
     uint64_t size() const override { return m_buffer->length(); }
+    void readback(void* out, uint64_t outSize) override;
 
     MTL::Buffer* handle() const { return m_buffer.get(); }
+
+    bool storageRead() const { return m_storageRead; }
+    bool storageWrite() const { return m_storageWrite; }
 
 private:
     // m_residency is declared last so it is destroyed *first* (reverse declaration order),
     // while m_buffer still holds the allocation it has to unregister.
     NS::SharedPtr<MTL::Buffer> m_buffer;
+    bool m_storageRead = false;
+    bool m_storageWrite = false;
+    bool m_cpuReadback = false;
     ResidencyRegistration m_residency;
 };
 
@@ -148,6 +162,24 @@ struct Metal4RasterState {
     float depthBias = 0.0f;
     float slopeScale = 0.0f;
     float biasClamp = 0.0f;
+};
+
+// The threadgroup shape is carried from the desc because the compiled kernel does not report one:
+// Slang's Metal output states no required threadgroup size, so MTL::ComputePipelineState has none
+// to hand back and every dispatchThreadgroups needs the value the desc supplied.
+class Metal4ComputePipeline final : public ComputePipeline {
+public:
+    Metal4ComputePipeline(NS::SharedPtr<MTL::ComputePipelineState> state,
+                          MTL::Size threadsPerThreadgroup)
+        : m_state(std::move(state)), m_threadsPerThreadgroup(threadsPerThreadgroup) {}
+
+    MTL::ComputePipelineState* handle() const { return m_state.get(); }
+
+    MTL::Size threadsPerThreadgroup() const { return m_threadsPerThreadgroup; }
+
+private:
+    NS::SharedPtr<MTL::ComputePipelineState> m_state;
+    MTL::Size m_threadsPerThreadgroup;
 };
 
 class Metal4Pipeline final : public GraphicsPipeline {

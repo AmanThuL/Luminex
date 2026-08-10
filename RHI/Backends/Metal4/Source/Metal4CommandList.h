@@ -11,7 +11,10 @@
 
 namespace lmx::rhi::metal4 {
 
-// How many render passes of one frame carry timestamps. Sized like kUniformRingBytes -- a fixed
+class Metal4ComputePipeline;
+
+// How many passes of one frame carry timestamps, counting every kind. Sized like kUniformRingBytes
+// -- a fixed
 // per-frame budget that a real frame is expected to stay under, and whose exhaustion is a hard
 // error rather than a silently dropped measurement.
 inline constexpr uint32_t kMaxTimedPassesPerFrame = 16;
@@ -54,9 +57,10 @@ struct Metal4FrameTimestamps {
 // distinguish "no frame is open" from "a frame is open" at all -- without it a stale pointer would
 // keep every check passing while the writes landed in a slot the GPU was still reading.
 //
-// Encoder-scoped calls (bindPipeline, bindBuffer, bindTexture, bindSampler, setUniforms, draw,
-// drawIndexed) assert rather than return errors: calling them outside a pass is a sequencing
-// bug, and the RHI CommandList methods return void.
+// Encoder-scoped calls (bindPipeline, bindComputePipeline, bindBuffer, bindStorageBuffer,
+// bindTexture, bindSampler, setUniforms, draw, drawIndexed, dispatch) assert rather than return
+// errors: calling them outside a pass is a sequencing bug, and the RHI CommandList methods return
+// void.
 // They also hold no autorelease pool of their own: none of them invokes an autoreleasing
 // selector, so a per-call pool bought nothing and cost a create/drain on the hottest path in
 // the backend. Verified against the vendored headers rather than assumed: bindPipeline, bindBuffer,
@@ -86,6 +90,11 @@ public:
     Metal4CommandList& operator=(const Metal4CommandList&) = delete;
 
     void beginRenderPass(const RenderPassDesc& desc) override;
+    void beginComputePass(std::string_view label) override;
+    void bindComputePipeline(ComputePipeline& pipeline) override;
+    void bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) override;
+    void dispatch(uint32_t threadgroupsX, uint32_t threadgroupsY, uint32_t threadgroupsZ) override;
+    void endComputePass() override;
     void bindPipeline(GraphicsPipeline& pipeline) override;
     void bindBuffer(uint32_t slot, Buffer& buffer) override;
     void bindTexture(uint32_t slot, Texture& texture) override;
@@ -113,6 +122,10 @@ public:
     // frame with an open encoder is reported here rather than as a Metal abort at commit time.
     bool inRenderPass() const { return static_cast<bool>(m_encoder); }
 
+    // The same for a compute pass. Kept separate from inRenderPass so the device's diagnostic can
+    // name the pass kind the caller left open.
+    bool inComputePass() const { return static_cast<bool>(m_computeEncoder); }
+
     // Backend-internal, the same role handle() plays on every resource wrapper: a sibling Metal 4
     // file reaches the native objects through them, and the RHI CommandList interface has neither.
     // Metal4ImGui needs both, because Dear ImGui's Metal 4 backend records into the open encoder
@@ -126,12 +139,28 @@ public:
     MTL4::RenderCommandEncoder* currentEncoder() const;
 
 private:
+    // Claims the frame's next timestamp pair for `label` and writes the opening one. Both writes
+    // straddle the encoder rather than sitting inside it -- see the note in beginRenderPass.
+    void beginTimedPass(std::string_view label);
+
+    // Writes the closing timestamp of the pass beginTimedPass most recently opened.
+    void endTimedPass();
+
+    // True while any pass is open. Bindings and the frame's uniform ring are shared by both pass
+    // kinds, so their scope check is "a pass is open" rather than a specific encoder.
+    bool inPass() const { return inRenderPass() || inComputePass(); }
+
     MTL4::CommandBuffer* m_commandBuffer = nullptr;
     MTL4::ArgumentTable* m_argumentTable = nullptr;
     MTL::Buffer* m_uniformRing = nullptr;
     uint64_t* m_uniformOffset = nullptr;
     Metal4FrameTimestamps* m_timestamps = nullptr;
     NS::SharedPtr<MTL4::RenderCommandEncoder> m_encoder;
+    NS::SharedPtr<MTL4::ComputeCommandEncoder> m_computeEncoder;
+    // The compute pipeline bound in the open compute pass, borrowed for its threadgroup shape --
+    // Metal takes that shape at dispatch rather than at bind. Null outside a compute pass and
+    // until the pass binds one; the pipeline itself is owned by the caller and outlives the frame.
+    const Metal4ComputePipeline* m_computePipeline = nullptr;
     bool m_pendingBarrier = false;
 };
 

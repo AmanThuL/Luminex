@@ -7,6 +7,8 @@
 #include "Core/Assert.h"
 #include "RHI/CaptureSchema.h"
 
+#include <cstring>
+
 namespace lmx::rhi::metal4 {
 
 //======================================================================================================================
@@ -37,6 +39,18 @@ ResidencyRegistration::~ResidencyRegistration() {
 // drawable wrappers were never registered, so their removal is a no-op.
 Metal4Buffer::~Metal4Buffer() {
     debug::CaptureSchema::instance().unregisterResource(m_buffer.get());
+}
+
+//======================================================================================================================
+void Metal4Buffer::readback(void* out, uint64_t outSize) {
+    LMX_ASSERT(out != nullptr, "Buffer::readback: destination must not be null");
+    LMX_ASSERT(m_cpuReadback,
+               "Buffer::readback: buffer was not created with BufferDesc.cpuReadback");
+    LMX_ASSERT(outSize <= m_buffer->length(),
+               "Buffer::readback: outSize reads past the end of the buffer");
+    // Shared storage makes the allocation itself CPU-visible, so the readback is the copy out --
+    // there is nothing to resolve or untile first.
+    std::memcpy(out, m_buffer->contents(), outSize);
 }
 
 //======================================================================================================================

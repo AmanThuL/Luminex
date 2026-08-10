@@ -46,6 +46,9 @@ struct FakeBuffer final : rhi::Buffer {
     //==================================================================================================================
     uint64_t size() const override { return m_size; }
 
+    //==================================================================================================================
+    void readback(void*, uint64_t) override {}
+
 private:
     uint64_t m_size = 0;
 };
@@ -77,6 +80,29 @@ struct RecordingCommandList final : rhi::CommandList {
 
     //==================================================================================================================
     void endRenderPass() override { events.push_back("end"); }
+
+    // The graph declares no compute work yet; these log rather than ignore, so a pass kind the
+    // graph starts emitting shows up in the event assertions instead of disappearing.
+
+    //==================================================================================================================
+    void beginComputePass(std::string_view label) override {
+        events.push_back("begin compute " + std::string(label));
+    }
+
+    //==================================================================================================================
+    void endComputePass() override { events.push_back("end compute"); }
+
+    //==================================================================================================================
+    void bindComputePipeline(rhi::ComputePipeline&) override {}
+
+    //==================================================================================================================
+    void bindStorageBuffer(uint32_t, rhi::Buffer&, rhi::StorageAccess) override {}
+
+    //==================================================================================================================
+    void dispatch(uint32_t x, uint32_t y, uint32_t z) override {
+        events.push_back("dispatch " + std::to_string(x) + "," + std::to_string(y) + "," +
+                         std::to_string(z));
+    }
 
     //==================================================================================================================
     void textureBarrier(rhi::Texture& texture, rhi::TextureUse from, rhi::TextureUse to) override {

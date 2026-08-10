@@ -183,6 +183,24 @@ Result<void> validate(const GraphicsPipelineDesc& desc) {
 }
 
 //======================================================================================================================
+Result<void> validate(const ComputePipelineDesc& desc) {
+    if (desc.library == nullptr) {
+        return invalid("ComputePipelineDesc.library must not be null");
+    }
+    if (desc.computeEntry.empty()) {
+        return invalid("ComputePipelineDesc.computeEntry must not be empty");
+    }
+    // A zero component would dispatch a grid of nothing while the kernel still declared threads.
+    for (const uint32_t threads : desc.threadsPerThreadgroup) {
+        if (threads == 0) {
+            return invalid("ComputePipelineDesc.threadsPerThreadgroup components must all be at "
+                           "least 1 (an unused dimension is 1, not 0)");
+        }
+    }
+    return {};
+}
+
+//======================================================================================================================
 Result<void> validate(const SwapchainDesc& desc) {
     if (desc.nativeLayer == nullptr) {
         return invalid("SwapchainDesc.nativeLayer must not be null");

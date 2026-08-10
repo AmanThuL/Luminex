@@ -238,6 +238,59 @@ TEST_CASE("GraphicsPipelineDesc with a library and both entries is accepted", "[
 }
 
 //======================================================================================================================
+TEST_CASE("ComputePipelineDesc with a null library is rejected", "[rhi]") {
+    ComputePipelineDesc desc{};
+    desc.computeEntry = "computeMain";
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("library"));
+}
+
+//======================================================================================================================
+TEST_CASE("ComputePipelineDesc with an empty computeEntry is rejected", "[rhi]") {
+    DummyShaderLibrary library;
+    ComputePipelineDesc desc{};
+    desc.library = &library;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("computeEntry"));
+}
+
+//======================================================================================================================
+// A zero here reads as "this dimension is unused", which is what 1 means; taken literally it is a
+// grid of no threads at all.
+TEST_CASE("ComputePipelineDesc with a zero threadgroup dimension is rejected", "[rhi]") {
+    DummyShaderLibrary library;
+    ComputePipelineDesc desc{};
+    desc.library = &library;
+    desc.computeEntry = "computeMain";
+    desc.threadsPerThreadgroup[0] = 64;
+    desc.threadsPerThreadgroup[1] = 0;
+    desc.threadsPerThreadgroup[2] = 1;
+
+    const auto r = validate(desc);
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(r.error().message.contains("threadsPerThreadgroup"));
+}
+
+//======================================================================================================================
+TEST_CASE("ComputePipelineDesc with a library, an entry, and threads is accepted", "[rhi]") {
+    DummyShaderLibrary library;
+    ComputePipelineDesc desc{};
+    desc.library = &library;
+    desc.computeEntry = "computeMain";
+    desc.threadsPerThreadgroup[0] = 64;
+    desc.label = "histogram";
+
+    REQUIRE(validate(desc).has_value());
+}
+
+//======================================================================================================================
 TEST_CASE("SwapchainDesc with a null nativeLayer is rejected", "[rhi]") {
     SwapchainDesc desc{};
     desc.nativeLayer = nullptr;

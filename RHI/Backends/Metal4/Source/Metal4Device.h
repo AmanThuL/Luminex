@@ -46,6 +46,8 @@ public:
     Result<std::unique_ptr<ShaderLibrary>> loadShaderLibrary(std::string_view pathNoExt) override;
     Result<std::unique_ptr<GraphicsPipeline>>
     createGraphicsPipeline(const GraphicsPipelineDesc& desc) override;
+    Result<std::unique_ptr<ComputePipeline>>
+    createComputePipeline(const ComputePipelineDesc& desc) override;
 
     CommandList& beginFrame() override;
     void endFrame(Swapchain* presentTo) override;
