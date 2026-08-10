@@ -11,7 +11,7 @@ handed to the TextureBake binary, which writes "<gltfDir>/Baked/image<N>.dds" pl
 "image<N>" rather than the source filename because a GLB's images are embedded with no filename at
 all, and Engine/Scene.cpp's bakedDdsPath looks up by the same glTF/GLB image-array index this
 script uses. Re-running with unchanged inputs is a no-op: a bake is skipped whenever the existing
-manifest's sourceSha256 already matches.
+manifest's source hash, role-specific filter, and tool version all match.
 """
 
 from __future__ import annotations
@@ -31,6 +31,15 @@ GLB_CHUNK_BIN = 0x004E4942
 MIME_EXTENSION = {
     "image/png": ".png",
     "image/jpeg": ".jpg",
+}
+
+# Must match Tools/TextureBake/main.cpp. Both the algorithm revision and the role-specific filter
+# are part of a baked artifact's identity; a matching source hash alone does not make an old bake
+# current after either one changes.
+TEXTURE_BAKE_TOOL_VERSION = "1"
+ROLE_FILTER = {
+    "srgb": "box-linear",
+    "normal-map": "box-normal",
 }
 
 
@@ -110,23 +119,40 @@ def encoded_image_bytes(gltf: dict, image_index: int, gltf_dir: Path,
     raise ValueError(f"image {image_index} has neither uri nor bufferView")
 
 
-def manifest_is_current(manifest_path: Path, dds_path: Path, source_sha256: str) -> bool:
+def manifest_is_current(manifest_path: Path, dds_path: Path, source_sha256: str,
+                        expected_filter: str,
+                        expected_tool_version: str = TEXTURE_BAKE_TOOL_VERSION) -> bool:
     if not dds_path.is_file() or not manifest_path.is_file():
         return False
     try:
         manifest = json.loads(manifest_path.read_text())
     except (OSError, json.JSONDecodeError):
         return False
-    return manifest.get("sourceSha256") == source_sha256
+    return (
+        manifest.get("sourceSha256") == source_sha256
+        and manifest.get("filter") == expected_filter
+        and manifest.get("toolVersion") == expected_tool_version
+    )
 
 
-def main() -> int:
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} <gltf-or-glb-path> <TextureBake-binary>", file=sys.stderr)
-        return 2
-    gltf_path = Path(sys.argv[1]).resolve()
-    texture_bake = sys.argv[2]
+def texture_bake_args(texture_bake: str, gltf_path: Path, image: dict, source_name: str,
+                      mode_flag: str, dds_path: Path, in_path: Path) -> list[str]:
+    """Builds the TextureBake argv for one image. `--source-name` is always explicit and always a
+    relative, machine-independent string (a glTF-relative URI, or "<glbName>#image<N>.<ext>") --
+    never `in_path` itself, which for an external image is the real (and possibly absolute)
+    filesystem path TextureBake decodes from. Manifests must be byte-identical across machines, so
+    the recorded "source" field must never depend on where the repository happens to be checked
+    out.
+    """
+    if "uri" in image:
+        return [texture_bake, str(in_path), str(dds_path), mode_flag, "--source-name", source_name]
+    return [texture_bake, str(in_path), str(dds_path), mode_flag, "--source-name",
+           f"{gltf_path.name}#{source_name}"]
 
+
+def bake_gltf_textures(gltf_path: Path, texture_bake: str) -> tuple[int, int]:
+    """Bakes every base-color/normal image `gltf_path` references. Returns (baked, skipped)."""
+    gltf_path = gltf_path.resolve()
     data = gltf_path.read_bytes()
     bin_chunk: bytes | None = None
     if gltf_path.suffix.lower() == ".glb":
@@ -141,34 +167,47 @@ def main() -> int:
     baked_count = 0
     skipped_count = 0
     for image_index, role in sorted(roles.items()):
+        image = gltf["images"][image_index]
         source_bytes, source_name = encoded_image_bytes(gltf, image_index, gltf_path.parent,
                                                          bin_chunk)
         source_sha256 = hashlib.sha256(source_bytes).hexdigest()
         dds_path = baked_dir / f"image{image_index}.dds"
         manifest_path = baked_dir / f"image{image_index}.dds.json"
-        if manifest_is_current(manifest_path, dds_path, source_sha256):
+        if manifest_is_current(manifest_path, dds_path, source_sha256, ROLE_FILTER[role]):
             skipped_count += 1
             continue
 
         mode_flag = "--srgb" if role == "srgb" else "--normal-map"
-        if "uri" in gltf["images"][image_index]:
+        if "uri" in image:
             # An external file: hand TextureBake the real path directly, no temp file needed.
-            in_path = gltf_path.parent / gltf["images"][image_index]["uri"]
-            subprocess.run([texture_bake, str(in_path), str(dds_path), mode_flag], check=True)
+            in_path = gltf_path.parent / image["uri"]
+            args = texture_bake_args(texture_bake, gltf_path, image, source_name, mode_flag,
+                                     dds_path, in_path)
+            subprocess.run(args, check=True)
         else:
             suffix = Path(source_name).suffix or ".bin"
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
                 temp_file.write(source_bytes)
                 temp_path = Path(temp_file.name)
             try:
-                subprocess.run(
-                    [texture_bake, str(temp_path), str(dds_path), mode_flag, "--source-name",
-                     f"{gltf_path.name}#{source_name}"],
-                    check=True)
+                args = texture_bake_args(texture_bake, gltf_path, image, source_name, mode_flag,
+                                         dds_path, temp_path)
+                subprocess.run(args, check=True)
             finally:
                 temp_path.unlink(missing_ok=True)
         baked_count += 1
 
+    return baked_count, skipped_count
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        print(f"usage: {sys.argv[0]} <gltf-or-glb-path> <TextureBake-binary>", file=sys.stderr)
+        return 2
+    gltf_path = Path(sys.argv[1])
+    texture_bake = sys.argv[2]
+
+    baked_count, skipped_count = bake_gltf_textures(gltf_path, texture_bake)
     print(f"bake_gltf_textures: {gltf_path.name}: {baked_count} baked, {skipped_count} "
          "already current")
     return 0
