@@ -38,7 +38,8 @@ resource transitions are documented in `docs/frame-pipeline.md`.
 The root component is a physical and build boundary, not yet a separately published library: it
 still participates in this repository's Core contracts and validation. The RHI grows only when a
 rendering feature supplies a real portability requirement. Metal is the first implementation, not
-the public vocabulary: accepted contracts do not leak native handles upward. The roadmap reserves
-an API-model experiment after the next execution-substrate slice and before temporal and
-scalable-scene layers build on it. D3D12 is the intended second production backend; Vulkan remains
-research evidence rather than a planned target.
+the public vocabulary: accepted contracts do not leak native handles upward. Before temporal and
+scalable-scene layers build more contracts on the production RHI, the roadmap requires a measured
+decision on whether to retain, partially reshape, or replace its caller-facing execution model.
+D3D12 is the intended second production backend; Vulkan remains research evidence rather than a
+planned target.
