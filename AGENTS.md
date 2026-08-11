@@ -27,13 +27,18 @@ thin RHI and one implemented backend.
 - **Gotcha**: the Tests target has `set_default(false)` — a plain `xmake` does NOT relink the
   test binary after `Source/` changes. `xmake test` rebuilds it; when running the Tests binary
   directly, `xmake build Tests` first or risk a false pass against a stale binary.
+- Frozen portability-checkpoint-A subset (ADR 0009): `xmake build Tests && cd
+  build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
+  must pass this filter unchanged; the working directory must be the Tests build directory (shaders
+  resolve relative to CWD).
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
   checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
   holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
-  Tools/check_project_policy.py`; `xmake project -k compile_commands -P .`; `python3
-  Tools/check_cpp_comments.py --public-api-docs error`; `python3 Tools/check_rhi_headers.py`;
-  `python3 Tools/check_cpp_layout.py`.
+  Tools/check_project_policy.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
+  (first regenerate that worktree's `compile_commands.json` with `xmake project -k
+  compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
+  `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
