@@ -3,11 +3,13 @@
 /// @brief NoApiBench entry point. Implements `--check-manifest` (M5.1 stage 1 deliverable C): the
 ///        consistency test declaring the workload manifest's representative graph to the
 ///        production RenderGraph and asserting the compiled record against the manifest's frozen
-///        expectations. Implements `--run-graph=rhi --frames=N --dump-dir=<dir>` (stage 3): runs
-///        the maintained-RHI adapter (Bench/RhiAdapter.h) through the adapter-neutral runner
+///        expectations. Implements `--run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>` (stage 3):
+///        runs either the maintained-RHI adapter (Bench/RhiAdapter.h) or the address-first
+///        prototype adapter (Bench/NoApiAdapter.h) through the adapter-neutral runner
 ///        (Bench/Runner.h) for N frames of the representative graph.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Bench/NoApiAdapter.h"
 #include "Bench/RhiAdapter.h"
 #include "Bench/Runner.h"
 #include "Workload/RepresentativeGraph.h"
@@ -371,8 +373,12 @@ int runGraph(const lmx::noapi::bench::RunOptions& options) {
         lmx::noapi::bench::RhiAdapter adapter;
         return lmx::noapi::bench::runBench(adapter, options);
     }
+    if (options.graph == "noapi") {
+        lmx::noapi::bench::NoApiAdapter adapter;
+        return lmx::noapi::bench::runBench(adapter, options);
+    }
     std::cerr << "NoApiBench --run-graph: unknown graph '" << options.graph
-              << "' (expected 'rhi')\n";
+              << "' (expected 'rhi' or 'noapi')\n";
     return 1;
 }
 
@@ -408,6 +414,6 @@ int main(int argc, char** argv) {
         return runGraph(runOptions);
     }
     std::cerr << "usage: NoApiBench --check-manifest\n"
-              << "       NoApiBench --run-graph=rhi --frames=N --dump-dir=<dir>\n";
+              << "       NoApiBench --run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>\n";
     return 1;
 }

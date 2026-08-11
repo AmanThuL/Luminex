@@ -138,6 +138,12 @@ private:
     std::unique_ptr<rhi::Texture> m_r7BloomB;
     std::unique_ptr<rhi::Texture> m_r8Out;
     std::unique_ptr<rhi::Buffer> m_r9Readback;
+    // UNSCORED DIAGNOSTIC (spec section 2: exploratory additions must be marked unscored). When
+    // LMX_NOAPI_DIAG_SCENE is set, runFrame() additionally copies R2 whole into this buffer and
+    // returns its bytes instead of R9's, which is what localizes a parity divergence to the scene
+    // pass or to the post chain. Null and never touched otherwise, so the scored path is unchanged.
+    std::unique_ptr<rhi::Buffer> m_diagSceneColor;
+    bool m_diagScene = false;
     // R10's three 16 KiB slots, each recreated on the frame that writes it -- see
     // refreshEmissiveStaging's header comment.
     std::array<std::unique_ptr<rhi::Buffer>, workload::kEmissiveRingSlotCount> m_r10Ring;

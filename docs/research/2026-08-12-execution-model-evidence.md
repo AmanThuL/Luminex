@@ -261,10 +261,13 @@ struct all lower to real 64-bit pointer loads rather than to buffer bindings.
 `texture2d<float, access::sample>` field inside the root struct — a `MTLResourceID` stored in GPU
 memory — and `DescriptorHandle<SamplerState>` to an inline `sampler`.
 
-**5.4 Indexable bindless table — supported.** `ConstBufferPointer<DescriptorHandle<Texture2D>>`
-lowers to `device texture2d<float, access::sample>*` with runtime indexing, which is the model's
-descriptor heap expressed end to end on Metal 4. This is the finding that makes the prototype's
-single-table design viable without hand-written MSL.
+**5.4 Indexable bindless table — supported, but not in the form first recorded. (Superseded by
+§5.9; corrected in Stage 3.)** `ConstBufferPointer<DescriptorHandle<Texture2D>>` does lower to
+`device texture2d<float, access::sample>*` with runtime indexing, which is what this entry
+originally recorded. What it did not check is whether that emitted MSL *compiles*: it does not, and
+§5.7 predicted exactly this. The indexable-table design nonetheless holds, through the wrapper form
+§5.9 records. This entry is kept, corrected rather than deleted, because the uncorrected version was
+load-bearing for the Stage 2 interface decision.
 
 **5.5 Production shaders cannot be reused unchanged.** `Shaders/ScenePass.slang` and its siblings
 declare flat `[[vk::binding(...)]]` / `register(...)` slots that map 1:1 to `MTL4ArgumentTable`
@@ -301,6 +304,72 @@ whether Slang's emitted MSL already does so has to be re-checked before the benc
 `atomic_store_explicit`, `atomic_fetch_max_explicit`, and `atomic_fetch_or_explicit` have no
 `device ulong` overload. A plain (non-atomic) 64-bit `device ulong` store compiles. This is what
 bounds the prototype's `SignalOp::AtomicMax` / `AtomicOr` emulation to 32 bits (§4.4).
+
+**5.9 §5.4 versus §5.7, resolved: Slang can express the prototype's binding surface, through a
+one-member wrapper struct authored in Slang.** The two entries contradicted each other and Stage 3
+could not start until the contradiction was settled, so both halves were re-probed against the
+pinned `ThirdParty/slang` (`v2026.14.1`) and Apple's runtime Metal compiler (Xcode 26.5 SDK; the
+optional Metal toolchain is not installed on this machine, so `xcrun metal` is unavailable and every
+MSL check ran through `MTLDevice::newLibrary` with `MTL::LanguageVersion4_0`, the same path both
+encoders use at run time).
+
+- **The form §5.4 recorded is rejected.** `ConstBufferPointer<DescriptorHandle<Texture2D>>` emits
+  `struct ConstBufferPointer_0 { texture2d<float, access::sample> device* _ptr_0; };` inside the root
+  struct, and compiling that emitted MSL fails: *"type 'device texture2d<float, access::sample> *'
+  cannot be used in buffer pointee type"*, cascading to *"type 'ConstBufferPointer_0' cannot be used
+  in buffer pointee type"* and then to the whole root struct. §5.7 was right and §5.4 was wrong; the
+  rule is specifically about a **pointer to a texture**, not about a texture in a buffer pointee.
+- **The wrapper form compiles.** Declaring the wrapper in Slang —
+  `struct Slot { DescriptorHandle<Texture2D> handle; };` plus `ConstBufferPointer<Slot>` — emits
+  `struct Slot_0 { texture2d<float, access::sample> handle_0; };` and
+  `struct ConstBufferPointer_0 { Slot_0 device* _ptr_0; };`, which compiles and indexes at runtime.
+  That is §5.7's struct-member requirement met by a Slang frontend rather than by hand-written MSL.
+- **The whole scored binding surface was probed this way and compiles**: `Texture2D`, `TextureCube`,
+  `RWTexture2D<float4>` (emitted as `access::read_write`), `SamplerState`, and
+  `SamplerComparisonState` wrappers, all indexed through `ConstBufferPointer<...>` fields of a root
+  block, together with `Ptr<Atomic<uint>>` for the histogram's device atomics and `Ptr<float>` for
+  the exposure write.
+
+**Consequence for the spec's shader-control rule: the hand-written MSL escape hatch was not needed.**
+The prototype's frontends are Slang, and `Experiments/NoApi/Shaders/ProtoScene.slang` imports the
+production `Lighting` and `Shadow` modules literally — by relative path
+(`import "../../../Shaders/Lighting.slang";`), which the pinned slangc resolves against the compiled
+file's own directory with no `-I` and no build-rule change. Both encoders therefore run the *same*
+module text for the scene pass's shading, and the distilled P05–P12 frontends import the same
+`NoApiShared` module the incumbent's kernels import. The spec's H6 shader-constraint finding is
+consequently the narrower one recorded in §5.10 and §5.11 rather than "the math had to be ported".
+
+**5.10 One buffer binding carries one shader-side element type, so a multi-typed table must be
+reached by address.** A Metal buffer argument has a single pointee type, and the scored workload
+needs five simultaneous views of the one bindless table (2D texture, cube, storage image, sampler,
+comparison sampler). No single bound table index can serve them. The prototype's shaders therefore
+take the table's *address* from their root block, once per view type, and index it there. This is
+more faithful to the model than a bound table would be — the table is memory — but it has a measured
+cost: `setBindlessTable`'s publication of the table at argument-table index 1 is read by no shader in
+this workload and is pure overhead on this target. The adapter still calls it (one `setAddress` per
+command buffer) and Stage 4 counts it against the prototype rather than dropping it.
+
+**5.11 A byte-identical parity oracle is sensitive to backend code generation, and the spec's own
+shader-control rule is what makes the two programs differ.** Stage 3's 32-frame correctness run came
+out three bytes short of byte-identical: 3 differing bytes in 134,217,728 (2 of 32 frames; every
+difference exactly one 8-bit LSB), traced by an unscored intermediate readback of the scene colour
+target to 2–5 single-ULP half-float differences per frame in R2 out of 4,194,304 components — so the
+divergence originates in P04 and is almost entirely absorbed by the tone map and the 8-bit encode.
+The two scene-pass fragment shaders were diffed at
+the emitted-MSL level after normalising Slang's generated identifiers: **every arithmetic expression
+is identical, statement for statement** — the same `clamp`, the same `saturate`, the same
+`AlphaFromRoughness`/`ComputeDirectionalLight`/`ImageBasedLight`/`CalcShadowFactor` calls in the same
+order with the same operands. What differs is only where each operand comes from (a `constant` struct
+field and ten texture/sampler function arguments on the incumbent; a `constant` root block plus
+resource IDs loaded from memory on the prototype). The residual divergence is therefore last-bit
+rounding produced by the Metal backend compiling two structurally different programs under the same
+default fast-math settings, not a math difference in the shared modules. Two candidate causes were
+excluded by experiment: a value-neutral reordering of the prototype's texture-handle loads changed
+nothing, and stating the rasterizer configuration explicitly (viewport, cull, winding, depth bias)
+rather than inheriting Metal's attachment-derived defaults changed nothing. Both encoders compile
+with the same `MTL::CompileOptions` (`LanguageVersion4_0`, nothing else set), so there is no
+compile-option asymmetry to remove, and forcing safe math on the prototype alone would increase the
+divergence rather than close it.
 
 ## 6. Recorded tensions
 
@@ -368,6 +437,29 @@ interface would have to carry the shape or the pipeline would have to report it.
 indexed scalars; there is no way to hand them the model's specialization *struct*, let alone one
 containing addresses. The prototype refuses a non-empty specialization block with an assert instead
 of pretending. No frozen workload needs it, so this is recorded rather than load-bearing.
+
+**6.10 "Vertex root" and "pixel root" are one shared pair of root slots on Metal 4.** The interface's
+`draw(vertexRoot, pixelRoot, …)` reads as a per-stage parameter, and §6.1 already records that each
+non-null address costs a `setAddress`. Building the scene pass showed the per-stage *naming* is also
+a fiction here: `MTL4::ArgumentTable` is set once for `RenderStageVertex | RenderStageFragment`, so
+argument-table index 0 and index 2 are simply two root blocks either stage may read. The prototype's
+scene frontend uses them that way — the vertex stage reads the per-draw block at 0 *and* the pass
+block at 2, and so does the fragment stage — which is what makes a pass-shared block expressible at
+all when only two root indices exist. The traffic is unchanged (two `setAddress` calls per draw), but
+an interface that named the slots "root 0 / root 1" instead of "vertex / pixel" would describe this
+target honestly and D3D12's root-signature model no less well. Recorded as a naming tension, not a
+capability gap.
+
+**6.11 The byte-identical parity oracle and the shader-control rule are in tension.** Spec section 2
+requires the prototype to use its own binding frontend and simultaneously asserts that "the
+byte-identical parity oracle bounds math divergence at zero". §5.11 shows those two cannot both be
+had here: the frontend the rule mandates is what makes the Metal backend compile a structurally
+different program, and the resulting last-bit rounding survives into 3 of 134,217,728 readback bytes.
+The oracle still bounds *math* divergence at zero — the shared modules' arithmetic was diffed at MSL
+level and is identical statement for statement — but it does not bound *code-generation* divergence,
+which the spec assigns to the pipeline dimension and therefore never scores. Stage 5 has to decide
+whether gate 1 reads "byte-identical" literally or as "byte-identical up to recorded, bounded
+code-generation rounding"; this document records the measurement rather than choosing.
 
 ## 7. Incumbent encoding findings
 

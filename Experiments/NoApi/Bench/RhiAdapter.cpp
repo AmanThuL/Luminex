@@ -121,6 +121,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <format>
 #include <iostream>
 #include <map>
@@ -373,6 +374,8 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createCubeTexture(rhi::Device& device
 
 //======================================================================================================================
 bool RhiAdapter::setup() {
+    m_diagScene = std::getenv("LMX_NOAPI_DIAG_SCENE") != nullptr;
+
     auto device = rhi::createDevice();
     if (!device) {
         std::cerr << "RhiAdapter::setup: createDevice failed: " << device.error().message << "\n";
@@ -397,6 +400,21 @@ bool RhiAdapter::setup() {
     }
     if (!compileSchedule()) {
         return false;
+    }
+    if (m_diagScene) {
+        // Unscored: R2 is 1024x1024 RGBA16Float, twice R9's frozen 4 MiB, so the diagnostic gets
+        // its own buffer rather than reinterpreting the manifest's.
+        auto buffer = m_device->createBuffer(
+            {.size = uint64_t{workload::kSceneWidth} * workload::kSceneHeight * 8,
+             .cpuReadback = true,
+             .label = "lmx.noapi.bench.diag.sceneColor"},
+            nullptr);
+        if (!buffer) {
+            std::cerr << "RhiAdapter: failed to create the diagnostic buffer: "
+                      << buffer.error().message << "\n";
+            return false;
+        }
+        m_diagSceneColor = std::move(*buffer);
     }
     return true;
 }
@@ -1192,6 +1210,17 @@ void RhiAdapter::encodeReadback(rhi::CommandList& commands) {
                                   .height = workload::kSceneHeight},
                                  *m_r9Readback,
                                  {.offset = 0, .bytesPerRow = uint64_t{workload::kSceneWidth} * 4});
+    if (m_diagScene) {
+        // Unscored diagnostic: the P13 barrier already ordered the scene pass's fragment writes
+        // before this copy pass, so R2 is readable here without a barrier of its own.
+        commands.copyTextureToBuffer(
+            *m_r2SceneColor,
+            {.mipLevel = 0,
+             .arrayLayer = 0,
+             .width = workload::kSceneWidth,
+             .height = workload::kSceneHeight},
+            *m_diagSceneColor, {.offset = 0, .bytesPerRow = uint64_t{workload::kSceneWidth} * 8});
+    }
     commands.endCopyPass();
 }
 
@@ -1262,6 +1291,11 @@ void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback
     // ---- END TIMED REGION -------------------------------------------------------------------
 
     m_device->waitIdle();
+    if (m_diagScene) {
+        outReadback.resize(m_diagSceneColor->size());
+        m_diagSceneColor->readback(outReadback.data(), outReadback.size());
+        return;
+    }
     outReadback.resize(workload::kReadbackBufferSize);
     m_r9Readback->readback(outReadback.data(), outReadback.size());
 }

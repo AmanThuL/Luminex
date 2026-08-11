@@ -203,9 +203,10 @@ target("NoApiTests")
 -- --check-manifest is the stage 1 consistency test: it declares the manifest's representative
 -- graph to the production RenderGraph and asserts the compiled record against the manifest's
 -- frozen schedule and barrier expectations. --run-graph=rhi (Stage 3) hand-encodes the same
--- manifest through production rhi::CommandList calls (Experiments/NoApi/Bench/RhiAdapter.*); the
--- adapter-neutral runner (Experiments/NoApi/Bench/Runner.*) is what a future --run-graph=proto
--- shares.
+-- manifest through production rhi::CommandList calls (Experiments/NoApi/Bench/RhiAdapter.*), and
+-- --run-graph=noapi encodes it through the address-first prototype
+-- (Experiments/NoApi/Bench/NoApiAdapter.*); the adapter-neutral runner
+-- (Experiments/NoApi/Bench/Runner.*) drives both.
 target("NoApiBench")
     set_kind("binary")
     set_default(false)
@@ -214,13 +215,19 @@ target("NoApiBench")
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/noapibench")
     add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp", "Experiments/NoApi/Bench/*.cpp")
     add_includedirs("Experiments/NoApi")
-    add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest")
+    add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest", "NoApiProto")
     add_packages("glm")
+    -- NoApiProto is a static library and xmake does not propagate its private framework list to
+    -- this binary's link line, so the comparison host names the same frameworks itself.
+    add_frameworks("Metal", "QuartzCore", "Foundation")
     -- P03/P04 bind the unmodified production ShadowPass/ScenePass pipelines (spec section 6), so
     -- this target compiles exactly those two production shaders plus the shared modules they
     -- import -- not production's own P05-P12-equivalent shaders (BloomThreshold.slang and
     -- friends), which Experiments/NoApi/Shaders' distilled kernels below replace and would
     -- otherwise collide with by basename in this target's shared Shaders/ output directory.
+    -- The Lighting/Shadow modules are also what the prototype's own ProtoScene.slang frontend
+    -- imports, by relative path: both encoders run the same shading math, only the binding
+    -- frontend differs (spec section 2).
     add_rules("slang2metallib")
     add_files("Shaders/ShadowPass.slang", "Shaders/ScenePass.slang", "Shaders/Shadow.slang",
               "Shaders/Lighting.slang")
