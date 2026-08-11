@@ -11,9 +11,9 @@ fixed set of semantic areas gets frozen for any future backend to reproduce, ahe
 interface experiment and the eventual D3D12 backend (ADR 0007). Freezing needs a mechanism a CI
 job or a reviewer can run as one command, not a prose promise that source can drift away from.
 
-Stages 1 through 6 already wrote conformance-style tests for these areas as part of shipping the
-substrate. The freeze does not need new tests; it needs to name the tests that already prove each
-area and make it possible to run exactly that set, unchanged, against a second backend later.
+Conformance-style tests for these areas already exist from shipping the substrate. The freeze does
+not need new tests; it needs to name the tests that already prove each area and make it possible to
+run exactly that set, unchanged, against a second backend later.
 
 ## Decision
 
@@ -48,15 +48,15 @@ the tag to a case not listed above, or retagging a listed case to a different on
 proves the same area, is an implementation detail of test maintenance and does not need a new ADR;
 replacing or weakening what a listed case asserts does.
 
-**Caveat carried from stages 1 and 2.** The storage-hazard cases verify *correct results with the
-declared barrier present*, not that the barrier is necessary: removing the barrier recording in
-both stages left the compute-hazard cases passing anyway, because this hardware happened to order
-the accesses without it, while pre-existing render-target-to-sampled cases failed under the same
-mutation. Checkpoint A therefore freezes sufficiency (declaring the barrier produces the correct
-result) and does not, and cannot without a fuzzing harness or a backend that reorders more
-aggressively, prove necessity. A future backend that is more tolerant of missing barriers than
-Metal 4 could pass this suite while still shipping a real hazard; that risk is accepted rather than
-solved here.
+**Known caveat.** The storage-hazard cases verify *correct results with the declared barrier
+present*, not that the barrier is necessary: mutating the compute and copy hazard tests' barrier
+recording out of the implementation left the compute-hazard cases passing anyway, because this
+hardware happened to order the accesses without it, while pre-existing render-target-to-sampled
+cases failed under the same mutation. Checkpoint A therefore freezes sufficiency (declaring the
+barrier produces the correct result) and does not, and cannot without a fuzzing harness or a
+backend that reorders more aggressively, prove necessity. A future backend that is more tolerant of
+missing barriers than Metal 4 could pass this suite while still shipping a real hazard; that risk
+is accepted rather than solved here.
 
 ## Consequences
 
