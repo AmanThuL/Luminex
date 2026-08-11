@@ -368,3 +368,29 @@ interface would have to carry the shape or the pipeline would have to report it.
 indexed scalars; there is no way to hand them the model's specialization *struct*, let alone one
 containing addresses. The prototype refuses a non-empty specialization block with an assert instead
 of pretending. No frozen workload needs it, so this is recorded rather than load-bearing.
+
+## 7. Incumbent encoding findings
+
+What surfaced while expressing the scored workloads through the maintained RHI's public surface.
+These are evidence about the incumbent in the same sense section 6 is evidence about the prototype.
+
+**7.1 Per-draw uniforms beyond the ring cost per-frame buffer creation.** The maintained RHI's
+per-frame CPU→GPU path for per-draw data is `setUniforms` through a backend-owned ring whose
+capacity is a backend constant sized for the production scenes. The representative graph's 1,024
+scene draws need double that capacity for the scene pass alone, and `rhi::Buffer` is immutable
+after creation with no public write or offset-bind path, so the only public encoding for the
+overflow is creating the per-draw buffers anew each frame with initial data. The incumbent adapter
+does exactly that for the scene pass (the shadow pass's blocks are frame-invariant and built
+once), and that per-frame creation is counted inside the timed region as binding delivery — it is
+what this workload costs through this interface. Scored CPU-encoding, binding-traffic, and
+allocation values for the incumbent must be read with this structural fact in mind; the adapter's
+header comment pins the exact placement.
+
+**7.2 A manifest geometry defect was found and fixed before any scored run.** The shared quad's
+index order contradicted its own stated winding convention; under the production pipelines' baked
+back-face culling every draw was silently culled. The fix corrected the manifest geometry to the
+stated convention and restored production cull state in the incumbent adapter. Readback hashes
+were identical before and after the fix under the interim no-cull workaround, confirming the
+workaround had been pixel-equivalent and no scored surface moved. Recorded because the measurement
+freeze gate had not started; after it starts, a manifest defect of this kind would instead
+invalidate collected data.
