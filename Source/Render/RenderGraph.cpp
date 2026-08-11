@@ -437,6 +437,16 @@ GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name
 }
 
 //======================================================================================================================
+GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name,
+                                      rhi::BufferUse producedBy) {
+    m_resources.push_back({.kind = ResourceKind::Buffer,
+                           .name = std::string(name),
+                           .buffer = &buffer,
+                           .priorProducer = producedBy});
+    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
 GraphTexture RenderGraph::createTexture(const TransientTextureDesc& desc, std::string_view name) {
     LMX_ASSERT(m_transients != nullptr,
                std::format("transient texture '{}' is declared on a graph with no TransientPool: "
@@ -1115,6 +1125,16 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
         std::vector<Covered> covered;
     };
     std::vector<WriteState> pending(m_resources.size());
+
+    // A resource whose producer is in an earlier frame starts derivation already in a producing
+    // state, so this frame's first reader of it is ordered by the ordinary read-after-write rule
+    // below rather than by nothing at all -- see importBuffer's prior-producer overload.
+    for (uint32_t index = 0; index < m_resources.size(); ++index) {
+        if (const std::optional<rhi::BufferUse>& producer = m_resources[index].priorProducer) {
+            pending[index].written = true;
+            pending[index].bufferUse = *producer;
+        }
+    }
 
     // Subresources read since the last write that touched them, not yet ordered against a future
     // write. A write-after-read hazard is the mirror of the read-after-write one above: a pass that

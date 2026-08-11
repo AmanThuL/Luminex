@@ -872,8 +872,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // frame, scene switch, auto-exposure enable, resize) seeds it with the manual EV first, as an
     // ordinary compute dispatch -- not a stall -- so shading and the histogram/resolve chain below
     // agree on "this frame's preExposure" even on the frame the loop restarts.
+    //
+    // In auto mode it is imported as produced by an earlier frame's resolve dispatch, which is what
+    // it holds: that pass wrote it with a storage write, this frame's scene and sky passes read it,
+    // and the edge between them crosses a frame boundary where nothing else orders it -- the frames
+    // in flight are paced against a frame two back, not against the one before. Stating the prior
+    // producer is what lets this frame's derivation put a barrier in front of its first reader.
+    // Manual mode imports it plainly: no pass reads it, so there is no edge to state.
     const GraphBuffer exposureImport =
-        graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer");
+        view.autoExposureEnabled
+            ? graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer",
+                                 rhi::BufferUse::StorageWrite)
+            : graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer");
     GraphBuffer exposureCurrent = exposureImport;
     if (view.autoExposureEnabled && view.exposureReset) {
         const float manualExposure = std::exp2(view.exposureEv);

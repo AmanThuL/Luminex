@@ -1933,6 +1933,65 @@ TEST_CASE("a buffer reader of another stage class is not covered either", "[rend
                                      "begin compute lmx.pass.histogram", "end compute"});
 }
 
+//======================================================================================================================
+// A frame reading contents an earlier frame produced has no producer inside it to derive a barrier
+// from, and the frames in flight give no ordering of their own -- so the import states the producer
+// instead, and this frame's first reader is barriered against it as if the write were its own.
+TEST_CASE("a buffer imported with a prior producer transitions before its first reader",
+          "[render][graph]") {
+    FakeBuffer exposureBuffer{16, "exposure"};
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphBuffer exposure =
+        graph.importBuffer(exposureBuffer, "exposure", rhi::BufferUse::StorageWrite);
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+
+    PassDesc scene;
+    scene.bufferReads.push_back(exposure);
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.size() == 1);
+    REQUIRE(record.debug.transitions[0].beforePass == 0);
+    REQUIRE(record.debug.transitions[0].kind == GraphResourceKind::Buffer);
+    REQUIRE(record.debug.transitions[0].bufferFrom == rhi::BufferUse::StorageWrite);
+    REQUIRE(record.debug.transitions[0].bufferTo == rhi::BufferUse::ShaderRead);
+
+    // The barrier leads the frame: nothing precedes the pass that consumes it.
+    REQUIRE(commands.events == std::vector<std::string>{"barrier exposure StorageWrite->ShaderRead",
+                                                        "begin lmx.pass.scene", "end"});
+}
+
+//======================================================================================================================
+// The other half of that contract, and what keeps manual mode's frame exactly what it was: an
+// import that claims no prior producer states no cross-frame edge, so a reader of it is barriered
+// against nothing. Same frame as above, differing only in which import overload it used.
+TEST_CASE("a buffer imported without a prior producer transitions nothing", "[render][graph]") {
+    FakeBuffer exposureBuffer{16, "exposure"};
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+
+    PassDesc scene;
+    scene.bufferReads.push_back(exposure);
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(sceneColor));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.empty());
+    REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
+}
+
 namespace {
 
 // One transient the fake device sizes to exactly one alignment unit: 64 * 64 texels at four bytes

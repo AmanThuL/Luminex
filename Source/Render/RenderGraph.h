@@ -451,6 +451,22 @@ public:
     /// carry no format because no rule inspects one.
     GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name);
 
+    /// The same import, for a buffer whose current contents an *earlier frame* produced.
+    ///
+    /// Barriers are derived from the passes declared in this graph, so a producer that ran in
+    /// another frame is an edge derivation cannot see: nothing here wrote the buffer, so this
+    /// frame's first reader of it would be ordered against nothing at all, and the frames in flight
+    /// give no ordering of their own. `producedBy` states the use that last wrote it -- the use a
+    /// barrier's producing side has to name -- and seeds derivation as though a pass had written
+    /// the whole buffer before any pass of this frame ran. The ordinary read-after-write rule then
+    /// puts one barrier in front of this frame's first reader of each stage class, exactly as it
+    /// would for a producer inside the frame, and a frame whose passes never read it emits nothing.
+    ///
+    /// This is for persistent feedback and nothing else -- the exposure value frame N computes and
+    /// frame N+1 shades with. A buffer this frame produces itself must be imported through the
+    /// overload above: claiming a prior producer for it would state a hazard that does not exist.
+    GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name, rhi::BufferUse producedBy);
+
     /// Declares a texture the graph creates for this frame and nothing else, as version 0.
     ///
     /// Version 0 of a transient is uninitialised memory rather than contents, so naming it as
@@ -570,9 +586,12 @@ public:
     /// before that pass, from the use that wrote it to the use that reads it, and a pass writing
     /// what an earlier pass read gets one from every distinct use those readers made -- one barrier
     /// per use, because the producing side of a barrier names a single use and the write has to be
-    /// ordered after all of them. Write-after-write within one logical resource is ordered by the
-    /// version chain and emits no barrier of its own. An export emits nothing either -- it roots a
-    /// result for the caller to read once the queue drains, which is not another pass reading it.
+    /// ordered after all of them. A buffer imported as produced by an earlier frame carries its
+    /// producer into this frame's derivation (see importBuffer's prior-producer overload), so a
+    /// cross-frame edge is barriered like any other. Write-after-write within one logical resource
+    /// is ordered by the version chain and emits no barrier of its own. An export emits nothing
+    /// either -- it roots a result for the caller to read once the queue drains, which is not
+    /// another pass reading it.
     ///
     /// Reuse of transient memory is the one hazard the version chain cannot state, because the two
     /// sides are different logical resources: where a transient takes bytes an earlier one held, a
@@ -633,6 +652,10 @@ private:
         // this struct's own string can outlive a reallocation of the resource list.
         TransientTextureDesc textureDesc;
         TransientBufferDesc bufferDesc;
+        // Set only by importBuffer's prior-producer overload: the use an earlier frame last wrote
+        // these contents as, which seeds barrier derivation with a producer it could not otherwise
+        // see. Empty for every other resource, transients included.
+        std::optional<rhi::BufferUse> priorProducer;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.
