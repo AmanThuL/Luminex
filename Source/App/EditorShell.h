@@ -4,6 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/ExposureReset.h"
+#include "App/FrameRecordRing.h"
+#include "App/PassTimingHistory.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -73,15 +76,32 @@ public:
     /// Builds the whole UI for this frame and applies camera input. Between ImGui::NewFrame() and
     /// ImGui::Render(). Takes the device because selecting a new scene this frame drains the GPU
     /// (device.waitIdle()) before the library builds or hands back the scene.
-    void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds);
+    ///
+    /// `frameRecords` feeds both observability views: the Render Graph panel shows one exact
+    /// retired frame, while Stats rolls timings from successive retired frames into a stable
+    /// summary. At this point the frame loop has not retained the current frame, so both see the
+    /// newest joined record as of the previous iteration.
+    void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
+                 const FrameRecordRing& frameRecords);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this
-    /// SceneView is derived from.
+    /// SceneView is derived from. exposureReset is left at its default (false); main.cpp sets it
+    /// from consumeExposureReset() before declaring the frame's passes.
     render::SceneView sceneView();
+
+    /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
+    /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
+    /// what turns "a reset happened" into "the next frame's SceneView says so."
+    bool consumeExposureReset();
 
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }
+
+    /// Whether the frame's render graph may let transients whose lifetimes do not overlap share
+    /// memory. Edited by the Render Settings checkbox; the picture is the same either way, so what
+    /// it changes is the frame's transient high-water mark and its alias savings.
+    bool poolingEnabled() const { return m_poolingEnabled; }
 
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
@@ -97,6 +117,11 @@ private:
     void buildLightsSection();
     void buildRenderSettingsSection();
     void buildObjectsSection();
+    void updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords);
+    // A separate top-level window, not an Inspector section: the Stats panel already summarizes a
+    // frame's pass timings, and this is the frame's full compiled shape -- passes, culling,
+    // transitions, transient placement -- which is too much detail to nest under it.
+    void buildGraphInspector(const FrameRecordRing& frameRecords);
     // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
     // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
     // the new scene's initial pose -- the only per-scene UI state this shell carries.
@@ -119,6 +144,36 @@ private:
     // Manual exposure in stops, written onto every SceneView this shell builds. Zero is unit
     // exposure; the range matches the slider in the Render Settings section.
     float m_exposureEv = 0.0f;
+    // Transient pooling, on by default exactly as the graph's own default is. Editor state rather
+    // than scene state, for the same reason the two above are.
+    bool m_poolingEnabled = true;
+
+    // Auto-exposure (spec 9): opt-in, off by default so manual exposure stays the default mode.
+    bool m_autoExposureEnabled = false;
+    // Metering parameters, all editable in Render Settings; defaults match Renderer.h's SceneView.
+    float m_exposureLowPercentile = 50.0f;
+    float m_exposureHighPercentile = 95.0f;
+    float m_exposureTargetGrey = 0.18f;
+    float m_exposureEvMin = -8.0f;
+    float m_exposureEvMax = 8.0f;
+    float m_exposureCompensationEv = 0.0f;
+    // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
+    // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
+    // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline
+    // condition, so the trigger rules live in one pure, unit-tested place. create() always sets it
+    // true (m_exposureContext starts with sceneId unset, so the pure function agrees), which is why
+    // the default here does not have to. consumeExposureReset() reads and clears it, which is what
+    // makes each trigger fire exactly once rather than on every frame the condition still holds.
+    bool m_exposureResetPending = false;
+    // The state shouldResetExposure() last compared against, updated at each of the four trigger
+    // sites after the decision is made. Starts with sceneId unset, which is what makes the very
+    // first call at create() read as "first frame" without a separate flag to keep in sync.
+    ExposureResetContext m_exposureContext;
+
+    // Bloom (spec 10): enabled by default, identically in the editor and --screenshot.
+    bool m_bloomEnabled = true;
+    float m_bloomThreshold = 1.0f;
+    float m_bloomIntensity = 0.2f;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an
@@ -148,6 +203,14 @@ private:
     // values_offset and unrolls it, so there is no discontinuity to shuffle away.
     std::array<float, 120> m_frameTimesMs{};
     size_t m_frameTimeCursor = 0;
+
+    // Raw measurements are collected every time a new frame retires, but publishing a fresh text
+    // snapshot only four times per second keeps the sub-millisecond digits readable. Pause stops
+    // both collection and publication, so the visible comparison stays fixed until resumed.
+    PassTimingHistory m_passTimingHistory;
+    std::vector<PassTimingSummary> m_displayedPassTimings;
+    float m_passTimingRefreshSeconds = 0.0f;
+    bool m_passTimingsPaused = false;
 };
 
 } // namespace lmx::app
