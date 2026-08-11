@@ -26,7 +26,7 @@ inspectable codebase.
 | Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
 | Content | Deterministically converted Crytek Sponza and Khronos Damaged Helmet through a focused glTF loader, plus deterministic offline mip baking |
-| Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
+| Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, stable rolling per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
 | Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
 <p align="center">

@@ -700,8 +700,8 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(texture.error());
     }
-    // Zero in kSceneColorFormat so "composite exactly x + 0" holds even without the intensity
-    // uniform's own zero (Shaders/DisplayTransform.slang).
+    // A valid resource for DisplayTransform's bloom slot when bloom is off. The shader skips the
+    // texture load in that mode, but the argument table must still contain a bound texture.
     {
         const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
         const rhi::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
@@ -850,20 +850,33 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
                "frustum is fitted to");
+    if (view.autoExposureEnabled) {
+        LMX_ASSERT(view.exposureLowPercentile >= 0.0f &&
+                       view.exposureLowPercentile < view.exposureHighPercentile &&
+                       view.exposureHighPercentile <= 100.0f,
+                   "SceneView exposure percentiles must satisfy 0 <= low < high <= 100");
+        LMX_ASSERT(view.exposureTargetGrey > 0.0f, "SceneView exposureTargetGrey must be positive");
+        LMX_ASSERT(view.exposureEvMin <= view.exposureEvMax,
+                   "SceneView exposure EV minimum must not exceed its maximum");
+    }
 
     const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
 
-    // The formats are declared here because the graph checks attachment roles against them and
-    // rhi::Texture does not report its own; the named constants are the same ones resize() and
-    // create() built these from, so the two statements cannot drift apart.
-    const GraphTexture shadowMap =
-        graph.importTexture(*m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap");
-    const GraphTexture sceneColor =
-        graph.importTexture(*m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr");
-    const GraphTexture displayColor =
-        graph.importTexture(*m_color, kDisplayFormat, "lmx.render.displayColor");
-    const GraphTexture sceneDepth =
-        graph.importTexture(*m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+    // The graph snapshots formats at import for attachment validation; these named constants are
+    // the same ones resize() and create() used to build the persistent targets.
+    // These targets persist across frames while three command buffers may be in flight. Their
+    // previous frame's terminal uses seed the fresh graph so its first attachment writes cannot
+    // overlap those earlier reads/writes on Metal 4's queue. Depth and display use ShaderRead
+    // conservatively because their public targets may be sampled by a caller after this graph;
+    // that stage set also covers their ordinary fragment attachment work.
+    const GraphTexture shadowMap = graph.importTexture(
+        *m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap", rhi::TextureUse::ShaderRead);
+    const GraphTexture sceneColor = graph.importTexture(
+        *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", rhi::TextureUse::ShaderRead);
+    const GraphTexture displayColor = graph.importTexture(
+        *m_color, kDisplayFormat, "lmx.render.displayColor", rhi::TextureUse::ShaderRead);
+    const GraphTexture sceneDepth = graph.importTexture(
+        *m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
 
     // Exposure feedback (spec 9): the persistent exposure buffer is imported here, before the
     // scene pass, because -- when auto-exposure is on -- the scene and sky passes read it
@@ -1098,8 +1111,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // its import version, harmlessly, when they did not) -- so the histogram's reconstruction of
     // "this frame's preExposure" agrees with what shading actually used, by construction rather
     // than by a CPU value threaded through both.
-    const GraphBuffer histogramImport =
-        graph.importBuffer(*m_histogramBuffer, "lmx.render.histogramBuffer");
+    // The previous frame's resolve dispatch is still potentially reading the histogram when this
+    // frame clears it. Seeding the import with that terminal read makes the first live clear wait
+    // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
+    const GraphBuffer histogramImport = graph.importBuffer(
+        *m_histogramBuffer, "lmx.render.histogramBuffer", rhi::BufferUse::StorageRead);
 
     CopyPassDesc histogramClearDesc;
     histogramClearDesc.bufferDestinations.push_back(histogramImport);
@@ -1113,8 +1129,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphBuffer histogramCleared = nextVersion(histogramImport);
 
     ComputePassDesc histogramDesc;
-    histogramDesc.textureReads.push_back(sceneColorRead);
-    histogramDesc.bufferReads.push_back(exposureCurrent);
+    histogramDesc.shaderTextureReads.push_back(sceneColorRead);
+    histogramDesc.shaderBufferReads.push_back(exposureCurrent);
     histogramDesc.bufferWrites.push_back(histogramCleared);
     graph.addComputePass(
         "lmx.pass.exposure.histogram", std::move(histogramDesc),
@@ -1182,8 +1198,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // header carries the same reasoning. Declared every frame; only the display pass's read of
     // bloomBlur is conditional, so dead-pass culling drops threshold/downsample/upsample together
     // when bloom is off.
-    const uint32_t bloomWidth = std::max(sceneWidth / 2u, 1u);
-    const uint32_t bloomHeight = std::max(sceneHeight / 2u, 1u);
+    // DisplayTransform maps a scene texel to bloom with coordinate / 2. Ceil division keeps the
+    // final column and row addressable for odd scene extents; floor division would both drop those
+    // source texels from the threshold pass and make the display pass read past mip 0.
+    const uint32_t bloomWidth = divRoundUp(sceneWidth, 2u);
+    const uint32_t bloomHeight = divRoundUp(sceneHeight, 2u);
 
     // "A downsample chain into the mips" (spec 10) wants several levels, clamped to whatever the
     // extent supports without a mip collapsing to 1x1 before it has to: bloomMipCount counts mip 0
@@ -1209,7 +1228,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     static constexpr rhi::TextureSubresourceRange kBloomMip0{.baseMipLevel = 0, .mipLevelCount = 1};
     ComputePassDesc thresholdDesc;
-    thresholdDesc.textureReads.push_back(sceneColorRead);
+    thresholdDesc.shaderTextureReads.push_back(sceneColorRead);
     thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kBloomMip0));
     const float bloomThreshold = view.bloomThreshold;
     graph.addComputePass(
@@ -1369,9 +1388,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
             commands.bindPipeline(*m_displayPipeline);
             commands.bindTexture(kSceneColorTextureSlot, **hdrTexture);
-            // Disabled bloom binds a texture that is exactly zero and multiplies by exactly zero
-            // (belt and suspenders): scene color + 0 is bit-identical to scene color alone, which
-            // is what keeps a bloom-off frame byte-identical to pre-M5 output.
+            // Disabled bloom binds a valid 1x1 resource and sets the exact zero that makes the
+            // shader skip its texture load: scene color + 0 stays bit-identical to scene color
+            // alone without addressing outside the fallback texture.
             if (bloomEnabled) {
                 const GraphResult<rhi::Texture*> bloomTexture = resources.texture(bloomResult);
                 LMX_ASSERT(bloomTexture.has_value(), bloomTexture.error().message);

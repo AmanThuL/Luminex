@@ -105,19 +105,18 @@ MTL::Texture* Metal4Texture::viewFor(const TextureViewDesc& desc) {
 
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
-    // A view keeps its parent's texture type, so a subrange of a cubemap's faces would have to be
-    // typed 2D to be legal in Metal. No binding needs one yet, and inventing the type mapping
-    // untested is worse than saying so.
-    LMX_ASSERT(layerCount == m_info.arrayLayers,
-               "TextureViewDesc: a view of part of a texture's array layers is not implemented -- "
-               "cover every layer");
+    MTL::TextureType viewType = m_texture->textureType();
+    if (m_texture->textureType() == MTL::TextureTypeCube &&
+        (baseLayer != 0 || layerCount != m_info.arrayLayers)) {
+        // Metal explicitly permits Cube -> 2D/2DArray views. One face is the Texture2D shape shader
+        // code normally asks for; a larger non-cube subset preserves its layers as a 2D array.
+        viewType = layerCount == 1 ? MTL::TextureType2D : MTL::TextureType2DArray;
+    }
 
-    NS::SharedPtr<MTL::Texture> view = NS::TransferPtr(m_texture->newTextureView(
-        format, m_texture->textureType(), NS::Range::Make(baseMip, mipCount),
-        NS::Range::Make(baseLayer, layerCount)));
-    LMX_ASSERT(view, "TextureViewDesc: Metal refused to create the requested texture view -- a "
-                     "reinterpreting view requires the texture to have been created with storage "
-                     "usage");
+    NS::SharedPtr<MTL::Texture> view = NS::TransferPtr(
+        m_texture->newTextureView(format, viewType, NS::Range::Make(baseMip, mipCount),
+                                  NS::Range::Make(baseLayer, layerCount)));
+    LMX_ASSERT(view, "TextureViewDesc: Metal refused to create the requested texture view");
     const NS::String* parentLabel = m_texture->label();
     const char* utf8 = parentLabel != nullptr ? parentLabel->utf8String() : nullptr;
     view->setLabel(makeString(std::string(utf8 != nullptr ? utf8 : "lmx.texture.unnamed") +

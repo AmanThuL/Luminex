@@ -14,8 +14,10 @@ M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute
 execution substrate — compute pipelines, storage buffers and textures, subresource views, general
 copies, and indirect execution — beneath a culled and conservatively pooled validating render
 graph with a deterministic dump and a read-only editor Render Graph inspector. Histogram exposure
-and a bloom chain exercise the substrate while preserving a deterministic manual-exposure path.
-Shipped evidence and remaining limits are recorded in `docs/milestones/m5.md`.
+and a bloom chain exercise the substrate while preserving a deterministic manual-exposure path. A
+pausable, four-Hz rolling summary keeps sub-millisecond per-pass timings readable while the Render
+Graph inspector retains exact-frame values. Shipped evidence and remaining limits are recorded in
+`docs/milestones/m5.md`.
 
 ## M4 — Correct image formation
 
@@ -87,7 +89,8 @@ resource workloads required by later temporal and GPU-driven features.
   subresource uses, and the required view and synchronization contracts.
 - Add dead-pass culling and conservative transient pooling, with deterministic graph dumps and a
   read-only editor Render Graph inspector for pass/resource uses, schedule and culling, lifetimes,
-  transitions, logical-to-physical reuse, per-pass timing, and transient memory.
+  transitions, logical-to-physical reuse, exact per-frame timing, and transient memory; add a
+  stable rolling timing summary for ongoing performance observation.
 - Exercise the substrate with histogram exposure and a bloom chain while preserving a deterministic
   manual-exposure path.
 
@@ -139,6 +142,36 @@ separately accepted milestone before M6; do not leave an unowned parallel API.
 
 **Defer:** a production D3D12 backend, Vulkan/Linux support, multi-queue optimization, ray tracing,
 and later rendering features.
+
+## M5.2 — Editor workspace and graph visualization
+
+**Outcome:** the editor presents scene authoring, property editing, performance observation, and
+compiled-frame debugging as distinct workspaces, with a stable node view of the read-only render
+graph.
+
+**Deliver:**
+
+- Add a main menu bar for program-level actions, panel visibility, and default-layout reset. The
+  Render Graph window can be opened and closed from the menu while remaining dockable or floating.
+- Replace the overloaded right column with a left Scene/outliner sidebar, the central Viewport, a
+  right context-sensitive Inspector, and a separately dockable Performance panel. Selecting an
+  object, light, or camera on the left determines the properties edited on the right.
+- Add a read-only node canvas over M5's retained `CompiledFrameRecord`: scheduled passes are nodes,
+  resource-version producer/consumer dependencies are directed edges, sinks are endpoints, and
+  culled passes remain visible but separate from the scheduled DAG. Subresource ranges, barriers,
+  timing, lifetimes, and alias reuse stay available through selection details; alias links are
+  visually distinct from execution dependencies.
+- Keep automatic layout deterministic and stable for an unchanged graph. Preserve the existing
+  detailed list and deterministic text dump as alternate views of the same record.
+
+**Exit gate:** the default, restored, and reset layouts keep the Viewport usable; every advertised
+panel toggle works; selection routes edits to the intended scene entity; an unchanged compiled
+frame produces stable node positions; every displayed dependency agrees with the record's resource
+versions and schedule; culled passes and memory-alias links cannot be mistaken for scheduled
+execution edges; list, node, and dump views identify the same retired frame.
+
+**Defer:** graph authoring or mutation, user-created render passes, multiple platform windows,
+capture-file browsing, and changes to Render Graph execution, scheduling, or RHI semantics.
 
 ## M6 — Temporal and display foundation
 

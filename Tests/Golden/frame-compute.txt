@@ -25,7 +25,7 @@ culled
 transitions
   before p1 buffer r2 CopyDestination -> StorageRead
   before p2 texture r0 mips[0..0] layers[0..] StorageWrite -> StorageRead
-  before p3 texture r0 mips[0..] layers[0..] StorageWrite -> ShaderRead
+  before p3 texture r0 mips[0..2] layers[0..] StorageWrite -> ShaderRead
   before p4 texture r1 mips[0..] layers[0..] RenderTarget -> CopySource
 transients
 memory

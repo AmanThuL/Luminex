@@ -603,3 +603,32 @@ TEST_CASE("pass timings cover a copy pass alongside the other pass kinds", "[gpu
     REQUIRE(timings[2].label == "lmx.test.timing.copy");
     REQUIRE((*device)->passTimingsFrame() == 1);
 }
+
+//======================================================================================================================
+// The shipped frame can exceed sixteen passes when bloom and auto-exposure are enabled together.
+// Empty compute encoders isolate the timestamp capacity contract from shader or resource work.
+TEST_CASE("pass timings retain more than sixteen passes", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr uint32_t kPassCount = 20;
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    CommandList& commands = (*device)->beginFrame();
+    for (uint32_t pass = 0; pass < kPassCount; ++pass) {
+        commands.beginComputePass("lmx.test.timing.many." + std::to_string(pass));
+        commands.endComputePass();
+    }
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    (*device)->beginFrame();
+    (*device)->endFrame(nullptr);
+
+    const std::span<const PassTiming> timings = (*device)->passTimings();
+    REQUIRE(timings.size() == kPassCount);
+    for (uint32_t pass = 0; pass < kPassCount; ++pass) {
+        REQUIRE(timings[pass].label == "lmx.test.timing.many." + std::to_string(pass));
+    }
+}

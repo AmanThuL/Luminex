@@ -130,6 +130,8 @@ void Metal4Device::endFrame(Swapchain* presentTo) {
                "endFrame: a compute pass is still open -- call endComputePass first");
     LMX_ASSERT(!m_commandList->inCopyPass(),
                "endFrame: a copy pass is still open -- call endCopyPass first");
+    LMX_ASSERT(!m_commandList->hasPendingBarrier(),
+               "endFrame: a textureBarrier or bufferBarrier has no later consumer pass");
 
     m_commandBuffer->endCommandBuffer();
 

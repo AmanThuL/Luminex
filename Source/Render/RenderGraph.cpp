@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -55,6 +56,8 @@ bool isColorRenderableFormat(rhi::Format format) {
 bool isWriteRole(UseRole role) {
     switch (role) {
     case UseRole::Read:
+    case UseRole::ShaderRead:
+    case UseRole::IndirectArgument:
     case UseRole::CopySource:
         return false;
     case UseRole::Write:
@@ -75,6 +78,10 @@ rhi::TextureUse textureUseOf(PassKind kind, UseRole role) {
     case UseRole::Read:
         return kind == PassKind::Compute ? rhi::TextureUse::StorageRead
                                          : rhi::TextureUse::ShaderRead;
+    case UseRole::ShaderRead:
+        return rhi::TextureUse::ShaderRead;
+    case UseRole::IndirectArgument:
+        return rhi::TextureUse::ShaderRead;
     case UseRole::Write:
         return rhi::TextureUse::StorageWrite;
     case UseRole::ColorAttachment:
@@ -93,6 +100,10 @@ rhi::BufferUse bufferUseOf(PassKind kind, UseRole role) {
     switch (role) {
     case UseRole::Read:
         return kind == PassKind::Compute ? rhi::BufferUse::StorageRead : rhi::BufferUse::ShaderRead;
+    case UseRole::ShaderRead:
+        return rhi::BufferUse::ShaderRead;
+    case UseRole::IndirectArgument:
+        return rhi::BufferUse::IndirectArgument;
     case UseRole::Write:
     case UseRole::ColorAttachment:
     case UseRole::DepthAttachment:
@@ -127,7 +138,12 @@ ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, uint32_t m
         if (count == rhi::kAllMipLevels) {
             return available > base ? available - 1 : base;
         }
-        return count == 0 ? base : base + count - 1;
+        if (count == 0) {
+            return base;
+        }
+        const uint64_t last = static_cast<uint64_t>(base) + count - 1;
+        return last > std::numeric_limits<uint32_t>::max() ? std::numeric_limits<uint32_t>::max()
+                                                           : static_cast<uint32_t>(last);
     };
     return {.firstMip = range.baseMipLevel,
             .lastMip = lastOf(range.baseMipLevel, range.mipLevelCount, mipLevels),
@@ -136,15 +152,18 @@ ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, uint32_t m
 }
 
 //======================================================================================================================
+bool validAxis(uint32_t base, uint32_t count, uint32_t available, uint32_t allSentinel) {
+    if (base >= available) {
+        return false;
+    }
+    return count == allSentinel || (count > 0 && count <= available - base);
+}
+
+//======================================================================================================================
 // A range covers real subresources only when both axes do, so an empty count on either one is an
 // empty range whatever the other says.
 bool isEmptyRange(const rhi::TextureSubresourceRange& range) {
     return range.mipLevelCount == 0 || range.arrayLayerCount == 0;
-}
-
-//======================================================================================================================
-bool containsRange(const ResolvedRange& resolved, uint32_t mipLevels, uint32_t arrayLayers) {
-    return resolved.lastMip < mipLevels && resolved.lastLayer < arrayLayers;
 }
 
 //======================================================================================================================
@@ -164,6 +183,15 @@ bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
     const bool mips = a.firstMip <= b.lastMip && b.firstMip <= a.lastMip;
     const bool layers = a.firstLayer <= b.lastLayer && b.firstLayer <= a.lastLayer;
     return mips && layers;
+}
+
+//======================================================================================================================
+ResolvedRange intersectRange(const ResolvedRange& a, const ResolvedRange& b) {
+    LMX_ASSERT(rangesOverlap(a, b), "only overlapping subresource ranges have an intersection");
+    return {.firstMip = std::max(a.firstMip, b.firstMip),
+            .lastMip = std::min(a.lastMip, b.lastMip),
+            .firstLayer = std::max(a.firstLayer, b.firstLayer),
+            .lastLayer = std::min(a.lastLayer, b.lastLayer)};
 }
 
 //======================================================================================================================
@@ -318,6 +346,10 @@ std::string_view roleName(UseRole role) {
     switch (role) {
     case UseRole::Read:
         return "read";
+    case UseRole::ShaderRead:
+        return "shader read";
+    case UseRole::IndirectArgument:
+        return "indirect argument";
     case UseRole::Write:
         return "write";
     case UseRole::ColorAttachment:
@@ -364,7 +396,8 @@ std::string describeRange(const rhi::TextureSubresourceRange& range) {
         if (count == sentinel) {
             return std::format("{}[{}..]", name, base);
         }
-        return std::format("{}[{}..{}]", name, base, count == 0 ? base : base + count - 1);
+        const uint64_t last = count == 0 ? base : static_cast<uint64_t>(base) + count - 1;
+        return std::format("{}[{}..{}]", name, base, last);
     };
     return std::format(
         "{} {}", axis("mips", range.baseMipLevel, range.mipLevelCount, rhi::kAllMipLevels),
@@ -416,6 +449,9 @@ GraphResult<rhi::Buffer*> PassResources::buffer(GraphBuffer handle) const {
 //======================================================================================================================
 GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format format,
                                         std::string_view name) {
+    LMX_ASSERT(texture.format() == rhi::Format::Unknown || texture.format() == format,
+               std::format("imported texture '{}' reports format {}, not the declared {}", name,
+                           formatName(texture.format()), formatName(format)));
     // Shape is read once, here, because a texture's extent and chain are fixed for its lifetime and
     // every later rule has to consult them the same way it consults a transient's descriptor.
     m_resources.push_back({.kind = ResourceKind::Texture,
@@ -430,6 +466,24 @@ GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format forma
 }
 
 //======================================================================================================================
+GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format format,
+                                        std::string_view name, rhi::TextureUse previousUse) {
+    LMX_ASSERT(texture.format() == rhi::Format::Unknown || texture.format() == format,
+               std::format("imported texture '{}' reports format {}, not the declared {}", name,
+                           formatName(texture.format()), formatName(format)));
+    m_resources.push_back({.kind = ResourceKind::Texture,
+                           .name = std::string(name),
+                           .texture = &texture,
+                           .format = format,
+                           .width = texture.width(),
+                           .height = texture.height(),
+                           .mipLevels = texture.mipLevels(),
+                           .arrayLayers = texture.arrayLayers(),
+                           .priorTextureAccess = previousUse});
+    return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
+}
+
+//======================================================================================================================
 GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name) {
     m_resources.push_back(
         {.kind = ResourceKind::Buffer, .name = std::string(name), .buffer = &buffer});
@@ -438,11 +492,11 @@ GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name
 
 //======================================================================================================================
 GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name,
-                                      rhi::BufferUse producedBy) {
+                                      rhi::BufferUse previousUse) {
     m_resources.push_back({.kind = ResourceKind::Buffer,
                            .name = std::string(name),
                            .buffer = &buffer,
-                           .priorProducer = producedBy});
+                           .priorBufferAccess = previousUse});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
 }
 
@@ -549,6 +603,7 @@ void RenderGraph::addPass(std::string_view label, PassDesc desc, ExecuteFn execu
     std::vector<Declaration> declarations;
     flattenTextures(declarations, desc.textureReads, UseRole::Read);
     flattenBuffers(declarations, desc.bufferReads, UseRole::Read);
+    flattenBuffers(declarations, desc.indirectBufferReads, UseRole::IndirectArgument);
     if (desc.color) {
         checkTexture(desc.color->handle);
         declarations.push_back({.resource = desc.color->handle.index,
@@ -582,7 +637,10 @@ void RenderGraph::addComputePass(std::string_view label, ComputePassDesc desc, E
 
     std::vector<Declaration> declarations;
     flattenTextures(declarations, desc.textureReads, UseRole::Read);
+    flattenTextures(declarations, desc.shaderTextureReads, UseRole::ShaderRead);
     flattenBuffers(declarations, desc.bufferReads, UseRole::Read);
+    flattenBuffers(declarations, desc.shaderBufferReads, UseRole::ShaderRead);
+    flattenBuffers(declarations, desc.indirectBufferReads, UseRole::IndirectArgument);
     flattenTextures(declarations, desc.textureWrites, UseRole::Write);
     flattenBuffers(declarations, desc.bufferWrites, UseRole::Write);
 
@@ -713,9 +771,13 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                         pass.label, roleName(declaration.role), resource.name,
                                         describeRange(declaration.range)));
             }
-            const ResolvedRange resolved =
-                resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
-            if (!containsRange(resolved, resource.mipLevels, resource.arrayLayers)) {
+            const bool validMips =
+                validAxis(declaration.range.baseMipLevel, declaration.range.mipLevelCount,
+                          resource.mipLevels, rhi::kAllMipLevels);
+            const bool validLayers =
+                validAxis(declaration.range.baseArrayLayer, declaration.range.arrayLayerCount,
+                          resource.arrayLayers, rhi::kAllArrayLayers);
+            if (!validMips || !validLayers) {
                 return fail(std::format("pass '{}' declares a {} of texture '{}' over {}, which "
                                         "runs past its {} mip levels and {} array layers",
                                         pass.label, roleName(declaration.role), resource.name,
@@ -827,6 +889,13 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                 resource.name, declaration.version));
             }
             writerOfVersion.emplace(versionKey(declaration.resource, declaration.version), pass);
+            const bool discarded = (declaration.role == UseRole::ColorAttachment &&
+                                    m_passes[pass].color->store == StoreOp::Discard) ||
+                                   (declaration.role == UseRole::DepthAttachment &&
+                                    m_passes[pass].depth->store == StoreOp::Discard);
+            if (discarded) {
+                continue;
+            }
             producerOfVersion.emplace(versionKey(declaration.resource, declaration.version + 1),
                                       pass);
         }
@@ -1118,21 +1187,41 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
         ResolvedRange range;
         PassKind consumer = PassKind::Raster;
     };
-    struct WriteState {
-        bool written = false;
-        rhi::TextureUse textureUse = rhi::TextureUse::RenderTarget;
-        rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
+    struct TextureWriter {
+        ResolvedRange range;
+        rhi::TextureUse use = rhi::TextureUse::RenderTarget;
+        bool writes = true;
         std::vector<Covered> covered;
+    };
+    struct WriteState {
+        bool bufferWritten = false;
+        rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
+        std::vector<Covered> bufferCovered;
+        std::vector<TextureWriter> textureWriters;
     };
     std::vector<WriteState> pending(m_resources.size());
 
-    // A resource whose producer is in an earlier frame starts derivation already in a producing
-    // state, so this frame's first reader of it is ordered by the ordinary read-after-write rule
-    // below rather than by nothing at all -- see importBuffer's prior-producer overload.
+    const auto textureUseWrites = [](rhi::TextureUse use) {
+        return use == rhi::TextureUse::RenderTarget || use == rhi::TextureUse::StorageWrite ||
+               use == rhi::TextureUse::CopyDestination;
+    };
+    const auto bufferUseWrites = [](rhi::BufferUse use) {
+        return use == rhi::BufferUse::StorageWrite || use == rhi::BufferUse::CopyDestination;
+    };
+
+    // A texture accessed in an earlier frame starts with that whole-resource state. Prior writes
+    // participate in RAW and WAW; prior reads skip RAW but remain available to the WAW loop below,
+    // which emits the cross-frame WAR before this frame overwrites them.
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
-        if (const std::optional<rhi::BufferUse>& producer = m_resources[index].priorProducer) {
-            pending[index].written = true;
-            pending[index].bufferUse = *producer;
+        if (const std::optional<rhi::TextureUse>& access = m_resources[index].priorTextureAccess) {
+            const Resource& resource = m_resources[index];
+            pending[index].textureWriters.push_back(
+                {.range = {.firstMip = 0,
+                           .lastMip = resource.mipLevels - 1,
+                           .firstLayer = 0,
+                           .lastLayer = resource.arrayLayers - 1},
+                 .use = *access,
+                 .writes = textureUseWrites(*access)});
         }
     }
 
@@ -1168,28 +1257,49 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     std::vector<ReadState> pendingReads(m_resources.size());
     std::vector<DebugTransition> transitions;
 
-    // What a resource is doing at one end of a reuse boundary: the earliest declaration of it in
-    // the pass that opens its lifetime, or the latest in the pass that closes it. One declaration
-    // rather than a union, because the two ends of the boundary are single points in the schedule.
-    const auto useAt = [&](uint32_t resource, uint32_t position, bool last) {
+    // Buffers split their earlier-frame terminal access between the same two states used for
+    // accesses declared in this frame. This preserves the real use in debug records and lets a
+    // prior read followed by another read remain barrier-free.
+    for (uint32_t index = 0; index < m_resources.size(); ++index) {
+        const std::optional<rhi::BufferUse>& access = m_resources[index].priorBufferAccess;
+        if (!access) {
+            continue;
+        }
+        if (bufferUseWrites(*access)) {
+            pending[index].bufferWritten = true;
+            pending[index].bufferUse = *access;
+        } else {
+            pendingReads[index].bufferReads.push_back(*access);
+        }
+    }
+
+    // Every distinct use a resource makes at one lifetime boundary. The closing pass may read and
+    // write disjoint subresources through different stages, and alias reuse has to wait on all of
+    // them before the next logical resource takes those bytes.
+    const auto usesAt = [&](uint32_t resource, uint32_t position) {
         const Pass& pass = m_passes[schedule.passes[position]];
-        std::optional<Declaration> found;
+        std::vector<UseRole> roles;
         for (const Declaration& declaration : pass.declarations) {
-            if (declaration.resource != resource) {
+            if (declaration.resource != resource ||
+                std::ranges::find(roles, declaration.role) != roles.end()) {
                 continue;
             }
-            if (!found || last) {
-                found = declaration;
-            }
+            roles.push_back(declaration.role);
         }
-        LMX_ASSERT(found.has_value(),
+        LMX_ASSERT(!roles.empty(),
                    "a transient's lifetime bound must name a pass that declares it");
-        return std::pair{pass.kind, found->role};
+        return std::pair{pass.kind, std::move(roles)};
     };
 
     for (uint32_t position = 0; position < schedule.passes.size(); ++position) {
         const uint32_t passIndex = schedule.passes[position];
         const Pass& pass = m_passes[passIndex];
+        const auto loadsAttachment = [&](const Declaration& declaration) {
+            return (declaration.role == UseRole::ColorAttachment &&
+                    pass.color->load == LoadOp::Load) ||
+                   (declaration.role == UseRole::DepthAttachment &&
+                    pass.depth->load == LoadOp::Load);
+        };
 
         // Reuse boundaries come first: they make the memory this pass's transients sit in available
         // before anything else about the pass is ordered. Whole-resource whatever either side
@@ -1201,64 +1311,93 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             }
             const TransientPlan& previous =
                 *std::ranges::find(plan.transients, *entry.aliasedFrom, &TransientPlan::resource);
-            const auto [fromKind, fromRole] = useAt(previous.resource, previous.lastPosition, true);
-            const auto [toKind, toRole] = useAt(entry.resource, entry.firstPosition, false);
-
-            DebugTransition transition{.beforePass = passIndex,
-                                       .resource = entry.resource,
-                                       .aliasedFrom = previous.resource};
+            const auto [fromKind, fromRoles] = usesAt(previous.resource, previous.lastPosition);
+            const auto [toKind, toRoles] = usesAt(entry.resource, entry.firstPosition);
+            const UseRole toRole = toRoles.front();
             if (m_resources[entry.resource].kind == ResourceKind::Buffer) {
-                transition.kind = GraphResourceKind::Buffer;
-                transition.bufferFrom = bufferUseOf(fromKind, fromRole);
-                transition.bufferTo = bufferUseOf(toKind, toRole);
+                std::vector<rhi::BufferUse> emitted;
+                for (const UseRole fromRole : fromRoles) {
+                    const rhi::BufferUse from = bufferUseOf(fromKind, fromRole);
+                    if (std::ranges::find(emitted, from) != emitted.end()) {
+                        continue;
+                    }
+                    emitted.push_back(from);
+                    transitions.push_back({.beforePass = passIndex,
+                                           .resource = entry.resource,
+                                           .kind = GraphResourceKind::Buffer,
+                                           .bufferFrom = from,
+                                           .bufferTo = bufferUseOf(toKind, toRole),
+                                           .aliasedFrom = previous.resource});
+                }
             } else {
-                transition.kind = GraphResourceKind::Texture;
-                transition.textureFrom = textureUseOf(fromKind, fromRole);
-                transition.textureTo = textureUseOf(toKind, toRole);
+                std::vector<rhi::TextureUse> emitted;
+                for (const UseRole fromRole : fromRoles) {
+                    const rhi::TextureUse from = textureUseOf(fromKind, fromRole);
+                    if (std::ranges::find(emitted, from) != emitted.end()) {
+                        continue;
+                    }
+                    emitted.push_back(from);
+                    transitions.push_back({.beforePass = passIndex,
+                                           .resource = entry.resource,
+                                           .kind = GraphResourceKind::Texture,
+                                           .textureFrom = from,
+                                           .textureTo = textureUseOf(toKind, toRole),
+                                           .aliasedFrom = previous.resource});
+                }
             }
-            transitions.push_back(transition);
         }
 
-        // At most one barrier per resource the pass reads, from the use that last wrote it. Several
-        // reads of one resource collapse into the range that covers them all, because the
-        // transition belongs to the resource rather than to any single binding.
+        // A read is ordered against every writer segment it overlaps. Several reads made through
+        // the same use in one pass collapse into one range before that comparison. A loaded
+        // attachment participates here too: it is a read and a write through RenderTarget.
         for (uint32_t index = 0; index < pass.declarations.size(); ++index) {
             const Declaration& read = pass.declarations[index];
-            if (read.isWrite || !pending[read.resource].written) {
+            const bool reads = !read.isWrite || loadsAttachment(read);
+            if (!reads) {
                 continue;
             }
+            const Resource& resource = m_resources[read.resource];
             bool declaredEarlier = false;
             for (uint32_t earlier = 0; earlier < index; ++earlier) {
+                const Declaration& other = pass.declarations[earlier];
+                const bool otherReads = !other.isWrite || loadsAttachment(other);
                 declaredEarlier =
-                    declaredEarlier || (!pass.declarations[earlier].isWrite &&
-                                        pass.declarations[earlier].resource == read.resource);
+                    declaredEarlier || (otherReads && other.resource == read.resource &&
+                                        (resource.kind == ResourceKind::Texture
+                                             ? textureUseOf(pass.kind, other.role) ==
+                                                   textureUseOf(pass.kind, read.role)
+                                             : bufferUseOf(pass.kind, other.role) ==
+                                                   bufferUseOf(pass.kind, read.role)));
             }
             if (declaredEarlier) {
                 continue;
             }
 
-            const Resource& resource = m_resources[read.resource];
-            DebugTransition transition{.beforePass = passIndex, .resource = read.resource};
             if (resource.kind == ResourceKind::Buffer) {
-                // A buffer declaration names no byte range, so one barrier covers every byte a
-                // later reader could ask for -- but only for readers of its own stage class, on
-                // the terms `covered` states above.
+                WriteState& state = pending[read.resource];
+                if (!state.bufferWritten) {
+                    continue;
+                }
                 bool alreadyOrdered = false;
-                for (const Covered& emitted : pending[read.resource].covered) {
+                for (const Covered& emitted : state.bufferCovered) {
                     alreadyOrdered = alreadyOrdered || emitted.consumer == pass.kind;
                 }
                 if (alreadyOrdered) {
                     continue;
                 }
-                pending[read.resource].covered.push_back({.consumer = pass.kind});
-                transition.kind = GraphResourceKind::Buffer;
-                transition.bufferFrom = pending[read.resource].bufferUse;
-                transition.bufferTo = bufferUseOf(pass.kind, read.role);
+                state.bufferCovered.push_back({.consumer = pass.kind});
+                transitions.push_back({.beforePass = passIndex,
+                                       .resource = read.resource,
+                                       .kind = GraphResourceKind::Buffer,
+                                       .bufferFrom = state.bufferUse,
+                                       .bufferTo = bufferUseOf(pass.kind, read.role)});
             } else {
                 rhi::TextureSubresourceRange covered = read.range;
                 for (uint32_t later = index + 1; later < pass.declarations.size(); ++later) {
                     const Declaration& other = pass.declarations[later];
-                    if (other.isWrite || other.resource != read.resource) {
+                    const bool otherReads = !other.isWrite || loadsAttachment(other);
+                    if (!otherReads || other.resource != read.resource ||
+                        textureUseOf(pass.kind, other.role) != textureUseOf(pass.kind, read.role)) {
                         continue;
                     }
                     covered = unionRange(
@@ -1268,26 +1407,86 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 }
                 const ResolvedRange resolved =
                     resolveRange(covered, resource.mipLevels, resource.arrayLayers);
-                // Both axes have to match for a reader to be already ordered: an emitted range
-                // enclosing everything this reader names, emitted for a pass of this reader's own
-                // stage class. A barrier a compute pass consumed orders no raster pass, whatever
-                // subresources it named.
-                bool alreadyOrdered = false;
-                for (const Covered& emitted : pending[read.resource].covered) {
-                    alreadyOrdered = alreadyOrdered || (emitted.consumer == pass.kind &&
-                                                        enclosesRange(emitted.range, resolved));
+                struct NeededBarrier {
+                    ResolvedRange range;
+                    rhi::TextureUse from = rhi::TextureUse::RenderTarget;
+                };
+                std::vector<NeededBarrier> needed;
+                for (TextureWriter& writer : pending[read.resource].textureWriters) {
+                    if (!writer.writes || !rangesOverlap(writer.range, resolved)) {
+                        continue;
+                    }
+                    const ResolvedRange overlap = intersectRange(writer.range, resolved);
+                    bool alreadyOrdered = false;
+                    for (const Covered& emitted : writer.covered) {
+                        alreadyOrdered = alreadyOrdered || (emitted.consumer == pass.kind &&
+                                                            enclosesRange(emitted.range, overlap));
+                    }
+                    if (alreadyOrdered) {
+                        continue;
+                    }
+                    writer.covered.push_back({.range = overlap, .consumer = pass.kind});
+                    const auto sameUse =
+                        std::ranges::find(needed, writer.use, &NeededBarrier::from);
+                    if (sameUse == needed.end()) {
+                        needed.push_back({.range = overlap, .from = writer.use});
+                    } else {
+                        sameUse->range =
+                            resolveRange(unionRange(sameUse->range, overlap, resource.mipLevels,
+                                                    resource.arrayLayers),
+                                         resource.mipLevels, resource.arrayLayers);
+                    }
                 }
-                if (alreadyOrdered) {
+                for (const NeededBarrier& barrier : needed) {
+                    transitions.push_back(
+                        {.beforePass = passIndex,
+                         .resource = read.resource,
+                         .kind = GraphResourceKind::Texture,
+                         .range = unionRange(barrier.range, barrier.range, resource.mipLevels,
+                                             resource.arrayLayers),
+                         .textureFrom = barrier.from,
+                         .textureTo = textureUseOf(pass.kind, read.role)});
+                }
+            }
+        }
+
+        // Every overlapping write is an access conflict on Metal 4's untracked resources. A loaded
+        // attachment was already ordered as a read above, so that one dependency also orders its
+        // write and need not be duplicated here.
+        for (const Declaration& write : pass.declarations) {
+            if (!write.isWrite) {
+                continue;
+            }
+            const Resource& resource = m_resources[write.resource];
+            WriteState& state = pending[write.resource];
+            if (resource.kind == ResourceKind::Buffer) {
+                if (state.bufferWritten) {
+                    transitions.push_back({.beforePass = passIndex,
+                                           .resource = write.resource,
+                                           .kind = GraphResourceKind::Buffer,
+                                           .bufferFrom = state.bufferUse,
+                                           .bufferTo = bufferUseOf(pass.kind, write.role)});
+                }
+                continue;
+            }
+            const ResolvedRange writeRange =
+                resolveRange(write.range, resource.mipLevels, resource.arrayLayers);
+            for (const TextureWriter& writer : state.textureWriters) {
+                // Loading an attachment already took the RAW path above for a prior write. A
+                // prior read is different: the attachment's write still owes it a WAR barrier.
+                if ((loadsAttachment(write) && writer.writes) ||
+                    !rangesOverlap(writer.range, writeRange)) {
                     continue;
                 }
-                pending[read.resource].covered.push_back(
-                    {.range = resolved, .consumer = pass.kind});
-                transition.kind = GraphResourceKind::Texture;
-                transition.range = covered;
-                transition.textureFrom = pending[read.resource].textureUse;
-                transition.textureTo = textureUseOf(pass.kind, read.role);
+                const ResolvedRange overlap = intersectRange(writer.range, writeRange);
+                transitions.push_back({.beforePass = passIndex,
+                                       .resource = write.resource,
+                                       .kind = GraphResourceKind::Texture,
+                                       .range = unionRange(overlap, overlap, resource.mipLevels,
+                                                           resource.arrayLayers),
+                                       .textureFrom = writer.use,
+                                       .textureTo = textureUseOf(pass.kind, write.role)});
             }
-            transitions.push_back(transition);
         }
 
         // A write-after-read barrier per write declaration that overlaps a pending read -- not once
@@ -1390,11 +1589,31 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             if (!declaration.isWrite) {
                 continue;
             }
-            pending[declaration.resource] = {.written = true,
-                                             .textureUse =
-                                                 textureUseOf(pass.kind, declaration.role),
-                                             .bufferUse = bufferUseOf(pass.kind, declaration.role),
-                                             .covered = {}};
+            const Resource& resource = m_resources[declaration.resource];
+            WriteState& state = pending[declaration.resource];
+            if (resource.kind == ResourceKind::Buffer) {
+                state.bufferWritten = true;
+                state.bufferUse = bufferUseOf(pass.kind, declaration.role);
+                state.bufferCovered.clear();
+                continue;
+            }
+
+            const ResolvedRange writeRange =
+                resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
+            std::vector<TextureWriter> inherited;
+            for (const TextureWriter& writer : state.textureWriters) {
+                for (const ResolvedRange& piece : subtractRange(writer.range, writeRange)) {
+                    inherited.push_back({.range = piece,
+                                         .use = writer.use,
+                                         .writes = writer.writes,
+                                         .covered = writer.covered});
+                }
+            }
+            inherited.push_back({.range = writeRange,
+                                 .use = textureUseOf(pass.kind, declaration.role),
+                                 .writes = true,
+                                 .covered = {}});
+            state.textureWriters = std::move(inherited);
         }
     }
     return transitions;
@@ -1417,12 +1636,15 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
                record->debug.transitions[nextTransition].beforePass == passIndex) {
             const DebugTransition& transition = record->debug.transitions[nextTransition];
             const Resource& resource = m_resources[transition.resource];
+            const rhi::BarrierOptions options = transition.aliasedFrom
+                                                    ? rhi::BarrierOptions::ResourceAlias
+                                                    : rhi::BarrierOptions::None;
             if (transition.kind == GraphResourceKind::Buffer) {
                 commands.bufferBarrier(*resource.buffer, rhi::BufferRange{}, transition.bufferFrom,
-                                       transition.bufferTo);
+                                       transition.bufferTo, options);
             } else {
                 commands.textureBarrier(*resource.texture, transition.range, transition.textureFrom,
-                                        transition.textureTo);
+                                        transition.textureTo, options);
             }
             ++nextTransition;
         }
@@ -1491,7 +1713,7 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
 
 //======================================================================================================================
 void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
-    if (debug.memory.highWater == 0) {
+    if (debug.transients.empty()) {
         return;
     }
     // Reserving before placing anything is what lets the pool decide in one step whether the frame
@@ -1499,6 +1721,9 @@ void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
     // its memory, which no declaration can recover from.
     const rhi::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
     LMX_ASSERT(reserved.has_value(), reserved.error().message);
+    if (debug.memory.highWater == 0) {
+        return;
+    }
 
     for (const DebugTransient& entry : debug.transients) {
         if (!entry.used) {

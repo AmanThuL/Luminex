@@ -1,13 +1,14 @@
 // The bloom upsample-accumulate step (spec 10): a nearest 2x upsample of the smaller downsample-
-// chain mip, added onto the larger mip's own base content. The two reads come from the downsample
-// chain's texture (`gBase`/`gSmall`, both read-only here); the sum lands in a *different* graph
-// texture (`gDst`) rather than back into the downsample chain, because one pass may read and write
-// one texture only through disjoint ranges (spec 6) and base/dst would otherwise name the same
-// mip of the same resource. Renderer.cpp's two graph-created bloom textures exist for exactly this
-// reason -- see its comment for the full accounting.
+// chain mip, added onto the larger mip's own base content. `gBase` always comes from the downsample
+// chain; `gSmall` comes from that chain for the first step and from the previous accumulation output
+// thereafter. The sum lands in a *different* graph texture (`gDst`) rather than back into the
+// downsample chain, because one pass may read and write one texture only through disjoint ranges
+// (spec 6) and base/dst would otherwise name the same mip of the same resource. Renderer.cpp's two
+// graph-created bloom textures exist for exactly this reason -- see its comment for the full
+// accounting.
 //
-// Slots: storage texture 0 base mip (read, downsample chain), 1 small mip (read, downsample
-// chain), 2 destination mip (write, accumulate chain); buffer 0 params.
+// Slots: storage texture 0 base mip (read, downsample chain), 1 small mip (read, downsample or
+// accumulate chain), 2 destination mip (write, accumulate chain); buffer 0 params.
 
 struct BloomUpsampleParams
 {

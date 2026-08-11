@@ -511,6 +511,9 @@ TEST_CASE("an sRGB texture is linearised by the sampler, a linear one is not",
     auto srgbDestination = makeProbeTarget(**device, "lmx.test.srgbDestination");
     INFO(errorOf(srgbDestination));
     REQUIRE(srgbDestination.has_value());
+    auto viewDestination = makeProbeTarget(**device, "lmx.test.srgbViewDestination");
+    INFO(errorOf(viewDestination));
+    REQUIRE(viewDestination.has_value());
 
     auto library = (*device)->loadShaderLibrary("Shaders/SamplerSmoke");
     INFO(errorOf(library));
@@ -543,6 +546,18 @@ TEST_CASE("an sRGB texture is linearised by the sampler, a linear one is not",
     REQUIRE(channelNear(srgbProbe.g, kDecoded, 6));
     REQUIRE(channelNear(srgbProbe.b, kDecoded, 6));
     REQUIRE(srgbProbe.a == 255);
+
+    // The allocation is linear, but this sampled view asks Metal to apply its sRGB sibling's
+    // transfer function. It must match the native sRGB texture above without a second allocation.
+    const std::vector<uint8_t> viewPixels =
+        renderSampledImage(**device, **pipeline, kSourceTextureSlot, **linearSource, **sampler,
+                           **viewDestination, {.format = Format::RGBA8Unorm_sRGB});
+    const Pixel viewProbe = pixelAt(viewPixels, 32, 32);
+    INFO(describe("sRGB view centre", 32, 32, viewProbe));
+    REQUIRE(channelNear(viewProbe.r, kDecoded, 6));
+    REQUIRE(channelNear(viewProbe.g, kDecoded, 6));
+    REQUIRE(channelNear(viewProbe.b, kDecoded, 6));
+    REQUIRE(viewProbe.a == 255);
 }
 
 //======================================================================================================================

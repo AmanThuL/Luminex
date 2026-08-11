@@ -11,9 +11,9 @@
 
 struct ExposureResolveParams
 {
-    float lowPercentile;   // 0..100, fraction of pixel count trimmed from the shadow end.
-    float highPercentile;  // 0..100, fraction of pixel count trimmed from the highlight end.
-    float targetGrey;      // The scene-referred luminance exposure aims to map to unit output.
+    float lowPercentile;   // 0..100, lower bound of the retained population.
+    float highPercentile;  // 0..100, upper bound of the retained population.
+    float targetGrey;      // Output value the retained population's average maps to.
     float evMin;            // Clamp on the resolved exposure, in stops.
     float evMax;
     float compensationEv;  // Extra stops applied after metering, before the clamp.

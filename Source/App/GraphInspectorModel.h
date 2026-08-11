@@ -35,7 +35,8 @@ struct GraphInspectorUseRow {
 
 /// One declared pass, in declaration order -- scheduled or culled alike, exactly as the compiled
 /// frame's DebugPass list carries them. `gpuMilliseconds` is set only when the joined timings name
-/// a pass whose label matches this one's; a culled pass, which never ran, is never matched.
+/// the same schedule position and whose label matches this one's; a culled pass, which never ran,
+/// is never matched.
 struct GraphInspectorPassRow {
     uint32_t index = 0; ///< Declaration index (CompiledFrameDebug::passes).
     render::PassKind kind = render::PassKind::Raster; ///< Which declaration path declared it.
@@ -87,10 +88,10 @@ struct GraphInspectorModel {
 
 /// Shapes a compiled frame record and its joined GPU timings into display-ready rows.
 ///
-/// `timings` need not name every pass, or any: a pass row's `gpuMilliseconds` is set only when
-/// `timings` carries an entry whose label equals that pass's label, so a culled pass -- which never
-/// ran -- is reported with no time rather than a guessed or aggregated one. Nothing here mutates
-/// `record`; the model borrows nothing from it once built.
+/// `timings` need not name every pass, or any: entries join positionally against the proved
+/// schedule and only when the label at that same position agrees. This makes duplicate diagnostic
+/// labels unambiguous and guarantees a culled pass -- which has no schedule position -- remains
+/// unmeasured. Nothing here mutates `record`; the model borrows nothing from it once built.
 GraphInspectorModel buildGraphInspectorModel(const render::CompiledFrameRecord& record,
                                              std::span<const rhi::PassTiming> timings);
 

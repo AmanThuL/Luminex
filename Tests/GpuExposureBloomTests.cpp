@@ -489,6 +489,78 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is appli
 }
 
 //======================================================================================================================
+// Renderer uses ceil(scene / 2) for bloom mip 0 so an odd-sized image's final source row and column
+// still have a destination texel. Put the only above-threshold value in that bottom-right corner:
+// floor division would allocate and dispatch only 2x1 here and silently lose the probe.
+TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[gpu]") {
+    constexpr uint32_t kSrcWidth = 5, kSrcHeight = 3;
+    constexpr uint32_t kDstWidth = 3, kDstHeight = 2;
+    constexpr float kThreshold = 4.0f;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/BloomThreshold");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline =
+        (*device)->createComputePipeline({.library = library->get(),
+                                          .computeEntry = "computeBloomThreshold",
+                                          .threadsPerThreadgroup = {8, 8, 1},
+                                          .label = "lmx.test.oddBloomThresholdPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    std::vector<uint16_t> source(size_t{kSrcWidth} * kSrcHeight * 4, halfPow2(0));
+    const size_t probe = (size_t{kSrcHeight - 1} * kSrcWidth + (kSrcWidth - 1)) * 4;
+    source[probe] = halfPow2(4);
+    source[probe + 1] = halfPow2(4);
+    source[probe + 2] = halfPow2(4);
+    auto scene =
+        makeSceneColorTexture(**device, kSrcWidth, kSrcHeight, source, "lmx.test.oddBloomScene");
+    INFO(errorOf(scene));
+    REQUIRE(scene.has_value());
+
+    auto bloom = (*device)->createTexture({.width = kDstWidth,
+                                           .height = kDstHeight,
+                                           .format = Format::RGBA16Float,
+                                           .storageWrite = true,
+                                           .cpuReadback = true,
+                                           .label = "lmx.test.oddBloomMip0"});
+    INFO(errorOf(bloom));
+    REQUIRE(bloom.has_value());
+
+    struct ThresholdParams {
+        float threshold;
+        uint32_t srcWidth, srcHeight, dstWidth, dstHeight;
+    };
+    const ThresholdParams params{.threshold = kThreshold,
+                                 .srcWidth = kSrcWidth,
+                                 .srcHeight = kSrcHeight,
+                                 .dstWidth = kDstWidth,
+                                 .dstHeight = kDstHeight};
+
+    CommandList& commands = (*device)->beginFrame();
+    commands.beginComputePass("lmx.test.oddBloomThreshold");
+    commands.bindComputePipeline(**pipeline);
+    commands.bindTexture(0, **scene);
+    commands.bindStorageTexture(1, **bloom, {}, StorageAccess::Write);
+    commands.setUniforms(0, &params, sizeof(params));
+    commands.dispatch(1, 1, 1);
+    commands.endComputePass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint16_t> result(size_t{kDstWidth} * kDstHeight * 4);
+    (*bloom)->readback(result.data(), result.size() * sizeof(uint16_t));
+    const size_t last = (size_t{kDstHeight - 1} * kDstWidth + (kDstWidth - 1)) * 4;
+    REQUIRE(result[last] != 0);
+    REQUIRE(result[last + 1] != 0);
+    REQUIRE(result[last + 2] != 0);
+}
+
+//======================================================================================================================
 // Below-threshold content contributes nothing (an exact CPU match against every mip-0 texel the
 // CPU chain also computes as zero, not just an ad hoc "elsewhere"), and a bright probe's energy
 // after the full chain matches a CPU port of the same kernels within a stated tolerance -- spec

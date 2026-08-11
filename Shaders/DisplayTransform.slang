@@ -6,9 +6,9 @@
 // Bloom composites here, in scene-linear space before the tone map (spec 10): `gBloom` holds the
 // upsample-accumulate chain's result at half the scene's resolution, sampled by halving the
 // display-target texel coordinate, and `bloomIntensity` is zero whenever Renderer.cpp's bloom
-// toggle is off -- disabled frames add exactly x + 0 to their scene color, so they stay byte-
-// identical to a frame with no bloom pass at all (Renderer.cpp also binds a black 1x1 fallback for
-// `gBloom` in that case, so the zero holds even if the intensity uniform did not).
+// toggle is off -- disabled frames skip the texture load and add exactly x + 0 to their scene
+// color, so they stay byte-identical to a frame with no bloom pass at all. Renderer.cpp still binds
+// a black 1x1 fallback because the argument-table slot must contain a valid resource.
 import Encode;
 
 [[vk::binding(0, 0)]]
@@ -73,8 +73,15 @@ float4 fragmentMain(VSOutput input): SV_Target
     // Load rather than Sample: this pass and the scene target share an extent, so every fragment
     // owns exactly one texel and no filter may blur the transform's input.
     float3 sceneColor = gSceneColor.Load(int3(int2(input.position.xy), 0)).rgb;
-    // gBloom holds its result at half the scene's resolution (Renderer.cpp's bloom chain).
-    float3 bloom = gBloom.Load(int3(int2(input.position.xy) >> 1, 0)).rgb;
+    // gBloom holds its result at half the scene's resolution (Renderer.cpp's bloom chain). Bloom
+    // off binds a 1x1 fallback solely to keep the argument table complete; skip the load entirely
+    // in that mode so pixels outside its one texel never make an invalid texture access before the
+    // zero intensity is applied.
+    float3 bloom = 0.0;
+    if (gParams.bloomIntensity != 0.0)
+    {
+        bloom = gBloom.Load(int3(int2(input.position.xy) >> 1, 0)).rgb;
+    }
     float3 composed = sceneColor + bloom * gParams.bloomIntensity;
     // The display target is opaque -- the scene's alpha is material coverage, not an output.
     return float4(linearToSrgb(pbrNeutralToneMap(composed)), 1.0);

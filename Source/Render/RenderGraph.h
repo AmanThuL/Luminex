@@ -113,12 +113,14 @@ enum class PassKind {
 /// read and a raster read order differently on the way in, and the role plus the pass kind is what
 /// says which.
 enum class UseRole {
-    Read,            ///< Consumed without being written.
-    Write,           ///< Written other than as an attachment.
-    ColorAttachment, ///< Written as the pass's colour attachment.
-    DepthAttachment, ///< Written as the pass's depth attachment.
-    CopySource,      ///< Read by a copy command.
-    CopyDestination  ///< Written by a copy command.
+    Read,             ///< Consumed without being written.
+    ShaderRead,       ///< Consumed through an ordinary sampled/SRV/CBV shader binding.
+    IndirectArgument, ///< Buffer consumed as draw or dispatch arguments.
+    Write,            ///< Written other than as an attachment.
+    ColorAttachment,  ///< Written as the pass's colour attachment.
+    DepthAttachment,  ///< Written as the pass's depth attachment.
+    CopySource,       ///< Read by a copy command.
+    CopyDestination   ///< Written by a copy command.
 };
 
 /// Names a role in validation messages and frame dumps, in the wording the graph's diagnostics use.
@@ -204,8 +206,9 @@ struct DepthAttachment {
 /// it.
 struct PassDesc {
     /// Versions the pass consumes without writing.
-    std::vector<TextureUseDesc> textureReads; ///< Sampled or otherwise read textures.
-    std::vector<GraphBuffer> bufferReads;     ///< Buffers consumed by the pass.
+    std::vector<TextureUseDesc> textureReads;     ///< Sampled or otherwise read textures.
+    std::vector<GraphBuffer> bufferReads;         ///< Buffers consumed by the pass.
+    std::vector<GraphBuffer> indirectBufferReads; ///< Buffers consumed by indirect draws.
     /// At most one of each, matching the single-colour-attachment render pass this RHI models. A
     /// pass may declare neither, either, or both.
     std::optional<ColorAttachment> color; ///< Optional color target.
@@ -216,14 +219,19 @@ struct PassDesc {
 };
 
 /// Everything one compute pass touches, on PassDesc's terms minus the attachments a compute pass
-/// has nowhere to put. Reads and writes are the storage bindings the pass's dispatches make, and
-/// the ranges are the subresources those bindings address -- a downsample step reading mip N and
+/// has nowhere to put. `textureReads`/`bufferReads` are storage reads; `shader*Reads` are ordinary
+/// sampled/SRV/CBV reads; and `indirectBufferReads` are dispatch arguments. The distinction is the
+/// RHI use a derived barrier names, so declarations must match the callback's binding command.
+/// Ranges are the subresources those bindings address -- a downsample step reading mip N and
 /// writing mip N + 1 declares the two as disjoint ranges of one texture.
 struct ComputePassDesc {
-    std::vector<TextureUseDesc> textureReads;  ///< Textures the dispatches read.
-    std::vector<GraphBuffer> bufferReads;      ///< Buffers the dispatches read.
-    std::vector<TextureUseDesc> textureWrites; ///< Textures the dispatches write.
-    std::vector<GraphBuffer> bufferWrites;     ///< Buffers the dispatches write.
+    std::vector<TextureUseDesc> textureReads;       ///< Storage textures the dispatches read.
+    std::vector<TextureUseDesc> shaderTextureReads; ///< Textures sampled by the dispatches.
+    std::vector<GraphBuffer> bufferReads;           ///< Storage buffers the dispatches read.
+    std::vector<GraphBuffer> shaderBufferReads;     ///< Buffers ordinary shader loads consume.
+    std::vector<GraphBuffer> indirectBufferReads;   ///< Buffers consumed by indirect dispatches.
+    std::vector<TextureUseDesc> textureWrites;      ///< Textures the dispatches write.
+    std::vector<GraphBuffer> bufferWrites;          ///< Buffers the dispatches write.
 };
 
 /// Everything one copy pass touches. A copy has no bindings, so its vocabulary is sources and
@@ -441,31 +449,34 @@ public:
     /// heap layout at compile time without creating anything.
     explicit RenderGraph(TransientPool& transients) : m_transients(&transients) {}
 
-    /// Brings an existing texture into the graph as version 0. `format` is declared here because
-    /// rhi::Texture does not report its own, and it is what the attachment rules check -- the
-    /// caller is answerable for it matching the texture it created. `name` appears in validation
-    /// messages and is copied. `texture` must outlive the graph.
+    /// Brings an existing texture into the graph as version 0. `format` snapshots the attachment
+    /// interpretation the graph validates and must match texture.format(); `name` appears in
+    /// validation messages and is copied. `texture` must outlive the graph.
     GraphTexture importTexture(rhi::Texture& texture, rhi::Format format, std::string_view name);
+
+    /// The same import when a pass in an earlier frame last accessed this persistent texture.
+    /// `previousUse` seeds hazard derivation across the command-buffer boundary: a prior write is
+    /// ordered before this frame's first read or write, while a prior read is ordered only before
+    /// this frame's first write. The whole texture is assumed because no previous-frame range is
+    /// available to this fresh graph.
+    GraphTexture importTexture(rhi::Texture& texture, rhi::Format format, std::string_view name,
+                               rhi::TextureUse previousUse);
 
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
     GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name);
 
-    /// The same import, for a buffer whose current contents an *earlier frame* produced.
+    /// The same import when a pass in an earlier frame last accessed this persistent buffer.
     ///
     /// Barriers are derived from the passes declared in this graph, so a producer that ran in
-    /// another frame is an edge derivation cannot see: nothing here wrote the buffer, so this
-    /// frame's first reader of it would be ordered against nothing at all, and the frames in flight
-    /// give no ordering of their own. `producedBy` states the use that last wrote it -- the use a
-    /// barrier's producing side has to name -- and seeds derivation as though a pass had written
-    /// the whole buffer before any pass of this frame ran. The ordinary read-after-write rule then
-    /// puts one barrier in front of this frame's first reader of each stage class, exactly as it
-    /// would for a producer inside the frame, and a frame whose passes never read it emits nothing.
+    /// another frame is an edge derivation cannot see. `previousUse` states that terminal access:
+    /// a prior write is ordered before this frame's first read or write, while a prior read is
+    /// ordered only before this frame's first write.
     ///
-    /// This is for persistent feedback and nothing else -- the exposure value frame N computes and
-    /// frame N+1 shades with. A buffer this frame produces itself must be imported through the
-    /// overload above: claiming a prior producer for it would state a hazard that does not exist.
-    GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name, rhi::BufferUse producedBy);
+    /// This is for persistent feedback and other buffers reused across in-flight frames. A buffer
+    /// with no earlier-frame access uses the overload above.
+    GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name,
+                             rhi::BufferUse previousUse);
 
     /// Declares a texture the graph creates for this frame and nothing else, as version 0.
     ///
@@ -581,24 +592,21 @@ public:
     /// assigned it. They live until their frame slot comes round again, which is the pool's
     /// contract, so nothing here has to know when the GPU finished with them.
     ///
-    /// The synchronisation this emits is read-after-write and write-after-read, derived from the
-    /// declarations alone: a resource an earlier pass wrote and a later pass reads gets a barrier
-    /// before that pass, from the use that wrote it to the use that reads it, and a pass writing
-    /// what an earlier pass read gets one from every distinct use those readers made -- one barrier
-    /// per use, because the producing side of a barrier names a single use and the write has to be
-    /// ordered after all of them. A buffer imported as produced by an earlier frame carries its
-    /// producer into this frame's derivation (see importBuffer's prior-producer overload), so a
-    /// cross-frame edge is barriered like any other. Write-after-write within one logical resource
-    /// is ordered by the version chain and emits no barrier of its own. An export emits nothing
-    /// either -- it roots a result for the caller to read once the queue drains, which is not
-    /// another pass reading it.
+    /// The synchronisation this emits covers read-after-write, write-after-read, and
+    /// write-after-write conflicts, derived from the declarations alone. Texture writers are
+    /// tracked per subresource range, so a write to mip N replaces only that range's producer while
+    /// untouched mips keep the use that actually wrote them. Persistent-import overloads seed the
+    /// last texture or buffer access from an earlier frame, so the first conflicting
+    /// access in this frame is barriered like any other. An export emits nothing -- it roots a
+    /// result for the caller to read once the queue drains, which is not another pass reading it.
     ///
     /// Reuse of transient memory is the one hazard the version chain cannot state, because the two
     /// sides are different logical resources: where a transient takes bytes an earlier one held, a
-    /// whole-resource barrier is emitted before its first pass, from the earlier transient's last
-    /// use to this one's first. It is emitted whatever ranges either side declared -- the hazard is
-    /// over the memory, not over the subresources -- and it is what makes an aliased frame match an
-    /// unaliased one.
+    /// whole-resource alias barrier is emitted before its first pass, from every distinct use the
+    /// earlier transient makes in its closing pass to this one's first use. It requests the RHI's
+    /// ResourceAlias visibility because the two logical resources name the same physical bytes.
+    /// It is emitted whatever ranges either side declared -- the hazard is over the memory, not
+    /// over the subresources -- and it is what makes an aliased frame match an unaliased one.
     ///
     /// Every reader is covered, on both axes a barrier is scoped on (rhi::CommandList::
     /// textureBarrier states the model): a later reader is left unbarriered only when an
@@ -652,10 +660,10 @@ private:
         // this struct's own string can outlive a reallocation of the resource list.
         TransientTextureDesc textureDesc;
         TransientBufferDesc bufferDesc;
-        // Set only by importBuffer's prior-producer overload: the use an earlier frame last wrote
-        // these contents as, which seeds barrier derivation with a producer it could not otherwise
-        // see. Empty for every other resource, transients included.
-        std::optional<rhi::BufferUse> priorProducer;
+        // Set only by the persistent-import overloads. A fresh per-frame graph cannot otherwise
+        // see the last access still in flight in an earlier command buffer.
+        std::optional<rhi::TextureUse> priorTextureAccess;
+        std::optional<rhi::BufferUse> priorBufferAccess;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.

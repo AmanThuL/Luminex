@@ -9,8 +9,8 @@ A `RenderGraph` is declared fresh every frame: it imports the renderer's own tar
 persistent histogram and exposure buffers, and the swapchain drawable; the shadow, scene+sky,
 exposure-feedback, bloom, and display passes declare their reads, attachments, and writes over
 them; `compile()` proves the declarations form a DAG and answers a serial schedule (with dead-pass
-culling) before any of it reaches the GPU. `execute()` then runs that schedule, deriving both the
-read-after-write and the write-after-read barrier each declared cross-pass dependency justifies.
+culling) before any of it reaches the GPU. `execute()` then runs that schedule, deriving the RAW,
+WAR, and WAW barriers each declared cross-pass access conflict justifies.
 
 Below is the *default* frame — auto-exposure off (manual EV, the default mode), bloom on (its
 default). Auto-exposure and bloom are both ordinary declared passes either way; toggling either off
@@ -74,9 +74,9 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle in
 │       │  "exposure and bloom passes are culled when both features are off")
 │
 ├─ 6. lmx.pass.bloom.threshold        compute, reads scene color
-│       → bloomChain mip 0 (half-res RGBA16Float): 2×2-box prefilter + soft threshold on
-│       pre-exposed luminance — bloom tracks what the display sees, so manual and auto exposure
-│       shift it consistently (spec 10)
+│       → bloomChain mip 0 (ceil-half-res RGBA16Float, so odd final rows/columns remain covered):
+│       2×2-box prefilter + soft threshold on pre-exposed luminance — bloom tracks what the display
+│       sees, so manual and auto exposure shift it consistently (spec 10)
 ├─ 7. lmx.pass.bloom.downsample0..N-1  compute, one pass per level, mip L-1 → mip L of bloomChain
 │       2×2-box downsample; N = kMaxBloomDownsampleLevels (4), clamped so no mip collapses to 1×1
 │       early — a 32-wide bloom base (the common viewport size) reaches the full depth
@@ -92,8 +92,8 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle in
 │
 ├─ 9. lmx.pass.display     fullscreen triangle: Load the scene color texel-for-texel (no filter)
 │       → scene colour + bloomBlur mip 0 × bloomIntensity (bloom-off binds an exact-zero 1×1
-│       fallback and zeroes the intensity uniform, belt-and-suspenders, so the sum is bit-identical
-│       to no bloom at all — this is what keeps a bloom-off frame byte-identical to pre-M5 output)
+│       fallback, zeroes the intensity uniform, and skips the texture load, so no out-of-range
+│       fallback access occurs and the sum stays bit-identical to no bloom at all)
 │       → Khronos PBR Neutral tone map → sRGB encode → display color (BGRA8Unorm, viewport-sized)
 │       Shaders/DisplayTransform.slang — the only shader in the frame that encodes sRGB
 │
@@ -125,10 +125,10 @@ serial topological order holding only the passes a declared sink (`exportTexture
 swapchain presentation, or a readback destination) reaches. `execute()` re-validates, then runs that
 schedule: each pass becomes one labelled render, compute, or copy pass, its body runs inside that
 scope with a `PassResources` that resolves only the handles the pass declared — an undeclared
-resolve is a reported failure, not a resolved pointer. Barrier derivation covers both directions: a
-read after a write (the reader waits for the writer) and a write after a read (the writer waits for
-every reader of the version it is about to replace — the exposure buffer's scene-pass-reads-then-
-resolve-pass-writes shape is exactly this). Compilation answers with a `CompiledFrameRecord`
+resolve is a reported failure, not a resolved pointer. Barrier derivation covers RAW, WAR, and WAW
+conflicts, including per-subresource texture writers. Persistent-import overloads seed the prior
+frame's terminal texture or buffer access, so reused renderer targets and exposure
+feedback are ordered across command buffers as well. Compilation answers with a `CompiledFrameRecord`
 describing everything it decided, which `Render/GraphDump.h` renders as deterministic text. A graph
 is declared fresh every frame; scheduling optimization beyond dead-pass culling and conservative
 transient pooling stays deliberately absent.
@@ -148,8 +148,10 @@ Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::
 reports each pass's label and GPU milliseconds for the most recently retired frame, and
 `passTimingsFrame()` names that frame. Both are populated by counter samples the Metal 4 backend
 takes at pass begin/end and resolved once the shared event proves that frame retired. The editor's
-Stats panel lists every pass of the newest retired frame with its time; the Render Graph inspector
-panel shows the newest *compiled* frame's full declaration, schedule, culling, and barriers.
+Stats panel retains up to 60 samples per schedule position and publishes a pausable rolling average
+four times per second, with latest/range details on hover; a changed ordered pass-label sequence
+resets the window. The Render Graph inspector instead shows the exact newest retired frame's full
+declaration, schedule, culling, barriers, and joined timing values.
 
 The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
 Their implementation and validation live in `RHI/Source/`; the only backend lives in

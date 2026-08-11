@@ -103,14 +103,15 @@ inline std::vector<uint8_t> renderSampledImage(lmx::rhi::Device& device,
                                                lmx::rhi::GraphicsPipeline& pipeline,
                                                uint32_t textureSlot, lmx::rhi::Texture& source,
                                                lmx::rhi::Sampler& sampler,
-                                               lmx::rhi::Texture& destination) {
+                                               lmx::rhi::Texture& destination,
+                                               const lmx::rhi::TextureViewDesc& view = {}) {
     lmx::rhi::CommandList& commands = device.beginFrame();
     commands.beginRenderPass({.colorTarget = &destination,
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
                               .label = "lmx.test.textureUpload.probe"});
     commands.bindPipeline(pipeline);
-    commands.bindTexture(textureSlot, source);
+    commands.bindTexture(textureSlot, source, view);
     commands.bindSampler(0, sampler);
     commands.draw(3);
     commands.endRenderPass();

@@ -73,8 +73,9 @@ These tests validate the parsers and report generation without requiring a GPU c
 
 ## Parity checks
 
-M5 added histogram auto-exposure and bloom as passes that run every frame by default; with both
-features off, `--screenshot` output must stay byte-identical to what the pre-M5 tip rendered.
+M5 added histogram auto-exposure and bloom as passes declared every frame; dead-pass culling keeps
+only the features that are enabled. With both features off, `--screenshot` output must stay
+byte-identical to what the pre-M5 tip rendered.
 There is no golden-image automation for this -- the procedure below, re-run by hand, is the
 accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
 `LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Screenshot.cpp`), an undocumented-to-users env var that
@@ -107,4 +108,3 @@ identical does not apply -- check that all three scenes actually printed `IDENTI
 effect is checked the opposite way: capture once more without `LMX_SCREENSHOT_NO_BLOOM` and confirm
 the file differs from the bloom-off capture (`cmp` reports a byte offset) and opens as a plausible
 image (no full-screen white, no NaN speckle) rather than asserting a specific diff.
-

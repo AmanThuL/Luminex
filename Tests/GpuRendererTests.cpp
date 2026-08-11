@@ -920,18 +920,13 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
 
 //======================================================================================================================
 // Auto-exposure's cross-frame read through the real Renderer graph -- not a kernel dispatched in
-// isolation (Tests/GpuExposureBloomTests.cpp covers the kernels) but the actual scene pass, over
-// two real frames, with no CPU readback anywhere in the loop (spec 9, per the coordinator's
-// correction: bindBuffer inside the raster pass, not a blocking Buffer::readback). Frame 1 is a
-// reset (Renderer::declarePasses' computeExposureSeed writes exp2(manual EV) into the buffer
-// before the scene pass reads it, all within that one frame's graph), which shading must apply
-// exactly like the manual path above does -- a direct check that the GPU-buffer route and the
-// CPU-uniform route agree numerically when they are supposed to. Frame 2 carries no reset, so the
-// scene pass reads whatever frame 1's resolve pass wrote for it -- a real cross-command-buffer
-// read this test doesn't predict the exact value of (the histogram covers the whole target, clear
-// included), only that it lands finite and positive: MTL_DEBUG_LAYER's validation passing this
-// case is what actually proves the read is hazard-free, since a race would show up there before
-// it showed up in a wrong pixel value.
+// isolation (Tests/GpuExposureBloomTests.cpp covers the exact kernel oracle) but the actual scene
+// pass over two command buffers kept in flight together. Frame 1 seeds exp2(manual EV), shades,
+// meters, and resolves; frame 2 is submitted immediately, without waitIdle, and shades from frame
+// 1's result. Waiting only after both submissions is what exercises the explicit cross-frame
+// producer barrier instead of accidentally serialising the test on the CPU. The whole loop has no
+// CPU readback; after retirement the final target must contain a finite positive pre-exposed value,
+// while Metal validation checks the access itself is hazard-free.
 TEST_CASE("auto exposure applies through the real scene pass with no CPU readback", "[gpu]") {
     using namespace lmx::rhi;
 
@@ -963,28 +958,128 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     view.autoExposureEnabled = true;
     view.exposureEv = 0.0f; // reset frame's manual value: exp2(0) == 1
 
-    std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
-    const auto renderAndReadLitTexel = [&]() {
+    const auto submitFrame = [&]() {
         CommandList& commands = (*device)->beginFrame();
         (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
-        (*device)->waitIdle();
-        (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
-        return halfPixelAt(texels, 32, 32);
     };
 
     view.exposureReset = true;
-    const HalfPixel frame1 = renderAndReadLitTexel();
-    REQUIRE(frame1.r == halfBits(4.0f)); // exp2(manual EV 0) == 1, applied through the GPU buffer
-    REQUIRE(frame1.g == halfBits(4.0f));
-    REQUIRE(frame1.b == halfBits(4.0f));
+    submitFrame();
 
     view.exposureReset = false;
-    const HalfPixel frame2 = renderAndReadLitTexel();
+    submitFrame();
+    (*device)->waitIdle();
+
+    std::vector<uint16_t> texels(size_t{kSize} * kSize * 4);
+    (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
+    const HalfPixel frame2 = halfPixelAt(texels, 32, 32);
     const float frame2R = floatOfHalfBits(frame2.r);
     INFO("frame 2 lit texel r = " << frame2R);
     REQUIRE(std::isfinite(frame2R));
     REQUIRE(frame2R > 0.0f);
+}
+
+//======================================================================================================================
+// depthTarget() is public and may be sampled by a compute pass after the renderer's graph. Keep
+// that dispatch in flight while the next frame starts writing depth again: the renderer's
+// previous-frame ShaderRead import must make the new attachment wait on the dispatch stage, not
+// merely on the previous fragment attachment work.
+TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+    auto renderer = Renderer::create(**device, kSize, kSize);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/BloomThreshold");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
+                                                      .computeEntry = "computeBloomThreshold",
+                                                      .threadsPerThreadgroup = {8, 8, 1},
+                                                      .label = "lmx.test.depthSamplePipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    constexpr uint32_t kProbeSize = kSize / 2;
+    auto probe = (*device)->createTexture({.width = kProbeSize,
+                                           .height = kProbeSize,
+                                           .format = Format::RGBA16Float,
+                                           .storageWrite = true,
+                                           .label = "lmx.test.depthSampleProbe"});
+    INFO(errorOf(probe));
+    REQUIRE(probe.has_value());
+
+    struct BloomThresholdParams {
+        float threshold;
+        uint32_t srcWidth;
+        uint32_t srcHeight;
+        uint32_t dstWidth;
+        uint32_t dstHeight;
+    };
+    constexpr BloomThresholdParams kParams{.threshold = 0.0f,
+                                           .srcWidth = kSize,
+                                           .srcHeight = kSize,
+                                           .dstWidth = kProbeSize,
+                                           .dstHeight = kProbeSize};
+    SceneView view;
+
+    CommandList& first = (*device)->beginFrame();
+    (*renderer)->render(first, sceneCamera(), view, /*barrierForSampling=*/false);
+    first.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
+                         TextureUse::ShaderRead);
+    first.beginComputePass("lmx.test.sampleDepth");
+    first.bindComputePipeline(**pipeline);
+    first.bindTexture(0, (*renderer)->depthTarget());
+    first.bindStorageTexture(1, **probe, {}, StorageAccess::Write);
+    first.setUniforms(0, &kParams, sizeof(kParams));
+    first.dispatch(kProbeSize / 8, kProbeSize / 8, 1);
+    first.endComputePass();
+    (*device)->endFrame(nullptr);
+
+    CommandList& second = (*device)->beginFrame();
+    (*renderer)->render(second, sceneCamera(), view, /*barrierForSampling=*/false);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+// Exercise Renderer.cpp's own odd-size bloom allocation and DisplayTransform's bloom-off fallback,
+// not just the kernels in isolation. The byte checks are a basic output oracle; under Metal Shader
+// Validation this also proves the odd final row/column and the 1x1 disabled fallback perform no
+// out-of-bounds texture loads.
+TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture", "[gpu]") {
+    using namespace lmx::rhi;
+
+    constexpr uint32_t kOddWidth = 5, kOddHeight = 3;
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+    auto renderer = Renderer::create(**device, kOddWidth, kOddHeight, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    SceneView view;
+    const auto renderWithBloom = [&](bool enabled) {
+        view.bloomEnabled = enabled;
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+
+        std::vector<uint8_t> pixels(size_t{kOddWidth} * kOddHeight * 4);
+        (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+        for (size_t texel = 0; texel < size_t{kOddWidth} * kOddHeight; ++texel) {
+            REQUIRE(pixels[texel * 4 + 3] == 255);
+        }
+    };
+
+    renderWithBloom(true);
+    renderWithBloom(false);
 }
 
 //======================================================================================================================

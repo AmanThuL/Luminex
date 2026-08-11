@@ -126,10 +126,12 @@ struct SceneView {
     /// Only meaningful when autoExposureEnabled is true; EditorShell/main.cpp track the triggers
     /// and forward the result here every frame.
     bool exposureReset = false;
-    float exposureLowPercentile = 50.0f; ///< Percent of pixel count trimmed from the shadow end.
-    /// Percent of pixel count trimmed from the highlight end.
+    /// Lower bound of the retained histogram population; 50 trims the darkest half.
+    float exposureLowPercentile = 50.0f;
+    /// Upper bound of the retained histogram population; 95 trims the brightest 5 percent.
     float exposureHighPercentile = 95.0f;
-    float exposureTargetGrey = 0.18f;    ///< Scene-referred luminance metering maps to unit output.
+    /// Scene-referred average luminance is exposed to this pre-exposed output value.
+    float exposureTargetGrey = 0.18f;
     float exposureEvMin = -8.0f;         ///< Clamp on the resolved exposure, in stops.
     float exposureEvMax = 8.0f;          ///< Clamp on the resolved exposure, in stops.
     float exposureCompensationEv = 0.0f; ///< Extra stops applied by metering, before the clamp.
@@ -311,8 +313,8 @@ private:
     std::unique_ptr<rhi::Texture> m_flatNormalTexture;
     std::unique_ptr<rhi::Texture> m_blackCubeTexture;
     std::unique_ptr<rhi::Texture> m_zeroDfgTexture;
-    // 1x1 RGBA16Float zero, bound as the display pass's bloom input when bloom is disabled -- the
-    // fallback that keeps "composite exactly x + 0" true even if the intensity uniform did not.
+    // 1x1 RGBA16Float zero, bound to keep the display pass's bloom slot valid when bloom is
+    // disabled; the zero intensity makes the shader skip reading it.
     std::unique_ptr<rhi::Texture> m_blackBloomFallback;
     // Persistent, imported every frame rather than pooled: a 256-bin uint histogram, cleared and
     // refilled every frame, and a one-float exposure result that survives across frames (spec 9's

@@ -1,5 +1,7 @@
 #include "GpuTestSupport.h"
 
+#include <limits>
+
 namespace {
 
 // Mirrors ComputeSmoke.slang's ComputeParams; the layout is pinned by the shader, not chosen here.
@@ -87,6 +89,30 @@ TEST_CASE("a dispatch fills a storage buffer the CPU reads back", "[gpu]") {
         INFO("element " + std::to_string(index));
         REQUIRE(values[index] == index * 3 + kBias);
     }
+}
+
+//======================================================================================================================
+// The threadgroup shape is host-supplied. Reject an impossible per-axis size during creation rather
+// than letting it reach a later dispatch, where Metal reports only an encoder validation failure.
+TEST_CASE("a compute pipeline rejects a threadgroup dimension beyond the device limit", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/ComputeSmoke");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline = (*device)->createComputePipeline(
+        {.library = library->get(),
+         .computeEntry = "computeFillBuffer",
+         .threadsPerThreadgroup = {std::numeric_limits<uint32_t>::max(), 1, 1},
+         .label = "lmx.test.compute.invalidThreadgroup"});
+    REQUIRE_FALSE(pipeline.has_value());
+    REQUIRE(pipeline.error().code == ErrorCode::PipelineCreationFailed);
+    REQUIRE(pipeline.error().message.contains("per-axis limit"));
 }
 
 //======================================================================================================================

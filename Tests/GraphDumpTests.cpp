@@ -31,7 +31,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::BGRA8Unorm; }
+    rhi::Format format() const override { return rhi::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }

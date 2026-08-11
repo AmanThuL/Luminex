@@ -2,6 +2,8 @@
 
 #include "RHI/Validate.h"
 
+#include <limits>
+
 using namespace lmx::rhi;
 
 namespace {
@@ -112,6 +114,21 @@ TEST_CASE("BufferDesc with a non-zero size is accepted", "[rhi]") {
     desc.label = "vertices";
 
     REQUIRE(validate(desc).has_value());
+}
+
+//======================================================================================================================
+// Binding capacities are part of the public contract because slot indices are caller supplied.
+TEST_CASE("argument table binding capacities are public", "[rhi]") {
+    STATIC_REQUIRE(CommandList::kMaxBufferBindings == 8);
+    STATIC_REQUIRE(CommandList::kMaxTextureBindings == 16);
+    STATIC_REQUIRE(CommandList::kMaxSamplerBindings == 8);
+}
+
+//======================================================================================================================
+TEST_CASE("resource alias barrier visibility composes with ordinary options", "[rhi]") {
+    constexpr BarrierOptions options = BarrierOptions::None | BarrierOptions::ResourceAlias;
+    STATIC_REQUIRE(hasBarrierOption(options, BarrierOptions::ResourceAlias));
+    STATIC_REQUIRE(!hasBarrierOption(BarrierOptions::None, BarrierOptions::ResourceAlias));
 }
 
 //======================================================================================================================
@@ -463,6 +480,16 @@ TEST_CASE("a texture view may not reinterpret a different format family", "[rhi]
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().code == ErrorCode::InvalidDesc);
     REQUIRE(r.error().message.contains("format family"));
+}
+
+//======================================================================================================================
+TEST_CASE("a texture view may select a cubemap face subset", "[rhi]") {
+    const FakeTexture texture{64, 64, Format::RGBA8Unorm, /*mipLevels=*/1, /*arrayLayers=*/6};
+    TextureViewDesc view{};
+    view.range.baseArrayLayer = 2;
+    view.range.arrayLayerCount = 1;
+
+    REQUIRE(validateTextureView(texture, view).has_value());
 }
 
 //======================================================================================================================
@@ -1298,6 +1325,32 @@ TEST_CASE("a buffer/texture copy running past the buffer is rejected", "[rhi]") 
                                              wholeLevel(64));
     REQUIRE_FALSE(r.has_value());
     REQUIRE(r.error().message.contains("past the buffer's"));
+}
+
+//======================================================================================================================
+// Row padding after the final row is not read or written. A buffer ending at the final texel is
+// therefore large enough even when earlier rows use a wider stride.
+TEST_CASE("a padded buffer texture layout needs no padding after its final row", "[rhi]") {
+    const FakeTexture texture{2, 2, Format::RGBA8Unorm};
+    const FakeBuffer buffer{24}; // 16-byte first-row stride, then 8 bytes of final-row texels.
+
+    REQUIRE(
+        validateBufferTextureCopy(buffer, {.bytesPerRow = 16}, texture, {.width = 2, .height = 2})
+            .has_value());
+}
+
+//======================================================================================================================
+// A stride is caller-controlled uint64 data. It must not wrap the footprint arithmetic into a
+// small in-bounds value before the native copy encoder sees it.
+TEST_CASE("a buffer texture layout whose row footprint overflows is rejected", "[rhi]") {
+    const FakeTexture texture{1, 3, Format::RGBA8Unorm};
+    const FakeBuffer buffer{64};
+    constexpr uint64_t kHugeTexelAlignedStride = std::numeric_limits<uint64_t>::max() - 3;
+
+    const auto r = validateBufferTextureCopy(buffer, {.bytesPerRow = kHugeTexelAlignedStride},
+                                             texture, {.width = 1, .height = 3});
+    REQUIRE_FALSE(r.has_value());
+    REQUIRE(r.error().message.contains("overflow"));
 }
 
 //======================================================================================================================

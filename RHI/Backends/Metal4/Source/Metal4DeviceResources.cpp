@@ -58,10 +58,10 @@ NS::SharedPtr<MTL::TextureDescriptor> makeTextureDescriptor(const TextureDesc& d
     if (desc.storageWrite) {
         usage |= MTL::TextureUsageShaderWrite;
     }
-    // Only a storage texture can be bound through a reinterpreting view, and Metal requires the
-    // parent to opt into that at creation. Scoping the flag to storage textures leaves every
-    // sampled texture's lossless compression untouched.
-    if (desc.storageRead || desc.storageWrite) {
+    // Metal requires the parent to opt into subresource and format views at creation. Sampled
+    // textures (including the cpuReadback path, which also grants ShaderRead) need it for
+    // sRGB/linear reinterpretation and cube-face views; storage textures need it for per-mip binds.
+    if (desc.sampled || desc.storageRead || desc.storageWrite || desc.cpuReadback) {
         usage |= MTL::TextureUsagePixelFormatView;
     }
     LMX_ASSERT(usage != MTL::TextureUsageUnknown,
@@ -332,6 +332,8 @@ Result<std::unique_ptr<Buffer>> Metal4Device::createPlacedBuffer(Heap& heap, uin
 
 //======================================================================================================================
 SizeAlign Metal4Device::textureSizeAlign(const TextureDesc& desc) const {
+    const Result<void> descOk = validate(desc);
+    LMX_ASSERT(descOk.has_value(), descOk.error().message);
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     const MTL::SizeAndAlign sizeAlign = m_device->heapTextureSizeAndAlign(
         makeTextureDescriptor(desc, /*hasInitialData=*/false, /*placed=*/true).get());
@@ -340,6 +342,8 @@ SizeAlign Metal4Device::textureSizeAlign(const TextureDesc& desc) const {
 
 //======================================================================================================================
 SizeAlign Metal4Device::bufferSizeAlign(const BufferDesc& desc) const {
+    const Result<void> descOk = validate(desc);
+    LMX_ASSERT(descOk.has_value(), descOk.error().message);
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     const MTL::SizeAndAlign sizeAlign =
         m_device->heapBufferSizeAndAlign(desc.size, kPlacedResourceOptions);

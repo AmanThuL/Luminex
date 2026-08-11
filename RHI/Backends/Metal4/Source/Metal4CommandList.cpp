@@ -35,8 +35,12 @@ constexpr MTL::Stages kCopyStages = MTL::StageBlit | MTL::StageDispatch;
 MTL::Stages stagesOf(TextureUse use) {
     switch (use) {
     case TextureUse::RenderTarget:
-    case TextureUse::ShaderRead:
         return MTL::StageFragment;
+    case TextureUse::ShaderRead:
+        // bindTexture is valid in both render and compute passes. A barrier carries the access
+        // kind, not the producer pass kind, so include dispatch rather than guessing which one read
+        // it.
+        return kRenderStages | MTL::StageDispatch;
     case TextureUse::StorageRead:
     case TextureUse::StorageWrite:
         return MTL::StageDispatch;
@@ -54,7 +58,8 @@ MTL::Stages stagesOf(TextureUse use) {
 MTL::Stages stagesOf(BufferUse use) {
     switch (use) {
     case BufferUse::ShaderRead:
-        return kRenderStages;
+        // bindBuffer and setUniforms are also valid in compute passes.
+        return kRenderStages | MTL::StageDispatch;
     case BufferUse::StorageRead:
     case BufferUse::StorageWrite:
         return MTL::StageDispatch;
@@ -128,8 +133,9 @@ void Metal4CommandList::emitPendingBarrier(MTL4::CommandEncoder* encoder,
         return;
     }
     encoder->barrierAfterQueueStages(m_pendingBarrierStages, consumerStages,
-                                     MTL4::VisibilityOptionDevice);
+                                     m_pendingBarrierVisibility);
     m_pendingBarrierStages = MTL::Stages{};
+    m_pendingBarrierVisibility = MTL4::VisibilityOptions{};
 }
 
 //======================================================================================================================
@@ -226,27 +232,35 @@ void Metal4CommandList::bindPipeline(GraphicsPipeline& pipeline) {
 
 //======================================================================================================================
 void Metal4CommandList::bindBuffer(uint32_t slot, Buffer& buffer) {
-    LMX_ASSERT(inPass(), "bindBuffer must be called inside a render or compute pass");
+    LMX_ASSERT(inShaderPass(), "bindBuffer must be called inside a render or compute pass");
+    LMX_ASSERT(slot < CommandList::kMaxBufferBindings,
+               "bindBuffer: slot exceeds the argument table's buffer binding count");
 
     // Argument tables hold raw addresses; ResidencyRegistration keeps the allocation resident.
     m_argumentTable->setAddress(static_cast<Metal4Buffer&>(buffer).handle()->gpuAddress(), slot);
 }
 
 //======================================================================================================================
-void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture) {
-    LMX_ASSERT(inPass(), "bindTexture must be called inside a render or compute pass");
+void Metal4CommandList::bindTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view) {
+    LMX_ASSERT(inShaderPass(), "bindTexture must be called inside a render or compute pass");
+    LMX_ASSERT(slot < CommandList::kMaxTextureBindings,
+               "bindTexture: slot exceeds the argument table's texture binding count");
     auto& metalTexture = static_cast<Metal4Texture&>(texture);
+    const Result<void> viewOk = validateTextureView(texture, view);
+    LMX_ASSERT(viewOk.has_value(), viewOk.error().message);
     // ResourceID hides usage from Metal validation, so reject non-readable textures before bind.
     LMX_ASSERT((metalTexture.handle()->usage() & MTL::TextureUsageShaderRead) != 0,
                "bindTexture: texture has no ShaderRead usage -- create it with sampled = true or "
-               "cpuReadback = true");
+               "storageRead = true or cpuReadback = true");
     // Texture, buffer, and sampler slots occupy separate arrays in the argument table.
-    m_argumentTable->setTexture(metalTexture.handle()->gpuResourceID(), slot);
+    m_argumentTable->setTexture(metalTexture.viewFor(view)->gpuResourceID(), slot);
 }
 
 //======================================================================================================================
 void Metal4CommandList::bindSampler(uint32_t slot, Sampler& sampler) {
-    LMX_ASSERT(inPass(), "bindSampler must be called inside a render or compute pass");
+    LMX_ASSERT(inShaderPass(), "bindSampler must be called inside a render or compute pass");
+    LMX_ASSERT(slot < CommandList::kMaxSamplerBindings,
+               "bindSampler: slot exceeds the argument table's sampler binding count");
     // Samplers use ResourceID but need no residency registration because they are not allocations.
     m_argumentTable->setSamplerState(static_cast<Metal4Sampler&>(sampler).handle()->gpuResourceID(),
                                      slot);
@@ -254,7 +268,9 @@ void Metal4CommandList::bindSampler(uint32_t slot, Sampler& sampler) {
 
 //======================================================================================================================
 void Metal4CommandList::setUniforms(uint32_t slot, const void* data, uint64_t size) {
-    LMX_ASSERT(inPass(), "setUniforms must be called inside a render or compute pass");
+    LMX_ASSERT(inShaderPass(), "setUniforms must be called inside a render or compute pass");
+    LMX_ASSERT(slot < CommandList::kMaxBufferBindings,
+               "setUniforms: slot exceeds the argument table's buffer binding count");
     LMX_ASSERT(data != nullptr && size > 0, "setUniforms: data must be non-null and non-empty");
     const uint64_t offset = *m_uniformOffset;
     const uint64_t capacity = m_uniformRing->length();
@@ -382,6 +398,8 @@ void Metal4CommandList::bindComputePipeline(ComputePipeline& pipeline) {
 void Metal4CommandList::bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) {
     LMX_ASSERT(m_computeEncoder,
                "bindStorageBuffer must be called between beginComputePass and endComputePass");
+    LMX_ASSERT(slot < CommandList::kMaxBufferBindings,
+               "bindStorageBuffer: slot exceeds the argument table's buffer binding count");
     auto& metalBuffer = static_cast<Metal4Buffer&>(buffer);
     // Metal buffers carry no usage bits, so the desc flags are the only record of what the caller
     // meant this allocation to be -- and the only place a mismatch can be caught at all.
@@ -400,6 +418,8 @@ void Metal4CommandList::bindStorageTexture(uint32_t slot, Texture& texture,
                                            const TextureViewDesc& view, StorageAccess access) {
     LMX_ASSERT(m_computeEncoder,
                "bindStorageTexture must be called between beginComputePass and endComputePass");
+    LMX_ASSERT(slot < CommandList::kMaxTextureBindings,
+               "bindStorageTexture: slot exceeds the argument table's texture binding count");
     auto& metalTexture = static_cast<Metal4Texture&>(texture);
     const Result<void> viewOk = validateTextureView(texture, view);
     LMX_ASSERT(viewOk.has_value(), viewOk.error().message);
@@ -566,7 +586,7 @@ void Metal4CommandList::endCopyPass() {
 
 //======================================================================================================================
 void Metal4CommandList::textureBarrier(Texture& texture, const TextureSubresourceRange& range,
-                                       TextureUse from, TextureUse to) {
+                                       TextureUse from, TextureUse to, BarrierOptions options) {
     LMX_ASSERT(!inPass(), "textureBarrier must be called between passes, not inside one");
     // Reject barriers outside a frame so a pending edge cannot leak into the next frame.
     LMX_ASSERT(m_argumentTable != nullptr, "textureBarrier must be called inside a frame");
@@ -581,11 +601,15 @@ void Metal4CommandList::textureBarrier(Texture& texture, const TextureSubresourc
     // Accumulating the producing stages lets several barriers between the same pair of passes
     // collapse into the single barrier the consuming encoder emits.
     m_pendingBarrierStages |= stagesOf(from);
+    m_pendingBarrierVisibility |= MTL4::VisibilityOptionDevice;
+    if (hasBarrierOption(options, BarrierOptions::ResourceAlias)) {
+        m_pendingBarrierVisibility |= MTL4::VisibilityOptionResourceAlias;
+    }
 }
 
 //======================================================================================================================
 void Metal4CommandList::bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
-                                      BufferUse to) {
+                                      BufferUse to, BarrierOptions options) {
     LMX_ASSERT(!inPass(), "bufferBarrier must be called between passes, not inside one");
     // Reject barriers outside a frame so a pending edge cannot leak into the next frame.
     LMX_ASSERT(m_argumentTable != nullptr, "bufferBarrier must be called inside a frame");
@@ -599,6 +623,10 @@ void Metal4CommandList::bufferBarrier(Buffer& buffer, const BufferRange& range, 
     // barriers order queue *stages*, so the emitted dependency covers everything the producing
     // stage wrote, these bytes included.
     m_pendingBarrierStages |= stagesOf(from);
+    m_pendingBarrierVisibility |= MTL4::VisibilityOptionDevice;
+    if (hasBarrierOption(options, BarrierOptions::ResourceAlias)) {
+        m_pendingBarrierVisibility |= MTL4::VisibilityOptionResourceAlias;
+    }
 }
 
 //======================================================================================================================
@@ -633,6 +661,7 @@ void Metal4CommandList::endFrameReset() {
     // but this list must not be able to append to it outside a frame.
     m_timestamps = nullptr;
     m_pendingBarrierStages = MTL::Stages{};
+    m_pendingBarrierVisibility = MTL4::VisibilityOptions{};
 }
 
 //======================================================================================================================

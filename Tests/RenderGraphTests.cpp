@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <limits>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -36,9 +37,10 @@ struct FakeTexture final : rhi::Texture {
     //==================================================================================================================
     uint32_t height() const override { return m_height; }
 
-    // The graph declares formats itself, so the fake's own format is never consulted.
+    // Unknown is the sentinel a test double uses when the graph case declares the format itself;
+    // production textures always report their concrete creation format.
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::BGRA8Unorm; }
+    rhi::Format format() const override { return rhi::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -207,14 +209,14 @@ struct RecordingCommandList final : rhi::CommandList {
 
     //==================================================================================================================
     void bufferBarrier(rhi::Buffer& buffer, const rhi::BufferRange&, rhi::BufferUse from,
-                       rhi::BufferUse to) override {
+                       rhi::BufferUse to, rhi::BarrierOptions) override {
         events.push_back("barrier " + static_cast<FakeBuffer&>(buffer).name + " " + useName(from) +
                          "->" + useName(to));
     }
 
     //==================================================================================================================
     void textureBarrier(rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
-                        rhi::TextureUse from, rhi::TextureUse to) override {
+                        rhi::TextureUse from, rhi::TextureUse to, rhi::BarrierOptions) override {
         // A whole-resource range is what a pass with no subresource detail declares and is the
         // common case, so it is left out of the log; a narrowed one is spelled out, because a
         // barrier covering the wrong subresources is exactly what these cases are looking for.
@@ -233,7 +235,7 @@ struct RecordingCommandList final : rhi::CommandList {
     void bindBuffer(uint32_t, rhi::Buffer&) override {}
 
     //==================================================================================================================
-    void bindTexture(uint32_t, rhi::Texture&) override {}
+    void bindTexture(uint32_t, rhi::Texture&, const rhi::TextureViewDesc&) override {}
 
     //==================================================================================================================
     void bindSampler(uint32_t, rhi::Sampler&) override {}
@@ -294,7 +296,7 @@ TEST_CASE("a producer is scheduled before its consumer whatever the declaration 
     graph.addPass("lmx.pass.scene", scene, kNoWork);
 
     PassDesc shadowPass;
-    shadowPass.depth = DepthAttachment{.handle = shadow};
+    shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
     graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
 
     graph.exportTexture(nextVersion(sceneColor));
@@ -374,6 +376,52 @@ TEST_CASE("reading a version no pass writes is rejected", "[render][graph]") {
     REQUIRE(schedule.error().message.contains("read"));
     REQUIRE(schedule.error().message.contains("shadowMap"));
     REQUIRE(schedule.error().message.contains("no pass writes"));
+}
+
+//======================================================================================================================
+// Discard records a write for version-chain validation, but its resulting contents do not exist.
+// Neither a later pass nor an external sink may turn an attachment the GPU threw away into a
+// producer.
+TEST_CASE("a discarded attachment cannot be consumed", "[render][graph]") {
+    FakeTexture shadowMap{1024, 1024};
+    FakeTexture output{64, 64};
+
+    SECTION("later pass") {
+        RenderGraph graph;
+        const GraphTexture shadow =
+            graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+        const GraphTexture color = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+
+        PassDesc shadowPass;
+        shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Discard};
+        graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+
+        PassDesc sample;
+        sample.textureReads.push_back(nextVersion(shadow));
+        sample.color = ColorAttachment{.handle = color};
+        graph.addPass("lmx.pass.sampleDiscarded", sample, kNoWork);
+        graph.exportTexture(nextVersion(color));
+
+        const auto schedule = graph.compile();
+        REQUIRE_FALSE(schedule.has_value());
+        REQUIRE(schedule.error().message.contains("lmx.pass.sampleDiscarded"));
+        REQUIRE(schedule.error().message.contains("no pass writes"));
+    }
+
+    SECTION("external sink") {
+        RenderGraph graph;
+        const GraphTexture shadow =
+            graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+        PassDesc shadowPass;
+        shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Discard};
+        graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
+        graph.exportTexture(nextVersion(shadow));
+
+        const auto schedule = graph.compile();
+        REQUIRE_FALSE(schedule.has_value());
+        REQUIRE(schedule.error().message.contains("shadowMap"));
+        REQUIRE(schedule.error().message.contains("not written by any pass"));
+    }
 }
 
 //======================================================================================================================
@@ -782,8 +830,10 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
             std::vector<std::string>{
                 "begin lmx.pass.write", "end", "barrier pingPong RenderTarget->ShaderRead",
                 "begin lmx.pass.sample", "end", "barrier other RenderTarget->ShaderRead",
+                "barrier pingPong RenderTarget->RenderTarget",
                 "barrier pingPong ShaderRead->RenderTarget", "begin lmx.pass.rewrite", "end",
                 "barrier pingPong RenderTarget->ShaderRead",
+                "barrier other RenderTarget->RenderTarget",
                 "barrier other ShaderRead->RenderTarget", "begin lmx.pass.resample", "end"});
 }
 
@@ -918,19 +968,22 @@ TEST_CASE("a texture write is barriered after every kind of earlier read", "[ren
     RecordingCommandList commands;
     const CompiledFrameRecord record = graph.execute(commands, 1);
 
-    // Two read-after-write transitions (one per reading stage class) and then two write-after-read
-    // ones before the overwrite, from each of those same uses.
-    REQUIRE(record.debug.transitions.size() == 4);
+    // Two read-after-write transitions (one per reading stage class), the write-after-write edge
+    // from the original render target producer, then two write-after-read edges from the readers.
+    REQUIRE(record.debug.transitions.size() == 5);
     REQUIRE(record.debug.transitions[2].beforePass == 3);
-    REQUIRE(record.debug.transitions[2].textureFrom == rhi::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[2].textureFrom == rhi::TextureUse::RenderTarget);
     REQUIRE(record.debug.transitions[3].beforePass == 3);
-    REQUIRE(record.debug.transitions[3].textureFrom == rhi::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[3].textureFrom == rhi::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[4].beforePass == 3);
+    REQUIRE(record.debug.transitions[4].textureFrom == rhi::TextureUse::ShaderRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{
                 "begin lmx.pass.scene", "end", "barrier sceneColor RenderTarget->StorageRead",
                 "begin compute lmx.pass.histogram", "end compute",
                 "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display", "end",
+                "barrier sceneColor RenderTarget->StorageWrite",
                 "barrier sceneColor StorageRead->StorageWrite",
                 "barrier sceneColor ShaderRead->StorageWrite", "begin compute lmx.pass.overwrite",
                 "end compute"});
@@ -1202,6 +1255,25 @@ TEST_CASE("a subresource range past the end of the texture is rejected", "[rende
 }
 
 //======================================================================================================================
+// Bounds checks use subtraction rather than base + count, so an attacker-sized count cannot wrap
+// its last mip back into a small, apparently valid index.
+TEST_CASE("an overflowing subresource range is rejected", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+
+    ComputePassDesc overflow;
+    overflow.textureWrites.push_back(
+        {bloom, {.baseMipLevel = std::numeric_limits<uint32_t>::max() - 1, .mipLevelCount = 4}});
+    graph.addComputePass("lmx.pass.overflow", overflow, kNoWork);
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("lmx.pass.overflow"));
+    REQUIRE(schedule.error().message.contains("runs past"));
+}
+
+//======================================================================================================================
 // A zero count is not "the whole resource", it is nothing at all -- a binding addressing no
 // subresource is a declaration that says the pass touches something while touching nothing.
 TEST_CASE("an empty subresource range is rejected", "[render][graph]") {
@@ -1322,7 +1394,151 @@ TEST_CASE("execute derives a buffer barrier from a copy destination", "[render][
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin copy lmx.pass.clear", "end copy",
                                      "barrier histogram CopyDestination->StorageRead",
+                                     "barrier histogram CopyDestination->StorageWrite",
                                      "begin compute lmx.pass.accumulate", "end compute"});
+}
+
+//======================================================================================================================
+// A compute callback may bind ordinary SRV/CBV inputs or an indirect argument; those uses are not
+// UAV reads. The declaration has to preserve that distinction so stateful backends derive the same
+// resource state the callback actually binds.
+TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]") {
+    FakeTexture sampledTexture{64, 64, "sampled"};
+    FakeBuffer constantsBuffer{256, "constants"};
+    FakeBuffer argumentsBuffer{256, "arguments"};
+    FakeBuffer outputBuffer{256, "output"};
+    RenderGraph graph;
+    const GraphTexture sampled =
+        graph.importTexture(sampledTexture, rhi::Format::RGBA16Float, "sampled");
+    const GraphBuffer constants = graph.importBuffer(constantsBuffer, "constants");
+    const GraphBuffer arguments = graph.importBuffer(argumentsBuffer, "arguments");
+    const GraphBuffer output = graph.importBuffer(outputBuffer, "output");
+
+    CopyPassDesc upload;
+    upload.textureDestinations.push_back(sampled);
+    upload.bufferDestinations.push_back(constants);
+    upload.bufferDestinations.push_back(arguments);
+    graph.addCopyPass("lmx.pass.upload", upload, kNoWork);
+
+    ComputePassDesc dispatch;
+    dispatch.shaderTextureReads.push_back(nextVersion(sampled));
+    dispatch.shaderBufferReads.push_back(nextVersion(constants));
+    dispatch.indirectBufferReads.push_back(nextVersion(arguments));
+    dispatch.bufferWrites.push_back(output);
+    graph.addComputePass("lmx.pass.dispatch", dispatch, kNoWork);
+    graph.exportBuffer(nextVersion(output));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.transitions.size() == 3);
+    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+    REQUIRE(record->debug.transitions[1].bufferTo == rhi::BufferUse::ShaderRead);
+    REQUIRE(record->debug.transitions[2].bufferTo == rhi::BufferUse::IndirectArgument);
+}
+
+//======================================================================================================================
+// A ranged write replaces only the producer of the subresources it touches. Mip 0 therefore keeps
+// the copy pass as its producer when the next version writes mip 1, and the later read must wait on
+// CopyDestination rather than on the unrelated dispatch.
+TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    FakeTexture output{64, 64, "output"};
+    RenderGraph graph;
+    const GraphTexture texture = graph.importTexture(chain, rhi::Format::RGBA16Float, "chain");
+    const GraphTexture target = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+
+    CopyPassDesc copy;
+    copy.textureDestinations.push_back({texture, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    graph.addCopyPass("lmx.pass.copyMip0", copy, kNoWork);
+
+    ComputePassDesc write;
+    write.textureWrites.push_back({nextVersion(texture), {.baseMipLevel = 1, .mipLevelCount = 1}});
+    graph.addComputePass("lmx.pass.writeMip1", write, kNoWork);
+
+    PassDesc read;
+    read.textureReads.push_back(
+        {GraphTexture{texture.index, 2}, {.baseMipLevel = 0, .mipLevelCount = 1}});
+    read.color = ColorAttachment{.handle = target};
+    graph.addPass("lmx.pass.readMip0", read, kNoWork);
+    graph.exportTexture(nextVersion(target));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.transitions.size() == 1);
+    REQUIRE(record->debug.transitions[0].beforePass == 2);
+    REQUIRE(record->debug.transitions[0].range.baseMipLevel == 0);
+    REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+}
+
+//======================================================================================================================
+// Encoding order is not a dependency for Metal 4's untracked resources: two writes to the same
+// subresource still need a queue-stage barrier between their passes.
+TEST_CASE("a texture write is barriered after an earlier write", "[render][graph]") {
+    FakeTexture chain{64, 64, "chain", 4};
+    RenderGraph graph;
+    const GraphTexture texture = graph.importTexture(chain, rhi::Format::RGBA16Float, "chain");
+    const rhi::TextureSubresourceRange mip0{.baseMipLevel = 0, .mipLevelCount = 1};
+
+    CopyPassDesc copy;
+    copy.textureDestinations.push_back({texture, mip0});
+    graph.addCopyPass("lmx.pass.copy", copy, kNoWork);
+
+    ComputePassDesc overwrite;
+    overwrite.textureWrites.push_back({nextVersion(texture), mip0});
+    graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
+    graph.exportTexture(GraphTexture{texture.index, 2});
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.transitions.size() == 1);
+    REQUIRE(record->debug.transitions[0].beforePass == 1);
+    REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::StorageWrite);
+}
+
+//======================================================================================================================
+// Buffers have no subresource split, so every write conflicts with the preceding whole-buffer
+// writer, including a producer imported from an earlier frame.
+TEST_CASE("a buffer write is barriered after its preceding writer", "[render][graph]") {
+    FakeBuffer storage{256, "storage"};
+
+    SECTION("copy destination") {
+        RenderGraph graph;
+        const GraphBuffer buffer = graph.importBuffer(storage, "storage");
+        CopyPassDesc copy;
+        copy.bufferDestinations.push_back(buffer);
+        graph.addCopyPass("lmx.pass.copy", copy, kNoWork);
+        ComputePassDesc overwrite;
+        overwrite.bufferWrites.push_back(nextVersion(buffer));
+        graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
+        graph.exportBuffer(GraphBuffer{buffer.index, 2});
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].bufferFrom == rhi::BufferUse::CopyDestination);
+        REQUIRE(record->debug.transitions[0].bufferTo == rhi::BufferUse::StorageWrite);
+    }
+
+    SECTION("prior-frame producer") {
+        RenderGraph graph;
+        const GraphBuffer buffer =
+            graph.importBuffer(storage, "storage", rhi::BufferUse::StorageWrite);
+        ComputePassDesc overwrite;
+        overwrite.bufferWrites.push_back(buffer);
+        graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
+        graph.exportBuffer(nextVersion(buffer));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].bufferFrom == rhi::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferTo == rhi::BufferUse::StorageWrite);
+    }
 }
 
 //======================================================================================================================
@@ -1992,6 +2208,121 @@ TEST_CASE("a buffer imported without a prior producer transitions nothing", "[re
     REQUIRE(commands.events == std::vector<std::string>{"begin lmx.pass.scene", "end"});
 }
 
+//======================================================================================================================
+// The histogram's terminal access is a resolve read, not its earlier accumulate write. Carry that
+// exact use across frames so a following clear gets a WAR barrier and another read gets none.
+TEST_CASE("a buffer import carries its previous-frame read", "[render][graph]") {
+    FakeBuffer persistent{256, "persistent"};
+    FakeBuffer output{256, "output"};
+
+    SECTION("prior read before current write") {
+        RenderGraph graph;
+        const GraphBuffer buffer =
+            graph.importBuffer(persistent, "persistent", rhi::BufferUse::StorageRead);
+        ComputePassDesc overwrite;
+        overwrite.bufferWrites.push_back(buffer);
+        graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
+        graph.exportBuffer(nextVersion(buffer));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].bufferFrom == rhi::BufferUse::StorageRead);
+        REQUIRE(record->debug.transitions[0].bufferTo == rhi::BufferUse::StorageWrite);
+    }
+
+    SECTION("prior read before current read") {
+        RenderGraph graph;
+        const GraphBuffer buffer =
+            graph.importBuffer(persistent, "persistent", rhi::BufferUse::StorageRead);
+        const GraphBuffer result = graph.importBuffer(output, "output");
+        ComputePassDesc read;
+        read.bufferReads.push_back(buffer);
+        read.bufferWrites.push_back(result);
+        graph.addComputePass("lmx.pass.read", read, kNoWork);
+        graph.exportBuffer(nextVersion(result));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.empty());
+    }
+}
+
+//======================================================================================================================
+// Persistent render targets are reused while earlier command buffers remain in flight. Their last
+// access seeds the fresh graph: read/write conflicts cross that boundary, while two reads do not.
+TEST_CASE("a texture import carries its previous-frame access", "[render][graph]") {
+    FakeTexture persistent{64, 64, "persistent"};
+    FakeTexture output{64, 64, "output"};
+
+    SECTION("prior read before current write") {
+        RenderGraph graph;
+        const GraphTexture texture = graph.importTexture(persistent, rhi::Format::BGRA8Unorm,
+                                                         "persistent", rhi::TextureUse::ShaderRead);
+        PassDesc overwrite;
+        overwrite.color = ColorAttachment{.handle = texture};
+        graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
+        graph.exportTexture(nextVersion(texture));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::RenderTarget);
+    }
+
+    SECTION("prior read before current loaded attachment") {
+        RenderGraph graph;
+        const GraphTexture texture = graph.importTexture(persistent, rhi::Format::BGRA8Unorm,
+                                                         "persistent", rhi::TextureUse::ShaderRead);
+        PassDesc loadAndOverwrite;
+        loadAndOverwrite.color =
+            ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
+        graph.addPass("lmx.pass.loadAndOverwrite", loadAndOverwrite, kNoWork);
+        graph.exportTexture(nextVersion(texture));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::ShaderRead);
+        REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::RenderTarget);
+    }
+
+    SECTION("prior write before current read") {
+        RenderGraph graph;
+        const GraphTexture texture = graph.importTexture(
+            persistent, rhi::Format::BGRA8Unorm, "persistent", rhi::TextureUse::RenderTarget);
+        const GraphTexture color = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+        PassDesc sample;
+        sample.textureReads.push_back(texture);
+        sample.color = ColorAttachment{.handle = color};
+        graph.addPass("lmx.pass.sample", sample, kNoWork);
+        graph.exportTexture(nextVersion(color));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.size() == 1);
+        REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::RenderTarget);
+        REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+    }
+
+    SECTION("prior read before current read") {
+        RenderGraph graph;
+        const GraphTexture texture = graph.importTexture(persistent, rhi::Format::BGRA8Unorm,
+                                                         "persistent", rhi::TextureUse::ShaderRead);
+        const GraphTexture color = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+        PassDesc sample;
+        sample.textureReads.push_back(texture);
+        sample.color = ColorAttachment{.handle = color};
+        graph.addPass("lmx.pass.sample", sample, kNoWork);
+        graph.exportTexture(nextVersion(color));
+
+        const auto record = graph.compileFrame(1);
+        REQUIRE(record.has_value());
+        REQUIRE(record->debug.transitions.empty());
+    }
+}
+
 namespace {
 
 // One transient the fake device sizes to exactly one alignment unit: 64 * 64 texels at four bytes
@@ -2109,6 +2440,104 @@ TEST_CASE("a transient taking another's bytes is barriered against it", "[render
     // The two ordinary transitions carry no alias, so an observer can tell the two kinds apart.
     REQUIRE_FALSE(record->debug.transitions[0].aliasedFrom.has_value());
     REQUIRE_FALSE(record->debug.transitions[2].aliasedFrom.has_value());
+}
+
+//======================================================================================================================
+// One terminal dispatch may finish reading one mip while writing another. Reusing the allocation
+// must close both stage uses; keeping only the last declaration would leave half of that dispatch
+// outside the alias boundary.
+TEST_CASE("an alias boundary includes every use of the closing pass", "[render][graph]") {
+    FakeDevice device;
+    TransientPool pool(device);
+    FakeBuffer orderingBuffer{256, "ordering"};
+    FakeTexture outputTexture{64, 64, "output"};
+    RenderGraph graph(pool);
+
+    const TransientTextureDesc desc{.width = 64,
+                                    .height = 64,
+                                    .format = rhi::Format::RGBA16Float,
+                                    .mipLevels = 2,
+                                    .storageRead = true,
+                                    .storageWrite = true};
+    const GraphTexture first = graph.createTexture(desc, "lmx.transient.first");
+    const GraphTexture second = graph.createTexture(desc, "lmx.transient.second");
+    const GraphBuffer ordering = graph.importBuffer(orderingBuffer, "ordering");
+    const GraphTexture output =
+        graph.importTexture(outputTexture, rhi::Format::BGRA8Unorm, "output");
+    constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    constexpr rhi::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+
+    ComputePassDesc openFirst;
+    openFirst.textureWrites.push_back({first, kMip0});
+    openFirst.bufferWrites.push_back(ordering);
+    graph.addComputePass("lmx.pass.openFirst", openFirst, kNoWork);
+
+    ComputePassDesc closeFirst;
+    closeFirst.shaderTextureReads.push_back({nextVersion(first), kMip0});
+    closeFirst.textureWrites.push_back({nextVersion(first), kMip1});
+    closeFirst.bufferWrites.push_back(nextVersion(ordering));
+    graph.addComputePass("lmx.pass.closeFirst", closeFirst, kNoWork);
+
+    ComputePassDesc openSecond;
+    openSecond.textureWrites.push_back({second, kMip0});
+    openSecond.bufferWrites.push_back(GraphBuffer{ordering.index, 2});
+    graph.addComputePass("lmx.pass.openSecond", openSecond, kNoWork);
+
+    PassDesc consumeSecond;
+    consumeSecond.textureReads.push_back({nextVersion(second), kMip0});
+    consumeSecond.color = ColorAttachment{.handle = output};
+    graph.addPass("lmx.pass.consumeSecond", consumeSecond, kNoWork);
+    graph.exportBuffer(GraphBuffer{ordering.index, 3});
+    graph.exportTexture(nextVersion(output));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+
+    std::vector<rhi::TextureUse> closingUses;
+    for (const DebugTransition& transition : record->debug.transitions) {
+        if (transition.aliasedFrom == std::optional{first.index}) {
+            closingUses.push_back(transition.textureFrom);
+            REQUIRE(transition.beforePass == 2);
+            REQUIRE(transition.textureTo == rhi::TextureUse::StorageWrite);
+        }
+    }
+    REQUIRE(closingUses == std::vector<rhi::TextureUse>{rhi::TextureUse::ShaderRead,
+                                                        rhi::TextureUse::StorageWrite});
+}
+
+//======================================================================================================================
+// A feature can leave transient declarations behind while culling every pass that uses them. That
+// zero-footprint frame still reserves zero bytes so the slot gives back the heap the live feature
+// used the last time this frame-in-flight slot came around.
+TEST_CASE("a culled transient releases the frame slot heap", "[render][graph]") {
+    FakeDevice device;
+    TransientPool pool(device);
+
+    device.frame = 1;
+    pool.beginFrame();
+    REQUIRE(pool.reserve(FakeDevice::kTextureAlignment).has_value());
+    REQUIRE(pool.heapBytes() == FakeDevice::kTextureAlignment);
+
+    device.frame = 1 + kTransientFrameSlots;
+    pool.beginFrame();
+
+    FakeTexture outputTexture{64, 64, "output"};
+    RenderGraph graph(pool);
+    graph.createTexture(kTransientColor, "lmx.transient.culled");
+    const GraphTexture output =
+        graph.importTexture(outputTexture, rhi::Format::BGRA8Unorm, "output");
+    PassDesc display;
+    display.color = ColorAttachment{.handle = output};
+    graph.addPass("lmx.pass.display", display, kNoWork);
+    graph.exportTexture(nextVersion(output));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, device.frame);
+    REQUIRE(record.debug.transients.size() == 1);
+    REQUIRE_FALSE(record.debug.transients[0].used);
+    REQUIRE(record.debug.memory.highWater == 0);
+    REQUIRE(pool.heapBytes() == 0);
 }
 
 //======================================================================================================================

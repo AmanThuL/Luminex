@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -307,8 +308,25 @@ Metal4Device::createComputePipeline(const ComputePipelineDesc& desc) {
                         desc.threadsPerThreadgroup[2]);
     // The compiled kernel's occupancy caps the threadgroup it can be dispatched with; catching the
     // mismatch here names the pipeline, whereas Metal would abort inside an unrelated dispatch.
-    const NS::UInteger requestedThreads =
-        threadsPerThreadgroup.width * threadsPerThreadgroup.height * threadsPerThreadgroup.depth;
+    const MTL::Size deviceLimit = m_device->maxThreadsPerThreadgroup();
+    if (threadsPerThreadgroup.width > deviceLimit.width ||
+        threadsPerThreadgroup.height > deviceLimit.height ||
+        threadsPerThreadgroup.depth > deviceLimit.depth) {
+        return fail(ErrorCode::PipelineCreationFailed,
+                    "ComputePipelineDesc.threadsPerThreadgroup exceeds the device's per-axis limit "
+                    "of " +
+                        std::to_string(deviceLimit.width) + "x" +
+                        std::to_string(deviceLimit.height) + "x" +
+                        std::to_string(deviceLimit.depth));
+    }
+    uint64_t requestedThreads = 1;
+    for (const uint32_t component : desc.threadsPerThreadgroup) {
+        if (requestedThreads > std::numeric_limits<uint64_t>::max() / component) {
+            return fail(ErrorCode::PipelineCreationFailed,
+                        "ComputePipelineDesc.threadsPerThreadgroup total overflows uint64_t");
+        }
+        requestedThreads *= component;
+    }
     if (requestedThreads > state->maxTotalThreadsPerThreadgroup()) {
         return fail(ErrorCode::PipelineCreationFailed,
                     "ComputePipelineDesc.threadsPerThreadgroup asks for " +

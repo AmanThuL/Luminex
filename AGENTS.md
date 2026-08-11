@@ -47,8 +47,9 @@ thin RHI and one implemented backend.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
   (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Automated runs:
   `LMX_MAX_FRAMES=N` exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress.
-  The Inspector's Stats panel lists every render-graph pass of the newest retired frame with its
-  GPU milliseconds.
+  The Inspector's Stats panel shows a pausable 60-frame rolling average for each render-graph pass,
+  refreshed four times per second; hover shows latest/range details. The Render Graph panel keeps
+  the exact newest-retired-frame timings.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.

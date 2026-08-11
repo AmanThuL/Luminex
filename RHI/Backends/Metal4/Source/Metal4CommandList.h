@@ -16,7 +16,7 @@ class Metal4ComputePipeline;
 // How many passes of one frame carry timestamps, counting every pass kind. Sized like
 // kUniformRingBytes -- a fixed per-frame budget that a real frame is expected to stay under, and
 // whose exhaustion is a hard error rather than a silently dropped measurement.
-inline constexpr uint32_t kMaxTimedPassesPerFrame = 16;
+inline constexpr uint32_t kMaxTimedPassesPerFrame = 64;
 
 // Two timestamps per pass: one before its encoder opens, one after it closes.
 inline constexpr uint32_t kTimestampsPerFrame = kMaxTimedPassesPerFrame * 2;
@@ -114,7 +114,7 @@ public:
     void endCopyPass() override;
     void bindPipeline(GraphicsPipeline& pipeline) override;
     void bindBuffer(uint32_t slot, Buffer& buffer) override;
-    void bindTexture(uint32_t slot, Texture& texture) override;
+    void bindTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view) override;
     void bindSampler(uint32_t slot, Sampler& sampler) override;
     void setUniforms(uint32_t slot, const void* data, uint64_t size) override;
     void draw(uint32_t vertexCount, uint32_t firstVertex) override;
@@ -123,9 +123,9 @@ public:
     void drawIndexedIndirect(Buffer& indexBuffer, Buffer& argumentBuffer, uint64_t offset) override;
     void endRenderPass() override;
     void textureBarrier(Texture& texture, const TextureSubresourceRange& range, TextureUse from,
-                        TextureUse to) override;
-    void bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
-                       BufferUse to) override;
+                        TextureUse to, BarrierOptions options) override;
+    void bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from, BufferUse to,
+                       BarrierOptions options) override;
 
     // beginFrame's half of the per-frame rotation: point this command list at the frame's
     // argument table, uniform ring and timestamp slot. `uniformOffset` is the device's bump cursor
@@ -153,6 +153,9 @@ public:
     // predicate is what keeps "dispatch inside a copy pass" a reported bug rather than a silent
     // success.
     bool inCopyPass() const { return static_cast<bool>(m_copyEncoder); }
+
+    // True when a barrier has been declared but no consumer pass has opened yet.
+    bool hasPendingBarrier() const { return m_pendingBarrierStages != MTL::Stages{}; }
 
     // Backend-internal, the same role handle() plays on every resource wrapper: a sibling Metal 4
     // file reaches the native objects through them, and the RHI CommandList interface has neither.
@@ -186,6 +189,10 @@ private:
     // and a copy pass counts for that.
     bool inPass() const { return inRenderPass() || inComputePass() || inCopyPass(); }
 
+    // Bindings and uniforms belong only to shader-bearing passes; a copy pass has no argument
+    // table.
+    bool inShaderPass() const { return inRenderPass() || inComputePass(); }
+
     MTL4::CommandBuffer* m_commandBuffer = nullptr;
     MTL4::ArgumentTable* m_argumentTable = nullptr;
     MTL::Buffer* m_uniformRing = nullptr;
@@ -203,6 +210,7 @@ private:
     // The union of the queue stages the barriers recorded since the last pass produce from. Empty
     // means no barrier is pending; the next encoder to open emits one barrier for all of them.
     MTL::Stages m_pendingBarrierStages{};
+    MTL4::VisibilityOptions m_pendingBarrierVisibility{};
 };
 
 } // namespace lmx::rhi::metal4

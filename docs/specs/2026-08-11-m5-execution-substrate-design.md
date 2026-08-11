@@ -40,7 +40,7 @@ substrate end-to-end.
 | 2 | Copies, subresource, indirect | Copy pass scope, general copies and `fillBuffer`, copy-region and buffer-layout contracts, per-mip/per-layer barriers, arbitrary mip/layer readback, indirect execution with argument conformance tests |
 | 3 | Graph semantics, culling, dump | Compute/copy passes and subresource uses in `RenderGraph`, buffer export, per-subresource validation, deterministic dead-pass culling, frame-identified `CompiledFrameRecord`, deterministic text dump |
 | 4 | Transient ownership and pooling | Graph-created transient resources, lifetime analysis, per-frame-slot pools with conservative aliasing, pooling on/off parity, resize/toggle generations, superseding ADR for the graph's import-only rule |
-| 5 | Render Graph inspector | Read-only editor panel over the retained frame records: uses, schedule and culling reasons, lifetimes, transitions, reuse, per-pass timing, transient high-water mark, alias savings |
+| 5 | Frame observability | Read-only Render Graph panel over retained frame records: uses, schedule and culling reasons, lifetimes, transitions, reuse, exact per-frame timing, transient high-water mark, alias savings; Stats keeps a stable rolling per-pass summary with a pause control |
 | 6 | Histogram exposure and bloom | One-frame-feedback histogram exposure with explicit resets; threshold/downsample/upsample bloom chain on per-mip storage views; Render Settings toggles |
 | 7 | Checkpoint A freeze and record | Named frozen conformance suite (upload/layout, views, sRGB, reversed-Z, storage hazards, load/store, indirect arguments, frame-slot retirement), `docs/milestones/m5.md`, roadmap baseline update |
 
@@ -115,6 +115,10 @@ The graph keeps whole-resource SSA versions with untouched-subresource inheritan
 - RHI timing publication names the retired frame it measured; the inspector joins timings to the
   matching retained record and displays the newest retired frame. The dump snapshots that same
   record, so both observability clients present one frame by construction.
+- The Stats summary is deliberately a different timing view: it averages the newest 60 retired
+  frames whose ordered pass labels describe the same schedule, refreshes its text four times per
+  second, and can pause collection. A schedule-label change resets the window rather than blending
+  unlike pass sets; the Render Graph panel remains the exact-frame source.
 - The dump contains only values the compiler produces deterministically — declarations, schedule,
   culling, lifetimes, planned assignments under the RHI's documented alignment policy. GPU
   timings and driver-reported values are inspector-only and never enter golden files.
@@ -183,5 +187,6 @@ and any M5.1 interface-experiment work.
 The roadmap's M5 exit gate applies verbatim: compute-to-sample and per-mip hazards pass conformance
 tests; resize and feature toggles neither leak nor reuse live resources; pooling on and off produce
 the same output; arbitrary intermediate mips and layers can be captured; the same compiled frame is
-inspectable through the deterministic dump and the editor; and pass time, transient high-water
-marks, and alias savings are visible.
+inspectable through the deterministic dump and the editor; pass time, transient high-water marks,
+and alias savings are visible; and the rolling Stats readout leaves sub-millisecond pass values
+readable without losing access to exact newest-frame measurements.

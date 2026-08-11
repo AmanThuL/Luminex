@@ -31,7 +31,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::BGRA8Unorm; }
+    rhi::Format format() const override { return rhi::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -187,10 +187,9 @@ TEST_CASE("culled rows carry their reason, and scheduled ones carry none", "[app
 }
 
 //======================================================================================================================
-// The join contract: a row's time comes only from a timing whose label equals that pass's own, a
-// culled pass that never ran must not be given one, and a timing naming nothing here is ignored
-// rather than raising an error.
-TEST_CASE("timing rows join by label and leave unmeasured passes empty", "[app]") {
+// The join contract: timings follow the proved schedule rather than declaration order, a culled
+// pass that never ran must not be given one, and a trailing timing naming nothing here is ignored.
+TEST_CASE("timing rows join by schedule and leave culled passes empty", "[app]") {
     FakeTexture color{64};
     FakeTexture displayed{64};
     FakeTexture unused{64};
@@ -223,18 +222,63 @@ TEST_CASE("timing rows join by label and leave unmeasured passes empty", "[app]"
 
     // "lmx.pass.ghost" names no declared pass at all -- a stale label from a prior frame's shape,
     // which must be silently ignored rather than attached to the nearest row.
-    const std::array<rhi::PassTiming, 2> timings = {
+    const std::array<rhi::PassTiming, 3> timings = {
+        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.21},
         rhi::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 0.42},
         rhi::PassTiming{.label = "lmx.pass.ghost", .gpuMilliseconds = 9.99}};
 
     const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
 
-    REQUIRE_FALSE(model.passes[0].gpuMilliseconds.has_value()); // scene: scheduled, unmeasured here
+    REQUIRE(model.passes[0].gpuMilliseconds.has_value());
+    REQUIRE(*model.passes[0].gpuMilliseconds == 0.21);
     REQUIRE_FALSE(model.passes[1].gpuMilliseconds.has_value()); // orphan: culled, never ran
     REQUIRE(model.passes[2].gpuMilliseconds.has_value());
     REQUIRE(*model.passes[2].gpuMilliseconds == 0.42);
 
     // Nothing invents an aggregate: the model carries no frame-wide time anywhere.
+}
+
+//======================================================================================================================
+// Pass labels are capture diagnostics and are not required to be unique. Schedule position is the
+// identity available on both sides of the join: it gives two same-named scheduled passes their own
+// measurements and never leaks either one onto a same-named culled declaration.
+TEST_CASE("duplicate pass labels consume timings once in schedule order", "[app]") {
+    FakeTexture sceneTarget{64};
+    FakeTexture orphanTarget{64};
+    FakeTexture displayTarget{64};
+    RenderGraph graph;
+    const GraphTexture scene = graph.importTexture(sceneTarget, rhi::Format::BGRA8Unorm, "scene");
+    const GraphTexture orphan =
+        graph.importTexture(orphanTarget, rhi::Format::BGRA8Unorm, "orphan");
+    const GraphTexture display =
+        graph.importTexture(displayTarget, rhi::Format::BGRA8Unorm, "display");
+
+    PassDesc scenePass;
+    scenePass.color = ColorAttachment{.handle = scene};
+    graph.addPass("duplicate", scenePass, kNoWork);
+
+    PassDesc orphanPass;
+    orphanPass.color = ColorAttachment{.handle = orphan};
+    graph.addPass("duplicate", orphanPass, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(nextVersion(scene));
+    displayPass.color = ColorAttachment{.handle = display};
+    graph.addPass("duplicate", displayPass, kNoWork);
+    graph.exportTexture(nextVersion(display));
+
+    const auto record = graph.compileFrame(8);
+    REQUIRE(record.has_value());
+    const std::array<rhi::PassTiming, 2> timings = {
+        rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
+        rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.2}};
+
+    const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
+
+    REQUIRE(model.schedule == std::vector<uint32_t>{0, 2});
+    REQUIRE(model.passes[0].gpuMilliseconds == 0.1);
+    REQUIRE_FALSE(model.passes[1].gpuMilliseconds.has_value());
+    REQUIRE(model.passes[2].gpuMilliseconds == 0.2);
 }
 
 //======================================================================================================================

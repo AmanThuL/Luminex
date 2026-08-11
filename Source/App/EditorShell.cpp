@@ -43,7 +43,13 @@ constexpr float kLookRadiansPerPixel = 0.0025f;
 // A fixed ceiling keeps the frame-time graph comparable over time.
 constexpr float kFrameTimePlotCeilingMs = 33.3f;
 
+// The rolling history still samples every retired frame; only the changing text is held this long.
+constexpr float kPassTimingRefreshSeconds = 0.25f;
+
 constexpr float kMinLightDirectionLength = 1e-5f;
+
+// A non-empty percentile window is required by ExposureResolve.slang's weighted average.
+constexpr float kMinExposurePercentileGap = 1.0f;
 
 //======================================================================================================================
 // Builds the first-run layout when no persisted ImGui layout exists.
@@ -194,6 +200,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
                           const FrameRecordRing& frameRecords) {
     m_frameTimesMs[m_frameTimeCursor] = deltaSeconds * 1000.0f;
     m_frameTimeCursor = (m_frameTimeCursor + 1) % m_frameTimesMs.size();
+    updatePassTimingDisplay(deltaSeconds, frameRecords);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
@@ -206,6 +213,27 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     buildGraphInspector(frameRecords);
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
+}
+
+//======================================================================================================================
+void EditorShell::updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords) {
+    if (m_passTimingsPaused) {
+        return;
+    }
+
+    const RetainedFrame* newest = frameRecords.newestTimedFrame();
+    if (newest == nullptr) {
+        return;
+    }
+
+    const bool scheduleChanged =
+        m_passTimingHistory.addFrame(newest->record.frameId, newest->timings);
+    m_passTimingRefreshSeconds += deltaSeconds;
+    if (scheduleChanged || m_displayedPassTimings.empty() ||
+        m_passTimingRefreshSeconds >= kPassTimingRefreshSeconds) {
+        m_displayedPassTimings = m_passTimingHistory.summaries();
+        m_passTimingRefreshSeconds = 0.0f;
+    }
 }
 
 //======================================================================================================================
@@ -338,9 +366,10 @@ void EditorShell::buildRenderSettingsSection() {
         }
         if (m_autoExposureEnabled) {
             ImGui::SliderFloat("Low percentile", &m_exposureLowPercentile, 0.0f,
-                               m_exposureHighPercentile, "%.0f", ImGuiSliderFlags_AlwaysClamp);
+                               m_exposureHighPercentile - kMinExposurePercentileGap, "%.0f",
+                               ImGuiSliderFlags_AlwaysClamp);
             ImGui::SliderFloat("High percentile", &m_exposureHighPercentile,
-                               m_exposureLowPercentile, 100.0f, "%.0f",
+                               m_exposureLowPercentile + kMinExposurePercentileGap, 100.0f, "%.0f",
                                ImGuiSliderFlags_AlwaysClamp);
             ImGui::SliderFloat("Target grey", &m_exposureTargetGrey, 0.01f, 1.0f, "%.3f",
                                ImGuiSliderFlags_AlwaysClamp);
@@ -591,10 +620,20 @@ void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer
                              static_cast<int>(m_frameTimesMs.size()),
                              static_cast<int>(m_frameTimeCursor), "frame time (ms)", 0.0f,
                              kFrameTimePlotCeilingMs, ImVec2(0.0f, 60.0f));
-            // Every pass of the newest retired frame, in the order the graph ran them. The list is
-            // empty until a frame retires, which is a fact about the counters rather than a gap.
-            for (const rhi::PassTiming& timing : device.passTimings()) {
-                ImGui::Text("%s: %.2f ms", timing.label.c_str(), timing.gpuMilliseconds);
+            ImGui::Checkbox("Pause GPU timings", &m_passTimingsPaused);
+            ImGui::TextDisabled("60-frame average -- updates 4x/s");
+            // Schedule changes reset every series together, so these rows never average timings
+            // from unlike graph shapes. The exact newest frame remains available in Render Graph.
+            if (m_displayedPassTimings.empty()) {
+                ImGui::TextDisabled("waiting for retired GPU timings");
+            }
+            for (const PassTimingSummary& timing : m_displayedPassTimings) {
+                ImGui::Text("%s: %.3f ms", timing.label.c_str(), timing.averageGpuMilliseconds);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("latest %.3f ms\nrange %.3f..%.3f ms\n%zu samples",
+                                      timing.latestGpuMilliseconds, timing.minimumGpuMilliseconds,
+                                      timing.maximumGpuMilliseconds, timing.sampleCount);
+                }
             }
         }
 

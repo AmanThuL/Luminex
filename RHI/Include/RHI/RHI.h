@@ -106,8 +106,8 @@ inline constexpr uint32_t kAllArrayLayers = ~uint32_t{0};
 ///
 /// The default covers the whole resource, which is what every whole-resource declaration uses; a
 /// narrower range is how a pass addresses one mip of a chain (a bloom step writing mip N+1 while
-/// reading mip N). Ranges are validated against the texture they are used with: an empty range, or
-/// one running past the end of the chain, is a caller error.
+/// reading mip N), or one layer in a copy or barrier. Ranges are validated against the texture they
+/// are used with: an empty range, or one running past the end of the chain, is a caller error.
 struct TextureSubresourceRange {
     uint32_t baseMipLevel = 0;                  ///< First mip level in the range.
     uint32_t mipLevelCount = kAllMipLevels;     ///< Mip levels covered, or kAllMipLevels.
@@ -270,6 +270,22 @@ enum class BufferUse {
     CopyDestination, ///< Written by a copy command or by fillBuffer.
     IndirectArgument ///< Read by the GPU as the arguments of an indirect dispatch or draw.
 };
+
+/// Additional memory visibility a barrier must establish beyond ordinary access to one resource.
+enum class BarrierOptions : uint8_t {
+    None = 0,         ///< Orders ordinary accesses to one logical resource.
+    ResourceAlias = 1 ///< Makes reused physical memory visible through a different resource.
+};
+
+/// Combines independent barrier visibility requirements.
+constexpr BarrierOptions operator|(BarrierOptions a, BarrierOptions b) {
+    return static_cast<BarrierOptions>(static_cast<uint8_t>(a) | static_cast<uint8_t>(b));
+}
+
+/// Returns true when `options` includes `option`.
+constexpr bool hasBarrierOption(BarrierOptions options, BarrierOptions option) {
+    return (static_cast<uint8_t>(options) & static_cast<uint8_t>(option)) != 0;
+}
 
 /// Selects nearest or linear texture filtering.
 enum class FilterMode {
@@ -503,6 +519,13 @@ struct RenderPassDesc {
 /// pass left there.
 class CommandList {
 public:
+    /// Number of buffer slots in the shared argument-table buffer namespace.
+    static constexpr uint32_t kMaxBufferBindings = 8;
+    /// Number of texture slots in the argument-table texture namespace.
+    static constexpr uint32_t kMaxTextureBindings = 16;
+    /// Number of sampler slots in the argument-table sampler namespace.
+    static constexpr uint32_t kMaxSamplerBindings = 8;
+
     /// Destroys the command list through its owning device.
     virtual ~CommandList() = default;
     /// Begins a render pass using the supplied attachments and load actions.
@@ -619,13 +642,14 @@ public:
     /// compute pass.
     /// Binds a buffer to an argument-table buffer slot in the active pass.
     virtual void bindBuffer(uint32_t slot, Buffer& buffer) = 0;
-    /// Binds a texture for shader reads at the given argument-table texture slot. Texture slots
-    /// are their own index space -- slot 0 here and buffer slot 0 coexist. Valid inside a render
-    /// or a compute pass; the texture must carry shader-read usage. This backend grants
+    /// Binds a texture view for shader reads at the given argument-table texture slot. `view`
+    /// defaults to every subresource in the texture's own format. Texture slots are their own index
+    /// space -- slot 0 here and buffer slot 0 coexist. Valid inside a render or a compute pass; the
+    /// texture must carry shader-read usage. This backend grants
     /// shader-read usage for sampled = true, storageRead = true, and cpuReadback = true
     /// descriptors (so a texture created for CPU readback may be sampled from).
     /// Binds a shader-readable texture to an argument-table texture slot.
-    virtual void bindTexture(uint32_t slot, Texture& texture) = 0;
+    virtual void bindTexture(uint32_t slot, Texture& texture, const TextureViewDesc& view = {}) = 0;
     /// Binds a sampler at the given argument-table sampler slot. Sampler slots are their own
     /// index space, like texture slots -- so slot 0 here coexists with texture slot 0 and buffer
     /// slot 0. Valid inside a render or a compute pass.
@@ -684,14 +708,20 @@ public:
     /// the same subresources and the same producing use, however wide the first one's range was.
     /// A render graph derives its barriers from this rule, and a caller hand-encoding two passes
     /// of different kinds over one producer's output owes each of them a barrier.
+    ///
+    /// ResourceAlias additionally flushes memory being reused through a different logical resource.
+    /// The `texture` argument is the resource the consumer pass will use; ordinary same-resource
+    /// transitions leave `options` at None.
     /// Orders a texture's subresources between a producing and a consuming use.
     virtual void textureBarrier(Texture& texture, const TextureSubresourceRange& range,
-                                TextureUse from, TextureUse to) = 0;
+                                TextureUse from, TextureUse to,
+                                BarrierOptions options = BarrierOptions::None) = 0;
     /// Same, for the whole texture -- the common case, and what a pass that declares no
     /// subresource detail means.
     /// Orders a whole texture between a producing and a consuming use.
-    void textureBarrier(Texture& texture, TextureUse from, TextureUse to) {
-        textureBarrier(texture, TextureSubresourceRange{}, from, to);
+    void textureBarrier(Texture& texture, TextureUse from, TextureUse to,
+                        BarrierOptions options = BarrierOptions::None) {
+        textureBarrier(texture, TextureSubresourceRange{}, from, to, options);
     }
     /// The same contract for a buffer: the range, the at-least-one-write rule, the positional
     /// producer and consumer, and the backend's freedom to synchronize more than the range asks for
@@ -699,14 +729,17 @@ public:
     /// borrow -- a fillBuffer whose zeros an accumulating dispatch must see, or arguments a compute
     /// pass writes for a later indirect draw, are dependencies on bytes, and expressing them
     /// through some unrelated texture's edge would be a lie a graph would later reason from.
+    /// ResourceAlias has the same meaning as on textureBarrier: `buffer` is the resource receiving
+    /// physical memory that a different logical resource used earlier.
     /// Orders a buffer's byte range between a producing and a consuming use.
     virtual void bufferBarrier(Buffer& buffer, const BufferRange& range, BufferUse from,
-                               BufferUse to) = 0;
+                               BufferUse to, BarrierOptions options = BarrierOptions::None) = 0;
     /// Same, for the whole buffer -- the common case, and what a pass that declares no byte-range
     /// detail means.
     /// Orders a whole buffer between a producing and a consuming use.
-    void bufferBarrier(Buffer& buffer, BufferUse from, BufferUse to) {
-        bufferBarrier(buffer, BufferRange{}, from, to);
+    void bufferBarrier(Buffer& buffer, BufferUse from, BufferUse to,
+                       BarrierOptions options = BarrierOptions::None) {
+        bufferBarrier(buffer, BufferRange{}, from, to, options);
     }
 };
 

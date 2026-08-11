@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "RHI/Validate.h"
 
+#include <limits>
 #include <string>
 
 namespace lmx::rhi {
@@ -71,6 +72,24 @@ std::string extentOf(const Texture& texture) {
 // interval taken from 32-bit extents cannot wrap.
 bool overlaps(uint64_t firstStart, uint64_t firstSize, uint64_t secondStart, uint64_t secondSize) {
     return firstStart < secondStart + secondSize && secondStart < firstStart + firstSize;
+}
+
+//======================================================================================================================
+bool checkedMultiply(uint64_t a, uint64_t b, uint64_t& result) {
+    if (a != 0 && b > std::numeric_limits<uint64_t>::max() / a) {
+        return false;
+    }
+    result = a * b;
+    return true;
+}
+
+//======================================================================================================================
+bool checkedAdd(uint64_t a, uint64_t b, uint64_t& result) {
+    if (b > std::numeric_limits<uint64_t>::max() - a) {
+        return false;
+    }
+    result = a + b;
+    return true;
 }
 
 //======================================================================================================================
@@ -369,13 +388,20 @@ Result<void> validateBufferTextureCopy(const Buffer& buffer, const BufferTexture
                                          " is narrower than the region's " +
                                          std::to_string(rowBytes) + " bytes of texels per row"});
     }
-    const uint64_t packedSlice = layout.bytesPerRow * region.height;
-    if (layout.bytesPerSlice != 0 && layout.bytesPerSlice < packedSlice) {
+    // A one-slice copy touches no padding after its last row. Compute exactly through the final
+    // texel rather than bytesPerRow * height, both to accept that legal footprint and to keep a
+    // caller-supplied stride from wrapping the bounds check.
+    uint64_t lastRowOffset = 0;
+    uint64_t footprint = 0;
+    if (!checkedMultiply(layout.bytesPerRow, uint64_t{region.height - 1}, lastRowOffset) ||
+        !checkedAdd(lastRowOffset, rowBytes, footprint)) {
+        return invalid("BufferTextureLayout row strides overflow the addressable buffer range");
+    }
+    if (layout.bytesPerSlice != 0 && layout.bytesPerSlice < footprint) {
         return invalid("BufferTextureLayout.bytesPerSlice is smaller than the rows of one slice "
                        "occupy (use 0 for a single-slice copy)");
     }
-    const uint64_t sliceBytes = layout.bytesPerSlice != 0 ? layout.bytesPerSlice : packedSlice;
-    return validateBufferBytes(buffer, layout.offset, sliceBytes * region.depth);
+    return validateBufferBytes(buffer, layout.offset, footprint);
 }
 
 //======================================================================================================================

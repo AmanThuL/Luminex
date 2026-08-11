@@ -5,6 +5,7 @@
 
 #include "App/GraphInspectorModel.h"
 
+#include <algorithm>
 #include <format>
 
 namespace lmx::app {
@@ -74,20 +75,6 @@ GraphInspectorUseRow shapeUse(const CompiledFrameDebug& debug, const render::Deb
 }
 
 //======================================================================================================================
-// The GPU time the RHI measured under this pass's own label, or empty when nothing matched -- a
-// culled pass never ran and so never appears in `timings`, and this must not invent a number for
-// it.
-std::optional<double> matchTiming(std::span<const rhi::PassTiming> timings,
-                                  const std::string& label) {
-    for (const rhi::PassTiming& timing : timings) {
-        if (timing.label == label) {
-            return timing.gpuMilliseconds;
-        }
-    }
-    return std::nullopt;
-}
-
-//======================================================================================================================
 GraphInspectorTransitionRow shapeTransition(const CompiledFrameDebug& debug,
                                             const render::DebugTransition& transition) {
     GraphInspectorTransitionRow row;
@@ -153,7 +140,6 @@ GraphInspectorModel buildGraphInspectorModel(const CompiledFrameRecord& record,
         row.kind = pass.kind;
         row.label = pass.label;
         row.cullReason = pass.cullReason;
-        row.gpuMilliseconds = matchTiming(timings, pass.label);
         row.uses.reserve(pass.uses.size());
         for (const render::DebugUse& use : pass.uses) {
             row.uses.push_back(shapeUse(debug, use));
@@ -162,6 +148,19 @@ GraphInspectorModel buildGraphInspectorModel(const CompiledFrameRecord& record,
     }
 
     model.schedule = debug.schedule.passes;
+
+    // The RHI publishes timings in the order passes began, which is exactly the compiled schedule
+    // rather than declaration order. Join each slot only to that scheduled pass and verify its
+    // label as a consistency check. Labels are diagnostics, not unique identifiers: scanning by
+    // label would give two same-named passes the first measurement twice, and could even attach a
+    // scheduled pass's timing to a culled declaration carrying the same label.
+    const size_t joinedCount = std::min(model.schedule.size(), timings.size());
+    for (size_t order = 0; order < joinedCount; ++order) {
+        GraphInspectorPassRow& pass = model.passes[model.schedule[order]];
+        if (pass.label == timings[order].label) {
+            pass.gpuMilliseconds = timings[order].gpuMilliseconds;
+        }
+    }
 
     model.transitions.reserve(debug.transitions.size());
     for (const render::DebugTransition& transition : debug.transitions) {

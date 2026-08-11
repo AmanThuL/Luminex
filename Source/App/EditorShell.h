@@ -6,6 +6,7 @@
 #pragma once
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
+#include "App/PassTimingHistory.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -76,10 +77,10 @@ public:
     /// ImGui::Render(). Takes the device because selecting a new scene this frame drains the GPU
     /// (device.waitIdle()) before the library builds or hands back the scene.
     ///
-    /// `frameRecords` is read for the Render Graph panel alone: at the point this runs, the frame
-    /// loop has not yet declared or retained this frame's own record, so the panel shows the newest
-    /// retired frame as of the *previous* iteration -- the same one-iteration lag the Stats panel's
-    /// device.passTimings() already carries, and for the same reason.
+    /// `frameRecords` feeds both observability views: the Render Graph panel shows one exact
+    /// retired frame, while Stats rolls timings from successive retired frames into a stable
+    /// summary. At this point the frame loop has not retained the current frame, so both see the
+    /// newest joined record as of the previous iteration.
     void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
 
@@ -116,6 +117,7 @@ private:
     void buildLightsSection();
     void buildRenderSettingsSection();
     void buildObjectsSection();
+    void updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords);
     // A separate top-level window, not an Inspector section: the Stats panel already summarizes a
     // frame's pass timings, and this is the frame's full compiled shape -- passes, culling,
     // transitions, transient placement -- which is too much detail to nest under it.
@@ -201,6 +203,14 @@ private:
     // values_offset and unrolls it, so there is no discontinuity to shuffle away.
     std::array<float, 120> m_frameTimesMs{};
     size_t m_frameTimeCursor = 0;
+
+    // Raw measurements are collected every time a new frame retires, but publishing a fresh text
+    // snapshot only four times per second keeps the sub-millisecond digits readable. Pause stops
+    // both collection and publication, so the visible comparison stays fixed until resumed.
+    PassTimingHistory m_passTimingHistory;
+    std::vector<PassTimingSummary> m_displayedPassTimings;
+    float m_passTimingRefreshSeconds = 0.0f;
+    bool m_passTimingsPaused = false;
 };
 
 } // namespace lmx::app
