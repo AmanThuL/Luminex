@@ -214,7 +214,8 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
 // bytes and is filled with a different pattern; if the barrier the graph derives did not order that
 // fill after the first transient's last read, the first result would come back carrying the second
 // one's fill. Both readbacks are checked, so a bleed in either direction is visible.
-TEST_CASE("a transient cannot read what the transient it replaced left behind", "[gpu]") {
+TEST_CASE("a transient cannot read what the transient it replaced left behind",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
     using namespace lmx::render;
 

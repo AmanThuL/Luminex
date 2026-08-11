@@ -293,7 +293,7 @@ TEST_CASE("a copy captures an intermediate mip level of a GPU-written chain",
 // The array-layer half of the same contract, on the only multi-layer texture kind this RHI has.
 // Every face and level carries a distinct constant, so a copy that resolved to the wrong slice or
 // the wrong level disagrees on a channel.
-TEST_CASE("a copy captures one array layer and mip of a cubemap", "[gpu]") {
+TEST_CASE("a copy captures one array layer and mip of a cubemap", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kFaceExtent = 16;

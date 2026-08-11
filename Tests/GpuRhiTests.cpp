@@ -419,7 +419,7 @@ namespace {} // namespace
 
 //======================================================================================================================
 // One uniform red BC1 block pins compressed upload stride and sampler-side block decoding.
-TEST_CASE("a BC1 block decodes to its endpoint colour when sampled", "[gpu]") {
+TEST_CASE("a BC1 block decodes to its endpoint colour when sampled", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kSourceTextureSlot = 0;
@@ -547,7 +547,7 @@ TEST_CASE("an sRGB texture is linearised by the sampler, a linear one is not",
 
 //======================================================================================================================
 // A uniform +X face isolates cubemap slice ordering and direction lookup.
-TEST_CASE("a cubemap samples the face its direction points at", "[gpu]") {
+TEST_CASE("a cubemap samples the face its direction points at", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kCubeTextureSlot = 2;
