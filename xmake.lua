@@ -185,10 +185,15 @@ target("NoApiProto")
     add_deps("Core")
 
 -- Prototype-only tests (spec section 5): smoke and misuse death-tests on the prototype side.
+-- metal-cpp appears here only for the capture-quality probe, which drives MTLCaptureManager
+-- around a prototype frame; every other case uses the prototype interface alone.
 target("NoApiTests")
     set_kind("binary")
     set_default(false)
     add_files("Experiments/NoApi/Tests/NoApiTests.cpp")
+    add_includedirs("Experiments/NoApi/Tests")
+    add_includedirs("ThirdParty/metal-cpp")
+    add_frameworks("Metal", "Foundation")
     add_deps("Core", "NoApiProto")
     add_packages("catch2")
 
@@ -197,13 +202,29 @@ target("NoApiTests")
 -- production dependency stack minus SDL3/ImGui, which the offscreen bench never needs.
 -- --check-manifest is the stage 1 consistency test: it declares the manifest's representative
 -- graph to the production RenderGraph and asserts the compiled record against the manifest's
--- frozen schedule and barrier expectations.
+-- frozen schedule and barrier expectations. --run-graph=rhi (Stage 3) hand-encodes the same
+-- manifest through production rhi::CommandList calls (Experiments/NoApi/Bench/RhiAdapter.*); the
+-- adapter-neutral runner (Experiments/NoApi/Bench/Runner.*) is what a future --run-graph=proto
+-- shares.
 target("NoApiBench")
     set_kind("binary")
     set_default(false)
-    add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp")
+    -- Own targetdir: the slang2metallib rule below rejects a target directory shared with App or
+    -- Tests, which also compile shaders in parallel.
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/noapibench")
+    add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp", "Experiments/NoApi/Bench/*.cpp")
+    add_includedirs("Experiments/NoApi")
     add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest")
     add_packages("glm")
+    -- P03/P04 bind the unmodified production ShadowPass/ScenePass pipelines (spec section 6), so
+    -- this target compiles exactly those two production shaders plus the shared modules they
+    -- import -- not production's own P05-P12-equivalent shaders (BloomThreshold.slang and
+    -- friends), which Experiments/NoApi/Shaders' distilled kernels below replace and would
+    -- otherwise collide with by basename in this target's shared Shaders/ output directory.
+    add_rules("slang2metallib")
+    add_files("Shaders/ShadowPass.slang", "Shaders/ScenePass.slang", "Shaders/Shadow.slang",
+              "Shaders/Lighting.slang")
+    add_files("Experiments/NoApi/Shaders/*.slang")
 
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local metalcpp_commit = "c595afef4a5dc388f4047cd0c69f9e7f9468d9ed"
