@@ -6,6 +6,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Bench/Metrics.h"
 #include "Bench/Runner.h"
 #include "Workload/RepresentativeGraph.h"
 
@@ -41,6 +42,22 @@ public:
     bool setup() override;
     void runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) override;
     void teardown() override;
+    uint64_t lastFrameTimedRegionNs() const override { return m_lastFrameTimedRegionNs; }
+    FrameBindingCounters lastFrameBindingCounters() const override { return m_lastFrameCounters; }
+    AllocationSnapshot allocationSnapshot() const override;
+
+    /// One pipeline's cold-compile wall time and whether it loaded a precompiled metallib (spec
+    /// section 8: "Pipeline compile and cache ... descriptive evidence only"). Populated by
+    /// createPipelines(), called once from setup() -- so every entry is a "cold" (fresh-process,
+    /// first-creation) measurement; this adapter never recompiles a pipeline a second time.
+    struct PipelineCompileRecord {
+        std::string label;
+        uint64_t coldNs = 0;
+        bool loadedMetallib = false; ///< False means the runtime-MSL fallback compiled it.
+    };
+    const std::vector<PipelineCompileRecord>& pipelineCompileTimes() const {
+        return m_pipelineCompileTimes;
+    }
 
 private:
     // One texture-subresource barrier the one-time compile derived, resolved to this adapter's own
@@ -100,6 +117,22 @@ private:
                        uint32_t dstExtent);
     void encodeComposite(rhi::CommandList& commands);
     void encodeReadback(rhi::CommandList& commands);
+
+    // M5.1 Stage 4 instrumentation (spec section 9's binding-traffic dimension): every encode
+    // function above calls these instead of rhi::CommandList's binding methods directly. Each
+    // forwards the call unchanged and bumps exactly one counter in m_frameCounters, so counting
+    // adds no work beyond a plain integer increment per call (spec's fairness rule) and no call
+    // site has to duplicate the bookkeeping.
+    void bindTextureCounted(rhi::CommandList& commands, uint32_t slot, rhi::Texture& texture,
+                            const rhi::TextureViewDesc& view = {});
+    void bindBufferCounted(rhi::CommandList& commands, uint32_t slot, rhi::Buffer& buffer);
+    void bindSamplerCounted(rhi::CommandList& commands, uint32_t slot, rhi::Sampler& sampler);
+    void bindStorageBufferCounted(rhi::CommandList& commands, uint32_t slot, rhi::Buffer& buffer,
+                                  rhi::StorageAccess access);
+    void bindStorageTextureCounted(rhi::CommandList& commands, uint32_t slot, rhi::Texture& texture,
+                                   const rhi::TextureViewDesc& view, rhi::StorageAccess access);
+    void setUniformsCounted(rhi::CommandList& commands, uint32_t slot, const void* data,
+                            uint64_t size);
 
     // Recreates the R10 ring slot this frame writes with its deterministic staging content (spec
     // section 6: "material 0's emissive texture is re-uploaded every frame via P02"). See
@@ -179,6 +212,26 @@ private:
     // Barriers the one-time compile derived, indexed by schedule position (0 = P01 .. 12 = P13):
     // m_barriersBeforePass[i] is emitted, in order, immediately before pass i's own encode call.
     std::array<std::vector<BarrierOp>, kPassCount> m_barriersBeforePass{};
+
+    // M5.1 Stage 4 instrumentation (spec sections 8-9). m_frameCounters is reset at the top of
+    // every runFrame() and populated by the counted* wrappers above and by the barrier-emission
+    // lambda inside runFrame(); m_creationCounters accumulates every
+    // texture/buffer/sampler/pipeline this adapter has ever asked the RHI to create, in setup() and
+    // in every frame's per-draw P04 buffer creation alike (this file's header comment's
+    // uniform-ring finding), so its value at end of run is the true cumulative call count -- not a
+    // live count, because the RHI's public surface offers no per-object destruction hook cheap
+    // enough to call from every encode function without adding work of its own.
+    uint64_t m_lastFrameTimedRegionNs = 0;
+    FrameBindingCounters m_frameCounters{};
+    FrameBindingCounters m_lastFrameCounters{};
+    struct CreationCounters {
+        uint64_t textureCreateCalls = 0;
+        uint64_t bufferCreateCalls = 0;
+        uint64_t samplerCreateCalls = 0;
+        uint64_t pipelineCreateCalls = 0;
+    };
+    CreationCounters m_creationCounters{};
+    std::vector<PipelineCompileRecord> m_pipelineCompileTimes;
 };
 
 } // namespace lmx::noapi::bench

@@ -12,6 +12,7 @@
 #include "Bench/NoApiAdapter.h"
 #include "Bench/RhiAdapter.h"
 #include "Bench/Runner.h"
+#include "Bench/StressCommon.h"
 #include "Bench/StressRunner.h"
 #include "Workload/RepresentativeGraph.h"
 #include "Workload/Types.h"
@@ -21,14 +22,23 @@
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 
+#include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 using namespace lmx;
@@ -385,6 +395,307 @@ int runGraph(const lmx::noapi::bench::RunOptions& options) {
 }
 
 //======================================================================================================================
+// M5.1 Stage 4 measurement mode (plan Stage 4 item 4-5, spec section 8): `--measure=<graph|
+// bind1024|bind4096|pipelines> --adapter=<rhi|noapi> --warmup=N --frames=N --json=<path>`.
+//
+// Escapes the two characters JSON requires, matching Source/Engine/TextureBake.cpp's own
+// jsonEscape -- the project's existing precedent for hand-rolled JSON output rather than a new
+// dependency (AGENTS.md: "xrepo deps only as needed").
+std::string jsonEscape(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char c : text) {
+        switch (c) {
+        case '"':
+            out += "\\\"";
+            break;
+        case '\\':
+            out += "\\\\";
+            break;
+        default:
+            if (static_cast<unsigned char>(c) < 0x20) {
+                char buffer[7];
+                std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
+                out += buffer;
+            } else {
+                out += c;
+            }
+        }
+    }
+    return out;
+}
+
+//======================================================================================================================
+// The spec's median-per-frame statistic (section 8: "the repetition's statistic is the median
+// per-frame value"), computed the same way for every --measure call so collect.py's
+// paired-repetition median-of-medians composes over a value this process already computed once,
+// deterministically.
+uint64_t medianNs(std::vector<uint64_t> values) {
+    if (values.empty()) {
+        return 0;
+    }
+    std::sort(values.begin(), values.end());
+    const size_t mid = values.size() / 2;
+    if (values.size() % 2 == 1) {
+        return values[mid];
+    }
+    return (values[mid - 1] + values[mid]) / 2;
+}
+
+//======================================================================================================================
+std::string countersToJson(const lmx::noapi::bench::FrameBindingCounters& counters) {
+    return std::format(
+        "{{\"setAddressCalls\":{},\"pushRootCalls\":{},\"pushRootBytes\":{},"
+        "\"tableWriteCalls\":{},\"tableWriteBytes\":{},\"bindCalls\":{},\"setUniformsCalls\":{},"
+        "\"setUniformsBytes\":{},\"bufferCreateCalls\":{},\"bufferCreateBytes\":{},"
+        "\"barrierCalls\":{}}}",
+        counters.setAddressCalls, counters.pushRootCalls, counters.pushRootBytes,
+        counters.tableWriteCalls, counters.tableWriteBytes, counters.bindCalls,
+        counters.setUniformsCalls, counters.setUniformsBytes, counters.bufferCreateCalls,
+        counters.bufferCreateBytes, counters.barrierCalls);
+}
+
+//======================================================================================================================
+std::string allocationToJson(const lmx::noapi::bench::AllocationSnapshot& snapshot) {
+    return std::format(
+        "{{\"textureCreateCalls\":{},\"bufferCreateCalls\":{},\"samplerCreateCalls\":{},"
+        "\"pipelineCreateCalls\":{},\"residentBytes\":{},\"residentBytesIsMetalReported\":{}}}",
+        snapshot.textureCreateCalls, snapshot.bufferCreateCalls, snapshot.samplerCreateCalls,
+        snapshot.pipelineCreateCalls, snapshot.residentBytes,
+        snapshot.residentBytesIsMetalReported ? "true" : "false");
+}
+
+//======================================================================================================================
+// Refuses measurement runs under Metal validation (spec section 8: "performance runs use release
+// builds with Metal validation and capture off ... Validation state never mixes within a run").
+bool validationIsOff() {
+    return std::getenv("MTL_DEBUG_LAYER") == nullptr;
+}
+
+//======================================================================================================================
+// Writes the JSON blob spec'd for `--measure`'s output ({workload, adapter, perFrameTimedRegionNs,
+// medianNs, counters, endOfSetup, endOfRun}) to `path`. `endOfSetup`/`endOfRun` extend the frozen
+// {workload, adapter, perFrameTimedRegionNs, medianNs, counters} shape with the allocation
+// dimension's two named sample points (spec section 9); paired_bootstrap.py only ever reads
+// `medianNs` out of a metric's "pairs", so the extra keys are additive and do not change its input
+// contract.
+bool writeMeasureJson(const std::filesystem::path& path, std::string_view workload,
+                      std::string_view adapter, const std::vector<uint64_t>& perFrameNs,
+                      const lmx::noapi::bench::FrameBindingCounters& counters, bool countersStable,
+                      const lmx::noapi::bench::AllocationSnapshot& endOfSetup,
+                      const lmx::noapi::bench::AllocationSnapshot& endOfRun) {
+    std::error_code errorCode;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), errorCode);
+    }
+    std::ofstream file(path, std::ios::trunc);
+    if (!file) {
+        std::cerr << "NoApiBench --measure: cannot open '" << path.string() << "' for writing\n";
+        return false;
+    }
+    file << "{\n";
+    file << "  \"workload\": \"" << jsonEscape(workload) << "\",\n";
+    file << "  \"adapter\": \"" << jsonEscape(adapter) << "\",\n";
+    file << "  \"perFrameTimedRegionNs\": [";
+    for (size_t i = 0; i < perFrameNs.size(); ++i) {
+        file << (i == 0 ? "" : ",") << perFrameNs[i];
+    }
+    file << "],\n";
+    file << "  \"medianNs\": " << medianNs(perFrameNs) << ",\n";
+    file << "  \"countersStableAcrossFrames\": " << (countersStable ? "true" : "false") << ",\n";
+    file << "  \"counters\": " << countersToJson(counters) << ",\n";
+    file << "  \"endOfSetup\": " << allocationToJson(endOfSetup) << ",\n";
+    file << "  \"endOfRun\": " << allocationToJson(endOfRun) << "\n";
+    file << "}\n";
+    return static_cast<bool>(file);
+}
+
+//======================================================================================================================
+// `--measure=graph`: drives either adapter through the representative graph's runFrame() for
+// warmup+frames iterations, reading each adapter's own instrumentation (Bench/Runner.h's three
+// measurement accessors) after every call rather than computing anything itself.
+int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t measuredFrames,
+                 const std::filesystem::path& jsonPath) {
+    std::unique_ptr<lmx::noapi::bench::Adapter> adapter;
+    if (adapterName == "rhi") {
+        adapter = std::make_unique<lmx::noapi::bench::RhiAdapter>();
+    } else if (adapterName == "noapi") {
+        adapter = std::make_unique<lmx::noapi::bench::NoApiAdapter>();
+    } else {
+        std::cerr << "NoApiBench --measure=graph: unknown --adapter '" << adapterName << "'\n";
+        return 1;
+    }
+
+    if (!adapter->setup()) {
+        std::cerr << "NoApiBench --measure=graph: adapter setup failed\n";
+        return 1;
+    }
+    const lmx::noapi::bench::AllocationSnapshot endOfSetup = adapter->allocationSnapshot();
+
+    std::vector<uint64_t> perFrameNs;
+    perFrameNs.reserve(measuredFrames);
+    lmx::noapi::bench::FrameBindingCounters counters{};
+    bool countersEverSet = false;
+    bool countersStable = true;
+    std::vector<uint8_t> readback;
+    const uint32_t totalFrames = warmupFrames + measuredFrames;
+    for (uint32_t frame = 0; frame < totalFrames; ++frame) {
+        readback.clear();
+        adapter->runFrame(frame, readback);
+        if (frame >= warmupFrames) {
+            perFrameNs.push_back(adapter->lastFrameTimedRegionNs());
+            const lmx::noapi::bench::FrameBindingCounters frameCounters =
+                adapter->lastFrameBindingCounters();
+            if (!countersEverSet) {
+                counters = frameCounters;
+                countersEverSet = true;
+            } else if (frameCounters.setAddressCalls != counters.setAddressCalls ||
+                       frameCounters.pushRootCalls != counters.pushRootCalls ||
+                       frameCounters.bindCalls != counters.bindCalls ||
+                       frameCounters.setUniformsCalls != counters.setUniformsCalls ||
+                       frameCounters.bufferCreateCalls != counters.bufferCreateCalls ||
+                       frameCounters.barrierCalls != counters.barrierCalls) {
+                countersStable = false;
+            }
+        }
+    }
+    const lmx::noapi::bench::AllocationSnapshot endOfRun = adapter->allocationSnapshot();
+    adapter->teardown();
+
+    std::cout << "measure graph adapter=" << adapterName << " medianNs=" << medianNs(perFrameNs)
+              << " countersStable=" << (countersStable ? "true" : "false") << "\n";
+    return writeMeasureJson(jsonPath, "graph", adapterName, perFrameNs, counters, countersStable,
+                            endOfSetup, endOfRun)
+               ? 0
+               : 1;
+}
+
+//======================================================================================================================
+// `--measure=bind1024`/`bind4096`: S-BIND is also a timed workload (BindRhi.cpp/BindNoApi.cpp's
+// header comments document its setup/per-frame split); this drives the measured variants those
+// files implement.
+int measureBind(uint32_t drawCount, const std::string& adapterName, uint32_t warmupFrames,
+                uint32_t measuredFrames, const std::filesystem::path& jsonPath) {
+    const lmx::noapi::bench::MeasuredRun run =
+        adapterName == "rhi"
+            ? lmx::noapi::bench::measureBindScaleRhi(drawCount, warmupFrames, measuredFrames)
+            : lmx::noapi::bench::measureBindScaleNoApi(drawCount, warmupFrames, measuredFrames);
+    if (!run.ok) {
+        std::cerr << "NoApiBench --measure=bind" << drawCount << ": " << run.error << "\n";
+        return 1;
+    }
+    const std::string workload = "bind" + std::to_string(drawCount);
+    std::cout << "measure " << workload << " adapter=" << adapterName
+              << " medianNs=" << medianNs(run.perFrameTimedRegionNs)
+              << " countersStable=" << (run.countersStableAcrossFrames ? "true" : "false") << "\n";
+    return writeMeasureJson(jsonPath, workload, adapterName, run.perFrameTimedRegionNs,
+                            run.counters, run.countersStableAcrossFrames, run.endOfSetup,
+                            run.endOfRun)
+               ? 0
+               : 1;
+}
+
+//======================================================================================================================
+// `--measure=pipelines`: descriptive only (spec section 8: "never triggers adoption thresholds"),
+// kept out of the paired/bootstrap path -- its own JSON shape is a flat pipeline table, not the
+// {perFrameTimedRegionNs, medianNs} shape paired_bootstrap.py consumes.
+int measurePipelines(const std::string& adapterName, const std::filesystem::path& jsonPath) {
+    std::vector<std::tuple<std::string, uint64_t, bool>> records;
+    if (adapterName == "rhi") {
+        lmx::noapi::bench::RhiAdapter adapter;
+        if (!adapter.setup()) {
+            std::cerr << "NoApiBench --measure=pipelines: rhi adapter setup failed\n";
+            return 1;
+        }
+        for (const auto& record : adapter.pipelineCompileTimes()) {
+            records.emplace_back(record.label, record.coldNs, record.loadedMetallib);
+        }
+        adapter.teardown();
+    } else if (adapterName == "noapi") {
+        lmx::noapi::bench::NoApiAdapter adapter;
+        if (!adapter.setup()) {
+            std::cerr << "NoApiBench --measure=pipelines: noapi adapter setup failed\n";
+            return 1;
+        }
+        for (const auto& record : adapter.pipelineCompileTimes()) {
+            records.emplace_back(record.label, record.coldNs, record.loadedMetallib);
+        }
+        adapter.teardown();
+    } else {
+        std::cerr << "NoApiBench --measure=pipelines: unknown --adapter '" << adapterName << "'\n";
+        return 1;
+    }
+
+    std::cout << "pipeline\tcoldNs\tsource\n";
+    for (const auto& [label, coldNs, loadedMetallib] : records) {
+        std::cout << label << "\t" << coldNs << "\t"
+                  << (loadedMetallib ? "metallib" : "runtime-msl") << "\n";
+    }
+
+    if (jsonPath.empty()) {
+        return 0;
+    }
+    std::error_code errorCode;
+    if (jsonPath.has_parent_path()) {
+        std::filesystem::create_directories(jsonPath.parent_path(), errorCode);
+    }
+    std::ofstream file(jsonPath, std::ios::trunc);
+    if (!file) {
+        std::cerr << "NoApiBench --measure=pipelines: cannot open '" << jsonPath.string()
+                  << "' for writing\n";
+        return 1;
+    }
+    file << "{\n  \"workload\": \"pipelines\",\n  \"adapter\": \"" << jsonEscape(adapterName)
+         << "\",\n  \"pipelines\": [\n";
+    for (size_t i = 0; i < records.size(); ++i) {
+        const auto& [label, coldNs, loadedMetallib] = records[i];
+        file << "    {\"label\": \"" << jsonEscape(label) << "\", \"coldNs\": " << coldNs
+             << ", \"source\": \"" << (loadedMetallib ? "metallib" : "runtime-msl") << "\"}"
+             << (i + 1 < records.size() ? ",\n" : "\n");
+    }
+    file << "  ]\n}\n";
+    return 0;
+}
+
+//======================================================================================================================
+struct MeasureOptions {
+    std::string workload;
+    std::string adapter = "rhi";
+    uint32_t warmupFrames = 16;
+    uint32_t measuredFrames = 256;
+    std::filesystem::path jsonPath;
+};
+
+//======================================================================================================================
+int runMeasure(const MeasureOptions& options) {
+    if (!validationIsOff()) {
+        std::cerr << "NoApiBench --measure: refusing to run with MTL_DEBUG_LAYER set -- "
+                     "measurement mode requires validation off (spec section 8: performance runs "
+                     "use release builds with Metal validation and capture off). Unset "
+                     "MTL_DEBUG_LAYER and rerun.\n";
+        return 1;
+    }
+    if (options.workload == "graph") {
+        return measureGraph(options.adapter, options.warmupFrames, options.measuredFrames,
+                            options.jsonPath);
+    }
+    if (options.workload == "bind1024") {
+        return measureBind(1024, options.adapter, options.warmupFrames, options.measuredFrames,
+                           options.jsonPath);
+    }
+    if (options.workload == "bind4096") {
+        return measureBind(4096, options.adapter, options.warmupFrames, options.measuredFrames,
+                           options.jsonPath);
+    }
+    if (options.workload == "pipelines") {
+        return measurePipelines(options.adapter, options.jsonPath);
+    }
+    std::cerr << "NoApiBench --measure: unknown workload '" << options.workload
+              << "' (expected 'graph', 'bind1024', 'bind4096', or 'pipelines')\n";
+    return 1;
+}
+
+//======================================================================================================================
 // M5.1 Stage 4's misuse-child re-exec protocol (Bench/StressRunner.cpp's header comment): a parent
 // process's runMisuse() spawns this same binary with these two variables set, expecting the child
 // never to return -- checked before any normal argument parsing so a re-exec never sees the
@@ -415,9 +726,11 @@ int main(int argc, char** argv) {
     bool runGraphRequested = false;
     bool runStressRequested = false;
     bool runMisuseRequested = false;
+    bool measureRequested = false;
     std::string stressCaseId;
     std::string misuseCaseId;
     lmx::noapi::bench::AdapterKind adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
+    MeasureOptions measureOptions;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -428,6 +741,7 @@ int main(int argc, char** argv) {
             runGraphRequested = true;
         } else if (const auto frames = parseFlagValue(arg, "--frames")) {
             runOptions.frames = static_cast<uint32_t>(std::stoul(std::string(*frames)));
+            measureOptions.measuredFrames = runOptions.frames;
         } else if (const auto dumpDir = parseFlagValue(arg, "--dump-dir")) {
             runOptions.dumpDir = std::string(*dumpDir);
         } else if (const auto stress = parseFlagValue(arg, "--run-stress")) {
@@ -436,6 +750,13 @@ int main(int argc, char** argv) {
         } else if (const auto misuse = parseFlagValue(arg, "--run-misuse")) {
             misuseCaseId = std::string(*misuse);
             runMisuseRequested = true;
+        } else if (const auto measure = parseFlagValue(arg, "--measure")) {
+            measureOptions.workload = std::string(*measure);
+            measureRequested = true;
+        } else if (const auto warmup = parseFlagValue(arg, "--warmup")) {
+            measureOptions.warmupFrames = static_cast<uint32_t>(std::stoul(std::string(*warmup)));
+        } else if (const auto json = parseFlagValue(arg, "--json")) {
+            measureOptions.jsonPath = std::string(*json);
         } else if (const auto adapter = parseFlagValue(arg, "--adapter")) {
             if (*adapter == "rhi") {
                 adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
@@ -447,6 +768,7 @@ int main(int argc, char** argv) {
                              "'noapi')\n";
                 return 1;
             }
+            measureOptions.adapter = std::string(*adapter);
         } else {
             std::cerr << "NoApiBench: unrecognized argument '" << arg << "'\n";
             return 1;
@@ -465,9 +787,14 @@ int main(int argc, char** argv) {
     if (runMisuseRequested) {
         return lmx::noapi::bench::runMisuse(adapterKind, misuseCaseId);
     }
+    if (measureRequested) {
+        return runMeasure(measureOptions);
+    }
     std::cerr << "usage: NoApiBench --check-manifest\n"
               << "       NoApiBench --run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>\n"
               << "       NoApiBench --run-stress=<caseId|all> --adapter=<rhi|noapi>\n"
-              << "       NoApiBench --run-misuse=<caseId|all> --adapter=<rhi|noapi>\n";
+              << "       NoApiBench --run-misuse=<caseId|all> --adapter=<rhi|noapi>\n"
+              << "       NoApiBench --measure=<graph|bind1024|bind4096|pipelines> "
+                 "--adapter=<rhi|noapi> [--warmup=N] [--frames=N] --json=<path>\n";
     return 1;
 }

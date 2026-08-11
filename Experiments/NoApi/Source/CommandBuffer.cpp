@@ -462,6 +462,7 @@ GpuAddress pushRoot(CommandBuffer* commands, const void* data, uint64_t size, ui
 
     const Suballocation storage = commands->rootAllocator->allocate(size, alignment);
     std::memcpy(storage.cpu, data, size);
+    commands->stats.rootCalls += 1;
     commands->stats.rootBytes += size;
     return storage.gpu;
 }
@@ -989,6 +990,15 @@ void dispatchIndirect(CommandBuffer* commands, GpuAddress root, GpuAddress argum
     encoder->dispatchThreadgroups(arguments,
                                   MTL::Size::Make(kThreadgroupWidth, kThreadgroupHeight, 1));
     commands->encoderHasWork = true;
+}
+
+//======================================================================================================================
+CommandBufferStats commandBufferStats(const CommandBuffer* commands) {
+    LMX_ASSERT(commands != nullptr, "commandBufferStats: commands must not be null");
+    return {.setAddressCalls = commands->stats.setAddressCalls,
+            .rootCalls = commands->stats.rootCalls,
+            .rootBytes = commands->stats.rootBytes,
+            .barrierCalls = commands->stats.barrierCalls};
 }
 
 } // namespace lmx::noapi

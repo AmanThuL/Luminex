@@ -6,6 +6,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Bench/Metrics.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <span>
@@ -45,6 +47,21 @@ public:
 
     /// Releases GPU resources. Called once after every frame has run.
     virtual void teardown() = 0;
+
+    /// Wall time of the most recent `runFrame` call's timed region (spec section 8), in
+    /// nanoseconds, measured with `std::chrono::steady_clock` identically on both adapters.
+    ///
+    /// Valid after at least one `runFrame` call; each adapter's own runFrame() documents exactly
+    /// which of its statements the region spans.
+    virtual uint64_t lastFrameTimedRegionNs() const = 0;
+
+    /// Binding traffic and barrier count the most recent `runFrame` call produced (spec section 9).
+    virtual FrameBindingCounters lastFrameBindingCounters() const = 0;
+
+    /// Creation call counts and resident bytes as of the moment this is called (spec section 9's
+    /// allocation dimension). Callable after `setup()` and again after the run's last `runFrame` to
+    /// get the "end of setup" and "end of run" snapshots the spec's allocation dimension names.
+    virtual AllocationSnapshot allocationSnapshot() const = 0;
 };
 
 /// Parsed NoApiBench `--run-graph` options.

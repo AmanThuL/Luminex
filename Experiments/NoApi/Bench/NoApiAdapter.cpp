@@ -399,6 +399,15 @@ bool NoApiAdapter::setup() {
         return false;
     }
     planBarriers();
+
+    // Every bindless table write this adapter ever makes happens above, one time, before the first
+    // runFrame() call (this file's header comment's PLACEMENT NOTEs: every root block and table
+    // slot this manifest needs is frame-invariant). Sampling the table's cumulative counters here
+    // is what lets runFrame() report a per-frame delta of exactly zero rather than the whole run's
+    // total.
+    const BindlessTableStats tableStats = bindlessTableStats(m_table);
+    m_tableWriteCallsAtLastSample = tableStats.writeCalls;
+    m_tableWriteBytesAtLastSample = tableStats.writeBytes;
     return true;
 }
 
@@ -694,9 +703,29 @@ bool NoApiAdapter::createPipelines() {
         return false;
     }
 
-    const auto graphics = [&](const std::vector<std::byte>& code,
+    // M5.1 Stage 4 (spec section 8's pipeline dimension, descriptive only): unlike the incumbent,
+    // this prototype's pipelines take raw shader IR directly rather than a pre-loaded library
+    // object, so createGraphicsPipeline/createComputePipeline is where the real compile cost lives
+    // (readShader() above is comparatively cheap file I/O) -- that is what is timed here, once per
+    // shader, in this adapter's one-time setup(). "Cold" holds by construction: createPipelines()
+    // runs exactly once per process. metallib-vs-runtime-MSL is read off the same file-existence
+    // check readShader() itself uses.
+    const auto recordCompile = [&](std::string_view name,
+                                   std::chrono::steady_clock::time_point start,
+                                   std::chrono::steady_clock::time_point end) {
+        std::error_code errorCode;
+        const bool loadedMetallib = std::filesystem::exists(
+            std::filesystem::path("Shaders") / (std::string(name) + ".metallib"), errorCode);
+        m_pipelineCompileTimes.push_back(
+            {.label = std::string(name),
+             .coldNs = static_cast<uint64_t>(
+                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()),
+             .loadedMetallib = loadedMetallib});
+    };
+    const auto graphics = [&](std::string_view name, const std::vector<std::byte>& code,
                               std::span<const ColorTargetDesc> colorTargets, Format depthFormat,
                               std::string_view label, Pipeline*& out) {
+        const auto start = std::chrono::steady_clock::now();
         Result<Pipeline*> pipeline = createGraphicsPipeline(
             m_device, {.vertex = {.ir = asCode(code), .entryPoint = "vertexMain"},
                        .pixel = {.ir = asCode(code), .entryPoint = "fragmentMain"},
@@ -705,44 +734,49 @@ bool NoApiAdapter::createPipelines() {
                                   .depthFormat = depthFormat,
                                   .colorTargets = colorTargets},
                        .label = label});
+        const auto end = std::chrono::steady_clock::now();
         if (!pipeline) {
             std::cerr << "NoApiAdapter: " << pipeline.error().message << "\n";
             return false;
         }
         out = *pipeline;
+        recordCompile(name, start, end);
         return true;
     };
-    const auto compute = [&](const std::vector<std::byte>& code, std::string_view entry,
-                             std::string_view label, Pipeline*& out) {
+    const auto compute = [&](std::string_view name, const std::vector<std::byte>& code,
+                             std::string_view entry, std::string_view label, Pipeline*& out) {
+        const auto start = std::chrono::steady_clock::now();
         Result<Pipeline*> pipeline = createComputePipeline(
             m_device, {.compute = {.ir = asCode(code), .entryPoint = entry}, .label = label});
+        const auto end = std::chrono::steady_clock::now();
         if (!pipeline) {
             std::cerr << "NoApiAdapter: " << pipeline.error().message << "\n";
             return false;
         }
         out = *pipeline;
+        recordCompile(name, start, end);
         return true;
     };
 
     const std::array<ColorTargetDesc, 1> sceneTargets{
         ColorTargetDesc{.format = Format::RGBA16Float}};
     const std::array<ColorTargetDesc, 1> outTargets{ColorTargetDesc{.format = Format::RGBA8Unorm}};
-    return graphics(m_shadowShader, {}, Format::D32Float, "lmx.noapi.bench.proto.shadowPipeline",
-                    m_shadowPipeline) &&
-           graphics(m_sceneShader, sceneTargets, Format::D32Float,
+    return graphics("ProtoShadow", m_shadowShader, {}, Format::D32Float,
+                    "lmx.noapi.bench.proto.shadowPipeline", m_shadowPipeline) &&
+           graphics("ProtoScene", m_sceneShader, sceneTargets, Format::D32Float,
                     "lmx.noapi.bench.proto.scenePipeline", m_scenePipeline) &&
-           graphics(m_compositeShader, outTargets, Format::Undefined,
+           graphics("ProtoComposite", m_compositeShader, outTargets, Format::Undefined,
                     "lmx.noapi.bench.proto.compositePipeline", m_compositePipeline) &&
-           compute(m_histAccumulateShader, "computeHistAccumulate",
+           compute("ProtoHistAccumulate", m_histAccumulateShader, "computeHistAccumulate",
                    "lmx.noapi.bench.proto.histAccumulatePipeline", m_histAccumulatePipeline) &&
-           compute(m_histResolveShader, "computeHistResolve",
+           compute("ProtoHistResolve", m_histResolveShader, "computeHistResolve",
                    "lmx.noapi.bench.proto.histResolvePipeline", m_histResolvePipeline) &&
-           compute(m_bloomThresholdShader, "computeBloomThreshold",
+           compute("ProtoBloomThreshold", m_bloomThresholdShader, "computeBloomThreshold",
                    "lmx.noapi.bench.proto.bloomThresholdPipeline", m_bloomThresholdPipeline) &&
-           compute(m_bloomDownShader, "computeBloomDown", "lmx.noapi.bench.proto.bloomDownPipeline",
-                   m_bloomDownPipeline) &&
-           compute(m_bloomUpShader, "computeBloomUp", "lmx.noapi.bench.proto.bloomUpPipeline",
-                   m_bloomUpPipeline);
+           compute("ProtoBloomDown", m_bloomDownShader, "computeBloomDown",
+                   "lmx.noapi.bench.proto.bloomDownPipeline", m_bloomDownPipeline) &&
+           compute("ProtoBloomUp", m_bloomUpShader, "computeBloomUp",
+                   "lmx.noapi.bench.proto.bloomUpPipeline", m_bloomUpPipeline);
 }
 
 //======================================================================================================================
@@ -1233,6 +1267,11 @@ void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadba
     const uint32_t slot = m_ring.beginFrame();
 
     // ---- BEGIN TIMED REGION -----------------------------------------------------------------
+    // M5.1 Stage 4 (spec section 8): std::chrono::steady_clock on both adapters, wrapping exactly
+    // the span this file's header comment already documents as the timed region. The frame-slot
+    // pacing wait above (m_ring.beginFrame()) is excluded by construction -- the clock starts after
+    // it returns.
+    const auto timedRegionStart = std::chrono::steady_clock::now();
     writeEmissiveStaging(frameIndex);
 
     const workload::CameraPose camera = workload::cameraForFrame(frameIndex);
@@ -1276,9 +1315,26 @@ void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadba
     encodeReadback(commands); // P13
 
     endCommands(commands);
+    const CommandBufferStats frameStats = commandBufferStats(commands);
     const std::array<CommandBuffer*, 1> list{commands};
     m_ring.endFrame(m_queue, list);
+    const auto timedRegionEnd = std::chrono::steady_clock::now();
     // ---- END TIMED REGION -------------------------------------------------------------------
+
+    m_lastFrameTimedRegionNs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(timedRegionEnd - timedRegionStart)
+            .count());
+    const BindlessTableStats tableStats = bindlessTableStats(m_table);
+    m_lastFrameCounters = FrameBindingCounters{
+        .setAddressCalls = frameStats.setAddressCalls,
+        .pushRootCalls = frameStats.rootCalls,
+        .pushRootBytes = frameStats.rootBytes,
+        .tableWriteCalls = tableStats.writeCalls - m_tableWriteCallsAtLastSample,
+        .tableWriteBytes = tableStats.writeBytes - m_tableWriteBytesAtLastSample,
+        .barrierCalls = frameStats.barrierCalls,
+    };
+    m_tableWriteCallsAtLastSample = tableStats.writeCalls;
+    m_tableWriteBytesAtLastSample = tableStats.writeBytes;
 
     while (!m_ring.isSlotRetired(slot)) {
         std::this_thread::sleep_for(std::chrono::microseconds(50));
@@ -1290,6 +1346,23 @@ void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadba
     }
     outReadback.resize(workload::kReadbackBufferSize);
     std::memcpy(outReadback.data(), m_readback.cpu, outReadback.size());
+}
+
+//======================================================================================================================
+AllocationSnapshot NoApiAdapter::allocationSnapshot() const {
+    if (m_device == nullptr) {
+        return {};
+    }
+    const DeviceCreationStats creation = deviceCreationStats(m_device);
+    AllocationSnapshot snapshot{.textureCreateCalls = creation.liveTextures,
+                                .bufferCreateCalls = creation.liveAllocations,
+                                .samplerCreateCalls = creation.liveSamplers,
+                                .pipelineCreateCalls = creation.livePipelines,
+                                .residentBytesIsMetalReported = true};
+    if (m_residency != nullptr) {
+        snapshot.residentBytes = residentBytes(m_residency);
+    }
+    return snapshot;
 }
 
 //======================================================================================================================

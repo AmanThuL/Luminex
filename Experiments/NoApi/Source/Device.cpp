@@ -146,4 +146,13 @@ Queue* mainQueue(Device* device) {
     return &device->queueHandle;
 }
 
+//======================================================================================================================
+DeviceCreationStats deviceCreationStats(const Device* device) {
+    LMX_ASSERT(device != nullptr, "deviceCreationStats: device must not be null");
+    return {.liveTextures = device->liveTextures,
+            .livePipelines = device->livePipelines,
+            .liveSamplers = device->liveSamplers,
+            .liveAllocations = static_cast<uint32_t>(device->allocations.size())};
+}
+
 } // namespace lmx::noapi

@@ -56,4 +56,21 @@ const Capabilities& capabilities(const Device* device);
 /// work is outside the prototype's scope, so there is exactly one.
 Queue* mainQueue(Device* device);
 
+/// Live creation counts (M5.1 spec section 9's allocation dimension: "allocation call counts").
+///
+/// Every field counts objects created and not yet destroyed. Since neither M5.1 adapter destroys
+/// anything before its own teardown, a live count sampled at end of setup or end of run equals the
+/// cumulative number of creation calls made up to that point -- the two coincide for this
+/// experiment's workloads, which is what makes a live count a faithful stand-in for a call count
+/// here without a second, redundant cumulative counter.
+struct DeviceCreationStats {
+    uint32_t liveTextures = 0;    ///< createTexture calls not yet matched by destroyTexture.
+    uint32_t livePipelines = 0;   ///< createGraphicsPipeline/createComputePipeline calls live.
+    uint32_t liveSamplers = 0;    ///< createSampler calls not yet matched by destroySampler.
+    uint32_t liveAllocations = 0; ///< allocate calls not yet matched by deallocate.
+};
+
+/// Returns the device's current live creation counts.
+DeviceCreationStats deviceCreationStats(const Device* device);
+
 } // namespace lmx::noapi

@@ -84,4 +84,14 @@ SamplerHandle writeSamplerSlot(BindlessTable* table, uint32_t slot, const Sample
 /// misuse detectable.
 void clearBindlessSlot(BindlessTable* table, uint32_t slot);
 
+/// Bindless table write traffic since the table's creation (M5.1 spec section 9's binding-traffic
+/// dimension: "bindless table writes and bytes").
+struct BindlessTableStats {
+    uint64_t writeCalls = 0; ///< Every writeTextureSlot/writeSamplerSlot call.
+    uint64_t writeBytes = 0; ///< Bytes written, at `kBindlessSlotStride` (8) per slot.
+};
+
+/// Returns the table's cumulative write traffic since `createBindlessTable`.
+BindlessTableStats bindlessTableStats(const BindlessTable* table);
+
 } // namespace lmx::noapi

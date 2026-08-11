@@ -159,6 +159,8 @@ TextureHandle writeTextureSlot(BindlessTable* table, uint32_t slot, const Textur
     state.texture = texture;
     state.sampler = nullptr;
     state.generation += 1;
+    table->writeCalls += 1;
+    table->writeBytes += kBindlessSlotStride;
     return {.slot = slot, .generation = state.generation};
 }
 
@@ -176,6 +178,8 @@ SamplerHandle writeSamplerSlot(BindlessTable* table, uint32_t slot, const Sample
     state.sampler = sampler;
     state.generation += 1;
     storeSlot(table, slot, sampler->handle->gpuResourceID());
+    table->writeCalls += 1;
+    table->writeBytes += kBindlessSlotStride;
     return {.slot = slot, .generation = state.generation};
 }
 
@@ -194,6 +198,12 @@ void clearBindlessSlot(BindlessTable* table, uint32_t slot) {
     // Zeroing is only a CPU-side courtesy: a shader reading a cleared slot is undefined either
     // way, and the generation bump is what makes the misuse detectable on this side.
     storeSlot(table, slot, MTL::ResourceID{});
+}
+
+//======================================================================================================================
+BindlessTableStats bindlessTableStats(const BindlessTable* table) {
+    LMX_ASSERT(table != nullptr, "bindlessTableStats: table must not be null");
+    return {.writeCalls = table->writeCalls, .writeBytes = table->writeBytes};
 }
 
 } // namespace lmx::noapi

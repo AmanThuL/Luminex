@@ -138,8 +138,14 @@ struct PendingSignal {
 };
 
 /// Counts the argument-table traffic one command buffer produced.
+///
+/// M5.1 Stage 4 (spec section 9's binding-traffic and barrier dimensions): every field is a plain
+/// integer bumped at the one choke point that performs the traffic it counts (`bindAddress` for
+/// `setAddressCalls`, `pushRoot` for `rootCalls`/`rootBytes`, the barrier emission points for
+/// `barrierCalls`), so counting never adds measurable work inside a timed region.
 struct BindingStats {
     uint64_t setAddressCalls = 0; ///< Every `MTL4::ArgumentTable::setAddress` the prototype made.
+    uint64_t rootCalls = 0;       ///< Every `pushRoot` call.
     uint64_t rootBytes = 0;       ///< Bytes `pushRoot` copied into the frame allocator.
     uint64_t barrierCalls = 0;    ///< Barrier primitives emitted onto an encoder.
 };
@@ -167,6 +173,10 @@ struct BindlessTable {
     NS::SharedPtr<MTL::Buffer> storage; ///< Table memory holding one `MTL::ResourceID` per slot.
     uint32_t slotCount = 0;             ///< Slots the table was created with.
     std::vector<BindlessSlot> slots;    ///< CPU-side validation state, one entry per slot.
+    // M5.1 Stage 4 (spec section 9's binding-traffic dimension): cumulative since creation, bumped
+    // at writeTextureSlot/writeSamplerSlot's one choke point each.
+    uint64_t writeCalls = 0; ///< Every writeTextureSlot/writeSamplerSlot call.
+    uint64_t writeBytes = 0; ///< Bytes written, at `kBindlessSlotStride` per slot.
 };
 
 //======================================================================================================================

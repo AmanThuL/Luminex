@@ -20,6 +20,24 @@
 
 namespace lmx::noapi {
 
+/// Binding traffic one command buffer's recording produced (M5.1 spec section 9's binding-traffic
+/// and barrier dimensions). Every field is a plain counter bumped at the one choke point that
+/// performs the traffic it counts, so reading it after `endCommands` adds no measurable work inside
+/// a timed region -- this is a snapshot of counters already updated in place, not a computation.
+struct CommandBufferStats {
+    uint64_t setAddressCalls =
+        0;                     ///< Every `setAddress` the recording made (`bindAddress`'s count).
+    uint64_t rootCalls = 0;    ///< Every `pushRoot` call.
+    uint64_t rootBytes = 0;    ///< Bytes `pushRoot` copied into the frame allocator.
+    uint64_t barrierCalls = 0; ///< Barrier primitives emitted onto an encoder.
+};
+
+/// Returns the binding traffic `commands` has produced since `beginCommands` reset its counters.
+///
+/// Valid at any point in the recording, including after `endCommands`; the counters are not cleared
+/// again until the context is reused by a later `beginCommands`.
+CommandBufferStats commandBufferStats(const CommandBuffer* commands);
+
 /// Begins recording a transient command buffer.
 ///
 /// The returned buffer is valid until `submit` consumes it; there is no reset and no reuse.

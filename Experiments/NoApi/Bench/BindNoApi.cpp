@@ -21,6 +21,7 @@
 
 #include "NoApi/NoApi.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -270,6 +271,239 @@ std::vector<CaseResult> runBindCasesNoApi(const std::string& caseId) {
         results.push_back(runBindScaleNoApi(drawCount));
     }
     return results;
+}
+
+//======================================================================================================================
+MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
+                                  uint32_t measuredFrames) {
+    MeasuredRun result;
+
+    Result<Device*> deviceResult = createDevice({.label = "sbind.measure"});
+    if (!deviceResult) {
+        result.error = "device creation failed";
+        return result;
+    }
+    Device* device = *deviceResult;
+    Queue* queue = mainQueue(device);
+
+    Result<ResidencySet*> residencyResult =
+        createResidencySet(device, {.initialCapacity = 260, .label = "sbind.measure.residency"});
+    Result<BindlessTable*> tableResult = createBindlessTable(
+        device, {.slotCount = workload::kBindTextureCount + 4, .label = "sbind.measure.table"});
+    Result<Semaphore*> fenceResult = createSemaphore(device, 0, "sbind.measure.fence");
+    if (!residencyResult || !tableResult || !fenceResult) {
+        result.error = "harness object creation failed";
+        return result;
+    }
+    ResidencySet* residency = *residencyResult;
+    BindlessTable* table = *tableResult;
+    Semaphore* fence = *fenceResult;
+
+    Result<Allocation> rootStorageResult = allocate(
+        device,
+        {.size = 1024 * 1024, .alignment = 256, .kind = MemoryKind::Shared, .label = "sbind.root"});
+    Result<Allocation> uploadStorageResult = allocate(device, {.size = 6 * 1024 * 1024,
+                                                               .alignment = 256,
+                                                               .kind = MemoryKind::Shared,
+                                                               .label = "sbind.upload"});
+    Result<Allocation> textureMemResult = allocate(device, {.size = 8 * 1024 * 1024,
+                                                            .alignment = 65536,
+                                                            .kind = MemoryKind::Private,
+                                                            .label = "sbind.textureMem"});
+    Result<Allocation> readbackResult = allocate(
+        device, {.size = uint64_t{workload::kBindTargetWidth} * workload::kBindTargetHeight * 4,
+                 .alignment = 256,
+                 .kind = MemoryKind::Readback,
+                 .label = "sbind.readback"});
+    if (!rootStorageResult || !uploadStorageResult || !textureMemResult || !readbackResult) {
+        result.error = "memory allocation failed";
+        return result;
+    }
+    LinearAllocator root(*rootStorageResult);
+    LinearAllocator upload(*uploadStorageResult);
+    uint64_t textureCursor = 0;
+
+    const auto makeTexture = [&](const TextureDesc& desc) -> Texture* {
+        const SizeAlign required = textureSizeAlign(device, desc);
+        const uint64_t aligned =
+            (textureCursor + required.alignment - 1) & ~(required.alignment - 1);
+        Result<Texture*> t = createTexture(device, desc, textureMemResult->gpu + aligned);
+        textureCursor = aligned + required.size;
+        return *t;
+    };
+
+    std::vector<Texture*> textures(workload::kBindTextureCount);
+    std::vector<std::array<uint8_t, 4>> colors(workload::kBindTextureCount);
+    std::vector<uint8_t> pixelBuffer(uint64_t{workload::kBindTextureSize} *
+                                     workload::kBindTextureSize * 4);
+
+    CommandBuffer* setupCommands = beginCommands(queue, &upload, "sbind.measure.setup");
+    for (uint32_t t = 0; t < workload::kBindTextureCount; ++t) {
+        const uint64_t draw = workload::splitmix64(workload::kSeed, {5000, t});
+        workload::unitRgba8(draw, colors[t].data());
+        colors[t][3] = 255;
+        for (uint32_t texel = 0; texel < workload::kBindTextureSize * workload::kBindTextureSize;
+             ++texel) {
+            std::memcpy(pixelBuffer.data() + uint64_t{texel} * 4, colors[t].data(), 4);
+        }
+        textures[t] =
+            makeTexture({.kind = TextureKind::Texture2D,
+                         .extent = {workload::kBindTextureSize, workload::kBindTextureSize, 1},
+                         .format = Format::RGBA8Unorm,
+                         .usage = TextureUsage::Sampled | TextureUsage::CopyDestination,
+                         .label = "sbind.source"});
+        const Suballocation staging = upload.allocate(pixelBuffer.size(), 256);
+        std::memcpy(staging.cpu, pixelBuffer.data(), pixelBuffer.size());
+        copyToTexture(setupCommands, textures[t],
+                      {.mipLevel = 0,
+                       .origin = {},
+                       .extent = {workload::kBindTextureSize, workload::kBindTextureSize, 1}},
+                      staging.gpu, {.bytesPerRow = uint64_t{workload::kBindTextureSize} * 4});
+        writeTextureSlot(table, kFirstTextureSlot + t, textures[t], {});
+    }
+
+    Texture* target =
+        makeTexture({.kind = TextureKind::Texture2D,
+                     .extent = {workload::kBindTargetWidth, workload::kBindTargetHeight, 1},
+                     .format = Format::RGBA8Unorm,
+                     .usage = TextureUsage::ColorAttachment | TextureUsage::CopySource,
+                     .label = "sbind.target"});
+
+    Result<Sampler*> samplerResult = createSampler(device, {.minFilter = FilterMode::Nearest,
+                                                            .magFilter = FilterMode::Nearest,
+                                                            .mipFilter = FilterMode::Nearest,
+                                                            .addressU = AddressMode::ClampToEdge,
+                                                            .addressV = AddressMode::ClampToEdge,
+                                                            .label = "sbind.sampler"});
+    if (!samplerResult) {
+        result.error = "sampler creation failed";
+        return result;
+    }
+    writeSamplerSlot(table, kSamplerSlot, *samplerResult);
+
+    Result<Pipeline*> pipelineResult = createGraphicsPipeline(
+        device, {.vertex = {.ir = stressShaderSource(), .entryPoint = "lmxQuadVs"},
+                 .pixel = {.ir = stressShaderSource(), .entryPoint = "lmxQuadFs"},
+                 .raster = {.topology = Topology::TriangleList,
+                            .colorTargets = std::array<ColorTargetDesc, 1>{ColorTargetDesc{
+                                .format = Format::RGBA8Unorm, .writeMask = 0xF}}},
+                 .label = "sbind.pipeline"});
+    if (!pipelineResult) {
+        result.error = "pipeline creation failed";
+        return result;
+    }
+    Pipeline* pipeline = *pipelineResult;
+
+    commitResidency(residency);
+    endCommands(setupCommands);
+    const std::array<CommandBuffer*, 1> setupList{setupCommands};
+    uint64_t fenceValue = 1;
+    submit(queue, setupList, fence, fenceValue);
+    waitSemaphore(fence, fenceValue);
+
+    result.endOfSetup = {.textureCreateCalls = workload::kBindTextureCount + 1,
+                         .bufferCreateCalls = 0,
+                         .samplerCreateCalls = 1,
+                         .pipelineCreateCalls = 1,
+                         .residentBytes = residentBytes(residency),
+                         .residentBytesIsMetalReported = true};
+
+    const uint32_t gridSize = static_cast<uint32_t>(std::lround(std::sqrt(double(drawCount))));
+    const float cellNdc = 2.0f / static_cast<float>(gridSize);
+
+    const uint32_t totalFrames = warmupFrames + measuredFrames;
+    result.perFrameTimedRegionNs.reserve(measuredFrames);
+    bool countersEverSet = false;
+    for (uint32_t frame = 0; frame < totalFrames; ++frame) {
+        root.reset();
+
+        // ---- BEGIN TIMED REGION (spec section 8; same clock and boundary as measureBindScaleRhi
+        // and the representative-graph adapters) -------------------------------------------------
+        const auto start = std::chrono::steady_clock::now();
+        CommandBuffer* commands = beginCommands(queue, &root, "sbind.measure.draws");
+        setBindlessTable(commands, table);
+        const std::array<ColorAttachment, 1> colorTargets{
+            ColorAttachment{.texture = target,
+                            .load = LoadAction::Clear,
+                            .store = StoreAction::Store,
+                            .clearColor = {0, 0, 0, 1}}};
+        beginRenderPass(commands, {.colorTargets = colorTargets, .label = "sbind.measure.pass"});
+        setPipeline(commands, pipeline);
+        setViewport(commands, {.x = 0,
+                               .y = 0,
+                               .width = static_cast<float>(workload::kBindTargetWidth),
+                               .height = static_cast<float>(workload::kBindTargetHeight)});
+        setScissor(commands, {.x = 0,
+                              .y = 0,
+                              .width = workload::kBindTargetWidth,
+                              .height = workload::kBindTargetHeight});
+        setCullMode(commands, CullMode::None);
+        for (uint32_t d = 0; d < drawCount; ++d) {
+            const uint32_t col = d % gridSize;
+            const uint32_t row = d / gridSize;
+            const uint32_t textureIndex = workload::bindTextureIndexForDraw(d);
+            const QuadRoot vertexRoot{.offset = {-1.0f + cellNdc * (static_cast<float>(col) + 0.5f),
+                                                 1.0f - cellNdc * (static_cast<float>(row) + 0.5f)},
+                                      .halfExtent = {cellNdc * 0.5f, cellNdc * 0.5f}};
+            const QuadPixelRoot pixelRoot{.textures = bindlessTableAddress(table),
+                                          .samplers = bindlessTableAddress(table),
+                                          .textureSlot = kFirstTextureSlot + textureIndex,
+                                          .samplerSlot = kSamplerSlot,
+                                          .tint = {1.0f, 1.0f, 1.0f, 1.0f}};
+            const GpuAddress vertexAddress = pushRoot(commands, vertexRoot);
+            const GpuAddress pixelAddress = pushRoot(commands, pixelRoot);
+            draw(commands, vertexAddress, pixelAddress, 6);
+        }
+        endRenderPass(commands);
+        endCommands(commands);
+        const CommandBufferStats frameStats = commandBufferStats(commands);
+        const std::array<CommandBuffer*, 1> list{commands};
+        ++fenceValue;
+        submit(queue, list, fence, fenceValue);
+        const auto end = std::chrono::steady_clock::now();
+        // ---- END TIMED REGION -------------------------------------------------------------------
+
+        waitSemaphore(fence, fenceValue);
+        if (frame >= warmupFrames) {
+            result.perFrameTimedRegionNs.push_back(static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
+            const FrameBindingCounters frameCounters{.setAddressCalls = frameStats.setAddressCalls,
+                                                     .pushRootCalls = frameStats.rootCalls,
+                                                     .pushRootBytes = frameStats.rootBytes,
+                                                     .barrierCalls = frameStats.barrierCalls};
+            if (!countersEverSet) {
+                result.counters = frameCounters;
+                countersEverSet = true;
+            } else if (result.counters.setAddressCalls != frameCounters.setAddressCalls ||
+                       result.counters.pushRootCalls != frameCounters.pushRootCalls) {
+                result.countersStableAcrossFrames = false;
+            }
+        }
+    }
+
+    result.endOfRun = result.endOfSetup;
+    result.endOfRun.residentBytes = residentBytes(residency);
+    result.ok = true;
+
+    for (uint32_t slot = 0; slot < workload::kBindTextureCount + 4; ++slot) {
+        clearBindlessSlot(table, slot);
+    }
+    for (Texture* texture : textures) {
+        destroyTexture(device, texture);
+    }
+    destroyTexture(device, target);
+    destroyPipeline(device, pipeline);
+    destroySampler(device, *samplerResult);
+    destroyBindlessTable(device, table);
+    destroySemaphore(device, fence);
+    deallocate(device, *readbackResult);
+    deallocate(device, *textureMemResult);
+    deallocate(device, *uploadStorageResult);
+    deallocate(device, *rootStorageResult);
+    destroyResidencySet(device, residency);
+    destroyDevice(device);
+
+    return result;
 }
 
 } // namespace lmx::noapi::bench

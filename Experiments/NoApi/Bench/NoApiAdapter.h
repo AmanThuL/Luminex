@@ -6,6 +6,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Bench/Metrics.h"
 #include "Bench/Runner.h"
 #include "Workload/RepresentativeGraph.h"
 
@@ -40,6 +41,19 @@ public:
     bool setup() override;
     void runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) override;
     void teardown() override;
+    uint64_t lastFrameTimedRegionNs() const override { return m_lastFrameTimedRegionNs; }
+    FrameBindingCounters lastFrameBindingCounters() const override { return m_lastFrameCounters; }
+    AllocationSnapshot allocationSnapshot() const override;
+
+    /// @copydoc RhiAdapter::PipelineCompileRecord
+    struct PipelineCompileRecord {
+        std::string label;
+        uint64_t coldNs = 0;
+        bool loadedMetallib = false;
+    };
+    const std::vector<PipelineCompileRecord>& pipelineCompileTimes() const {
+        return m_pipelineCompileTimes;
+    }
 
 private:
     // One derived stage dependency, emitted immediately before the pass it is indexed by. The whole
@@ -169,6 +183,21 @@ private:
     std::array<StageBarrier, kPassCount> m_barrierBeforePass{};
 
     bool m_torndown = false;
+
+    // M5.1 Stage 4 instrumentation (spec sections 8-9): populated at the end of every runFrame()
+    // from counters the prototype already maintains at their choke points (CommandBuffer.cpp's
+    // `stats`, BindlessTable.cpp's write counters) -- reading them here is a handful of integer
+    // copies, not a computation, so it adds no measurable work relative to what was already tracked
+    // inside the timed region.
+    uint64_t m_lastFrameTimedRegionNs = 0;
+    FrameBindingCounters m_lastFrameCounters{};
+    // Bindless table write traffic is cumulative on BindlessTable (Metal4Internal.h), so a
+    // per-frame count is this frame's post-write total minus the total this adapter observed at the
+    // previous sample -- taken once at setup() (after every one-time table write) and again after
+    // every frame.
+    uint64_t m_tableWriteCallsAtLastSample = 0;
+    uint64_t m_tableWriteBytesAtLastSample = 0;
+    std::vector<PipelineCompileRecord> m_pipelineCompileTimes;
 };
 
 } // namespace lmx::noapi::bench

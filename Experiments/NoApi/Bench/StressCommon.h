@@ -7,6 +7,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Bench/Metrics.h"
 #include "Bench/StressRunner.h"
 #include "Workload/StressCases.h"
 
@@ -44,5 +45,15 @@ std::vector<CaseResult> runIndirectCasesRhi(const std::string& caseId);
 std::vector<CaseResult> runIndirectCasesNoApi(const std::string& caseId);
 int runMisuseChildRhi(const std::string& caseId);
 int runMisuseChildNoApi(const std::string& caseId);
+
+// M5.1 Stage 4 measurement (plan Stage 4 item 4-5, spec section 8): S-BIND is also a timed workload
+// ("its setup/per-frame split is documented" -- BindRhi.cpp/BindNoApi.cpp's header comments). Each
+// runs `warmupFrames` untimed encode+submit+wait iterations followed by `measuredFrames` timed ones
+// over the same frozen `drawCount`-draw scene, reusing exactly the one-time setup (textures,
+// target, pipeline, sampler, and the per-draw param buffers) both header comments already document
+// as outside any timed region.
+MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames, uint32_t measuredFrames);
+MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
+                                  uint32_t measuredFrames);
 
 } // namespace lmx::noapi::bench

@@ -114,14 +114,17 @@
 #include "Workload/ProdValues.h"
 
 #include "Core/Assert.h"
+#include "RHI/Validate.h"
 #include "Render/GraphDump.h"
 #include "Render/Renderer.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <iostream>
 #include <map>
@@ -181,6 +184,26 @@ rhi::BufferDesc manifestBufferDesc(const workload::BufferResource& resource) {
 //======================================================================================================================
 rhi::TextureSubresourceRange mipRange(uint32_t level) {
     return {.baseMipLevel = level, .mipLevelCount = 1};
+}
+
+//======================================================================================================================
+// M5.1 Stage 4 allocation instrumentation (spec section 9): the public RHI exposes only a texture's
+// requested dimensions/format/mip/layer counts, never Metal's padded allocated size the way the
+// prototype's AllocationRecord does -- see Bench/Metrics.h's AllocationSnapshot header comment for
+// why this is a documented, unavoidable asymmetry rather than a like-for-like measurement. This
+// sums the full mip chain's tightly packed byte footprint from those requested dimensions, times
+// the array-layer count (six for a cubemap), for every format the manifest actually uses -- none of
+// which are block-compressed, so bytesPerPixel's tightly-packed formula is exact here even though
+// it would undercount a BC1 texture.
+uint64_t textureRequestedBytes(const rhi::Texture& texture) {
+    const uint32_t bytesPerTexel = rhi::bytesPerPixel(texture.format());
+    uint64_t total = 0;
+    for (uint32_t mip = 0; mip < texture.mipLevels(); ++mip) {
+        const uint32_t width = rhi::mipExtent(texture.width(), mip);
+        const uint32_t height = rhi::mipExtent(texture.height(), mip);
+        total += uint64_t{width} * height * bytesPerTexel;
+    }
+    return total * texture.arrayLayers();
 }
 
 //======================================================================================================================
@@ -416,6 +439,25 @@ bool RhiAdapter::setup() {
         }
         m_diagSceneColor = std::move(*buffer);
     }
+
+    // M5.1 Stage 4 (spec section 9's allocation dimension): deterministic, one-time setup creation
+    // counts derivable from the manifest and this adapter's own fixed structure.
+    // createShadowObjectUniformBuffers() and every runFrame() buffer creation already incremented
+    // m_creationCounters.bufferCreateCalls at their own real call sites (createShadowObjectUniform
+    // Buffers above, encodeScene's per-draw P04 block, refreshEmissiveStaging's R10 recreation), so
+    // this adds only what is counted nowhere else: the manifest's own textures/buffers, the
+    // material/IBL textures, the shared quad, and the samplers -- all created exactly once, above,
+    // unconditionally.
+    const workload::RepresentativeGraph& manifestForCounting = workload::representativeGraph();
+    m_creationCounters.textureCreateCalls += manifestForCounting.textures.size();
+    m_creationCounters.textureCreateCalls += uint64_t{workload::kMaterialCount} * 4 +
+                                             (workload::kMaterialCount - 1); // +emissive, mat!=0
+    m_creationCounters.textureCreateCalls += 3; // irradiance, prefilteredEnv, dfgLut
+    m_creationCounters.bufferCreateCalls +=
+        manifestForCounting.buffers.size() - 1;  // R10 realised as m_r10Ring, not one buffer
+    m_creationCounters.bufferCreateCalls += 2;   // shared quad: vertex + index
+    m_creationCounters.samplerCreateCalls += 3;  // linear, shadow, ibl
+    m_creationCounters.pipelineCreateCalls += 8; // 3 graphics (shadow/scene/composite) + 5 compute
     return true;
 }
 
@@ -437,6 +479,7 @@ bool RhiAdapter::createShadowObjectUniformBuffers() {
             return false;
         }
         m_shadowObjectUniformBuffers[draw] = std::move(*buffer);
+        m_creationCounters.bufferCreateCalls += 1;
     }
     return true;
 }
@@ -623,14 +666,31 @@ bool RhiAdapter::createResources() {
 
 //======================================================================================================================
 bool RhiAdapter::createPipelines() {
+    // M5.1 Stage 4 (spec section 8's pipeline dimension, descriptive only): loadShaderLibrary is
+    // where the real compile cost lives -- creating a rhi::GraphicsPipeline/ComputePipeline from an
+    // already-loaded library is comparatively cheap state assembly -- so this is timed here, once
+    // per shader, in this adapter's one-time setup(). "Cold" per the spec's own definition (first
+    // creation in a fresh process) holds by construction: createPipelines() runs exactly once per
+    // process. metallib-vs-runtime-MSL is read off the same file-existence check
+    // NoApiAdapter.cpp's readShader() uses, rather than a query this RHI does not expose.
     const auto load = [&](std::string_view path, std::unique_ptr<rhi::ShaderLibrary>& out) {
+        const auto start = std::chrono::steady_clock::now();
         auto library = m_device->loadShaderLibrary(path);
+        const auto end = std::chrono::steady_clock::now();
         if (!library) {
             std::cerr << "RhiAdapter: failed to load '" << path << "': " << library.error().message
                       << "\n";
             return false;
         }
         out = std::move(*library);
+        std::error_code errorCode;
+        const bool loadedMetallib =
+            std::filesystem::exists(std::string(path) + ".metallib", errorCode);
+        m_pipelineCompileTimes.push_back(
+            {.label = std::string(path),
+             .coldNs = static_cast<uint64_t>(
+                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()),
+             .loadedMetallib = loadedMetallib});
         return true;
     };
     if (!load("Shaders/ShadowPass", m_shadowLibrary) ||
@@ -985,6 +1045,53 @@ void RhiAdapter::refreshEmissiveStaging(uint32_t frameIndex) {
         bytes.data());
     LMX_ASSERT(buffer.has_value(), buffer.error().message);
     m_r10Ring[slot] = std::move(*buffer);
+    m_creationCounters.bufferCreateCalls += 1;
+    // Counted as per-frame binding delivery (spec section 9) when this recreation runs inside
+    // runFrame()'s timed region; the three placeholder calls setup() makes are absorbed by
+    // runFrame()'s own m_frameCounters reset before the first frame is ever reported.
+    m_frameCounters.bufferCreateCalls += 1;
+    m_frameCounters.bufferCreateBytes += workload::kEmissiveRingSlotSize;
+}
+
+//======================================================================================================================
+// M5.1 Stage 4 binding-traffic instrumentation (RhiAdapter.h's header comment on this group): each
+// forwards to the real rhi::CommandList call and bumps m_frameCounters by one, matching the
+// prototype's own choke-point counting in Source/CommandBuffer.cpp.
+void RhiAdapter::bindTextureCounted(rhi::CommandList& commands, uint32_t slot,
+                                    rhi::Texture& texture, const rhi::TextureViewDesc& view) {
+    commands.bindTexture(slot, texture, view);
+    m_frameCounters.bindCalls += 1;
+}
+
+void RhiAdapter::bindBufferCounted(rhi::CommandList& commands, uint32_t slot, rhi::Buffer& buffer) {
+    commands.bindBuffer(slot, buffer);
+    m_frameCounters.bindCalls += 1;
+}
+
+void RhiAdapter::bindSamplerCounted(rhi::CommandList& commands, uint32_t slot,
+                                    rhi::Sampler& sampler) {
+    commands.bindSampler(slot, sampler);
+    m_frameCounters.bindCalls += 1;
+}
+
+void RhiAdapter::bindStorageBufferCounted(rhi::CommandList& commands, uint32_t slot,
+                                          rhi::Buffer& buffer, rhi::StorageAccess access) {
+    commands.bindStorageBuffer(slot, buffer, access);
+    m_frameCounters.bindCalls += 1;
+}
+
+void RhiAdapter::bindStorageTextureCounted(rhi::CommandList& commands, uint32_t slot,
+                                           rhi::Texture& texture, const rhi::TextureViewDesc& view,
+                                           rhi::StorageAccess access) {
+    commands.bindStorageTexture(slot, texture, view, access);
+    m_frameCounters.bindCalls += 1;
+}
+
+void RhiAdapter::setUniformsCounted(rhi::CommandList& commands, uint32_t slot, const void* data,
+                                    uint64_t size) {
+    commands.setUniforms(slot, data, size);
+    m_frameCounters.setUniformsCalls += 1;
+    m_frameCounters.setUniformsBytes += size;
 }
 
 //======================================================================================================================
@@ -1017,10 +1124,10 @@ void RhiAdapter::encodeShadow(rhi::CommandList& commands) {
                               .label = "lmx.noapi.bench.shadow"});
     commands.bindPipeline(*m_shadowPipeline);
     for (uint32_t draw = 0; draw < workload::kDrawCount; ++draw) {
-        commands.bindBuffer(kVertexBufferSlot, *m_quadVertexBuffer);
+        bindBufferCounted(commands, kVertexBufferSlot, *m_quadVertexBuffer);
         // Frame-invariant (this file's header comment's uniform-ring finding): built once in
         // createShadowObjectUniformBuffers().
-        commands.bindBuffer(kObjectUniformsSlot, *m_shadowObjectUniformBuffers[draw]);
+        bindBufferCounted(commands, kObjectUniformsSlot, *m_shadowObjectUniformBuffers[draw]);
         commands.drawIndexed(*m_quadIndexBuffer, 6);
     }
     commands.endRenderPass();
@@ -1037,13 +1144,13 @@ void RhiAdapter::encodeScene(rhi::CommandList& commands, const glm::mat4& viewPr
                               .storeDepth = false,
                               .label = "lmx.noapi.bench.scene"});
     commands.bindPipeline(*m_scenePipeline);
-    commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
-    commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
-    commands.bindSampler(kIblSamplerSlot, *m_iblSampler);
-    commands.bindTexture(kShadowTextureSlot, *m_r1Shadow);
-    commands.bindTexture(kIrradianceTextureSlot, *m_irradiance);
-    commands.bindTexture(kPrefilteredEnvTextureSlot, *m_prefilteredEnv);
-    commands.bindTexture(kDfgLutTextureSlot, *m_dfgLut);
+    bindSamplerCounted(commands, kLinearSamplerSlot, *m_linearSampler);
+    bindSamplerCounted(commands, kShadowSamplerSlot, *m_shadowSampler);
+    bindSamplerCounted(commands, kIblSamplerSlot, *m_iblSampler);
+    bindTextureCounted(commands, kShadowTextureSlot, *m_r1Shadow);
+    bindTextureCounted(commands, kIrradianceTextureSlot, *m_irradiance);
+    bindTextureCounted(commands, kPrefilteredEnvTextureSlot, *m_prefilteredEnv);
+    bindTextureCounted(commands, kDfgLutTextureSlot, *m_dfgLut);
 
     PassUniforms passUniforms{};
     passUniforms.viewProj = viewProj;
@@ -1055,7 +1162,7 @@ void RhiAdapter::encodeScene(rhi::CommandList& commands, const glm::mat4& viewPr
     passUniforms.lights[1] = {.strength = glm::vec3(0.0f), .direction = glm::vec3(0, -1, 0)};
     passUniforms.lights[2] = {.strength = glm::vec3(0.0f), .direction = glm::vec3(0, -1, 0)};
     passUniforms.shadowFilter = kShadowFilterPcf;
-    commands.setUniforms(kPassUniformsSlot, &passUniforms, sizeof(passUniforms));
+    setUniformsCounted(commands, kPassUniformsSlot, &passUniforms, sizeof(passUniforms));
 
     for (uint32_t draw = 0; draw < workload::kDrawCount; ++draw) {
         const uint32_t material = workload::drawMaterialIndex(draw);
@@ -1078,13 +1185,13 @@ void RhiAdapter::encodeScene(rhi::CommandList& commands, const glm::mat4& viewPr
         uniforms.emissive = glm::vec3(params.emissiveScale);
 
         const MaterialTextures& textures = m_materials[material];
-        commands.bindTexture(kDiffuseTextureSlot, *textures.baseColor);
-        commands.bindTexture(kNormalTextureSlot, *textures.normal);
-        commands.bindTexture(kMetallicRoughnessTextureSlot, *textures.metallicRoughness);
-        commands.bindTexture(kOcclusionTextureSlot, *textures.occlusion);
-        commands.bindTexture(kEmissiveTextureSlot,
-                             material == 0 ? *m_material0Emissive : *textures.emissive);
-        commands.bindBuffer(kVertexBufferSlot, *m_quadVertexBuffer);
+        bindTextureCounted(commands, kDiffuseTextureSlot, *textures.baseColor);
+        bindTextureCounted(commands, kNormalTextureSlot, *textures.normal);
+        bindTextureCounted(commands, kMetallicRoughnessTextureSlot, *textures.metallicRoughness);
+        bindTextureCounted(commands, kOcclusionTextureSlot, *textures.occlusion);
+        bindTextureCounted(commands, kEmissiveTextureSlot,
+                           material == 0 ? *m_material0Emissive : *textures.emissive);
+        bindBufferCounted(commands, kVertexBufferSlot, *m_quadVertexBuffer);
         // The camera orbits every frame, so mvp -- and therefore the whole block -- is rebuilt and
         // reuploaded every frame (this file's header comment's uniform-ring finding); the previous
         // frame's buffer for this draw index is safe to replace because runFrame() waits the device
@@ -1093,7 +1200,13 @@ void RhiAdapter::encodeScene(rhi::CommandList& commands, const glm::mat4& viewPr
             {.size = sizeof(uniforms), .label = "lmx.noapi.bench.scene.objectUniforms"}, &uniforms);
         LMX_ASSERT(buffer.has_value(), buffer.error().message);
         m_sceneObjectUniformBuffers[draw] = std::move(*buffer);
-        commands.bindBuffer(kObjectUniformsSlot, *m_sceneObjectUniformBuffers[draw]);
+        // Per-frame b1 buffer creation counted as binding delivery (spec section 8/9): this is the
+        // adapter's only legal way to vary P04's per-draw uniforms every frame (this file's header
+        // comment's uniform-ring finding), so it is binding traffic, not incidental setup.
+        m_creationCounters.bufferCreateCalls += 1;
+        m_frameCounters.bufferCreateCalls += 1;
+        m_frameCounters.bufferCreateBytes += sizeof(uniforms);
+        bindBufferCounted(commands, kObjectUniformsSlot, *m_sceneObjectUniformBuffers[draw]);
         commands.drawIndexed(*m_quadIndexBuffer, 6);
     }
     commands.endRenderPass();
@@ -1103,11 +1216,12 @@ void RhiAdapter::encodeScene(rhi::CommandList& commands, const glm::mat4& viewPr
 void RhiAdapter::encodeHistogramAccumulate(rhi::CommandList& commands) {
     commands.beginComputePass("lmx.noapi.bench.histogram.accumulate");
     commands.bindComputePipeline(*m_histAccumulatePipeline);
-    commands.bindTexture(kHistTextureSlot, *m_r2SceneColor);
-    commands.bindBuffer(kHistExposureSlot, *m_r5Exposure);
-    commands.bindStorageBuffer(kHistBufferSlot, *m_r4Histogram, rhi::StorageAccess::ReadWrite);
+    bindTextureCounted(commands, kHistTextureSlot, *m_r2SceneColor);
+    bindBufferCounted(commands, kHistExposureSlot, *m_r5Exposure);
+    bindStorageBufferCounted(commands, kHistBufferSlot, *m_r4Histogram,
+                             rhi::StorageAccess::ReadWrite);
     const HistParams params{kExposureLogLuminanceMin, kExposureLogLuminanceMax};
-    commands.setUniforms(kHistParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kHistParamsSlot, &params, sizeof(params));
     commands.dispatch(workload::kSceneWidth / 8, workload::kSceneHeight / 8, 1);
     commands.endComputePass();
 }
@@ -1116,8 +1230,8 @@ void RhiAdapter::encodeHistogramAccumulate(rhi::CommandList& commands) {
 void RhiAdapter::encodeHistogramResolve(rhi::CommandList& commands) {
     commands.beginComputePass("lmx.noapi.bench.histogram.resolve");
     commands.bindComputePipeline(*m_histResolvePipeline);
-    commands.bindStorageBuffer(kHistBufferSlot, *m_r4Histogram, rhi::StorageAccess::Read);
-    commands.bindStorageBuffer(kHistExposureSlot, *m_r5Exposure, rhi::StorageAccess::Write);
+    bindStorageBufferCounted(commands, kHistBufferSlot, *m_r4Histogram, rhi::StorageAccess::Read);
+    bindStorageBufferCounted(commands, kHistExposureSlot, *m_r5Exposure, rhi::StorageAccess::Write);
     const ResolveParams params{.lowPercentile = 50.0f,
                                .highPercentile = 95.0f,
                                .targetGrey = 0.18f,
@@ -1126,7 +1240,7 @@ void RhiAdapter::encodeHistogramResolve(rhi::CommandList& commands) {
                                .compensationEv = 0.0f,
                                .logLuminanceMin = kExposureLogLuminanceMin,
                                .logLuminanceMax = kExposureLogLuminanceMax};
-    commands.setUniforms(kHistParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kHistParamsSlot, &params, sizeof(params));
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 }
@@ -1135,12 +1249,12 @@ void RhiAdapter::encodeHistogramResolve(rhi::CommandList& commands) {
 void RhiAdapter::encodeBloomThreshold(rhi::CommandList& commands) {
     commands.beginComputePass("lmx.noapi.bench.bloom.threshold");
     commands.bindComputePipeline(*m_bloomThresholdPipeline);
-    commands.bindTexture(kBloomThresholdSrcSlot, *m_r2SceneColor);
-    commands.bindStorageTexture(kBloomThresholdDstSlot, *m_r6BloomA,
-                                rhi::TextureViewDesc{.range = mipRange(0)},
-                                rhi::StorageAccess::Write);
+    bindTextureCounted(commands, kBloomThresholdSrcSlot, *m_r2SceneColor);
+    bindStorageTextureCounted(commands, kBloomThresholdDstSlot, *m_r6BloomA,
+                              rhi::TextureViewDesc{.range = mipRange(0)},
+                              rhi::StorageAccess::Write);
     const ThresholdParams params{1.0f};
-    commands.setUniforms(kBloomThresholdParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kBloomThresholdParamsSlot, &params, sizeof(params));
     commands.dispatch(workload::kBloomExtent / 8, workload::kBloomExtent / 8, 1);
     commands.endComputePass();
 }
@@ -1151,12 +1265,12 @@ void RhiAdapter::encodeBloomDown(rhi::CommandList& commands, rhi::Texture& targe
                                  const rhi::TextureSubresourceRange& dstRange, uint32_t dstExtent) {
     commands.beginComputePass("lmx.noapi.bench.bloom.down");
     commands.bindComputePipeline(*m_bloomDownPipeline);
-    commands.bindStorageTexture(kBloomDownSrcSlot, target, rhi::TextureViewDesc{.range = srcRange},
-                                rhi::StorageAccess::Read);
-    commands.bindStorageTexture(kBloomDownDstSlot, target, rhi::TextureViewDesc{.range = dstRange},
-                                rhi::StorageAccess::Write);
+    bindStorageTextureCounted(commands, kBloomDownSrcSlot, target,
+                              rhi::TextureViewDesc{.range = srcRange}, rhi::StorageAccess::Read);
+    bindStorageTextureCounted(commands, kBloomDownDstSlot, target,
+                              rhi::TextureViewDesc{.range = dstRange}, rhi::StorageAccess::Write);
     const DownsampleParams params{srcExtent, srcExtent, dstExtent, dstExtent};
-    commands.setUniforms(kBloomDownParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kBloomDownParamsSlot, &params, sizeof(params));
     commands.dispatch((dstExtent + 7) / 8, (dstExtent + 7) / 8, 1);
     commands.endComputePass();
 }
@@ -1170,15 +1284,14 @@ void RhiAdapter::encodeBloomUp(rhi::CommandList& commands, rhi::Texture& baseTex
                                const rhi::TextureSubresourceRange& dstRange, uint32_t dstExtent) {
     commands.beginComputePass("lmx.noapi.bench.bloom.up");
     commands.bindComputePipeline(*m_bloomUpPipeline);
-    commands.bindStorageTexture(kBloomUpBaseSlot, baseTexture,
-                                rhi::TextureViewDesc{.range = baseRange}, rhi::StorageAccess::Read);
-    commands.bindStorageTexture(kBloomUpSmallSlot, smallTexture,
-                                rhi::TextureViewDesc{.range = smallRange},
-                                rhi::StorageAccess::Read);
-    commands.bindStorageTexture(kBloomUpDstSlot, dstTexture,
-                                rhi::TextureViewDesc{.range = dstRange}, rhi::StorageAccess::Write);
+    bindStorageTextureCounted(commands, kBloomUpBaseSlot, baseTexture,
+                              rhi::TextureViewDesc{.range = baseRange}, rhi::StorageAccess::Read);
+    bindStorageTextureCounted(commands, kBloomUpSmallSlot, smallTexture,
+                              rhi::TextureViewDesc{.range = smallRange}, rhi::StorageAccess::Read);
+    bindStorageTextureCounted(commands, kBloomUpDstSlot, dstTexture,
+                              rhi::TextureViewDesc{.range = dstRange}, rhi::StorageAccess::Write);
     const UpsampleParams params{smallExtent, smallExtent, dstExtent, dstExtent};
-    commands.setUniforms(kBloomUpParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kBloomUpParamsSlot, &params, sizeof(params));
     commands.dispatch((dstExtent + 7) / 8, (dstExtent + 7) / 8, 1);
     commands.endComputePass();
 }
@@ -1191,11 +1304,11 @@ void RhiAdapter::encodeComposite(rhi::CommandList& commands) {
                               .depthTarget = nullptr,
                               .label = "lmx.noapi.bench.composite"});
     commands.bindPipeline(*m_compositePipeline);
-    commands.bindTexture(kCompositeSceneSlot, *m_r2SceneColor);
-    commands.bindTexture(kCompositeBloomSlot, *m_r7BloomB);
-    commands.bindBuffer(kCompositeExposureSlot, *m_r5Exposure);
+    bindTextureCounted(commands, kCompositeSceneSlot, *m_r2SceneColor);
+    bindTextureCounted(commands, kCompositeBloomSlot, *m_r7BloomB);
+    bindBufferCounted(commands, kCompositeExposureSlot, *m_r5Exposure);
     const CompositeParams params{0.2f};
-    commands.setUniforms(kCompositeParamsSlot, &params, sizeof(params));
+    setUniformsCounted(commands, kCompositeParamsSlot, &params, sizeof(params));
     commands.draw(3);
     commands.endRenderPass();
 }
@@ -1226,12 +1339,24 @@ void RhiAdapter::encodeReadback(rhi::CommandList& commands) {
 
 //======================================================================================================================
 void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) {
-    // Stands in for a per-frame ring rewrite (this file's header comment); documented as inside the
-    // timed region.
-    refreshEmissiveStaging(frameIndex);
+    m_frameCounters = FrameBindingCounters{};
 
     // ---- BEGIN TIMED REGION -----------------------------------------------------------------
+    // M5.1 Stage 4 (spec section 8): std::chrono::steady_clock on both adapters, identically. The
+    // production RHI bundles the frame-slot pacing wait inside beginFrame() itself with no separate
+    // hook to time around, so this adapter's clock necessarily starts at the top of the call that
+    // performs it -- see this file's header comment and the M5.1 evidence document for why that is
+    // an accepted, reported asymmetry rather than a silent one: this bench's own waitIdle() at the
+    // end of every frame (below, outside the region) means the pacing wait it bundles is always
+    // trivially satisfied, so its cost inside the timed sample is negligible in practice.
+    const auto timedRegionStart = std::chrono::steady_clock::now();
     rhi::CommandList& commands = m_device->beginFrame();
+
+    // Stands in for a per-frame ring rewrite (this file's header comment); moved here, after
+    // beginFrame(), to match that comment's own contract ("runs inside the timed region ... between
+    // beginFrame() and endFrame()") -- it previously ran before beginFrame(), outside the region
+    // the file's own documentation already claimed for it.
+    refreshEmissiveStaging(frameIndex);
 
     const workload::CameraPose camera = workload::cameraForFrame(frameIndex);
     const glm::mat4 view = glm::lookAt(glm::vec3(camera.eyeX, camera.eyeY, camera.eyeZ),
@@ -1251,6 +1376,7 @@ void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback
                 const auto& bufferOp = std::get<BufferBarrierOp>(op);
                 commands.bufferBarrier(*bufferOp.buffer, bufferOp.from, bufferOp.to);
             }
+            m_frameCounters.barrierCalls += 1;
         }
     };
 
@@ -1288,7 +1414,13 @@ void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback
     encodeReadback(commands); // P13
 
     m_device->endFrame(nullptr);
+    const auto timedRegionEnd = std::chrono::steady_clock::now();
     // ---- END TIMED REGION -------------------------------------------------------------------
+
+    m_lastFrameTimedRegionNs = static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(timedRegionEnd - timedRegionStart)
+            .count());
+    m_lastFrameCounters = m_frameCounters;
 
     m_device->waitIdle();
     if (m_diagScene) {
@@ -1298,6 +1430,66 @@ void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback
     }
     outReadback.resize(workload::kReadbackBufferSize);
     m_r9Readback->readback(outReadback.data(), outReadback.size());
+}
+
+//======================================================================================================================
+AllocationSnapshot RhiAdapter::allocationSnapshot() const {
+    if (m_device == nullptr) {
+        return {};
+    }
+    AllocationSnapshot snapshot{
+        .textureCreateCalls = static_cast<uint32_t>(m_creationCounters.textureCreateCalls),
+        .bufferCreateCalls = static_cast<uint32_t>(m_creationCounters.bufferCreateCalls),
+        .samplerCreateCalls = static_cast<uint32_t>(m_creationCounters.samplerCreateCalls),
+        .pipelineCreateCalls = static_cast<uint32_t>(m_creationCounters.pipelineCreateCalls),
+        .residentBytesIsMetalReported = false,
+    };
+
+    uint64_t bytes = 0;
+    const auto addTexture = [&](const rhi::Texture* texture) {
+        if (texture != nullptr) {
+            bytes += textureRequestedBytes(*texture);
+        }
+    };
+    const auto addBuffer = [&](const rhi::Buffer* buffer) {
+        if (buffer != nullptr) {
+            bytes += buffer->size();
+        }
+    };
+
+    for (const rhi::Texture* texture :
+         {m_r1Shadow.get(), m_r2SceneColor.get(), m_r3SceneDepth.get(), m_r6BloomA.get(),
+          m_r7BloomB.get(), m_r8Out.get(), m_material0Emissive.get(), m_irradiance.get(),
+          m_prefilteredEnv.get(), m_dfgLut.get()}) {
+        addTexture(texture);
+    }
+    for (const MaterialTextures& material : m_materials) {
+        addTexture(material.baseColor.get());
+        addTexture(material.normal.get());
+        addTexture(material.metallicRoughness.get());
+        addTexture(material.occlusion.get());
+        addTexture(material.emissive.get());
+    }
+    addBuffer(m_r4Histogram.get());
+    addBuffer(m_r5Exposure.get());
+    addBuffer(m_r9Readback.get());
+    addBuffer(m_quadVertexBuffer.get());
+    addBuffer(m_quadIndexBuffer.get());
+    for (const auto& ring : m_r10Ring) {
+        addBuffer(ring.get());
+    }
+    for (const auto& buffer : m_shadowObjectUniformBuffers) {
+        addBuffer(buffer.get());
+    }
+    for (const auto& buffer : m_sceneObjectUniformBuffers) {
+        addBuffer(buffer.get());
+    }
+    if (m_diagScene) {
+        addBuffer(m_diagSceneColor.get());
+    }
+
+    snapshot.residentBytes = bytes;
+    return snapshot;
 }
 
 //======================================================================================================================
