@@ -42,7 +42,9 @@ uint16_t floatToHalf(float value) {
 
 //======================================================================================================================
 // A plausible half-float radiance value in [0, 2) from a splitmix64 draw.
-uint16_t radianceHalf(uint64_t draw) { return floatToHalf(unitFloat(draw) * 2.0f); }
+uint16_t radianceHalf(uint64_t draw) {
+    return floatToHalf(unitFloat(draw) * 2.0f);
+}
 
 //======================================================================================================================
 MipLevel generateBaseLevel(uint32_t material, MaterialTextureSlot slot) {
@@ -51,8 +53,7 @@ MipLevel generateBaseLevel(uint32_t material, MaterialTextureSlot slot) {
     for (uint32_t y = 0; y < level.height; ++y) {
         for (uint32_t x = 0; x < level.width; ++x) {
             const uint32_t texel = y * level.width + x;
-            const uint64_t draw =
-                splitmix64(kSeed, {material, static_cast<uint64_t>(slot), texel});
+            const uint64_t draw = splitmix64(kSeed, {material, static_cast<uint64_t>(slot), texel});
             uint8_t bytes[4];
             unitRgba8(draw, bytes);
             const size_t index = (static_cast<size_t>(y) * level.width + x) * 4;
@@ -161,18 +162,61 @@ QuadGeometry sharedQuad() {
     constexpr float kHalfExtent = 0.5f;
     QuadGeometry quad;
     // +Y normal, CCW winding when viewed from above, matching makePlane's convention
-    // (Source/Engine/GeometryGenerator.cpp) restated here without an Engine dependency.
+    // (Source/Render/Mesh.cpp's addFace: "cross(u, v) == normal gives every generated face an
+    // outward CCW winding") restated here without a Render dependency. The index order below is
+    // what actually delivers that winding for these four corners: cross(v2 - v0, v1 - v0) and
+    // cross(v3 - v0, v2 - v0) both work out to +Y, matching addFace's own convention exactly.
     quad.vertices = {
-        QuadVertex{.px = -kHalfExtent, .py = 0.0f, .pz = -kHalfExtent, .nx = 0, .ny = 1, .nz = 0,
-                   .tx = 1, .ty = 0, .tz = 0, .tw = 1, .u = 0, .v = 0},
-        QuadVertex{.px = kHalfExtent, .py = 0.0f, .pz = -kHalfExtent, .nx = 0, .ny = 1, .nz = 0,
-                   .tx = 1, .ty = 0, .tz = 0, .tw = 1, .u = 1, .v = 0},
-        QuadVertex{.px = kHalfExtent, .py = 0.0f, .pz = kHalfExtent, .nx = 0, .ny = 1, .nz = 0,
-                   .tx = 1, .ty = 0, .tz = 0, .tw = 1, .u = 1, .v = 1},
-        QuadVertex{.px = -kHalfExtent, .py = 0.0f, .pz = kHalfExtent, .nx = 0, .ny = 1, .nz = 0,
-                   .tx = 1, .ty = 0, .tz = 0, .tw = 1, .u = 0, .v = 1},
+        QuadVertex{.px = -kHalfExtent,
+                   .py = 0.0f,
+                   .pz = -kHalfExtent,
+                   .nx = 0,
+                   .ny = 1,
+                   .nz = 0,
+                   .tx = 1,
+                   .ty = 0,
+                   .tz = 0,
+                   .tw = 1,
+                   .u = 0,
+                   .v = 0},
+        QuadVertex{.px = kHalfExtent,
+                   .py = 0.0f,
+                   .pz = -kHalfExtent,
+                   .nx = 0,
+                   .ny = 1,
+                   .nz = 0,
+                   .tx = 1,
+                   .ty = 0,
+                   .tz = 0,
+                   .tw = 1,
+                   .u = 1,
+                   .v = 0},
+        QuadVertex{.px = kHalfExtent,
+                   .py = 0.0f,
+                   .pz = kHalfExtent,
+                   .nx = 0,
+                   .ny = 1,
+                   .nz = 0,
+                   .tx = 1,
+                   .ty = 0,
+                   .tz = 0,
+                   .tw = 1,
+                   .u = 1,
+                   .v = 1},
+        QuadVertex{.px = -kHalfExtent,
+                   .py = 0.0f,
+                   .pz = kHalfExtent,
+                   .nx = 0,
+                   .ny = 1,
+                   .nz = 0,
+                   .tx = 1,
+                   .ty = 0,
+                   .tz = 0,
+                   .tw = 1,
+                   .u = 0,
+                   .v = 1},
     };
-    quad.indices = {0, 1, 2, 0, 2, 3};
+    quad.indices = {0, 2, 1, 0, 3, 2};
     return quad;
 }
 

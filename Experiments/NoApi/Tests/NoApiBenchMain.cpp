@@ -3,9 +3,13 @@
 /// @brief NoApiBench entry point. Implements `--check-manifest` (M5.1 stage 1 deliverable C): the
 ///        consistency test declaring the workload manifest's representative graph to the
 ///        production RenderGraph and asserting the compiled record against the manifest's frozen
-///        expectations.
+///        expectations. Implements `--run-graph=rhi --frames=N --dump-dir=<dir>` (stage 3): runs
+///        the maintained-RHI adapter (Bench/RhiAdapter.h) through the adapter-neutral runner
+///        (Bench/Runner.h) for N frames of the representative graph.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Bench/RhiAdapter.h"
+#include "Bench/Runner.h"
 #include "Workload/RepresentativeGraph.h"
 #include "Workload/Types.h"
 
@@ -17,6 +21,7 @@
 #include <deque>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -87,7 +92,7 @@ rhi::Format mapFormat(lmx::noapi::workload::Format format) {
 //======================================================================================================================
 rhi::TextureSubresourceRange mapRange(const lmx::noapi::workload::SubresourceRange& range) {
     return {.baseMipLevel = range.baseMipLevel,
-           .mipLevelCount = range.mipLevelCount == 0 ? rhi::kAllMipLevels : range.mipLevelCount};
+            .mipLevelCount = range.mipLevelCount == 0 ? rhi::kAllMipLevels : range.mipLevelCount};
 }
 
 // Declares `manifest` to `graph` over imported FakeTexture/FakeBuffer stand-ins for every resource
@@ -102,7 +107,8 @@ rhi::TextureSubresourceRange mapRange(const lmx::noapi::workload::SubresourceRan
 // rule (RenderGraph.h's GraphTexture/GraphBuffer doc comment), so restating it here would be a
 // second copy of a rule the graph already owns.
 //======================================================================================================================
-void declareToRenderGraph(RenderGraph& graph, const lmx::noapi::workload::RepresentativeGraph& manifest,
+void declareToRenderGraph(RenderGraph& graph,
+                          const lmx::noapi::workload::RepresentativeGraph& manifest,
                           std::deque<FakeTexture>& textureStorage,
                           std::deque<FakeBuffer>& bufferStorage) {
     namespace workload = lmx::noapi::workload;
@@ -127,8 +133,9 @@ void declareToRenderGraph(RenderGraph& graph, const lmx::noapi::workload::Repres
         // edge), so its import states that terminal producer, mirroring
         // Source/Render/Renderer.cpp's auto-exposure exposureImport.
         const GraphBuffer handle = resource.persistent
-            ? graph.importBuffer(bufferStorage.back(), resource.name, rhi::BufferUse::StorageWrite)
-            : graph.importBuffer(bufferStorage.back(), resource.name);
+                                       ? graph.importBuffer(bufferStorage.back(), resource.name,
+                                                            rhi::BufferUse::StorageWrite)
+                                       : graph.importBuffer(bufferStorage.back(), resource.name);
         bufferBase[resource.id] = handle;
         bufferVersion[resource.id] = 0;
     }
@@ -176,10 +183,10 @@ void declareToRenderGraph(RenderGraph& graph, const lmx::noapi::workload::Repres
                     writtenTextures.push_back(use.resourceId);
                     break;
                 case workload::UseRole::DepthAttachment:
-                    desc.depth = DepthAttachment{
-                        .handle = currentTexture(use.resourceId),
-                        .store = readElsewhere.contains(use.resourceId) ? StoreOp::Store
-                                                                        : StoreOp::Discard};
+                    desc.depth = DepthAttachment{.handle = currentTexture(use.resourceId),
+                                                 .store = readElsewhere.contains(use.resourceId)
+                                                              ? StoreOp::Store
+                                                              : StoreOp::Discard};
                     writtenTextures.push_back(use.resourceId);
                     break;
                 default:
@@ -337,19 +344,70 @@ int checkManifest() {
     return 0;
 }
 
+//======================================================================================================================
+// Parses `--run-graph=<value>` out of `arg`, or returns std::nullopt if `arg` names a different
+// flag.
+std::optional<std::string_view> parseFlagValue(std::string_view arg, std::string_view flag) {
+    if (!arg.starts_with(flag) || arg.size() <= flag.size() || arg[flag.size()] != '=') {
+        return std::nullopt;
+    }
+    return arg.substr(flag.size() + 1);
+}
+
+//======================================================================================================================
+// Stage 3's correctness-run entry point (spec section 6, plan Stage 3 item 3): drives `--run-graph`
+// through lmx::noapi::bench::runBench for exactly one frame count, one adapter, one dump directory.
+int runGraph(const lmx::noapi::bench::RunOptions& options) {
+    if (options.frames == 0) {
+        std::cerr << "NoApiBench --run-graph: --frames must be given and non-zero\n";
+        return 1;
+    }
+    if (options.dumpDir.empty()) {
+        std::cerr << "NoApiBench --run-graph: --dump-dir must be given\n";
+        return 1;
+    }
+
+    if (options.graph == "rhi") {
+        lmx::noapi::bench::RhiAdapter adapter;
+        return lmx::noapi::bench::runBench(adapter, options);
+    }
+    std::cerr << "NoApiBench --run-graph: unknown graph '" << options.graph
+              << "' (expected 'rhi')\n";
+    return 1;
+}
+
 } // namespace
 
 //======================================================================================================================
 int main(int argc, char** argv) {
     bool checkManifestRequested = false;
+    lmx::noapi::bench::RunOptions runOptions;
+    bool runGraphRequested = false;
+
     for (int i = 1; i < argc; ++i) {
-        if (std::string_view(argv[i]) == "--check-manifest") {
+        const std::string_view arg(argv[i]);
+        if (arg == "--check-manifest") {
             checkManifestRequested = true;
+        } else if (const auto graph = parseFlagValue(arg, "--run-graph")) {
+            runOptions.graph = std::string(*graph);
+            runGraphRequested = true;
+        } else if (const auto frames = parseFlagValue(arg, "--frames")) {
+            runOptions.frames = static_cast<uint32_t>(std::stoul(std::string(*frames)));
+        } else if (const auto dumpDir = parseFlagValue(arg, "--dump-dir")) {
+            runOptions.dumpDir = std::string(*dumpDir);
+        } else {
+            std::cerr << "NoApiBench: unrecognized argument '" << arg << "'\n";
+            return 1;
         }
     }
-    if (!checkManifestRequested) {
-        std::cerr << "usage: NoApiBench --check-manifest\n";
-        return 1;
+
+    if (checkManifestRequested) {
+        return checkManifest();
     }
-    return checkManifest();
+    if (runGraphRequested) {
+        return runGraph(runOptions);
+    }
+    std::cerr << "usage: NoApiBench --check-manifest\n"
+              << "       NoApiBench --run-graph=rhi --frames=N --dump-dir=<dir>\n";
+    return 1;
 }
