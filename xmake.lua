@@ -155,6 +155,56 @@ target("Tests")
     add_tests("unit", {runargs = {"~[gpu]"}})
     add_tests("gpu", {runargs = {"[gpu]"}})
 
+-- M5.1 RHI execution-model experiment (docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md):
+-- a frozen, non-default research spike under Experiments/NoApi/, namespace lmx::noapi. All four
+-- targets are set_default(false) -- a plain `xmake` never builds them (spec section 5) -- and this
+-- section is the only place outside Experiments/ the milestone touches.
+
+-- The API-neutral workload manifest (spec sections 6-7): the frozen representative graph, stress
+-- case tables, and deterministic synthetic asset generation shared by both encoders. Links Core
+-- only -- no RHI/ and no Experiments/NoApi/Include (the prototype's own headers) -- so neither
+-- adapter's headers need to appear in the manifest's dependency graph for it to compile.
+target("NoApiManifest")
+    set_kind("static")
+    set_default(false)
+    add_files("Experiments/NoApi/Workload/*.cpp")
+    add_includedirs("Experiments/NoApi", {public = true})
+    add_deps("Core")
+
+-- The prototype library (spec section 5): the address-first Metal 4 interface implementation.
+-- Links metal-cpp and Core only; Experiments/NoApi/Include is its public surface, authored
+-- alongside this target. Placeholder.cpp keeps the target linkable until stage 2's real sources
+-- land under Experiments/NoApi/Source.
+target("NoApiProto")
+    set_kind("static")
+    set_default(false)
+    add_files("Experiments/NoApi/Source/*.cpp")
+    add_includedirs("Experiments/NoApi/Include", {public = true})
+    add_includedirs("ThirdParty/metal-cpp")
+    add_frameworks("Metal", "QuartzCore", "Foundation")
+    add_deps("Core")
+
+-- Prototype-only tests (spec section 5): smoke and misuse death-tests on the prototype side.
+target("NoApiTests")
+    set_kind("binary")
+    set_default(false)
+    add_files("Experiments/NoApi/Tests/NoApiTests.cpp")
+    add_deps("Core", "NoApiProto")
+    add_packages("catch2")
+
+-- The comparison host (spec section 5): links both the production RHI and NoApiProto, executing
+-- the shared workload manifest through a maintained-RHI adapter and a prototype adapter -- App's
+-- production dependency stack minus SDL3/ImGui, which the offscreen bench never needs.
+-- --check-manifest is the stage 1 consistency test: it declares the manifest's representative
+-- graph to the production RenderGraph and asserts the compiled record against the manifest's
+-- frozen schedule and barrier expectations.
+target("NoApiBench")
+    set_kind("binary")
+    set_default(false)
+    add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp")
+    add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest")
+    add_packages("glm")
+
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local metalcpp_commit = "c595afef4a5dc388f4047cd0c69f9e7f9468d9ed"
 local slang_pin    = "v2026.14.1"
