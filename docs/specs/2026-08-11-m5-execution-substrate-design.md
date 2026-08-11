@@ -1,7 +1,7 @@
 # M5 — Execution Substrate and Observability — Design Spec
 
 **Date**: 2026-08-11
-**Status**: Accepted
+**Status**: Implemented
 **Boundary authority**: `docs/roadmap.md` M5 owns the outcome, deliverables, exit gate, portability
 checkpoint A, and deferrals. This spec decomposes that boundary without expanding it; where wording
 differs, the roadmap wins.

@@ -8,7 +8,7 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m4.1.md` · No active implementation plan
+- Current baseline: `docs/milestones/m5.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -28,6 +28,12 @@ thin RHI and one implemented backend.
   test binary after `Source/` changes. `xmake test` rebuilds it; when running the Tests binary
   directly, `xmake build Tests` first or risk a false pass against a stale binary.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
+- **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
+  checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
+  holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
+  Tools/check_project_policy.py`; `xmake project -k compile_commands -P .`; `python3
+  Tools/check_cpp_comments.py --public-api-docs error`; `python3 Tools/check_rhi_headers.py`;
+  `python3 Tools/check_cpp_layout.py`.
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
@@ -48,7 +54,11 @@ thin RHI and one implemented backend.
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
   Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
   App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
-  (absolute path, written once). Guide: `docs/guides/gpu-debugging.md`.
+  (absolute path, written once). The editor's read-only Render Graph inspector panel shows the same
+  compiled record live (uses, schedule, culling, transitions, transient lifetimes and memory) with a
+  button to dump the displayed frame on demand. Guide: `docs/guides/gpu-debugging.md`, whose Parity
+  checks section documents the exact procedure and commands for verifying auto-exposure/bloom
+  toggles leave pre-M5 output unchanged.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
@@ -66,17 +76,19 @@ resources and over one-frame transients the graph creates, dead-pass culling fro
 only, conservative aliasing of lifetime-disjoint transients into `TransientPool`'s per-frame-slot
 placement heaps, and a `CompiledFrameRecord` per frame — schedule, barriers, transient lifetimes and
 assignments, memory totals — that `GraphDump.h` renders as deterministic text; `Renderer` — declares
-shadow, scene+sky, and
-display-transform passes into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends
-are free functions) →
+shadow, scene+sky, histogram exposure (clear/accumulate/resolve, GPU-resident feedback into the next
+frame), bloom (threshold/downsample/upsample), and display-transform passes into a graph consuming a
+plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene
-dropdown, light editor, render settings — frame loop, joins its own UI pass to the graph,
-`--screenshot` path).
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky,
-DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as test oracles).
+(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light
+editor, render settings including histogram auto-exposure and bloom toggles, a read-only Render
+Graph inspector panel — frame loop, joins its own UI pass to the graph, `--screenshot` path).
+Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
+ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
+BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as
+test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 
 ## Hard rules

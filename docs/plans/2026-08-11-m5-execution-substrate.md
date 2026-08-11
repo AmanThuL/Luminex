@@ -1,6 +1,6 @@
 # M5 — Execution Substrate and Observability
 
-**Status**: In progress
+**Status**: Implemented (2026-08-11)
 
 This plan executes the accepted design in
 `docs/specs/2026-08-11-m5-execution-substrate-design.md`. `docs/roadmap.md` owns the M5 outcome,

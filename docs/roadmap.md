@@ -10,11 +10,12 @@ without expanding it.
 
 ## Current baseline
 
-M4.1 preserves M4's graph-declared, scene-linear HDR renderer while giving its RHI an explicit root
-component, domain-owned result contracts, self-contained public headers, and checked API
-documentation. MaterialLab adds a pinned neutral studio environment, prominent default material
-framing, and horizontally pannable diagnostic groups. Shipped evidence and remaining limits are
-recorded in `docs/milestones/m4.1.md`.
+M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute/copy/barrier
+execution substrate — compute pipelines, storage buffers and textures, subresource views, general
+copies, and indirect execution — beneath a culled and conservatively pooled validating render
+graph with a deterministic dump and a read-only editor Render Graph inspector. Histogram exposure
+and a bloom chain exercise the substrate while preserving a deterministic manual-exposure path.
+Shipped evidence and remaining limits are recorded in `docs/milestones/m5.md`.
 
 ## M4 — Correct image formation
 
