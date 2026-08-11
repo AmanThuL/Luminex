@@ -486,3 +486,23 @@ were identical before and after the fix under the interim no-cull workaround, co
 workaround had been pixel-equivalent and no scored surface moved. Recorded because the measurement
 freeze gate had not started; after it starts, a manifest defect of this kind would instead
 invalidate collected data.
+
+**7.3 Per-mip raster attachments are unavailable on the incumbent.** `rhi::RenderPassDesc` takes
+whole textures as attachments with no subresource selection, so a raster pass can never render
+into a non-zero mip. Five frozen hazard cases whose raster half addresses a specific mip (H15,
+H16, H21, H22, H23) are therefore inexpressible through the maintained RHI and are recorded as
+documented incumbent gaps with their whole-resource pairings (H01–H13) as the nearest expressible
+variants; the prototype's `ColorAttachment` carries a mip level and passes all 24. This is
+capability evidence about the incumbent in the same sense section 4 classifies the prototype.
+
+**7.4 Destroyed-handle use is undefined behavior on the incumbent.** Frozen misuse case M5 (use
+of a destroyed resource handle) produces a non-deterministic SIGSEGV/SIGBUS on the maintained RHI
+rather than a diagnosable `LMX_ASSERT`; the prototype's generation-checked destroy/bindless-slot
+contract catches the analogous misuse with a clean assert naming the contract. Scored under the
+failure-and-validation dimension, where both sides are judged symmetrically.
+
+**7.5 The prototype's draw-argument hazard leaks a pending stage in compute-only sequences.**
+`Hazard::DrawArguments` unconditionally folds in the vertex stage; a compute-only command buffer
+has no consumer for that pending bit. The scored indirect case I4 drops the flag for its
+compute-only ordering and documents why. Recorded as a prototype polish gap — not load-bearing
+for any frozen workload, and the kind of defect production hardening would surface.

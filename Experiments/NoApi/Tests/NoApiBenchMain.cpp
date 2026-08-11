@@ -12,6 +12,7 @@
 #include "Bench/NoApiAdapter.h"
 #include "Bench/RhiAdapter.h"
 #include "Bench/Runner.h"
+#include "Bench/StressRunner.h"
 #include "Workload/RepresentativeGraph.h"
 #include "Workload/Types.h"
 
@@ -20,6 +21,7 @@
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 
+#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <map>
@@ -382,13 +384,40 @@ int runGraph(const lmx::noapi::bench::RunOptions& options) {
     return 1;
 }
 
+//======================================================================================================================
+// M5.1 Stage 4's misuse-child re-exec protocol (Bench/StressRunner.cpp's header comment): a parent
+// process's runMisuse() spawns this same binary with these two variables set, expecting the child
+// never to return -- checked before any normal argument parsing so a re-exec never sees the
+// parent's own argv.
+int maybeRunMisuseChild() {
+    const char* caseId = std::getenv(lmx::noapi::bench::kMisuseEnvCase);
+    const char* adapterName = std::getenv(lmx::noapi::bench::kMisuseEnvAdapter);
+    if (caseId == nullptr || adapterName == nullptr) {
+        return -1; // Not a misuse-child invocation.
+    }
+    const lmx::noapi::bench::AdapterKind adapter = std::string_view(adapterName) == "rhi"
+                                                       ? lmx::noapi::bench::AdapterKind::Rhi
+                                                       : lmx::noapi::bench::AdapterKind::NoApi;
+    return lmx::noapi::bench::runMisuseChild(caseId, adapter);
+}
+
 } // namespace
 
 //======================================================================================================================
 int main(int argc, char** argv) {
+    lmx::noapi::bench::setMisuseChildExecutablePath(argv[0]);
+    if (const int childResult = maybeRunMisuseChild(); childResult >= 0) {
+        return childResult;
+    }
+
     bool checkManifestRequested = false;
     lmx::noapi::bench::RunOptions runOptions;
     bool runGraphRequested = false;
+    bool runStressRequested = false;
+    bool runMisuseRequested = false;
+    std::string stressCaseId;
+    std::string misuseCaseId;
+    lmx::noapi::bench::AdapterKind adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -401,6 +430,23 @@ int main(int argc, char** argv) {
             runOptions.frames = static_cast<uint32_t>(std::stoul(std::string(*frames)));
         } else if (const auto dumpDir = parseFlagValue(arg, "--dump-dir")) {
             runOptions.dumpDir = std::string(*dumpDir);
+        } else if (const auto stress = parseFlagValue(arg, "--run-stress")) {
+            stressCaseId = std::string(*stress);
+            runStressRequested = true;
+        } else if (const auto misuse = parseFlagValue(arg, "--run-misuse")) {
+            misuseCaseId = std::string(*misuse);
+            runMisuseRequested = true;
+        } else if (const auto adapter = parseFlagValue(arg, "--adapter")) {
+            if (*adapter == "rhi") {
+                adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
+            } else if (*adapter == "noapi") {
+                adapterKind = lmx::noapi::bench::AdapterKind::NoApi;
+            } else {
+                std::cerr << "NoApiBench: unknown --adapter '" << *adapter
+                          << "' (expected 'rhi' or "
+                             "'noapi')\n";
+                return 1;
+            }
         } else {
             std::cerr << "NoApiBench: unrecognized argument '" << arg << "'\n";
             return 1;
@@ -413,7 +459,15 @@ int main(int argc, char** argv) {
     if (runGraphRequested) {
         return runGraph(runOptions);
     }
+    if (runStressRequested) {
+        return lmx::noapi::bench::runStress(adapterKind, stressCaseId);
+    }
+    if (runMisuseRequested) {
+        return lmx::noapi::bench::runMisuse(adapterKind, misuseCaseId);
+    }
     std::cerr << "usage: NoApiBench --check-manifest\n"
-              << "       NoApiBench --run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>\n";
+              << "       NoApiBench --run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>\n"
+              << "       NoApiBench --run-stress=<caseId|all> --adapter=<rhi|noapi>\n"
+              << "       NoApiBench --run-misuse=<caseId|all> --adapter=<rhi|noapi>\n";
     return 1;
 }

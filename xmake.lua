@@ -231,6 +231,9 @@ target("NoApiBench")
     add_rules("slang2metallib")
     add_files("Shaders/ShadowPass.slang", "Shaders/ScenePass.slang", "Shaders/Shadow.slang",
               "Shaders/Lighting.slang")
+    -- M5.1 Stage 4's stress cases (H01-H24, S-BIND, I1-I4, plan Stage 4 items 1-3) reuse three of
+    -- the production RHI's own test oracles unchanged rather than duplicating their kernels.
+    add_files("Shaders/ComputeSmoke.slang", "Shaders/IndirectSmoke.slang", "Shaders/SamplerSmoke.slang")
     add_files("Experiments/NoApi/Shaders/*.slang")
 
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
