@@ -8,7 +8,7 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m4.1.md` · No active implementation plan
+- Current baseline: `docs/milestones/m5.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -27,7 +27,18 @@ thin RHI and one implemented backend.
 - **Gotcha**: the Tests target has `set_default(false)` — a plain `xmake` does NOT relink the
   test binary after `Source/` changes. `xmake test` rebuilds it; when running the Tests binary
   directly, `xmake build Tests` first or risk a false pass against a stale binary.
+- Frozen portability-checkpoint-A subset (ADR 0009): `xmake build Tests && cd
+  build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
+  must pass this filter unchanged; the working directory must be the Tests build directory (shaders
+  resolve relative to CWD).
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
+- **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
+  checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
+  holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
+  Tools/check_project_policy.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
+  (first regenerate that worktree's `compile_commands.json` with `xmake project -k
+  compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
+  `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
@@ -36,8 +47,9 @@ thin RHI and one implemented backend.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
   (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Automated runs:
   `LMX_MAX_FRAMES=N` exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress.
-  The Inspector's Stats panel lists every render-graph pass of the newest retired frame with its
-  GPU milliseconds.
+  The Inspector's Stats panel shows a pausable 60-frame rolling average for each render-graph pass,
+  refreshed four times per second; hover shows latest/range details. The Render Graph panel keeps
+  the exact newest-retired-frame timings.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
@@ -46,25 +58,43 @@ thin RHI and one implemented backend.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
-  Tools/GpuDebug/profile.py`. Guide: `docs/guides/gpu-debugging.md`.
+  Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
+  App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
+  (absolute path, written once). The editor's read-only Render Graph inspector panel shows the same
+  compiled record live (uses, schedule, culling, transitions, transient lifetimes and memory) with a
+  button to dump the displayed frame on demand. Guide: `docs/guides/gpu-debugging.md`, whose Parity
+  checks section documents the exact procedure and commands for verifying auto-exposure/bloom
+  toggles leave pre-M5 output unchanged.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-per-pass GPU timing, samplers, sRGB/BC1/cubemap/RGBA16Float formats, and depth-only passes;
+per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only
+passes, compute passes with storage bindings, subresource views, and explicit texture and buffer
+barriers, copy passes with general copies and fills (the path to any subresource but level zero),
+indirect draws and dispatches over RHI-owned argument layouts, and untracked placement heaps whose
+resources are created at explicit offsets;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph`, `Renderer` — declares shadow, scene+sky, and display-transform passes into
-a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
+validating `RenderGraph` — raster/compute/copy passes with per-subresource uses over imported
+resources and over one-frame transients the graph creates, dead-pass culling from declared sinks
+only, conservative aliasing of lifetime-disjoint transients into `TransientPool`'s per-frame-slot
+placement heaps, and a `CompiledFrameRecord` per frame — schedule, barriers, transient lifetimes and
+assignments, memory totals — that `GraphDump.h` renders as deterministic text; `Renderer` — declares
+shadow, scene+sky, histogram exposure (clear/accumulate/resolve, GPU-resident feedback into the next
+frame), bloom (threshold/downsample/upsample), and display-transform passes into a graph consuming a
+plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene
-dropdown, light editor, render settings — frame loop, joins its own UI pass to the graph,
-`--screenshot` path).
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass, ShadowPass, Sky,
-DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as test oracles).
+(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light
+editor, render settings including histogram auto-exposure and bloom toggles, a read-only Render
+Graph inspector panel — frame loop, joins its own UI pass to the graph, `--screenshot` path).
+Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
+ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
+BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as
+test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 
 ## Hard rules

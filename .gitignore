@@ -19,3 +19,6 @@ __pycache__/
 .DS_Store
 /.vscode/
 /.claude/
+
+# Written beside a golden file when a dump test fails, so the two can be diffed.
+Tests/Golden/*.actual

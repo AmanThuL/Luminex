@@ -1,0 +1,34 @@
+render-graph frame 9
+resources
+  r0 texture "lmx.transient.sceneColor" RGBA16Float
+  r1 texture "lmx.transient.bloom" RGBA16Float
+  r2 texture "lmx.transient.unused" RGBA16Float
+  r3 texture "lmx.mid" BGRA8Unorm
+  r4 texture "lmx.displayColor" BGRA8Unorm
+sinks
+  export r3 v1
+  present r4 v1
+passes
+  p0 raster "lmx.pass.scene"
+    color attachment r0 v0 mips[0..] layers[0..]
+  p1 raster "lmx.pass.resolve"
+    read r0 v1 mips[0..] layers[0..]
+    color attachment r3 v0 mips[0..] layers[0..]
+  p2 raster "lmx.pass.bloom"
+    color attachment r1 v0 mips[0..] layers[0..]
+  p3 raster "lmx.pass.composite"
+    read r1 v1 mips[0..] layers[0..]
+    color attachment r4 v0 mips[0..] layers[0..]
+culled
+  p4 raster "lmx.pass.dead" no-sink-reaches-it
+    color attachment r2 v0 mips[0..] layers[0..]
+transitions
+  before p1 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
+  before p2 texture r1 mips[0..] layers[0..] ShaderRead -> RenderTarget alias-of r0
+  before p3 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
+transients
+  r0 passes p0..p1 offset 0 size 16384 align 16384
+  r1 passes p2..p3 offset 0 size 16384 align 16384 aliased
+  r2 unused
+memory
+  pooling on requested 32768 high-water 16384 saved 16384

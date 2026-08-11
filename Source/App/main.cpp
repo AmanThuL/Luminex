@@ -5,6 +5,7 @@
 
 #include "App/AppOptions.h"
 #include "App/EditorShell.h"
+#include "App/FrameRecordRing.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "Engine/SceneLibrary.h"
@@ -20,6 +21,7 @@
 #include <imgui_impl_sdl3.h>
 
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
@@ -128,6 +130,12 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 
     uint64_t frameIndex = 0;
     uint64_t presentedFrames = 0;
+    // The frames an observer can still ask about: the three that can be in flight, plus the one
+    // whose timings the next beginFrame() publishes.
+    lmx::app::FrameRecordRing frameRecords;
+    // Outlives every per-frame graph, because a frame's transients stay placed in it until the
+    // slot they were placed in comes round again.
+    lmx::render::TransientPool transientPool(**device);
     uint64_t skippedFrames = 0;
     bool running = true;
     // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
@@ -217,17 +225,26 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         lmx::rhi::metal4::imguiNewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
-        shell->buildUI(**device, **renderer, deltaSeconds);
+        shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        // Immediately after beginFrame, which is where the frame slot this pool rotates on has
+        // just been proved retired.
+        transientPool.beginFrame();
         (*renderer)->timeSeconds = timeSeconds;
 
         // Named rather than passed inline: the pass bodies borrow this view and run when the
         // graph executes, which is past the end of the statement that would hold a temporary.
-        const lmx::render::SceneView view = shell->sceneView();
+        lmx::render::SceneView view = shell->sceneView();
+        // Spec 9's four reset triggers, forwarded to Renderer::declarePasses: on the frame any of
+        // them fires, it seeds the persistent exposure buffer with exp2(exposureEv) itself (an
+        // ordinary compute dispatch), rather than main.cpp reading anything back -- the feedback
+        // loop lives entirely on the GPU timeline.
+        view.exposureReset = shell->consumeExposureReset();
 
-        lmx::render::RenderGraph graph;
+        lmx::render::RenderGraph graph(transientPool);
+        graph.setPoolingEnabled(shell->poolingEnabled());
         // The renderer's last pass is the display transform, so this is the finished image the
         // viewport samples -- not the scene-linear buffer behind it.
         const lmx::render::GraphTexture displayColor =
@@ -247,11 +264,21 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
             lmx::rhi::metal4::imguiRender(commands);
         });
-        graph.exportTexture(lmx::render::nextVersion(drawable));
+        // The drawable this frame presents, and the only sink the frame declares: everything the
+        // renderer put in front of it is live because this pass reads it, so nothing here has to
+        // repeat what the display transform already rooted.
+        graph.presentTexture(lmx::render::nextVersion(drawable));
 
         // A frame that cannot validate is a mis-declared frame, which is programmer error: execute
         // aborts with the graph's own message rather than encoding a hazard.
-        graph.execute(commands);
+        //
+        // Retaining the record it answers with is what lets an observer describe a frame that has
+        // already been submitted: the timings of a frame are readable only once it retires, several
+        // frames after the declarations that explain them are gone.
+        frameRecords.retain(graph.execute(commands, (*device)->frameNumber()));
+        // Published by this frame's beginFrame() and naming a frame that has already retired, which
+        // is why the join is by number rather than by position.
+        frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 

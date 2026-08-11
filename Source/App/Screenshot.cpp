@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -145,8 +146,15 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId)
     (*renderer)->clearColor[3] = 1.0f;
 
     std::vector<render::DrawItem> items;
-    const render::SceneView view =
+    render::SceneView view =
         activeScene->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+    // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off (spec
+    // 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom output --
+    // "with auto exposure off and bloom off, a frame is byte-identical to the pre-change tip" --
+    // and is not a documented user-facing option.
+    if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
+        view.bloomEnabled = false;
+    }
     const render::Camera camera = cameraFromScene(activeScene->initialCamera);
 
     rhi::CommandList& commands = (*device)->beginFrame();

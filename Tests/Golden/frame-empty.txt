@@ -1,0 +1,9 @@
+render-graph frame 0
+resources
+sinks
+passes
+culled
+transitions
+transients
+memory
+  pooling on requested 0 high-water 0 saved 0

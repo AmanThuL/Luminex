@@ -104,11 +104,44 @@ struct SceneView {
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Runtime shadow sampling mode.
     bool wireframe = false;                        ///< Selects the wireframe scene pipeline.
-    /// Manual exposure, in stops. The renderer turns it into exp2(exposureEv) and every fragment
-    /// multiplies its linear output by that before the target sees it -- so the scene target holds
-    /// pre-exposed radiance and the display transform reads one already-exposed image. Zero is
-    /// unit exposure, which is what leaves a scene looking as it did before there was a slider.
+    /// Manual exposure, in stops. Every fragment multiplies its linear output by exp2(exposureEv)
+    /// before the target sees it -- so the scene target holds pre-exposed radiance and the display
+    /// transform reads one already-exposed image. Zero is unit exposure, which is what leaves a
+    /// scene looking as it did before there was a slider. This is what shading applies whenever
+    /// autoExposureEnabled is false, unchanged from before auto-exposure existed; it is also the
+    /// value a reset frame seeds the feedback buffer with when auto-exposure is true.
     float exposureEv = 0.0f;
+
+    /// Histogram auto-exposure (spec 9), a Render Settings opt-in; manual exposure (above) stays
+    /// the default. When true, the scene and sky passes switch to `ScenePassAuto.slang`/
+    /// `SkyAuto.slang`'s compiled pipelines, which read their applied exposure from the persistent
+    /// exposure buffer (declared as a graph read only in this mode) instead of `exposureEv` -- a
+    /// GPU-persistent value with a one-frame lag, never a CPU readback. The manual pipelines'
+    /// shader source is untouched by any of this: the exposure histogram and resolve passes still
+    /// declare every frame (so dead-pass culling has something to remove when this is false), but
+    /// nothing exports their result.
+    bool autoExposureEnabled = false;
+    /// True on the frame the feedback loop must (re)seed the exposure buffer with exp2(exposureEv)
+    /// (spec 9's four reset triggers: first frame, scene switch, auto-exposure enable, resize).
+    /// Only meaningful when autoExposureEnabled is true; EditorShell/main.cpp track the triggers
+    /// and forward the result here every frame.
+    bool exposureReset = false;
+    /// Lower bound of the retained histogram population; 50 trims the darkest half.
+    float exposureLowPercentile = 50.0f;
+    /// Upper bound of the retained histogram population; 95 trims the brightest 5 percent.
+    float exposureHighPercentile = 95.0f;
+    /// Scene-referred average luminance is exposed to this pre-exposed output value.
+    float exposureTargetGrey = 0.18f;
+    float exposureEvMin = -8.0f;         ///< Clamp on the resolved exposure, in stops.
+    float exposureEvMax = 8.0f;          ///< Clamp on the resolved exposure, in stops.
+    float exposureCompensationEv = 0.0f; ///< Extra stops applied by metering, before the clamp.
+
+    /// Bloom (spec 10): threshold/prefilter on pre-exposed luminance, a downsample/upsample chain,
+    /// composited before the display transform. Enabled by default, identically in the editor and
+    /// --screenshot.
+    bool bloomEnabled = true;
+    float bloomThreshold = 1.0f; ///< Pre-exposed luminance below this contributes nothing.
+    float bloomIntensity = 0.2f; ///< Multiplier applied to the composited bloom result.
 };
 
 /// The light's view-projection and the same matrix with the NDC -> texcoord map baked in, which is
@@ -223,18 +256,47 @@ public:
 
 private:
     Renderer(rhi::Device& device, bool cpuReadback)
-        : m_device(device), m_cpuReadback(cpuReadback) {}
+        : m_device(device), m_transientPool(device), m_cpuReadback(cpuReadback) {}
 
     rhi::Device& m_device;
+    // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
+    // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
+    // graph of its own frame (the App) supplies its own instead and this member goes unused.
+    // Non-copyable and non-movable (TransientPool's own contract), so it is constructed in place
+    // above rather than assigned.
+    TransientPool m_transientPool;
     std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
+    // ScenePassAuto.slang: byte-for-byte ScenePass.slang except the final multiply reads the
+    // persistent exposure buffer instead of PassUniforms.preExposure (spec 9). A separate library
+    // and pipeline -- not a runtime branch in one shader -- because a branch that is never taken
+    // still gives the compiler a different fragment to schedule around: an M5 parity check failed
+    // by one rounding bit in one pixel the one time this shared a file with the manual path. See
+    // ScenePassAuto.slang's header for the full reasoning.
+    std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_skyAutoLibrary; // SkyAuto.slang; same reasoning as above
     std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_histogramLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_exposureResolveLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_exposureSeedLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
+    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_shadowPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_bloomThresholdPipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_bloomDownsamplePipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_bloomUpsamplePipeline;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().
     std::unique_ptr<rhi::Texture> m_hdrColor;
@@ -251,6 +313,17 @@ private:
     std::unique_ptr<rhi::Texture> m_flatNormalTexture;
     std::unique_ptr<rhi::Texture> m_blackCubeTexture;
     std::unique_ptr<rhi::Texture> m_zeroDfgTexture;
+    // 1x1 RGBA16Float zero, bound to keep the display pass's bloom slot valid when bloom is
+    // disabled; the zero intensity makes the shader skip reading it.
+    std::unique_ptr<rhi::Texture> m_blackBloomFallback;
+    // Persistent, imported every frame rather than pooled: a 256-bin uint histogram, cleared and
+    // refilled every frame, and a one-float exposure result that survives across frames (spec 9's
+    // feedback buffer). Neither is a graph transient because both must outlive the frame that
+    // wrote them -- the histogram to be read by the same frame's resolve pass, the exposure result
+    // to be read directly, GPU-side, by the *next* frame's scene and sky passes (never a CPU
+    // readback -- that would stall the three-frames-in-flight pipeline every auto-exposure frame).
+    std::unique_ptr<rhi::Buffer> m_histogramBuffer;
+    std::unique_ptr<rhi::Buffer> m_exposureBuffer;
     std::unique_ptr<rhi::Sampler> m_linearSampler;
     std::unique_ptr<rhi::Sampler> m_shadowSampler;
     std::unique_ptr<rhi::Sampler> m_iblSampler;

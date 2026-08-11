@@ -51,7 +51,9 @@ struct Pixel {
 };
 
 //======================================================================================================================
-Pixel pixelAt(const std::vector<uint8_t>& bgra, uint32_t x, uint32_t y) {
+// [[maybe_unused]]: a header-defined helper is unused in whichever translation units declare no
+// pixel probes of their own -- a buffer-only GPU test, for instance -- and that is not a warning.
+[[maybe_unused]] Pixel pixelAt(const std::vector<uint8_t>& bgra, uint32_t x, uint32_t y) {
     const size_t offset = (size_t{y} * kSize + x) * 4;
     return {bgra[offset], bgra[offset + 1], bgra[offset + 2], bgra[offset + 3]};
 }
@@ -59,7 +61,7 @@ Pixel pixelAt(const std::vector<uint8_t>& bgra, uint32_t x, uint32_t y) {
 //======================================================================================================================
 // Catch2 stringifies the comparison operands, but not the pixel they came from; this goes
 // through INFO so a failure says which colour was actually there.
-std::string describe(const char* what, uint32_t x, uint32_t y, const Pixel& p) {
+[[maybe_unused]] std::string describe(const char* what, uint32_t x, uint32_t y, const Pixel& p) {
     return std::string(what) + " (" + std::to_string(x) + "," + std::to_string(y) +
            "): B=" + std::to_string(p.b) + " G=" + std::to_string(p.g) +
            " R=" + std::to_string(p.r) + " A=" + std::to_string(p.a);
@@ -101,14 +103,15 @@ inline std::vector<uint8_t> renderSampledImage(lmx::rhi::Device& device,
                                                lmx::rhi::GraphicsPipeline& pipeline,
                                                uint32_t textureSlot, lmx::rhi::Texture& source,
                                                lmx::rhi::Sampler& sampler,
-                                               lmx::rhi::Texture& destination) {
+                                               lmx::rhi::Texture& destination,
+                                               const lmx::rhi::TextureViewDesc& view = {}) {
     lmx::rhi::CommandList& commands = device.beginFrame();
     commands.beginRenderPass({.colorTarget = &destination,
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
                               .label = "lmx.test.textureUpload.probe"});
     commands.bindPipeline(pipeline);
-    commands.bindTexture(textureSlot, source);
+    commands.bindTexture(textureSlot, source, view);
     commands.bindSampler(0, sampler);
     commands.draw(3);
     commands.endRenderPass();
