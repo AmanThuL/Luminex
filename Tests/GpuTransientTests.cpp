@@ -339,7 +339,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind", 
 // high-water mark, the number of live generations never grows past one per slot plus one retiring
 // per slot, and a run that settles releases every retired generation. Metal validation is what
 // covers the other half -- a generation released while a frame still reads it would fault here.
-TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu]") {
+TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
     using namespace lmx::render;
 

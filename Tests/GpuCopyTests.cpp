@@ -214,7 +214,8 @@ TEST_CASE("a filled buffer is read by a later dispatch through a buffer barrier"
 // reachable only through a copy. Level 1 carries its own gradient, which differs from level 0's at
 // every interior texel -- a copy that silently resolved to level 0 reads back the wrong values
 // rather than nothing.
-TEST_CASE("a copy captures an intermediate mip level of a GPU-written chain", "[gpu]") {
+TEST_CASE("a copy captures an intermediate mip level of a GPU-written chain",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kMipExtent = kSize / 2;
@@ -366,7 +367,7 @@ TEST_CASE("a copy captures one array layer and mip of a cubemap", "[gpu]") {
 // The other direction, into a sub-rectangle of a rendered target: the pass clears the whole
 // texture, the copy overwrites one interior rectangle, and both the rectangle and the untouched
 // border are asserted, so an origin the copy ignored is visible as a displaced rectangle.
-TEST_CASE("a copy writes buffer bytes into a texture sub-rectangle", "[gpu]") {
+TEST_CASE("a copy writes buffer bytes into a texture sub-rectangle", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kPatchOrigin = 8;

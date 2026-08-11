@@ -67,7 +67,7 @@ TEST_CASE("the device numbers the frames beginFrame opens", "[gpu]") {
 // Twelve undrained frames recycle each of three ring slots three times.
 // Each frame fills 68% of its slot with a distinct color and renders to its own target, so a stomp
 // cannot be hidden by later draws. The only waitIdle occurs after all submissions.
-TEST_CASE("uniform ring survives twelve frames overlapping in flight", "[gpu]") {
+TEST_CASE("uniform ring survives twelve frames overlapping in flight", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     auto device = createDevice();

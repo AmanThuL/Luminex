@@ -94,7 +94,8 @@ makeTrianglePipeline(lmx::rhi::Device& device, lmx::rhi::ShaderLibrary& library,
 // The threadgroup count comes from a struct the CPU wrote at a non-zero offset, so the case pins
 // both the argument layout and the offset arithmetic: reading the buffer from byte zero would find
 // the padding pattern rather than the counts.
-TEST_CASE("an indirect dispatch reads its threadgroup counts from a buffer", "[gpu]") {
+TEST_CASE("an indirect dispatch reads its threadgroup counts from a buffer",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint64_t kArgsOffset = 64;
@@ -155,7 +156,7 @@ TEST_CASE("an indirect dispatch reads its threadgroup counts from a buffer", "[g
 //======================================================================================================================
 // The non-indexed draw, whose firstVertex has to reach the vertex-pulling shader for anything to
 // appear at all.
-TEST_CASE("an indirect draw reads its vertex range from a buffer", "[gpu]") {
+TEST_CASE("an indirect draw reads its vertex range from a buffer", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint64_t kArgsOffset = 32;
@@ -212,7 +213,8 @@ TEST_CASE("an indirect draw reads its vertex range from a buffer", "[gpu]") {
 //======================================================================================================================
 // The indexed variant, with a non-zero firstIndex and a non-zero baseVertex: both have to be read
 // out of the struct at the documented offsets, and either being dropped leaves the target black.
-TEST_CASE("an indirect indexed draw reads its index range and base vertex from a buffer", "[gpu]") {
+TEST_CASE("an indirect indexed draw reads its index range and base vertex from a buffer",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint64_t kArgsOffset = 48;

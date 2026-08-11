@@ -152,7 +152,7 @@ TEST_CASE("a dispatch writes a storage texture the CPU reads back", "[gpu]") {
 // Two dispatches in one frame with a storage-write to storage-read barrier between them. Without
 // the barrier the second pass may read the source before the first has written it; the complement
 // the reader writes is what makes a stale read (the original gradient) distinguishable.
-TEST_CASE("a storage texture written by one dispatch is read by the next", "[gpu]") {
+TEST_CASE("a storage texture written by one dispatch is read by the next", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     auto device = createDevice();
@@ -239,7 +239,8 @@ TEST_CASE("a storage texture written by one dispatch is read by the next", "[gpu
 // The compute-to-sample hazard: a dispatch writes a texture and a fragment shader in the next pass
 // reads it. The two run on different queue stages, so the barrier between them is the only thing
 // making the write visible to the read.
-TEST_CASE("a storage texture written by a dispatch is sampled by a later draw", "[gpu]") {
+TEST_CASE("a storage texture written by a dispatch is sampled by a later draw",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     auto device = createDevice();
@@ -328,7 +329,7 @@ TEST_CASE("a storage texture written by a dispatch is sampled by a later draw", 
 // read back through views. Level 0 keeping its own gradient is what proves the level-1 write landed
 // where it was aimed: a view that silently resolved to level 0 would have overwritten level 0's
 // top-left quadrant with the level-1 gradient, whose values differ at every interior texel.
-TEST_CASE("a storage texture view addresses a single mip level", "[gpu]") {
+TEST_CASE("a storage texture view addresses a single mip level", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kMipExtent = kSize / 2;

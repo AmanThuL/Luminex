@@ -475,7 +475,8 @@ TEST_CASE("a BC1 block decodes to its endpoint colour when sampled", "[gpu]") {
 //======================================================================================================================
 // The same encoded byte in linear and sRGB textures must produce different values in a linear
 // target.
-TEST_CASE("an sRGB texture is linearised by the sampler, a linear one is not", "[gpu]") {
+TEST_CASE("an sRGB texture is linearised by the sampler, a linear one is not",
+          "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kSourceTextureSlot = 0;
@@ -615,7 +616,7 @@ TEST_CASE("a cubemap samples the face its direction points at", "[gpu]") {
 
 //======================================================================================================================
 // The interior and clear exterior pin depth storage, the pass barrier, and subsequent D32 sampling.
-TEST_CASE("a depth-only pass stores depth a later pass can sample", "[gpu]") {
+TEST_CASE("a depth-only pass stores depth a later pass can sample", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kDepthTextureSlot = 0;
@@ -1087,7 +1088,7 @@ std::array<DepthVertex, 6> depthQuad(float z, float halfExtent = 0.5f) {
 // both directions of that rule in one sequence: 0.25 beats the clear, 0.75 replaces it because it
 // is nearer, and 0.5 is then rejected because it is not. Under the Less semantics this replaces,
 // every draw would fail against the 0.0 clear and the probe would read the clear back instead.
-TEST_CASE("a Greater depth test keeps the nearer fragment in reversed-Z", "[gpu]") {
+TEST_CASE("a Greater depth test keeps the nearer fragment in reversed-Z", "[gpu][checkpoint-a]") {
     using namespace lmx::rhi;
 
     constexpr uint32_t kDepthTextureSlot = 0;
