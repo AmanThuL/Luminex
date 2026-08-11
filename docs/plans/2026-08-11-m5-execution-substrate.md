@@ -22,6 +22,10 @@ the relevant unit and GPU tests, and its stage evidence, then merges to `main` t
 pull request per `docs/conventions/commits.md`. GPU coverage runs as
 `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on Metal 4 Apple Silicon before each merge.
 
+As executed, the per-stage gates above ran as described, but the stages were integrated
+sequentially on one outcome branch — two of them developed in isolated worktrees and fast-forward
+merged into it — and reach `main` in a single pull request, per the project owner's decision.
+
 ## Stage 1 — RHI compute and storage (`feat/rhi-compute-storage`)
 
 1. Add `ComputePipeline` and `ComputePipelineDesc` (shader function, label) to `RHI/Include/RHI/`,

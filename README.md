@@ -21,13 +21,13 @@ inspectable codebase.
 | Area | Current implementation |
 |---|---|
 | GPU backend | Native Metal 4 through metal-cpp; three frames in flight, argument tables, explicit residency, shared-event pacing, and per-pass GPU timing |
-| Frame | A validating render graph schedules depth-only shadow → scene and sky → a neutral display transform → docked ImGui viewport, deriving its own barriers from declared resource uses |
+| Frame | A validating render graph schedules raster, compute and copy passes — depth-only shadow → scene and sky → exposure and bloom → a neutral display transform → docked ImGui viewport — deriving its own barriers from declared resource uses, culling passes no result depends on, and pooling transient targets across non-overlapping lifetimes |
 | Materials | Full glTF metallic-roughness inputs (base color, metallic-roughness, occlusion, emissive, normal) shaded with a GGX BRDF and diffuse/specular image-based lighting |
-| Image formation | Scene-linear FP16 color with manual exposure, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
+| Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
 | Content | Deterministically converted Crytek Sponza and Khronos Damaged Helmet through a focused glTF loader, plus deterministic offline mip baking |
-| Editor | Scene selection, fly camera, light and object transforms, exposure, wireframe and shadow-filter controls, per-pass GPU timings |
-| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, object/pass labels, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
+| Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
+| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
 <p align="center">
   <img src="docs/media/damaged-helmet.png" alt="Khronos Damaged Helmet rendered by Luminex" width="760">
@@ -45,7 +45,7 @@ flowchart TB
     end
     subgraph Frame["Render graph, declared and validated per frame"]
         direction LR
-        Shadow["Shadow pass"] -->|shadow map| Scene2["Scene + sky pass"] -->|HDR color| Display["Display transform"]
+        Shadow["Shadow pass"] -->|shadow map| Scene2["Scene + sky pass"] -->|HDR color| Post["Exposure + bloom<br/>compute passes"] --> Display["Display transform"]
     end
     subgraph Presentation
         direction LR
@@ -141,8 +141,7 @@ command recording, synchronization, residency and swapchain contracts; rendering
 
 ## What's next
 
-- A compute and storage execution substrate with transient resource pooling and inspection
-- Automatic exposure, bloom and a temporal reconstruction path
+- A temporal reconstruction path over the existing scene-linear frame
 - Cascaded shadows, atmosphere and transparent surfaces on the shared lighting model
 - GPU scene data, visibility culling and indirect submission after the frame contract is stable
 - A second RHI backend once the render graph's semantics are frozen for portability
@@ -152,8 +151,9 @@ The dependency order and exit gates live in the [engineering roadmap](docs/roadm
 ## Current boundaries
 
 - Metal 4 on Apple Silicon is the only runtime backend.
-- The render graph encodes render passes only; compute execution, transient pooling and automatic
-  exposure are not present yet.
+- The render graph executes one serial queue: passes are scheduled in a single order, and neither
+  async compute nor multi-queue submission is modelled.
+- Auto-exposure is an opt-in; the default image formation path is deterministic manual exposure.
 - Large sample scenes load synchronously and require `xmake setup` before first use.
 - Sample assets and derived gallery images keep their upstream licenses; see
   [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
