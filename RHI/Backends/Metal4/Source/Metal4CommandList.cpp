@@ -116,9 +116,14 @@ void Metal4CommandList::endTimedPass() {
 void Metal4CommandList::emitPendingBarrier(MTL4::CommandEncoder* encoder,
                                            MTL::Stages consumerStages) {
     // Metal barriers are encoder operations, so a between-pass RHI barrier is emitted by the
-    // consumer encoder as its first command. Queue stages refer to prior encoders; beforeStages is
-    // this encoder's own stage, because the pass that opens is the barrier's consumer by
-    // construction.
+    // consumer encoder as its first command. afterQueueStages names the producing stages, which are
+    // queue-scoped and so reach back across every earlier encoder (earlier frames included, since
+    // the queue outlives a frame); beforeStages is this encoder's own stage class, because the pass
+    // that opens is the barrier's consumer by construction and no other encoder's stages are named.
+    // That asymmetry is the model rhi::CommandList::textureBarrier states: the producing side is as
+    // wide as the queue, the consuming side is exactly this pass, so a later pass of a different
+    // kind is ordered by this barrier only where its stages happen to coincide, and callers owe it
+    // one of its own instead of relying on that.
     if (m_pendingBarrierStages == MTL::Stages{}) {
         return;
     }

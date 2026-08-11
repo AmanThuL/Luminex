@@ -565,12 +565,14 @@ public:
     /// assigned it. They live until their frame slot comes round again, which is the pool's
     /// contract, so nothing here has to know when the GPU finished with them.
     ///
-    /// The synchronisation this emits is read-after-write, derived from the declarations alone: a
-    /// resource an earlier pass wrote and a later pass reads gets a barrier before that pass, from
-    /// the use that wrote it to the use that reads it. Write-after-write within one logical
-    /// resource is ordered by the version chain and emits no barrier of its own. An export emits
-    /// nothing either -- it roots a result for the caller to read once the queue drains, which is
-    /// not another pass reading it.
+    /// The synchronisation this emits is read-after-write and write-after-read, derived from the
+    /// declarations alone: a resource an earlier pass wrote and a later pass reads gets a barrier
+    /// before that pass, from the use that wrote it to the use that reads it, and a pass writing
+    /// what an earlier pass read gets one from every distinct use those readers made -- one barrier
+    /// per use, because the producing side of a barrier names a single use and the write has to be
+    /// ordered after all of them. Write-after-write within one logical resource is ordered by the
+    /// version chain and emits no barrier of its own. An export emits nothing either -- it roots a
+    /// result for the caller to read once the queue drains, which is not another pass reading it.
     ///
     /// Reuse of transient memory is the one hazard the version chain cannot state, because the two
     /// sides are different logical resources: where a transient takes bytes an earlier one held, a
@@ -579,13 +581,16 @@ public:
     /// over the memory, not over the subresources -- and it is what makes an aliased frame match an
     /// unaliased one.
     ///
-    /// Every reader's declared subresources are covered: a later reader is left unbarriered only
-    /// when an already-emitted barrier for that same write named a range enclosing the whole of
-    /// what it reads. A barrier orders the passes it sits between, so one that named mip 0 for an
-    /// earlier reader does not order a later reader of mip 1, and that reader gets its own.
-    /// Whole-resource declarations -- what every raster pass here makes -- yield one whole-resource
-    /// barrier that encloses every later whole-resource read, so the common frame still transitions
-    /// once. Writing the resource again clears what was covered and owes the transition afresh.
+    /// Every reader is covered, on both axes a barrier is scoped on (rhi::CommandList::
+    /// textureBarrier states the model): a later reader is left unbarriered only when an
+    /// already-emitted barrier for that same write named a range enclosing the whole of what it
+    /// reads *and* was consumed by a pass of its own kind. A barrier orders the passes it sits
+    /// between, so one that named mip 0 for an earlier reader does not order a later reader of mip
+    /// 1, and one a compute pass consumed orders no raster pass however wide its range -- either
+    /// reader gets its own. Whole-resource declarations -- what every raster pass here makes --
+    /// yield one whole-resource barrier that encloses every later whole-resource read by a pass of
+    /// the same kind, so the common frame still transitions once. Writing the resource again clears
+    /// what was covered and owes the transition afresh.
     ///
     /// A raster pass must declare an attachment; a pass with no attachment is a compute or copy
     /// pass and is declared through the path that says so. The RHI's own attachment rules bind here

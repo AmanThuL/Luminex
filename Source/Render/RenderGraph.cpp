@@ -1092,16 +1092,27 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // made visible to a reader. Writing a resource again puts it back in a producing state and
     // clears what was covered, so the transition is owed again.
     //
-    // Coverage is per emitted range rather than per resource: a barrier orders the passes it sits
-    // between, so a reader of mip 1 is not ordered by a barrier that named mip 0 for an earlier
-    // reader. Whole-resource declarations -- what every raster pass here makes -- produce one
-    // whole-resource range that encloses every later whole-resource reader, so one transition still
-    // serves them all.
+    // Coverage is per emitted range *and* per consuming stage class, because those are the two axes
+    // a barrier is scoped on (rhi::CommandList::textureBarrier states the model). A barrier orders
+    // the passes it sits between, so a reader of mip 1 is not ordered by a barrier that named mip 0
+    // for an earlier reader; and a barrier consumed by a compute pass is scoped to that pass's
+    // stages, so it orders nothing for a later raster reader of the same subresources. A pass's
+    // kind is its stage class here: raster, compute, and copy passes are exactly the three kinds of
+    // encoder a barrier can be consumed by, and passes of one kind are ordered among themselves, so
+    // one barrier serves every later reader of that kind. Two kinds whose stages happen to overlap
+    // in a backend are still treated as distinct, which costs a redundant barrier rather than a
+    // missed one. Whole-resource declarations -- what every raster pass here makes -- produce one
+    // whole-resource range that encloses every later whole-resource reader of the same kind, so one
+    // transition still serves them all.
+    struct Covered {
+        ResolvedRange range;
+        PassKind consumer = PassKind::Raster;
+    };
     struct WriteState {
         bool written = false;
         rhi::TextureUse textureUse = rhi::TextureUse::RenderTarget;
         rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
-        std::vector<ResolvedRange> covered;
+        std::vector<Covered> covered;
     };
     std::vector<WriteState> pending(m_resources.size());
 
@@ -1114,12 +1125,25 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // still per-resource rather than per-version, because whole-resource writes (every raster pass
     // here) discharge everything in one step and are the common case; ranged writes discharge in
     // parts instead of all at once, which is the property a full per-resource reset would lose.
+    //
+    // The use that made each read is carried per entry rather than once per resource, because the
+    // producing side of a write-after-read barrier has to cover *every* reader the write is being
+    // ordered after. Keeping only the last reader's use would let one reader's stage class stand in
+    // for another's -- a scene pass's sampled read and a histogram dispatch's storage read of one
+    // buffer, with the resolve dispatch that overwrites it waiting on the dispatch alone. A write
+    // therefore emits one barrier per *distinct* use among the readers it overlaps, in first-read
+    // order: separate barriers between the same two passes are how the RHI expresses a producing
+    // side that spans several uses, and a backend accumulates them into the one dependency the
+    // consuming pass emits.
+    struct PendingRead {
+        ResolvedRange range;
+        rhi::TextureUse use = rhi::TextureUse::ShaderRead;
+    };
     struct ReadState {
-        bool textureRead = false;
-        bool bufferRead = false;
-        rhi::TextureUse textureUse = rhi::TextureUse::ShaderRead;
-        rhi::BufferUse bufferUse = rhi::BufferUse::ShaderRead;
-        std::vector<ResolvedRange> ranges;
+        std::vector<PendingRead> textureReads;
+        // Buffers carry no subresource ranges, so a pending buffer read is always the whole
+        // resource and only the distinct uses are worth keeping, in first-read order.
+        std::vector<rhi::BufferUse> bufferReads;
     };
     std::vector<ReadState> pendingReads(m_resources.size());
     std::vector<DebugTransition> transitions;
@@ -1196,12 +1220,17 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             const Resource& resource = m_resources[read.resource];
             DebugTransition transition{.beforePass = passIndex, .resource = read.resource};
             if (resource.kind == ResourceKind::Buffer) {
-                // A buffer declaration names no byte range, so the first barrier covers everything
-                // a later reader could ask for.
-                if (!pending[read.resource].covered.empty()) {
+                // A buffer declaration names no byte range, so one barrier covers every byte a
+                // later reader could ask for -- but only for readers of its own stage class, on
+                // the terms `covered` states above.
+                bool alreadyOrdered = false;
+                for (const Covered& emitted : pending[read.resource].covered) {
+                    alreadyOrdered = alreadyOrdered || emitted.consumer == pass.kind;
+                }
+                if (alreadyOrdered) {
                     continue;
                 }
-                pending[read.resource].covered.push_back({});
+                pending[read.resource].covered.push_back({.consumer = pass.kind});
                 transition.kind = GraphResourceKind::Buffer;
                 transition.bufferFrom = pending[read.resource].bufferUse;
                 transition.bufferTo = bufferUseOf(pass.kind, read.role);
@@ -1219,14 +1248,20 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 }
                 const ResolvedRange resolved =
                     resolveRange(covered, resource.mipLevels, resource.arrayLayers);
+                // Both axes have to match for a reader to be already ordered: an emitted range
+                // enclosing everything this reader names, emitted for a pass of this reader's own
+                // stage class. A barrier a compute pass consumed orders no raster pass, whatever
+                // subresources it named.
                 bool alreadyOrdered = false;
-                for (const ResolvedRange& emitted : pending[read.resource].covered) {
-                    alreadyOrdered = alreadyOrdered || enclosesRange(emitted, resolved);
+                for (const Covered& emitted : pending[read.resource].covered) {
+                    alreadyOrdered = alreadyOrdered || (emitted.consumer == pass.kind &&
+                                                        enclosesRange(emitted.range, resolved));
                 }
                 if (alreadyOrdered) {
                     continue;
                 }
-                pending[read.resource].covered.push_back(resolved);
+                pending[read.resource].covered.push_back(
+                    {.range = resolved, .consumer = pass.kind});
                 transition.kind = GraphResourceKind::Texture;
                 transition.range = covered;
                 transition.textureFrom = pending[read.resource].textureUse;
@@ -1261,42 +1296,48 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             if (resource.kind == ResourceKind::Buffer) {
                 // Buffers carry no subresource ranges, so any pending read is the whole resource
                 // and every write discharges it completely -- there is no partial case to preserve.
-                if (reads.bufferRead) {
+                // One barrier per distinct reading use, so the producing side covers every reader.
+                for (const rhi::BufferUse readUse : reads.bufferReads) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Buffer,
-                                           .bufferFrom = reads.bufferUse,
+                                           .bufferFrom = readUse,
                                            .bufferTo = bufferUseOf(pass.kind, declaration.role)});
-                    reads.bufferRead = false;
                 }
-            } else if (reads.textureRead) {
+                reads.bufferReads.clear();
+            } else if (!reads.textureReads.empty()) {
                 const ResolvedRange writeRange =
                     resolveRange(declaration.range, resource.mipLevels, resource.arrayLayers);
                 // Shrink each pending entry to what this write did not touch, rather than dropping
                 // an entry outright the moment any part of it overlaps -- see the comment above.
-                std::vector<ResolvedRange> remaining;
-                remaining.reserve(reads.ranges.size());
-                bool overlapsRead = false;
-                for (const ResolvedRange& readRange : reads.ranges) {
-                    if (rangesOverlap(readRange, writeRange)) {
-                        overlapsRead = true;
-                        const std::vector<ResolvedRange> remainder =
-                            subtractRange(readRange, writeRange);
-                        remaining.insert(remaining.end(), remainder.begin(), remainder.end());
-                    } else {
-                        remaining.push_back(readRange);
+                // Each surviving piece keeps the use that read it, so a later write over it names
+                // that reader too.
+                std::vector<PendingRead> remaining;
+                remaining.reserve(reads.textureReads.size());
+                std::vector<rhi::TextureUse> overlappedUses;
+                for (const PendingRead& pendingRead : reads.textureReads) {
+                    if (!rangesOverlap(pendingRead.range, writeRange)) {
+                        remaining.push_back(pendingRead);
+                        continue;
+                    }
+                    if (std::ranges::find(overlappedUses, pendingRead.use) ==
+                        overlappedUses.end()) {
+                        overlappedUses.push_back(pendingRead.use);
+                    }
+                    for (const ResolvedRange& piece :
+                         subtractRange(pendingRead.range, writeRange)) {
+                        remaining.push_back({.range = piece, .use = pendingRead.use});
                     }
                 }
-                if (overlapsRead) {
+                for (const rhi::TextureUse readUse : overlappedUses) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Texture,
                                            .range = declaration.range,
-                                           .textureFrom = reads.textureUse,
+                                           .textureFrom = readUse,
                                            .textureTo = textureUseOf(pass.kind, declaration.role)});
                 }
-                reads.ranges = std::move(remaining);
-                reads.textureRead = !reads.ranges.empty();
+                reads.textureReads = std::move(remaining);
             }
         }
 
@@ -1312,14 +1353,16 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 continue;
             }
             const Resource& resource = m_resources[read.resource];
+            ReadState& reads = pendingReads[read.resource];
             if (resource.kind == ResourceKind::Buffer) {
-                pendingReads[read.resource].bufferRead = true;
-                pendingReads[read.resource].bufferUse = bufferUseOf(pass.kind, read.role);
+                const rhi::BufferUse use = bufferUseOf(pass.kind, read.role);
+                if (std::ranges::find(reads.bufferReads, use) == reads.bufferReads.end()) {
+                    reads.bufferReads.push_back(use);
+                }
             } else {
-                pendingReads[read.resource].textureRead = true;
-                pendingReads[read.resource].textureUse = textureUseOf(pass.kind, read.role);
-                pendingReads[read.resource].ranges.push_back(
-                    resolveRange(read.range, resource.mipLevels, resource.arrayLayers));
+                reads.textureReads.push_back(
+                    {.range = resolveRange(read.range, resource.mipLevels, resource.arrayLayers),
+                     .use = textureUseOf(pass.kind, read.role)});
             }
         }
 

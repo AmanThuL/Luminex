@@ -823,6 +823,120 @@ TEST_CASE("execute barriers a buffer write after an earlier read", "[render][gra
 }
 
 //======================================================================================================================
+// Ledger L60, on the buffer path: the exposure buffer is read by the scene pass through a sampled
+// binding and by the histogram dispatch through a storage one, and only then overwritten. A single
+// remembered reader would name whichever read last, leaving the other unordered against the write;
+// the write owes a barrier from *each* distinct reading use, in the order the reads happened.
+TEST_CASE("a buffer write is barriered after every kind of earlier read", "[render][graph]") {
+    FakeBuffer exposureBuffer{16, "exposure"};
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    FakeBuffer histogramBuffer{1024, "histogram"};
+    RenderGraph graph;
+    const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+    const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
+
+    // A raster read of the buffer: the shipped scene pass's exposure override.
+    PassDesc scene;
+    scene.bufferReads.push_back(exposure);
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    // A compute read of the same version, through a storage binding.
+    ComputePassDesc histogramPass;
+    histogramPass.bufferReads.push_back(exposure);
+    histogramPass.bufferWrites.push_back(histogram);
+    graph.addComputePass("lmx.pass.histogram", histogramPass, kNoWork);
+
+    ComputePassDesc resolve;
+    resolve.bufferWrites.push_back(exposure);
+    graph.addComputePass("lmx.pass.resolve", resolve, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+    graph.exportBuffer(nextVersion(histogram));
+    graph.exportBuffer(nextVersion(exposure));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    // Two write-after-read transitions before the resolve, one per reading use.
+    REQUIRE(record.debug.transitions.size() == 2);
+    REQUIRE(record.debug.transitions[0].bufferFrom == rhi::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferFrom == rhi::BufferUse::StorageRead);
+    REQUIRE(record.debug.transitions[0].beforePass == 2);
+    REQUIRE(record.debug.transitions[1].beforePass == 2);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin lmx.pass.scene", "end",
+                                     "begin compute lmx.pass.histogram", "end compute",
+                                     "barrier exposure ShaderRead->StorageWrite",
+                                     "barrier exposure "
+                                     "StorageRead->StorageWrite",
+                                     "begin compute lmx.pass.resolve", "end compute"});
+}
+
+//======================================================================================================================
+// The same rule on the texture path, where the pending reads carry subresource ranges: each range a
+// write overlaps keeps the use that read it, so a write over both of them names both.
+TEST_CASE("a texture write is barriered after every kind of earlier read", "[render][graph]") {
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    FakeBuffer histogramBuffer{1024, "histogram"};
+    FakeTexture displayTarget{64, 64, "display"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+    const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
+    const GraphTexture display =
+        graph.importTexture(displayTarget, rhi::Format::BGRA8Unorm, "display");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    const GraphTexture sceneRead = nextVersion(sceneColor);
+
+    ComputePassDesc histogramPass;
+    histogramPass.textureReads.push_back(sceneRead);
+    histogramPass.bufferWrites.push_back(histogram);
+    graph.addComputePass("lmx.pass.histogram", histogramPass, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(sceneRead);
+    displayPass.color = ColorAttachment{.handle = display};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+
+    // Overwrites what both of them read.
+    ComputePassDesc overwrite;
+    overwrite.textureWrites.push_back(sceneRead);
+    graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
+
+    graph.exportBuffer(nextVersion(histogram));
+    graph.exportTexture(nextVersion(display));
+    graph.exportTexture(nextVersion(sceneRead));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    // Two read-after-write transitions (one per reading stage class) and then two write-after-read
+    // ones before the overwrite, from each of those same uses.
+    REQUIRE(record.debug.transitions.size() == 4);
+    REQUIRE(record.debug.transitions[2].beforePass == 3);
+    REQUIRE(record.debug.transitions[2].textureFrom == rhi::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[3].beforePass == 3);
+    REQUIRE(record.debug.transitions[3].textureFrom == rhi::TextureUse::ShaderRead);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{
+                "begin lmx.pass.scene", "end", "barrier sceneColor RenderTarget->StorageRead",
+                "begin compute lmx.pass.histogram", "end compute",
+                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display", "end",
+                "barrier sceneColor StorageRead->StorageWrite",
+                "barrier sceneColor ShaderRead->StorageWrite", "begin compute lmx.pass.overwrite",
+                "end compute"});
+}
+
+//======================================================================================================================
 // A pass reading and writing one buffer in the same dispatch (the histogram accumulate shape) must
 // not be barriered against itself: the read this pass records is not visible to its own write
 // check, only to a later pass's.
@@ -1621,9 +1735,11 @@ TEST_CASE("a culled pass is still validated", "[render][graph]") {
 
 //======================================================================================================================
 // A barrier orders the passes it sits between, so the range it names has to cover the reader it
-// sits in front of. One writer of the whole chain and two readers of different mips is the case
-// that tells the two rules apart: "one transition per write" would leave the second reader
-// unordered, and only the second reader's own barrier states the dependency it actually has.
+// sits in front of -- one of the two axes a barrier is scoped on (rhi::CommandList::textureBarrier
+// states the model; the consuming stage class is the other, two cases below). One writer of the
+// whole chain and two readers of different mips is the case that tells the two range rules apart:
+// "one transition per write" would leave the second reader unordered, and only the second reader's
+// own barrier states the dependency it actually has.
 TEST_CASE("each reader of a distinct range gets its own transition", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     FakeTexture first{64, 64, "first"};
@@ -1671,9 +1787,12 @@ TEST_CASE("each reader of a distinct range gets its own transition", "[render][g
 
 //======================================================================================================================
 // The other half of the same rule, and what keeps the shipped frame's barrier count where M4 left
-// it: a reader whose subresources an earlier barrier already named is already ordered, so a second
-// barrier would be pure cost. The first reader here takes the whole chain, which encloses the
-// second reader's single mip.
+// it: a reader whose subresources an earlier barrier already named, *and* whose stage class that
+// barrier was consumed by, is already ordered, so a second barrier would be pure cost. The first
+// reader here takes the whole chain, which encloses the second reader's single mip, and both are
+// raster passes -- passes of one stage class are ordered among themselves, so the one barrier
+// reaches the second reader too. Neither condition alone is enough; the two cases below are what
+// each of them rules out.
 TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     FakeTexture first{64, 64, "first"};
@@ -1709,6 +1828,109 @@ TEST_CASE("a reader enclosed by an earlier transition gets none", "[render][grap
                                                         "barrier chain StorageWrite->ShaderRead",
                                                         "begin lmx.pass.readAll", "end",
                                                         "begin lmx.pass.readMip2", "end"});
+}
+
+//======================================================================================================================
+// The stage-class axis, on the exact shape the shipped frame takes with auto-exposure on and bloom
+// off: the scene target's first reader is the histogram dispatch and its second is the display
+// raster pass, both over the whole texture. A barrier is scoped to the stage class of the pass that
+// consumes it, so the compute reader's barrier orders nothing for the raster one -- an enclosing
+// range is not enough, and the display pass would otherwise sample the target with nothing ordering
+// it against the scene pass's writes.
+TEST_CASE("a reader of another stage class is not covered by an earlier transition",
+          "[render][graph]") {
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    FakeBuffer histogramBuffer{1024, "histogram"};
+    FakeTexture displayTarget{64, 64, "display"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+    const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
+    const GraphTexture display =
+        graph.importTexture(displayTarget, rhi::Format::BGRA8Unorm, "display");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    const GraphTexture sceneRead = nextVersion(sceneColor);
+
+    ComputePassDesc histogramPass;
+    histogramPass.textureReads.push_back(sceneRead);
+    histogramPass.bufferWrites.push_back(histogram);
+    graph.addComputePass("lmx.pass.histogram", histogramPass, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(sceneRead);
+    displayPass.color = ColorAttachment{.handle = display};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+
+    graph.exportBuffer(nextVersion(histogram));
+    graph.exportTexture(nextVersion(display));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.size() == 2);
+    REQUIRE(record.debug.transitions[0].beforePass == 1);
+    REQUIRE(record.debug.transitions[0].textureTo == rhi::TextureUse::StorageRead);
+    REQUIRE(record.debug.transitions[1].beforePass == 2);
+    REQUIRE(record.debug.transitions[1].textureTo == rhi::TextureUse::ShaderRead);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{
+                "begin lmx.pass.scene", "end", "barrier sceneColor RenderTarget->StorageRead",
+                "begin compute lmx.pass.histogram", "end compute",
+                "barrier sceneColor RenderTarget->ShaderRead", "begin lmx.pass.display", "end"});
+}
+
+//======================================================================================================================
+// The same rule on the buffer path, which has no ranges to fall back on: a buffer's first barrier
+// covers every byte, so the stage class is the only thing that can tell two readers apart. The
+// exposure buffer's seeded value is read by the scene raster pass and then by the histogram
+// dispatch, and each owes a barrier of its own.
+TEST_CASE("a buffer reader of another stage class is not covered either", "[render][graph]") {
+    FakeBuffer exposureBuffer{16, "exposure"};
+    FakeTexture sceneColorTarget{64, 64, "sceneColor"};
+    FakeBuffer histogramBuffer{1024, "histogram"};
+    RenderGraph graph;
+    const GraphBuffer exposure = graph.importBuffer(exposureBuffer, "exposure");
+    const GraphTexture sceneColor =
+        graph.importTexture(sceneColorTarget, rhi::Format::RGBA16Float, "sceneColor");
+    const GraphBuffer histogram = graph.importBuffer(histogramBuffer, "histogram");
+
+    ComputePassDesc seed;
+    seed.bufferWrites.push_back(exposure);
+    graph.addComputePass("lmx.pass.seed", seed, kNoWork);
+
+    const GraphBuffer exposureRead = nextVersion(exposure);
+
+    PassDesc scene;
+    scene.bufferReads.push_back(exposureRead);
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    ComputePassDesc histogramPass;
+    histogramPass.bufferReads.push_back(exposureRead);
+    histogramPass.bufferWrites.push_back(histogram);
+    graph.addComputePass("lmx.pass.histogram", histogramPass, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+    graph.exportBuffer(nextVersion(histogram));
+
+    RecordingCommandList commands;
+    const CompiledFrameRecord record = graph.execute(commands, 1);
+
+    REQUIRE(record.debug.transitions.size() == 2);
+    REQUIRE(record.debug.transitions[0].bufferTo == rhi::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferTo == rhi::BufferUse::StorageRead);
+
+    REQUIRE(commands.events ==
+            std::vector<std::string>{"begin compute lmx.pass.seed", "end compute",
+                                     "barrier exposure StorageWrite->ShaderRead",
+                                     "begin lmx.pass.scene", "end",
+                                     "barrier exposure StorageWrite->StorageRead",
+                                     "begin compute lmx.pass.histogram", "end compute"});
 }
 
 namespace {

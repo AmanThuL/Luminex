@@ -674,6 +674,16 @@ public:
     /// what a graph reasons about. A backend may synchronize more than the range asks for: this
     /// one does, because Metal 4 tracks no resource state and its barriers order pipeline stages
     /// rather than subresources, so every barrier is at least a whole-queue stage dependency.
+    ///
+    /// What a barrier does *not* cover is the other consumers. The dependency is scoped to the
+    /// consuming pass's own stage class -- the kind of encoder the pass opens -- because that is
+    /// the side a backend can only express in the terms of the pass it is emitting for; this one
+    /// records it as the consuming encoder's first command, naming the producing stages and its
+    /// own. Passes of one stage class are ordered among themselves, so one barrier serves every
+    /// later consumer of that class; a consumer of a *different* class needs its own barrier, over
+    /// the same subresources and the same producing use, however wide the first one's range was.
+    /// A render graph derives its barriers from this rule, and a caller hand-encoding two passes
+    /// of different kinds over one producer's output owes each of them a barrier.
     /// Orders a texture's subresources between a producing and a consuming use.
     virtual void textureBarrier(Texture& texture, const TextureSubresourceRange& range,
                                 TextureUse from, TextureUse to) = 0;
