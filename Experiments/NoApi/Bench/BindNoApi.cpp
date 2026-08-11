@@ -401,12 +401,14 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
     submit(queue, setupList, fence, fenceValue);
     waitSemaphore(fence, fenceValue);
 
+    // requestedBytes is the scored figure (Bench/Metrics.h's AllocationSnapshot header comment);
+    // metalReportedBytes is additional evidence only, the prototype's true Metal-reported total.
     result.endOfSetup = {.textureCreateCalls = workload::kBindTextureCount + 1,
                          .bufferCreateCalls = 0,
                          .samplerCreateCalls = 1,
                          .pipelineCreateCalls = 1,
-                         .residentBytes = residentBytes(residency),
-                         .residentBytesIsMetalReported = true};
+                         .requestedBytes = deviceCreationStats(device).requestedBytes,
+                         .metalReportedBytes = residentBytes(residency)};
 
     const uint32_t gridSize = static_cast<uint32_t>(std::lround(std::sqrt(double(drawCount))));
     const float cellNdc = 2.0f / static_cast<float>(gridSize);
@@ -482,7 +484,8 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
     }
 
     result.endOfRun = result.endOfSetup;
-    result.endOfRun.residentBytes = residentBytes(residency);
+    result.endOfRun.requestedBytes = deviceCreationStats(device).requestedBytes;
+    result.endOfRun.metalReportedBytes = residentBytes(residency);
     result.ok = true;
 
     for (uint32_t slot = 0; slot < workload::kBindTextureCount + 4; ++slot) {

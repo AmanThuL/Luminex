@@ -23,6 +23,17 @@ struct CaseResult {
     std::string id;
     bool passed = false;
     std::string message; ///< Empty on a plain pass; failure reason, or S-LIFE's counter trace.
+    /// Barrier/synchronization primitives this case's single command buffer emitted (spec section
+    /// 9's barrier dimension: "count and kind of synchronization primitives each side needs for
+    /// H01-H24 and the representative graph"). Populated for H01-H24; zero (the default) for case
+    /// kinds this field does not apply to, which is itself accurate -- S-BIND and I1-I4 emit no
+    /// barriers of their own, and a setup failure before any command buffer recorded a barrier
+    /// truthfully reports zero. Counted at each side's own real choke point: HazardRhi.cpp wraps
+    /// every `CommandList::textureBarrier` call site it makes; HazardNoApi.cpp reads
+    /// `commandBufferStats().barrierCalls`, which `Source/CommandBuffer.cpp`'s `barrier()` free
+    /// function already increments at its own choke point -- no new counting mechanism on either
+    /// side, only new surfacing of counters that already existed.
+    uint64_t barrierCalls = 0;
 };
 
 /// Runs every H01-H24 case (`caseId == "all"`) or exactly one, against `adapter`.

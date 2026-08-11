@@ -1358,9 +1358,14 @@ AllocationSnapshot NoApiAdapter::allocationSnapshot() const {
                                 .bufferCreateCalls = creation.liveAllocations,
                                 .samplerCreateCalls = creation.liveSamplers,
                                 .pipelineCreateCalls = creation.livePipelines,
-                                .residentBytesIsMetalReported = true};
+                                // Scored basis (Bench/Metrics.h's AllocationSnapshot header
+                                // comment): requested sizes on both sides, so a comparison against
+                                // the incumbent's own requested-size figure is apples to apples.
+                                .requestedBytes = creation.requestedBytes};
     if (m_residency != nullptr) {
-        snapshot.residentBytes = residentBytes(m_residency);
+        // Additional evidence only, not the scored figure: the prototype's true Metal-reported
+        // allocated size, which the incumbent cannot produce and must not be compared against.
+        snapshot.metalReportedBytes = residentBytes(m_residency);
     }
     return snapshot;
 }

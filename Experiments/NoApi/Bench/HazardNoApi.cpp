@@ -404,7 +404,7 @@ Stage opFamily(HazardOpKind kind) {
 //======================================================================================================================
 CaseResult verifyOffset(const std::string& id, const char* what,
                         const std::vector<uint8_t>& expected, const HazardHarnessNoApi& h,
-                        uint64_t offset) {
+                        uint64_t offset, uint64_t barrierCalls) {
     std::vector<uint8_t> actual(expected.size());
     std::memcpy(actual.data(), static_cast<const uint8_t*>(h.readbackStorage.cpu) + offset,
                 expected.size());
@@ -418,9 +418,10 @@ CaseResult verifyOffset(const std::string& id, const char* what,
                          actual[mismatch + 2], expected.size());
         }
         return {id, false,
-                std::string(what) + " mismatch at byte offset " + std::to_string(mismatch)};
+                std::string(what) + " mismatch at byte offset " + std::to_string(mismatch),
+                barrierCalls};
     }
-    return {id, true, ""};
+    return {id, true, "", barrierCalls};
 }
 
 //======================================================================================================================
@@ -522,22 +523,29 @@ CaseResult runOneHazardCaseNoApi(const HazardCase& hc) {
     }
 
     h.submitAndWait(commands);
+    // M5.1 barrier-count instrumentation (spec section 9): `commands` is retired but not yet
+    // reused (the next `beginCommands` call resets it), so its accumulated stats are still valid to
+    // read here -- the same choke point RhiAdapter/NoApiAdapter's own instrumentation reads,
+    // applied to a stress case instead of a full frame.
+    const uint64_t barrierCalls = commandBufferStats(commands).barrierCalls;
 
     if (hc.hazard == HazardKind::ReadAfterWrite) {
-        CaseResult producerCheck =
-            verifyOffset(hc.id, "producer write", producerExpected, h, kProducerVerifyOffset);
+        CaseResult producerCheck = verifyOffset(hc.id, "producer write", producerExpected, h,
+                                                kProducerVerifyOffset, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
-        return verifyOffset(hc.id, "consumer read", consumerExpected, h, kConsumerVerifyOffset);
+        return verifyOffset(hc.id, "consumer read", consumerExpected, h, kConsumerVerifyOffset,
+                            barrierCalls);
     }
     if (hc.hazard == HazardKind::WriteAfterRead) {
-        CaseResult producerCheck =
-            verifyOffset(hc.id, "producer read (old value)", producerOld, h, kProducerVerifyOffset);
+        CaseResult producerCheck = verifyOffset(hc.id, "producer read (old value)", producerOld, h,
+                                                kProducerVerifyOffset, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
-        return verifyOffset(hc.id, "consumer write", consumerExpected, h, kConsumerVerifyOffset);
+        return verifyOffset(hc.id, "consumer write", consumerExpected, h, kConsumerVerifyOffset,
+                            barrierCalls);
     }
     // WriteAfterWrite. A whole-resource case's producer and consumer write the identical mip 0
     // subresource, so the consumer's write physically overwrites the producer's "old" bytes --
@@ -547,12 +555,13 @@ CaseResult runOneHazardCaseNoApi(const HazardCase& hc) {
     // checked.
     if (hc.perMip) {
         CaseResult producerCheck = verifyOffset(hc.id, "producer write (old value)", producerOld, h,
-                                                kProducerVerifyOffset);
+                                                kProducerVerifyOffset, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
     }
-    return verifyOffset(hc.id, "consumer write", consumerExpected, h, kConsumerVerifyOffset);
+    return verifyOffset(hc.id, "consumer write", consumerExpected, h, kConsumerVerifyOffset,
+                        barrierCalls);
 }
 
 } // namespace

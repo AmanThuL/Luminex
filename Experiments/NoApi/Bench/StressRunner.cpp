@@ -95,6 +95,11 @@ int runStress(AdapterKind adapter, const std::string& caseId) {
         return 1;
     }
 
+    // Barrier counts (spec section 9's barrier dimension: "H01-H24 and the representative graph")
+    // are only meaningful for the hazard matrix -- S-BIND/S-LIFE/I1-I4 leave
+    // CaseResult::barrierCalls at its default zero because they emit no barriers of their own, and
+    // printing that zero alongside them would misrepresent an unmeasured field as a measured one.
+    const std::string adapterName = adapter == AdapterKind::Rhi ? "rhi" : "noapi";
     bool allPassed = true;
     for (const CaseResult& result : results) {
         if (result.passed) {
@@ -102,10 +107,24 @@ int runStress(AdapterKind adapter, const std::string& caseId) {
             if (!result.message.empty()) {
                 std::cout << " (" << result.message << ")";
             }
+            if (idIsHazard(result.id)) {
+                std::cout << " barrierCalls=" << result.barrierCalls;
+            }
             std::cout << "\n";
         } else {
-            std::cout << result.id << " FAIL: " << result.message << "\n";
+            std::cout << result.id << " FAIL: " << result.message;
+            if (idIsHazard(result.id)) {
+                std::cout << " barrierCalls=" << result.barrierCalls;
+            }
+            std::cout << "\n";
             allPassed = false;
+        }
+        if (idIsHazard(result.id)) {
+            // Machine-readable summary line, one per case: BARRIERS <adapter> <id> <barrierCalls>.
+            // Deliberately separate from the PASS/FAIL line above so a collector can grep this
+            // fixed-column format without parsing the human-readable message text.
+            std::cout << "BARRIERS " << adapterName << " " << result.id << " "
+                      << result.barrierCalls << "\n";
         }
     }
     return allPassed ? 0 : 1;

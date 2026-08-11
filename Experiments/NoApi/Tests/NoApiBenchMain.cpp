@@ -456,13 +456,19 @@ std::string countersToJson(const lmx::noapi::bench::FrameBindingCounters& counte
 }
 
 //======================================================================================================================
+// requestedBytes is the scored figure on both sides; metalReportedBytes is the prototype's
+// additional, clearly separate true-Metal-allocation evidence, explicitly `null` when the adapter
+// cannot produce it (the incumbent) -- see Bench/Metrics.h's AllocationSnapshot header comment. A
+// consumer of this JSON can never mistake one basis for the other: only one key means "scored."
 std::string allocationToJson(const lmx::noapi::bench::AllocationSnapshot& snapshot) {
+    const std::string metalReportedBytes = snapshot.metalReportedBytes.has_value()
+                                               ? std::to_string(*snapshot.metalReportedBytes)
+                                               : "null";
     return std::format(
         "{{\"textureCreateCalls\":{},\"bufferCreateCalls\":{},\"samplerCreateCalls\":{},"
-        "\"pipelineCreateCalls\":{},\"residentBytes\":{},\"residentBytesIsMetalReported\":{}}}",
+        "\"pipelineCreateCalls\":{},\"requestedBytes\":{},\"metalReportedBytes\":{}}}",
         snapshot.textureCreateCalls, snapshot.bufferCreateCalls, snapshot.samplerCreateCalls,
-        snapshot.pipelineCreateCalls, snapshot.residentBytes,
-        snapshot.residentBytesIsMetalReported ? "true" : "false");
+        snapshot.pipelineCreateCalls, snapshot.requestedBytes, metalReportedBytes);
 }
 
 //======================================================================================================================

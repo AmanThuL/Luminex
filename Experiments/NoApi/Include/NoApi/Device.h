@@ -68,6 +68,12 @@ struct DeviceCreationStats {
     uint32_t livePipelines = 0;   ///< createGraphicsPipeline/createComputePipeline calls live.
     uint32_t liveSamplers = 0;    ///< createSampler calls not yet matched by destroySampler.
     uint32_t liveAllocations = 0; ///< allocate calls not yet matched by deallocate.
+    /// Sum of every live allocation's requested `AllocationDesc::size` (M5.1 spec section 9's
+    /// allocation dimension, scored basis: the caller-requested size, not Metal's padded/aligned
+    /// `allocatedSize`). Every texture is placed inside a private allocation the caller sized to
+    /// hold it, so this total already covers texture bytes without a separate per-texture figure --
+    /// see `ResidencySet.h`'s `residentBytes` for the true Metal-reported total instead.
+    uint64_t requestedBytes = 0;
 };
 
 /// Returns the device's current live creation counts.

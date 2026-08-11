@@ -18,6 +18,7 @@
 
 #pragma once
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,23 +50,24 @@ struct FrameBindingCounters {
 /// section 9's allocation dimension: "allocation call counts and resident bytes ... at end of setup
 /// and end of run").
 ///
-/// `residentBytes`'s two adapters answer different questions honestly rather than a shared one
-/// dishonestly: the prototype reports Metal's own reported allocated sizes (`residentBytes` over
-/// its `ResidencySet`, spec section 9's literal definition). The public RHI exposes no equivalent
-/// -- its `Buffer`/`Texture` interfaces report only the caller's requested logical size, never
-/// Metal's padded/aligned allocation -- so the incumbent adapter reports the best available
-/// substitute (requested bytes, computed from the same descriptors it created every resource with)
-/// and this is recorded as a known, unavoidable asymmetry rather than presented as the same
-/// measurement (spec's fairness rule: "any asymmetry you cannot avoid must be reported, not
-/// silently accepted").
+/// A scored comparison needs one common basis, and the public RHI cannot produce the prototype's
+/// true Metal-reported allocated size (its `Buffer`/`Texture` interfaces report only the caller's
+/// requested logical size, never Metal's padded/aligned allocation) -- so `requestedBytes` is the
+/// scored figure on BOTH sides: the incumbent's own best-available number (computed from the same
+/// descriptors it created every resource with) and the prototype's equivalent computed the same way
+/// (summed requested allocation sizes, not Metal's rounded-up ones). `metalReportedBytes` carries
+/// the prototype's true figure as additional, clearly separate evidence -- `std::nullopt` on the
+/// incumbent, which cannot produce it -- so a comparison can never silently mix the two bases
+/// (spec's fairness rule: "any asymmetry you cannot avoid must be reported, not silently
+/// accepted").
 struct AllocationSnapshot {
     uint32_t textureCreateCalls =
         0;                          ///< Textures created (live count; see each adapter's own note).
     uint32_t bufferCreateCalls = 0; ///< Buffers/allocations created (live or cumulative; see note).
-    uint32_t samplerCreateCalls = 0;  ///< Samplers created.
-    uint32_t pipelineCreateCalls = 0; ///< Graphics + compute pipelines created.
-    uint64_t residentBytes = 0; ///< See this struct's header comment for what each side means.
-    bool residentBytesIsMetalReported = false; ///< True for the prototype, false for the incumbent.
+    uint32_t samplerCreateCalls = 0;            ///< Samplers created.
+    uint32_t pipelineCreateCalls = 0;           ///< Graphics + compute pipelines created.
+    uint64_t requestedBytes = 0;                ///< Scored figure; both sides, same computation.
+    std::optional<uint64_t> metalReportedBytes; ///< Prototype only; nullopt on the incumbent.
 };
 
 /// One `--measure` invocation's collected samples (plan Stage 4 item 4, spec section 8's protocol):

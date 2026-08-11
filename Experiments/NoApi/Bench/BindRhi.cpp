@@ -328,14 +328,15 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
     result.endOfSetup = {.textureCreateCalls = workload::kBindTextureCount + 1,
                          .bufferCreateCalls = drawCount,
                          .samplerCreateCalls = 1,
-                         .pipelineCreateCalls = 1,
-                         .residentBytesIsMetalReported = false};
+                         .pipelineCreateCalls = 1};
+    // requestedBytes is the scored figure on both sides (Bench/Metrics.h's AllocationSnapshot
+    // header comment); metalReportedBytes stays std::nullopt -- the public RHI cannot produce it.
     for (const std::unique_ptr<rhi::Texture>& texture : textures) {
-        result.endOfSetup.residentBytes += textureRequestedBytes(*texture);
+        result.endOfSetup.requestedBytes += textureRequestedBytes(*texture);
     }
-    result.endOfSetup.residentBytes += textureRequestedBytes(*target);
+    result.endOfSetup.requestedBytes += textureRequestedBytes(*target);
     for (const std::unique_ptr<rhi::Buffer>& buffer : paramBuffers) {
-        result.endOfSetup.residentBytes += buffer->size();
+        result.endOfSetup.requestedBytes += buffer->size();
     }
 
     const uint32_t totalFrames = warmupFrames + measuredFrames;

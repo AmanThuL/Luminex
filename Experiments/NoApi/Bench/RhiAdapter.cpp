@@ -1442,7 +1442,8 @@ AllocationSnapshot RhiAdapter::allocationSnapshot() const {
         .bufferCreateCalls = static_cast<uint32_t>(m_creationCounters.bufferCreateCalls),
         .samplerCreateCalls = static_cast<uint32_t>(m_creationCounters.samplerCreateCalls),
         .pipelineCreateCalls = static_cast<uint32_t>(m_creationCounters.pipelineCreateCalls),
-        .residentBytesIsMetalReported = false,
+        // metalReportedBytes stays std::nullopt: the public RHI cannot produce Metal's padded
+        // allocated size (Bench/Metrics.h's AllocationSnapshot header comment).
     };
 
     uint64_t bytes = 0;
@@ -1488,7 +1489,7 @@ AllocationSnapshot RhiAdapter::allocationSnapshot() const {
         addBuffer(m_diagSceneColor.get());
     }
 
-    snapshot.residentBytes = bytes;
+    snapshot.requestedBytes = bytes;
     return snapshot;
 }
 

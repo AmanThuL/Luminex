@@ -235,7 +235,7 @@ rhi::Buffer* executeRead(HazardHarness& h, rhi::CommandList& cmd, HazardOpKind k
 
 //======================================================================================================================
 CaseResult verifyRgba(const std::string& id, const char* what, const std::vector<uint8_t>& expected,
-                      const std::vector<uint8_t>& actual) {
+                      const std::vector<uint8_t>& actual, uint64_t barrierCalls) {
     const int64_t mismatch = firstRgbMismatch(expected, actual);
     if (mismatch >= 0) {
         if (std::getenv("LMX_NOAPI_HAZARD_DEBUG") != nullptr) {
@@ -246,9 +246,10 @@ CaseResult verifyRgba(const std::string& id, const char* what, const std::vector
                          actual[mismatch + 2], expected.size());
         }
         return {id, false,
-                std::string(what) + " mismatch at byte offset " + std::to_string(mismatch)};
+                std::string(what) + " mismatch at byte offset " + std::to_string(mismatch),
+                barrierCalls};
     }
-    return {id, true, ""};
+    return {id, true, "", barrierCalls};
 }
 
 //======================================================================================================================
@@ -355,6 +356,17 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
 
     rhi::CommandList& cmd = h.device->beginFrame();
 
+    // M5.1 barrier-count instrumentation (spec section 9): CommandList exposes no counter of its
+    // own, so every textureBarrier call this case makes is wrapped at this one choke point --
+    // exactly the pattern RhiAdapter.cpp's bind*Counted wrappers already use for the representative
+    // graph's binding traffic.
+    uint64_t barrierCalls = 0;
+    const auto emitBarrier = [&](rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
+                                 rhi::TextureUse from, rhi::TextureUse to) {
+        cmd.textureBarrier(texture, range, from, to);
+        ++barrierCalls;
+    };
+
     rhi::Buffer* producerReadBuffer = nullptr;
     rhi::Texture* producerReadTexture = nullptr;
     rhi::Buffer* consumerReadBuffer = nullptr;
@@ -373,18 +385,18 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
 
     if (hc.hazard == HazardKind::ReadAfterWrite) {
         executeWrite(h, cmd, hc.producer, producerMip, producerExtent, producerExpected);
-        cmd.textureBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
-                           useForRole(hc.consumer, Role::Read));
+        emitBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
+                    useForRole(hc.consumer, Role::Read));
         readOp(hc.consumer, consumerMip, consumerExtent, consumerReadBuffer, consumerReadTexture);
     } else if (hc.hazard == HazardKind::WriteAfterRead) {
         readOp(hc.producer, producerMip, producerExtent, producerReadBuffer, producerReadTexture);
-        cmd.textureBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Read),
-                           useForRole(hc.consumer, Role::Write));
+        emitBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Read),
+                    useForRole(hc.consumer, Role::Write));
         executeWrite(h, cmd, hc.consumer, consumerMip, consumerExtent, consumerExpected);
     } else { // WriteAfterWrite
         executeWrite(h, cmd, hc.producer, producerMip, producerExtent, producerOld);
-        cmd.textureBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
-                           useForRole(hc.consumer, Role::Write));
+        emitBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
+                    useForRole(hc.consumer, Role::Write));
         executeWrite(h, cmd, hc.consumer, consumerMip, consumerExtent, consumerExpected);
     }
 
@@ -394,10 +406,10 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
     rhi::Buffer* producerVerifyBuffer = nullptr;
     rhi::Buffer* consumerVerifyBuffer = nullptr;
     if (hc.hazard == HazardKind::WriteAfterWrite) {
-        cmd.textureBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
-                           rhi::TextureUse::CopySource);
-        cmd.textureBarrier(*h.target, mipRange(consumerMip), useForRole(hc.consumer, Role::Write),
-                           rhi::TextureUse::CopySource);
+        emitBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
+                    rhi::TextureUse::CopySource);
+        emitBarrier(*h.target, mipRange(consumerMip), useForRole(hc.consumer, Role::Write),
+                    rhi::TextureUse::CopySource);
         producerVerifyBuffer = makeResultBuffer(h, uint64_t{producerExtent} * producerExtent * 4,
                                                 false, "hazard.producerVerify");
         consumerVerifyBuffer = makeResultBuffer(h, uint64_t{consumerExtent} * consumerExtent * 4,
@@ -419,8 +431,8 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
                                 {.offset = 0, .bytesPerRow = uint64_t{consumerExtent} * 4});
         cmd.endCopyPass();
     } else if (hc.hazard == HazardKind::ReadAfterWrite) {
-        cmd.textureBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
-                           rhi::TextureUse::CopySource);
+        emitBarrier(*h.target, mipRange(producerMip), useForRole(hc.producer, Role::Write),
+                    rhi::TextureUse::CopySource);
         producerVerifyBuffer = makeResultBuffer(h, uint64_t{producerExtent} * producerExtent * 4,
                                                 false, "hazard.producerVerify");
         cmd.beginCopyPass("hazard.verify.raw");
@@ -433,8 +445,8 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
                                 {.offset = 0, .bytesPerRow = uint64_t{producerExtent} * 4});
         cmd.endCopyPass();
     } else { // WriteAfterRead: consumer's write needs the same trailing verification.
-        cmd.textureBarrier(*h.target, mipRange(consumerMip), useForRole(hc.consumer, Role::Write),
-                           rhi::TextureUse::CopySource);
+        emitBarrier(*h.target, mipRange(consumerMip), useForRole(hc.consumer, Role::Write),
+                    rhi::TextureUse::CopySource);
         consumerVerifyBuffer = makeResultBuffer(h, uint64_t{consumerExtent} * consumerExtent * 4,
                                                 false, "hazard.consumerVerify");
         cmd.beginCopyPass("hazard.verify.war");
@@ -478,7 +490,7 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
         const std::vector<uint8_t> producerActual =
             readBuffer(producerVerifyBuffer, uint64_t{producerExtent} * producerExtent * 4);
         CaseResult producerCheck =
-            verifyRgba(hc.id, "producer write", producerExpected, producerActual);
+            verifyRgba(hc.id, "producer write", producerExpected, producerActual, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
@@ -493,7 +505,7 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
             consumerActual =
                 readBuffer(consumerReadBuffer, uint64_t{consumerExtent} * consumerExtent * 4);
         }
-        return verifyRgba(hc.id, "consumer read", consumerExpected, consumerActual);
+        return verifyRgba(hc.id, "consumer read", consumerExpected, consumerActual, barrierCalls);
     }
     if (hc.hazard == HazardKind::WriteAfterRead) {
         std::vector<uint8_t> producerActual;
@@ -507,14 +519,14 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
             producerActual =
                 readBuffer(producerReadBuffer, uint64_t{producerExtent} * producerExtent * 4);
         }
-        CaseResult producerCheck =
-            verifyRgba(hc.id, "producer read (old value)", producerOld, producerActual);
+        CaseResult producerCheck = verifyRgba(hc.id, "producer read (old value)", producerOld,
+                                              producerActual, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
         const std::vector<uint8_t> consumerActual =
             readBuffer(consumerVerifyBuffer, uint64_t{consumerExtent} * consumerExtent * 4);
-        return verifyRgba(hc.id, "consumer write", consumerExpected, consumerActual);
+        return verifyRgba(hc.id, "consumer write", consumerExpected, consumerActual, barrierCalls);
     }
     // WriteAfterWrite. A whole-resource case's producer and consumer write the identical mip 0
     // subresource, so the consumer's write physically overwrites the producer's "old" bytes --
@@ -525,15 +537,15 @@ CaseResult runOneHazardCaseRhi(const HazardCase& hc) {
     if (hc.perMip) {
         const std::vector<uint8_t> producerActual =
             readBuffer(producerVerifyBuffer, uint64_t{producerExtent} * producerExtent * 4);
-        CaseResult producerCheck =
-            verifyRgba(hc.id, "producer write (old value)", producerOld, producerActual);
+        CaseResult producerCheck = verifyRgba(hc.id, "producer write (old value)", producerOld,
+                                              producerActual, barrierCalls);
         if (!producerCheck.passed) {
             return producerCheck;
         }
     }
     const std::vector<uint8_t> consumerActual =
         readBuffer(consumerVerifyBuffer, uint64_t{consumerExtent} * consumerExtent * 4);
-    return verifyRgba(hc.id, "consumer write", consumerExpected, consumerActual);
+    return verifyRgba(hc.id, "consumer write", consumerExpected, consumerActual, barrierCalls);
 }
 
 } // namespace
