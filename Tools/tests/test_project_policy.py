@@ -74,6 +74,16 @@ class ProjectPolicyTests(unittest.TestCase):
             policy.check_commit_messages("base..head", errors)
         self.assertEqual(errors, [])
 
+    def test_commit_policy_accepts_a_squash_merged_spike(self) -> None:
+        records = "0123456789abcdef\0spike: decide the RHI execution model (#11)\0"
+        errors: list[str] = []
+        with (
+            mock.patch.object(policy, "git", return_value=records),
+            mock.patch.object(policy, "author_identity_tokens", return_value=set()),
+        ):
+            policy.check_commit_messages("base..head", errors)
+        self.assertEqual(errors, [])
+
     def test_public_copy_rejects_internal_milestones_and_unshipped_backends(self) -> None:
         errors: list[str] = []
         with mock.patch.object(
