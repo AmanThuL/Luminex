@@ -140,24 +140,23 @@ production interface migration, and later rendering features.
 
 ## M5.3 — Editor workspace and selection
 
-**Outcome:** the editor separates scene authoring, property editing, performance, and compiled-frame debugging, with selection determining the properties the Inspector edits.
+**Outcome:** the editor becomes a repeatable selection-driven workspace that separates scene navigation, property editing, performance observation, and exact compiled-frame debugging without changing renderer execution.
 
 **Deliver:**
 
-- Add a main menu bar for program-level actions, panel visibility, and default-layout reset. The
-  Render Graph window can be opened and closed from the menu while remaining dockable or floating.
-- Replace the overloaded right column with a left Scene/outliner sidebar, the central Viewport, a
-  right context Inspector, and a dockable Performance panel; left-side object, light, or camera
-  selection determines the properties edited on the right.
-- Keep selection identity local to the editor and the active scene. This milestone does not pull
-  M7's stable GPU-scene instance or resource identities into the current renderer.
+- Add a main menu for quit, panel visibility, default-layout reset, and next-frame GPU capture; use a
+  versioned workspace so clean, legacy M5.2, restored M5.3, and reset layouts have deterministic behavior.
+- Replace the overloaded right column with a searchable left Scene panel, central Viewport, right
+  context Inspector, and dockable Performance panel; keep Render Graph independently dockable and closable.
+- Model single selection as editor-local active-scene identity over camera, rendering settings,
+  directional lights, and objects; resolve indices safely without introducing persistent or GPU-scene IDs.
+- Give the Viewport compact rendering controls and move full properties into the selected Inspector;
+  preserve rolling Performance and exact newest-retired-frame Render Graph as distinct time domains.
 
-**Exit gate:** default, restored, and reset layouts keep the Viewport usable; every panel toggle
-works; selection edits the intended scene state and resets safely across scene changes; existing
-Render Graph list and timing views remain dockable, frame-correct, and behaviorally unchanged.
+**Exit gate:** clean, legacy, restored, and reset layouts keep a usable Viewport; every panel and menu
+action works; selection, filtering, scene changes, resize, and hidden-Viewport input are safe; Performance pause is coherent; Render Graph remains frame-correct; fixed-camera renderer output is unchanged.
 
-**Defer:** graph visualization or mutation, persistent scene identity/serialization, undo/redo, an
-entity-component system, multiple platform windows, and graph execution, scheduling, or RHI changes.
+**Defer:** viewport picking, outlines, gizmos, multi-selection, hierarchy/ECS work, persistent identity, rename/serialization, undo/redo, asset browsing, graph visualization or mutation, multiple platform windows, new profiling instrumentation, and graph, renderer, scheduling, or RHI changes.
 
 ## M5.4 — Render graph node visualization
 
