@@ -8,7 +8,8 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.md` · No active implementation plan
+- Current baseline: `docs/milestones/m5.1.md` (execution-model decision, ADR 0010) over
+  `docs/milestones/m5.md` · No active implementation plan
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -104,6 +105,9 @@ One frame end-to-end: `docs/frame-pipeline.md`.
   Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
   relevant tests, and passes `xmake policy`.
+- Repository-root experiments use `lmx::experimental::<name>` namespaces; for example,
+  `Experiments/NoApi/` is `lmx::experimental::noapi`. Never put experiment-owned APIs directly
+  under `lmx` or use a one-off namespace marker.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
   authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
   (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or

@@ -46,7 +46,7 @@ PROCESS_PATTERNS = (
     re.compile(r"(?i)\b(?:work[- ]item|plan[- ](?:checkbox|completion|amendment))\b"),
     re.compile(r"(?i)\b(?:as requested|per the prompt|controller resolution)\b"),
 )
-PROCESS_ROOTS = ("Source/", "Shaders/", "Tests/", "Tools/GpuDebug/")
+PROCESS_ROOTS = ("Source/", "Shaders/", "Tests/", "Tools/GpuDebug/", "Experiments/NoApi/")
 COMMIT_SUBJECT = re.compile(
     r"^(?:rhi|metal|render|shader|scene|asset|engine|editor|app|core|tool|build|ci|docs|test): "
     r"[a-z0-9]"

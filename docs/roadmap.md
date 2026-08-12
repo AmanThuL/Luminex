@@ -11,18 +11,19 @@ without expanding it.
 ## Current baseline
 
 M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute/copy/barrier
-execution substrate — compute pipelines, storage buffers and textures, subresource views, general
-copies, and indirect execution — beneath a culled and conservatively pooled validating render
-graph with a deterministic dump and a read-only editor Render Graph inspector. Histogram exposure
-and a bloom chain exercise the substrate while preserving a deterministic manual-exposure path. A
-pausable, four-Hz rolling summary keeps sub-millisecond per-pass timings readable while the Render
-Graph inspector retains exact-frame values. Shipped evidence and remaining limits are recorded in
-`docs/milestones/m5.md`.
+execution substrate — compute pipelines, storage resources, subresource views, general copies,
+indirect execution — beneath a culled, conservatively pooled validating render graph with a
+deterministic dump, a read-only editor inspector, and a pausable rolling timing summary;
+histogram exposure and bloom exercise it while preserving deterministic manual exposure
+(`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
+retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
+reshape for a future, separately accepted M5.x migration before M6; production has not migrated yet
+(prototype: `Experiments/NoApi/`).
 
 ## M4 — Correct image formation
 
-**Outcome:** the current frame runs through a small validating render graph and produces a
-scene-linear HDR image with physically based glTF materials.
+**Outcome:** the current frame runs through a small validating render graph and produces a scene-linear
+HDR image with physically based glTF materials.
 
 **Deliver:**
 
@@ -80,8 +81,7 @@ the M5.1 API-model experiment.
 
 ## M5 — Execution substrate and observability
 
-**Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and
-resource workloads required by later temporal and GPU-driven features.
+**Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and resource workloads required by later temporal and GPU-driven features.
 
 **Deliver:**
 
@@ -106,72 +106,76 @@ reversed-Z, storage hazards, load/store behavior, indirect arguments, and frame-
 **Defer:** motion/history semantics, dynamic resolution, GPU scene ownership, bindless materials,
 indirect visibility, and alternative opaque surface paths.
 
-## M5.1 — GPU-native interface experiment (placeholder)
+## M5.1 — RHI execution-model decision
 
-**Outcome:** a measured prototype decides whether Luminex should retain, partially reshape, or
-replace its object-shaped RHI with a smaller GPU-address-first execution interface that translates
-honestly to Metal 4 and D3D12.
+**Outcome:** a measured prototype decides whether to retain, partially reshape, or replace the object-shaped RHI with a GPU-address-first interface honest to Metal 4 and D3D12.
 
-This boundary is reserved, but its implementation scope is intentionally not designed in this
-roadmap revision. Before an `In progress` plan can start, an accepted design spec must turn the
-following minimum research boundary into concrete deliverables and an exit gate:
+**Deliver:**
 
+- Before measuring results, freeze the baseline, hypotheses, representative graph, bounded workloads,
+  rubric, and adoption thresholds; the design spec owns concrete scales and prototype architecture.
 - Compare the maintained RHI with the data-oriented "No Graphics API" model described by Sebastian
   Aaltonen's [article](https://www.sebastianaaltonen.com/blog/no-graphics-api),
   [extended presentation](https://www.youtube.com/watch?v=aQv9pUl9PBM), and
   [SIGGRAPH course slides](https://community.arm.com/cfs-file/__key/communityserver-blogs-components-weblogfiles/00-00-00-20-66/6763.2026_2D00_mmg_2D00_seb_2D00_gfx_2D00_api.pdf).
-  Cover allocation and address semantics, root data, resource handles, shader and pipeline
-  boundaries, commands, render-pass attachments, synchronization, residency, capabilities,
-  debugging, and failure behavior without removing the render graph's logical ownership.
-- Translate one representative M5 graphics/compute/copy graph through a non-default Metal 4
-  prototype and record a Metal 4/D3D12 mapping and gap matrix. Vulkan extensions are comparative
-  evidence, not a backend commitment.
-- Pre-register a workload matrix that combines maintained M5 frames with scalable binding,
-  compute/storage-hazard, upload/resize, and indirect-work stress cases. The design spec sets the
-  concrete scales, measurements, and adoption thresholds after the M5 baseline is available and
-  before prototype results are evaluated.
-- Compare API surface, CPU encoding work, binding traffic, pipeline permutations and cache behavior,
-  barrier commands, allocation behavior, validation coverage, and capture quality against the
-  maintained RHI.
+  Cover memory/address and root data, handles and bindings, pipelines and commands, attachments and
+  synchronization, residency and capabilities, debugging and failure behavior; retain the render
+  graph's logical ownership.
+- Translate one representative raster/compute/copy graph through an isolated non-default Metal 4
+  prototype, plus finite binding, hazard, upload/resize-lifetime, and indirect stress cases.
+- Classify its Metal 4/D3D12 mappings as native, emulated, unavailable, or unknown, including shader
+  constraints. Vulkan is unscored comparative evidence, not a backend commitment.
+- Compare correctness, failure and validation behavior, capture quality, API surface, CPU encoding,
+  binding traffic, pipeline/cache behavior, barriers, and allocation against the maintained RHI.
 
-**Decision required before M6:** checkpoint A remains green; the prototype reproduces the chosen
-graph's output, failure behavior, and three-frame lifetime rules; every emulation, fallback,
-shader-language constraint, and unsupported operation is recorded; and an ADR selects adopt,
-partially adopt, or reject. If adoption requires a larger migration, add that migration as a
-separately accepted milestone before M6; do not leave an unowned parallel API.
+**Exit gate:** checkpoint A stays green; the prototype reproduces the output, failure behavior, and
+three-frame lifetime rules it claims to cover; all emulation, fallback, shader constraints, gaps,
+and risks are recorded; and evidence is judged against the frozen thresholds. An ADR selects one
+production direction and disposes of the experiment. M5.1 does not migrate production: any adopted
+change requires a separately accepted M5.x migration completed before M6, with no parallel API left.
 
 **Defer:** a production D3D12 backend, Vulkan/Linux support, multi-queue optimization, ray tracing,
-and later rendering features.
+production interface migration, and later rendering features.
 
-## M5.2 — Editor workspace and graph visualization
+## M5.2 — Editor workspace and selection
 
-**Outcome:** the editor presents scene authoring, property editing, performance observation, and
-compiled-frame debugging as distinct workspaces, with a stable node view of the read-only render
-graph.
+**Outcome:** the editor separates scene authoring, property editing, performance, and compiled-frame debugging, with selection determining the properties the Inspector edits.
 
 **Deliver:**
 
 - Add a main menu bar for program-level actions, panel visibility, and default-layout reset. The
   Render Graph window can be opened and closed from the menu while remaining dockable or floating.
 - Replace the overloaded right column with a left Scene/outliner sidebar, the central Viewport, a
-  right context-sensitive Inspector, and a separately dockable Performance panel. Selecting an
-  object, light, or camera on the left determines the properties edited on the right.
-- Add a read-only node canvas over M5's retained `CompiledFrameRecord`: scheduled passes are nodes,
-  resource-version producer/consumer dependencies are directed edges, sinks are endpoints, and
-  culled passes remain visible but separate from the scheduled DAG. Subresource ranges, barriers,
-  timing, lifetimes, and alias reuse stay available through selection details; alias links are
-  visually distinct from execution dependencies.
+  right context Inspector, and a dockable Performance panel; left-side object, light, or camera
+  selection determines the properties edited on the right.
+- Keep selection identity local to the editor and the active scene. This milestone does not pull
+  M7's stable GPU-scene instance or resource identities into the current renderer.
+
+**Exit gate:** default, restored, and reset layouts keep the Viewport usable; every panel toggle
+works; selection edits the intended scene state and resets safely across scene changes; existing
+Render Graph list and timing views remain dockable, frame-correct, and behaviorally unchanged.
+
+**Defer:** graph visualization or mutation, persistent scene identity/serialization, undo/redo, an
+entity-component system, multiple platform windows, and graph execution, scheduling, or RHI changes.
+
+## M5.3 — Render graph node visualization
+
+**Outcome:** M5's retained compiled frame gains a stable read-only node view without changing graph execution or replacing its exact list and text representations.
+
+**Deliver:**
+
+- Add a node canvas over `CompiledFrameRecord`: passes are nodes, version dependencies are edges,
+  sinks are endpoints, and culled passes remain separate from the scheduled DAG. Selection exposes
+  subresources, barriers, timing, lifetimes, and reuse; alias links differ from execution edges.
 - Keep automatic layout deterministic and stable for an unchanged graph. Preserve the existing
   detailed list and deterministic text dump as alternate views of the same record.
 
-**Exit gate:** the default, restored, and reset layouts keep the Viewport usable; every advertised
-panel toggle works; selection routes edits to the intended scene entity; an unchanged compiled
-frame produces stable node positions; every displayed dependency agrees with the record's resource
-versions and schedule; culled passes and memory-alias links cannot be mistaken for scheduled
-execution edges; list, node, and dump views identify the same retired frame.
+**Exit gate:** unchanged frames produce stable positions; dependencies agree with resource versions
+and schedule; culled passes and aliases cannot resemble scheduled edges; details agree with the
+selected pass, version, and transient assignment; list, node, and dump identify the same frame.
 
-**Defer:** graph authoring or mutation, user-created render passes, multiple platform windows,
-capture-file browsing, and changes to Render Graph execution, scheduling, or RHI semantics.
+**Defer:** graph mutation, user passes, capture-file browsing, manual scheduling, and changes to
+Render Graph execution or RHI semantics.
 
 ## M6 — Temporal and display foundation
 
@@ -193,11 +197,8 @@ switching invalidate history correctly; rigid and camera motion reproject correc
 and MetalFX outputs can be compared from one capture; exposure changes do not pulse histories; UI is
 sharp and composed in its intended domain.
 
-**Interface gate B:** before M7 begins, close M5.1's interface decision and freeze the resulting
-GPU-scene, root-data, binding, synchronization, and capability semantics. A second production
-backend is not a prerequisite. When one is scheduled, D3D12 is the intended target and must pass
-checkpoint A and render the M6 PBR/HDR/TAA frame without redefining shared scene, graph, or temporal
-semantics.
+**Interface gate B:** before M7, verify production conforms to M5.1's ADR and any pre-M6 migration is complete, then freeze the GPU-scene, root-data, binding, synchronization, and capability semantics
+M7 consumes. A second backend is not required; when scheduled, D3D12 must pass checkpoint A and render the M6 PBR/HDR/TAA frame without redefining shared scene, graph, or temporal semantics.
 
 **Defer:** GPU-driven submission, clustered local lighting, scalable shadow systems, atmosphere, and
 opaque-path experiments.
