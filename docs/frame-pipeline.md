@@ -1,4 +1,4 @@
-# Luminex — one frame, as of the M5 execution substrate (2026-08-11)
+# Luminex — one frame, as of the M5.2 frame-data path (2026-08-12)
 
 What the renderer does between `beginFrame` and `endFrame`, written for planning what to build
 next. Updated at milestone boundaries.
@@ -19,7 +19,7 @@ culling drops the rest (`docs/guides/gpu-debugging.md`'s dump shows exactly this
 frame).
 
 ```
-beginFrame (blocks until frame N-3 retired; shared-event pacing, ring-recycle invariant asserted)
+beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
 │
 ├─ declare: import shadow map, scene color (HDR), scene depth, display color, histogram buffer,
 │           exposure buffer, swapchain drawable
@@ -161,11 +161,15 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
 ## Resources and lifetime
 
 - **3 frames in flight.** Each in-flight slot owns an argument table, a command allocator, and a
-  growable per-slot frame-data page arena (256 KiB normal pages). `bindFrameData` bump-allocates
-  within the active page at 256-byte alignment (or wider, for an over-aligned type) and returns the
-  block's GPU address. `beginFrame` asserts (all builds) that the shared event proves the recycled
-  slot's frame retired before reuse. A 12-frame GPU stress test attributes any cross-frame overwrite
-  to its culprit by color.
+  growable per-slot frame-data page arena (256 KiB normal pages; a request too large for the
+  active page gets a new page rounded up to that quantum, never a per-draw GPU object).
+  `bindFrameData` is one call: it bump-allocates within the active page at 256-byte alignment (or
+  wider, for an over-aligned type), copies the caller's block to that offset, composes the address
+  as the page's cached GPU base plus the offset, binds it into the argument table, and returns that
+  `GpuAddress` to the caller. `beginFrame` asserts (all builds) that the shared event proves the
+  recycled slot's frame retired before that slot's page cursors reset to reuse their prior
+  high-water capacity. A 12-frame GPU stress test attributes any cross-frame overwrite to its
+  culprit by color.
 - **Everything lives in one residency set** attached to the queue; textures join at creation.
 - **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable when the
   caller asks), scene depth (`D32Float`, kept sampled rather than discarded so a caller can

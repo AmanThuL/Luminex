@@ -17,8 +17,9 @@ deterministic dump, a read-only editor inspector, and a pausable rolling timing 
 histogram exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
-reshape. M5.2 owns that production migration before M6; production has not migrated yet, and the
-prototype remains frozen under `Experiments/NoApi/`.
+reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: typed `bindFrameData` over
+retirement-safe growable per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed
+with no alias, `Experiments/NoApi/` still frozen. M5.3 is next.
 
 ## M4 — Correct image formation
 

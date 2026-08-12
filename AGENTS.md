@@ -8,8 +8,8 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.1.md` (execution-model decision, ADR 0010) over
-  `docs/milestones/m5.md` · Active plan: `docs/plans/2026-08-12-m5.2-rhi-frame-data.md`
+- Current baseline: `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over
+  `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -40,6 +40,9 @@ thin RHI and one implemented backend.
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
   `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
+- Frame-data benchmark: `xmake build FrameDataBench` then `python3
+  Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
+  build; both the bench binary and the driver support `--selftest`.
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
