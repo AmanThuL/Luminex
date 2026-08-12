@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/EditorActions.h"
 #include "App/EditorRenderSettings.h"
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
@@ -123,6 +124,16 @@ public:
     /// it changes is the frame's transient high-water mark and its alias savings.
     bool poolingEnabled() const { return m_settings.poolingEnabled; }
 
+    /// The action intents the main menu raises, for the frame loop to consume at the boundary that
+    /// already owns each operation. Menu drawing never quits SDL, waits on the device, or begins a
+    /// capture itself, and the keyboard shortcuts raise the same intents, so a menu request and a
+    /// key press coalesce into one pending occurrence rather than two.
+    ///
+    /// Reset Default Layout is the exception the shell consumes itself, at the start of the next
+    /// frame -- rebuilding the dock topology mid-submission would tear down nodes the frame is
+    /// still drawing into.
+    EditorActions& actions() { return m_actions; }
+
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
         return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
@@ -131,10 +142,17 @@ public:
 private:
     EditorShell(SDL_Window* window, engine::SceneLibrary& library);
 
+    // Submitted before the dockspace so the work area the topology is built into already excludes
+    // the menu bar. Menu items only read visibility and raise intents.
+    void buildMainMenu();
     // Draws every visible panel in dock order and folds each window's close button back into
     // m_workspace.visibility. Panels draw the state this shell owns; they keep no copy of it.
     void buildPanels(rhi::Device& device, render::Renderer& renderer,
                      const FrameRecordRing& frameRecords);
+    // Leaves SDL relative mouse mode, restores the cursor, clears the look latch, and discards the
+    // motion accumulated while looking, so a later look cannot start with a jump. Safe to call when
+    // no look is in progress.
+    void endMouseLook();
     // The single write path for panel visibility, shared by the Window menu and by a panel's own
     // close button, and the only place that tells ImGui the ini needs rewriting for a change that
     // moved no window.
@@ -200,6 +218,9 @@ private:
     bool m_buildDefaultLayout = false;
     // Why the pending build was scheduled, for the one line logged when it actually happens.
     std::string_view m_layoutBuildReason;
+    // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the
+    // operation: the frame loop for quit and capture, this shell for a layout reset.
+    EditorActions m_actions;
 
     // Frame times for the Performance plot. A ring: ImGui::PlotLines takes the cursor as its
     // values_offset and unrolls it, so there is no discontinuity to shuffle away.

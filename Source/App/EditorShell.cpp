@@ -63,6 +63,7 @@ constexpr const char* kWorkspaceSettingsName = "Workspace";
 // The section body ImGui hands back never includes its own header line, so the schema decision is
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
+constexpr std::string_view kResetReason = "layout reset requested";
 
 //======================================================================================================================
 // ImGui settings handlers are C function pointers, so each one recovers the shell's workspace
@@ -292,6 +293,9 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
 
 //======================================================================================================================
 EditorShell::~EditorShell() {
+    // Shutting down while relative mouse mode is still on would leave the user's cursor hidden and
+    // captured with no window left to release it.
+    endMouseLook();
     // Backends unregister from the ImGui context, so destroy the context last.
     ImGui_ImplSDL3_Shutdown();
     rhi::metal4::imguiShutdown();
@@ -342,6 +346,20 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     m_frameTimeCursor = (m_frameTimeCursor + 1) % m_frameTimesMs.size();
     updatePassTimingDisplay(deltaSeconds, frameRecords);
 
+    // Consumed here, at the frame boundary before anything is submitted: rebuilding the topology
+    // partway through a frame would remove dock nodes that frame's windows are still drawing into.
+    if (m_actions.consumeResetLayout()) {
+        // Reset moves every panel out from under the cursor, so a look in progress ends with it.
+        endMouseLook();
+        m_workspace.visibility = resetWorkspaceVisibility();
+        ImGui::MarkIniSettingsDirty();
+        m_buildDefaultLayout = true;
+        m_layoutBuildReason = kResetReason;
+    }
+
+    // Before the dockspace, so the work area the topology is built into excludes the menu bar.
+    buildMainMenu();
+
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
@@ -352,6 +370,46 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     buildPanels(device, renderer, frameRecords);
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
+}
+
+//======================================================================================================================
+void EditorShell::buildMainMenu() {
+    if (!ImGui::BeginMainMenuBar()) {
+        return;
+    }
+    if (ImGui::BeginMenu("File")) {
+        if (ImGui::MenuItem("Quit")) {
+            m_actions.requestQuit();
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Window")) {
+        const auto visibilityItem = [this](const char* label, EditorPanel panel) {
+            bool visible = m_workspace.visibility.isVisible(panel);
+            if (ImGui::MenuItem(label, nullptr, &visible)) {
+                setPanelVisible(panel, visible);
+            }
+        };
+        visibilityItem(kScenePanelWindowName, EditorPanel::Scene);
+        visibilityItem(kViewportPanelWindowName, EditorPanel::Viewport);
+        visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
+        visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
+        visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Layout")) {
+        if (ImGui::MenuItem("Reset Default Layout")) {
+            m_actions.requestResetLayout();
+        }
+        ImGui::EndMenu();
+    }
+    if (ImGui::BeginMenu("Debug")) {
+        if (ImGui::MenuItem("Capture Next GPU Frame", "C")) {
+            m_actions.requestCapture();
+        }
+        ImGui::EndMenu();
+    }
+    ImGui::EndMainMenuBar();
 }
 
 //======================================================================================================================
@@ -490,6 +548,7 @@ bool EditorShell::consumeExposureReset() {
     m_exposureResetPending = false;
     return pending;
 }
+
 //======================================================================================================================
 void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     if (id == m_activeSceneId) {
@@ -536,8 +595,7 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
         return;
     }
     if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)) {
-        m_looking = false;
-        SDL_SetWindowRelativeMouseMode(m_window, false);
+        endMouseLook();
         return;
     }
 
@@ -556,6 +614,18 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
         // Normalize diagonal movement to preserve speed.
         m_camera.move(glm::normalize(move) * (m_camera.moveSpeed * deltaSeconds));
     }
+}
+
+//======================================================================================================================
+void EditorShell::endMouseLook() {
+    if (!m_looking) {
+        return;
+    }
+    m_looking = false;
+    SDL_SetWindowRelativeMouseMode(m_window, false);
+    // Drop whatever relative motion SDL accumulated up to this point; carrying it into the next
+    // look would turn the camera by everything the cursor did in between.
+    SDL_GetRelativeMouseState(nullptr, nullptr);
 }
 
 } // namespace lmx::app
