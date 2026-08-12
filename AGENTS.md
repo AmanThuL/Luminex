@@ -8,10 +8,9 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over
-  `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
-- Active plan: `docs/plans/2026-08-13-m5.3-editor-workspace-selection.md` (spec:
-  `docs/specs/2026-08-13-m5.3-editor-workspace-selection-design.md`)
+- Current baseline: `docs/milestones/m5.3.md` (editor workspace and selection) over
+  `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over
+  `docs/milestones/m5.md`
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -45,22 +44,28 @@ thin RHI and one implemented backend.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
-- Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
-  Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
+- Scenes: `xmake run App` opens the editor with Sponza selected by default (catalog selector in the
+  Scene panel). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
   requires CWD = its build dir (shaders resolve relative to CWD). Sponza's first load decodes its
   referenced textures — expect several seconds in a debug build.
-- Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app
-  (needs `MTL_CAPTURE_ENABLED=1`), then open the .gputrace in Xcode. Automated runs:
-  `LMX_MAX_FRAMES=N` exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress.
-  The Inspector's Stats panel shows a pausable 60-frame rolling average for each render-graph pass,
-  refreshed four times per second; hover shows latest/range details. The Render Graph panel keeps
+- Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
+  Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
+  `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
+  exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress. The Performance panel
+  shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
+  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel keeps
   the exact newest-retired-frame timings.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
 - Controls: fly camera — hold RMB in the Viewport panel + WASD (move) / QE (down/up) while held.
-  Dock layout persists via `imgui.ini` next to the built binary (build dir, gitignored).
+  The main menu (File/Window/Layout/Debug) exposes quit, per-panel visibility, Reset Default
+  Layout, and GPU capture. Dock layout and Luminex's own versioned workspace metadata (schema
+  version, per-panel visibility) persist together in `imgui.ini` next to the built binary (build
+  dir, gitignored): a clean or pre-M5.3 ini rebuilds the default five-panel layout once, a matching
+  schema restores it unchanged, and Reset Default Layout rebuilds it on demand without touching
+  unrelated ini entries.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
@@ -94,9 +99,13 @@ plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, docked ImGui editor shell — scene dropdown, light
-editor, render settings including histogram auto-exposure and bloom toggles, a read-only Render
-Graph inspector panel — frame loop, joins its own UI pass to the graph, `--screenshot` path).
+(`TextureBake.h`)) → `Source/App` (SDL3 window, a docked five-panel editor shell — Scene / Viewport
+/ Inspector / Performance / Render Graph, drawn from `Source/App/Panels/` — with a main menu
+(File/Window/Layout/Debug, GPU capture with a `C` shortcut), versioned `imgui.ini` workspace
+persistence with legacy migration and Reset Default Layout, and a single selection resolved
+against the Scene panel's filterable, grouped subject list that drives the Inspector's
+subject-scoped editing (camera, rendering, one of three directional lights, or one object); frame
+loop, joins its own UI pass to the graph, `--screenshot` path).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
 ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
 BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as

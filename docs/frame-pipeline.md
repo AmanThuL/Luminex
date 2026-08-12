@@ -148,10 +148,10 @@ Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::
 reports each pass's label and GPU milliseconds for the most recently retired frame, and
 `passTimingsFrame()` names that frame. Both are populated by counter samples the Metal 4 backend
 takes at pass begin/end and resolved once the shared event proves that frame retired. The editor's
-Stats panel retains up to 60 samples per schedule position and publishes a pausable rolling average
-four times per second, with latest/range details on hover; a changed ordered pass-label sequence
-resets the window. The Render Graph inspector instead shows the exact newest retired frame's full
-declaration, schedule, culling, barriers, and joined timing values.
+Performance panel retains up to 60 samples per schedule position and publishes a pausable rolling
+Pass/Average/Latest/Min-Max/Samples table four times per second; a changed ordered pass-label
+sequence resets the window. The Render Graph panel instead shows the exact newest retired frame's
+full declaration, schedule, culling, barriers, and joined timing values.
 
 The backend-neutral interfaces and capture schema are public headers under `RHI/Include/RHI/`.
 Their implementation and validation live in `RHI/Source/`; the only backend lives in
@@ -233,7 +233,7 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
 
 ## Scenes
 
-Three, behind the Inspector dropdown, drawn from one catalog (`--scene` accepts the same IDs):
+Three, behind the Scene panel's catalog selector, drawn from one catalog (`--scene` accepts the same IDs):
 **Sponza** (`sponza`, the default world scene, converted deterministically from the official
 Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents), and
 **MaterialLab** (`material-lab`, always available — a code-generated roughness×metallic sphere
