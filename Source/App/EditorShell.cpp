@@ -376,6 +376,14 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
     m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
 
+    // The application window losing OS focus must end a look in progress (spec section 8): the
+    // relative-mode cursor and whatever keys are still latched down are no longer this app's to
+    // interpret. ImGui's SDL3 backend turns SDL_EVENT_WINDOW_FOCUS_LOST into one frame of
+    // io.AppFocusLost, which NewFrame() has already queued by the time this runs.
+    if (ImGui::GetIO().AppFocusLost) {
+        endMouseLook();
+    }
+
     // Consumed here, at the frame boundary before anything is submitted: rebuilding the topology
     // partway through a frame would remove dock nodes that frame's windows are still drawing into.
     if (m_actions.consumeResetLayout()) {
@@ -471,12 +479,23 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         }
     }
 
+    // Whether the Viewport is both visible and expanded this frame -- the condition under which a
+    // look in progress may continue (spec section 8: closing or collapsing it must end one).
+    bool viewportUsable = false;
     if (m_workspace.visibility.isVisible(EditorPanel::Viewport)) {
         bool open = true;
-        const ViewportPanelResult result = drawViewportPanel(open, renderer);
+        const ViewportPanelResult result = drawViewportPanel(
+            open, ViewportPanelContext{.renderer = renderer,
+                                       .activeSceneName = m_activeScene->name,
+                                       .camera = m_camera,
+                                       .scene = *m_activeScene,
+                                       .settings = m_settings,
+                                       .exposureContext = m_exposureContext,
+                                       .exposureResetPending = m_exposureResetPending});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
         m_viewportFocused = result.focused;
+        viewportUsable = result.measured;
         if (result.measured) {
             m_viewportWidth = result.width;
             m_viewportHeight = result.height;
@@ -493,6 +512,11 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         // advances nor asks for a resize to a size no panel is showing.
         m_viewportHovered = false;
         m_viewportFocused = false;
+    }
+    if (!viewportUsable) {
+        // Closed (visibility false) or collapsed (visible but Begin reported nothing to measure):
+        // either way there is no image left to look over. A no-op when no look is in progress.
+        endMouseLook();
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
