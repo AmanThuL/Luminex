@@ -13,7 +13,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("Source", "RHI", "Experiments/NoApi")
+SOURCE_ROOTS = ("Source", "RHI", "Experiments/NoApi", "Benchmarks")
 SOURCE_SUFFIXES = {".h", ".cpp"}
 FILE_RULER = "//" + "-" * 118
 
