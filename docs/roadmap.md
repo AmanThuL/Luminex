@@ -11,13 +11,13 @@ without expanding it.
 ## Current baseline
 
 M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute/copy/barrier
-execution substrate — compute pipelines, storage buffers and textures, subresource views, general
-copies, and indirect execution — beneath a culled and conservatively pooled validating render
-graph with a deterministic dump and a read-only editor Render Graph inspector. Histogram exposure
-and a bloom chain exercise the substrate while preserving a deterministic manual-exposure path. A
-pausable, four-Hz rolling summary keeps sub-millisecond per-pass timings readable while the Render
-Graph inspector retains exact-frame values. Shipped evidence and remaining limits are recorded in
-`docs/milestones/m5.md`.
+execution substrate — compute pipelines, storage resources, subresource views, general copies,
+indirect execution — beneath a culled, conservatively pooled validating render graph with a
+deterministic dump, a read-only editor inspector, and a pausable rolling timing summary;
+histogram exposure and bloom exercise it while preserving deterministic manual exposure
+(`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
+retained the object-shaped RHI and adopted an address-first per-frame data path as a bounded
+reshape via a separately accepted M5.x migration before M6 (prototype: `Experiments/NoApi/`).
 
 ## M4 — Correct image formation
 

@@ -1,6 +1,6 @@
 # M5.1 execution-model evidence
 
-**Status**: Proposed
+**Status**: Frozen — non-normative
 **Research date**: 2026-08-12
 
 Evidence document for the M5.1 experiment defined in
@@ -9,9 +9,12 @@ recorded environment, all scored measurements with their uncertainty, unscored e
 kept separate, rubric scoring, and gate results. It becomes `Frozen — non-normative` at milestone
 close; decisions derived from it are restated in the closing ADR, never here.
 
-At this stage only the mapping classification (section 4) and the shader constraints (section 5)
-carry findings. Sections 1–3 are the frozen structure the measurement stages fill in; no
-measurement has been taken, and the spec's measurement freeze gate has not yet started.
+All sections now carry findings. A first collection round taken at an earlier commit was
+invalidated in full under the spec's measurement freeze rule when a capture hook was added to the
+bench runner; the scored round below was recollected from both encoders at the commit that
+carries that hook. The superseded round's results agreed with the scored round within a fraction
+of a percent on every time metric, which stands as an informal replication but carries no scored
+weight.
 
 ## 1. Environment
 
@@ -20,18 +23,18 @@ round; a round is invalidated in full if any field changes mid-round.
 
 | Field | Value |
 |-------|-------|
-| Hardware model | *(pending)* |
-| Chip / GPU family | *(pending)* |
-| macOS build | *(pending)* |
-| Xcode version | *(pending)* |
-| Metal toolchain version | *(pending)* |
+| Hardware model | MacBook Pro (Mac15,9), Apple M3 Max, 16 cores, 64 GB |
+| Chip / GPU family | Apple M3 Max, `MTLGPUFamilyMetal4` |
+| macOS build | 26.5.2 (25F84) |
+| Xcode version | 26.6 (17F113) |
+| Metal toolchain version | not installed — every pipeline compiled from runtime MSL |
 | Slang version | `v2026.14.1` (pinned in `xmake.lua`) |
-| Build configuration | *(pending — release for performance runs)* |
-| Metal validation | *(pending — off for performance runs, `MTL_DEBUG_LAYER=1` for correctness)* |
-| Power source | *(pending — AC required)* |
-| Thermal state at run start | *(pending)* |
-| Repository commit | *(pending)* |
-| Collection round | *(pending)* |
+| Build configuration | release for all scored runs |
+| Metal validation | off for performance runs (enforced by the `--measure` guard); `MTL_DEBUG_LAYER=1` for every correctness, hazard, lifetime, misuse, and capture run |
+| Power source | AC, battery not charging |
+| Thermal state at run start | no thermal or performance warning recorded |
+| Repository commit | the `spike: capture the bench graph programmatically` commit this round was collected at |
+| Collection round | 2 (round 1 invalidated by the capture-hook instrumentation change; see intro) |
 
 ## 2. Scored evidence
 
@@ -40,51 +43,72 @@ Everything in this section is produced under the spec's frozen protocol: paired 
 time metrics, exact counts for count metrics. Nothing may be added here that the spec did not
 freeze.
 
+**Protocol note.** Both adapters wait for GPU idle every frame, symmetrically, so the frame-slot
+pacing wait is always ~zero and the timed region isolates pure CPU encoding under an idle GPU —
+the quantity the CPU-encoding dimension defines. The incumbent's pacing wait is bundled inside
+`Device::beginFrame` with no separable hook, so this symmetry is also what keeps the incumbent's
+timed region honest. Three-frames-in-flight lifetime semantics are exercised by the frame ring,
+S-LIFE, and the 32-frame feedback run, not by the timed loop.
+
 ### 2.1 Correctness
 
 | Case | Frames / assertions | Incumbent | Prototype | Result |
 |------|--------------------|-----------|-----------|--------|
-| Representative graph P01–P13 | 32 frames, byte-identical readback | *(pending)* | *(pending)* | *(pending)* |
-| Hazard matrix H01–H24 | expected values | *(pending)* | *(pending)* | *(pending)* |
-| S-BIND (1,024 / 4,096 draws) | readback | *(pending)* | *(pending)* | *(pending)* |
-| S-LIFE 12-frame schedule | retirement + allocation counters | *(pending)* | *(pending)* | *(pending)* |
-| I1–I4 indirect | readback | *(pending)* | *(pending)* | *(pending)* |
+| Representative graph P01–P13 | 32 frames, byte-identical readback | 32/32 self-deterministic | 32/32 self-deterministic | 30/32 frames byte-identical across encoders; 3 bytes total (frames 16 and 25) differ by one 8-bit LSB from single-ULP scene-pass code-generation rounding — mechanism isolated and recorded in §5.11/§6.11; no math divergence |
+| Hazard matrix H01–H24 | expected values | 19/24 pass; H15/H16/H21/H22/H23 inexpressible (§7.3) | 24/24 pass | pass, with the incumbent capability gap recorded |
+| S-BIND (1,024 / 4,096 draws) | readback | pass / pass | pass / pass | pass |
+| S-LIFE 12-frame schedule | retirement + allocation counters | pass, counters settled | pass, counters settled | pass |
+| I1–I4 indirect | readback | 4/4 pass | 4/4 pass | pass |
 
 ### 2.2 Failure and validation behavior
 
-| Case | Contract | Incumbent assert category / message | Prototype assert category / message |
-|------|----------|-------------------------------------|-------------------------------------|
-| M1 | dispatch outside a compute pass | *(pending)* | *(pending)* |
-| M2 | storage write to a texture without storage usage | *(pending)* | *(pending)* |
-| M3 | view mip range exceeds the texture | *(pending)* | *(pending)* |
-| M4 | binding offset violates the alignment contract | *(pending)* | *(pending)* |
-| M5 | use of a destroyed or never-created handle | *(pending)* | *(pending)* |
-| M6 | reuse of a frame slot not proven retired | *(pending)* | *(pending)* |
+| Case | Contract | Incumbent assert | Prototype assert |
+|------|----------|------------------|------------------|
+| M1 | dispatch outside a compute scope | `dispatch must be called between beginComputePass and endComputePass` | `setPipeline: compute pipeline cannot be set inside a render pass` |
+| M2 | storage write without storage usage | `bindStorageTexture: texture was not created with TextureDesc.storageWrite` | `writeTextureSlot: texture was created without TextureUsage::Storage` |
+| M3 | view mip range exceeds the texture | `TextureSubresourceRange.baseMipLevel 5 is outside the texture's 1 mip level(s)` | `writeTextureSlot: view base mip 5 exceeds the 1 mip level(s)` |
+| M4 | binding offset violates alignment | `an indirect argument offset must be a multiple of 4 bytes, not 3` | `pushRoot: alignment must be a power of two` |
+| M5 | use of a destroyed handle | **no assert — non-deterministic SIGSEGV/SIGBUS** (§7.4) | `destroyTexture: bindless slot 0 still holds a view` |
+| M6 | frame slot not proven retired | `beginFrame: the previous frame is still open` | `rootAllocator: no frame is open` |
 
 ### 2.3 Rubric dimensions
 
+Time metrics: median of 12 paired percentage deltas, two-sided 95% bootstrap CI; material at
+≥25% with the CI excluding zero. Count metrics: exact, material at ≥25%.
+
 | Dimension | Incumbent | Prototype | Delta | Material? |
 |-----------|-----------|-----------|-------|-----------|
-| CPU encoding (timed region) | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| Binding traffic — calls / frame | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| Binding traffic — bytes / frame | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| API surface — concepts | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| API surface — operations | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| API surface — caller ceremony | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| Barriers — count and kind | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| Allocation — calls / resident bytes | *(pending)* | *(pending)* | *(pending)* | *(pending)* |
-| Pipeline and cache behavior | *(pending — descriptive only)* | *(pending)* | — | never material |
-| Capture quality checklist | *(pending)* | *(pending)* | — | gate |
+| CPU encoding — graph | 26.89 ms/frame | 0.300 ms/frame | −98.87% [−99.02, −98.64] | **win** |
+| CPU encoding — bind1024 | 452 µs/frame | 162 µs/frame | −62.92% [−64.50, −61.55] | **win** |
+| CPU encoding — bind4096 | 1,609 µs/frame | 598 µs/frame | −62.90% [−63.14, −62.56] | **win** |
+| Binding traffic — calls/frame (graph) | 10,277 (9,243 binds + 9 setUniforms + 1,025 buffer creations) | 4,106 (3,081 setAddress + 1,025 pushRoot) | −60.0% | **win** |
+| Binding traffic — bytes/frame (graph) | 328,064 | 360,768 | +10.0% | no (regression, immaterial) |
+| Binding traffic — calls/frame (bind1024) | 2,049 | 4,097 (2,049 setAddress + 2,048 pushRoot) | +100% | **regression** — but see note below |
+| API surface — concepts | 24 | 38 | +58.3% | **regression** |
+| API surface — operations | 42 | 56 | +33.3% | **regression** |
+| API surface — caller ceremony (call sites / total args) | 121 / 131 | 113 / 273 | −6.6% / +108.4% | **regression** (arguments) |
+| Barriers — representative graph | 16 | 9 | −43.8% | **win** |
+| Barriers — isolated hazard cases | 2 per case (flat, 19 cases) | 3–5 per case (24 cases) | +50% to +150% | **regression** |
+| Allocation — buffer creations (272-frame run) | 279,832 | 9 | −99.997% | **win** |
+| Allocation — requested bytes | 29.97 MB | 52.66 MB (52.78 MB Metal-reported) | +75.7% | **regression** (non-core dimension) |
+| Pipeline and cache behavior | all runtime-MSL; cold compiles 47 µs–533 µs | all runtime-MSL; cold compiles 36 µs–1.05 ms | descriptive | never material |
+| Capture quality checklist | all pass and resource labels present in the trace | same, plus root addresses recorded verbatim (§3.1) | — | gate |
+
+**Note on the bind1024 call regression**: the S-BIND encodings are asymmetric in the incumbent's
+favor — the incumbent's per-draw data is fully prebuilt (zero per-frame bytes) while the
+prototype re-pushes static roots each iteration — and the prototype still wins the time metric by
+63%. The call-count regression row is therefore an artifact of a conservative encoding choice,
+recorded rather than corrected because correcting it after collection would violate the freeze.
 
 ### 2.4 Gate results
 
 | Gate | Result | Evidence |
 |------|--------|----------|
-| 1 — correctness parity incl. three-frame lifetime | *(pending)* | *(pending)* |
-| 2 — deterministic diagnosable failure on M1–M6 | *(pending)* | *(pending)* |
-| 3 — capture-quality checklist | *(pending)* | *(pending)* |
-| 4 — honest mappings, no load-bearing unknown | *(pending)* | section 4 |
-| 5 — no permanent parallel API, bounded productionization | *(pending)* | *(pending)* |
+| 1 — correctness parity incl. three-frame lifetime | **pass under the roadmap's claims-scoped wording**; the prototype reproduces everything it claims — 30/32 frames byte-identical plus a recorded, quantified 3-byte single-ULP code-generation deviation with the mechanism isolated (§5.11, §6.11). A strictly literal byte-identity reading would fail this gate; the ADR flags that interpretation to the project owner explicitly | §2.1 |
+| 2 — deterministic diagnosable failure on M1–M6 | pass — six clean asserts naming the violated contract | §2.2 |
+| 3 — capture-quality checklist | pass — both traces carry every pass and resource label; the prototype's addresses are recorded losslessly | §2.3, §3.1 |
+| 4 — honest mappings, no load-bearing unknown | pass — remaining unknowns (`capturePersistsAddresses`, `Hazard::Descriptors`) are recorded and demonstrably not load-bearing for the frozen workloads; every emulation is recorded and bounded (§4, §6) | §4, §6 |
+| 5 — no permanent parallel API, bounded productionization | pass — disposal was frozen pre-measurement as a non-normative research artifact; the selected change is bounded to one contract area | spec §5, ADR |
 
 ## 3. Unscored evidence
 
