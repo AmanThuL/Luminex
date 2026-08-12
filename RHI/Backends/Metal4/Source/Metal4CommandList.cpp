@@ -8,6 +8,7 @@
 #include "Core/Assert.h"
 #include "Metal4Resources.h"
 #include "RHI/CaptureSchema.h"
+#include "RHI/Indirect.h"
 #include "RHI/Validate.h"
 
 #include <cstring>

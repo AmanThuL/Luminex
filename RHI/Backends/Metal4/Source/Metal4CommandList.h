@@ -4,6 +4,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Metal4Common.h"
+#include "RHI/Buffer.h"
+#include "RHI/CommandList.h"
+#include "RHI/RenderPass.h"
+#include "RHI/Texture.h"
 
 #include <cstdint>
 #include <string>

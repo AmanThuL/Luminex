@@ -3,7 +3,17 @@
 /// @brief Declares backend-neutral validation helpers for RHI descriptors.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "RHI/RHI.h"
+#include "RHI/Buffer.h"
+#include "RHI/ComputePipeline.h"
+#include "RHI/Format.h"
+#include "RHI/GraphicsPipeline.h"
+#include "RHI/Heap.h"
+#include "RHI/Result.h"
+#include "RHI/Sampler.h"
+#include "RHI/Swapchain.h"
+#include "RHI/Texture.h"
+
+#include <cstdint>
 
 namespace lmx::rhi {
 
