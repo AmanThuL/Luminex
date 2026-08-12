@@ -17,10 +17,10 @@ namespace lmx::bench {
 /// by ADR 0010 and the M5.1 evidence this seam's baseline path reproduces (still present, under its
 /// own name, in the backend source the `m5.2-baseline` tag checks out). Backend-private and not
 /// part of the public `RHI/Include` surface `FrameDataBench` links against, so this is a
-/// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the incumbent
-/// M5.1 adapters (`Experiments/NoApi/Bench/RhiAdapter.cpp`, read-only, never included or linked)
-/// had to duplicate it to decide client-side whether a call would fit before making it, since the
-/// incumbent path's overflow was a fatal assert with no recoverable failure to branch on.
+/// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the archived
+/// M5.1 adapters at tag `m5.1-noapi-evidence` had to duplicate it to decide client-side whether a
+/// call would fit before making it, since the incumbent path's overflow was a fatal assert with no
+/// recoverable failure to branch on.
 inline constexpr uint64_t kRingCapacityBytes = 256 * 1024;
 /// Mirrors the incumbent backend's fixed per-frame transient-uniform offset alignment: every write
 /// on that path rounds its occupied span up to this boundary regardless of its own size.

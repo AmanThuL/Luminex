@@ -241,6 +241,36 @@ TEST_CASE("an oversized frame-data block gets a page rounded to the quantum", "[
 }
 
 //======================================================================================================================
+// A block exactly one normal page large can still need leading padding when its requested
+// alignment is wider than the page quantum. The grown page reserves that worst case rather than
+// passing validation and then asserting merely because Metal chose a less-aligned GPU base.
+TEST_CASE("an oversized frame-data page reserves wide-alignment padding", "[gpu]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    constexpr uint64_t kWideAlignment = 2 * kFrameDataPageBytes;
+    const std::vector<uint8_t> block(kFrameDataPageBytes, 0x3c);
+
+    CommandList& commands = (*device)->beginFrame();
+    const uint32_t slot = slotOf(**device);
+    commands.beginComputePass("lmx.test.frameData.wideOversized");
+    const GpuAddress address =
+        commands.bindFrameData(1, block.data(), block.size(), kWideAlignment);
+    commands.endComputePass();
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    REQUIRE(address.isValid());
+    REQUIRE(address.value % kWideAlignment == 0);
+    const FrameDataCounters counters = frameDataCounters(**device);
+    REQUIRE(counters.slots[slot].pageCount == 2);
+    REQUIRE(counters.slots[slot].capacityBytes == 4 * kFrameDataPageBytes);
+}
+
+//======================================================================================================================
 // A wider alignment than the default is honoured on the returned address, and does not disturb the
 // placement of the ordinary blocks around it.
 TEST_CASE("bindFrameData honours an alignment wider than the default", "[gpu]") {

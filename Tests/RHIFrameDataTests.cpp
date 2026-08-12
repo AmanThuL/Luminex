@@ -11,6 +11,10 @@ using namespace lmx::rhi;
 
 namespace {
 
+template <typename T>
+concept SupportsTypedFrameData =
+    requires(CommandList& commands, const T& value) { commands.bindFrameData(0, value); };
+
 // What the public overloads forward is the whole of their contract, and none of it needs a device:
 // the convenience overload supplies the default alignment and the typed one derives size and
 // alignment from T. Only bindFrameData is implemented; everything else on the interface is a
@@ -159,6 +163,15 @@ TEST_CASE("GpuAddress stays a plain value", "[rhi]") {
     STATIC_REQUIRE(std::is_standard_layout_v<GpuAddress>);
     STATIC_REQUIRE(std::is_trivially_copyable_v<GpuAddress>);
     STATIC_REQUIRE(sizeof(GpuAddress) == sizeof(uint64_t));
+}
+
+//======================================================================================================================
+// A pointer is itself trivially copyable, so the generic constraint alone would accept a CPU
+// address as if it were a shader-readable value block. The dedicated deleted overload closes that
+// hole while the raw data/size operation remains available for uploading the pointee's bytes.
+TEST_CASE("the typed frame-data overload rejects CPU pointers", "[rhi]") {
+    STATIC_REQUIRE_FALSE(SupportsTypedFrameData<uint32_t*>);
+    STATIC_REQUIRE(SupportsTypedFrameData<uint32_t>);
 }
 
 //======================================================================================================================

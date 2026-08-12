@@ -274,6 +274,63 @@ class ResolvePageBytesTests(unittest.TestCase):
         self.assertIn("positional", resolution.attribution)
         self.assertIn("untrusted heuristic", resolution.attribution)
 
+    def test_multi_page_capture_preserves_each_uniquely_sized_page(self):
+        fx = BundleFixture(self.root)
+        fx.write_buffer_blob(20, b"\xaa" * 4096)
+        fx.write_buffer_blob(21, b"\xbb" * 8192)
+        fx.add_labelled_resource("lmx.unrelated", None)
+        fx.flush_device_resources()
+        bundle = bundlelib.walk_bundle(self.root)
+        resources = [
+            schemalib.Resource(label="lmx.device.frameData.0.page.0", kind="buffer",
+                               format=None, width=None, height=None, mip_levels=None,
+                               size_bytes=4096),
+            schemalib.Resource(label="lmx.device.frameData.0.page.1", kind="buffer",
+                               format=None, width=None, height=None, mip_levels=None,
+                               size_bytes=8192),
+        ]
+        schema = _schema_with(
+            [],
+            [self._upload_for("lmx.device.frameData.0.page.0"),
+             self._upload_for("lmx.device.frameData.0.page.1")],
+            resources=resources)
+
+        resolution = uniformlib.resolve_page_bytes(schema, bundle)
+
+        self.assertEqual(resolution.page_bytes_by_label, {
+            "lmx.device.frameData.0.page.0": b"\xaa" * 4096,
+            "lmx.device.frameData.0.page.1": b"\xbb" * 8192,
+        })
+
+    def test_multi_page_capture_keeps_resolved_page_when_sibling_is_ambiguous(self):
+        fx = BundleFixture(self.root)
+        fx.write_buffer_blob(20, b"\xaa" * 4096)
+        fx.write_buffer_blob(21, b"\xbb" * 8192)
+        fx.write_buffer_blob(22, b"\xcc" * 8192)
+        fx.add_labelled_resource("lmx.unrelated", None)
+        fx.flush_device_resources()
+        bundle = bundlelib.walk_bundle(self.root)
+        resources = [
+            schemalib.Resource(label="lmx.device.frameData.0.page.0", kind="buffer",
+                               format=None, width=None, height=None, mip_levels=None,
+                               size_bytes=4096),
+            schemalib.Resource(label="lmx.device.frameData.0.page.1", kind="buffer",
+                               format=None, width=None, height=None, mip_levels=None,
+                               size_bytes=8192),
+        ]
+        schema = _schema_with(
+            [],
+            [self._upload_for("lmx.device.frameData.0.page.0"),
+             self._upload_for("lmx.device.frameData.0.page.1")],
+            resources=resources)
+
+        resolution = uniformlib.resolve_page_bytes(schema, bundle)
+
+        self.assertEqual(resolution.page_bytes_by_label,
+                         {"lmx.device.frameData.0.page.0": b"\xaa" * 4096})
+        self.assertIn("page.1", resolution.attribution)
+        self.assertIn("unresolved", resolution.attribution)
+
     def test_same_slot_multi_page_blobs_never_form_a_cross_slot_family(self):
         # One slot grown to three of its own pages (0.page.0/1/2) must NOT be treated as each
         # other's attribution family -- that was the bug: grouping by slot instead of by page

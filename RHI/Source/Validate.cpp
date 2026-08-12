@@ -480,6 +480,13 @@ Result<void> validateFrameData(uint32_t slot, const void* data, uint64_t size, u
             Error{ErrorCode::InvalidDesc, "a frame-data alignment must be a power of two, not " +
                                               std::to_string(alignment)});
     }
+    // A new page may need as much as alignment - 1 bytes of leading padding before the block.
+    // Keep that worst-case capacity calculation representable before the backend reaches Metal.
+    if (size > std::numeric_limits<uint64_t>::max() - (alignment - 1)) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc,
+                  "frame-data size plus worst-case alignment padding overflows uint64"});
+    }
     return {};
 }
 

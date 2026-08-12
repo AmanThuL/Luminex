@@ -20,9 +20,8 @@ workload with no successful paired repetitions is reported as not comparable rat
 the collection or fabricating a confidence interval from no data.
 
 The decision statistic mirrors M5.1's frozen fixed-resample method (same paired-percentage-delta
-bootstrap, same resample count, same seed) but is reimplemented here rather than imported: this
-driver must not import, include, or modify anything under Experiments/NoApi/, which is frozen
-evidence, not a maintained library.
+bootstrap, same resample count, same seed) but is reimplemented here rather than imported from the
+NoApi evidence frozen at tag `m5.1-noapi-evidence`.
 
 Stdlib only (Tools/*.py convention; no third-party JSON/stat libraries).
 
@@ -35,11 +34,10 @@ Usage:
         Checks this script's own pure logic (the acceptance-threshold sign convention analyze_pairs
         applies) against synthetic data and exits 0 iff every check passed; launches no subprocess.
 
-Exit codes: 0 the collection ran to completion for every requested workload (individual workloads
-may still be reported "not comparable" -- that is data, not a driver failure). 1 a configuration
-error (missing executable, bad arguments) or a side effect that indicates the two binaries are not
-directly comparable in a way the driver cannot safely proceed past (e.g. output directory cannot be
-created).
+Exit codes: 0 the collection completed, and a frozen scored collection obtained every requested
+pair for every workload. 1 a configuration error, an output failure, or an incomplete/non-comparable
+frozen collection. An explicitly unscored trial still records incomplete workloads as data and
+returns 0.
 """
 import argparse
 import json
@@ -74,8 +72,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _default_out() -> Path:
-    # Outside the repo tree by construction, matching Experiments/NoApi/Analysis/collect.py's own
-    # convention (docs/conventions/documentation.md: raw captures stay outside the published tree).
+    # Outside the repo tree by construction, matching the archived M5.1 collector's convention
+    # (docs/conventions/documentation.md: raw captures stay outside the published tree).
     return _REPO_ROOT.parent / "lmx-m5.2-frame-data-measurements"
 
 
@@ -157,6 +155,16 @@ def analyze_pairs(pairs: list[list[float]]) -> dict:
     }
 
 
+def has_complete_pairs(pair_count: int, requested_repetitions: int) -> bool:
+    """True only when the workload produced every pair the requested protocol called for."""
+    return pair_count == requested_repetitions
+
+
+def collection_exit_code(frozen_protocol: bool, comparable: int, requested: int) -> int:
+    """Fail a scored collection unless every requested workload is comparable."""
+    return 1 if frozen_protocol and comparable != requested else 0
+
+
 def _pairs_for_deltas(deltas_pct: list[float], baseline: float = 1_000_000.0) -> list[list[float]]:
     """Synthetic [baseline, candidate] pairs whose paired_deltas_pct is exactly `deltas_pct`."""
     return [[baseline, baseline * (1.0 - delta / 100.0)] for delta in deltas_pct]
@@ -198,6 +206,12 @@ def run_selftest() -> bool:
          f"{straddling['withinRegressionBound']} (ci95Pct={straddling['ci95Pct']})")
     check(straddling["ciExcludesZero"] is False,
          f"straddling small CI: ciExcludesZero should be False, got {straddling['ciExcludesZero']}")
+    check(has_complete_pairs(12, 12), "12/12 pairs should be complete")
+    check(not has_complete_pairs(11, 12), "11/12 pairs must not be complete")
+    check(collection_exit_code(True, 4, 5) == 1,
+          "a frozen collection with 4/5 comparable workloads must fail")
+    check(collection_exit_code(False, 4, 5) == 0,
+          "an unscored trial may preserve incomplete workloads as data")
 
     if failures:
         print(f"frame_data_paired.py --selftest: {len(failures)} check(s) failed:", file=sys.stderr)
@@ -312,12 +326,15 @@ def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: in
                  f"({failures[0]['baseline']['diagnosticTail']}); candidate rc="
                  f"{failures[0]['candidate']['returncode']} "
                  f"({failures[0]['candidate']['diagnosticTail']})", file=sys.stderr)
+    elif not has_complete_pairs(len(pairs), repetitions):
+        result["comparable"] = False
+        result["reason"] = "incomplete paired repetition set"
+        result["successfulPairCount"] = len(pairs)
+        print(f"{case}: not comparable -- only {len(pairs)}/{repetitions} paired repetitions "
+              "succeeded", file=sys.stderr)
     else:
         result["comparable"] = True
         result["analysis"] = analyze_pairs(pairs)
-        if len(pairs) != repetitions:
-            print(f"{case}: WARNING -- only {len(pairs)}/{repetitions} repetitions succeeded on "
-                 "both sides", file=sys.stderr)
     return result
 
 
@@ -440,7 +457,11 @@ def main() -> int:
     print(f"Wrote analysis to {analysis_path}")
     comparable = sum(1 for r in results.values() if r["comparable"])
     print(f"{comparable}/{len(results)} workload(s) comparable")
-    return 0
+    exit_code = collection_exit_code(frozen_protocol, comparable, len(results))
+    if exit_code != 0:
+        print("frame_data_paired.py: frozen collection is incomplete; refusing scored success",
+              file=sys.stderr)
+    return exit_code
 
 
 if __name__ == "__main__":

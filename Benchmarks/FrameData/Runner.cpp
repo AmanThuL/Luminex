@@ -42,8 +42,9 @@ uint32_t gridWidthFor(uint32_t drawCount) {
 
 //======================================================================================================================
 // Fast, dependency-free avalanche of (frame, draw) into 64 bits -- a local splitmix64-style
-// finalizer, not shared with or copied from Experiments/NoApi, whose per-draw content must stay a
-// deterministic function of frame and draw index so it cannot be hoisted out of the timed region.
+// finalizer, not shared with or copied from the archived NoApi prototype, whose per-draw content
+// must stay a deterministic function of frame and draw index so it cannot be hoisted out of the
+// timed region.
 uint64_t hashFrameDraw(uint32_t frame, uint32_t draw) {
     uint64_t x = (uint64_t{frame} << 32) ^ uint64_t { draw };
     x += 0x9E3779B97F4A7C15ULL;
@@ -196,8 +197,8 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
         // allocator and uniform-ring cursor -- not only the work spec section 11 names as starting
         // "after the pacing wait" (arena/ring reset, allocation, copy, binding, encoding, submit).
         // Isolating the reset from the wait would need a second RHI entry point this backend does
-        // not expose; wrapping beginFrame() whole is the same boundary Experiments/NoApi's own
-        // M5.1 harness times its RHI side against (BindRhi.cpp's measureBindScaleRhi starts its
+        // not expose; wrapping beginFrame() whole is the same boundary the archived M5.1 NoApi
+        // harness times its RHI side against (BindRhi.cpp's measureBindScaleRhi starts its
         // clock before beginFrame() too), so baseline and candidate are compared on identical
         // terms even though neither literally starts "after" the wait. Excludes the untimed
         // waitIdle() below, which only proves the frame retired before the next iteration reuses

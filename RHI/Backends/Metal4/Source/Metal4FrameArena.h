@@ -68,8 +68,12 @@ public:
         // Aligning the address rather than the offset keeps the contract the caller was given --
         // the returned GPU address is a multiple of `alignment` -- true whatever a page base is.
         Page& page = m_pages[m_activePage];
-        const uint64_t offset = alignUp(page.gpuBase + page.cursor, alignment) - page.gpuBase;
-        if (offset <= page.capacity && size <= page.capacity - offset) {
+        const uint64_t mask = alignment - 1;
+        const uint64_t addressRemainder = ((page.gpuBase & mask) + (page.cursor & mask)) & mask;
+        const uint64_t padding = (alignment - addressRemainder) & (alignment - 1);
+        if (padding <= page.capacity - page.cursor &&
+            size <= page.capacity - page.cursor - padding) {
+            const uint64_t offset = page.cursor + padding;
             page.cursor = offset + size;
             return {.cpu = page.cpuBase + offset,
                     .gpuAddress = page.gpuBase + offset,

@@ -18,8 +18,8 @@ histogram exposure and bloom exercise it while preserving deterministic manual e
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
 reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: typed `bindFrameData` over
-retirement-safe growable per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed
-with no alias, `Experiments/NoApi/` still frozen. M5.3 is next.
+retirement-safe growable per-slot pages, `bindBuffer` kept for static reuse, and `setUniforms`
+removed with no alias. NoApi is archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3 is next.
 
 ## M4 — Correct image formation
 

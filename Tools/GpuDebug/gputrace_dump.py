@@ -195,9 +195,15 @@ def _decode_uniforms(schema: schemalib.Schema, bundle: bundlelib.Bundle):
     decoded_uploads = []
     if resolution.page_bytes_by_label:
         try:
-            decoded_uploads = uniformlib.decode_uploads(schema, resolution.page_bytes_by_label)
+            decoded_uploads = uniformlib.decode_uploads(
+                schema, resolution.page_bytes_by_label, skip_unresolved=True)
         except uniformlib.UniformError as exc:
             manifest_note = f"frame-data upload decode failed: {exc}"
+            print(f"warning: {manifest_note}", file=sys.stderr)
+        resolved_labels = set(resolution.page_bytes_by_label)
+        recorded_labels = {upload.page_label for upload in schema.frame_data_uploads}
+        if resolved_labels != recorded_labels:
+            manifest_note = resolution.attribution
             print(f"warning: {manifest_note}", file=sys.stderr)
     elif schema.frame_data_uploads:
         # Attribution declined (ambiguous/absent page blob) despite the schema recording

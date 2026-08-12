@@ -108,9 +108,9 @@ One frame end-to-end: `docs/frame-pipeline.md`.
   Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
   relevant tests, and passes `xmake policy`.
-- Repository-root experiments use `lmx::experimental::<name>` namespaces; for example,
-  `Experiments/NoApi/` is `lmx::experimental::noapi`. Never put experiment-owned APIs directly
-  under `lmx` or use a one-off namespace marker.
+- Experimental source does not live on `main`. Preserve accepted evidence with an immutable tag
+  and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
+  adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
   authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
   (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or

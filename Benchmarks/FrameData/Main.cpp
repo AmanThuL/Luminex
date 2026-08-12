@@ -113,8 +113,8 @@ std::optional<CliOptions> parseArgs(const std::vector<std::string_view>& args, s
 }
 
 //======================================================================================================================
-// Matches Tools/TextureBake and Experiments/NoApi's hand-rolled JSON precedent -- escapes the two
-// characters JSON requires plus control characters, no third-party dependency.
+// Matches Tools/TextureBake's hand-rolled JSON precedent: escapes the two characters JSON requires
+// plus control characters, with no third-party dependency.
 std::string jsonEscape(std::string_view text) {
     std::string out;
     out.reserve(text.size());

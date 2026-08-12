@@ -10,6 +10,7 @@
 #include "RHI/CaptureSchema.h"
 
 #include <format>
+#include <limits>
 
 namespace lmx::rhi::metal4 {
 
@@ -36,6 +37,13 @@ Result<void> Metal4FrameArena::create(MTL::Device* device,
 Result<void> Metal4FrameArena::addPage(uint64_t requestedBytes) {
     NS::SharedPtr<NS::AutoreleasePool> pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
 
+    if (requestedBytes > std::numeric_limits<uint64_t>::max() - (kFrameDataPageBytes - 1)) {
+        return std::unexpected(
+            Error{ErrorCode::ResourceCreationFailed,
+                  std::format("frame-data page request of {} bytes overflows the {}-byte page "
+                              "quantum for frame slot {}",
+                              requestedBytes, kFrameDataPageBytes, m_slot)});
+    }
     const uint64_t capacity =
         alignUp(requestedBytes < kFrameDataPageBytes ? kFrameDataPageBytes : requestedBytes,
                 kFrameDataPageBytes);
@@ -85,8 +93,12 @@ Metal4FrameDataBlock Metal4FrameArena::allocateGrown(uint64_t size, uint64_t ali
     // returned GPU address is a multiple of `alignment` -- true whatever a page base happens to be.
     for (uint32_t index = m_activePage + 1; index < m_pages.size(); ++index) {
         Page& page = m_pages[index];
-        const uint64_t offset = alignUp(page.gpuBase + page.cursor, alignment) - page.gpuBase;
-        if (offset <= page.capacity && size <= page.capacity - offset) {
+        const uint64_t mask = alignment - 1;
+        const uint64_t addressRemainder = ((page.gpuBase & mask) + (page.cursor & mask)) & mask;
+        const uint64_t padding = (alignment - addressRemainder) & (alignment - 1);
+        if (padding <= page.capacity - page.cursor &&
+            size <= page.capacity - page.cursor - padding) {
+            const uint64_t offset = page.cursor + padding;
             page.cursor = offset + size;
             m_activePage = index;
             return {.cpu = page.cpuBase + offset,
@@ -97,7 +109,12 @@ Metal4FrameDataBlock Metal4FrameArena::allocateGrown(uint64_t size, uint64_t ali
     }
 
     const uint32_t grown = static_cast<uint32_t>(m_pages.size());
-    const Result<void> page = addPage(size);
+    // A fresh Metal allocation is guaranteed only the RHI's default alignment. Reserve the
+    // worst-case leading padding so every alignment accepted by validateFrameData fits whatever
+    // GPU base Metal returns.
+    LMX_ASSERT(size <= std::numeric_limits<uint64_t>::max() - (alignment - 1),
+               "bindFrameData: validated size and alignment overflowed page capacity");
+    const Result<void> page = addPage(size + alignment - 1);
     LMX_ASSERT(page.has_value(),
                std::format("bindFrameData: frame slot {} cannot grow to fit a {}-byte block; its "
                            "{} page(s) already hold {} bytes of capacity -- {}",
@@ -105,7 +122,8 @@ Metal4FrameDataBlock Metal4FrameArena::allocateGrown(uint64_t size, uint64_t ali
     m_activePage = grown;
 
     Page& fresh = m_pages[grown];
-    const uint64_t offset = alignUp(fresh.gpuBase, alignment) - fresh.gpuBase;
+    const uint64_t remainder = fresh.gpuBase & (alignment - 1);
+    const uint64_t offset = (alignment - remainder) & (alignment - 1);
     LMX_ASSERT(offset <= fresh.capacity && size <= fresh.capacity - offset,
                std::format("bindFrameData: a fresh {}-byte page of frame slot {} still cannot hold "
                            "a {}-byte block aligned to {} bytes",

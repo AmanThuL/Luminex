@@ -157,14 +157,13 @@ def _decode_struct_fields(struct_, page_bytes: bytes, page_offset: int):
     return values, finite
 
 
-def decode_uploads(schema, page_bytes_by_label: dict) -> list:
+def decode_uploads(schema, page_bytes_by_label: dict, skip_unresolved: bool = False) -> list:
     """Decode every `schema.frame_data_uploads` entry against `page_bytes_by_label`.
 
     `page_bytes_by_label` maps a page label to the bytes attributed to it (see
-    `resolve_page_bytes`) -- an upload whose page has no entry is treated as an empty page (bounds
-    check below fails immediately, raising UniformError) rather than silently skipped, so a caller
-    that forgets to resolve a page finds out from the exception rather than a quietly-empty
-    manifest.
+    `resolve_page_bytes`). By default an upload whose page has no entry raises UniformError, so a
+    direct caller cannot silently forget resolution. The dump pipeline passes skip_unresolved=True
+    to preserve uploads from pages that were attributed when a different page stayed ambiguous.
 
     Struct resolution is by exact (slot, sizeBytes) match against `schema.uniform_structs` -- the
     plan Reference states that pair is unique across the four registered structs. No match decodes
@@ -175,6 +174,8 @@ def decode_uploads(schema, page_bytes_by_label: dict) -> list:
 
     decoded = []
     for index, upload in enumerate(schema.frame_data_uploads):
+        if skip_unresolved and upload.page_label not in page_bytes_by_label:
+            continue
         page_bytes = page_bytes_by_label.get(upload.page_label, b"")
         end = upload.page_offset + upload.size_bytes
         if end > len(page_bytes):
@@ -221,9 +222,9 @@ def resolve_page_bytes(schema, bundle) -> PageResolution:
     """Apply the module docstring's positional-attribution policy for every page `schema.
     frame_data_uploads` references, reading blob bytes from `bundle.blobs` (a bundlelib.Bundle).
 
-    Every upload of one capture is expected to name the same page label -- a frame's blocks
-    virtually always fit in the one page its slot starts with, and this declines to decode rather
-    than guess when that expectation is violated, exactly as it declines on any other ambiguity.
+    Each referenced page is resolved independently. This preserves unambiguous pages in a capture
+    that spills across the arena while declining only the pages whose same-sized blobs cannot be
+    distinguished safely.
 
     `bundle` is never touched when there are no uploads to resolve bytes for -- callers may pass
     None in that case (exercised by tests that don't need a bundle fixture at all).
@@ -231,57 +232,53 @@ def resolve_page_bytes(schema, bundle) -> PageResolution:
     upload_page_labels = {u.page_label for u in schema.frame_data_uploads}
     if not upload_page_labels:
         return PageResolution({}, "no frame-data uploads recorded in this capture")
-    if len(upload_page_labels) > 1:
-        return PageResolution(
-            {}, f"uploads reference {len(upload_page_labels)} distinct page labels in one "
-            "capture (expected exactly one); page bytes not attributed")
-    page_label = next(iter(upload_page_labels))
 
-    page_resource = next(
-        (r for r in schema.resources if r.kind == "buffer" and r.label == page_label), None)
-    if page_resource is None:
-        return PageResolution(
-            {}, f"schema has no buffer resource labelled {page_label!r}; page bytes not "
-            "attributed")
+    page_resources = {
+        r.label: r for r in schema.resources
+        if r.kind == "buffer" and r.label in upload_page_labels
+    }
+    referenced_by_size = {}
+    for resource in page_resources.values():
+        referenced_by_size.setdefault(resource.size_bytes, []).append(resource.label)
 
-    parsed = _page_label_parts(page_label)
-    if parsed is None:
-        return PageResolution(
-            {}, f"page label {page_label!r} does not match the frame-data page label shape; page "
-            "bytes not attributed")
-    prefix, _slot, page_index = parsed
+    resolved = {}
+    notes = []
+    for page_label in sorted(upload_page_labels):
+        page_resource = page_resources.get(page_label)
+        if page_resource is None:
+            notes.append(f"{page_label}: schema buffer resource missing")
+            continue
 
-    # The family is every slot's page at the SAME index, slot wildcarded -- the cross-slot
-    # ambiguity a real capture hits (one page-0 per frame-in-flight slot). A different slot's page
-    # at a different index is not a sibling: within one slot's own arena, pages differ from each
-    # other in index, never in identity, so there is nothing there to disambiguate.
-    family = sorted(
-        (r for r in schema.resources
-         if r.kind == "buffer" and (parts := _page_label_parts(r.label)) is not None
-         and parts[0] == prefix and parts[2] == page_index),
-        key=lambda r: _page_label_parts(r.label)[1],  # ascending slot
-    )
+        parsed = _page_label_parts(page_label)
+        if parsed is None:
+            notes.append(f"{page_label}: label shape invalid")
+            continue
+        prefix, _slot, page_index = parsed
+        family = sorted(
+            (r for r in schema.resources
+             if r.kind == "buffer" and (parts := _page_label_parts(r.label)) is not None
+             and parts[0] == prefix and parts[2] == page_index),
+            key=lambda r: _page_label_parts(r.label)[1],
+        )
+        candidates = [
+            b for b in bundle.blobs
+            if b.path.name.startswith("MTLBuffer-") and b.size_bytes == page_resource.size_bytes
+        ]
 
-    candidates = [
-        b for b in bundle.blobs
-        if b.path.name.startswith("MTLBuffer-") and b.size_bytes == page_resource.size_bytes
-    ]
+        if len(candidates) == 1 and len(referenced_by_size[page_resource.size_bytes]) == 1:
+            resolved[page_label] = candidates[0].path.read_bytes()
+            notes.append(f"{page_label}: single page-sized blob")
+            continue
 
-    if len(candidates) == 1:
-        data = candidates[0].path.read_bytes()
-        return PageResolution(
-            {page_label: data}, f"single page-sized blob, attributed to {page_label}")
+        if family and len(candidates) == len(family):
+            ordered = sorted(candidates, key=lambda b: (_buffer_id(b.path.name) is None,
+                                                         _buffer_id(b.path.name)))
+            position = next(i for i, resource in enumerate(family)
+                            if resource.label == page_label)
+            resolved[page_label] = ordered[position].path.read_bytes()
+            notes.append(f"{page_label}: positional creation-order id (untrusted heuristic)")
+            continue
 
-    if family and len(candidates) == len(family):
-        ordered_candidates = sorted(candidates, key=lambda b: (_buffer_id(b.path.name) is None,
-                                                                _buffer_id(b.path.name)))
-        position = next(i for i, r in enumerate(family) if r.label == page_label)
-        data = ordered_candidates[position].path.read_bytes()
-        return PageResolution(
-            {page_label: data},
-            "positional (creation-order id) -- untrusted heuristic")
+        notes.append(f"{page_label}: {len(candidates)} candidate blob(s), unresolved")
 
-    return PageResolution(
-        {}, f"found {len(candidates)} MTLBuffer-* blob(s) sized {page_resource.size_bytes} "
-        f"bytes (expected 1, or {len(family)} to match sibling page resources); page bytes not "
-        "attributed, frame-data uploads skipped")
+    return PageResolution(resolved, "; ".join(notes))

@@ -7,6 +7,8 @@
 
 #include <limits>
 
+#include <limits>
+
 using namespace lmx::rhi;
 
 namespace {
@@ -125,6 +127,16 @@ TEST_CASE("argument table binding capacities are public", "[rhi]") {
     STATIC_REQUIRE(CommandList::kMaxBufferBindings == 8);
     STATIC_REQUIRE(CommandList::kMaxTextureBindings == 16);
     STATIC_REQUIRE(CommandList::kMaxSamplerBindings == 8);
+}
+
+//======================================================================================================================
+TEST_CASE("frame-data validation rejects size plus alignment overflow", "[rhi]") {
+    const uint32_t value = 1;
+    const auto result = validateFrameData(0, &value, std::numeric_limits<uint64_t>::max(), 256);
+
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(result.error().code == ErrorCode::InvalidDesc);
+    REQUIRE(result.error().message.contains("overflows"));
 }
 
 //======================================================================================================================

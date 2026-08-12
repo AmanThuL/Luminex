@@ -226,20 +226,25 @@ public:
     GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size) {
         return bindFrameData(slot, data, size, kFrameDataAlignment);
     }
+    /// A CPU pointer is source metadata, not a GPU-readable value block. Callers uploading the
+    /// pointee use the untyped data/size overload or pass the pointee value itself.
+    template <typename T>
+    GpuAddress bindFrameData(uint32_t slot, T* const& value) = delete;
     /// The typed form, and the one production callers should reach for: it copies exactly
     /// sizeof(T) bytes of `value` and asks for whichever of kFrameDataAlignment and alignof(T) is
     /// larger, so a block whose type over-aligns itself is still placed correctly.
     ///
-    /// `T` must be trivially copyable, because the block is memcpy'd into memory the GPU reads
-    /// directly: it may hold values and GpuAddress fields, but a pointer, reference, vtable, or
-    /// owning object in it would be meaningless -- or a dangling CPU address -- by the time a
-    /// shader looked at it.
+    /// `T` must be a non-pointer, trivially copyable value, because the block is memcpy'd into
+    /// memory the GPU reads directly. It may hold values and GpuAddress fields. C++ cannot inspect
+    /// aggregate members here, so the caller must also ensure `T` contains no CPU pointers,
+    /// references, ownership-bearing objects, or vtables.
     /// Copies a trivially copyable value into frame-owned memory and binds its GPU address.
     template <typename T>
     GpuAddress bindFrameData(uint32_t slot, const T& value) {
+        static_assert(!std::is_pointer_v<T>,
+                      "bindFrameData: T must be a value block, not a CPU pointer");
         static_assert(std::is_trivially_copyable_v<T>,
-                      "bindFrameData: T must be trivially copyable -- a block the GPU reads holds "
-                      "values, never pointers, references, or vtables");
+                      "bindFrameData: T must be trivially copyable");
         constexpr uint64_t alignment =
             alignof(T) > kFrameDataAlignment ? alignof(T) : kFrameDataAlignment;
         return bindFrameData(slot, &value, sizeof(T), alignment);
