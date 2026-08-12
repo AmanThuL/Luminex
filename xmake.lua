@@ -144,7 +144,8 @@ target("Tests")
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
     add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/EditorActions.cpp",
               "Source/App/ExposureReset.cpp", "Source/App/FrameRecordRing.cpp",
-              "Source/App/GraphInspectorModel.cpp", "Source/App/PassTimingHistory.cpp")
+              "Source/App/GraphInspectorModel.cpp", "Source/App/PassTimingHistory.cpp",
+              "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
