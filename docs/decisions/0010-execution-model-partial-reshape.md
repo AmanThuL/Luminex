@@ -73,8 +73,25 @@ silently: correctness parity is 30 of 32 frames byte-identical with a recorded, 
 single-ULP code-generation deviation whose mechanism is isolated (identical arithmetic, different
 operand provenance; evidence 5.11/6.11). The roadmap's claims-scoped wording — "reproduces the
 output … it claims to cover" — is satisfied; a strictly literal byte-identity reading would not
-be. The project owner arbitrates the reading at review; under the strict reading the decision
-falls back to retain, and nothing else in this ADR changes.
+be. The owner disposition below accepts the claims-scoped reading; the strict-reading
+counterfactual — under which the decision falls back to retain — is preserved here for the
+record.
+
+## Owner disposition (2026-08-12)
+
+The project owner accepted this ADR and recorded the following, resolving the flagged points:
+
+- Gate 1 is accepted under the roadmap's claims-scoped interpretation. The result is recorded
+  accurately as 30 of 32 frames byte-identical with three bytes of isolated single-ULP
+  code-generation rounding — never as strict byte identity — and the strict-reading
+  counterfactual above is preserved in the record.
+- The maintained RHI remains the production architecture. Only the address-first
+  per-frame/root-data delivery path is adopted, through a separately accepted M5.x migration
+  completed before M6.
+- The object-shaped resource, pass, pipeline, residency, and barrier models and the render
+  graph's ownership are retained.
+- `Experiments/NoApi/` stays frozen, non-default, and non-normative; it must not become a
+  supported parallel API.
 
 ## Consequences
 
