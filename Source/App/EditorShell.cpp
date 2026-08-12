@@ -46,12 +46,10 @@ constexpr float kSceneWidthFraction = 0.18f;
 constexpr float kInspectorWidthFraction = 0.24f;
 constexpr float kPerformanceHeightFraction = 0.25f;
 
-// The side panels honor their minimum widths only once the work area is at least this large.
-constexpr float kLayoutMinimaWorkWidth = 1280.0f;
-constexpr float kLayoutMinimaWorkHeight = 720.0f;
+// The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
 constexpr float kMinInspectorWidthPoints = 320.0f;
-// Below its minima the Viewport wins, so the side and lower panels give these back first.
+// When it does not, the Viewport wins and the side and lower panels give these back first.
 constexpr float kMinViewportWidthPoints = 640.0f;
 constexpr float kMinViewportHeightPoints = 360.0f;
 
@@ -120,19 +118,20 @@ struct DefaultLayoutExtents {
 };
 
 //======================================================================================================================
-// The default proportions, with the side minima applied only once the work area can satisfy them
-// all, and the Viewport's own minimum content region taking precedence when it cannot: the flanking
-// panels narrow proportionally rather than squeezing the image the workspace exists to show.
+// The default proportions raised to the side minima, then relaxed by however much the Viewport's
+// own minimum content region still needs: the flanking panels narrow proportionally rather than
+// squeezing the image the workspace exists to show.
+//
+// The minima are applied before that relaxation rather than behind a work-area size test, so a
+// 1280x720 window satisfies them even though its work area is shorter than 720 points once the menu
+// bar is subtracted. A work area with room for both -- anything at least 1280 points wide -- always
+// gets them, and a narrower one loses them to the Viewport in proportion either way.
 DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
     DefaultLayoutExtents extents;
-    extents.sceneWidth = workWidth * kSceneWidthFraction;
-    extents.inspectorWidth = workWidth * kInspectorWidthFraction;
+    extents.sceneWidth = std::max(workWidth * kSceneWidthFraction, kMinSceneWidthPoints);
+    extents.inspectorWidth =
+        std::max(workWidth * kInspectorWidthFraction, kMinInspectorWidthPoints);
     extents.performanceHeight = workHeight * kPerformanceHeightFraction;
-
-    if (workWidth >= kLayoutMinimaWorkWidth && workHeight >= kLayoutMinimaWorkHeight) {
-        extents.sceneWidth = std::max(extents.sceneWidth, kMinSceneWidthPoints);
-        extents.inspectorWidth = std::max(extents.inspectorWidth, kMinInspectorWidthPoints);
-    }
 
     const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);
     const float sideWanted = extents.sceneWidth + extents.inspectorWidth;
