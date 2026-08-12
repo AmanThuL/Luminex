@@ -183,13 +183,23 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     const uint32_t totalFrames = config.warmupFrames + config.measuredFrames;
     result.perFrameTimedRegionNs.reserve(config.measuredFrames);
 
+    // Owns the simulated incumbent ring cursor and the overflow buffers a dynamic workload's
+    // draws beyond simulated ring capacity must create (DeliverPerDrawData.h). Retirement of the
+    // previous frame's overflow buffers is safe inside the loop below because every frame fully
+    // drains (waitIdle()) before the next one's timed region ever starts.
+    DeliveryContext deliveryContext(*device);
+
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         // ---- BEGIN TIMED REGION (spec section 11): pacing wait, arena/ring reset, allocation,
         // copy, binding, command encoding, and submit. Excludes the untimed waitIdle() below, which
         // only proves the frame retired before the next iteration reuses its slot -- exactly the
-        // boundary Experiments/NoApi's own M5.1 harness times its RHI side against.
+        // boundary Experiments/NoApi's own M5.1 harness times its RHI side against. For a dynamic
+        // workload, deliveryContext.beginFrame()'s retirement of the previous frame's overflow
+        // buffers and the per-draw loop's fresh overflow buffer creations are both inside this
+        // region: that churn is the allocation cliff being measured (ADR 0010 / M5.1 evidence 7.1).
         const auto start = std::chrono::steady_clock::now();
         rhi::CommandList& commands = device->beginFrame();
+        deliveryContext.beginFrame();
         commands.beginRenderPass(
             {.colorTarget = target.get(), .clear = true, .label = "framedatabench.draws"});
         commands.bindPipeline(*pipeline);
@@ -202,7 +212,8 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
             for (uint32_t draw = 0; draw < spec.drawCount; ++draw) {
                 const QuadParams params = quadParamsFor(layout, frame, draw);
                 std::memcpy(dynamicBlock.data(), &params, sizeof(params));
-                deliverPerDrawData(commands, kBufferSlot, dynamicBlock.data(), dynamicBlock.size());
+                deliverPerDrawData(deliveryContext, commands, kBufferSlot, dynamicBlock.data(),
+                                   dynamicBlock.size());
                 commands.draw(6);
             }
         }
@@ -219,6 +230,7 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     }
 
     result.medianNs = medianOf(result.perFrameTimedRegionNs);
+    result.overflowBufferCreations = deliveryContext.overflowBufferCreations;
 
     if (config.verify) {
         std::vector<uint8_t> pixels(uint64_t{layout.targetWidth} * layout.targetHeight * 4);

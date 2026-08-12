@@ -137,6 +137,7 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
     }
     file << "],\n";
     file << "  \"medianNs\": " << result.medianNs << ",\n";
+    file << "  \"overflowBufferCreations\": " << result.overflowBufferCreations << ",\n";
     file << "  \"verify\": " << (options.verify ? "true" : "false") << ",\n";
     if (result.digest) {
         file << "  \"digest\": \"" << lmx::bench::digestToHex(*result.digest) << "\"\n";
@@ -188,8 +189,9 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    std::printf("case=%s medianNs=%llu digest=%s\n", options->caseName.c_str(),
-               static_cast<unsigned long long>(result.medianNs),
+    std::printf("case=%s medianNs=%llu overflowBufferCreations=%llu digest=%s\n",
+               options->caseName.c_str(), static_cast<unsigned long long>(result.medianNs),
+               static_cast<unsigned long long>(result.overflowBufferCreations),
                result.digest ? lmx::bench::digestToHex(*result.digest).c_str() : "(none)");
     return 0;
 }

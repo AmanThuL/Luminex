@@ -33,6 +33,10 @@ struct RunResult {
     /// FNV-1a digest of the final measured frame's readback; set only when RunConfig::verify and
     /// `ok`.
     std::optional<uint64_t> digest;
+    /// Caller-side overflow buffers created across the whole run (DeliverPerDrawData.h) when a
+    /// dynamic block did not fit the simulated incumbent uniform ring. Zero for both static
+    /// workloads and for any dynamic workload whose per-frame bytes never exceed the ring.
+    uint64_t overflowBufferCreations = 0;
 };
 
 /// Runs `spec` for `config.warmupFrames + config.measuredFrames` frames on a freshly created RHI
