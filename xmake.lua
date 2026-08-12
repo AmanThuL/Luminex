@@ -215,6 +215,9 @@ target("NoApiBench")
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/noapibench")
     add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp", "Experiments/NoApi/Bench/*.cpp")
     add_includedirs("Experiments/NoApi")
+    -- Runner.cpp's capture hook drives MTLCaptureManager directly; the metal-cpp symbols come
+    -- from NoApiProto's single implementation translation unit.
+    add_includedirs("ThirdParty/metal-cpp")
     add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest", "NoApiProto")
     add_packages("glm")
     -- NoApiProto is a static library and xmake does not propagate its private framework list to

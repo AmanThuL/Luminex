@@ -5,7 +5,11 @@
 
 #include "Bench/Runner.h"
 
+#include <Foundation/Foundation.hpp>
+#include <Metal/Metal.hpp>
+
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 
@@ -50,6 +54,35 @@ bool writeDump(const std::filesystem::path& dumpDir, uint32_t frameIndex,
     return static_cast<bool>(file);
 }
 
+//======================================================================================================================
+// Starts a programmatic GPU capture of the process's default device when LMX_BENCH_CAPTURE_PATH
+// is set and the process was launched with MTL_CAPTURE_ENABLED=1 (Metal reads that at launch).
+// Both adapters drive the same default device, so one capture object covers either encoder; the
+// capture-quality gate reads the written trace, never the run's outputs.
+bool startBenchCapture(const char* path) {
+    MTL::CaptureManager* manager = MTL::CaptureManager::sharedCaptureManager();
+    if (manager == nullptr ||
+        !manager->supportsDestination(MTL::CaptureDestinationGPUTraceDocument)) {
+        std::cerr << "runBench: capture requested but not enabled for this process\n";
+        return false;
+    }
+    std::error_code removeError;
+    std::filesystem::remove_all(path, removeError);
+    auto url = NS::TransferPtr(
+        NS::URL::alloc()->initFileURLWithPath(NS::String::string(path, NS::UTF8StringEncoding)));
+    auto descriptor = NS::TransferPtr(MTL::CaptureDescriptor::alloc()->init());
+    NS::SharedPtr<MTL::Device> device = NS::TransferPtr(MTL::CreateSystemDefaultDevice());
+    descriptor->setCaptureObject(device.get());
+    descriptor->setDestination(MTL::CaptureDestinationGPUTraceDocument);
+    descriptor->setOutputURL(url.get());
+    NS::Error* error = nullptr;
+    if (!manager->startCapture(descriptor.get(), &error)) {
+        std::cerr << "runBench: startCapture failed\n";
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -59,11 +92,22 @@ int runBench(Adapter& adapter, const RunOptions& options) {
         return 1;
     }
 
+    const char* capturePath = std::getenv("LMX_BENCH_CAPTURE_PATH");
+    bool capturing = false;
+
     std::vector<uint8_t> readback;
     bool ok = true;
     for (uint32_t frameIndex = 0; frameIndex < options.frames; ++frameIndex) {
+        if (capturePath != nullptr && frameIndex == 0) {
+            capturing = startBenchCapture(capturePath);
+        }
         readback.clear();
         adapter.runFrame(frameIndex, readback);
+        if (capturing && frameIndex == 0) {
+            MTL::CaptureManager::sharedCaptureManager()->stopCapture();
+            capturing = false;
+            std::cout << "runBench: captured frame 0 to " << capturePath << "\n";
+        }
         if (readback.empty()) {
             std::cerr << "runBench: frame " << frameIndex << " produced an empty readback\n";
             ok = false;
