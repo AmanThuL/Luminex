@@ -25,12 +25,12 @@ namespace {
 /// Shaders/FrameDataQuad.slang's QuadParams layout exactly). A dynamic workload's larger block
 /// carries this struct followed by unread padding out to its frozen size.
 struct QuadParams {
-    float offset[2] = {0.0f, 0.0f};     ///< NDC-space quad center.
-    float halfExtent[2] = {0.0f, 0.0f}; ///< NDC-space quad half-size.
+    float offset[2] = {0.0f, 0.0f};           ///< NDC-space quad center.
+    float halfExtent[2] = {0.0f, 0.0f};       ///< NDC-space quad half-size.
     float tint[4] = {1.0f, 1.0f, 1.0f, 1.0f}; ///< Solid quad colour.
 };
 static_assert(sizeof(QuadParams) == 32,
-             "must match Shaders/FrameDataQuad.slang's QuadParams layout");
+              "must match Shaders/FrameDataQuad.slang's QuadParams layout");
 
 constexpr uint32_t kBufferSlot = 0;
 constexpr uint32_t kCellPixels = 8;
@@ -45,7 +45,7 @@ uint32_t gridWidthFor(uint32_t drawCount) {
 // finalizer, not shared with or copied from Experiments/NoApi, whose per-draw content must stay a
 // deterministic function of frame and draw index so it cannot be hoisted out of the timed region.
 uint64_t hashFrameDraw(uint32_t frame, uint32_t draw) {
-    uint64_t x = (uint64_t{frame} << 32) ^ uint64_t{draw};
+    uint64_t x = (uint64_t{frame} << 32) ^ uint64_t { draw };
     x += 0x9E3779B97F4A7C15ULL;
     x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
     x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
@@ -81,8 +81,8 @@ struct GridLayout {
     //==================================================================================================================
     explicit GridLayout(uint32_t drawCount)
         : gridWidth(gridWidthFor(drawCount)),
-         gridHeight((drawCount + gridWidthFor(drawCount) - 1) / gridWidthFor(drawCount)),
-         targetWidth(gridWidth * kCellPixels), targetHeight(gridHeight * kCellPixels) {
+          gridHeight((drawCount + gridWidthFor(drawCount) - 1) / gridWidthFor(drawCount)),
+          targetWidth(gridWidth * kCellPixels), targetHeight(gridHeight * kCellPixels) {
         halfExtent[0] = 1.0f / static_cast<float>(gridWidth);
         halfExtent[1] = 1.0f / static_cast<float>(gridHeight);
     }
@@ -133,14 +133,13 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     }
     std::unique_ptr<rhi::ShaderLibrary> library = std::move(*libraryResult);
 
-    auto pipelineResult =
-        device->createGraphicsPipeline({.library = library.get(),
-                                        .vertexEntry = "vertexMain",
-                                        .fragmentEntry = "fragmentMain",
-                                        .colorFormat = rhi::Format::RGBA8Unorm,
-                                        .fillMode = rhi::FillMode::Solid,
-                                        .cullMode = rhi::CullMode::None,
-                                        .label = "framedatabench.pipeline"});
+    auto pipelineResult = device->createGraphicsPipeline({.library = library.get(),
+                                                          .vertexEntry = "vertexMain",
+                                                          .fragmentEntry = "fragmentMain",
+                                                          .colorFormat = rhi::Format::RGBA8Unorm,
+                                                          .fillMode = rhi::FillMode::Solid,
+                                                          .cullMode = rhi::CullMode::None,
+                                                          .label = "framedatabench.pipeline"});
     if (!pipelineResult) {
         result.error = "pipeline creation failed: " + pipelineResult.error().message;
         return result;
@@ -171,7 +170,8 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
             auto bufferResult = device->createBuffer(
                 {.size = sizeof(params), .label = "framedatabench.staticParams"}, &params);
             if (!bufferResult) {
-                result.error = "static params buffer creation failed: " + bufferResult.error().message;
+                result.error =
+                    "static params buffer creation failed: " + bufferResult.error().message;
                 return result;
             }
             staticBuffers.push_back(std::move(*bufferResult));
@@ -190,13 +190,21 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     DeliveryContext deliveryContext(*device);
 
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
-        // ---- BEGIN TIMED REGION (spec section 11): pacing wait, arena/ring reset, allocation,
-        // copy, binding, command encoding, and submit. Excludes the untimed waitIdle() below, which
-        // only proves the frame retired before the next iteration reuses its slot -- exactly the
-        // boundary Experiments/NoApi's own M5.1 harness times its RHI side against. For a dynamic
-        // workload, deliveryContext.beginFrame()'s retirement of the previous frame's overflow
-        // buffers and the per-draw loop's fresh overflow buffer creations are both inside this
-        // region: that churn is the allocation cliff being measured (ADR 0010 / M5.1 evidence 7.1).
+        // ---- BEGIN TIMED REGION: the clock starts immediately before device->beginFrame(), so
+        // the region includes everything that call does internally -- the pacing wait, publishing
+        // the previous occupant's resolved pass timings, and resetting this slot's command
+        // allocator and uniform-ring cursor -- not only the work spec section 11 names as starting
+        // "after the pacing wait" (arena/ring reset, allocation, copy, binding, encoding, submit).
+        // Isolating the reset from the wait would need a second RHI entry point this backend does
+        // not expose; wrapping beginFrame() whole is the same boundary Experiments/NoApi's own
+        // M5.1 harness times its RHI side against (BindRhi.cpp's measureBindScaleRhi starts its
+        // clock before beginFrame() too), so baseline and candidate are compared on identical
+        // terms even though neither literally starts "after" the wait. Excludes the untimed
+        // waitIdle() below, which only proves the frame retired before the next iteration reuses
+        // its slot. For a dynamic workload, deliveryContext.beginFrame()'s retirement of the
+        // previous frame's overflow buffers and the per-draw loop's fresh overflow buffer creations
+        // are both inside this region: that churn is the allocation cliff being measured (ADR 0010
+        // / M5.1 evidence 7.1).
         const auto start = std::chrono::steady_clock::now();
         rhi::CommandList& commands = device->beginFrame();
         deliveryContext.beginFrame();
@@ -231,6 +239,8 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
 
     result.medianNs = medianOf(result.perFrameTimedRegionNs);
     result.overflowBufferCreations = deliveryContext.overflowBufferCreations;
+    result.overflowBufferCreationsPerFrame =
+        totalFrames > 0 ? deliveryContext.overflowBufferCreations / totalFrames : 0;
 
     if (config.verify) {
         std::vector<uint8_t> pixels(uint64_t{layout.targetWidth} * layout.targetHeight * 4);
@@ -241,6 +251,71 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
 
     result.ok = true;
     return result;
+}
+
+//======================================================================================================================
+// Defined in this translation unit (not a header) so it can reach the anonymous-namespace helpers
+// above directly, exercising the exact functions runWorkload() itself uses rather than a
+// reimplementation of them.
+bool runSelfTests(std::vector<std::string>& failures) {
+    const auto check = [&](bool condition, std::string what) {
+        if (!condition) {
+            failures.push_back(std::move(what));
+        }
+    };
+
+    // alignUp (DeliverPerDrawData.h): every overflow decision depends on this arithmetic being
+    // exactly right at the ring boundary.
+    check(alignUp(0, kRingAlignmentBytes) == 0, "alignUp(0, 256) == 0");
+    check(alignUp(1, kRingAlignmentBytes) == 256, "alignUp(1, 256) == 256");
+    check(alignUp(256, kRingAlignmentBytes) == 256, "alignUp(256, 256) == 256 (already aligned)");
+    check(alignUp(257, kRingAlignmentBytes) == 512, "alignUp(257, 256) == 512");
+    check(alignUp(64, kRingAlignmentBytes) == 256,
+          "alignUp(64, 256) == 256 (F-FIT-512/F-DYNAMIC-4096)");
+    check(alignUp(304, kRingAlignmentBytes) == 512, "alignUp(304, 256) == 512 (F-DYNAMIC-1024)");
+
+    // medianOf: odd count, even count, single element, empty.
+    check(medianOf({5}) == 5, "medianOf({5}) == 5");
+    check(medianOf({1, 2, 3}) == 2, "medianOf({1,2,3}) == 2 (odd count)");
+    check(medianOf({2, 4}) == 3, "medianOf({2,4}) == 3 (even count, averaged)");
+    check(medianOf({}) == 0, "medianOf({}) == 0 (empty)");
+
+    // The frozen workload table (spec section 11): name, draw count, kind, and block size for
+    // every one of the five cases, in table order, plus name lookup.
+    check(sizeof(kWorkloads) / sizeof(kWorkloads[0]) == 5, "kWorkloads has exactly 5 entries");
+    check(kWorkloads[0].name == "F-FIT-512" && kWorkloads[0].drawCount == 512 &&
+              kWorkloads[0].kind == WorkloadKind::Dynamic && kWorkloads[0].blockSize == 64,
+          "kWorkloads[0] == {F-FIT-512, 512, Dynamic, 64}");
+    check(kWorkloads[1].name == "F-DYNAMIC-1024" && kWorkloads[1].drawCount == 1024 &&
+              kWorkloads[1].kind == WorkloadKind::Dynamic && kWorkloads[1].blockSize == 304,
+          "kWorkloads[1] == {F-DYNAMIC-1024, 1024, Dynamic, 304}");
+    check(kWorkloads[2].name == "F-DYNAMIC-4096" && kWorkloads[2].drawCount == 4096 &&
+              kWorkloads[2].kind == WorkloadKind::Dynamic && kWorkloads[2].blockSize == 64,
+          "kWorkloads[2] == {F-DYNAMIC-4096, 4096, Dynamic, 64}");
+    check(kWorkloads[3].name == "F-STATIC-1024" && kWorkloads[3].drawCount == 1024 &&
+              kWorkloads[3].kind == WorkloadKind::Static && kWorkloads[3].blockSize == 0,
+          "kWorkloads[3] == {F-STATIC-1024, 1024, Static, 0}");
+    check(kWorkloads[4].name == "F-STATIC-4096" && kWorkloads[4].drawCount == 4096 &&
+              kWorkloads[4].kind == WorkloadKind::Static && kWorkloads[4].blockSize == 0,
+          "kWorkloads[4] == {F-STATIC-4096, 4096, Static, 0}");
+    check(findWorkload("F-FIT-512") == &kWorkloads[0],
+          "findWorkload(\"F-FIT-512\") finds kWorkloads[0]");
+    check(findWorkload("not-a-case") == nullptr, "findWorkload(\"not-a-case\") == nullptr");
+
+    // GridLayout: a non-square draw count (512, per M7/M9's own example) and a square one (1024),
+    // pinning the disjoint-grid math every workload's placement depends on.
+    const GridLayout layout512(512);
+    check(layout512.gridWidth == 23, "GridLayout(512).gridWidth == 23 (ceil(sqrt(512)))");
+    check(layout512.gridHeight == 23, "GridLayout(512).gridHeight == 23 (ceil(512 / 23))");
+    check(layout512.targetWidth == 23 * kCellPixels,
+          "GridLayout(512).targetWidth == 23 * kCellPixels");
+    check(layout512.targetHeight == 23 * kCellPixels,
+          "GridLayout(512).targetHeight == 23 * kCellPixels");
+    const GridLayout layout1024(1024);
+    check(layout1024.gridWidth == 32 && layout1024.gridHeight == 32,
+          "GridLayout(1024) == 32x32 (exact square)");
+
+    return failures.empty();
 }
 
 } // namespace lmx::bench

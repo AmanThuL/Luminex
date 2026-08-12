@@ -16,15 +16,15 @@ namespace lmx::bench {
 /// Run parameters a caller controls from the command line; defaults match spec section 11's frozen
 /// protocol (16 warm-up + 256 measured frames).
 struct RunConfig {
-    uint32_t warmupFrames = 16;   ///< Frames run and discarded before timing starts.
+    uint32_t warmupFrames = 16;    ///< Frames run and discarded before timing starts.
     uint32_t measuredFrames = 256; ///< Frames whose timed region is recorded.
-    bool verify = false;          ///< Reads back the final measured frame and digests it.
+    bool verify = false;           ///< Reads back the final measured frame and digests it.
 };
 
 /// One workload run's outcome: either a populated result or `error` naming what failed.
 struct RunResult {
-    bool ok = false;    ///< False when setup or a GPU call failed; `error` explains why.
-    std::string error;  ///< Failure detail; empty when `ok`.
+    bool ok = false;   ///< False when setup or a GPU call failed; `error` explains why.
+    std::string error; ///< Failure detail; empty when `ok`.
     /// One entry per measured frame, in frame order: CPU wall time of that frame's timed region
     /// (device->beginFrame() through device->endFrame()), in nanoseconds.
     std::vector<uint64_t> perFrameTimedRegionNs;
@@ -37,6 +37,11 @@ struct RunResult {
     /// dynamic block did not fit the simulated incumbent uniform ring. Zero for both static
     /// workloads and for any dynamic workload whose per-frame bytes never exceed the ring.
     uint64_t overflowBufferCreations = 0;
+    /// overflowBufferCreations divided by the run's total frame count (warmup + measured). Exact,
+    /// not an average: which draws overflow is a fixed function of draw index and block size, so
+    /// every frame of one workload creates the same number of overflow buffers. Recorded so Stage
+    /// 4 can decompose per-buffer cost scaling without re-deriving this from the raw count.
+    uint64_t overflowBufferCreationsPerFrame = 0;
 };
 
 /// Runs `spec` for `config.warmupFrames + config.measuredFrames` frames on a freshly created RHI
@@ -46,5 +51,12 @@ struct RunResult {
 /// With `config.verify` set, reads back the final measured frame's render target and digests it
 /// after the loop completes -- readback is never part of a timed frame.
 RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config);
+
+/// Runs a small set of self-checks against this binary's own pure host-side logic -- ring
+/// alignment arithmetic, the median statistic, the frozen workload table, and disjoint grid
+/// placement for a non-square draw count -- and returns true iff every check passed. Touches no
+/// GPU device; `--selftest` on the command line is the only caller. Every failing check's
+/// description is appended to `failures`.
+bool runSelfTests(std::vector<std::string>& failures);
 
 } // namespace lmx::bench

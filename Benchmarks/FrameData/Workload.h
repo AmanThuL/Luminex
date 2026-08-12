@@ -21,10 +21,10 @@ enum class WorkloadKind {
 /// One frozen workload's shape: how many disjoint quads it draws per frame, its delivery kind, and
 /// -- for a Dynamic workload -- the exact size of the per-draw block re-delivered every draw.
 struct WorkloadSpec {
-    std::string_view name;                    ///< Exact case name, e.g. "F-FIT-512".
-    uint32_t drawCount = 0;                   ///< Disjoint quads drawn per frame.
+    std::string_view name;                     ///< Exact case name, e.g. "F-FIT-512".
+    uint32_t drawCount = 0;                    ///< Disjoint quads drawn per frame.
     WorkloadKind kind = WorkloadKind::Dynamic; ///< Delivery shape.
-    uint64_t blockSize = 0;                   ///< Dynamic per-draw block size in bytes; 0 for Static.
+    uint64_t blockSize = 0; ///< Dynamic per-draw block size in bytes; 0 for Static.
 };
 
 /// The five frozen cases from docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11, in

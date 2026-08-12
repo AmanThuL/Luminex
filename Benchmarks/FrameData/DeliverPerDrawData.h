@@ -56,7 +56,8 @@ struct DeliveryContext {
     std::vector<std::unique_ptr<rhi::Buffer>> overflowBuffers;
 
     /// Cumulative caller-side overflow buffers created across the whole run. `F-FIT-512` and both
-    /// static workloads must finish a run with this at zero -- they never exceed the simulated ring.
+    /// static workloads must finish a run with this at zero -- they never exceed the simulated
+    /// ring.
     uint64_t overflowBufferCreations = 0;
 
     /// Resets the simulated ring cursor and retires the previous frame's overflow buffers. Called

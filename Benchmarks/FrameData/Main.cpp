@@ -1,16 +1,30 @@
-// FrameDataBench: the M5.2 production frame-data benchmark (Task 1B). Times the RHI's per-frame
-// data-delivery path -- today the incumbent CommandList::setUniforms, reached through this
-// benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five frozen workloads in
-// docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11. Renders offscreen only: no
-// window, no ImGui, no scene assets, just deterministic synthetic quads and a readback digest.
-//
-// Usage: FrameDataBench --case <name> --out <path.json> [--verify] [--warmup N] [--frames N]
-//   --case     one of F-FIT-512, F-DYNAMIC-1024, F-DYNAMIC-4096, F-STATIC-1024, F-STATIC-4096.
-//   --out      path the result JSON is written to (parent directories are created).
-//   --verify   reads back the final measured frame and reports its FNV-1a digest, so a paired
-//              driver can refuse to compare timing when a baseline and candidate build disagree.
-//   --warmup   frames run and discarded before timing starts (default 16).
-//   --frames   frames whose timed region is recorded (default 256).
+//----------------------------------------------------------------------------------------------------------------------
+/// @file Main.cpp
+/// @brief Implements the FrameDataBench command-line entry point.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details FrameDataBench: the M5.2 production frame-data benchmark (Task 1B). Times the RHI's
+///        per-frame data-delivery path -- today the incumbent CommandList::setUniforms, reached
+///        through this benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five
+///        frozen workloads in docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11.
+///        Renders offscreen only: no window, no ImGui, no scene assets, just deterministic
+///        synthetic quads and a readback digest.
+///
+///        Usage: FrameDataBench --case <name> --out <path.json> [--verify] [--warmup N] [--frames
+///        N]
+///          --case     one of F-FIT-512, F-DYNAMIC-1024, F-DYNAMIC-4096, F-STATIC-1024,
+///                     F-STATIC-4096.
+///          --out      path the result JSON is written to (parent directories are created).
+///          --verify   reads back the final measured frame and reports its FNV-1a digest, so a
+///                     paired driver can refuse to compare timing when a baseline and candidate
+///                     build disagree.
+///          --warmup   frames run and discarded before timing starts (default 16).
+///          --frames   frames whose timed region is recorded (default 256).
+///
+///        Usage: FrameDataBench --selftest
+///          Runs this binary's own pure host-side logic checks (no GPU device touched) and exits
+///          0 iff every check passed; failures print to stderr.
+#include "DeliverPerDrawData.h"
 #include "Digest.h"
 #include "Runner.h"
 #include "Workload.h"
@@ -124,7 +138,8 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
     }
     std::ofstream file(path, std::ios::trunc);
     if (!file) {
-        std::fprintf(stderr, "FrameDataBench: cannot open '%s' for writing\n", path.string().c_str());
+        std::fprintf(stderr, "FrameDataBench: cannot open '%s' for writing\n",
+                     path.string().c_str());
         return false;
     }
     file << "{\n";
@@ -138,6 +153,13 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
     file << "],\n";
     file << "  \"medianNs\": " << result.medianNs << ",\n";
     file << "  \"overflowBufferCreations\": " << result.overflowBufferCreations << ",\n";
+    file << "  \"overflowBufferCreationsPerFrame\": " << result.overflowBufferCreationsPerFrame
+         << ",\n";
+    // The exact client-side ring model this run's overflow decisions assumed
+    // (DeliverPerDrawData.h); recorded so a later reader never has to re-derive or guess the
+    // constants a baseline result was built on.
+    file << "  \"ringModel\": {\"capacityBytes\": " << lmx::bench::kRingCapacityBytes
+         << ", \"alignmentBytes\": " << lmx::bench::kRingAlignmentBytes << "},\n";
     file << "  \"verify\": " << (options.verify ? "true" : "false") << ",\n";
     if (result.digest) {
         file << "  \"digest\": \"" << lmx::bench::digestToHex(*result.digest) << "\"\n";
@@ -153,13 +175,33 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
 //======================================================================================================================
 int main(int argc, char** argv) {
     std::vector<std::string_view> args(argv + (argc > 0 ? 1 : 0), argv + argc);
+
+    // --selftest is a distinct mode (no GPU device, no --case/--out) recognized before the
+    // ordinary flag parser, which would otherwise reject it for lacking those required flags.
+    for (const std::string_view arg : args) {
+        if (arg != "--selftest") {
+            continue;
+        }
+        std::vector<std::string> failures;
+        if (lmx::bench::runSelfTests(failures)) {
+            std::printf("FrameDataBench --selftest: all checks passed\n");
+            return 0;
+        }
+        std::fprintf(stderr, "FrameDataBench --selftest: %zu check(s) failed:\n", failures.size());
+        for (const std::string& failure : failures) {
+            std::fprintf(stderr, "  - %s\n", failure.c_str());
+        }
+        return 1;
+    }
+
     std::string parseError;
     const std::optional<CliOptions> options = parseArgs(args, parseError);
     if (!options) {
         std::fprintf(stderr,
                      "FrameDataBench: %s\n"
                      "usage: FrameDataBench --case <name> --out <path.json> [--verify] "
-                     "[--warmup N] [--frames N]\n",
+                     "[--warmup N] [--frames N]\n"
+                     "       FrameDataBench --selftest\n",
                      parseError.c_str());
         return 2;
     }
@@ -190,8 +232,8 @@ int main(int argc, char** argv) {
     }
 
     std::printf("case=%s medianNs=%llu overflowBufferCreations=%llu digest=%s\n",
-               options->caseName.c_str(), static_cast<unsigned long long>(result.medianNs),
-               static_cast<unsigned long long>(result.overflowBufferCreations),
-               result.digest ? lmx::bench::digestToHex(*result.digest).c_str() : "(none)");
+                options->caseName.c_str(), static_cast<unsigned long long>(result.medianNs),
+                static_cast<unsigned long long>(result.overflowBufferCreations),
+                result.digest ? lmx::bench::digestToHex(*result.digest).c_str() : "(none)");
     return 0;
 }
