@@ -10,6 +10,8 @@ thin RHI and one implemented backend.
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
 - Current baseline: `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over
   `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
+- Active plan: `docs/plans/2026-08-13-m5.3-editor-workspace-selection.md` (spec:
+  `docs/specs/2026-08-13-m5.3-editor-workspace-selection-design.md`)
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
