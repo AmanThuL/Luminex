@@ -16,7 +16,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 
-// DockBuilder is an internal ImGui API; contain the unstable include here.
+// DockBuilder and ImGuiSettingsHandler are internal ImGui APIs; contain the unstable include here.
 #include <imgui_internal.h>
 
 #include <algorithm>
@@ -50,6 +50,62 @@ constexpr float kMinLightDirectionLength = 1e-5f;
 
 // A non-empty percentile window is required by ExposureResolve.slang's weighted average.
 constexpr float kMinExposurePercentileGap = 1.0f;
+
+// Luminex's own entry in imgui.ini, written as "[LuminexWorkspace][Workspace]". ImGui disallows
+// '[' and ']' in a handler type name and hashes it to route the section back to this handler.
+constexpr const char* kWorkspaceSettingsType = "LuminexWorkspace";
+constexpr const char* kWorkspaceSettingsName = "Workspace";
+
+// The section body ImGui hands back never includes its own header line, so the schema decision is
+// reached through the same text writeWorkspaceSettings emits.
+constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
+
+//======================================================================================================================
+// ImGui settings handlers are C function pointers, so each one recovers the shell's workspace
+// storage from the handler's UserData rather than from a process-wide global.
+WorkspaceSettings& workspaceSettingsOf(ImGuiSettingsHandler* handler) {
+    LMX_ASSERT(handler != nullptr && handler->UserData != nullptr,
+               "workspace settings handler: UserData must name the shell's WorkspaceSettings");
+    return *static_cast<WorkspaceSettings*>(handler->UserData);
+}
+
+//======================================================================================================================
+void workspaceSettingsClearAll(ImGuiContext*, ImGuiSettingsHandler* handler) {
+    WorkspaceSettings& settings = workspaceSettingsOf(handler);
+    settings.sectionSeen = false;
+    settings.sectionText.clear();
+}
+
+//======================================================================================================================
+void* workspaceSettingsReadOpen(ImGuiContext*, ImGuiSettingsHandler* handler, const char* name) {
+    if (name == nullptr || std::string_view(name) != kWorkspaceSettingsName) {
+        // A future entry name under the same type; leaving the section unseen keeps an ini this
+        // build cannot understand on the legacy path rather than half-reading it.
+        return nullptr;
+    }
+    WorkspaceSettings& settings = workspaceSettingsOf(handler);
+    settings.sectionSeen = true;
+    settings.sectionText.clear();
+    return &settings;
+}
+
+//======================================================================================================================
+void workspaceSettingsReadLine(ImGuiContext*, ImGuiSettingsHandler*, void* entry,
+                               const char* line) {
+    WorkspaceSettings& settings = *static_cast<WorkspaceSettings*>(entry);
+    // ImGui strips the line terminator; parseWorkspaceSettings reads newline-separated text.
+    settings.sectionText += line;
+    settings.sectionText += '\n';
+}
+
+//======================================================================================================================
+void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
+                               ImGuiTextBuffer* outBuffer) {
+    const WorkspaceSettings& settings = workspaceSettingsOf(handler);
+    outBuffer->appendf("[%s][%s]\n", kWorkspaceSettingsType, kWorkspaceSettingsName);
+    outBuffer->append(writeWorkspaceSettings(kWorkspaceSchemaVersion, settings.visibility).c_str());
+    outBuffer->append("\n");
+}
 
 //======================================================================================================================
 // Builds the first-run layout when no persisted ImGui layout exists.
@@ -106,9 +162,6 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     // Platform viewports need additional OS windows and swapchains; this RHI owns one.
     ImGui::StyleColorsDark();
 
-    const bool hadIniFile =
-        io.IniFilename != nullptr && std::filesystem::exists(std::filesystem::path(io.IniFilename));
-
     if (!ImGui_ImplSDL3_InitForMetal(window)) {
         LMX_LOG_ERROR("ImGui_ImplSDL3_InitForMetal failed: {}", SDL_GetError());
         ImGui::DestroyContext();
@@ -122,6 +175,31 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     }
 
     std::unique_ptr<EditorShell> self(new EditorShell(window, library));
+
+    // Register before any settings are read so Luminex's section is routed to this handler, and
+    // read the ini here rather than letting the first NewFrame() do it: the schema decision below
+    // has to be settled before a frame can lay out a dockspace.
+    ImGuiSettingsHandler workspaceHandler;
+    workspaceHandler.TypeName = kWorkspaceSettingsType;
+    workspaceHandler.TypeHash = ImHashStr(kWorkspaceSettingsType);
+    workspaceHandler.ClearAllFn = workspaceSettingsClearAll;
+    workspaceHandler.ReadOpenFn = workspaceSettingsReadOpen;
+    workspaceHandler.ReadLineFn = workspaceSettingsReadLine;
+    workspaceHandler.WriteAllFn = workspaceSettingsWriteAll;
+    workspaceHandler.UserData = &self->m_workspace;
+    ImGui::AddSettingsHandler(&workspaceHandler);
+    if (io.IniFilename != nullptr) {
+        ImGui::LoadIniSettingsFromDisk(io.IniFilename);
+    }
+
+    const std::optional<ParsedWorkspaceSettings> parsed =
+        self->m_workspace.sectionSeen ? std::optional<ParsedWorkspaceSettings>(
+                                            parseWorkspaceSettings(self->m_workspace.sectionText))
+                                      : std::nullopt;
+    const WorkspaceDecision decision = decideWorkspace(parsed);
+    self->m_workspace.visibility = decision.visibility;
+    self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
+    self->m_layoutBuildReason = kNoSchemaReason;
 
     // Startup needs a renderable scene; later switch failures can retain the current one.
     auto scene = library.get(initialScene);
@@ -142,10 +220,10 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
     self->m_exposureContext = initial;
 
-    self->m_buildDefaultLayout = !hadIniFile;
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
-                 hadIniFile ? "restoring the docked layout from imgui.ini"
-                            : "no imgui.ini -- building the default docked layout",
+                 self->m_buildDefaultLayout
+                     ? "no matching workspace schema -- the default layout will be built"
+                     : "workspace schema matches -- restoring the docked layout from imgui.ini",
                  self->m_activeScene->name, self->m_activeScene->objects.size());
     return self;
 }
@@ -206,13 +284,42 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
+        LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
-    buildViewport(renderer);
-    buildInspector(device, renderer);
-    buildGraphInspector(frameRecords);
+    // Every panel is drawn only while visible, and hands its window close button back through the
+    // same storage the Window menu writes, so the two can never disagree.
+    if (m_workspace.visibility.isVisible(EditorPanel::Viewport)) {
+        bool open = true;
+        buildViewport(renderer, open);
+        setPanelVisible(EditorPanel::Viewport, open);
+    } else {
+        m_viewportHovered = false;
+        m_viewportFocused = false;
+    }
+    if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
+        bool open = true;
+        buildInspector(device, renderer, open);
+        setPanelVisible(EditorPanel::Inspector, open);
+    }
+    if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
+        bool open = true;
+        buildGraphInspector(frameRecords, open);
+        setPanelVisible(EditorPanel::RenderGraph, open);
+    }
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
+}
+
+//======================================================================================================================
+void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
+    if (m_workspace.visibility.isVisible(panel) == visible) {
+        return;
+    }
+    m_workspace.visibility.setVisible(panel, visible);
+    // Nothing moved a window, so ImGui has no reason of its own to rewrite the ini; without this
+    // the new visibility would be lost on exit.
+    ImGui::MarkIniSettingsDirty();
 }
 
 //======================================================================================================================
@@ -265,9 +372,9 @@ bool EditorShell::consumeExposureReset() {
 }
 
 //======================================================================================================================
-void EditorShell::buildViewport(render::Renderer& renderer) {
+void EditorShell::buildViewport(render::Renderer& renderer, bool& open) {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    const bool visible = ImGui::Begin("Viewport");
+    const bool visible = ImGui::Begin("Viewport", &open);
     ImGui::PopStyleVar();
 
     if (visible) {
@@ -482,8 +589,8 @@ void drawPassRow(const app::GraphInspectorPassRow& pass, std::optional<uint32_t>
 } // namespace
 
 //======================================================================================================================
-void EditorShell::buildGraphInspector(const FrameRecordRing& frameRecords) {
-    if (!ImGui::Begin("Render Graph")) {
+void EditorShell::buildGraphInspector(const FrameRecordRing& frameRecords, bool& open) {
+    if (!ImGui::Begin("Render Graph", &open)) {
         ImGui::End();
         return;
     }
@@ -604,8 +711,8 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
 }
 
 //======================================================================================================================
-void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer) {
-    if (ImGui::Begin("Inspector")) {
+void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer, bool& open) {
+    if (ImGui::Begin("Inspector", &open)) {
         const ImGuiIO& io = ImGui::GetIO();
 
         buildSceneCombo(device);

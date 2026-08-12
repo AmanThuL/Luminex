@@ -201,6 +201,23 @@ TEST_CASE("write then parse round-trips every panel combination", "[app]") {
 }
 
 //======================================================================================================================
+// The text below is not an internal detail: the editor's ImGui settings handler writes exactly this
+// as the body of its `imgui.ini` section, and `decideWorkspace` demotes anything it cannot read
+// back to legacy. Renaming a key or reordering the lines would therefore silently rebuild the
+// default layout over every user's saved workspace, so the on-disk spelling is pinned literally
+// here rather than only round-tripped through the parser that shares the same spelling.
+TEST_CASE("write emits the exact persisted section text for default visibility", "[app]") {
+    const std::string text = writeWorkspaceSettings(kWorkspaceSchemaVersion, WorkspaceVisibility{});
+
+    REQUIRE(text == "Schema=1\n"
+                    "Scene=1\n"
+                    "Viewport=1\n"
+                    "Inspector=1\n"
+                    "Performance=1\n"
+                    "RenderGraph=0\n");
+}
+
+//======================================================================================================================
 TEST_CASE("write produces deterministic text for the same input", "[app]") {
     const WorkspaceVisibility visibility;
     const std::string first = writeWorkspaceSettings(kWorkspaceSchemaVersion, visibility);

@@ -7,6 +7,7 @@
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
 #include "App/PassTimingHistory.h"
+#include "App/WorkspaceModel.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -15,6 +16,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -34,6 +36,23 @@ constexpr float kSceneClearGray = 0.7f;
 /// EditorShell's startup and scene-switch paths and by Screenshot.cpp's offscreen path, so a
 /// scene's screenshot and its editor view start from exactly the same pose.
 render::Camera cameraFromScene(const engine::SceneCamera& sceneCamera);
+
+/// Luminex's own section of `imgui.ini`, as the registered Dear ImGui settings handler sees it.
+///
+/// Dear ImGui settings handlers are plain C function pointers, so the shell hands one of these to
+/// the handler as its `UserData` instead of exposing itself. Reading fills `sectionText` with the
+/// section body found on disk (and sets `sectionSeen`), which the shell hands to
+/// `parseWorkspaceSettings` once at startup; writing serializes `visibility` back out through
+/// `writeWorkspaceSettings`, so the persisted key spelling has exactly one owner.
+struct WorkspaceSettings {
+    /// Whether the loaded `imgui.ini` contained Luminex's workspace section at all. False for a
+    /// clean run and for an ini written before the section existed.
+    bool sectionSeen = false;
+    /// The section body exactly as read back, newline-terminated per line. Empty until a read.
+    std::string sectionText;
+    /// The live panel visibility this shell draws from and persists.
+    WorkspaceVisibility visibility;
+};
 
 /// The editor shell: the Dear ImGui context, the dockspace and its two panels, the fly camera, and
 /// the active engine::Scene the Inspector edits. One per process -- ImGui's context, and the
@@ -111,9 +130,13 @@ public:
 private:
     EditorShell(SDL_Window* window, engine::SceneLibrary& library);
 
-    void buildViewport(render::Renderer& renderer);
-    void buildInspector(rhi::Device& device, render::Renderer& renderer);
+    void buildViewport(render::Renderer& renderer, bool& open);
+    void buildInspector(rhi::Device& device, render::Renderer& renderer, bool& open);
     void buildSceneCombo(rhi::Device& device);
+    // The single write path for panel visibility, shared by the Window menu and by a panel's own
+    // close button, and the only place that tells ImGui the ini needs rewriting for a change that
+    // moved no window.
+    void setPanelVisible(EditorPanel panel, bool visible);
     void buildLightsSection();
     void buildRenderSettingsSection();
     void buildObjectsSection();
@@ -121,7 +144,7 @@ private:
     // A separate top-level window, not an Inspector section: the Stats panel already summarizes a
     // frame's pass timings, and this is the frame's full compiled shape -- passes, culling,
     // transitions, transient placement -- which is too much detail to nest under it.
-    void buildGraphInspector(const FrameRecordRing& frameRecords);
+    void buildGraphInspector(const FrameRecordRing& frameRecords, bool& open);
     // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
     // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
     // the new scene's initial pose -- the only per-scene UI state this shell carries.
@@ -194,10 +217,16 @@ private:
     // Latched rather than re-derived each frame: relative mode hides the cursor, so the Viewport
     // window stops reporting itself as hovered for the whole duration of the look.
     bool m_looking = false;
-    // Set at create() when no imgui.ini existed; cleared by the frame that lays out the
-    // dockspace. Rebuilding the default layout on a later run would throw away the re-docking
-    // the ini exists to persist.
+    // Panel visibility plus the settings-handler storage that persists it in imgui.ini. The
+    // handler reaches this through a pointer create() installs as its UserData.
+    WorkspaceSettings m_workspace;
+    // Set at create() when the ini named no matching workspace schema, and again when a layout
+    // reset is consumed; cleared by the frame that lays out the dockspace. Rebuilding the default
+    // layout on a run whose schema did match would throw away the re-docking the ini exists to
+    // persist.
     bool m_buildDefaultLayout = false;
+    // Why the pending build was scheduled, for the one line logged when it actually happens.
+    std::string_view m_layoutBuildReason;
 
     // Frame times for the Stats plot. A ring: ImGui::PlotLines takes the cursor as its
     // values_offset and unrolls it, so there is no discontinuity to shuffle away.
