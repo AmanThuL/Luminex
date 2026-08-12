@@ -55,14 +55,18 @@ struct SceneSwitchOutcome {
     std::string filter;        ///< The Scene-panel filter text to store.
 };
 
-/// The selection and filter to store after requesting a switch to `requestedScene`, given whether
-/// the switch actually applied. A successful switch (`switchSucceeded`) selects `requestedScene`'s
-/// `Camera` and clears the filter. A failed switch returns `currentSelection` and `currentFilter`
+/// The selection and filter to store after requesting a switch from `activeScene` to
+/// `requestedScene`, given whether the switch actually applied. Selecting the already-active scene
+/// changes nothing: `requestedScene == activeScene` returns `currentSelection` and `currentFilter`
+/// unchanged regardless of `switchSucceeded`, matching the spec's "selecting the already-active
+/// catalog scene changes nothing" -- callers do not need to guard this themselves before calling
+/// (a combo box that fires on re-clicking the active row is safe to wire directly to this
+/// function). Otherwise, a successful switch (`switchSucceeded`) selects `requestedScene`'s
+/// `Camera` and clears the filter; a failed switch returns `currentSelection` and `currentFilter`
 /// unchanged, which is the spec's "failed scene switch retains selection and filter exactly" --
-/// callers do not need a second function to express the failure path. This function does not decide
-/// whether a same-scene reselection counts as a switch; a caller that already knows the requested
-/// scene is the active one should not call it at all (spec: "changes nothing").
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId requestedScene,
+/// callers do not need a second function to express the failure path.
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
+                                      engine::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter);
 

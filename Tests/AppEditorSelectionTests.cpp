@@ -104,7 +104,7 @@ TEST_CASE("a successful scene switch selects the new scene's Camera and clears t
     const std::string previousFilter = "crate";
 
     const SceneSwitchOutcome outcome =
-        sceneSwitchOutcome(/*switchSucceeded=*/true, kSceneB, previous, previousFilter);
+        sceneSwitchOutcome(/*switchSucceeded=*/true, kSceneA, kSceneB, previous, previousFilter);
 
     REQUIRE(outcome.selection.subject == EditorSubject::Camera);
     REQUIRE(outcome.selection.sceneId == kSceneB);
@@ -118,7 +118,25 @@ TEST_CASE("a failed scene switch retains selection and filter exactly", "[app]")
     const std::string previousFilter = "crate";
 
     const SceneSwitchOutcome outcome =
-        sceneSwitchOutcome(/*switchSucceeded=*/false, kSceneB, previous, previousFilter);
+        sceneSwitchOutcome(/*switchSucceeded=*/false, kSceneA, kSceneB, previous, previousFilter);
+
+    REQUIRE(outcome.selection.subject == previous.subject);
+    REQUIRE(outcome.selection.sceneId == previous.sceneId);
+    REQUIRE(outcome.selection.index == previous.index);
+    REQUIRE(outcome.filter == previousFilter);
+}
+
+//======================================================================================================================
+// Reselecting the scene that is already active must not reset the workspace: a combo box that
+// fires on re-clicking the active row is safe to wire directly to this function without a caller
+// guard, exactly because it is a documented no-op here.
+TEST_CASE("selecting the already-active scene changes nothing", "[app]") {
+    const EditorSelection previous{
+        .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
+    const std::string previousFilter = "crate";
+
+    const SceneSwitchOutcome outcome =
+        sceneSwitchOutcome(/*switchSucceeded=*/true, kSceneA, kSceneA, previous, previousFilter);
 
     REQUIRE(outcome.selection.subject == previous.subject);
     REQUIRE(outcome.selection.sceneId == previous.sceneId);
@@ -132,8 +150,9 @@ TEST_CASE("a failed scene switch retains selection and filter exactly", "[app]")
 TEST_CASE("repeated switching never restores a stale prior-scene selection", "[app]") {
     const EditorSelection start{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 4};
 
-    const SceneSwitchOutcome toB = sceneSwitchOutcome(true, kSceneB, start, "filter");
-    const SceneSwitchOutcome backToA = sceneSwitchOutcome(true, kSceneA, toB.selection, toB.filter);
+    const SceneSwitchOutcome toB = sceneSwitchOutcome(true, kSceneA, kSceneB, start, "filter");
+    const SceneSwitchOutcome backToA =
+        sceneSwitchOutcome(true, kSceneB, kSceneA, toB.selection, toB.filter);
 
     REQUIRE(toB.selection.subject == EditorSubject::Camera);
     REQUIRE(backToA.selection.subject == EditorSubject::Camera);

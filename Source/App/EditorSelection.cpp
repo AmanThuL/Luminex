@@ -97,10 +97,11 @@ EditorSelection initialSelection(engine::SceneId sceneId) {
 }
 
 //======================================================================================================================
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
+                                      engine::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter) {
-    if (!switchSucceeded) {
+    if (requestedScene == activeScene || !switchSucceeded) {
         return SceneSwitchOutcome{.selection = currentSelection, .filter = currentFilter};
     }
     return SceneSwitchOutcome{.selection = initialSelection(requestedScene),
