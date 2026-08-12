@@ -7,10 +7,9 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 - **Naming**: `PascalCase` types & files; `camelCase` functions/variables; private data members use the
   `m_` prefix (`m_device`), public/aggregate members do not (no `s_` prefix anywhere);
   `kPascalCase` compile-time constants; `LMX_` macros; `lowercase` namespaces (`lmx`, `lmx::rhi`).
-- **Experimental namespaces**: code owned by a repository-root `Experiments/<Name>/` tree lives
-  under `lmx::experimental::<name>` (for example, `Experiments/NoApi/` uses
-  `lmx::experimental::noapi`). Do not place experimental APIs directly under `lmx`, and do not use
-  `experiment` as the namespace segment; `experimental` is the project-wide instability marker.
+- **Experimental code**: experimental source stays off `main` on a short-lived `exp/<topic>`
+  branch and uses `lmx::experimental::<name>`. Accepted evidence is frozen with an immutable tag;
+  only conclusions, ADRs, and adopted production code return to `main`.
 - **Files**: one primary type per header; `PascalCase.h/.cpp` named after it. `#pragma once`.
   Every project-owned source or header under `Source/`, `RHI/`, or `Experiments/` starts with the
   file envelope defined below.

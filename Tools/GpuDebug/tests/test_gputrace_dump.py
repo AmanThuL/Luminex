@@ -38,7 +38,7 @@ _SCHEMA = {
          "width": 8, "height": 8, "mipLevels": 1},
     ],
     "uniformStructs": [],
-    "uniformUploads": [],
+    "frameDataUploads": [],
 }
 
 
@@ -258,8 +258,8 @@ class DecodeImagesUnexpectedExceptionTests(unittest.TestCase):
 
 class UniformsJsonCliTests(unittest.TestCase):
     """manifest.json references uniforms.json, and uniforms.json is
-    written on every run -- empty uploads (with an explanatory ringAttribution) when there's
-    nothing to decode or the ring-attribution policy declines, decoded uploads when it succeeds.
+    written on every run -- empty uploads (with an explanatory pageAttribution) when there's
+    nothing to decode or the page-attribution policy declines, decoded uploads when it succeeds.
     """
 
     def setUp(self):
@@ -276,7 +276,7 @@ class UniformsJsonCliTests(unittest.TestCase):
         fx.flush_device_resources()
 
     def test_manifest_gains_uniforms_key_and_no_uploads_case_is_unremarkable(self):
-        self.schema_path.write_text(json.dumps(_SCHEMA))  # uniformStructs/uniformUploads: []
+        self.schema_path.write_text(json.dumps(_SCHEMA))  # uniformStructs/frameDataUploads: []
         self._flush_unrelated_bundle()
         out_dir = self.tmp_path / "out"
 
@@ -290,27 +290,27 @@ class UniformsJsonCliTests(unittest.TestCase):
         uniforms = json.loads((out_dir / "uniforms.json").read_text())
         self.assertEqual(uniforms["version"], 1)
         self.assertEqual(uniforms["uploads"], [])
-        self.assertIn("no uniform uploads", uniforms["ringAttribution"])
+        self.assertIn("no frame-data uploads", uniforms["pageAttribution"])
 
-    def test_single_ring_blob_decodes_pass_uniforms_end_to_end(self):
-        ring_bytes = bytearray(4096)
-        # eyePos lives at struct offset 128; this upload starts at ring offset 512, so its
+    def test_single_page_blob_decodes_pass_uniforms_end_to_end(self):
+        page_bytes = bytearray(4096)
+        # eyePos lives at struct offset 128; this upload starts at page offset 512, so its
         # absolute position is 512 + 128 = 640.
-        ring_bytes[640:652] = struct.pack("<3f", 1.5, 2.5, 3.5)
-        (self.bundle / "MTLBuffer-13-0").write_bytes(bytes(ring_bytes))
+        page_bytes[640:652] = struct.pack("<3f", 1.5, 2.5, 3.5)
+        (self.bundle / "MTLBuffer-13-0").write_bytes(bytes(page_bytes))
         self._flush_unrelated_bundle()
         schema = {
             **_SCHEMA,
             "resources": [
-                {"label": "lmx.device.uniformRing.0", "kind": "buffer", "sizeBytes": 4096},
+                {"label": "lmx.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 4096},
             ],
             "uniformStructs": [
                 {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
                  "fields": [{"name": "eyePos", "offsetBytes": 128, "type": "float3"}]},
             ],
-            "uniformUploads": [
-                {"ringLabel": "lmx.device.uniformRing.0", "slot": 2, "ringOffset": 512,
-                 "sizeBytes": 288},
+            "frameDataUploads": [
+                {"pageLabel": "lmx.device.frameData.0.page.0", "slot": 2, "pageOffset": 512,
+                 "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4096},
             ],
         }
         self.schema_path.write_text(json.dumps(schema))
@@ -324,27 +324,29 @@ class UniformsJsonCliTests(unittest.TestCase):
         self.assertEqual(len(uniforms["uploads"]), 1)
         upload = uniforms["uploads"][0]
         self.assertEqual(upload["structName"], "PassUniforms")
-        self.assertEqual(upload["ringLabel"], "lmx.device.uniformRing.0")
+        self.assertEqual(upload["pageLabel"], "lmx.device.frameData.0.page.0")
+        self.assertEqual(upload["alignmentBytes"], 256)
+        self.assertNotIn("gpuAddress", upload)  # non-deterministic across runs; not surfaced
         self.assertEqual(upload["values"]["eyePos"], [1.5, 2.5, 3.5])
         self.assertTrue(upload["finite"])
-        self.assertIn("single ring-sized blob", uniforms["ringAttribution"])
+        self.assertIn("single page-sized blob", uniforms["pageAttribution"])
         manifest = json.loads((out_dir / "manifest.json").read_text())
         self.assertNotIn("notes", manifest)  # clean attribution shouldn't add a manifest note
 
-    def test_ambiguous_ring_attribution_writes_empty_uploads_and_manifest_note(self):
+    def test_ambiguous_page_attribution_writes_empty_uploads_and_manifest_note(self):
         (self.bundle / "MTLBuffer-1-0").write_bytes(b"\x00" * 4096)
         (self.bundle / "MTLBuffer-2-0").write_bytes(b"\x00" * 4096)  # 2 candidates: not 1 or 3
         self._flush_unrelated_bundle()
         schema = {
             **_SCHEMA,
             "resources": [
-                {"label": f"lmx.device.uniformRing.{i}", "kind": "buffer", "sizeBytes": 4096}
+                {"label": f"lmx.device.frameData.0.page.{i}", "kind": "buffer", "sizeBytes": 4096}
                 for i in range(3)
             ],
             "uniformStructs": [],
-            "uniformUploads": [
-                {"ringLabel": "lmx.device.uniformRing.0", "slot": 2, "ringOffset": 0,
-                 "sizeBytes": 80},
+            "frameDataUploads": [
+                {"pageLabel": "lmx.device.frameData.0.page.0", "slot": 2, "pageOffset": 0,
+                 "sizeBytes": 80, "alignmentBytes": 256, "gpuAddress": 0},
             ],
         }
         self.schema_path.write_text(json.dumps(schema))
@@ -356,9 +358,9 @@ class UniformsJsonCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         uniforms = json.loads((out_dir / "uniforms.json").read_text())
         self.assertEqual(uniforms["uploads"], [])
-        self.assertTrue(uniforms["ringAttribution"])
+        self.assertTrue(uniforms["pageAttribution"])
         manifest = json.loads((out_dir / "manifest.json").read_text())
-        self.assertEqual(manifest["notes"], [uniforms["ringAttribution"]])
+        self.assertEqual(manifest["notes"], [uniforms["pageAttribution"]])
 
 
 if __name__ == "__main__":

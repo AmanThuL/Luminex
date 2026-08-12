@@ -261,7 +261,7 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
     commands.bindBuffer(1, **exposure);
-    commands.setUniforms(2, &params, sizeof(params));
+    commands.bindFrameData(2, params);
     commands.dispatch(1, 1, 1); // 4x4 fits one 8x8 threadgroup; the kernel bounds-checks the rest.
     commands.endComputePass();
     (*device)->endFrame(nullptr);
@@ -396,7 +396,7 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::ReadWrite);
     commands.bindBuffer(1, **appliedExposure);
-    commands.setUniforms(2, &histogramParams, sizeof(histogramParams));
+    commands.bindFrameData(2, histogramParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 
@@ -406,7 +406,7 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     commands.bindComputePipeline(**resolvePipeline);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::Read);
     commands.bindStorageBuffer(1, **exposure, StorageAccess::Write);
-    commands.setUniforms(2, &resolveParams, sizeof(resolveParams));
+    commands.bindFrameData(2, resolveParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
     (*device)->endFrame(nullptr);
@@ -471,7 +471,7 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is appli
         commands.beginComputePass("lmx.test.exposureSeed");
         commands.bindComputePipeline(**pipeline);
         commands.bindStorageBuffer(0, **exposure, StorageAccess::Write);
-        commands.setUniforms(1, &params, sizeof(params));
+        commands.bindFrameData(1, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
         (*device)->endFrame(nullptr);
@@ -546,7 +546,7 @@ TEST_CASE("bloom threshold preserves the final texel of an odd-sized image", "[g
     commands.bindComputePipeline(**pipeline);
     commands.bindTexture(0, **scene);
     commands.bindStorageTexture(1, **bloom, {}, StorageAccess::Write);
-    commands.setUniforms(0, &params, sizeof(params));
+    commands.bindFrameData(0, params);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
     (*device)->endFrame(nullptr);
@@ -679,7 +679,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
     commands.bindComputePipeline(**thresholdPipeline);
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageTexture(1, **bloomChain, mipView(0), StorageAccess::Write);
-    commands.setUniforms(0, &thresholdParams, sizeof(thresholdParams));
+    commands.bindFrameData(0, thresholdParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
 
@@ -694,7 +694,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         commands.bindComputePipeline(**downsamplePipeline);
         commands.bindStorageTexture(0, **bloomChain, mipView(level - 1), StorageAccess::Read);
         commands.bindStorageTexture(1, **bloomChain, mipView(level), StorageAccess::Write);
-        commands.setUniforms(0, &params, sizeof(params));
+        commands.bindFrameData(0, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
     }
@@ -719,7 +719,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
             commands.bindStorageTexture(1, **bloomBlur, mipView(level + 1), StorageAccess::Read);
         }
         commands.bindStorageTexture(2, **bloomBlur, mipView(level), StorageAccess::Write);
-        commands.setUniforms(0, &params, sizeof(params));
+        commands.bindFrameData(0, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
         if (level > 0) {

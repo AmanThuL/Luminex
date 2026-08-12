@@ -28,14 +28,15 @@ SCHEMA_EXAMPLE = {
     "resources": [
         {"label": "lmx.render.shadowMap", "kind": "texture2d", "format": "D32Float",
          "width": 2048, "height": 2048, "mipLevels": 1},
-        {"label": "lmx.device.uniformRing.0", "kind": "buffer", "sizeBytes": 262144},
+        {"label": "lmx.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 262144},
     ],
     "uniformStructs": [
         {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
          "fields": [{"name": "viewProj", "offsetBytes": 0, "type": "float4x4"}]},
     ],
-    "uniformUploads": [
-        {"ringLabel": "lmx.device.uniformRing.1", "slot": 2, "ringOffset": 1024, "sizeBytes": 288},
+    "frameDataUploads": [
+        {"pageLabel": "lmx.device.frameData.0.page.1", "slot": 2, "pageOffset": 1024,
+         "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4294967296},
     ],
 }
 
@@ -61,7 +62,7 @@ class LoadSchemaTests(unittest.TestCase):
         self.assertEqual(schema.context["frameIndex"], 120)
         self.assertEqual(len(schema.resources), 2)
         self.assertEqual(len(schema.uniform_structs), 1)
-        self.assertEqual(len(schema.uniform_uploads), 1)
+        self.assertEqual(len(schema.frame_data_uploads), 1)
 
     def test_texture_resource_carries_geometry(self):
         path = _write_json(self.tmp_path, "schema.json", SCHEMA_EXAMPLE)
@@ -84,7 +85,7 @@ class LoadSchemaTests(unittest.TestCase):
 
         buf = next(r for r in schema.resources if r.kind == "buffer")
 
-        self.assertEqual(buf.label, "lmx.device.uniformRing.0")
+        self.assertEqual(buf.label, "lmx.device.frameData.0.page.0")
         self.assertEqual(buf.size_bytes, 262144)
         self.assertIsNone(buf.format)
         self.assertIsNone(buf.width)
@@ -103,15 +104,17 @@ class LoadSchemaTests(unittest.TestCase):
         self.assertEqual(struct.fields[0].offset_bytes, 0)
         self.assertEqual(struct.fields[0].type, "float4x4")
 
-    def test_uniform_upload_fields(self):
+    def test_frame_data_upload_fields(self):
         path = _write_json(self.tmp_path, "schema.json", SCHEMA_EXAMPLE)
         schema = schemalib.load_schema(path)
 
-        upload = schema.uniform_uploads[0]
-        self.assertEqual(upload.ring_label, "lmx.device.uniformRing.1")
+        upload = schema.frame_data_uploads[0]
+        self.assertEqual(upload.page_label, "lmx.device.frameData.0.page.1")
         self.assertEqual(upload.slot, 2)
-        self.assertEqual(upload.ring_offset, 1024)
+        self.assertEqual(upload.page_offset, 1024)
         self.assertEqual(upload.size_bytes, 288)
+        self.assertEqual(upload.alignment_bytes, 256)
+        self.assertEqual(upload.gpu_address, 4294967296)
 
     def test_missing_version_raises_schema_error(self):
         data = dict(SCHEMA_EXAMPLE)

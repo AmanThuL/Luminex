@@ -364,9 +364,9 @@ def join(bundle: Bundle, schema, hits: list) -> JoinResult:
         size_index.setdefault(blob.size_bytes, []).append(blob)
 
     # Ambiguity must be judged on BOTH sides of the size key, not just the blob side: three
-    # same-size ring resources against one same-size blob is exactly as ambiguous as one resource
-    # against three blobs. Counting only blobs would let the first same-sized resource claim one
-    # plausible blob arbitrarily.
+    # same-size buffer resources (e.g. sibling frame-data pages) against one same-size blob is
+    # exactly as ambiguous as one resource against three blobs. Counting only blobs would let the
+    # first same-sized resource claim one plausible blob arbitrarily.
     resource_size_counts: dict[int, int] = {}
     for resource in buffer_resources:
         resource_size_counts[resource.size_bytes] = resource_size_counts.get(

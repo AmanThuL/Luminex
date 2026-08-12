@@ -911,7 +911,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 commands.bindComputePipeline(*m_exposureSeedPipeline);
                 commands.bindStorageBuffer(kSeedExposureSlot, **exposure,
                                            rhi::StorageAccess::Write);
-                commands.setUniforms(kSeedParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kSeedParamsSlot, params);
                 commands.dispatch(1, 1, 1);
             });
         exposureCurrent = nextVersion(exposureImport);
@@ -929,7 +929,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                           LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
                           const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
                           commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-                          commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+                          commands.bindFrameData(kObjectUniformsSlot, uniforms);
                           commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
                       }
                   });
@@ -1036,7 +1036,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 LMX_ASSERT(exposureOverride.has_value(), exposureOverride.error().message);
                 commands.bindBuffer(kExposureOverrideSlot, **exposureOverride);
             }
-            commands.setUniforms(kPassUniformsSlot, &passUniforms, sizeof(passUniforms));
+            commands.bindFrameData(kPassUniformsSlot, passUniforms);
 
             for (const DrawItem& item : view.items) {
                 const Material& material = item.material;
@@ -1076,8 +1076,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                                                ? *material.emissiveMap
                                                                : *m_whiteTexture);
                 commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-                // setUniforms copies into transient storage before the next draw rebinds the slot.
-                commands.setUniforms(kObjectUniformsSlot, &uniforms, sizeof(uniforms));
+                // bindFrameData copies into frame-owned memory before the next draw rebinds the
+                // slot.
+                commands.bindFrameData(kObjectUniformsSlot, uniforms);
                 commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
             }
 
@@ -1096,7 +1097,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 // bound here rather than with the pass's shared set.
                 commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
                 commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
-                commands.setUniforms(kPassUniformsSlot, &sky, sizeof(sky));
+                commands.bindFrameData(kPassUniformsSlot, sky);
                 commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);
             }
         });
@@ -1152,7 +1153,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.bindStorageBuffer(kHistogramBufferSlot, **histogram,
                                        rhi::StorageAccess::ReadWrite);
             commands.bindBuffer(kHistogramExposureSlot, **exposure);
-            commands.setUniforms(kHistogramParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kHistogramParamsSlot, params);
             commands.dispatch(divRoundUp(sceneWidth, kComputeThreadsPerGroup2D),
                               divRoundUp(sceneHeight, kComputeThreadsPerGroup2D), 1);
         });
@@ -1181,7 +1182,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.bindStorageBuffer(kResolveHistogramSlot, **histogram,
                                        rhi::StorageAccess::Read);
             commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Write);
-            commands.setUniforms(kResolveParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(1, 1, 1);
         });
     const GraphBuffer exposureResolved = nextVersion(exposureCurrent);
@@ -1250,7 +1251,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.bindStorageTexture(kBloomThresholdDstSlot, **chain,
                                         rhi::TextureViewDesc{.range = kBloomMip0},
                                         rhi::StorageAccess::Write);
-            commands.setUniforms(kBloomThresholdParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kBloomThresholdParamsSlot, params);
             commands.dispatch(divRoundUp(bloomWidth, kComputeThreadsPerGroup2D),
                               divRoundUp(bloomHeight, kComputeThreadsPerGroup2D), 1);
         });
@@ -1289,7 +1290,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 commands.bindStorageTexture(kBloomDownsampleDstSlot, **chain,
                                             rhi::TextureViewDesc{.range = dstRange},
                                             rhi::StorageAccess::Write);
-                commands.setUniforms(kBloomDownsampleParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kBloomDownsampleParamsSlot, params);
                 commands.dispatch(divRoundUp(dstWidth, kComputeThreadsPerGroup2D),
                                   divRoundUp(dstHeight, kComputeThreadsPerGroup2D), 1);
             });
@@ -1353,7 +1354,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                     commands.bindStorageTexture(kBloomUpsampleDstSlot, **blur,
                                                 rhi::TextureViewDesc{.range = baseRange},
                                                 rhi::StorageAccess::Write);
-                    commands.setUniforms(kBloomUpsampleParamsSlot, &params, sizeof(params));
+                    commands.bindFrameData(kBloomUpsampleParamsSlot, params);
                     commands.dispatch(divRoundUp(baseWidth, kComputeThreadsPerGroup2D),
                                       divRoundUp(baseHeight, kComputeThreadsPerGroup2D), 1);
                 });
@@ -1399,7 +1400,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 commands.bindTexture(kDisplayBloomTextureSlot, *m_blackBloomFallback);
             }
             const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f};
-            commands.setUniforms(kDisplayParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kDisplayParamsSlot, params);
             commands.draw(3);
         });
 

@@ -122,7 +122,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
                 REQUIRE(texture.has_value());
                 commands.bindComputePipeline(**writePipeline);
                 commands.bindStorageTexture(kImageSlot, **texture, {}, StorageAccess::Write);
-                commands.setUniforms(kImageParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kImageParamsSlot, params);
                 commands.dispatch(groups, groups, 1);
             });
 
@@ -140,7 +140,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
                 commands.bindComputePipeline(**invertPipeline);
                 commands.bindStorageTexture(kImageSlot, **destination, {}, StorageAccess::Write);
                 commands.bindStorageTexture(kImageSourceSlot, **source, {}, StorageAccess::Read);
-                commands.setUniforms(kImageParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kImageParamsSlot, params);
                 commands.dispatch(groups, groups, 1);
             });
 
@@ -157,7 +157,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
                 commands.bindComputePipeline(**invertPipeline);
                 commands.bindStorageTexture(kImageSlot, **destination, {}, StorageAccess::Write);
                 commands.bindStorageTexture(kImageSourceSlot, **source, {}, StorageAccess::Read);
-                commands.setUniforms(kImageParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kImageParamsSlot, params);
                 commands.dispatch(groups, groups, 1);
             });
 
@@ -287,7 +287,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
             commands.bindComputePipeline(**pipeline);
             commands.bindStorageBuffer(kHazardOutputSlot, **destination, StorageAccess::Write);
             commands.bindStorageBuffer(kHazardSourceSlot, **source, StorageAccess::Read);
-            commands.setUniforms(kHazardParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kHazardParamsSlot, params);
             commands.dispatch(kElements / kHazardThreadsPerGroup, 1, 1);
         });
     };
@@ -416,7 +416,7 @@ TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][ch
                 REQUIRE(texture.has_value());
                 commands.bindComputePipeline(**writePipeline);
                 commands.bindStorageTexture(kImageSlot, **texture, {}, StorageAccess::Write);
-                commands.setUniforms(kImageParamsSlot, &params, sizeof(params));
+                commands.bindFrameData(kImageParamsSlot, params);
                 commands.dispatch(groups, groups, 1);
             });
 

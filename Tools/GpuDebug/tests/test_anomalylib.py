@@ -36,15 +36,16 @@ def _texture(label, kind="texture2d", width=8, height=8):
                               height=height, mip_levels=1, size_bytes=None)
 
 
-def _schema(resources=None, uniform_uploads=None, context=None):
+def _schema(resources=None, frame_data_uploads=None, context=None):
     return schemalib.Schema(
         context=context if context is not None else _context(),
         resources=resources if resources is not None else [_texture(_SHADOW_MAP),
                                                            _texture(_SCENE_COLOR)],
         uniform_structs=[],
-        uniform_uploads=uniform_uploads if uniform_uploads is not None else [
-            schemalib.UniformUpload(ring_label="lmx.device.uniformRing.0", slot=2, ring_offset=0,
-                                    size_bytes=288)],
+        frame_data_uploads=frame_data_uploads if frame_data_uploads is not None else [
+            schemalib.FrameDataUpload(page_label="lmx.device.frameData.0.page.0", slot=2,
+                                      page_offset=0, size_bytes=288, alignment_bytes=256,
+                                      gpu_address=0x1000)],
     )
 
 
@@ -106,8 +107,9 @@ def _upload(index=0, struct_name="PassUniforms", values=None, finite=True, slot=
         "index": index,
         "structName": struct_name,
         "slot": slot,
-        "ringLabel": "lmx.device.uniformRing.0",
-        "ringOffset": index * 288,
+        "pageLabel": "lmx.device.frameData.0.page.0",
+        "pageOffset": index * 288,
+        "alignmentBytes": 256,
         "values": values if values is not None else {
             "viewProj": _row_major(shadowmath.identity()),
             "shadowTransform": _healthy_shadow_transform(),
@@ -118,9 +120,9 @@ def _upload(index=0, struct_name="PassUniforms", values=None, finite=True, slot=
     }
 
 
-def _uniforms(uploads=None, attribution="single ring-sized blob, attributed to ring 0"):
+def _uniforms(uploads=None, attribution="single page-sized blob, attributed to page 0"):
     return {"version": 1, "matrixOrder": "row-major (transposed from column-major storage)",
-            "ringAttribution": attribution,
+            "pageAttribution": attribution,
             "uploads": [_upload()] if uploads is None else uploads}
 
 
@@ -379,9 +381,9 @@ class NoPassUniformsUploadTests(unittest.TestCase):
 
     def test_fires_error_when_the_capture_recorded_no_uploads_at_all(self):
         found = _checks(_run(uniforms=_uniforms(uploads=[],
-                                                 attribution="no uniform uploads recorded in "
+                                                 attribution="no frame-data uploads recorded in "
                                                              "this capture"),
-                             schema=_schema(uniform_uploads=[])), "no-pass-uniforms-upload")
+                             schema=_schema(frame_data_uploads=[])), "no-pass-uniforms-upload")
         self.assertEqual([a["severity"] for a in found], ["error"])
 
     def test_does_not_fire_when_pass_uniforms_were_uploaded(self):
@@ -393,16 +395,16 @@ class NoPassUniformsUploadTests(unittest.TestCase):
 class UniformDecodeUnavailableTests(unittest.TestCase):
     def _declined(self):
         """The shape uniformlib produces when its attribution policy declines: the schema recorded
-        uploads, but no ring blob could be attributed, so nothing was decoded."""
+        uploads, but no page blob could be attributed, so nothing was decoded."""
         return _uniforms(uploads=[], attribution="found 0 MTLBuffer-* blob(s) sized 262144 bytes "
-                                                  "(expected 1, or 3 to match sibling ring "
-                                                  "resources); ring bytes not attributed")
+                                                  "(expected 1, or 3 to match sibling page "
+                                                  "resources); page bytes not attributed")
 
     def test_emits_one_info_naming_the_attribution_note(self):
         found = _checks(_run(uniforms=self._declined()), "uniform-decode-unavailable")
         self.assertEqual([a["severity"] for a in found], ["info"])
         self.assertIn("uniform decode unavailable:", found[0]["finding"])
-        self.assertIn("ring bytes not attributed", found[0]["finding"])
+        self.assertIn("page bytes not attributed", found[0]["finding"])
 
     def test_suppresses_the_uniform_dependent_checks_rather_than_firing_them(self):
         anomalies = _run(uniforms=self._declined())
@@ -412,9 +414,9 @@ class UniformDecodeUnavailableTests(unittest.TestCase):
         self.assertEqual([a for a in anomalies if a["severity"] == "error"], [])
 
     def test_a_capture_that_simply_had_no_uploads_is_not_treated_as_unavailable(self):
-        """"the engine recorded zero uploads" and "the decoder could not read the ring" are
+        """"the engine recorded zero uploads" and "the decoder could not read the page" are
         different findings: the first is check 6's error, the second is not the frame's fault."""
-        anomalies = _run(uniforms=_uniforms(uploads=[]), schema=_schema(uniform_uploads=[]))
+        anomalies = _run(uniforms=_uniforms(uploads=[]), schema=_schema(frame_data_uploads=[]))
         self.assertEqual(_checks(anomalies, "uniform-decode-unavailable"), [])
         self.assertEqual(len(_checks(anomalies, "no-pass-uniforms-upload")), 1)
 
