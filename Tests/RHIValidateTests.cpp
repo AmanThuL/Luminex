@@ -1,5 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "RHI/CommandList.h"
+#include "RHI/Indirect.h"
+#include "RHI/ShaderLibrary.h"
 #include "RHI/Validate.h"
 
 #include <limits>

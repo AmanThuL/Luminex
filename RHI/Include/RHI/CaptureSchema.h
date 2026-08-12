@@ -7,7 +7,9 @@
 /// feed, flushed to "<bundle>.schema.json" when a capture closes. Single-threaded by
 /// construction, like the backend it observes.
 #pragma once
-#include "RHI/RHI.h"
+#include "RHI/Format.h"
+#include "RHI/Texture.h"
+
 #include <array>
 #include <cstdint>
 #include <filesystem>

@@ -7,7 +7,7 @@
 // handful of helpers every backend file needs. Private to the RHI target -- metal-cpp
 // types never appear in RHI.h.
 #include "Core/Assert.h"
-#include "RHI/RHI.h"
+#include "RHI/Format.h"
 
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>

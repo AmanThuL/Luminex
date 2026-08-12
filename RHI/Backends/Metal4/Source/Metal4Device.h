@@ -5,7 +5,7 @@
 #pragma once
 #include "Metal4CommandList.h"
 #include "Metal4Common.h"
-#include "RHI/RHI.h"
+#include "RHI/Device.h"
 
 #include <array>
 #include <cstdint>
