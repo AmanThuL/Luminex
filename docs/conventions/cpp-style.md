@@ -7,9 +7,13 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 - **Naming**: `PascalCase` types & files; `camelCase` functions/variables; private data members use the
   `m_` prefix (`m_device`), public/aggregate members do not (no `s_` prefix anywhere);
   `kPascalCase` compile-time constants; `LMX_` macros; `lowercase` namespaces (`lmx`, `lmx::rhi`).
+- **Experimental namespaces**: code owned by a repository-root `Experiments/<Name>/` tree lives
+  under `lmx::experimental::<name>` (for example, `Experiments/NoApi/` uses
+  `lmx::experimental::noapi`). Do not place experimental APIs directly under `lmx`, and do not use
+  `experiment` as the namespace segment; `experimental` is the project-wide instability marker.
 - **Files**: one primary type per header; `PascalCase.h/.cpp` named after it. `#pragma once`.
-  Every project-owned source or header under `Source/` or `RHI/` starts with the file envelope
-  defined below.
+  Every project-owned source or header under `Source/`, `RHI/`, or `Experiments/` starts with the
+  file envelope defined below.
 - **Includes**: own header first, then project (`"Core/..."`), then third-party, then std. Blank line between groups.
 - **Errors**: use the owning domain's `std::expected` alias at creation and loading boundaries
   (`rhi::Result<T>` for GPU work, `engine::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
@@ -20,9 +24,9 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 
 ## File headers
 
-Every hand-written project-owned `.h` and `.cpp` file under `Source/` or `RHI/` starts at its first
-physical line with this four-line envelope. Both ruler lines are exactly 120 ASCII characters (`//`
-followed by 118 `-` characters):
+Every hand-written project-owned `.h` and `.cpp` file under `Source/`, `RHI/`, or `Experiments/`
+starts at its first physical line with this four-line envelope. Both ruler lines are exactly 120
+ASCII characters (`//` followed by 118 `-` characters):
 
 ```cpp
 //----------------------------------------------------------------------------------------------------------------------
@@ -90,6 +94,7 @@ and orphan separators. It must not use a regular expression to guess C++ functio
   `TODO(<issue-id>): <action and reason>` and must describe real remaining work.
 
 `Tools/check_cpp_comments.py` enforces file envelopes and uses the compilation database plus Clang's
-parsed comments and AST to reject undocumented API in `Source` headers and the exported
-`RHI/Include` tree. RHI backend and implementation headers are not public API. The same compilation
-pass enables `-Wdocumentation` as an error so malformed tags and parameter names fail policy too.
+parsed comments and AST to reject undocumented API in `Source` headers, the exported `RHI/Include`
+tree, and experimental public headers under `Experiments/*/Include`. RHI backend and implementation
+headers are not public API. The same compilation pass enables `-Wdocumentation` as an error so
+malformed tags and parameter names fail policy too.

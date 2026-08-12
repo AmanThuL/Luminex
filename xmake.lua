@@ -155,6 +155,90 @@ target("Tests")
     add_tests("unit", {runargs = {"~[gpu]"}})
     add_tests("gpu", {runargs = {"[gpu]"}})
 
+-- M5.1 RHI execution-model experiment (docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md):
+-- a frozen, non-default research spike under Experiments/NoApi/, namespace lmx::experimental::noapi. All four
+-- targets are set_default(false) -- a plain `xmake` never builds them (spec section 5) -- and this
+-- section is the only place outside Experiments/ the milestone touches.
+
+-- The API-neutral workload manifest (spec sections 6-7): the frozen representative graph, stress
+-- case tables, and deterministic synthetic asset generation shared by both encoders. Links Core
+-- only -- no RHI/ and no Experiments/NoApi/Include (the prototype's own headers) -- so neither
+-- adapter's headers need to appear in the manifest's dependency graph for it to compile.
+target("NoApiManifest")
+    set_kind("static")
+    set_default(false)
+    add_files("Experiments/NoApi/Workload/*.cpp")
+    add_includedirs("Experiments/NoApi", {public = true})
+    add_deps("Core")
+
+-- The prototype library (spec section 5): the address-first Metal 4 interface implementation.
+-- Links metal-cpp and Core only; Experiments/NoApi/Include is its public surface, authored
+-- alongside this target. Placeholder.cpp keeps the target linkable until stage 2's real sources
+-- land under Experiments/NoApi/Source.
+target("NoApiProto")
+    set_kind("static")
+    set_default(false)
+    add_files("Experiments/NoApi/Source/*.cpp")
+    add_includedirs("Experiments/NoApi/Include", {public = true})
+    add_includedirs("ThirdParty/metal-cpp")
+    add_frameworks("Metal", "QuartzCore", "Foundation")
+    add_deps("Core")
+
+-- Prototype-only tests (spec section 5): smoke and misuse death-tests on the prototype side.
+-- metal-cpp appears here only for the capture-quality probe, which drives MTLCaptureManager
+-- around a prototype frame; every other case uses the prototype interface alone.
+target("NoApiTests")
+    set_kind("binary")
+    set_default(false)
+    add_files("Experiments/NoApi/Tests/NoApiTests.cpp")
+    add_includedirs("Experiments/NoApi/Tests")
+    add_includedirs("ThirdParty/metal-cpp")
+    add_frameworks("Metal", "Foundation")
+    add_deps("Core", "NoApiProto")
+    add_packages("catch2")
+
+-- The comparison host (spec section 5): links both the production RHI and NoApiProto, executing
+-- the shared workload manifest through a maintained-RHI adapter and a prototype adapter -- App's
+-- production dependency stack minus SDL3/ImGui, which the offscreen bench never needs.
+-- --check-manifest is the stage 1 consistency test: it declares the manifest's representative
+-- graph to the production RenderGraph and asserts the compiled record against the manifest's
+-- frozen schedule and barrier expectations. --run-graph=rhi (Stage 3) hand-encodes the same
+-- manifest through production rhi::CommandList calls (Experiments/NoApi/Bench/RhiAdapter.*), and
+-- --run-graph=noapi encodes it through the address-first prototype
+-- (Experiments/NoApi/Bench/NoApiAdapter.*); the adapter-neutral runner
+-- (Experiments/NoApi/Bench/Runner.*) drives both.
+target("NoApiBench")
+    set_kind("binary")
+    set_default(false)
+    -- Own targetdir: the slang2metallib rule below rejects a target directory shared with App or
+    -- Tests, which also compile shaders in parallel.
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/noapibench")
+    add_files("Experiments/NoApi/Tests/NoApiBenchMain.cpp", "Experiments/NoApi/Bench/*.cpp")
+    add_includedirs("Experiments/NoApi")
+    -- Runner.cpp's capture hook drives MTLCaptureManager directly; the metal-cpp symbols come
+    -- from NoApiProto's single implementation translation unit.
+    add_includedirs("ThirdParty/metal-cpp")
+    add_deps("Core", "RHI", "Render", "Engine", "NoApiManifest", "NoApiProto")
+    add_packages("glm")
+    -- NoApiProto is a static library and xmake does not propagate its private framework list to
+    -- this binary's link line, so the comparison host names the same frameworks itself.
+    add_frameworks("Metal", "QuartzCore", "Foundation")
+    -- P03/P04 bind the unmodified production ShadowPass/ScenePass pipelines (spec section 6), so
+    -- this target compiles exactly those two production shaders plus the shared modules they
+    -- import -- not production's own P05-P12-equivalent shaders (BloomThreshold.slang and
+    -- friends), which Experiments/NoApi/Shaders' distilled kernels below replace and would
+    -- otherwise collide with by basename in this target's shared Shaders/ output directory.
+    -- The Lighting/Shadow modules are also what the prototype's own ProtoScene.slang frontend
+    -- imports, by relative path: both encoders run the same shading math, only the binding
+    -- frontend differs (spec section 2).
+    add_rules("slang2metallib")
+    add_files("Shaders/ShadowPass.slang", "Shaders/ScenePass.slang", "Shaders/Shadow.slang",
+              "Shaders/Lighting.slang")
+    -- M5.1 Stage 4's stress cases (H01-H24, S-BIND, I1-I4, plan Stage 4 items 1-3) reuse three of
+    -- the production RHI's own test oracles unchanged rather than duplicating their kernels.
+    add_files("Shaders/ComputeSmoke.slang", "Shaders/IndirectSmoke.slang", "Shaders/SamplerSmoke.slang")
+    add_files("Experiments/NoApi/Shaders/*.slang")
+
 local metalcpp_pin = "release/metal-cpp_macOS26.4_iOS26.4"
 local metalcpp_commit = "c595afef4a5dc388f4047cd0c69f9e7f9468d9ed"
 local slang_pin    = "v2026.14.1"
@@ -409,6 +493,8 @@ task("format")
         for _, f in ipairs(os.files("RHI/**.h")) do table.insert(args, f) end
         for _, f in ipairs(os.files("RHI/**.cpp")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Tests/**.cpp")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("Experiments/NoApi/**.h")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("Experiments/NoApi/**.cpp")) do table.insert(args, f) end
         os.execv("clang-format", args)
     end)
 
