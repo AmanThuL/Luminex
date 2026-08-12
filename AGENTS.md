@@ -9,7 +9,7 @@ thin RHI and one implemented backend.
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
 - Current baseline: `docs/milestones/m5.1.md` (execution-model decision, ADR 0010) over
-  `docs/milestones/m5.md` · No active implementation plan
+  `docs/milestones/m5.md` · Active plan: `docs/plans/2026-08-12-m5.2-rhi-frame-data.md`
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
