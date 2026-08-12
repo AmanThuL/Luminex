@@ -175,13 +175,12 @@ private:
     // Non-owning: the library owns every Scene it has built, for the device's lifetime, which
     // outlives this shell. Never null once create() has returned successfully.
     engine::Scene* m_activeScene = nullptr;
-
-    // The Scene panel's single selection and its case-insensitive filter text (spec section 5-6).
-    // Editor-local navigation state -- never serialized, never passed to Render or the RHI.
-    // Initialized by initialSelection() at create() and updated together via sceneSwitchOutcome()
-    // on every requested scene switch, including the failed-switch retain path; healed with
-    // resolveSelection() once per frame, before panels draw, so a stale reference from a prior
-    // frame never reaches the Inspector.
+    // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
+    // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
+    // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at
+    // create() and updated together via sceneSwitchOutcome() on every requested scene switch,
+    // including the failed-switch retain path; healed with resolveSelection() once per frame,
+    // before panels draw, so a stale scene id or out-of-range index never reaches the Inspector.
     EditorSelection m_selection;
     std::string m_sceneFilter;
 

@@ -497,8 +497,12 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
 
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
         bool open = true;
+        // Healed here, immediately before the draw that reads it, so a stale scene id or
+        // out-of-range index from any source never reaches the panel (spec section 5).
+        m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
         drawInspectorPanel(open,
-                           InspectorPanelContext{.camera = m_camera,
+                           InspectorPanelContext{.selection = m_selection,
+                                                 .camera = m_camera,
                                                  .renderer = renderer,
                                                  .scene = *m_activeScene,
                                                  .settings = m_settings,
