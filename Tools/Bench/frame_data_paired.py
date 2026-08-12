@@ -10,15 +10,14 @@ protocol (docs/research/2026-08-12-execution-model-evidence.md), except baseline
 are two separate executables -- built from different points on the M5.2 branch -- rather than two
 adapters inside one process, so they cannot share a process the way M5.1's NoApiBench did.
 
-Before accepting any repetition's timing, both sides' `--verify` digests are compared; a mismatch
-anywhere refuses to report timing for that workload for the whole collection (spec: "the driver
-also compares the --verify digests between sides and refuses to report timing for a workload whose
-outputs differ"). A side that exits non-zero (for example the incumbent RHI's fixed-capacity
-per-frame uniform ring aborting on a workload sized to exceed it -- expected on the pre-migration
-baseline for F-DYNAMIC-1024/F-DYNAMIC-4096 until the candidate bindFrameData path lands) is not a
-driver bug: that repetition is skipped and recorded, and a workload with no successful paired
-repetitions is reported as not comparable rather than crashing the collection or fabricating a
-confidence interval from no data.
+Before accepting any repetition's timing, both sides' JSON is checked for two things: that `case`/
+`warmupFrames`/`measuredFrames` agree (an unintentionally mismatched invocation is not a timing
+comparison at all) and that the `--verify` digests agree (spec: "the driver also compares the
+--verify digests between sides and refuses to report timing for a workload whose outputs differ").
+Either mismatch refuses to report timing for that workload for the whole collection. A side that
+exits non-zero for any reason is not a driver bug: that repetition is skipped and recorded, and a
+workload with no successful paired repetitions is reported as not comparable rather than crashing
+the collection or fabricating a confidence interval from no data.
 
 The decision statistic mirrors M5.1's frozen fixed-resample method (same paired-percentage-delta
 bootstrap, same resample count, same seed) but is reimplemented here rather than imported: this
@@ -53,6 +52,11 @@ CONFIDENCE = 0.95
 DEFAULT_REPETITIONS = 12
 DEFAULT_WARMUP = 16
 DEFAULT_FRAMES = 256
+# Spec section 11's two acceptance thresholds: a dynamic case's material win, and the upper
+# regression bound F-FIT-512/both static cases must stay inside. Frozen with the spec, not a
+# tunable of this driver.
+MATERIAL_WIN_THRESHOLD_PCT = 25.0
+REGRESSION_BOUND_PCT = 5.0
 DEFAULT_WORKLOADS = [
     "F-FIT-512",
     "F-DYNAMIC-1024",
@@ -120,6 +124,14 @@ def analyze_pairs(pairs: list[list[float]]) -> dict:
     lo, hi = bootstrap_ci(deltas, rng)
     median_delta = statistics.median(deltas)
     excludes_zero = (lo > 0.0 and hi > 0.0) or (lo < 0.0 and hi < 0.0)
+    # Spec section 11's own two acceptance thresholds, computed here so a reader never has to apply
+    # the rule by hand against the raw numbers: a dynamic case needs materialWin (>= 25% candidate
+    # win with the interval excluding zero); F-FIT-512 and both static cases need
+    # withinRegressionBound (upper 95% bound no more than +5%). Both are reported for every
+    # workload -- which one is the relevant gate is a per-workload judgment this driver does not
+    # make.
+    material_win = median_delta >= MATERIAL_WIN_THRESHOLD_PCT and excludes_zero
+    within_regression_bound = hi <= REGRESSION_BOUND_PCT
     return {
         "pairCount": len(pairs),
         "pairCountMatchesSpec": len(pairs) == DEFAULT_REPETITIONS,
@@ -127,6 +139,8 @@ def analyze_pairs(pairs: list[list[float]]) -> dict:
         "medianDeltaPct": round(median_delta, 4),
         "ci95Pct": [round(lo, 4), round(hi, 4)],
         "ciExcludesZero": excludes_zero,
+        "materialWin": material_win,
+        "withinRegressionBound": within_regression_bound,
         "direction": "candidateFaster" if median_delta > 0 else (
             "candidateSlower" if median_delta < 0 else "tie"),
     }
@@ -144,6 +158,7 @@ def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: in
     pairs: list[list[float]] = []
     failures: list[dict] = []
     digest_mismatch: dict | None = None
+    config_mismatch: dict | None = None
 
     for repetition in range(repetitions):
         order = SIDES if repetition % 2 == 0 else tuple(reversed(SIDES))
@@ -179,6 +194,20 @@ def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: in
 
         baseline_json = side_results["baseline"]["json"]
         candidate_json = side_results["candidate"]["json"]
+        # A baseline/candidate pair run under different case/warmup/frame configuration is not a
+        # timing comparison at all -- catch a misconfigured invocation (e.g. mismatched --warmup
+        # between two independently-launched binaries) before it silently pairs incomparable
+        # medians.
+        mismatched_fields = [field for field in ("case", "warmupFrames", "measuredFrames")
+                            if baseline_json.get(field) != candidate_json.get(field)]
+        if mismatched_fields:
+            config_mismatch = {
+                "repetition": repetition,
+                "mismatchedFields": mismatched_fields,
+                "baseline": {field: baseline_json.get(field) for field in mismatched_fields},
+                "candidate": {field: candidate_json.get(field) for field in mismatched_fields},
+            }
+            break
         if baseline_json["digest"] != candidate_json["digest"]:
             digest_mismatch = {
                 "repetition": repetition,
@@ -194,7 +223,15 @@ def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: in
 
     result: dict = {"case": case, "requestedRepetitions": repetitions, "pairs": pairs,
                     "failures": failures}
-    if digest_mismatch is not None:
+    if config_mismatch is not None:
+        result["comparable"] = False
+        result["reason"] = "run configuration mismatch between baseline and candidate"
+        result["configMismatch"] = config_mismatch
+        print(f"{case}: REFUSING to report timing -- configuration differs at repetition "
+             f"{config_mismatch['repetition']:02d}: {config_mismatch['mismatchedFields']} "
+             f"(baseline={config_mismatch['baseline']} candidate={config_mismatch['candidate']})",
+             file=sys.stderr)
+    elif digest_mismatch is not None:
         result["comparable"] = False
         result["reason"] = "verify digest mismatch between baseline and candidate"
         result["digestMismatch"] = digest_mismatch
