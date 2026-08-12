@@ -6,6 +6,7 @@
 #pragma once
 #include "App/EditorActions.h"
 #include "App/EditorRenderSettings.h"
+#include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
 #include "App/PassTimingHistory.h"
@@ -102,6 +103,10 @@ public:
     /// retired frame, while Performance rolls timings from successive retired frames into a stable
     /// summary. At this point the frame loop has not retained the current frame, so both see the
     /// newest joined record as of the previous iteration.
+    ///
+    /// Heals the Scene panel's selection against the active scene before any panel draws (spec
+    /// section 5): a stale scene id or out-of-range index resolves to None and the healed value is
+    /// what the Inspector sees this frame.
     void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
 
@@ -160,8 +165,11 @@ private:
     void updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords);
     // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
     // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
-    // the new scene's initial pose -- the only per-scene UI state this shell carries.
-    void selectScene(rhi::Device& device, engine::SceneId id);
+    // the new scene's initial pose -- the only per-scene UI state this shell carries. Returns
+    // whether the active scene actually changed (false for a reselect of the already-active scene
+    // and for a failed load), which buildPanels feeds to sceneSwitchOutcome to decide the
+    // selection and filter to store (spec section 5).
+    bool selectScene(rhi::Device& device, engine::SceneId id);
     void updateCameraInput(float deltaSeconds);
 
     SDL_Window* m_window = nullptr;
@@ -170,6 +178,15 @@ private:
     // Non-owning: the library owns every Scene it has built, for the device's lifetime, which
     // outlives this shell. Never null once create() has returned successfully.
     engine::Scene* m_activeScene = nullptr;
+
+    // The Scene panel's single selection and its case-insensitive filter text (spec section 5-6).
+    // Editor-local navigation state -- never serialized, never passed to Render or the RHI.
+    // Initialized by initialSelection() at create() and updated together via sceneSwitchOutcome()
+    // on every requested scene switch, including the failed-switch retain path; healed with
+    // resolveSelection() once per frame, before panels draw, so a stale reference from a prior
+    // frame never reaches the Inspector.
+    EditorSelection m_selection;
+    std::string m_sceneFilter;
 
     render::Camera m_camera;
     std::vector<render::DrawItem> m_drawItems;

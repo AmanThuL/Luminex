@@ -276,6 +276,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     self->m_activeSceneId = initialScene;
     self->m_activeScene = *scene;
     self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
+    // Startup selects the scene's Camera (spec section 5); every scene provides one.
+    self->m_selection = initialSelection(initialScene);
 
     ExposureResetContext initial = self->m_exposureContext;
     initial.sceneId = initialScene;
@@ -344,6 +346,10 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     m_frameTimesMs[m_frameTimeCursor] = deltaSeconds * 1000.0f;
     m_frameTimeCursor = (m_frameTimeCursor + 1) % m_frameTimesMs.size();
     updatePassTimingDisplay(deltaSeconds, frameRecords);
+
+    // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
+    // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
+    m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
 
     // Consumed here, at the frame boundary before anything is submitted: rebuilding the topology
     // partway through a frame would remove dock nodes that frame's windows are still drawing into.
@@ -419,12 +425,24 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
         const std::optional<engine::SceneId> chosen =
-            drawScenePanel(open, m_library, m_activeSceneId);
+            drawScenePanel(open, ScenePanelContext{.library = m_library,
+                                                   .activeSceneId = m_activeSceneId,
+                                                   .activeScene = *m_activeScene,
+                                                   .selection = m_selection,
+                                                   .filter = m_sceneFilter});
         setPanelVisible(EditorPanel::Scene, open);
         if (chosen) {
+            // Captured before selectScene() runs: a successful switch overwrites m_activeSceneId,
+            // and sceneSwitchOutcome needs the id the request was made against.
+            const engine::SceneId requestedFrom = m_activeSceneId;
+            const bool switched = selectScene(device, *chosen);
             // Applied here rather than inside the panel: the switch drains the GPU, and the panels
-            // drawn below must already see whichever scene ends up active.
-            selectScene(device, *chosen);
+            // drawn below must already see whichever scene, selection, and filter end up active.
+            const SceneSwitchOutcome outcome =
+                sceneSwitchOutcome(switched, /*activeScene=*/requestedFrom,
+                                   /*requestedScene=*/*chosen, m_selection, m_sceneFilter);
+            m_selection = outcome.selection;
+            m_sceneFilter = outcome.filter;
         }
     }
 
@@ -549,9 +567,9 @@ bool EditorShell::consumeExposureReset() {
 }
 
 //======================================================================================================================
-void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
+bool EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     if (id == m_activeSceneId) {
-        return;
+        return false;
     }
     // In-flight frames may still reference the current scene's meshes and textures.
     device.waitIdle();
@@ -560,7 +578,7 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
         // A failed switch leaves the current scene renderable.
         LMX_LOG_ERROR("scene '{}' failed to load: {}", m_library.entry(id).displayName,
                       scene.error().message);
-        return;
+        return false;
     }
     m_activeSceneId = id;
     m_activeScene = *scene;
@@ -576,6 +594,7 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_exposureContext = candidate;
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_activeScene->name,
                  m_activeScene->objects.size());
+    return true;
 }
 
 //======================================================================================================================
