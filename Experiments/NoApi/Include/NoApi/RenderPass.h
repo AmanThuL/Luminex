@@ -11,7 +11,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Names what happens to an attachment's existing contents when a pass begins.
 enum class LoadAction : uint8_t {
@@ -61,4 +61,4 @@ struct RenderPassDesc {
     std::string_view label; ///< Debug label; must be non-empty, and names the pass in captures.
 };
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Selects where an allocation lives and who may write it directly.
 enum class MemoryKind : uint8_t {
@@ -58,4 +58,4 @@ Result<Allocation> allocate(Device* device, const AllocationDesc& desc);
 /// referenced it must be retired. Both are caller contracts and are asserted.
 void deallocate(Device* device, const Allocation& allocation);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

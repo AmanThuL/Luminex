@@ -15,7 +15,7 @@
 /// (`docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md` section 6). Everything here is a
 /// pure function of its inputs, so two runs of the same build -- on either adapter -- produce
 /// byte-identical synthetic assets and draw parameters.
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 /// The frozen seed every generator in the scored core derives from (spec section 6).
 inline constexpr uint64_t kSeed = 0x4C4D5835ull;
@@ -61,4 +61,4 @@ constexpr void unitRgba8(uint64_t draw, uint8_t out[4]) {
     out[3] = static_cast<uint8_t>(draw >> 24);
 }
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

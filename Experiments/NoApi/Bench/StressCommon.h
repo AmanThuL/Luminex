@@ -17,7 +17,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// RGBA8 content for `extent` x `extent` texels: byte b = hazardExpectedTexel(hazardCase,
 /// texelIndex) replicated into R, G, and B with alpha fixed at 255, tightly packed row-major.
@@ -58,4 +58,4 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames, uint3
 MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
                                   uint32_t measuredFrames);
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

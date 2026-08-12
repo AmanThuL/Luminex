@@ -15,7 +15,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 // ---------------------------------------------------------------------------------------------
 // S-BIND: binding scale.
@@ -138,4 +138,4 @@ struct MisuseCase {
 /// M1-M6, exactly as spec section 7 states them.
 const std::vector<MisuseCase>& misuseCases();
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

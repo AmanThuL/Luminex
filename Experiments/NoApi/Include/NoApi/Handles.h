@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Owns the connection to one GPU and every object created from it.
 ///
@@ -70,4 +70,4 @@ struct Semaphore;
 /// one set is the smallest honest expression of that requirement.
 struct ResidencySet;
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

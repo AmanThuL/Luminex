@@ -13,7 +13,7 @@
 #include <fstream>
 #include <iostream>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 //======================================================================================================================
 uint64_t fnv1a64(std::span<const uint8_t> bytes) {
@@ -133,4 +133,4 @@ int runBench(Adapter& adapter, const RunOptions& options) {
     return 0;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

@@ -10,7 +10,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Creates a timeline semaphore starting at `initialValue`.
 ///
@@ -32,4 +32,4 @@ void waitSemaphore(const Semaphore* semaphore, uint64_t value);
 /// Returns the value the semaphore has currently reached.
 uint64_t semaphoreValue(const Semaphore* semaphore);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

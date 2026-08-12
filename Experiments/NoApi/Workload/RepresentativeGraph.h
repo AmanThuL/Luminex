@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 /// The frozen scene extent (spec section 6: "scene extent 1024x1024").
 inline constexpr uint32_t kSceneWidth = 1024;
@@ -72,4 +72,4 @@ const std::vector<std::string>& expectedScheduleOrder();
 /// produces the dump this compares against.
 const std::string& expectedGraphDump();
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

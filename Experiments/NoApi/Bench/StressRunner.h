@@ -14,7 +14,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// Which adapter a stress or misuse case ran against.
 enum class AdapterKind { Rhi, NoApi };
@@ -78,4 +78,4 @@ int runMisuseChild(const std::string& caseId, AdapterKind adapter);
 /// Must be called once, early in main(), before any `runMisuse` call.
 void setMisuseChildExecutablePath(std::string_view argv0);
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

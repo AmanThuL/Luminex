@@ -132,12 +132,12 @@
 #include <map>
 #include <set>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 namespace {
 
 using namespace lmx::render;
-namespace workload = lmx::noapi::workload;
+namespace workload = lmx::experimental::noapi::workload;
 
 //======================================================================================================================
 rhi::Format mapFormat(workload::Format format) {
@@ -1505,4 +1505,4 @@ void RhiAdapter::teardown() {
     }
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

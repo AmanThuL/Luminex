@@ -20,7 +20,7 @@
 
 #include <string>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 //======================================================================================================================
@@ -127,4 +127,4 @@ int runMisuseChildRhi(const std::string& caseId) {
               // failure.
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

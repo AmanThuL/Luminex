@@ -24,7 +24,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// Binding traffic one adapter produced encoding one frame (spec section 9's binding-traffic
 /// dimension and section 8's barrier count). Fields with no meaning on one side stay zero there --
@@ -89,4 +89,4 @@ struct MeasuredRun {
     AllocationSnapshot endOfRun{};
 };
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

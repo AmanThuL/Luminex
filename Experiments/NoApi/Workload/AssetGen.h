@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 /// The five material texture slots the representative graph binds, named by their ScenePass slot
 /// numbers (spec section 6: "t0 base color sRGB, t1 normal, t4 metallic-roughness, t5 occlusion,
@@ -95,4 +95,4 @@ struct QuadGeometry {
 };
 QuadGeometry sharedQuad();
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

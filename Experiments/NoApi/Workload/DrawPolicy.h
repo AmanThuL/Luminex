@@ -9,7 +9,7 @@
 #pragma once
 #include <cstdint>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 /// Grid position of draw `drawIndex` in the frozen 32x32 grid (spec: "draw i instances the shared
 /// quad at grid position (i mod 32, i div 32)"). `drawIndex` is in [0, kDrawCount).
@@ -61,4 +61,4 @@ struct EmissiveStagingTexel {
 };
 EmissiveStagingTexel emissiveStagingTexel(uint32_t frameIndex, uint32_t x, uint32_t y);
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

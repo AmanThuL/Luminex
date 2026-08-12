@@ -6,7 +6,7 @@
 #include "Workload/StressCases.h"
 #include "Workload/Splitmix64.h"
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 //======================================================================================================================
 uint32_t bindTextureIndexForDraw(uint32_t drawIndex) {
@@ -163,4 +163,4 @@ const std::vector<MisuseCase>& misuseCases() {
     return cases;
 }
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

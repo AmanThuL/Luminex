@@ -7,7 +7,7 @@
 
 #include <string>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 //======================================================================================================================
@@ -85,4 +85,4 @@ void destroyDepthStencilState(Device* device, DepthStencilState* state) {
     delete state;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

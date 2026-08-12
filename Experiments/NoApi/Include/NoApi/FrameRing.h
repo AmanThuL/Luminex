@@ -14,7 +14,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Describes the per-frame storage a frame ring owns.
 struct FrameRingDesc {
@@ -97,4 +97,4 @@ private:
     bool m_frameOpen = false;
 };
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

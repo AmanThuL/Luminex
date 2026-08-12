@@ -9,7 +9,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::noapi::test {
+namespace lmx::experimental::noapi::test {
 
 /// Shader-visible ABI the prototype pins: the vertex and compute root address at `buffer(0)`, the
 /// bindless table's address at `buffer(1)`, and the pixel root address at `buffer(2)`.
@@ -158,4 +158,4 @@ inline std::span<const std::byte> shaderSource() {
     return {reinterpret_cast<const std::byte*>(kTestShaderSource.data()), kTestShaderSource.size()};
 }
 
-} // namespace lmx::noapi::test
+} // namespace lmx::experimental::noapi::test

@@ -18,7 +18,7 @@
 #include <string_view>
 #include <type_traits>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Binding traffic one command buffer's recording produced (M5.1 spec section 9's binding-traffic
 /// and barrier dimensions). Every field is a plain counter bumped at the one choke point that
@@ -227,4 +227,4 @@ void dispatch(CommandBuffer* commands, GpuAddress root, uint32_t groupsX, uint32
 /// @copydetails drawIndexedIndirect
 void dispatchIndirect(CommandBuffer* commands, GpuAddress root, GpuAddress arguments);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

@@ -8,7 +8,7 @@
 #include <format>
 #include <string>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 //======================================================================================================================
 Result<Semaphore*> createSemaphore(Device* device, uint64_t initialValue, std::string_view label) {
@@ -56,4 +56,4 @@ uint64_t semaphoreValue(const Semaphore* semaphore) {
     return semaphore->handle->signaledValue();
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

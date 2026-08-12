@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 //======================================================================================================================
@@ -147,4 +147,4 @@ void deallocate(Device* device, const Allocation& allocation) {
     device->allocations.erase(position);
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

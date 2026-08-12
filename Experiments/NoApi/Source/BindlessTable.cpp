@@ -8,7 +8,7 @@
 #include <cstring>
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 //======================================================================================================================
@@ -206,4 +206,4 @@ BindlessTableStats bindlessTableStats(const BindlessTable* table) {
     return {.writeCalls = table->writeCalls, .writeBytes = table->writeBytes};
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

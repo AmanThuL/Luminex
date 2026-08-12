@@ -98,8 +98,8 @@ private:
 const ExecuteFn kNoWork = [](const PassResources&) {};
 
 //======================================================================================================================
-rhi::Format mapFormat(lmx::noapi::workload::Format format) {
-    using lmx::noapi::workload::Format;
+rhi::Format mapFormat(lmx::experimental::noapi::workload::Format format) {
+    using lmx::experimental::noapi::workload::Format;
     switch (format) {
     case Format::RGBA8Unorm:
         return rhi::Format::RGBA8Unorm;
@@ -117,7 +117,8 @@ rhi::Format mapFormat(lmx::noapi::workload::Format format) {
 }
 
 //======================================================================================================================
-rhi::TextureSubresourceRange mapRange(const lmx::noapi::workload::SubresourceRange& range) {
+rhi::TextureSubresourceRange
+mapRange(const lmx::experimental::noapi::workload::SubresourceRange& range) {
     return {.baseMipLevel = range.baseMipLevel,
             .mipLevelCount = range.mipLevelCount == 0 ? rhi::kAllMipLevels : range.mipLevelCount};
 }
@@ -135,10 +136,10 @@ rhi::TextureSubresourceRange mapRange(const lmx::noapi::workload::SubresourceRan
 // second copy of a rule the graph already owns.
 //======================================================================================================================
 void declareToRenderGraph(RenderGraph& graph,
-                          const lmx::noapi::workload::RepresentativeGraph& manifest,
+                          const lmx::experimental::noapi::workload::RepresentativeGraph& manifest,
                           std::deque<FakeTexture>& textureStorage,
                           std::deque<FakeBuffer>& bufferStorage) {
-    namespace workload = lmx::noapi::workload;
+    namespace workload = lmx::experimental::noapi::workload;
 
     std::map<std::string, GraphTexture> textureBase;
     std::map<std::string, uint32_t> textureVersion;
@@ -316,7 +317,7 @@ void declareToRenderGraph(RenderGraph& graph,
 
 //======================================================================================================================
 int checkManifest() {
-    namespace workload = lmx::noapi::workload;
+    namespace workload = lmx::experimental::noapi::workload;
 
     RenderGraph graph;
     std::deque<FakeTexture> textureStorage;
@@ -383,8 +384,9 @@ std::optional<std::string_view> parseFlagValue(std::string_view arg, std::string
 
 //======================================================================================================================
 // Stage 3's correctness-run entry point (spec section 6, plan Stage 3 item 3): drives `--run-graph`
-// through lmx::noapi::bench::runBench for exactly one frame count, one adapter, one dump directory.
-int runGraph(const lmx::noapi::bench::RunOptions& options) {
+// through lmx::experimental::noapi::bench::runBench for exactly one frame count, one adapter, one
+// dump directory.
+int runGraph(const lmx::experimental::noapi::bench::RunOptions& options) {
     if (options.frames == 0) {
         std::cerr << "NoApiBench --run-graph: --frames must be given and non-zero\n";
         return 1;
@@ -395,12 +397,12 @@ int runGraph(const lmx::noapi::bench::RunOptions& options) {
     }
 
     if (options.graph == "rhi") {
-        lmx::noapi::bench::RhiAdapter adapter;
-        return lmx::noapi::bench::runBench(adapter, options);
+        lmx::experimental::noapi::bench::RhiAdapter adapter;
+        return lmx::experimental::noapi::bench::runBench(adapter, options);
     }
     if (options.graph == "noapi") {
-        lmx::noapi::bench::NoApiAdapter adapter;
-        return lmx::noapi::bench::runBench(adapter, options);
+        lmx::experimental::noapi::bench::NoApiAdapter adapter;
+        return lmx::experimental::noapi::bench::runBench(adapter, options);
     }
     std::cerr << "NoApiBench --run-graph: unknown graph '" << options.graph
               << "' (expected 'rhi' or 'noapi')\n";
@@ -456,7 +458,7 @@ uint64_t medianNs(std::vector<uint64_t> values) {
 }
 
 //======================================================================================================================
-std::string countersToJson(const lmx::noapi::bench::FrameBindingCounters& counters) {
+std::string countersToJson(const lmx::experimental::noapi::bench::FrameBindingCounters& counters) {
     return std::format(
         "{{\"setAddressCalls\":{},\"pushRootCalls\":{},\"pushRootBytes\":{},"
         "\"tableWriteCalls\":{},\"tableWriteBytes\":{},\"oneTimeTableWriteCalls\":{},"
@@ -473,7 +475,7 @@ std::string countersToJson(const lmx::noapi::bench::FrameBindingCounters& counte
 //======================================================================================================================
 // Both byte fields are explicitly unscored: requestedBytes is descriptive logical size, while
 // metalReportedBytes is prototype-only Metal diagnostic data (see Bench/Metrics.h).
-std::string allocationToJson(const lmx::noapi::bench::AllocationSnapshot& snapshot) {
+std::string allocationToJson(const lmx::experimental::noapi::bench::AllocationSnapshot& snapshot) {
     const std::string metalReportedBytes = snapshot.metalReportedBytes.has_value()
                                                ? std::to_string(*snapshot.metalReportedBytes)
                                                : "null";
@@ -500,9 +502,10 @@ bool validationIsOff() {
 // contract.
 bool writeMeasureJson(const std::filesystem::path& path, std::string_view workload,
                       std::string_view adapter, const std::vector<uint64_t>& perFrameNs,
-                      const lmx::noapi::bench::FrameBindingCounters& counters, bool countersStable,
-                      const lmx::noapi::bench::AllocationSnapshot& endOfSetup,
-                      const lmx::noapi::bench::AllocationSnapshot& endOfRun) {
+                      const lmx::experimental::noapi::bench::FrameBindingCounters& counters,
+                      bool countersStable,
+                      const lmx::experimental::noapi::bench::AllocationSnapshot& endOfSetup,
+                      const lmx::experimental::noapi::bench::AllocationSnapshot& endOfRun) {
     std::error_code errorCode;
     if (path.has_parent_path()) {
         std::filesystem::create_directories(path.parent_path(), errorCode);
@@ -535,11 +538,11 @@ bool writeMeasureJson(const std::filesystem::path& path, std::string_view worklo
 // measurement accessors) after every call rather than computing anything itself.
 int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t measuredFrames,
                  const std::filesystem::path& jsonPath) {
-    std::unique_ptr<lmx::noapi::bench::Adapter> adapter;
+    std::unique_ptr<lmx::experimental::noapi::bench::Adapter> adapter;
     if (adapterName == "rhi") {
-        adapter = std::make_unique<lmx::noapi::bench::RhiAdapter>(false);
+        adapter = std::make_unique<lmx::experimental::noapi::bench::RhiAdapter>(false);
     } else if (adapterName == "noapi") {
-        adapter = std::make_unique<lmx::noapi::bench::NoApiAdapter>();
+        adapter = std::make_unique<lmx::experimental::noapi::bench::NoApiAdapter>();
     } else {
         std::cerr << "NoApiBench --measure=graph: unknown --adapter '" << adapterName << "'\n";
         return 1;
@@ -549,11 +552,12 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
         std::cerr << "NoApiBench --measure=graph: adapter setup failed\n";
         return 1;
     }
-    const lmx::noapi::bench::AllocationSnapshot endOfSetup = adapter->allocationSnapshot();
+    const lmx::experimental::noapi::bench::AllocationSnapshot endOfSetup =
+        adapter->allocationSnapshot();
 
     std::vector<uint64_t> perFrameNs;
     perFrameNs.reserve(measuredFrames);
-    lmx::noapi::bench::FrameBindingCounters counters{};
+    lmx::experimental::noapi::bench::FrameBindingCounters counters{};
     bool countersEverSet = false;
     bool countersStable = true;
     std::vector<uint8_t> readback;
@@ -563,7 +567,7 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
         adapter->runFrame(frame, readback);
         if (frame >= warmupFrames) {
             perFrameNs.push_back(adapter->lastFrameTimedRegionNs());
-            const lmx::noapi::bench::FrameBindingCounters frameCounters =
+            const lmx::experimental::noapi::bench::FrameBindingCounters frameCounters =
                 adapter->lastFrameBindingCounters();
             if (!countersEverSet) {
                 counters = frameCounters;
@@ -573,7 +577,8 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
             }
         }
     }
-    const lmx::noapi::bench::AllocationSnapshot endOfRun = adapter->allocationSnapshot();
+    const lmx::experimental::noapi::bench::AllocationSnapshot endOfRun =
+        adapter->allocationSnapshot();
     adapter->teardown();
 
     std::cout << "measure graph adapter=" << adapterName << " medianNs=" << medianNs(perFrameNs)
@@ -590,10 +595,12 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
 // files implement.
 int measureBind(uint32_t drawCount, const std::string& adapterName, uint32_t warmupFrames,
                 uint32_t measuredFrames, const std::filesystem::path& jsonPath) {
-    const lmx::noapi::bench::MeasuredRun run =
+    const lmx::experimental::noapi::bench::MeasuredRun run =
         adapterName == "rhi"
-            ? lmx::noapi::bench::measureBindScaleRhi(drawCount, warmupFrames, measuredFrames)
-            : lmx::noapi::bench::measureBindScaleNoApi(drawCount, warmupFrames, measuredFrames);
+            ? lmx::experimental::noapi::bench::measureBindScaleRhi(drawCount, warmupFrames,
+                                                                   measuredFrames)
+            : lmx::experimental::noapi::bench::measureBindScaleNoApi(drawCount, warmupFrames,
+                                                                     measuredFrames);
     if (!run.ok) {
         std::cerr << "NoApiBench --measure=bind" << drawCount << ": " << run.error << "\n";
         return 1;
@@ -616,7 +623,7 @@ int measureBind(uint32_t drawCount, const std::string& adapterName, uint32_t war
 int measurePipelines(const std::string& adapterName, const std::filesystem::path& jsonPath) {
     std::vector<std::tuple<std::string, uint64_t, bool>> records;
     if (adapterName == "rhi") {
-        lmx::noapi::bench::RhiAdapter adapter(false);
+        lmx::experimental::noapi::bench::RhiAdapter adapter(false);
         if (!adapter.setup()) {
             std::cerr << "NoApiBench --measure=pipelines: rhi adapter setup failed\n";
             return 1;
@@ -626,7 +633,7 @@ int measurePipelines(const std::string& adapterName, const std::filesystem::path
         }
         adapter.teardown();
     } else if (adapterName == "noapi") {
-        lmx::noapi::bench::NoApiAdapter adapter;
+        lmx::experimental::noapi::bench::NoApiAdapter adapter;
         if (!adapter.setup()) {
             std::cerr << "NoApiBench --measure=pipelines: noapi adapter setup failed\n";
             return 1;
@@ -768,28 +775,29 @@ int runMeasure(const MeasureOptions& options) {
 // never to return -- checked before any normal argument parsing so a re-exec never sees the
 // parent's own argv.
 int maybeRunMisuseChild() {
-    const char* caseId = std::getenv(lmx::noapi::bench::kMisuseEnvCase);
-    const char* adapterName = std::getenv(lmx::noapi::bench::kMisuseEnvAdapter);
+    const char* caseId = std::getenv(lmx::experimental::noapi::bench::kMisuseEnvCase);
+    const char* adapterName = std::getenv(lmx::experimental::noapi::bench::kMisuseEnvAdapter);
     if (caseId == nullptr || adapterName == nullptr) {
         return -1; // Not a misuse-child invocation.
     }
-    const lmx::noapi::bench::AdapterKind adapter = std::string_view(adapterName) == "rhi"
-                                                       ? lmx::noapi::bench::AdapterKind::Rhi
-                                                       : lmx::noapi::bench::AdapterKind::NoApi;
-    return lmx::noapi::bench::runMisuseChild(caseId, adapter);
+    const lmx::experimental::noapi::bench::AdapterKind adapter =
+        std::string_view(adapterName) == "rhi"
+            ? lmx::experimental::noapi::bench::AdapterKind::Rhi
+            : lmx::experimental::noapi::bench::AdapterKind::NoApi;
+    return lmx::experimental::noapi::bench::runMisuseChild(caseId, adapter);
 }
 
 } // namespace
 
 //======================================================================================================================
 int main(int argc, char** argv) {
-    lmx::noapi::bench::setMisuseChildExecutablePath(argv[0]);
+    lmx::experimental::noapi::bench::setMisuseChildExecutablePath(argv[0]);
     if (const int childResult = maybeRunMisuseChild(); childResult >= 0) {
         return childResult;
     }
 
     bool checkManifestRequested = false;
-    lmx::noapi::bench::RunOptions runOptions;
+    lmx::experimental::noapi::bench::RunOptions runOptions;
     bool runGraphRequested = false;
     bool runStressRequested = false;
     bool runMisuseRequested = false;
@@ -798,7 +806,8 @@ int main(int argc, char** argv) {
     bool adapterRequested = false;
     std::string stressCaseId;
     std::string misuseCaseId;
-    lmx::noapi::bench::AdapterKind adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
+    lmx::experimental::noapi::bench::AdapterKind adapterKind =
+        lmx::experimental::noapi::bench::AdapterKind::Rhi;
     MeasureOptions measureOptions;
     std::string adapterOrder;
     std::filesystem::path rhiJsonPath;
@@ -839,9 +848,9 @@ int main(int argc, char** argv) {
         } else if (const auto adapter = parseFlagValue(arg, "--adapter")) {
             adapterRequested = true;
             if (*adapter == "rhi") {
-                adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
+                adapterKind = lmx::experimental::noapi::bench::AdapterKind::Rhi;
             } else if (*adapter == "noapi") {
-                adapterKind = lmx::noapi::bench::AdapterKind::NoApi;
+                adapterKind = lmx::experimental::noapi::bench::AdapterKind::NoApi;
             } else {
                 std::cerr << "NoApiBench: unknown --adapter '" << *adapter
                           << "' (expected 'rhi' or "
@@ -862,10 +871,10 @@ int main(int argc, char** argv) {
         return runGraph(runOptions);
     }
     if (runStressRequested) {
-        return lmx::noapi::bench::runStress(adapterKind, stressCaseId);
+        return lmx::experimental::noapi::bench::runStress(adapterKind, stressCaseId);
     }
     if (runMisuseRequested) {
-        return lmx::noapi::bench::runMisuse(adapterKind, misuseCaseId);
+        return lmx::experimental::noapi::bench::runMisuse(adapterKind, misuseCaseId);
     }
     if (measureRequested) {
         if (!measurementEnvironmentIsValid()) {

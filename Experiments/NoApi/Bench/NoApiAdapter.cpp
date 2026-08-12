@@ -104,10 +104,10 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
-namespace workload = lmx::noapi::workload;
+namespace workload = lmx::experimental::noapi::workload;
 
 //======================================================================================================================
 Format mapFormat(workload::Format format) {
@@ -1427,4 +1427,4 @@ void NoApiAdapter::teardown() {
     m_device = nullptr;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

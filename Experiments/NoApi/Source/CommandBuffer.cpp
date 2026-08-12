@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 // The kernel behind `signalAfter`'s atomic operations. Metal has no 64-bit device atomics on the
@@ -1001,4 +1001,4 @@ CommandBufferStats commandBufferStats(const CommandBuffer* commands) {
             .barrierCalls = commands->stats.barrierCalls};
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

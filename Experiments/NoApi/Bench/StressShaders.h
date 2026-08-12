@@ -18,7 +18,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// Shader-visible ABI matching Tests/TestShaders.h's own convention: root address at buffer(0),
 /// bindless table address at buffer(1), pixel/second root at buffer(2).
@@ -200,4 +200,4 @@ inline std::span<const std::byte> stressShaderSource() {
             kStressShaderSource.size()};
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

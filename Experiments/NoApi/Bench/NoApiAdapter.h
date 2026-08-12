@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 /// @details Declares the prototype adapter: the address-first half of M5.1's Stage 3 comparison,
-///        executing the frozen representative graph through `lmx::noapi` (spec section 6, plan
-///        Stage 3 item 2).
+///        executing the frozen representative graph through `lmx::experimental::noapi` (spec
+///        section 6, plan Stage 3 item 2).
 
 #pragma once
 #include "Bench/Metrics.h"
@@ -22,7 +22,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// Executes the M5.1 representative graph (spec section 6) over the address-first prototype: every
 /// per-draw and per-pass input is a root block pushed into the frame ring and passed to the draw by
@@ -204,4 +204,4 @@ private:
     std::vector<PipelineCompileRecord> m_pipelineCompileTimes;
 };
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

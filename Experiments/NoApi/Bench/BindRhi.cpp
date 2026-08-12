@@ -36,7 +36,7 @@
 #include <memory>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 //======================================================================================================================
@@ -385,4 +385,4 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
     return result;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Reports the target properties a caller cannot assume and must not guess.
 ///
@@ -77,4 +77,4 @@ struct DeviceCreationStats {
 /// Returns the device's current live creation counts.
 DeviceCreationStats deviceCreationStats(const Device* device);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

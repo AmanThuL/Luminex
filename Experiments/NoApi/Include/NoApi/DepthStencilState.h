@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Names an action applied to the stencil buffer after a test.
 enum class StencilOp : uint8_t {
@@ -58,4 +58,4 @@ Result<DepthStencilState*> createDepthStencilState(Device* device, const DepthSt
 /// Every submission referencing the state must be retired; this is a caller contract and asserts.
 void destroyDepthStencilState(Device* device, DepthStencilState* state);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

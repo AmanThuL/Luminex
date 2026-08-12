@@ -12,7 +12,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// References a texture view by its slot in the bindless table.
 ///
@@ -94,4 +94,4 @@ struct BindlessTableStats {
 /// Returns the table's cumulative write traffic since `createBindlessTable`.
 BindlessTableStats bindlessTableStats(const BindlessTable* table);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

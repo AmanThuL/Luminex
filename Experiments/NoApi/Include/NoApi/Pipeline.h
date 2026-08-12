@@ -13,7 +13,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Names one shader entry point inside a block of intermediate code.
 struct ShaderCode {
@@ -119,4 +119,4 @@ Result<Pipeline*> createGraphicsPipeline(Device* device, const GraphicsPipelineD
 /// asserts.
 void destroyPipeline(Device* device, Pipeline* pipeline);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

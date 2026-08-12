@@ -25,4 +25,4 @@
 ///
 /// This namespace is a frozen, non-normative research artifact. It is not the production RHI, it
 /// accepts no feature growth, and nothing outside `Experiments/NoApi/` may depend on it.
-namespace lmx::noapi {}
+namespace lmx::experimental::noapi {}

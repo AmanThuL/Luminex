@@ -21,7 +21,7 @@
 #include <thread>
 #include <vector>
 
-namespace lmx::noapi::test {
+namespace lmx::experimental::noapi::test {
 namespace {
 
 constexpr uint32_t kTargetExtent = 64;
@@ -925,4 +925,4 @@ TEST_CASE_METHOD(Harness, "a GPU capture records an address-first frame", "[noap
                                 << ", readback address 0x" << readbackAddress(0) << std::dec);
 }
 
-} // namespace lmx::noapi::test
+} // namespace lmx::experimental::noapi::test

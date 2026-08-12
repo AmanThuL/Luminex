@@ -9,7 +9,7 @@
 #include "Workload/RepresentativeGraph.h"
 #include "Workload/ProdValues.h"
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 namespace {
 
@@ -317,4 +317,4 @@ memory
     return dump;
 }
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

@@ -16,7 +16,7 @@
 /// the prototype's `Experiments/NoApi/Include` headers -- the whole point of this library is that
 /// neither encoder's headers has to appear in the other's dependency graph for the manifest itself
 /// to compile (spec section 5).
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 /// Pixel formats the manifest names. This mirrors the subset of `rhi::Format`
 /// (`RHI/Include/RHI/RHI.h`) the scored core needs, restated here rather than included so this
@@ -115,4 +115,4 @@ struct SinkDeclaration {
     SinkKind kind = SinkKind::Export;
 };
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

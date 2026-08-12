@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Holds one suballocation as the address pair the caller writes and the GPU reads.
 struct Suballocation {
@@ -90,4 +90,4 @@ private:
     uint64_t m_used = 0;
 };
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

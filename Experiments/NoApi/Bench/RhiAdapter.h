@@ -23,7 +23,7 @@
 #include <variant>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// Executes the M5.1 representative graph (spec section 6) over the production RHI: P03/P04 bind
 /// the unmodified production ShadowPass/ScenePass pipelines and their complete binding surface;
@@ -238,4 +238,4 @@ private:
     std::vector<PipelineCompileRecord> m_pipelineCompileTimes;
 };
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

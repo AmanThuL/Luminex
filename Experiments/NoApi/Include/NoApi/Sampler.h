@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Selects a texture filtering rule.
 enum class FilterMode : uint8_t {
@@ -53,4 +53,4 @@ Result<Sampler*> createSampler(Device* device, const SamplerDesc& desc);
 /// must be cleared; both are caller contracts and assert.
 void destroySampler(Device* device, Sampler* sampler);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

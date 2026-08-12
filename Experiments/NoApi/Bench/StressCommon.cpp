@@ -7,7 +7,7 @@
 
 #include <algorithm>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 //======================================================================================================================
 std::vector<uint8_t> hazardExpectedRgba(const workload::HazardCase& hazardCase, uint32_t extent) {
@@ -48,4 +48,4 @@ int64_t firstRgbMismatch(const std::vector<uint8_t>& expected, const std::vector
     return expected.size() == actual.size() ? -1 : static_cast<int64_t>(count);
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

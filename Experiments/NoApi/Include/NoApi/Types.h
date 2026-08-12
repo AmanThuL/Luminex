@@ -6,7 +6,7 @@
 #pragma once
 #include <cstdint>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Address of GPU-visible memory in the form the GPU dereferences.
 ///
@@ -213,4 +213,4 @@ struct ScissorRect {
     uint32_t height = 0; ///< Height in pixels.
 };
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

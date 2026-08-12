@@ -31,7 +31,7 @@
 
 extern char** environ;
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 namespace {
 std::string g_executablePath;
@@ -257,4 +257,4 @@ int runMisuse(AdapterKind adapter, const std::string& caseId) {
     return allPassed ? 0 : 1;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

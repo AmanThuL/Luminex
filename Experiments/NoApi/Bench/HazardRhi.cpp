@@ -45,7 +45,7 @@
 #include <memory>
 #include <string>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 using workload::HazardCase;
@@ -567,4 +567,4 @@ std::vector<CaseResult> runHazardCasesRhi(const std::string& caseId) {
     return results;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

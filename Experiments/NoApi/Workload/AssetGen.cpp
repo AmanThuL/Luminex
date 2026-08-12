@@ -10,7 +10,7 @@
 #include <algorithm>
 #include <cstring>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 namespace {
 
@@ -220,4 +220,4 @@ QuadGeometry sharedQuad() {
     return quad;
 }
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload

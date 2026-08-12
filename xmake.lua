@@ -156,7 +156,7 @@ target("Tests")
     add_tests("gpu", {runargs = {"[gpu]"}})
 
 -- M5.1 RHI execution-model experiment (docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md):
--- a frozen, non-default research spike under Experiments/NoApi/, namespace lmx::noapi. All four
+-- a frozen, non-default research spike under Experiments/NoApi/, namespace lmx::experimental::noapi. All four
 -- targets are set_default(false) -- a plain `xmake` never builds them (spec section 5) -- and this
 -- section is the only place outside Experiments/ the milestone touches.
 

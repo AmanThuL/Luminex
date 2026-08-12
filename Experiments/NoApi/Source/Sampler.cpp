@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 //======================================================================================================================
@@ -88,4 +88,4 @@ void destroySampler(Device* device, Sampler* sampler) {
     delete sampler;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

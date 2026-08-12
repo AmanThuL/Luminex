@@ -9,7 +9,7 @@
 #include <format>
 #include <string>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 constexpr MTL::LanguageVersion kShaderLanguageVersion = MTL::LanguageVersion4_0;
@@ -282,4 +282,4 @@ void destroyPipeline(Device* device, Pipeline* pipeline) {
     delete pipeline;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

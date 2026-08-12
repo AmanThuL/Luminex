@@ -7,7 +7,7 @@
 
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 //======================================================================================================================
 Result<ResidencySet*> createResidencySet(Device* device, const ResidencySetDesc& desc) {
@@ -90,4 +90,4 @@ uint64_t residentBytes(const ResidencySet* set) {
     return set->device->residentBytes;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

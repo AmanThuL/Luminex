@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 constexpr uint32_t kCubeFaceCount = 6;
@@ -186,4 +186,4 @@ const TextureDesc& textureDesc(const Texture* texture) {
     return texture->desc;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

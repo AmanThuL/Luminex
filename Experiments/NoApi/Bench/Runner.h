@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 
 /// FNV-1a 64-bit over `bytes` -- the representative graph's deterministic per-frame output hash
 /// (this bench's parity and determinism oracle: two runs of one adapter must produce identical
@@ -81,4 +81,4 @@ struct RunOptions {
 /// failure).
 int runBench(Adapter& adapter, const RunOptions& options);
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

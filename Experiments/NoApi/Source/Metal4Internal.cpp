@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 //======================================================================================================================
 NS::SharedPtr<NS::String> makeString(std::string_view text) {
@@ -217,4 +217,4 @@ void assertNoWorkInFlight(const Device* device, std::string_view what) {
                            what, device->submissions - device->timeline->signaledValue()));
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

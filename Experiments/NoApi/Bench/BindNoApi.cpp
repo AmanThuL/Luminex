@@ -31,7 +31,7 @@
 #include <cstring>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 constexpr uint32_t kSamplerSlot = 0;
@@ -515,4 +515,4 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
     return result;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

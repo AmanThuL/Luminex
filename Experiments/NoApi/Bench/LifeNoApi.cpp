@@ -20,7 +20,7 @@
 #include <cstring>
 #include <sstream>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 struct Counters {
@@ -226,4 +226,4 @@ std::vector<CaseResult> runLifeCasesNoApi(const std::string& caseId) {
     return {{"S-LIFE", settled, trace.str()}};
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

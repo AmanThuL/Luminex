@@ -7,10 +7,10 @@
 /// prototype.
 ///
 /// Mirrors HazardRhi.cpp's RAW/WAR/WAW shape exactly (see that file's header comment for the shared
-/// per-role semantics); every op here is realised through `lmx::noapi` instead of the production
-/// RHI. Unlike the RHI side, `RenderPassDesc::ColorAttachment` names an explicit `mipLevel`
-/// (NoApi/RenderPass.h), so every per-mip case -- including the five raster-at-a-non-zero-mip cases
-/// the RHI side reports inexpressible -- runs here without a gap.
+/// per-role semantics); every op here is realised through `lmx::experimental::noapi` instead of the
+/// production RHI. Unlike the RHI side, `RenderPassDesc::ColorAttachment` names an explicit
+/// `mipLevel` (NoApi/RenderPass.h), so every per-mip case -- including the five
+/// raster-at-a-non-zero-mip cases the RHI side reports inexpressible -- runs here without a gap.
 
 #include "Bench/StressCommon.h"
 #include "Bench/StressShaders.h"
@@ -25,7 +25,7 @@
 #include <string>
 #include <vector>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 using workload::HazardCase;
@@ -588,4 +588,4 @@ std::vector<CaseResult> runHazardCasesNoApi(const std::string& caseId) {
     return results;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

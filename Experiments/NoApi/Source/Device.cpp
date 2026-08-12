@@ -7,7 +7,7 @@
 
 #include <format>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 namespace {
 
 // Alignment minima Metal exposes no query for, pinned by the prototype from Apple silicon's
@@ -160,4 +160,4 @@ DeviceCreationStats deviceCreationStats(const Device* device) {
             .requestedBytes = requestedBytes};
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

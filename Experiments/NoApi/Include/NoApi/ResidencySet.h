@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Describes the device's residency set.
 struct ResidencySetDesc {
@@ -53,4 +53,4 @@ void commitResidency(ResidencySet* set);
 /// Returns the total byte size of every allocation currently in the set.
 uint64_t residentBytes(const ResidencySet* set);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

@@ -18,7 +18,7 @@
 /// production file it was read from. `RepresentativeGraph.cpp` builds R5 and the material/IBL
 /// resource descriptors from these constants rather than restating the numbers, so a future drift
 /// between this file and the cited source is a one-place fix.
-namespace lmx::noapi::workload::prod {
+namespace lmx::experimental::noapi::workload::prod {
 
 // Exposure buffer (R5): one float, read-write storage, persistent across frames. Resolved from
 // the `device.createBuffer` call that allocates `Renderer::m_exposureBuffer`
@@ -48,4 +48,4 @@ inline constexpr Format kPrefilteredFormat = Format::RGBA16Float; ///< t8
 inline constexpr uint32_t kDfgLutSize = 64;                       ///< t9: square extent.
 inline constexpr Format kDfgLutFormat = Format::RG16Float;        ///< t9
 
-} // namespace lmx::noapi::workload::prod
+} // namespace lmx::experimental::noapi::workload::prod

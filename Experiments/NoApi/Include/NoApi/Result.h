@@ -7,7 +7,7 @@
 #include <expected>
 #include <string>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Identifies the category of a prototype creation failure.
 ///
@@ -40,4 +40,4 @@ struct Error {
 template <typename T>
 using Result = std::expected<T, Error>;
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

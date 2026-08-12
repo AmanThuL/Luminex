@@ -18,7 +18,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Argument-table index the vertex stage's root address occupies, and the compute root index.
 ///
@@ -301,4 +301,4 @@ void drainDevice(Device* device);
 /// is conservative, O(1), and never accepts a use-after-free the per-object rule would reject.
 void assertNoWorkInFlight(const Device* device, std::string_view what);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

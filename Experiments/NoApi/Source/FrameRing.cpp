@@ -10,7 +10,7 @@
 #include <string>
 #include <utility>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 //======================================================================================================================
 Result<FrameRing> FrameRing::create(Device* device, const FrameRingDesc& desc) {
@@ -153,4 +153,4 @@ bool FrameRing::isSlotRetired(uint32_t slot) const {
     return owner == 0 || semaphoreValue(m_semaphore) >= owner;
 }
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

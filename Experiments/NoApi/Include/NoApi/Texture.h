@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace lmx::noapi {
+namespace lmx::experimental::noapi {
 
 /// Describes a texture's shape, format, and declared usage.
 struct TextureDesc {
@@ -83,4 +83,4 @@ void destroyTexture(Device* device, Texture* texture);
 /// Returns the descriptor a texture was created with.
 const TextureDesc& textureDesc(const Texture* texture);
 
-} // namespace lmx::noapi
+} // namespace lmx::experimental::noapi

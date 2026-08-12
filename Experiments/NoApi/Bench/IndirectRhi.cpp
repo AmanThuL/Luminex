@@ -16,7 +16,7 @@
 #include <array>
 #include <cstring>
 
-namespace lmx::noapi::bench {
+namespace lmx::experimental::noapi::bench {
 namespace {
 
 using workload::IndirectArgSource;
@@ -293,4 +293,4 @@ std::vector<CaseResult> runIndirectCasesRhi(const std::string& caseId) {
     return results;
 }
 
-} // namespace lmx::noapi::bench
+} // namespace lmx::experimental::noapi::bench

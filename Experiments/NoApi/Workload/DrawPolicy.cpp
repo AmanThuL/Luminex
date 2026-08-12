@@ -10,7 +10,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace lmx::noapi::workload {
+namespace lmx::experimental::noapi::workload {
 
 namespace {
 // Parameter tags fold into the splitmix64 draw alongside the draw index, so each scalar is its
@@ -72,4 +72,4 @@ EmissiveStagingTexel emissiveStagingTexel(uint32_t frameIndex, uint32_t x, uint3
     return {.r = bytes[0], .g = bytes[1], .b = bytes[2], .a = bytes[3]};
 }
 
-} // namespace lmx::noapi::workload
+} // namespace lmx::experimental::noapi::workload
