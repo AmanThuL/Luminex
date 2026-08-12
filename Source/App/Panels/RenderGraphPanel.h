@@ -19,6 +19,8 @@ inline constexpr const char* kRenderGraphPanelWindowName = "Render Graph";
 ///
 /// This is the exact compiled shape of one frame, not a rolling summary, and it says so when no
 /// frame has retired yet -- true for the first few frames of a run, and not an error.
+///
+/// This panel's time domain is the exact newest retired frame, independent of Performance pause.
 void drawRenderGraphPanel(bool& open, const FrameRecordRing& frameRecords);
 
 } // namespace lmx::app
