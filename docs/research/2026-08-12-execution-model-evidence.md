@@ -33,7 +33,7 @@ round; a round is invalidated in full if any field changes mid-round.
 | Metal validation | off for performance runs (enforced by the `--measure` guard); `MTL_DEBUG_LAYER=1` for every correctness, hazard, lifetime, misuse, and capture run |
 | Power source | AC, battery not charging |
 | Thermal state at run start | no thermal or performance warning recorded |
-| Repository commit | the `spike: capture the bench graph programmatically` commit this round was collected at |
+| Repository commit | the `rhi: capture the bench graph programmatically` commit this round was collected at |
 | Collection round | 2 (round 1 invalidated by the capture-hook instrumentation change; see intro) |
 
 ## 2. Scored evidence
