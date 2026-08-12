@@ -235,6 +235,32 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
 
     std::unique_ptr<EditorShell> self(new EditorShell(window, library));
 
+    // Startup needs a renderable scene; later switch failures can retain the current one. This runs
+    // before any ini is loaded: LoadIniSettingsFromDisk (below) sets ImGui's SettingsLoaded flag,
+    // and once that is set, ~EditorShell's DestroyContext() saves imgui.ini on its way out -- so a
+    // failure return here, before that flag is ever touched, is what keeps a failed startup from
+    // stamping a fresh Schema= onto legacy dock data and defeating the migration on the next
+    // successful launch.
+    auto scene = library.get(initialScene);
+    if (!scene) {
+        LMX_LOG_ERROR("EditorShell::create: initial scene '{}' failed to load: {}",
+                      library.entry(initialScene).displayName, scene.error().message);
+        ImGui_ImplSDL3_Shutdown();
+        rhi::metal4::imguiShutdown();
+        ImGui::DestroyContext();
+        return nullptr;
+    }
+    self->m_activeSceneId = initialScene;
+    self->m_activeScene = *scene;
+    self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
+    // Startup selects the scene's Camera (spec section 5); every scene provides one.
+    self->m_selection = initialSelection(initialScene);
+
+    ExposureResetContext initial = self->m_exposureContext;
+    initial.sceneId = initialScene;
+    self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
+    self->m_exposureContext = initial;
+
     // Register before any settings are read so Luminex's section is routed to this handler, and
     // read the ini here rather than letting the first NewFrame() do it: the schema decision below
     // has to be settled before a frame can lay out a dockspace.
@@ -259,27 +285,6 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     self->m_workspace.visibility = decision.visibility;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
     self->m_layoutBuildReason = kNoSchemaReason;
-
-    // Startup needs a renderable scene; later switch failures can retain the current one.
-    auto scene = library.get(initialScene);
-    if (!scene) {
-        LMX_LOG_ERROR("EditorShell::create: initial scene '{}' failed to load: {}",
-                      library.entry(initialScene).displayName, scene.error().message);
-        ImGui_ImplSDL3_Shutdown();
-        rhi::metal4::imguiShutdown();
-        ImGui::DestroyContext();
-        return nullptr;
-    }
-    self->m_activeSceneId = initialScene;
-    self->m_activeScene = *scene;
-    self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
-    // Startup selects the scene's Camera (spec section 5); every scene provides one.
-    self->m_selection = initialSelection(initialScene);
-
-    ExposureResetContext initial = self->m_exposureContext;
-    initial.sceneId = initialScene;
-    self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
-    self->m_exposureContext = initial;
 
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
                  self->m_buildDefaultLayout
