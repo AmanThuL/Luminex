@@ -69,6 +69,25 @@ TEST_CASE("performance model republishes on a 0.25 s cadence and is stable betwe
 }
 
 //======================================================================================================================
+// Instantaneous 1000/latest reads jittery at the 4 Hz republish cadence; the smoothed value is the
+// mean over the whole current frame-interval history instead, so a single outlier tick does not
+// move the displayed FPS as far as it would move the instantaneous reading.
+TEST_CASE("performance model smooths frames-per-second over the frame-interval history", "[app]") {
+    PerformanceModel model;
+
+    model.tick(0.1f, nullptr);
+    model.tick(0.1f, nullptr);
+    model.tick(0.2f, nullptr);
+
+    const PerformanceSnapshot& snapshot = model.snapshot();
+    REQUIRE(snapshot.frameIntervalsMs.size() == 3);
+    REQUIRE(snapshot.latestFrameIntervalMs == Catch::Approx(200.0f));
+    // Mean interval = (100 + 100 + 200) / 3 ms -- not 1000 / latestFrameIntervalMs (5.0).
+    const float meanIntervalMs = (100.0f + 100.0f + 200.0f) / 3.0f;
+    REQUIRE(snapshot.framesPerSecond == Catch::Approx(1000.0f / meanIntervalMs));
+}
+
+//======================================================================================================================
 TEST_CASE("performance model preserves the frame-interval rolling capacity", "[app]") {
     PerformanceModel model;
 

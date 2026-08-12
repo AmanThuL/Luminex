@@ -5,6 +5,7 @@
 
 #include "App/PerformanceModel.h"
 
+#include <numeric>
 #include <utility>
 
 namespace lmx::app {
@@ -100,8 +101,17 @@ void PerformanceModel::rebuildLiveSnapshot() {
     snapshot.frameIntervalsMs = m_frameIntervalMsHistory;
     snapshot.latestFrameIntervalMs =
         m_frameIntervalMsHistory.empty() ? 0.0f : m_frameIntervalMsHistory.back();
-    snapshot.framesPerSecond =
-        snapshot.latestFrameIntervalMs > 0.0f ? 1000.0f / snapshot.latestFrameIntervalMs : 0.0f;
+    // Smoothed over the whole rolling history rather than the instantaneous latest interval, so a
+    // single slow or fast tick does not swing the displayed FPS as far as it would swing
+    // 1000 / latestFrameIntervalMs at the 4 Hz republish cadence.
+    if (!m_frameIntervalMsHistory.empty()) {
+        const float sumMs =
+            std::accumulate(m_frameIntervalMsHistory.begin(), m_frameIntervalMsHistory.end(), 0.0f);
+        const float meanIntervalMs = sumMs / static_cast<float>(m_frameIntervalMsHistory.size());
+        snapshot.framesPerSecond = meanIntervalMs > 0.0f ? 1000.0f / meanIntervalMs : 0.0f;
+    } else {
+        snapshot.framesPerSecond = 0.0f;
+    }
 
     snapshot.passRows = m_passTimingHistory.summaries();
     for (const PassTimingSummary& row : snapshot.passRows) {

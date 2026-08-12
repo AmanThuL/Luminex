@@ -45,7 +45,10 @@ struct PerformanceSnapshot {
     /// -- never CPU render time.
     std::vector<float> frameIntervalsMs;
     float latestFrameIntervalMs = 0.0f; ///< Newest wall-clock frame interval, in milliseconds.
-    /// `1000 / latestFrameIntervalMs`, or 0 while no interval has been published yet.
+    /// `1000 / mean(frameIntervalsMs)`, or 0 while no interval has been published yet. Smoothed
+    /// over the current rolling frame-interval history rather than the instantaneous
+    /// `1000 / latestFrameIntervalMs`, which reads jittery at the 4 Hz republish cadence; still
+    /// wall-clock-derived and deterministic.
     float framesPerSecond = 0.0f;
 
     /// Rolling GPU pass rows -- Average/Latest/Min-Max/Samples -- in schedule order, over the
