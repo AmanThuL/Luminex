@@ -17,8 +17,8 @@ deterministic dump, a read-only editor inspector, and a pausable rolling timing 
 histogram exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
-reshape for a future, separately accepted M5.x migration before M6; production has not migrated yet
-(prototype: `Experiments/NoApi/`).
+reshape. M5.2 owns that production migration before M6; production has not migrated yet, and the
+prototype remains frozen under `Experiments/NoApi/`.
 
 ## M4 — Correct image formation
 
@@ -112,32 +112,32 @@ indirect visibility, and alternative opaque surface paths.
 
 **Deliver:**
 
-- Before measuring results, freeze the baseline, hypotheses, representative graph, bounded workloads,
-  rubric, and adoption thresholds; the design spec owns concrete scales and prototype architecture.
-- Compare the maintained RHI with the data-oriented "No Graphics API" model described by Sebastian
-  Aaltonen's [article](https://www.sebastianaaltonen.com/blog/no-graphics-api),
-  [extended presentation](https://www.youtube.com/watch?v=aQv9pUl9PBM), and
-  [SIGGRAPH course slides](https://community.arm.com/cfs-file/__key/communityserver-blogs-components-weblogfiles/00-00-00-20-66/6763.2026_2D00_mmg_2D00_seb_2D00_gfx_2D00_api.pdf).
-  Cover memory/address and root data, handles and bindings, pipelines and commands, attachments and
-  synchronization, residency and capabilities, debugging and failure behavior; retain the render
-  graph's logical ownership.
-- Translate one representative raster/compute/copy graph through an isolated non-default Metal 4
-  prototype, plus finite binding, hazard, upload/resize-lifetime, and indirect stress cases.
-- Classify its Metal 4/D3D12 mappings as native, emulated, unavailable, or unknown, including shader
-  constraints. Vulkan is unscored comparative evidence, not a backend commitment.
-- Compare correctness, failure and validation behavior, capture quality, API surface, CPU encoding,
-  binding traffic, pipeline/cache behavior, barriers, and allocation against the maintained RHI.
+- Before measuring, freeze the baseline, hypotheses, representative graph, bounded workloads, rubric, and adoption thresholds; the design spec owns concrete scales and prototype architecture.
+- Compare the maintained RHI with Sebastian Aaltonen's data-oriented "No Graphics API" model from the [article](https://www.sebastianaaltonen.com/blog/no-graphics-api), [extended presentation](https://www.youtube.com/watch?v=aQv9pUl9PBM), and [SIGGRAPH slides](https://community.arm.com/cfs-file/__key/communityserver-blogs-components-weblogfiles/00-00-00-20-66/6763.2026_2D00_mmg_2D00_seb_2D00_gfx_2D00_api.pdf), covering memory/root data, bindings, pipelines/commands, synchronization, residency/capabilities, debugging, and failure behavior while the render graph retains logical ownership.
+- Translate one representative raster/compute/copy graph through an isolated non-default Metal 4 prototype, plus finite binding, hazard, upload/resize-lifetime, and indirect stress cases.
+- Classify Metal 4/D3D12 mappings and shader constraints as native, emulated, unavailable, or unknown; Vulkan remains unscored comparative evidence rather than a backend commitment.
+- Compare correctness, failure behavior, capture quality, API surface, CPU encoding, binding traffic, pipelines/cache, barriers, and allocation against the maintained RHI.
 
 **Exit gate:** checkpoint A stays green; the prototype reproduces the output, failure behavior, and
 three-frame lifetime rules it claims to cover; all emulation, fallback, shader constraints, gaps,
 and risks are recorded; and evidence is judged against the frozen thresholds. An ADR selects one
-production direction and disposes of the experiment. M5.1 does not migrate production: any adopted
-change requires a separately accepted M5.x migration completed before M6, with no parallel API left.
+production direction and disposes of the experiment. M5.1 does not migrate production: the adopted
+change is implemented by M5.2 before M6, with no parallel API left.
 
 **Defer:** a production D3D12 backend, Vulkan/Linux support, multi-queue optimization, ray tracing,
 production interface migration, and later rendering features.
 
-## M5.2 — Editor workspace and selection
+## M5.2 — RHI frame-data path and public surface
+
+**Outcome:** the production RHI absorbs M5.1's proven per-frame data-delivery win through one typed, GPU-address-visible path, while its retained object model becomes easier to navigate.
+
+**Deliver:** replace `setUniforms` with typed `bindFrameData`, which allocates, copies, binds, and returns one frame-owned GPU address; use retirement-safe growable pages per frame slot while preserving `bindBuffer` for static reuse; split the public header into self-contained concepts behind an `RHI.h` umbrella; migrate with no compatibility alias; and verify correctness, allocation, binding, and paired CPU performance without modifying the frozen experiment.
+
+**Exit gate:** checkpoint A passes unchanged; every public header compiles alone and leaks no native types; all production callers use the new path; growth creates no backing allocations after the three slots reach high water; static bindings write no frame-data bytes; overflow workloads materially improve while fitting and static workloads regress by no more than 5%; captures identify uploaded ranges and three-frame reuse is validation-clean.
+
+**Defer:** bindless-resource migration, shader-pointer/root-signature or retained-model redesign, general buffer mapping, per-mip raster attachments, generation handles, resident-size queries, a production D3D12 backend, and later rendering features.
+
+## M5.3 — Editor workspace and selection
 
 **Outcome:** the editor separates scene authoring, property editing, performance, and compiled-frame debugging, with selection determining the properties the Inspector edits.
 
@@ -158,7 +158,7 @@ Render Graph list and timing views remain dockable, frame-correct, and behaviora
 **Defer:** graph visualization or mutation, persistent scene identity/serialization, undo/redo, an
 entity-component system, multiple platform windows, and graph execution, scheduling, or RHI changes.
 
-## M5.3 — Render graph node visualization
+## M5.4 — Render graph node visualization
 
 **Outcome:** M5's retained compiled frame gains a stable read-only node view without changing graph execution or replacing its exact list and text representations.
 
@@ -197,8 +197,7 @@ switching invalidate history correctly; rigid and camera motion reproject correc
 and MetalFX outputs can be compared from one capture; exposure changes do not pulse histories; UI is
 sharp and composed in its intended domain.
 
-**Interface gate B:** before M7, verify production conforms to M5.1's ADR and any pre-M6 migration is complete, then freeze the GPU-scene, root-data, binding, synchronization, and capability semantics
-M7 consumes. A second backend is not required; when scheduled, D3D12 must pass checkpoint A and render the M6 PBR/HDR/TAA frame without redefining shared scene, graph, or temporal semantics.
+**Interface gate B:** before M7, verify M5.2 remains conformant with ADR 0010, then freeze the GPU-scene, root-data, binding, synchronization, and capability semantics M7 consumes. A second backend is not required; when scheduled, D3D12 must pass checkpoint A and render the M6 PBR/HDR/TAA frame without redefining shared scene, graph, or temporal semantics.
 
 **Defer:** GPU-driven submission, clustered local lighting, scalable shadow systems, atmosphere, and
 opaque-path experiments.
