@@ -155,6 +155,21 @@ target("Tests")
     add_tests("unit", {runargs = {"~[gpu]"}})
     add_tests("gpu", {runargs = {"[gpu]"}})
 
+-- M5.2 production frame-data benchmark (docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md
+-- section 11): times the pre-migration RHI's setUniforms path today, and the post-migration
+-- bindFrameData path once Stage 3 lands, over five frozen offscreen workloads. Links the
+-- production RHI only -- no Experiments/NoApi/ include, import, or link -- so it stays a fair,
+-- unmodified comparison host for both sides of the migration.
+target("FrameDataBench")
+    set_kind("binary")
+    set_default(false)
+    -- Keep bench shader outputs separate from App/Tests; all three targets may compile in parallel.
+    set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/bench")
+    add_files("Benchmarks/FrameData/*.cpp")
+    add_deps("Core", "RHI")
+    add_rules("slang2metallib")
+    add_files("Shaders/*.slang")
+
 -- M5.1 RHI execution-model experiment (docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md):
 -- a frozen, non-default research spike under Experiments/NoApi/, namespace lmx::experimental::noapi. All four
 -- targets are set_default(false) -- a plain `xmake` never builds them (spec section 5) -- and this
