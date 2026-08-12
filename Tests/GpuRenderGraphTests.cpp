@@ -110,7 +110,7 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
             commands.bindComputePipeline(**pipeline);
             commands.bindStorageBuffer(kHazardOutputSlot, **destination, StorageAccess::Write);
             commands.bindStorageBuffer(kHazardSourceSlot, **source, StorageAccess::Read);
-            commands.setUniforms(kHazardParamsSlot, &params, sizeof(params));
+            commands.bindFrameData(kHazardParamsSlot, params);
             commands.dispatch(kElements / kHazardThreadsPerGroup, 1, 1);
         });
 
@@ -199,7 +199,7 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
         REQUIRE(texture.has_value());
         commands.bindComputePipeline(**computePipeline);
         commands.bindStorageTexture(kImageSlot, **texture, {}, StorageAccess::Write);
-        commands.setUniforms(kImageParamsSlot, &params, sizeof(params));
+        commands.bindFrameData(kImageParamsSlot, params);
         commands.dispatch(groups, groups, 1);
     });
 

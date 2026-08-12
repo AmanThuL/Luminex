@@ -241,7 +241,7 @@ struct RecordingCommandList final : rhi::CommandList {
     void bindSampler(uint32_t, rhi::Sampler&) override {}
 
     //==================================================================================================================
-    void setUniforms(uint32_t, const void*, uint64_t) override {}
+    rhi::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override { return {}; }
 
     //==================================================================================================================
     void draw(uint32_t, uint32_t) override {}

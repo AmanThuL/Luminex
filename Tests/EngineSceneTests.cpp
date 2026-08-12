@@ -700,7 +700,7 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 
 //======================================================================================================================
 TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exhausting the "
-          "uniform ring",
+          "frame-data arena",
           "[gpu]") {
     const std::optional<std::filesystem::path> path =
         findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf");

@@ -28,10 +28,11 @@ This milestone migrates nothing. The adoption requires a separately accepted M5.
 completed before M6, leaving no parallel API. The migration is a clean implementation in
 production code; the experiment is not promoted.
 
-**Disposal (frozen pre-measurement, spec section 5):** `Experiments/NoApi/` is retained
-permanently as a non-default, `Frozen — non-normative` research artifact. It accepts no feature
-growth and is not a supported API. Last verified environment: Apple M3 Max, macOS 26.5.2, Xcode
-26.6, release configuration, all pipelines runtime-MSL.
+**Disposal (frozen pre-measurement, spec section 5):** the final NoApi source is retained
+permanently at immutable tag `m5.1-noapi-evidence` as a `Frozen — non-normative` research artifact
+and removed from `main`. It accepts no feature growth and is not a supported API. Last verified
+environment: Apple M3 Max, macOS 26.5.2, Xcode 26.6, release configuration, all pipelines
+runtime-MSL.
 
 ## Evidence against the frozen thresholds
 
@@ -103,8 +104,8 @@ The project owner accepted this ADR and recorded the following, resolving the fl
   graph's ownership are retained.
 - Static root data remains reusable; the migration must combine ring allocation, copying, and
   address binding rather than import S-BIND's two-call re-push behavior or bindless resource path.
-- `Experiments/NoApi/` stays frozen, non-default, and non-normative; it must not become a
-  supported parallel API.
+- The NoApi source at `m5.1-noapi-evidence` stays frozen and non-normative; it must not become a
+  supported parallel API or return to `main`.
 
 ## Consequences
 

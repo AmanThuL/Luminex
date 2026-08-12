@@ -52,11 +52,13 @@ class UniformStruct:
 
 
 @dataclasses.dataclass
-class UniformUpload:
-    ring_label: str
+class FrameDataUpload:
+    page_label: str
     slot: int
-    ring_offset: int
+    page_offset: int
     size_bytes: int
+    alignment_bytes: int
+    gpu_address: int
 
 
 @dataclasses.dataclass
@@ -79,7 +81,7 @@ class Schema:
     context: dict
     resources: list  # list[Resource]
     uniform_structs: list  # list[UniformStruct]
-    uniform_uploads: list  # list[UniformUpload]
+    frame_data_uploads: list  # list[FrameDataUpload]
 
 
 def _require(obj: dict, key: str, where: str):
@@ -129,12 +131,14 @@ def _load_uniform_struct(raw: dict, where: str) -> UniformStruct:
     )
 
 
-def _load_uniform_upload(raw: dict, where: str) -> UniformUpload:
-    return UniformUpload(
-        ring_label=_require(raw, "ringLabel", where),
+def _load_frame_data_upload(raw: dict, where: str) -> FrameDataUpload:
+    return FrameDataUpload(
+        page_label=_require(raw, "pageLabel", where),
         slot=_require(raw, "slot", where),
-        ring_offset=_require(raw, "ringOffset", where),
+        page_offset=_require(raw, "pageOffset", where),
         size_bytes=_require(raw, "sizeBytes", where),
+        alignment_bytes=_require(raw, "alignmentBytes", where),
+        gpu_address=_require(raw, "gpuAddress", where),
     )
 
 
@@ -172,14 +176,14 @@ def load_schema(path) -> Schema:
         _load_uniform_struct(s, f"{path} uniformStructs[{i}]")
         for i, s in enumerate(_require(raw, "uniformStructs", str(path)))
     ]
-    uniform_uploads = [
-        _load_uniform_upload(u, f"{path} uniformUploads[{i}]")
-        for i, u in enumerate(_require(raw, "uniformUploads", str(path)))
+    frame_data_uploads = [
+        _load_frame_data_upload(u, f"{path} frameDataUploads[{i}]")
+        for i, u in enumerate(_require(raw, "frameDataUploads", str(path)))
     ]
 
     return Schema(
         context=context,
         resources=resources,
         uniform_structs=uniform_structs,
-        uniform_uploads=uniform_uploads,
+        frame_data_uploads=frame_data_uploads,
     )

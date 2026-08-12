@@ -8,8 +8,8 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.1.md` (execution-model decision, ADR 0010) over
-  `docs/milestones/m5.md` · No active implementation plan
+- Current baseline: `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over
+  `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -40,6 +40,9 @@ thin RHI and one implemented backend.
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
   `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
+- Frame-data benchmark: `xmake build FrameDataBench` then `python3
+  Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
+  build; both the bench binary and the driver support `--selftest`.
 - Scenes: `xmake run App` opens the editor with Sponza selected by default (scene dropdown in the
   Inspector). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
@@ -71,12 +74,12 @@ thin RHI and one implemented backend.
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
-+ per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only
-passes, compute passes with storage bindings, subresource views, and explicit texture and buffer
-barriers, copy passes with general copies and fills (the path to any subresource but level zero),
-indirect draws and dispatches over RHI-owned argument layouts, and untracked placement heaps whose
-resources are created at explicit offsets;
++ a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
+shared-event pacing, per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float
+formats, depth-only passes, compute passes with storage bindings, subresource views, and explicit
+texture and buffer barriers, copy passes with general copies and fills (the path to any subresource
+but level zero), indirect draws and dispatches over RHI-owned argument layouts, and untracked
+placement heaps whose resources are created at explicit offsets;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
 validating `RenderGraph` — raster/compute/copy passes with per-subresource uses over imported
 resources and over one-frame transients the graph creates, dead-pass culling from declared sinks
@@ -105,9 +108,9 @@ One frame end-to-end: `docs/frame-pipeline.md`.
   Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
   relevant tests, and passes `xmake policy`.
-- Repository-root experiments use `lmx::experimental::<name>` namespaces; for example,
-  `Experiments/NoApi/` is `lmx::experimental::noapi`. Never put experiment-owned APIs directly
-  under `lmx` or use a one-off namespace marker.
+- Experimental source does not live on `main`. Preserve accepted evidence with an immutable tag
+  and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
+  adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
   authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
   (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or

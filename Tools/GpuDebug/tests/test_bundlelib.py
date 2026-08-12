@@ -241,7 +241,7 @@ class ScanLabelsTests(unittest.TestCase):
 
 def _schema_with(resources) -> schemalib.Schema:
     return schemalib.Schema(context={}, resources=resources, uniform_structs=[],
-                            uniform_uploads=[])
+                            frame_data_uploads=[])
 
 
 def _texture_resource(label, width, height, fmt="BGRA8Unorm", mip_levels=1) -> schemalib.Resource:
@@ -435,13 +435,13 @@ class JoinTests(unittest.TestCase):
         self.fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         hits = bundlelib.scan_labels(bundle)
-        schema = _schema_with([_buffer_resource("lmx.device.uniformRing.0", 64)])
+        schema = _schema_with([_buffer_resource("lmx.device.frameData.0.page.0", 64)])
 
         result = bundlelib.join(bundle, schema, hits)
 
         self.assertEqual(len(result.matched), 1)
         resource, blob = result.matched[0]
-        self.assertEqual(resource.label, "lmx.device.uniformRing.0")
+        self.assertEqual(resource.label, "lmx.device.frameData.0.page.0")
         self.assertEqual(blob.path.name, "MTLBuffer-13-0")
 
     def test_ambiguous_buffer_size_stays_unmatched(self):
@@ -451,51 +451,51 @@ class JoinTests(unittest.TestCase):
         self.fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         hits = bundlelib.scan_labels(bundle)
-        schema = _schema_with([_buffer_resource("lmx.device.uniformRing.0", 32)])
+        schema = _schema_with([_buffer_resource("lmx.device.frameData.0.page.0", 32)])
 
         result = bundlelib.join(bundle, schema, hits)
 
         self.assertEqual(result.matched, [])
         labels = {r.label for r in result.missing_resources}
-        self.assertIn("lmx.device.uniformRing.0", labels)
+        self.assertIn("lmx.device.frameData.0.page.0", labels)
 
     def test_buffer_resource_with_no_matching_blob_is_no_contents_captured(self):
         self.fx.add_labelled_resource("lmx.unrelated", None)
         self.fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         hits = bundlelib.scan_labels(bundle)
-        schema = _schema_with([_buffer_resource("lmx.device.uniformRing.0", 999)])
+        schema = _schema_with([_buffer_resource("lmx.device.frameData.0.page.0", 999)])
 
         result = bundlelib.join(bundle, schema, hits)
 
         self.assertEqual(len(result.matched_undecodable), 1)
         resource, reason = result.matched_undecodable[0]
-        self.assertEqual(resource.label, "lmx.device.uniformRing.0")
+        self.assertEqual(resource.label, "lmx.device.frameData.0.page.0")
         self.assertEqual(reason, "no contents captured")
 
     def test_three_same_size_buffer_resources_one_blob_never_mislabels(self):
-        # A real App capture can contain three
-        # kUniformRingBytes-sized ring resources, exactly one plausibly-sized blob on disk. The
-        # ambiguity must be judged on the RESOURCE side too, not just the blob side: with only
-        # blob-count considered, uniformRing.0 would hit len(candidates) == 1 and claim the blob
-        # as a confident (and arbitrary, and possibly wrong) match. None of the three may match.
+        # A real App capture can contain three same-size frame-data page resources (one per
+        # frame-in-flight slot), exactly one plausibly-sized blob on disk. The ambiguity must be
+        # judged on the RESOURCE side too, not just the blob side: with only blob-count
+        # considered, frameData.0.page.0 would hit len(candidates) == 1 and claim the blob as a
+        # confident (and arbitrary, and possibly wrong) match. None of the three may match.
         self.fx.write_buffer_blob(20, b"\xcd" * 262144)
         self.fx.add_labelled_resource("lmx.unrelated", None)
         self.fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         hits = bundlelib.scan_labels(bundle)
         schema = _schema_with([
-            _buffer_resource("lmx.device.uniformRing.0", 262144),
-            _buffer_resource("lmx.device.uniformRing.1", 262144),
-            _buffer_resource("lmx.device.uniformRing.2", 262144),
+            _buffer_resource("lmx.device.frameData.0.page.0", 262144),
+            _buffer_resource("lmx.device.frameData.0.page.1", 262144),
+            _buffer_resource("lmx.device.frameData.0.page.2", 262144),
         ])
 
         result = bundlelib.join(bundle, schema, hits)
 
         self.assertEqual(result.matched, [])
         missing_labels = {r.label for r in result.missing_resources}
-        self.assertEqual(missing_labels, {"lmx.device.uniformRing.0", "lmx.device.uniformRing.1",
-                                          "lmx.device.uniformRing.2"})
+        self.assertEqual(missing_labels, {"lmx.device.frameData.0.page.0", "lmx.device.frameData.0.page.1",
+                                          "lmx.device.frameData.0.page.2"})
         blob_names = {b.path.name for b in result.unmatched_blobs}
         self.assertIn("MTLBuffer-20-0", blob_names)
 

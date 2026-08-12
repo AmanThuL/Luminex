@@ -400,8 +400,8 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
                               .storeDepth = true,
                               .label = "lmx.test.shadowSmoke.map"});
     commands.bindPipeline(**depthPipeline);
-    commands.setUniforms(kShadowPassSlot, &uniforms, sizeof(uniforms));
-    commands.setUniforms(kShadowVertexSlot, occluder.data(), sizeof(occluder));
+    commands.bindFrameData(kShadowPassSlot, uniforms);
+    commands.bindFrameData(kShadowVertexSlot, occluder.data(), sizeof(occluder));
     commands.draw(static_cast<uint32_t>(occluder.size()));
     commands.endRenderPass();
 
@@ -416,8 +416,8 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
         commands.bindPipeline(**shadowPipeline);
         commands.bindTexture(kShadowMapSlot, **shadowMap);
         commands.bindSampler(kShadowSamplerSlot, **shadowSampler);
-        commands.setUniforms(kShadowPassSlot, &uniforms, sizeof(uniforms));
-        commands.setUniforms(kShadowVertexSlot, receiver.data(), sizeof(receiver));
+        commands.bindFrameData(kShadowPassSlot, uniforms);
+        commands.bindFrameData(kShadowVertexSlot, receiver.data(), sizeof(receiver));
         commands.draw(static_cast<uint32_t>(receiver.size()));
         commands.endRenderPass();
     };
@@ -688,8 +688,8 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
-        commands.setUniforms(kObjectSlot, &identity, sizeof(identity));
-        commands.setUniforms(kVertexBufferSlot, quads.data(), sizeof(quads));
+        commands.bindFrameData(kObjectSlot, identity);
+        commands.bindFrameData(kVertexBufferSlot, quads.data(), sizeof(quads));
         commands.draw(static_cast<uint32_t>(quads.size()));
         commands.endRenderPass();
     };
@@ -1036,7 +1036,7 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     first.bindComputePipeline(**pipeline);
     first.bindTexture(0, (*renderer)->depthTarget());
     first.bindStorageTexture(1, **probe, {}, StorageAccess::Write);
-    first.setUniforms(0, &kParams, sizeof(kParams));
+    first.bindFrameData(0, kParams);
     first.dispatch(kProbeSize / 8, kProbeSize / 8, 1);
     first.endComputePass();
     (*device)->endFrame(nullptr);

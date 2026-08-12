@@ -37,9 +37,12 @@ python3 Tools/GpuDebug/gputrace_dump.py \
 ```
 
 `LMX_CAPTURE_PATH` must be absolute. The capture covers one frame. Inspect the generated manifest
-first, then decoded uniforms and resource images. Treat label joins and positional ring joins with
-the confidence recorded in the manifest; the Metal capture bundle is not a documented interchange
-format.
+first, then decoded uniforms and resource images. The capture's schema sidecar records one
+`frameDataUploads` entry per `bindFrameData` call in the captured frame — page label, slot, offset,
+size, alignment, and GPU address — which is what to check when tracing an upload to its page; the
+dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page
+joins with the confidence recorded in the manifest; the Metal capture bundle is not a documented
+interchange format.
 
 Escalate in this order:
 

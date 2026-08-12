@@ -9,14 +9,26 @@ is a repository-root component; the other runtime layers remain under `Source/`:
 
 - **Core** owns logging, assertions, and dependency-free utilities.
 - **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
-  `RHI/Include/RHI/` and expose API-neutral resource, pipeline, command, synchronization, capture,
-  and domain-owned error contracts without Metal or ImGui dependencies.
+  `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
+  `Heap.h`, `Sampler.h`, `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`,
+  `RenderPass.h`, `CommandList.h`, `Swapchain.h`, and `Device.h`, plus the focused `Result.h`,
+  `Validate.h`, and `CaptureSchema.h` — behind an includes-only `RHI.h` umbrella that declares no
+  parallel surface. Every leaf compiles alone and the set exposes API-neutral resource, pipeline,
+  command, synchronization, capture, and domain-owned error contracts without Metal or ImGui
+  dependencies. Per-frame CPU-to-GPU data delivery is one typed operation,
+  `CommandList::bindFrameData(slot, value)`: it allocates, copies, and binds the caller's block in
+  one call and returns a `GpuAddress` — a standard-layout, arithmetic-free value naming the block's
+  GPU location for the open frame. Data that survives the frame stays on the unchanged `bindBuffer`
+  path instead of being copied through the frame-data arena.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
-  frames in flight, argument tables, a per-frame uniform ring, residency, shared-event pacing,
-  render, compute, and copy pass encoders, indirect draws and dispatches, untracked placement heaps
-  with resources created at explicit offsets, per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
-  its ImGui-dependent public extension header, and the dependency on Dear ImGui; the core RHI does
-  not inherit any of them.
+  frames in flight, argument tables, a per-frame-slot growable frame-data page arena (256 KiB
+  normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
+  retained mapped and resident until device destruction so a slot's high water becomes its reused
+  capacity rather than being released), residency, shared-event pacing, render, compute, and copy
+  pass encoders, indirect draws and dispatches, untracked placement heaps with resources created at
+  explicit offsets, per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target
+  owns the adapter, its ImGui-dependent public extension header, and the dependency on Dear ImGui;
+  the core RHI does not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It
@@ -38,8 +50,9 @@ resource transitions are documented in `docs/frame-pipeline.md`.
 The root component is a physical and build boundary, not yet a separately published library: it
 still participates in this repository's Core contracts and validation. The RHI grows only when a
 rendering feature supplies a real portability requirement. Metal is the first implementation, not
-the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 retains the
-object-shaped resource, pass, pipeline, residency, and barrier model while selecting an
-address-first per-frame data path for a future, separately accepted pre-M6 migration. That
-migration has not changed the current runtime yet. D3D12 is the intended second production
+the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 selected an
+address-first per-frame data path while retaining the object-shaped resource, pass, pipeline,
+residency, and barrier model and the render graph's logical ownership; M5.2 shipped that path —
+`bindFrameData` over per-slot growable page arenas is the current runtime's per-frame data-delivery
+contract. D3D12 is the intended second production
 backend; Vulkan remains research evidence rather than a planned target.

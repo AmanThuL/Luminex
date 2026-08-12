@@ -41,18 +41,29 @@ TEST_CASE("CaptureSchema registers and unregisters resources") {
 }
 
 //======================================================================================================================
-TEST_CASE("CaptureSchema records uploads only while recording") {
+// A frame-data record has to name one range of one labeled page, because that is what makes an
+// address seen in a capture traceable back to the call that produced it. Records outside
+// begin/endFrameRecords are dropped, exactly like every other frame-record window this class
+// keeps.
+TEST_CASE("CaptureSchema records frame-data ranges inside the frame window") {
     auto& schema = CaptureSchema::instance();
     schema.resetForTest();
-    schema.recordUniformUpload({"lmx.device.uniformRing.0", 2, 0, 288}); // before begin: dropped
+    schema.recordFrameDataUpload({"lmx.device.frameData.0.page.0", 1, 0, 64, 256, 0x1000});
     schema.beginFrameRecords();
-    schema.recordUniformUpload({"lmx.device.uniformRing.1", 2, 1024, 288});
+    schema.recordFrameDataUpload({"lmx.device.frameData.1.page.2", 3, 1536, 304, 512, 0x2b00});
     schema.endFrameRecords();
-    schema.recordUniformUpload({"lmx.device.uniformRing.2", 2, 2048, 288}); // after end: dropped
+    schema.recordFrameDataUpload({"lmx.device.frameData.2.page.0", 5, 0, 16, 256, 0x3000});
+
     const std::string json = writeAndRead(schema);
-    REQUIRE(json.find("uniformRing.1") != std::string::npos);
-    REQUIRE(json.find("uniformRing.0") == std::string::npos);
-    REQUIRE(json.find("uniformRing.2") == std::string::npos);
+    REQUIRE(json.find("\"lmx.device.frameData.1.page.2\"") != std::string::npos);
+    REQUIRE(json.find("frameData.0.page.0") == std::string::npos);
+    REQUIRE(json.find("frameData.2.page.0") == std::string::npos);
+    // Every field the record exists to carry, so a dropped one fails here rather than in a capture.
+    REQUIRE(json.find("\"slot\": 3") != std::string::npos);
+    REQUIRE(json.find("\"pageOffset\": 1536") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 304") != std::string::npos);
+    REQUIRE(json.find("\"alignmentBytes\": 512") != std::string::npos);
+    REQUIRE(json.find("\"gpuAddress\": 11008") != std::string::npos);
 }
 
 //======================================================================================================================
