@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""M5.2 Task 1B paired collection driver for FrameDataBench.
+"""Paired collection driver for FrameDataBench.
 
 Runs the frozen paired-repetition protocol (spec section 11) for one or more of the five frozen
 frame-data workloads by launching two fresh `FrameDataBench` processes back to back per repetition

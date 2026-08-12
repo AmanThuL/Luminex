@@ -155,11 +155,12 @@ target("Tests")
     add_tests("unit", {runargs = {"~[gpu]"}})
     add_tests("gpu", {runargs = {"[gpu]"}})
 
--- M5.2 production frame-data benchmark (docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md
--- section 11): times the pre-migration RHI's setUniforms path today, and the post-migration
--- bindFrameData path once Stage 3 lands, over five frozen offscreen workloads. Links the
--- production RHI only -- no Experiments/NoApi/ include, import, or link -- so it stays a fair,
--- unmodified comparison host for both sides of the migration.
+-- Frame-data benchmark (docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11): times the
+-- production RHI's per-frame data-delivery path over five frozen offscreen workloads. The baseline
+-- half of a comparison builds this same target from the `m5.2-baseline` tag, whose tree still
+-- delivers frame data through the incumbent path. Links the production RHI only -- no
+-- Experiments/NoApi/ include, import, or link -- so it stays a fair, unmodified comparison host for
+-- both sides.
 target("FrameDataBench")
     set_kind("binary")
     set_default(false)

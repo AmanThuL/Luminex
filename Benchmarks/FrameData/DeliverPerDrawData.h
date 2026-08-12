@@ -13,15 +13,17 @@
 
 namespace lmx::bench {
 
-/// Mirrors `RHI/Backends/Metal4/Source/Metal4Device.h`'s `kUniformRingBytes`. Backend-private and
-/// not part of the public `RHI/Include` surface `FrameDataBench` links against, so this is a
+/// Mirrors the incumbent Metal 4 backend's fixed per-frame transient-uniform capacity, as recorded
+/// by ADR 0010 and the M5.1 evidence this seam's baseline path reproduces (still present, under its
+/// own name, in the backend source the `m5.2-baseline` tag checks out). Backend-private and not
+/// part of the public `RHI/Include` surface `FrameDataBench` links against, so this is a
 /// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the incumbent
 /// M5.1 adapters (`Experiments/NoApi/Bench/RhiAdapter.cpp`, read-only, never included or linked)
-/// had to duplicate it to decide client-side whether a call would fit before making it, since
-/// `setUniforms` overflow is a fatal `LMX_ASSERT` with no recoverable failure to branch on.
+/// had to duplicate it to decide client-side whether a call would fit before making it, since the
+/// incumbent path's overflow was a fatal assert with no recoverable failure to branch on.
 inline constexpr uint64_t kRingCapacityBytes = 256 * 1024;
-/// Mirrors `Metal4Common.h`'s `kUniformOffsetAlignment`: every `setUniforms` write rounds its
-/// occupied span up to this boundary regardless of its own size.
+/// Mirrors the incumbent backend's fixed per-frame transient-uniform offset alignment: every write
+/// on that path rounds its occupied span up to this boundary regardless of its own size.
 inline constexpr uint64_t kRingAlignmentBytes = 256;
 
 /// Rounds `value` up to the next multiple of `alignment` (`alignment` a power of two).
@@ -35,10 +37,14 @@ constexpr uint64_t alignUp(uint64_t value, uint64_t alignment) {
 /// which is what a caller that ignored capacity would hit, and not what the measured "old
 /// allocation path" is.
 ///
-/// Stage 3 contract: only `deliverPerDrawData`'s *body* becomes a single `bindFrameData` call, and
-/// this struct shrinks to nothing (a growable arena needs no client-side ring tracking or overflow
-/// retention). The function *signature* below -- context, commands, slot, data, size -- and every
-/// Runner.cpp call site stay exactly as they are; only the body swaps.
+/// Only the baseline side needs that state: on this candidate path `deliverPerDrawData`'s body is a
+/// single `bindFrameData` call. The struct still carries the full ring model rather than shrinking
+/// to what this side uses, because the paired driver builds its baseline executable from the frozen
+/// `m5.2-baseline` tag, whose copy of this file runs the ring/overflow logic below, and links both
+/// executables against the same `DeliveryContext` shape through this header's frozen signature.
+/// Shrinking it on the candidate side alone would buy nothing the signature freeze does not already
+/// provide. The ring-model members below and `deliverPerDrawData`'s `context` parameter are
+/// therefore unused on the candidate path.
 struct DeliveryContext {
     /// `device` must outlive every call this context is passed to.
     explicit DeliveryContext(rhi::Device& device) : device(&device) {}
@@ -71,35 +77,20 @@ struct DeliveryContext {
 };
 
 /// The one production-owned seam every dynamic FrameDataBench workload delivers its per-draw block
-/// through, and nothing else. Reproduces the incumbent RHI's exact behavior: if `size` (aligned to
-/// `kRingAlignmentBytes`) still fits under `kRingCapacityBytes` from `context.ringCursor`, delivers
-/// through `CommandList::setUniforms` exactly like the pre-migration production renderer and
-/// advances the simulated cursor; otherwise creates a fresh `rhi::Buffer` with `data` as its
-/// initial content (`rhi::Buffer` has no public write path after creation -- the only other legal
-/// way to vary a bound slot's contents per draw) and binds it with `CommandList::bindBuffer`,
-/// leaving the simulated cursor untouched since no ring write occurred. M5.2 Stage 3 changes only
-/// this function's body to call `CommandList::bindFrameData` once the candidate path exists, so the
-/// same benchmark binary keeps measuring both the baseline and (source-unmodified elsewhere) the
-/// post-migration candidate; `DeliveryContext`'s ring-tracking and retention members will no longer
-/// be needed at that point, but this signature will not need to change.
+/// through, and nothing else. On this candidate path it is one `CommandList::bindFrameData` call
+/// against the growable per-slot arena -- one allocation, one copy, one address bind, no capacity
+/// to track and no overflow buffer to create, unlike the ring-based incumbent this seam replaced
+/// (still exercised by the baseline executable built from the `m5.2-baseline` tag's copy of this
+/// file). `context` is threaded through unused; see the note on `DeliveryContext` above for why the
+/// signature keeps it.
 ///
 /// `slot` is the argument-table buffer slot the caller's pipeline reads the block from; `data`/
 /// `size` name the bytes to copy, which the caller may reuse or free immediately after the call
-/// returns. Valid only inside a render or compute pass, per `setUniforms`' own contract.
-inline void deliverPerDrawData(DeliveryContext& context, rhi::CommandList& commands, uint32_t slot,
-                               const void* data, uint64_t size) {
-    const uint64_t alignedSize = alignUp(size, kRingAlignmentBytes);
-    if (context.ringCursor + alignedSize <= kRingCapacityBytes) {
-        commands.setUniforms(slot, data, size);
-        context.ringCursor += alignedSize;
-        return;
-    }
-    auto buffer =
-        context.device->createBuffer({.size = size, .label = "framedatabench.overflowBlock"}, data);
-    LMX_ASSERT(buffer.has_value(), "FrameDataBench: overflow buffer creation failed");
-    commands.bindBuffer(slot, **buffer);
-    context.overflowBuffers.push_back(std::move(*buffer));
-    context.overflowBufferCreations += 1;
+/// returns. Valid only inside a render or compute pass, per `bindFrameData`'s own contract.
+inline void deliverPerDrawData([[maybe_unused]] DeliveryContext& context,
+                               rhi::CommandList& commands, uint32_t slot, const void* data,
+                               uint64_t size) {
+    commands.bindFrameData(slot, data, size);
 }
 
 } // namespace lmx::bench

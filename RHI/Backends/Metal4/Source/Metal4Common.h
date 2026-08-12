@@ -55,13 +55,6 @@ inline MTL::PixelFormat toMTL(Format format) {
     return MTL::PixelFormatInvalid;
 }
 
-// The conservative Metal constant-buffer offset-alignment bound; Apple GPUs accept less, but 256
-// is correct everywhere. A backend constant rather than a Device one -- Metal4Device.h's
-// kUniformRingBytes is the only thing that budgets against it, and Metal4CommandList::setUniforms
-// is the only thing that rounds against it (Core/Align.h's alignUp), so it belongs with the rest
-// of the backend's shared plumbing rather than pinned to the device that happens to consume it.
-inline constexpr uint64_t kUniformOffsetAlignment = 256;
-
 // Generous: any wait longer than this means the GPU is wedged, not busy.
 inline constexpr uint64_t kGpuTimeoutMs = 10'000;
 

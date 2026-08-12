@@ -6,6 +6,8 @@
 
 #include "Workload.h"
 
+#include "RHI/Metal4/Metal4FrameData.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -39,9 +41,23 @@ struct RunResult {
     uint64_t overflowBufferCreations = 0;
     /// overflowBufferCreations divided by the run's total frame count (warmup + measured). Exact,
     /// not an average: which draws overflow is a fixed function of draw index and block size, so
-    /// every frame of one workload creates the same number of overflow buffers. Recorded so Stage
-    /// 4 can decompose per-buffer cost scaling without re-deriving this from the raw count.
+    /// every frame of one workload creates the same number of overflow buffers. Recorded so an
+    /// analysis can decompose per-buffer cost scaling without re-deriving this from the raw count.
     uint64_t overflowBufferCreationsPerFrame = 0;
+
+    /// Candidate-only counter evidence (`RHI/Include/RHI/Metal4/Metal4FrameData.h`): the
+    /// device's frame-data counters snapshotted immediately after warm-up completes, before the
+    /// first measured frame's timed region begins. Unset when `config.warmupFrames == 0` (no
+    /// "after warm-up, before measurement" boundary exists) or on an error path before the loop
+    /// starts; always set for the frozen 16-warmup protocol. The baseline binary this struct also
+    /// serves is built from the frozen `m5.2-baseline` tag tree, whose copy of this file predates
+    /// these fields entirely, so "unset" is not how baseline/candidate differ here.
+    std::optional<rhi::metal4::FrameDataCounters> frameDataCountersAfterWarmup;
+    /// The same device's frame-data counters snapshotted immediately after the last measured frame
+    /// retires. Doubles as the run's final/total counters -- `calls`, `bytes`, `addressBinds`,
+    /// `pageCreations`, and per-slot occupancy accumulated across the whole run (warm-up and
+    /// measured frames both), since the arena never resets outside a frame boundary.
+    std::optional<rhi::metal4::FrameDataCounters> frameDataCountersAfterMeasurement;
 };
 
 /// Runs `spec` for `config.warmupFrames + config.measuredFrames` frames on a freshly created RHI

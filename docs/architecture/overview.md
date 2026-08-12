@@ -12,11 +12,12 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   `RHI/Include/RHI/` and expose API-neutral resource, pipeline, command, synchronization, capture,
   and domain-owned error contracts without Metal or ImGui dependencies.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
-  frames in flight, argument tables, a per-frame uniform ring, residency, shared-event pacing,
-  render, compute, and copy pass encoders, indirect draws and dispatches, untracked placement heaps
-  with resources created at explicit offsets, per-pass GPU timing, and capture support. The optional `RHIMetal4ImGui` target owns the adapter,
-  its ImGui-dependent public extension header, and the dependency on Dear ImGui; the core RHI does
-  not inherit any of them.
+  frames in flight, argument tables, a per-frame-slot growable frame-data page arena, residency,
+  shared-event pacing, render, compute, and copy pass encoders, indirect draws and dispatches,
+  untracked placement heaps with resources created at explicit offsets, per-pass GPU timing, and
+  capture support. The optional `RHIMetal4ImGui` target owns the adapter, its ImGui-dependent
+  public extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of
+  them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It

@@ -456,6 +456,34 @@ Result<void> validateIndirectArgs(const Buffer& buffer, uint64_t offset, uint64_
 }
 
 //======================================================================================================================
+Result<void> validateFrameData(uint32_t slot, const void* data, uint64_t size, uint64_t alignment) {
+    if (slot >= CommandList::kMaxBufferBindings) {
+        return std::unexpected(Error{
+            ErrorCode::InvalidDesc,
+            "a frame-data slot must be below the argument table's buffer binding count of " +
+                std::to_string(CommandList::kMaxBufferBindings) + ", not " + std::to_string(slot)});
+    }
+    if (data == nullptr) {
+        return invalid("frame data must not be null");
+    }
+    if (size == 0) {
+        return invalid("frame data must not be empty");
+    }
+    if (alignment < kFrameDataAlignment) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "a frame-data alignment must be at least " +
+                                              std::to_string(kFrameDataAlignment) + " bytes, not " +
+                                              std::to_string(alignment)});
+    }
+    if ((alignment & (alignment - 1)) != 0) {
+        return std::unexpected(
+            Error{ErrorCode::InvalidDesc, "a frame-data alignment must be a power of two, not " +
+                                              std::to_string(alignment)});
+    }
+    return {};
+}
+
+//======================================================================================================================
 Result<void> validate(const SamplerDesc& desc) {
     if (desc.maxAnisotropy < kMinAnisotropy || desc.maxAnisotropy > kMaxAnisotropy) {
         return invalid("SamplerDesc.maxAnisotropy must be within Metal's anisotropy range of "

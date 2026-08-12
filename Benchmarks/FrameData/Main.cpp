@@ -3,10 +3,12 @@
 /// @brief Implements the FrameDataBench command-line entry point.
 //----------------------------------------------------------------------------------------------------------------------
 
-/// @details FrameDataBench: the M5.2 production frame-data benchmark (Task 1B). Times the RHI's
-///        per-frame data-delivery path -- today the incumbent CommandList::setUniforms, reached
-///        through this benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five
-///        frozen workloads in docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11.
+/// @details FrameDataBench: the production frame-data benchmark. Times the RHI's
+///        per-frame data-delivery path -- CommandList::bindFrameData, reached through this
+///        benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five frozen workloads in
+///        docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11. The paired driver's
+///        baseline side builds this same seam from the frozen `m5.2-baseline` tag, where the
+///        delivery seam still reaches the incumbent RHI's transient-uniform delivery path.
 ///        Renders offscreen only: no window, no ImGui, no scene assets, just deterministic
 ///        synthetic quads and a readback digest.
 ///
@@ -28,6 +30,8 @@
 #include "Digest.h"
 #include "Runner.h"
 #include "Workload.h"
+
+#include "RHI/Metal4/Metal4FrameData.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -130,6 +134,32 @@ std::string jsonEscape(std::string_view text) {
 }
 
 //======================================================================================================================
+// Serializes one FrameDataCounters snapshot (candidate-only counter evidence) as a JSON
+// object literal, or writes `null` when the run never took this snapshot (RunResult's
+// std::optional is unset -- see Runner.h). The baseline binary this JSON schema also serves is
+// built from the frozen `m5.2-baseline` tag tree, whose copy of Main.cpp has none of this code at
+// all, so a missing "frameData" key -- not a null field inside one -- is how a baseline JSON
+// differs; the paired driver never reads these additive fields, so either shape is backward
+// compatible with it.
+void writeFrameDataCounters(std::ofstream& file,
+                            const std::optional<lmx::rhi::metal4::FrameDataCounters>& counters) {
+    if (!counters) {
+        file << "null";
+        return;
+    }
+    file << "{\"calls\": " << counters->calls << ", \"bytes\": " << counters->bytes
+         << ", \"addressBinds\": " << counters->addressBinds
+         << ", \"pageCreations\": " << counters->pageCreations << ", \"slots\": [";
+    for (size_t i = 0; i < counters->slots.size(); ++i) {
+        const auto& slot = counters->slots[i];
+        file << (i == 0 ? "" : ", ") << "{\"pageCount\": " << slot.pageCount
+             << ", \"pagesUsed\": " << slot.pagesUsed << ", \"bytesUsed\": " << slot.bytesUsed
+             << ", \"capacityBytes\": " << slot.capacityBytes << "}";
+    }
+    file << "]}";
+}
+
+//======================================================================================================================
 bool writeResultJson(const std::filesystem::path& path, const CliOptions& options,
                      const lmx::bench::RunResult& result) {
     std::error_code errorCode;
@@ -162,10 +192,18 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
          << ", \"alignmentBytes\": " << lmx::bench::kRingAlignmentBytes << "},\n";
     file << "  \"verify\": " << (options.verify ? "true" : "false") << ",\n";
     if (result.digest) {
-        file << "  \"digest\": \"" << lmx::bench::digestToHex(*result.digest) << "\"\n";
+        file << "  \"digest\": \"" << lmx::bench::digestToHex(*result.digest) << "\",\n";
     } else {
-        file << "  \"digest\": null\n";
+        file << "  \"digest\": null,\n";
     }
+    // Candidate-only counter evidence (additive; absent from a baseline JSON built from the frozen
+    // m5.2-baseline tag tree -- see writeFrameDataCounters above).
+    file << "  \"frameDataCountersAfterWarmup\": ";
+    writeFrameDataCounters(file, result.frameDataCountersAfterWarmup);
+    file << ",\n";
+    file << "  \"frameDataCountersAfterMeasurement\": ";
+    writeFrameDataCounters(file, result.frameDataCountersAfterMeasurement);
+    file << "\n";
     file << "}\n";
     return static_cast<bool>(file);
 }

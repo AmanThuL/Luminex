@@ -4,11 +4,13 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "RHI/Buffer.h"
+#include "RHI/GpuAddress.h"
 #include "RHI/RenderPass.h"
 #include "RHI/Texture.h"
 
 #include <cstdint>
 #include <string_view>
+#include <type_traits>
 
 namespace lmx::rhi {
 
@@ -41,6 +43,13 @@ enum class StorageAccess {
     ReadWrite ///< The shader both reads and writes the binding.
 };
 
+/// The byte alignment CommandList::bindFrameData places a block at unless the caller asks for more.
+///
+/// It is the widest constant-buffer offset alignment the modelled backends require, so a block
+/// placed at it is addressable as a constant buffer everywhere rather than only where the current
+/// hardware happens to be lenient.
+inline constexpr uint64_t kFrameDataAlignment = 256;
+
 /// Records one frame's render, compute, and copy passes, bindings, barriers, dispatches, and draws.
 ///
 /// Exactly one pass is open at a time: every command below documents the scope it is valid in, and
@@ -62,7 +71,7 @@ public:
     /// Begins a render pass using the supplied attachments and load actions.
     virtual void beginRenderPass(const RenderPassDesc& desc) = 0;
     /// Begins a compute pass. Inside it, bindComputePipeline, bindStorageBuffer,
-    /// bindStorageTexture, the read-only texture/sampler/buffer binds, setUniforms, dispatch, and
+    /// bindStorageTexture, the read-only texture/sampler/buffer binds, bindFrameData, dispatch, and
     /// dispatchIndirect are valid; render-pass commands are not. `label` names the pass in GPU
     /// captures, validation diagnostics, and passTimings(); backends substitute a stable fallback
     /// for an empty one.
@@ -71,9 +80,9 @@ public:
     /// Binds a compute pipeline for subsequent dispatches. Valid only inside a compute pass.
     virtual void bindComputePipeline(ComputePipeline& pipeline) = 0;
     /// Binds a buffer for shader reads and/or writes at the given argument-table buffer slot --
-    /// the same index space bindBuffer and setUniforms use. `access` declares what the shader does
-    /// with it and must be granted by the buffer's BufferDesc storage flags. Valid only inside a
-    /// compute pass. Ordering against other passes is not implied: a dispatch that must see an
+    /// the same index space bindBuffer and bindFrameData use. `access` declares what the shader
+    /// does with it and must be granted by the buffer's BufferDesc storage flags. Valid only inside
+    /// a compute pass. Ordering against other passes is not implied: a dispatch that must see an
     /// earlier pass's writes needs an explicit barrier.
     /// Binds a storage buffer with declared access to an argument-table buffer slot.
     virtual void bindStorageBuffer(uint32_t slot, Buffer& buffer, StorageAccess access) = 0;
@@ -166,7 +175,7 @@ public:
     /// Binds a buffer at the given argument-table buffer slot -- vertex buffers, read here by
     /// bindless vertex-pulling (StructuredBuffer, indexed with SV_VertexID), and any other buffer
     /// a shader addresses directly. Buffer slots are their own index space, shared with
-    /// setUniforms below: slot 0 here and slot 0 in setUniforms are the same binding, so two
+    /// bindFrameData below: slot 0 here and slot 0 in bindFrameData are the same binding, so two
     /// different resources must not be bound to the same slot index within one pass. Texture and
     /// sampler slots (bindTexture, bindSampler) are separate index spaces again -- slot 0 in any
     /// one of the three does not collide with slot 0 in either other. Valid inside a render or a
@@ -186,15 +195,55 @@ public:
     /// slot 0. Valid inside a render or a compute pass.
     /// Binds a sampler to an argument-table sampler slot.
     virtual void bindSampler(uint32_t slot, Sampler& sampler) = 0;
-    /// Copies `size` bytes into the frame's transient uniform ring and binds the copy's GPU
-    /// address at the given argument-table buffer slot for subsequent draws -- the same index
-    /// space bindBuffer above binds into. The data is captured at call time -- the caller may
-    /// reuse or free its buffer immediately. Valid inside a render or a compute pass. Ring
-    /// capacity is a
-    /// fixed per-frame budget; exhausting it is fatal (LMX_ASSERT) -- grow the backend constant
-    /// when a real scene hits it.
-    /// Copies transient uniform data and binds it to an argument-table buffer slot.
-    virtual void setUniforms(uint32_t slot, const void* data, uint64_t size) = 0;
+    /// Suballocates `size` bytes of frame-owned CPU-visible memory whose GPU address is a multiple
+    /// of `alignment`, copies `data` into it, binds that address at the given argument-table buffer
+    /// slot -- the same index space bindBuffer above binds into -- and returns it.
+    ///
+    /// `data` must be non-null, `size` non-zero, and `alignment` a power of two of at least
+    /// kFrameDataAlignment. The bytes are captured at call time, so the caller may reuse or free
+    /// its source immediately. Valid inside a render or a compute pass; a copy pass carries no
+    /// bindings and rejects it. One call performs one allocation, one copy, and at most one
+    /// backend address bind.
+    ///
+    /// The returned address names the copy and is valid only inside the frame that made it. It may
+    /// be written into another block uploaded later in the *same* frame, which is how a caller
+    /// composes one frame's data out of several blocks. It must not be kept for a later frame: the
+    /// memory belongs to a frame-in-flight slot the backend recycles once the GPU retires that
+    /// frame, so a stale address reads whatever the frame three later wrote there. Data that has to
+    /// survive a frame boundary is a Buffer bound with bindBuffer instead, and this operation never
+    /// takes ownership of caller storage.
+    ///
+    /// Running out of frame-owned memory is not a caller error and is not reported here: the
+    /// backend grows the frame's arena, and failing to grow it is a fatal device-resource
+    /// diagnostic, because command recording has no partial-frame failure to recover through.
+    /// Copies a block into frame-owned memory and binds its GPU address to a buffer slot.
+    virtual GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
+                                     uint64_t alignment) = 0;
+    /// The same operation at kFrameDataAlignment, which is what a caller with no alignment
+    /// requirement of its own wants. The default lives here rather than on the virtual above so
+    /// that it cannot vary with the static type a caller holds or drift between backends.
+    /// Copies a block into frame-owned memory at the default alignment and binds its GPU address.
+    GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size) {
+        return bindFrameData(slot, data, size, kFrameDataAlignment);
+    }
+    /// The typed form, and the one production callers should reach for: it copies exactly
+    /// sizeof(T) bytes of `value` and asks for whichever of kFrameDataAlignment and alignof(T) is
+    /// larger, so a block whose type over-aligns itself is still placed correctly.
+    ///
+    /// `T` must be trivially copyable, because the block is memcpy'd into memory the GPU reads
+    /// directly: it may hold values and GpuAddress fields, but a pointer, reference, vtable, or
+    /// owning object in it would be meaningless -- or a dangling CPU address -- by the time a
+    /// shader looked at it.
+    /// Copies a trivially copyable value into frame-owned memory and binds its GPU address.
+    template <typename T>
+    GpuAddress bindFrameData(uint32_t slot, const T& value) {
+        static_assert(std::is_trivially_copyable_v<T>,
+                      "bindFrameData: T must be trivially copyable -- a block the GPU reads holds "
+                      "values, never pointers, references, or vtables");
+        constexpr uint64_t alignment =
+            alignof(T) > kFrameDataAlignment ? alignof(T) : kFrameDataAlignment;
+        return bindFrameData(slot, &value, sizeof(T), alignment);
+    }
     /// Records a non-indexed draw.
     virtual void draw(uint32_t vertexCount, uint32_t firstVertex = 0) = 0;
     /// Indexed draw. Indices are uint32 (the only index type this RHI models); the index buffer

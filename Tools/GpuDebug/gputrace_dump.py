@@ -162,40 +162,45 @@ def _decode_images(join_result: bundlelib.JoinResult, out_dir: pathlib.Path) -> 
 
 
 def _upload_json(upload: uniformlib.DecodedUpload) -> dict:
+    # No raw GPU address: it varies run to run even for byte-identical captures, and this feeds
+    # uniforms.json, which is meant to be diffable across runs. pageLabel + pageOffset + the
+    # decoded block's own byte length (implicit in `values`) + alignmentBytes already identify the
+    # range deterministically.
     return {
         "index": upload.index,
         "structName": upload.struct_name,
         "slot": upload.slot,
-        "ringLabel": upload.ring_label,
-        "ringOffset": upload.ring_offset,
+        "pageLabel": upload.page_label,
+        "pageOffset": upload.page_offset,
+        "alignmentBytes": upload.alignment_bytes,
         "values": upload.values,
         "finite": upload.finite,
     }
 
 
 def _decode_uniforms(schema: schemalib.Schema, bundle: bundlelib.Bundle):
-    """Resolve ring bytes via uniformlib's positional-attribution policy (bundlelib.join() cannot
-    do this itself -- buffer blobs aren't label-joinable and same-size rings are ambiguous by
+    """Resolve page bytes via uniformlib's positional-attribution policy (bundlelib.join() cannot
+    do this itself -- buffer blobs aren't label-joinable and same-size pages are ambiguous by
     design, see uniformlib's module docstring) and decode every schema-declared upload against
     them.
 
     Returns (uniforms_doc, manifest_note). `manifest_note` is None on the two normal paths --
-    nothing to decode, or a ring was attributed and decoded cleanly -- and a short string when the
+    nothing to decode, or a page was attributed and decoded cleanly -- and a short string when the
     attribution policy declined to decode anything despite recorded uploads, or a decode itself
     failed; both are still exit-0 (uniforms.json always gets a well-formed, possibly-empty
     document), but the reason is echoed into manifest.json's notes too.
     """
-    resolution = uniformlib.resolve_ring_bytes(schema, bundle)
+    resolution = uniformlib.resolve_page_bytes(schema, bundle)
     manifest_note = None
     decoded_uploads = []
-    if resolution.ring_bytes_by_label:
+    if resolution.page_bytes_by_label:
         try:
-            decoded_uploads = uniformlib.decode_uploads(schema, resolution.ring_bytes_by_label)
+            decoded_uploads = uniformlib.decode_uploads(schema, resolution.page_bytes_by_label)
         except uniformlib.UniformError as exc:
-            manifest_note = f"uniform upload decode failed: {exc}"
+            manifest_note = f"frame-data upload decode failed: {exc}"
             print(f"warning: {manifest_note}", file=sys.stderr)
-    elif schema.uniform_uploads:
-        # Attribution declined (ambiguous/absent ring blob) despite the schema recording
+    elif schema.frame_data_uploads:
+        # Attribution declined (ambiguous/absent page blob) despite the schema recording
         # uploads -- worth flagging in the manifest, unlike "no uploads this capture at all".
         manifest_note = resolution.attribution
         print(f"warning: {manifest_note}", file=sys.stderr)
@@ -203,7 +208,7 @@ def _decode_uniforms(schema: schemalib.Schema, bundle: bundlelib.Bundle):
     uniforms_doc = {
         "version": 1,
         "matrixOrder": _MATRIX_ORDER_NOTE,
-        "ringAttribution": resolution.attribution,
+        "pageAttribution": resolution.attribution,
         "uploads": [_upload_json(u) for u in decoded_uploads],
     }
     return uniforms_doc, manifest_note

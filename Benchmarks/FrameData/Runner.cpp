@@ -235,7 +235,16 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
             result.perFrameTimedRegionNs.push_back(static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
         }
+        // Candidate-only counter evidence: snapshot immediately after warm-up completes (frame ==
+        // config.warmupFrames - 1 just retired) and never again until the run's final snapshot
+        // below -- taken here, right after waitIdle(), rather than at the top of the next
+        // iteration, so it reflects exactly "after warm-up, before the first measured frame's
+        // timed region" with nothing measured yet able to have touched the counters.
+        if (frame + 1 == config.warmupFrames) {
+            result.frameDataCountersAfterWarmup = rhi::metal4::frameDataCounters(*device);
+        }
     }
+    result.frameDataCountersAfterMeasurement = rhi::metal4::frameDataCounters(*device);
 
     result.medianNs = medianOf(result.perFrameTimedRegionNs);
     result.overflowBufferCreations = deliveryContext.overflowBufferCreations;
@@ -265,7 +274,9 @@ bool runSelfTests(std::vector<std::string>& failures) {
     };
 
     // alignUp (DeliverPerDrawData.h): every overflow decision depends on this arithmetic being
-    // exactly right at the ring boundary.
+    // exactly right at the ring boundary. Post-migration, only the baseline (m5.2-baseline tag)
+    // build's delivery seam still exercises this ring math -- the candidate's bindFrameData path
+    // never reaches it -- so these checks now guard the baseline build's path alone.
     check(alignUp(0, kRingAlignmentBytes) == 0, "alignUp(0, 256) == 0");
     check(alignUp(1, kRingAlignmentBytes) == 256, "alignUp(1, 256) == 256");
     check(alignUp(256, kRingAlignmentBytes) == 256, "alignUp(256, 256) == 256 (already aligned)");

@@ -71,12 +71,12 @@ thin RHI and one implemented backend.
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
-+ per-frame uniform rings with a checked recycle invariant, residency set, shared-event pacing,
-per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float formats, depth-only
-passes, compute passes with storage bindings, subresource views, and explicit texture and buffer
-barriers, copy passes with general copies and fills (the path to any subresource but level zero),
-indirect draws and dispatches over RHI-owned argument layouts, and untracked placement heaps whose
-resources are created at explicit offsets;
++ a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
+shared-event pacing, per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float
+formats, depth-only passes, compute passes with storage bindings, subresource views, and explicit
+texture and buffer barriers, copy passes with general copies and fills (the path to any subresource
+but level zero), indirect draws and dispatches over RHI-owned argument layouts, and untracked
+placement heaps whose resources are created at explicit offsets;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
 validating `RenderGraph` — raster/compute/copy passes with per-subresource uses over imported
 resources and over one-frame transients the graph creates, dead-pass culling from declared sinks

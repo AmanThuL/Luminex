@@ -160,10 +160,12 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
 
 ## Resources and lifetime
 
-- **3 frames in flight.** Each in-flight slot owns an argument table, a bump allocator, and a
-  256 KiB uniform ring. `setUniforms` copies into the ring at 256-byte alignment. `beginFrame`
-  asserts (all builds) that the shared event proves the recycled slot's frame retired before
-  reuse. A 12-frame GPU stress test attributes any cross-frame overwrite to its culprit by color.
+- **3 frames in flight.** Each in-flight slot owns an argument table, a command allocator, and a
+  growable per-slot frame-data page arena (256 KiB normal pages). `bindFrameData` bump-allocates
+  within the active page at 256-byte alignment (or wider, for an over-aligned type) and returns the
+  block's GPU address. `beginFrame` asserts (all builds) that the shared event proves the recycled
+  slot's frame retired before reuse. A 12-frame GPU stress test attributes any cross-frame overwrite
+  to its culprit by color.
 - **Everything lives in one residency set** attached to the queue; textures join at creation.
 - **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable when the
   caller asks), scene depth (`D32Float`, kept sampled rather than discarded so a caller can

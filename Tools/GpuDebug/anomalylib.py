@@ -174,16 +174,16 @@ def _uniform_decode_note(uploads: list, uniforms: dict, schema) -> str | None:
 
     "Nothing was decoded" splits two ways and the split matters: if the *schema* recorded no
     uploads, the frame genuinely uploaded nothing and check 6's error is the right answer; if the
-    schema recorded uploads but none came back decoded, the ring-attribution policy declined (or
+    schema recorded uploads but none came back decoded, the page-attribution policy declined (or
     a decode failed) and none of the uniform checks can say anything at all. Only the second is
     "unavailable" -- and the presence of decoded uploads is a sharper test of it than pattern-
     matching the attribution string, which uniformlib is free to reword.
     """
     if uploads:
         return None
-    if not getattr(schema, "uniform_uploads", None):
+    if not schema.frame_data_uploads:
         return None
-    return (uniforms or {}).get("ringAttribution") or "no ring attribution recorded"
+    return (uniforms or {}).get("pageAttribution") or "no page attribution recorded"
 
 
 def _check_uniform_decode_unavailable(note: str) -> list:
@@ -420,7 +420,7 @@ def run_checks(manifest: dict, uniforms: dict, schema) -> list:
 
     `manifest` is the dict `gputrace_dump.build_manifest` produced (images + stats, resource
     buckets, capture context); `uniforms` is the whole `uniforms.json` document rather than just
-    its `uploads` list, because the ring-attribution note that sits beside them is what tells the
+    its `uploads` list, because the page-attribution note that sits beside them is what tells the
     uniform checks whether a silence means "nothing was uploaded" or "nothing could be read";
     `schema` is the `schemalib.Schema`.
 
