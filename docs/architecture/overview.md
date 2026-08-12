@@ -38,8 +38,8 @@ resource transitions are documented in `docs/frame-pipeline.md`.
 The root component is a physical and build boundary, not yet a separately published library: it
 still participates in this repository's Core contracts and validation. The RHI grows only when a
 rendering feature supplies a real portability requirement. Metal is the first implementation, not
-the public vocabulary: accepted contracts do not leak native handles upward. Before temporal and
-scalable-scene layers build more contracts on the production RHI, the roadmap requires a measured
-decision on whether to retain, partially reshape, or replace its caller-facing execution model.
-D3D12 is the intended second production backend; Vulkan remains research evidence rather than a
-planned target.
+the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 retains the
+object-shaped resource, pass, pipeline, residency, and barrier model while selecting an
+address-first per-frame data path for a future, separately accepted pre-M6 migration. That
+migration has not changed the current runtime yet. D3D12 is the intended second production
+backend; Vulkan remains research evidence rather than a planned target.

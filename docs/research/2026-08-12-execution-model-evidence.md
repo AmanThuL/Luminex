@@ -9,12 +9,12 @@ recorded environment, all scored measurements with their uncertainty, unscored e
 kept separate, rubric scoring, and gate results. It becomes `Frozen — non-normative` at milestone
 close; decisions derived from it are restated in the closing ADR, never here.
 
-All sections now carry findings. A first collection round taken at an earlier commit was
-invalidated in full under the spec's measurement freeze rule when a capture hook was added to the
-bench runner; the scored round below was recollected from both encoders at the commit that
-carries that hook. The superseded round's results agreed with the scored round within a fraction
-of a percent on every time metric, which stands as an informal replication but carries no scored
-weight.
+All sections now carry findings. Only collection round 3 is scored. Round 1 was invalidated in full
+under the measurement-freeze rule when capture instrumentation changed. Review then invalidated
+round 2 because its driver launched the encoders in separate processes rather than back to back in
+one fresh process per repetition, and Metal validation was accidentally active for the incumbent
+half. Round 2's previously reported graph and binding-scale values — including the apparent 62.9%
+binding-scale wins — are withdrawn, carry no evidentiary weight, and are replaced by round 3 below.
 
 ## 1. Environment
 
@@ -33,8 +33,8 @@ round; a round is invalidated in full if any field changes mid-round.
 | Metal validation | off for performance runs (enforced by the `--measure` guard); `MTL_DEBUG_LAYER=1` for every correctness, hazard, lifetime, misuse, and capture run |
 | Power source | AC, battery not charging |
 | Thermal state at run start | no thermal or performance warning recorded |
-| Repository commit | the `rhi: capture the bench graph programmatically` commit this round was collected at |
-| Collection round | 2 (round 1 invalidated by the capture-hook instrumentation change; see intro) |
+| Repository commit | `46121848ec1842c405c8c58cb599a2d31201c7fb` |
+| Collection round | 3 (rounds 1 and 2 invalidated and withdrawn; see intro) |
 
 ## 2. Scored evidence
 
@@ -48,7 +48,9 @@ pacing wait is always ~zero and the timed region isolates pure CPU encoding unde
 the quantity the CPU-encoding dimension defines. The incumbent's pacing wait is bundled inside
 `Device::beginFrame` with no separable hook, so this symmetry is also what keeps the incumbent's
 timed region honest. Three-frames-in-flight lifetime semantics are exercised by the frame ring,
-S-LIFE, and the 32-frame feedback run, not by the timed loop.
+S-LIFE, and the 32-frame feedback run, not by the timed loop. Each round-3 repetition is one fresh
+process executing both encoders back to back in alternating AB/BA order; release mode, validation
+off, 16 warm-up frames, and 256 measured frames apply to both halves.
 
 ### 2.1 Correctness
 
@@ -73,32 +75,47 @@ S-LIFE, and the 32-frame feedback run, not by the timed loop.
 
 ### 2.3 Rubric dimensions
 
-Time metrics: median of 12 paired percentage deltas, two-sided 95% bootstrap CI; material at
-≥25% with the CI excluding zero. Count metrics: exact, material at ≥25%.
+Time metrics: the side columns are medians of the 12 repetition medians; the delta is the median of
+12 paired percentage deltas with a two-sided 95% bootstrap CI. Negative means the prototype is
+cheaper; material requires ≥25% magnitude with the CI excluding zero. Count metrics are exact and
+material at ≥25%.
 
 | Dimension | Incumbent | Prototype | Delta | Material? |
 |-----------|-----------|-----------|-------|-----------|
-| CPU encoding — graph | 26.89 ms/frame | 0.300 ms/frame | −98.87% [−99.02, −98.64] | **win** |
-| CPU encoding — bind1024 | 452 µs/frame | 162 µs/frame | −62.92% [−64.50, −61.55] | **win** |
-| CPU encoding — bind4096 | 1,609 µs/frame | 598 µs/frame | −62.90% [−63.14, −62.56] | **win** |
-| Binding traffic — calls/frame (graph) | 10,277 (9,243 binds + 9 setUniforms + 1,025 buffer creations) | 4,106 (3,081 setAddress + 1,025 pushRoot) | −60.0% | **win** |
-| Binding traffic — bytes/frame (graph) | 328,064 | 360,768 | +10.0% | no (regression, immaterial) |
-| Binding traffic — calls/frame (bind1024) | 2,049 | 4,097 (2,049 setAddress + 2,048 pushRoot) | +100% | **regression** — but see note below |
+| CPU encoding — graph | 9.284 ms/frame | 0.352 ms/frame | −96.21% [−96.27, −96.15] | **win** |
+| CPU encoding — bind1024 | 147.844 µs/frame | 161.323 µs/frame | +8.49% [+6.85, +12.21] | no (regression, immaterial) |
+| CPU encoding — bind4096 | 554.927 µs/frame | 610.833 µs/frame | +10.76% [+6.45, +14.20] | no (regression, immaterial) |
+| Binding traffic — calls/frame (graph) | 10,277 (9,243 binds + 9 setUniforms + 1,025 buffer creations) | 4,106 (3,081 setAddress + 1,025 pushRoot) | −60.00% | **win** |
+| Binding traffic — bytes/frame (graph) | 328,064 | 360,768 per frame + 2,680/272 amortized table bytes = 360,777.8529 | +9.97% | no (regression, immaterial) |
+| Binding traffic — calls/frame (bind1024) | 2,049 | 4,097 (2,049 setAddress + 2,048 pushRoot) | +100.00% | **regression** — see note below |
+| Binding traffic — bytes/frame (bind1024) | 0 | 65,536 per frame + 2,056/272 amortized table bytes = 65,543.5588 | from zero | **regression** — see note below |
+| Binding traffic — calls/frame (bind4096) | 8,193 | 16,385 (8,193 setAddress + 8,192 pushRoot) | +100.00% | **regression** — see note below |
+| Binding traffic — bytes/frame (bind4096) | 0 | 262,144 per frame + 2,056/272 amortized table bytes = 262,151.5588 | from zero | **regression** — see note below |
 | API surface — concepts | 24 | 38 | +58.3% | **regression** |
 | API surface — operations | 42 | 56 | +33.3% | **regression** |
 | API surface — caller ceremony (call sites / total args) | 121 / 131 | 113 / 273 | −6.6% / +108.4% | **regression** (arguments) |
 | Barriers — representative graph | 16 | 9 | −43.8% | **win** |
 | Barriers — isolated hazard cases | 2 per case (flat, 19 cases) | 3–5 per case (24 cases) | +50% to +150% | **regression** |
 | Allocation — buffer creations (272-frame run) | 279,832 | 9 | −99.997% | **win** |
-| Allocation — requested bytes | 29.97 MB | 52.66 MB (52.78 MB Metal-reported) | +75.7% | **regression** (non-core dimension) |
 | Pipeline and cache behavior | all runtime-MSL; cold compiles 47 µs–533 µs | all runtime-MSL; cold compiles 36 µs–1.05 ms | descriptive | never material |
 | Capture quality checklist | all pass and resource labels present in the trace | same, plus root addresses recorded verbatim (§3.1) | — | gate |
 
-**Note on the bind1024 call regression**: the S-BIND encodings are asymmetric in the incumbent's
-favor — the incumbent's per-draw data is fully prebuilt (zero per-frame bytes) while the
-prototype re-pushes static roots each iteration — and the prototype still wins the time metric by
-63%. The call-count regression row is therefore an artifact of a conservative encoding choice,
-recorded rather than corrected because correcting it after collection would violate the freeze.
+**Binding-traffic amortization and S-BIND asymmetry.** Calls/frame counts only calls made while
+encoding a frame. The one-time table population is disclosed separately — 335 writes for the graph
+and 257 for either S-BIND scale — but is not folded into that metric. The frozen byte rule does
+explicitly require amortized table population, so its 2,680 graph bytes or 2,056 S-BIND bytes are
+divided by the frozen 272-frame run (16 warm-up + 256 measured) and added above. The S-BIND
+encodings favor the incumbent: its static per-draw data is prebuilt once (zero per-frame binding
+bytes), while the prototype conservatively re-pushes two static roots per draw. The resulting 2×
+call and nonzero-byte regressions are scored as measured; the CPU regressions are only 8.5% and
+10.8%, below the frozen 25% material threshold.
+
+The full prototype's graph call win is also scored, but it is not evidence for the bounded
+root-data reshape: much of it comes from bindless/resource plumbing the decision retains in
+object-shaped form. The partial judgment instead relies on the graph's material CPU win and the
+allocation cliff localized to per-frame data delivery. A production API must combine ring
+allocation, copying, and address binding so it neither re-pushes static data nor inherits the
+prototype's two-call root path. The experiment is not promoted wholesale.
 
 ### 2.4 Gate results
 
@@ -172,6 +189,21 @@ in section 4: no default viewport is set at `beginRenderPass`, and compute pipel
 re-set when it already matches (which only ever happens because the prototype's own signal kernel
 displaced it).
 
+### 3.3 Requested-byte comparison (unscored)
+
+Unscored: the frozen allocation-memory metric is resident bytes, defined by the spec as the sum of
+Metal-reported allocated sizes for every live heap, buffer, and texture. The incumbent public RHI
+exposes only logical resource descriptors, and M5.1 forbids changing production runtime sources or
+public contracts, so the harness cannot collect that metric on both sides. Resident memory is
+therefore **unavailable and inconclusive**, not a scored regression.
+
+As descriptive evidence only, summing caller-requested logical sizes gives 29.97 MB for the
+incumbent and 52.66 MB for the prototype (+75.7%); the prototype alone can additionally report
+52.78 MB from Metal. Requested sizes are not the pre-registered resident-byte metric and cannot be
+substituted for it. Allocation creation counts remain exact and scored in §2.3. Resident memory is
+not a core adoption dimension, so this missing result does not contribute to the partial-reshape
+threshold or change the ADR's decision.
+
 ## 4. Mapping classification
 
 Every concept in the prototype interface (`Experiments/NoApi/Include/NoApi/`) classified for Metal 4
@@ -212,7 +244,7 @@ workloads.
 
 | Concept | Metal 4 | D3D12 | Shader constraint | Vulkan (unscored) |
 |---------|---------|-------|-------------------|-------------------|
-| One bindless table at a plain `GpuAddress` | **Native** — *prototype-grounded*: a shared `MTL::Buffer` of `MTL::ResourceID`, written by ordinary CPU stores and published to shaders by **one** `setAddress` at bind index 1. No descriptor-heap API is involved | **Emulated** — `ResourceDescriptorHeap` (SM 6.6) is a driver-owned heap, not addressable memory | Slang lowers `ConstBufferPointer<DescriptorHandle<Texture2D>>` to `device texture2d<...>*` with runtime indexing (§5.2) | **Native** — `VK_EXT_descriptor_buffer` / `VK_EXT_descriptor_heap` |
+| One bindless table at a plain `GpuAddress` | **Native** — *prototype-grounded*: a shared `MTL::Buffer` of `MTL::ResourceID`, written by ordinary CPU stores. A single-typed shader view can be published by one `setAddress`; the scored multi-typed frontends instead carry the same table address in their root blocks because one Metal buffer binding has only one pointee type (§5.9–§5.10). No descriptor-heap API is involved | **Emulated** — `ResourceDescriptorHeap` (SM 6.6) is a driver-owned heap, not addressable memory | The direct `ConstBufferPointer<DescriptorHandle<Texture2D>>` form emits MSL that Metal rejects. A one-member `Slot` wrapper behind `ConstBufferPointer<Slot>` compiles and supports runtime indexing (§5.9) | **Native** — `VK_EXT_descriptor_buffer` / `VK_EXT_descriptor_heap` |
 | 32-bit slot index shader-side | **Emulated (bounded)** — *prototype-grounded*: `MTL::ResourceID` is 64-bit, so `Capabilities::bindlessSlotStride` reports 8, doubling table bytes against the model's 4. The interface keeps the 32-bit slot index; only the stride differs | **Native** — SM 6.6 heap index is 32-bit | none | **Native** |
 | Contiguous slot ranges (base + offset) | **Native** — a caller-owned `ResourceID` array indexes contiguously; `MTLResourceViewPool::baseResourceID` plus `copyResourceViewsFromPool` gives the same over a pool (`MTLResourceViewPool.hpp`). The article's claim that Metal cannot express contiguous ranges predates `MTLTextureViewPool` | **Native** — heap slots are contiguous by construction | none | **Native** |
 | CPU write of a texture view into a slot | **Native** — *prototype-grounded*: the prototype stores `gpuResourceID` directly (whole-texture slots) or creates an `MTLTexture` view with `newTextureView` and stores its ID (subrange or reinterpreted slots), keeping the view object alive in the slot's CPU-side state. `MTLResourceViewPool` is deliberately not used: a pool is another driver object, and a plain store is the model's shape | **Emulated** — `CreateShaderResourceView` into a staging heap plus `CopyDescriptorsSimple`; no direct write | none | **Native** — `vkGetDescriptorEXT` writes into caller memory |
@@ -297,7 +329,8 @@ load-bearing for the Stage 2 interface decision.
 declare flat `[[vk::binding(...)]]` / `register(...)` slots that map 1:1 to `MTL4ArgumentTable`
 indices (`docs/conventions/shader-style.md`). The prototype therefore needs its own binding
 frontend around the shared `Lighting`, `Encode`, and `Shadow` modules; the spec's section 2 permits
-exactly this, and the byte-identical parity oracle bounds the resulting math divergence at zero.
+exactly this. The intended byte-identical parity oracle exposed the bounded code-generation
+rounding recorded in §5.11, explained in §6.11, and disposed by ADR 0010.
 
 **5.6 Open shader questions.**
 
@@ -501,6 +534,11 @@ once), and that per-frame creation is counted inside the timed region as binding
 what this workload costs through this interface. Scored CPU-encoding, binding-traffic, and
 allocation values for the incumbent must be read with this structural fact in mind; the adapter's
 header comment pins the exact placement.
+
+Separately, P02's frozen per-frame upload costs one more buffer creation because `rhi::Buffer` has
+no public write path after creation. The representative graph's 1,025 per-frame buffer creations
+are therefore 1,024 scene-uniform buffers plus this one upload-staging buffer; only the first 1,024
+are caused by the uniform-ring overflow.
 
 **7.2 A manifest geometry defect was found and fixed before any scored run.** The shared quad's
 index order contradicted its own stated winding convention; under the production pipelines' baked

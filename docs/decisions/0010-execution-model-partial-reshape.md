@@ -37,22 +37,31 @@ growth and is not a supported API. Last verified environment: Apple M3 Max, macO
 
 Wins (material, evidence section 2.3):
 
-- **CPU encoding** — the core result: −98.9% on the representative graph, −62.9% on both binding
-  stress scales, all with tight confidence intervals excluding zero across 12 paired fresh-process
-  repetitions, replicated informally by a superseded first round.
-- **Binding traffic (calls)** — −60% on the graph.
-- **Allocation (calls)** — the incumbent's per-frame uniform delivery beyond its ring capacity
-  costs 1,025 buffer creations per frame (evidence 7.1: `setUniforms` rides a fixed 256 KiB ring
-  and `rhi::Buffer` is immutable with no offset bind, so per-frame creation is the best public
-  encoding); the prototype makes 9 for the whole run.
+- **CPU encoding** — the core result: −96.2% on the representative graph, with a tight confidence
+  interval excluding zero across 12 valid paired fresh-process repetitions. The two binding stress
+  scales regress by 8.5% and 10.8%; both are below the frozen 25% material threshold.
+- **Binding traffic (calls)** — −60.0% on the graph for the full prototype. Much of this comes from
+  bindless/resource plumbing outside the adopted area, so it is not relied on for partial adoption.
+- **Allocation (calls)** — the incumbent's per-frame data delivery costs 1,025 buffer creations:
+  1,024 per-draw uniform buffers beyond its fixed 256 KiB ring capacity (evidence 7.1) plus one
+  recreated upload-staging buffer because `rhi::Buffer` has no public write path. The prototype
+  makes 9 for the whole run.
 
-The wins concentrate in one contract area — per-frame data delivery — which is exactly what the
-bounded reshape adopts. The binding stress cases show the same direction with near-identical call
-counts, so the advantage is per-call cost and delivery mechanism, not workload accident.
+The bounded reshape qualifies on the graph's material CPU win: its dominant allocation/copy/bind
+cliff is localized to per-frame data delivery, which is exactly the contract area being changed.
+S-BIND does not confirm a general encode-time win, but its 8.5% and 10.8% CPU regressions are
+immaterial. Its material call/byte regressions come from re-pushing two static roots and are not a
+required property of the bounded change. Production must combine ring allocation, copying, and
+address binding so one data-delivery operation does not become the prototype's two-call root path;
+it also retains object-shaped resource binding rather than the prototype's bindless path.
 
 Regressions that block replacement (spec section 10: replacement tolerates no material regression
 in a core dimension):
 
+- **Binding traffic on S-BIND** — +100% calls and nonzero per-frame root bytes against an
+  incumbent that prebuilds its static data. A wholesale prototype adoption would import this
+  regression; the bounded reshape requires a combined production data-delivery operation that
+  preserves static reuse.
 - **API surface** — the address-first model needed more, not less: +58% concepts, +33%
   operations, +108% caller-side arguments over the interface subsets the same workloads exercise.
   The model's supporting machinery (allocator, ring, handles, capabilities, result plumbing)
@@ -61,12 +70,14 @@ in a core dimension):
   cases, because stage-pair barriers cannot scope to a resource. A barrier-model replacement
   would import that regression; the reshape leaves the barrier model alone.
 
-Neither regression is attributable to the bounded reshape, which adds a small number of
-operations to the incumbent's surface and does not touch the barrier model. The affected area's
-D3D12 mapping is native (`Map`/`GetGPUVirtualAddress`, root CBV/SRV per draw) with only bounded,
-recorded emulation (evidence 4.1), satisfying the partial-reshape condition; the D3D12 columns
-that carry `unavailable`/`unknown` (specialization structs, capture address replay) sit outside
-the adopted area and behind retained incumbent contracts.
+The S-BIND regression is avoidable within the bounded contract area through the required combined
+operation; the API-surface and barrier regressions remain outside that area. The reshape preserves
+static-data reuse and object-shaped resource bindings, adds only the per-frame/root-data path, and
+does not touch the barrier model. The affected area's D3D12 mapping is native
+(`Map`/`GetGPUVirtualAddress`, root CBV/SRV per draw) with only bounded, recorded emulation
+(evidence 4.1), satisfying the partial-reshape condition; the D3D12 columns that carry
+`unavailable`/`unknown` (specialization structs, capture address replay) sit outside the adopted
+area and behind retained incumbent contracts.
 
 Gates (evidence 2.4): all five pass, with one interpretation flagged rather than decided
 silently: correctness parity is 30 of 32 frames byte-identical with a recorded, quantified 3-byte
@@ -90,6 +101,8 @@ The project owner accepted this ADR and recorded the following, resolving the fl
   completed before M6.
 - The object-shaped resource, pass, pipeline, residency, and barrier models and the render
   graph's ownership are retained.
+- Static root data remains reusable; the migration must combine ring allocation, copying, and
+  address binding rather than import S-BIND's two-call re-push behavior or bindless resource path.
 - `Experiments/NoApi/` stays frozen, non-default, and non-normative; it must not become a
   supported parallel API.
 
@@ -97,10 +110,13 @@ The project owner accepted this ADR and recorded the following, resolving the fl
 
 - An M5.x migration plan must specify the production form of the address-first per-frame data
   path (ring capacity policy included, closing evidence 7.1's overflow cliff), keep checkpoint A
-  green, and finish before M6 with no parallel API left.
+  green, avoid the frozen S-BIND traffic regressions for static data, and finish before M6 with no
+  parallel API left.
 - Incumbent findings recorded for later, outside this decision's scope: no per-mip raster
   attachment selection (evidence 7.3), undefined behavior on destroyed-handle use (7.4), no
   Metal-reported allocation-size query.
-- The prototype's memory overhead (+76% requested bytes) and the model's API-surface growth stand
-  as measured counter-evidence to two of the source material's claims on this codebase's scale;
-  the encode-cost claim is strongly confirmed.
+- Resident-memory comparison is inconclusive: the incumbent exposes no Metal-reported allocation
+  sizes, and the frozen metric did not permit substituting logical requested bytes. The unscored
+  requested-byte proxy is +76% for the prototype (evidence 3.3); it did not contribute to this
+  decision. The model's scored API-surface growth remains counter-evidence at this codebase's
+  scale, while the encode-cost claim is strongly confirmed.

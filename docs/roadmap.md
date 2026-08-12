@@ -16,13 +16,14 @@ indirect execution — beneath a culled, conservatively pooled validating render
 deterministic dump, a read-only editor inspector, and a pausable rolling timing summary;
 histogram exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
-retained the object-shaped RHI and adopted an address-first per-frame data path as a bounded
-reshape via a separately accepted M5.x migration before M6 (prototype: `Experiments/NoApi/`).
+retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
+reshape for a future, separately accepted M5.x migration before M6; production has not migrated yet
+(prototype: `Experiments/NoApi/`).
 
 ## M4 — Correct image formation
 
-**Outcome:** the current frame runs through a small validating render graph and produces a
-scene-linear HDR image with physically based glTF materials.
+**Outcome:** the current frame runs through a small validating render graph and produces a scene-linear
+HDR image with physically based glTF materials.
 
 **Deliver:**
 
@@ -80,8 +81,7 @@ the M5.1 API-model experiment.
 
 ## M5 — Execution substrate and observability
 
-**Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and
-resource workloads required by later temporal and GPU-driven features.
+**Outcome:** the RHI and render graph can express, validate, inspect, and safely reuse the compute and resource workloads required by later temporal and GPU-driven features.
 
 **Deliver:**
 
@@ -108,7 +108,7 @@ indirect visibility, and alternative opaque surface paths.
 
 ## M5.1 — RHI execution-model decision
 
-**Outcome:** a measured prototype decides whether to retain, partially reshape, or replace the object-shaped RHI with a smaller GPU-address-first interface honest to Metal 4 and D3D12.
+**Outcome:** a measured prototype decides whether to retain, partially reshape, or replace the object-shaped RHI with a GPU-address-first interface honest to Metal 4 and D3D12.
 
 **Deliver:**
 

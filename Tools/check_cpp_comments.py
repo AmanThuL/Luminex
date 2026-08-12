@@ -224,6 +224,9 @@ def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -
     else:
         module = "RHI"
     candidates = [entry for entry in entries if f"/{module}/" in f"/{entry['file']}"]
+    if relative.parts[:3] == ("Experiments", "NoApi", "Include"):
+        include_flag = "-IExperiments/NoApi/Include"
+        candidates = [entry for entry in candidates if include_flag in entry.get("arguments", [])]
     if not candidates:
         candidates = entries
     if not candidates:
