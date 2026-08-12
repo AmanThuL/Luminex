@@ -129,7 +129,7 @@ target("TextureBake")
 
 target("App")
     set_kind("binary")
-    add_files("Source/App/*.cpp")
+    add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
     add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.

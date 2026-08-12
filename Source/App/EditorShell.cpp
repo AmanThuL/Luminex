@@ -5,11 +5,14 @@
 
 #include "App/EditorShell.h"
 
-#include "App/GraphInspectorModel.h"
+#include "App/Panels/InspectorPanel.h"
+#include "App/Panels/PerformancePanel.h"
+#include "App/Panels/RenderGraphPanel.h"
+#include "App/Panels/ScenePanel.h"
+#include "App/Panels/ViewportPanel.h"
 #include "Core/Assert.h"
 #include "Core/Log.h"
 #include "RHI/Metal4/Metal4ImGui.h"
-#include "Render/GraphDump.h"
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -20,13 +23,9 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <iterator>
 #include <optional>
-#include <span>
 #include <string>
+#include <string_view>
 
 namespace lmx::app {
 
@@ -35,21 +34,26 @@ namespace {
 // Debounce resize-driven GPU stalls until the dock splitter settles.
 constexpr uint32_t kResizeDebounceFrames = 10;
 
-constexpr float kInspectorDockFraction = 0.22f;
-
 // Tuned so a roughly screen-wide drag turns the camera 180 degrees.
 constexpr float kLookRadiansPerPixel = 0.0025f;
-
-// A fixed ceiling keeps the frame-time graph comparable over time.
-constexpr float kFrameTimePlotCeilingMs = 33.3f;
 
 // The rolling history still samples every retired frame; only the changing text is held this long.
 constexpr float kPassTimingRefreshSeconds = 0.25f;
 
-constexpr float kMinLightDirectionLength = 1e-5f;
+// The default topology's share of the work area: Scene and Inspector flank a central column whose
+// lower quarter holds Performance, and the Viewport takes what remains.
+constexpr float kSceneWidthFraction = 0.18f;
+constexpr float kInspectorWidthFraction = 0.24f;
+constexpr float kPerformanceHeightFraction = 0.25f;
 
-// A non-empty percentile window is required by ExposureResolve.slang's weighted average.
-constexpr float kMinExposurePercentileGap = 1.0f;
+// The side panels honor their minimum widths only once the work area is at least this large.
+constexpr float kLayoutMinimaWorkWidth = 1280.0f;
+constexpr float kLayoutMinimaWorkHeight = 720.0f;
+constexpr float kMinSceneWidthPoints = 220.0f;
+constexpr float kMinInspectorWidthPoints = 320.0f;
+// Below its minima the Viewport wins, so the side and lower panels give these back first.
+constexpr float kMinViewportWidthPoints = 640.0f;
+constexpr float kMinViewportHeightPoints = 360.0f;
 
 // Luminex's own entry in imgui.ini, written as "[LuminexWorkspace][Workspace]". ImGui disallows
 // '[' and ']' in a handler type name and hashes it to route the section back to this handler.
@@ -107,28 +111,86 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
     outBuffer->append("\n");
 }
 
-//======================================================================================================================
-// Builds the first-run layout when no persisted ImGui layout exists.
-void buildDefaultLayout(ImGuiID dockspaceId) {
-    // DockSpaceOverViewport already created this node; DockBuilder needs a fresh owned node.
-    ImGui::DockBuilderRemoveNode(dockspaceId);
-    ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
-    // Split ratios derive from the current node size, so size it first.
-    ImGui::DockBuilderSetNodeSize(dockspaceId, ImGui::GetMainViewport()->WorkSize);
+// The point sizes the default topology gives the three panels that flank the Viewport.
+struct DefaultLayoutExtents {
+    float sceneWidth = 0.0f;
+    float inspectorWidth = 0.0f;
+    float performanceHeight = 0.0f;
+};
 
-    ImGuiID inspectorId = 0;
-    ImGuiID viewportId = 0;
-    ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Right, kInspectorDockFraction, &inspectorId,
-                                &viewportId);
-    ImGui::DockBuilderDockWindow("Inspector", inspectorId);
-    ImGui::DockBuilderDockWindow("Viewport", viewportId);
-    ImGui::DockBuilderFinish(dockspaceId);
+//======================================================================================================================
+// The default proportions, with the side minima applied only once the work area can satisfy them
+// all, and the Viewport's own minimum content region taking precedence when it cannot: the flanking
+// panels narrow proportionally rather than squeezing the image the workspace exists to show.
+DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
+    DefaultLayoutExtents extents;
+    extents.sceneWidth = workWidth * kSceneWidthFraction;
+    extents.inspectorWidth = workWidth * kInspectorWidthFraction;
+    extents.performanceHeight = workHeight * kPerformanceHeightFraction;
+
+    if (workWidth >= kLayoutMinimaWorkWidth && workHeight >= kLayoutMinimaWorkHeight) {
+        extents.sceneWidth = std::max(extents.sceneWidth, kMinSceneWidthPoints);
+        extents.inspectorWidth = std::max(extents.inspectorWidth, kMinInspectorWidthPoints);
+    }
+
+    const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);
+    const float sideWanted = extents.sceneWidth + extents.inspectorWidth;
+    if (sideWanted > sideBudget && sideWanted > 0.0f) {
+        const float scale = sideBudget / sideWanted;
+        extents.sceneWidth *= scale;
+        extents.inspectorWidth *= scale;
+    }
+    extents.performanceHeight =
+        std::min(extents.performanceHeight, std::max(workHeight - kMinViewportHeightPoints, 0.0f));
+    return extents;
 }
 
 //======================================================================================================================
-// ImGui reports panel sizes in points; the scene target is sized in pixels.
-uint32_t toPixels(float points, float scale) {
-    return static_cast<uint32_t>(std::max(points * scale, 0.0f) + 0.5f);
+// DockBuilderSplitNode requires a ratio strictly inside (0, 1), and a minimized window reports a
+// zero-sized work area, so a share of the node being split is clamped rather than trusted.
+float splitFraction(float extent, float available) {
+    if (!(available > 0.0f)) {
+        return 0.5f;
+    }
+    return std::clamp(extent / available, 0.05f, 0.95f);
+}
+
+//======================================================================================================================
+// Builds the five-panel default topology: Scene left, Inspector right, Performance below the
+// Viewport with Render Graph as a tab beside it, and the Viewport in what remains.
+void buildDefaultLayout(ImGuiID dockspaceId) {
+    const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
+    const DefaultLayoutExtents extents = defaultLayoutExtents(work.x, work.y);
+
+    // DockSpaceOverViewport already created this node; DockBuilder needs a fresh owned node.
+    // Removing it also undocks every window it held, which is what keeps a repeated reset from
+    // accumulating nodes or leaving a second copy of a panel docked elsewhere.
+    ImGui::DockBuilderRemoveNode(dockspaceId);
+    ImGui::DockBuilderAddNode(dockspaceId, ImGuiDockNodeFlags_DockSpace);
+    // Split ratios derive from the current node size, so size it first.
+    ImGui::DockBuilderSetNodeSize(dockspaceId, work);
+
+    // Each ratio is a share of the node being split, and that node shrinks as the splits proceed.
+    ImGuiID centerId = dockspaceId;
+    ImGuiID sceneId = 0;
+    ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, splitFraction(extents.sceneWidth, work.x),
+                                &sceneId, &centerId);
+    ImGuiID inspectorId = 0;
+    ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Right,
+                                splitFraction(extents.inspectorWidth, work.x - extents.sceneWidth),
+                                &inspectorId, &centerId);
+    ImGuiID performanceId = 0;
+    ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
+                                splitFraction(extents.performanceHeight, work.y), &performanceId,
+                                &centerId);
+
+    ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
+    ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
+    ImGui::DockBuilderDockWindow(kPerformancePanelWindowName, performanceId);
+    // Render Graph shares the lower dock as a tab; it remains independently closable and floatable.
+    ImGui::DockBuilderDockWindow(kRenderGraphPanelWindowName, performanceId);
+    ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
+    ImGui::DockBuilderFinish(dockspaceId);
 }
 
 } // namespace
@@ -287,28 +349,85 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
+    buildPanels(device, renderer, frameRecords);
+    // Input consumes this frame's hover state and Inspector edits.
+    updateCameraInput(deltaSeconds);
+}
+
+//======================================================================================================================
+void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
+                              const FrameRecordRing& frameRecords) {
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
+    if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
+        bool open = true;
+        const std::optional<engine::SceneId> chosen =
+            drawScenePanel(open, m_library, m_activeSceneId);
+        setPanelVisible(EditorPanel::Scene, open);
+        if (chosen) {
+            // Applied here rather than inside the panel: the switch drains the GPU, and the panels
+            // drawn below must already see whichever scene ends up active.
+            selectScene(device, *chosen);
+        }
+    }
+
     if (m_workspace.visibility.isVisible(EditorPanel::Viewport)) {
         bool open = true;
-        buildViewport(renderer, open);
+        const ViewportPanelResult result = drawViewportPanel(open, renderer);
         setPanelVisible(EditorPanel::Viewport, open);
+        m_viewportHovered = result.hovered;
+        m_viewportFocused = result.focused;
+        if (result.measured) {
+            m_viewportWidth = result.width;
+            m_viewportHeight = result.height;
+            if (m_viewportWidth == m_stableWidth && m_viewportHeight == m_stableHeight) {
+                ++m_stableFrames;
+            } else {
+                m_stableWidth = m_viewportWidth;
+                m_stableHeight = m_viewportHeight;
+                m_stableFrames = 0;
+            }
+        }
     } else {
+        // A hidden Viewport measures nothing, so the last extent stands and the debounce neither
+        // advances nor asks for a resize to a size no panel is showing.
         m_viewportHovered = false;
         m_viewportFocused = false;
     }
+
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
         bool open = true;
-        buildInspector(device, renderer, open);
+        drawInspectorPanel(open,
+                           InspectorPanelContext{.camera = m_camera,
+                                                 .renderer = renderer,
+                                                 .scene = *m_activeScene,
+                                                 .settings = m_settings,
+                                                 .exposureContext = m_exposureContext,
+                                                 .exposureResetPending = m_exposureResetPending});
         setPanelVisible(EditorPanel::Inspector, open);
     }
+
+    if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
+        bool open = true;
+        drawPerformancePanel(open,
+                             PerformancePanelContext{.viewportWidth = m_viewportWidth,
+                                                     .viewportHeight = m_viewportHeight,
+                                                     .viewportHovered = m_viewportHovered,
+                                                     .viewportFocused = m_viewportFocused,
+                                                     .sceneTargetWidth = renderer.width(),
+                                                     .sceneTargetHeight = renderer.height(),
+                                                     .frameTimesMs = m_frameTimesMs,
+                                                     .frameTimeCursor = m_frameTimeCursor,
+                                                     .passTimings = m_displayedPassTimings,
+                                                     .passTimingsPaused = m_passTimingsPaused});
+        setPanelVisible(EditorPanel::Performance, open);
+    }
+
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
         bool open = true;
-        buildGraphInspector(frameRecords, open);
+        drawRenderGraphPanel(open, frameRecords);
         setPanelVisible(EditorPanel::RenderGraph, open);
     }
-    // Input consumes this frame's hover state and Inspector edits.
-    updateCameraInput(deltaSeconds);
 }
 
 //======================================================================================================================
@@ -345,22 +464,23 @@ void EditorShell::updatePassTimingDisplay(float deltaSeconds, const FrameRecordR
 
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
-    render::SceneView view = m_activeScene->view(m_drawItems, m_shadowFilter, m_wireframe);
+    render::SceneView view =
+        m_activeScene->view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
-    view.exposureEv = m_exposureEv;
-    view.autoExposureEnabled = m_autoExposureEnabled;
+    view.exposureEv = m_settings.exposureEv;
+    view.autoExposureEnabled = m_settings.autoExposureEnabled;
     // exposureReset is left at SceneView's default (false); main.cpp sets it from
     // consumeExposureReset() before declaring passes.
-    view.exposureLowPercentile = m_exposureLowPercentile;
-    view.exposureHighPercentile = m_exposureHighPercentile;
-    view.exposureTargetGrey = m_exposureTargetGrey;
-    view.exposureEvMin = m_exposureEvMin;
-    view.exposureEvMax = m_exposureEvMax;
-    view.exposureCompensationEv = m_exposureCompensationEv;
-    view.bloomEnabled = m_bloomEnabled;
-    view.bloomThreshold = m_bloomThreshold;
-    view.bloomIntensity = m_bloomIntensity;
+    view.exposureLowPercentile = m_settings.exposureLowPercentile;
+    view.exposureHighPercentile = m_settings.exposureHighPercentile;
+    view.exposureTargetGrey = m_settings.exposureTargetGrey;
+    view.exposureEvMin = m_settings.exposureEvMin;
+    view.exposureEvMax = m_settings.exposureEvMax;
+    view.exposureCompensationEv = m_settings.exposureCompensationEv;
+    view.bloomEnabled = m_settings.bloomEnabled;
+    view.bloomThreshold = m_settings.bloomThreshold;
+    view.bloomIntensity = m_settings.bloomIntensity;
     return view;
 }
 
@@ -370,316 +490,6 @@ bool EditorShell::consumeExposureReset() {
     m_exposureResetPending = false;
     return pending;
 }
-
-//======================================================================================================================
-void EditorShell::buildViewport(render::Renderer& renderer, bool& open) {
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-    const bool visible = ImGui::Begin("Viewport", &open);
-    ImGui::PopStyleVar();
-
-    if (visible) {
-        m_viewportHovered = ImGui::IsWindowHovered();
-        m_viewportFocused = ImGui::IsWindowFocused();
-
-        const ImGuiIO& io = ImGui::GetIO();
-        const ImVec2 available = ImGui::GetContentRegionAvail();
-        m_viewportWidth = toPixels(available.x, io.DisplayFramebufferScale.x);
-        m_viewportHeight = toPixels(available.y, io.DisplayFramebufferScale.y);
-
-        if (m_viewportWidth == m_stableWidth && m_viewportHeight == m_stableHeight) {
-            ++m_stableFrames;
-        } else {
-            m_stableWidth = m_viewportWidth;
-            m_stableHeight = m_viewportHeight;
-            m_stableFrames = 0;
-        }
-
-        if (available.x > 0.0f && available.y > 0.0f) {
-            // Stretch the last good target while a resize is pending.
-            ImGui::Image(rhi::metal4::imguiTextureID(renderer.colorTarget()), available);
-        }
-    } else {
-        m_viewportHovered = false;
-        m_viewportFocused = false;
-    }
-    ImGui::End();
-}
-
-//======================================================================================================================
-void EditorShell::buildSceneCombo(rhi::Device& device) {
-    const std::span<const engine::SceneEntry> entries = m_library.entries();
-    if (ImGui::BeginCombo("Scene", m_library.entry(m_activeSceneId).displayName.data())) {
-        for (size_t i = 0; i < entries.size(); ++i) {
-            const engine::SceneEntry& entry = entries[i];
-            ImGui::PushID(static_cast<int>(i));
-            if (!entry.available) {
-                ImGui::BeginDisabled();
-            }
-            // Show availability hints inline because disabled entries cannot be hovered reliably.
-            const std::string label =
-                entry.hint.empty() ? std::string(entry.displayName)
-                                   : std::string(entry.displayName) + " (" + entry.hint + ")";
-            if (ImGui::Selectable(label.c_str(), entry.id == m_activeSceneId)) {
-                selectScene(device, entry.id);
-            }
-            if (!entry.available) {
-                ImGui::EndDisabled();
-            }
-            ImGui::PopID();
-        }
-        ImGui::EndCombo();
-    }
-}
-
-//======================================================================================================================
-void EditorShell::buildLightsSection() {
-    if (ImGui::CollapsingHeader("Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
-        for (size_t i = 0; i < std::size(m_activeScene->lights); ++i) {
-            render::DirectionalLight& light = m_activeScene->lights[i];
-            ImGui::PushID(static_cast<int>(i));
-            ImGui::Text("Light %d", static_cast<int>(i));
-            ImGui::ColorEdit3("strength", &light.strength.x);
-            glm::vec3 direction = light.direction;
-            if (ImGui::DragFloat3("direction", &direction.x, 0.01f)) {
-                // Reject zero directions before normalization; they would poison shadow and N.L
-                // math.
-                if (glm::length(direction) > kMinLightDirectionLength) {
-                    light.direction = glm::normalize(direction);
-                }
-            }
-            ImGui::PopID();
-        }
-    }
-}
-
-//======================================================================================================================
-void EditorShell::buildRenderSettingsSection() {
-    if (ImGui::CollapsingHeader("Render Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Checkbox("Wireframe", &m_wireframe);
-        // Six stops each way: enough to drive a scene to black or to the tone map's shoulder,
-        // which is the whole range a manual exposure control is useful over here.
-        ImGui::SliderFloat("Exposure (EV)", &m_exposureEv, -6.0f, 6.0f, "%.2f",
-                           ImGuiSliderFlags_AlwaysClamp);
-        // Off->on is a reset trigger (spec 9): the feedback loop has produced nothing yet, so the
-        // first auto frame has to start from the manual EV exactly like a fresh scene would.
-        // On->off is not: shouldResetExposure() only fires on the false->true edge.
-        if (ImGui::Checkbox("Auto exposure", &m_autoExposureEnabled)) {
-            ExposureResetContext candidate = m_exposureContext;
-            candidate.autoExposureEnabled = m_autoExposureEnabled;
-            if (shouldResetExposure(m_exposureContext, candidate)) {
-                m_exposureResetPending = true;
-            }
-            m_exposureContext = candidate;
-        }
-        if (m_autoExposureEnabled) {
-            ImGui::SliderFloat("Low percentile", &m_exposureLowPercentile, 0.0f,
-                               m_exposureHighPercentile - kMinExposurePercentileGap, "%.0f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("High percentile", &m_exposureHighPercentile,
-                               m_exposureLowPercentile + kMinExposurePercentileGap, 100.0f, "%.0f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("Target grey", &m_exposureTargetGrey, 0.01f, 1.0f, "%.3f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("Auto EV min", &m_exposureEvMin, -12.0f, m_exposureEvMax, "%.2f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("Auto EV max", &m_exposureEvMax, m_exposureEvMin, 12.0f, "%.2f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("Exposure compensation", &m_exposureCompensationEv, -6.0f, 6.0f,
-                               "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        }
-        ImGui::Checkbox("Bloom", &m_bloomEnabled);
-        if (m_bloomEnabled) {
-            ImGui::SliderFloat("Bloom threshold", &m_bloomThreshold, 0.0f, 10.0f, "%.2f",
-                               ImGuiSliderFlags_AlwaysClamp);
-            ImGui::SliderFloat("Bloom intensity", &m_bloomIntensity, 0.0f, 2.0f, "%.2f",
-                               ImGuiSliderFlags_AlwaysClamp);
-        }
-        // Off gives every transient its own memory. Nothing about the image changes -- a
-        // transient cannot be read before it is written -- so what this compares is cost.
-        ImGui::Checkbox("Transient pooling", &m_poolingEnabled);
-        int filterIndex = static_cast<int>(m_shadowFilter);
-        constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
-        if (ImGui::Combo("Shadow filter", &filterIndex, kFilterNames,
-                         static_cast<int>(std::size(kFilterNames)))) {
-            m_shadowFilter = static_cast<render::ShadowFilter>(filterIndex);
-        }
-    }
-}
-
-//======================================================================================================================
-void EditorShell::buildObjectsSection() {
-    if (ImGui::CollapsingHeader("Objects", ImGuiTreeNodeFlags_DefaultOpen)) {
-        for (size_t i = 0; i < m_activeScene->objects.size(); ++i) {
-            engine::SceneObject& object = m_activeScene->objects[i];
-            // Index IDs keep duplicate object names from sharing widget state.
-            ImGui::PushID(static_cast<int>(i));
-            if (ImGui::TreeNodeEx(object.name.c_str())) {
-                ImGui::DragFloat3("position", &object.position.x, 0.05f);
-                ImGui::DragFloat3("rotation", &object.eulerDegrees.x, 1.0f);
-                ImGui::DragFloat3("scale", &object.scale.x, 0.01f, 0.01f, 100.0f, "%.2f",
-                                  ImGuiSliderFlags_AlwaysClamp);
-                ImGui::TreePop();
-            }
-            ImGui::PopID();
-        }
-    }
-}
-
-namespace {
-
-//======================================================================================================================
-std::string_view passKindLabel(render::PassKind kind) {
-    switch (kind) {
-    case render::PassKind::Raster:
-        return "raster";
-    case render::PassKind::Compute:
-        return "compute";
-    case render::PassKind::Copy:
-        return "copy";
-    }
-    return "raster";
-}
-
-//======================================================================================================================
-std::string_view cullReasonLabel(render::CullReason reason) {
-    switch (reason) {
-    case render::CullReason::ProducesNothing:
-        return "produces nothing";
-    case render::CullReason::NoSinkReachesIt:
-        return "no sink reaches it";
-    }
-    return "no sink reaches it";
-}
-
-//======================================================================================================================
-// Shared by the scheduled and culled sections below, so a pass reads identically in both and only
-// the reason and schedule position differ.
-void drawPassRow(const app::GraphInspectorPassRow& pass, std::optional<uint32_t> scheduleOrder) {
-    std::string header =
-        std::format("p{} {} \"{}\"", pass.index, passKindLabel(pass.kind), pass.label);
-    if (scheduleOrder) {
-        header = std::format("#{} {}", *scheduleOrder, header);
-    }
-    if (pass.gpuMilliseconds) {
-        header += std::format(" -- {:.3f} ms", *pass.gpuMilliseconds);
-    }
-    if (pass.cullReason) {
-        header += std::format(" -- culled: {}", cullReasonLabel(*pass.cullReason));
-    }
-    // TreeNode with no explicit ID derives one from the whole label, so a label that changes every
-    // frame (the GPU time above) would reopen a fresh, always-collapsed node each frame. "###"
-    // tells ImGui to hash only what follows it for the ID while still displaying everything before
-    // it, so the visible text can keep changing while the node's open/closed state stays put.
-    header += std::format("###p{}", pass.index);
-    ImGui::PushID(static_cast<int>(pass.index));
-    if (ImGui::TreeNode(header.c_str())) {
-        for (const app::GraphInspectorUseRow& use : pass.uses) {
-            std::string line = std::format("{} r{} \"{}\" v{}", render::roleName(use.role),
-                                           use.resource, use.resourceName, use.version);
-            if (!use.rangeText.empty()) {
-                line += std::format(" {}", use.rangeText);
-            }
-            ImGui::TextUnformatted(line.c_str());
-        }
-        ImGui::TreePop();
-    }
-    ImGui::PopID();
-}
-
-} // namespace
-
-//======================================================================================================================
-void EditorShell::buildGraphInspector(const FrameRecordRing& frameRecords, bool& open) {
-    if (!ImGui::Begin("Render Graph", &open)) {
-        ImGui::End();
-        return;
-    }
-
-    const RetainedFrame* newest = frameRecords.newestTimedFrame();
-    if (newest == nullptr) {
-        // Nothing has retired yet -- true for the first few frames of a run, and not an error.
-        ImGui::TextUnformatted("no retired frame yet");
-        ImGui::End();
-        return;
-    }
-
-    const app::GraphInspectorModel model =
-        app::buildGraphInspectorModel(newest->record, newest->timings);
-
-    ImGui::Text("frame %llu -- pooling %s", static_cast<unsigned long long>(model.frameId),
-                model.poolingEnabled ? "on" : "off");
-    ImGui::Text("transients: requested %llu B, high-water %llu B, saved %llu B",
-                static_cast<unsigned long long>(model.memory.requested),
-                static_cast<unsigned long long>(model.memory.highWater),
-                static_cast<unsigned long long>(model.memory.aliasSavings));
-
-    if (ImGui::Button("Dump frame")) {
-        const std::string filename = std::format("graph-dump-frame-{}.txt", model.frameId);
-        std::ofstream file(filename, std::ios::binary | std::ios::trunc);
-        if (file) {
-            file << render::dumpCompiledFrame(newest->record);
-            LMX_LOG_INFO("render-graph frame {} dumped to '{}'", model.frameId,
-                         std::filesystem::absolute(filename).string());
-        } else {
-            LMX_LOG_ERROR("Render Graph panel: cannot open '{}' for writing", filename);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Resources", ImGuiTreeNodeFlags_DefaultOpen)) {
-        for (const app::GraphInspectorResourceRow& resource : model.resources) {
-            const std::string line =
-                resource.kind == render::GraphResourceKind::Texture
-                    ? std::format("r{} texture \"{}\" {}", resource.index, resource.name,
-                                  render::formatName(resource.format))
-                    : std::format("r{} buffer \"{}\"", resource.index, resource.name);
-            ImGui::TextUnformatted(line.c_str());
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Schedule", ImGuiTreeNodeFlags_DefaultOpen)) {
-        for (uint32_t order = 0; order < model.schedule.size(); ++order) {
-            drawPassRow(model.passes[model.schedule[order]], order);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Culled passes")) {
-        for (const app::GraphInspectorPassRow& pass : model.passes) {
-            if (pass.cullReason) {
-                drawPassRow(pass, std::nullopt);
-            }
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Transitions")) {
-        for (const app::GraphInspectorTransitionRow& transition : model.transitions) {
-            if (transition.aliasedFrom) {
-                ImGui::Text("before p%u %s alias-of r%u", transition.beforePass,
-                            transition.description.c_str(), *transition.aliasedFrom);
-            } else {
-                ImGui::Text("before p%u %s", transition.beforePass, transition.description.c_str());
-            }
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Transients")) {
-        for (const app::GraphInspectorTransientRow& transient : model.transients) {
-            if (!transient.used) {
-                ImGui::Text("r%u \"%s\" unused", transient.resource,
-                            transient.resourceName.c_str());
-                continue;
-            }
-            ImGui::Text("r%u \"%s\" passes p%u..p%u offset %llu size %llu align %llu%s",
-                        transient.resource, transient.resourceName.c_str(), transient.firstPass,
-                        transient.lastPass, static_cast<unsigned long long>(transient.offset),
-                        static_cast<unsigned long long>(transient.size),
-                        static_cast<unsigned long long>(transient.alignment),
-                        transient.aliases ? " aliased" : "");
-        }
-    }
-
-    ImGui::End();
-}
-
 //======================================================================================================================
 void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     if (id == m_activeSceneId) {
@@ -708,70 +518,6 @@ void EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_exposureContext = candidate;
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_activeScene->name,
                  m_activeScene->objects.size());
-}
-
-//======================================================================================================================
-void EditorShell::buildInspector(rhi::Device& device, render::Renderer& renderer, bool& open) {
-    if (ImGui::Begin("Inspector", &open)) {
-        const ImGuiIO& io = ImGui::GetIO();
-
-        buildSceneCombo(device);
-
-        if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Text("%.1f FPS (%.2f ms)", static_cast<double>(io.Framerate),
-                        io.Framerate > 0.0f ? 1000.0 / static_cast<double>(io.Framerate) : 0.0);
-            ImGui::Text("viewport %u x %u px%s%s", m_viewportWidth, m_viewportHeight,
-                        m_viewportHovered ? "  hovered" : "", m_viewportFocused ? "  focused" : "");
-            ImGui::Text("scene target %u x %u px", renderer.width(), renderer.height());
-            ImGui::PlotLines("##frameTimes", m_frameTimesMs.data(),
-                             static_cast<int>(m_frameTimesMs.size()),
-                             static_cast<int>(m_frameTimeCursor), "frame time (ms)", 0.0f,
-                             kFrameTimePlotCeilingMs, ImVec2(0.0f, 60.0f));
-            ImGui::Checkbox("Pause GPU timings", &m_passTimingsPaused);
-            ImGui::TextDisabled("60-frame average -- updates 4x/s");
-            // Schedule changes reset every series together, so these rows never average timings
-            // from unlike graph shapes. The exact newest frame remains available in Render Graph.
-            if (m_displayedPassTimings.empty()) {
-                ImGui::TextDisabled("waiting for retired GPU timings");
-            }
-            for (const PassTimingSummary& timing : m_displayedPassTimings) {
-                ImGui::Text("%s: %.3f ms", timing.label.c_str(), timing.averageGpuMilliseconds);
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("latest %.3f ms\nrange %.3f..%.3f ms\n%zu samples",
-                                      timing.latestGpuMilliseconds, timing.minimumGpuMilliseconds,
-                                      timing.maximumGpuMilliseconds, timing.sampleCount);
-                }
-            }
-        }
-
-        if (ImGui::CollapsingHeader("Camera", ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::DragFloat3("position", &m_camera.position.x, 0.05f);
-            // Present angles in degrees while Camera stores radians.
-            float yawDegrees = glm::degrees(m_camera.yaw);
-            if (ImGui::DragFloat("yaw", &yawDegrees, 0.5f)) {
-                m_camera.yaw = glm::radians(yawDegrees);
-            }
-            float pitchDegrees = glm::degrees(m_camera.pitch);
-            // Avoid the poles where forward and world-up become parallel.
-            if (ImGui::DragFloat("pitch", &pitchDegrees, 0.5f, -89.0f, 89.0f, "%.1f",
-                                 ImGuiSliderFlags_AlwaysClamp)) {
-                m_camera.pitch = glm::radians(pitchDegrees);
-            }
-            float fovDegrees = glm::degrees(m_camera.fovY);
-            if (ImGui::DragFloat("fov Y", &fovDegrees, 0.5f, 30.0f, 110.0f, "%.1f",
-                                 ImGuiSliderFlags_AlwaysClamp)) {
-                m_camera.fovY = glm::radians(fovDegrees);
-            }
-            ImGui::DragFloat("move speed", &m_camera.moveSpeed, 0.1f, 0.5f, 50.0f, "%.2f",
-                             ImGuiSliderFlags_AlwaysClamp);
-            ImGui::ColorEdit4("clear color", renderer.clearColor);
-        }
-
-        buildLightsSection();
-        buildRenderSettingsSection();
-        buildObjectsSection();
-    }
-    ImGui::End();
 }
 
 //======================================================================================================================
