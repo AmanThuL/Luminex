@@ -15,7 +15,6 @@
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
