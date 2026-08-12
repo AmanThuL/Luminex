@@ -1,6 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LifeRhi.cpp
-/// @brief Implements S-LIFE (spec section 7) against the maintained RHI: the frozen 12-frame extent
+/// @brief Implements LifeRhi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements S-LIFE (spec section 7) against the maintained RHI: the frozen 12-frame
+/// extent
 ///        schedule over E1/E2/E3 plus frame 4's mid-flight upload.
 ///
 ///        Simplification: this correctness run waits the device idle after every frame (the same
@@ -13,7 +17,6 @@
 ///        under real pipelining. Allocation counters (kept here, since the public RHI exposes no
 ///        built-in ones) are asserted settled at frame 11: exactly one texture and one buffer
 ///        alive, matching every create() this run issued minus every destroy().
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Workload/StressCases.h"

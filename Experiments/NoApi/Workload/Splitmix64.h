@@ -1,8 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Splitmix64.h
-/// @brief Declares the frozen splitmix64 generator every synthetic asset and draw parameter in the
-///        M5.1 workload manifest derives from.
+/// @brief Declares Splitmix64 for the NoApi experiment.
 //----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the frozen splitmix64 generator every synthetic asset and draw parameter in
+/// the
+///        M5.1 workload manifest derives from.
 
 #pragma once
 #include <cstdint>

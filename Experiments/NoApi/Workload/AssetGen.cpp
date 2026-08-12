@@ -106,8 +106,8 @@ GeneratedTexture generateMaterialTexture(uint32_t material, MaterialTextureSlot 
     return texture;
 }
 
-//======================================================================================================================
 namespace {
+//======================================================================================================================
 SyntheticCubemap generateSyntheticCube(uint32_t baseFaceSize, uint32_t mipCount, uint64_t tag) {
     SyntheticCubemap cube{.faceSize = baseFaceSize};
     cube.mips.resize(mipCount);

@@ -1,8 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file AssetGen.h
-/// @brief Declares deterministic synthetic asset generation for the M5.1 workload: material
-///        textures, IBL content, and the shared quad (spec section 6).
+/// @brief Declares AssetGen for the NoApi experiment.
 //----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares deterministic synthetic asset generation for the M5.1 workload: material
+///        textures, IBL content, and the shared quad (spec section 6).
 
 #pragma once
 #include "Workload/RepresentativeGraph.h"
@@ -81,7 +83,7 @@ struct QuadVertex {
     float px = 0, py = 0, pz = 0;         ///< Object-space position.
     float nx = 0, ny = 0, nz = 0;         ///< Object-space unit normal.
     float tx = 0, ty = 0, tz = 0, tw = 0; ///< xyz tangent, w handedness.
-    float u = 0, v = 0;                    ///< Primary texture coordinates.
+    float u = 0, v = 0;                   ///< Primary texture coordinates.
 };
 static_assert(sizeof(QuadVertex) == 48, "must match the mirrored production vertex stride");
 

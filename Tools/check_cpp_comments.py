@@ -13,7 +13,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("Source", "RHI")
+SOURCE_ROOTS = ("Source", "RHI", "Experiments/NoApi")
 SOURCE_SUFFIXES = {".h", ".cpp"}
 FILE_RULER = "//" + "-" * 118
 
@@ -43,7 +43,9 @@ def public_header_files(root: Path) -> list[Path]:
     rhi = (root / "RHI/Include").rglob("*.h") if (root / "RHI/Include").is_dir() else ()
     imgui_root = root / "RHI/Backends/Metal4/ImGui/Include"
     imgui = imgui_root.rglob("*.h") if imgui_root.is_dir() else ()
-    return sorted([*source, *rhi, *imgui])
+    experiment_root = root / "Experiments/NoApi/Include"
+    experiment = experiment_root.rglob("*.h") if experiment_root.is_dir() else ()
+    return sorted([*source, *rhi, *imgui, *experiment])
 
 
 def check_file_header(path: Path, text: str) -> list[str]:
@@ -215,7 +217,12 @@ def _compile_entries(path: Path) -> list[dict[str, Any]]:
 
 def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -> dict[str, Any]:
     relative = header.relative_to(root)
-    module = relative.parts[1] if relative.parts[0] == "Source" else "RHI"
+    if relative.parts[0] == "Source":
+        module = relative.parts[1]
+    elif relative.parts[0] == "Experiments":
+        module = "/".join(relative.parts[:2])
+    else:
+        module = "RHI"
     candidates = [entry for entry in entries if f"/{module}/" in f"/{entry['file']}"]
     if not candidates:
         candidates = entries

@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file StressShaders.h
-/// @brief Runtime-MSL oracles for the prototype side of M5.1 Stage 4's stress cases (H01-H24,
+/// @brief Declares StressShaders for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Runtime-MSL oracles for the prototype side of M5.1 Stage 4's stress cases (H01-H24,
 ///        S-BIND, I1-I4). Reuses Tests/TestShaders.h's kernels wherever they already cover a case
 ///        (lmxFillBufferKernel, lmxWriteImageKernel, lmxTriangleVs/lmxSolidFs/lmxBindlessFs) and
 ///        adds only what those do not: a data-dependent identity copy through a bindless storage
@@ -8,7 +11,6 @@
 ///        textured quad. Every texture here is addressed through the one bindless table
 ///        (`buffer(1)`), never bound directly -- the model has no other texture-binding mechanism
 ///        (NoApi/CommandBuffer.h).
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include <cstddef>

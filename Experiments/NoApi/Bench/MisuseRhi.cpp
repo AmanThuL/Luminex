@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MisuseRhi.cpp
-/// @brief Implements M1-M6's misuse triggers (spec section 7) against the maintained RHI. Each
+/// @brief Implements MisuseRhi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements M1-M6's misuse triggers (spec section 7) against the maintained RHI. Each
 ///        function is expected to LMX_ASSERT and abort the process; StressRunner.cpp's runMisuse
 ///        re-execs this binary in a child process and captures the death. See that file's header
 ///        comment for the parent/child protocol.
@@ -10,7 +13,6 @@
 ///        plain caller-owned unique_ptrs with no liveness registry the public header documents).
 ///        The nearest expressible realizations are recorded at each trigger below rather than
 ///        silently assumed identical to the prototype side's cleaner mechanism.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressRunner.h"
 

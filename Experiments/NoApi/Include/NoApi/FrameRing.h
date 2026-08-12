@@ -49,7 +49,10 @@ public:
     /// Transfers ownership from `other`, releasing anything this ring owned.
     FrameRing& operator=(FrameRing&& other) noexcept;
 
+    /// Frame rings have unique ownership and cannot be copied.
     FrameRing(const FrameRing&) = delete;
+
+    /// Frame rings have unique ownership and cannot be copy-assigned.
     FrameRing& operator=(const FrameRing&) = delete;
 
     /// Creates a ring with `kFramesInFlight` slots of `desc.bytesPerFrame` each.

@@ -1,8 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file DrawPolicy.h
-/// @brief Declares the frozen draw, material, and per-frame update algorithm P04's 1,024 draws
-///        follow (spec section 6).
+/// @brief Declares DrawPolicy for the NoApi experiment.
 //----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the frozen draw, material, and per-frame update algorithm P04's 1,024 draws
+///        follow (spec section 6).
 
 #pragma once
 #include <cstdint>
@@ -26,8 +28,8 @@ uint32_t drawMaterialIndex(uint32_t drawIndex);
 /// splitmix64(seed, i)"). Object transforms are static (spec section 6), so these do not vary with
 /// frame index -- only with draw index.
 struct DrawMaterialParams {
-    float roughness = 0.0f;    ///< Unit-mapped, [0, 1).
-    float metallic = 0.0f;     ///< Unit-mapped, [0, 1).
+    float roughness = 0.0f;     ///< Unit-mapped, [0, 1).
+    float metallic = 0.0f;      ///< Unit-mapped, [0, 1).
     float emissiveScale = 0.0f; ///< Unit-mapped, [0, 1).
 };
 DrawMaterialParams drawMaterialParams(uint32_t drawIndex);

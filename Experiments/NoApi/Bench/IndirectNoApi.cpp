@@ -45,6 +45,7 @@ struct Harness {
     Allocation uploadStorage{};
     LinearAllocator upload;
 
+    //==================================================================================================================
     bool setup() {
         Result<Device*> d = createDevice({.label = "lmx.noapi.indirect"});
         if (!d) {
@@ -82,6 +83,7 @@ struct Harness {
         return true;
     }
 
+    //==================================================================================================================
     ~Harness() {
         if (device == nullptr) {
             return;
@@ -93,6 +95,7 @@ struct Harness {
         destroyDevice(device);
     }
 
+    //==================================================================================================================
     template <typename T>
     Suballocation stage(const T& value) {
         const Suballocation storage = upload.allocate(sizeof(T), alignof(T) < 16 ? 16 : alignof(T));
@@ -100,10 +103,12 @@ struct Harness {
         return storage;
     }
 
+    //==================================================================================================================
     CommandBuffer* begin(std::string_view label) {
         root.reset();
         return beginCommands(queue, &root, label);
     }
+    //==================================================================================================================
     void submitAndWait(CommandBuffer* commands) {
         endCommands(commands);
         const std::array<CommandBuffer*, 1> list{commands};

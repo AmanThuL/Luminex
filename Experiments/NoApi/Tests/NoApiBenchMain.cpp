@@ -1,13 +1,15 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file NoApiBenchMain.cpp
-/// @brief NoApiBench entry point. Implements `--check-manifest` (M5.1 stage 1 deliverable C): the
+/// @brief Implements NoApiBenchMain for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details NoApiBench entry point. Implements `--check-manifest` (M5.1 stage 1 deliverable C): the
 ///        consistency test declaring the workload manifest's representative graph to the
 ///        production RenderGraph and asserting the compiled record against the manifest's frozen
 ///        expectations. Implements `--run-graph=<rhi|noapi> --frames=N --dump-dir=<dir>` (stage 3):
 ///        runs either the maintained-RHI adapter (Bench/RhiAdapter.h) or the address-first
 ///        prototype adapter (Bench/NoApiAdapter.h) through the adapter-neutral runner
 ///        (Bench/Runner.h) for N frames of the representative graph.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/NoApiAdapter.h"
 #include "Bench/RhiAdapter.h"
@@ -23,6 +25,7 @@
 #include "Render/RenderGraph.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -54,14 +57,21 @@ namespace {
 struct FakeTexture final : rhi::Texture {
     std::string name;
 
+    //==================================================================================================================
     FakeTexture(uint32_t width, uint32_t height, std::string label, uint32_t mips)
         : name(std::move(label)), m_width(width), m_height(height), m_mipLevels(mips) {}
 
+    //==================================================================================================================
     uint32_t width() const override { return m_width; }
+    //==================================================================================================================
     uint32_t height() const override { return m_height; }
+    //==================================================================================================================
     rhi::Format format() const override { return rhi::Format::Unknown; }
+    //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
+    //==================================================================================================================
     uint32_t arrayLayers() const override { return 1; }
+    //==================================================================================================================
     void readback(void*, uint64_t) override {}
 
 private:
@@ -73,9 +83,12 @@ private:
 struct FakeBuffer final : rhi::Buffer {
     std::string name;
 
+    //==================================================================================================================
     FakeBuffer(uint64_t size, std::string label) : name(std::move(label)), m_size(size) {}
 
+    //==================================================================================================================
     uint64_t size() const override { return m_size; }
+    //==================================================================================================================
     void readback(void*, uint64_t) override {}
 
 private:
@@ -446,20 +459,20 @@ uint64_t medianNs(std::vector<uint64_t> values) {
 std::string countersToJson(const lmx::noapi::bench::FrameBindingCounters& counters) {
     return std::format(
         "{{\"setAddressCalls\":{},\"pushRootCalls\":{},\"pushRootBytes\":{},"
-        "\"tableWriteCalls\":{},\"tableWriteBytes\":{},\"bindCalls\":{},\"setUniformsCalls\":{},"
+        "\"tableWriteCalls\":{},\"tableWriteBytes\":{},\"oneTimeTableWriteCalls\":{},"
+        "\"oneTimeTableWriteBytes\":{},\"bindCalls\":{},\"setUniformsCalls\":{},"
         "\"setUniformsBytes\":{},\"bufferCreateCalls\":{},\"bufferCreateBytes\":{},"
         "\"barrierCalls\":{}}}",
         counters.setAddressCalls, counters.pushRootCalls, counters.pushRootBytes,
-        counters.tableWriteCalls, counters.tableWriteBytes, counters.bindCalls,
-        counters.setUniformsCalls, counters.setUniformsBytes, counters.bufferCreateCalls,
-        counters.bufferCreateBytes, counters.barrierCalls);
+        counters.tableWriteCalls, counters.tableWriteBytes, counters.oneTimeTableWriteCalls,
+        counters.oneTimeTableWriteBytes, counters.bindCalls, counters.setUniformsCalls,
+        counters.setUniformsBytes, counters.bufferCreateCalls, counters.bufferCreateBytes,
+        counters.barrierCalls);
 }
 
 //======================================================================================================================
-// requestedBytes is the scored figure on both sides; metalReportedBytes is the prototype's
-// additional, clearly separate true-Metal-allocation evidence, explicitly `null` when the adapter
-// cannot produce it (the incumbent) -- see Bench/Metrics.h's AllocationSnapshot header comment. A
-// consumer of this JSON can never mistake one basis for the other: only one key means "scored."
+// Both byte fields are explicitly unscored: requestedBytes is descriptive logical size, while
+// metalReportedBytes is prototype-only Metal diagnostic data (see Bench/Metrics.h).
 std::string allocationToJson(const lmx::noapi::bench::AllocationSnapshot& snapshot) {
     const std::string metalReportedBytes = snapshot.metalReportedBytes.has_value()
                                                ? std::to_string(*snapshot.metalReportedBytes)
@@ -524,7 +537,7 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
                  const std::filesystem::path& jsonPath) {
     std::unique_ptr<lmx::noapi::bench::Adapter> adapter;
     if (adapterName == "rhi") {
-        adapter = std::make_unique<lmx::noapi::bench::RhiAdapter>();
+        adapter = std::make_unique<lmx::noapi::bench::RhiAdapter>(false);
     } else if (adapterName == "noapi") {
         adapter = std::make_unique<lmx::noapi::bench::NoApiAdapter>();
     } else {
@@ -555,12 +568,7 @@ int measureGraph(const std::string& adapterName, uint32_t warmupFrames, uint32_t
             if (!countersEverSet) {
                 counters = frameCounters;
                 countersEverSet = true;
-            } else if (frameCounters.setAddressCalls != counters.setAddressCalls ||
-                       frameCounters.pushRootCalls != counters.pushRootCalls ||
-                       frameCounters.bindCalls != counters.bindCalls ||
-                       frameCounters.setUniformsCalls != counters.setUniformsCalls ||
-                       frameCounters.bufferCreateCalls != counters.bufferCreateCalls ||
-                       frameCounters.barrierCalls != counters.barrierCalls) {
+            } else if (frameCounters != counters) {
                 countersStable = false;
             }
         }
@@ -608,7 +616,7 @@ int measureBind(uint32_t drawCount, const std::string& adapterName, uint32_t war
 int measurePipelines(const std::string& adapterName, const std::filesystem::path& jsonPath) {
     std::vector<std::tuple<std::string, uint64_t, bool>> records;
     if (adapterName == "rhi") {
-        lmx::noapi::bench::RhiAdapter adapter;
+        lmx::noapi::bench::RhiAdapter adapter(false);
         if (!adapter.setup()) {
             std::cerr << "NoApiBench --measure=pipelines: rhi adapter setup failed\n";
             return 1;
@@ -663,7 +671,6 @@ int measurePipelines(const std::string& adapterName, const std::filesystem::path
     return 0;
 }
 
-//======================================================================================================================
 struct MeasureOptions {
     std::string workload;
     std::string adapter = "rhi";
@@ -673,14 +680,68 @@ struct MeasureOptions {
 };
 
 //======================================================================================================================
-int runMeasure(const MeasureOptions& options) {
+int runMeasure(const MeasureOptions& options);
+
+//======================================================================================================================
+// Checks process-launch conditions once, before either half creates a Metal device. Metal may
+// mutate diagnostic environment state during device creation, so re-reading it between paired
+// halves would confuse that process-internal side effect with the launch configuration.
+bool measurementEnvironmentIsValid() {
+#ifndef NDEBUG
+    std::cerr << "NoApiBench --measure: refusing to run a non-release build (NDEBUG is not set)\n";
+    return false;
+#endif
     if (!validationIsOff()) {
         std::cerr << "NoApiBench --measure: refusing to run with MTL_DEBUG_LAYER set -- "
                      "measurement mode requires validation off (spec section 8: performance runs "
                      "use release builds with Metal validation and capture off). Unset "
                      "MTL_DEBUG_LAYER and rerun.\n";
+        return false;
+    }
+    if (std::getenv("MTL_CAPTURE_ENABLED") != nullptr ||
+        std::getenv("LMX_BENCH_CAPTURE_PATH") != nullptr) {
+        std::cerr << "NoApiBench --measure: refusing to run with capture enabled or requested "
+                     "(MTL_CAPTURE_ENABLED/LMX_BENCH_CAPTURE_PATH must be unset)\n";
+        return false;
+    }
+    return true;
+}
+
+//======================================================================================================================
+// Runs the two halves of one paired repetition in this process and in the requested order. Keeping
+// both calls behind one process boundary is part of the frozen protocol: setup/teardown still run
+// independently per adapter, but process-level conditions are shared by the pair.
+int runMeasurePair(const MeasureOptions& base, std::string_view adapterOrder,
+                   const std::filesystem::path& rhiJsonPath,
+                   const std::filesystem::path& noApiJsonPath) {
+    std::array<std::string_view, 2> order{};
+    if (adapterOrder == "rhi,noapi") {
+        order = {"rhi", "noapi"};
+    } else if (adapterOrder == "noapi,rhi") {
+        order = {"noapi", "rhi"};
+    } else {
+        std::cerr << "NoApiBench --measure: unknown --adapter-order '" << adapterOrder
+                  << "' (expected 'rhi,noapi' or 'noapi,rhi')\n";
         return 1;
     }
+    if (rhiJsonPath.empty() || noApiJsonPath.empty()) {
+        std::cerr << "NoApiBench --measure: paired mode requires --json-rhi and --json-noapi\n";
+        return 1;
+    }
+
+    for (const std::string_view adapter : order) {
+        MeasureOptions half = base;
+        half.adapter = adapter;
+        half.jsonPath = adapter == "rhi" ? rhiJsonPath : noApiJsonPath;
+        if (const int result = runMeasure(half); result != 0) {
+            return result;
+        }
+    }
+    return 0;
+}
+
+//======================================================================================================================
+int runMeasure(const MeasureOptions& options) {
     if (options.workload == "graph") {
         return measureGraph(options.adapter, options.warmupFrames, options.measuredFrames,
                             options.jsonPath);
@@ -733,10 +794,15 @@ int main(int argc, char** argv) {
     bool runStressRequested = false;
     bool runMisuseRequested = false;
     bool measureRequested = false;
+    bool adapterOrderRequested = false;
+    bool adapterRequested = false;
     std::string stressCaseId;
     std::string misuseCaseId;
     lmx::noapi::bench::AdapterKind adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
     MeasureOptions measureOptions;
+    std::string adapterOrder;
+    std::filesystem::path rhiJsonPath;
+    std::filesystem::path noApiJsonPath;
 
     for (int i = 1; i < argc; ++i) {
         const std::string_view arg(argv[i]);
@@ -763,7 +829,15 @@ int main(int argc, char** argv) {
             measureOptions.warmupFrames = static_cast<uint32_t>(std::stoul(std::string(*warmup)));
         } else if (const auto json = parseFlagValue(arg, "--json")) {
             measureOptions.jsonPath = std::string(*json);
+        } else if (const auto json = parseFlagValue(arg, "--json-rhi")) {
+            rhiJsonPath = std::string(*json);
+        } else if (const auto json = parseFlagValue(arg, "--json-noapi")) {
+            noApiJsonPath = std::string(*json);
+        } else if (const auto order = parseFlagValue(arg, "--adapter-order")) {
+            adapterOrder = std::string(*order);
+            adapterOrderRequested = true;
         } else if (const auto adapter = parseFlagValue(arg, "--adapter")) {
+            adapterRequested = true;
             if (*adapter == "rhi") {
                 adapterKind = lmx::noapi::bench::AdapterKind::Rhi;
             } else if (*adapter == "noapi") {
@@ -794,6 +868,17 @@ int main(int argc, char** argv) {
         return lmx::noapi::bench::runMisuse(adapterKind, misuseCaseId);
     }
     if (measureRequested) {
+        if (!measurementEnvironmentIsValid()) {
+            return 1;
+        }
+        if (adapterOrderRequested) {
+            if (adapterRequested) {
+                std::cerr << "NoApiBench --measure: --adapter and --adapter-order are mutually "
+                             "exclusive\n";
+                return 1;
+            }
+            return runMeasurePair(measureOptions, adapterOrder, rhiJsonPath, noApiJsonPath);
+        }
         return runMeasure(measureOptions);
     }
     std::cerr << "usage: NoApiBench --check-manifest\n"
@@ -801,6 +886,9 @@ int main(int argc, char** argv) {
               << "       NoApiBench --run-stress=<caseId|all> --adapter=<rhi|noapi>\n"
               << "       NoApiBench --run-misuse=<caseId|all> --adapter=<rhi|noapi>\n"
               << "       NoApiBench --measure=<graph|bind1024|bind4096|pipelines> "
-                 "--adapter=<rhi|noapi> [--warmup=N] [--frames=N] --json=<path>\n";
+                 "--adapter=<rhi|noapi> [--warmup=N] [--frames=N] --json=<path>\n"
+              << "       NoApiBench --measure=<graph|bind1024|bind4096> "
+                 "--adapter-order=<rhi,noapi|noapi,rhi> [--warmup=N] [--frames=N] "
+                 "--json-rhi=<path> --json-noapi=<path>\n";
     return 1;
 }

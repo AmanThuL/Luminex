@@ -1,6 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MisuseNoApi.cpp
-/// @brief Implements M1-M6's misuse triggers (spec section 7) against the address-first prototype.
+/// @brief Implements MisuseNoApi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements M1-M6's misuse triggers (spec section 7) against the address-first
+/// prototype.
 ///        Each function is expected to LMX_ASSERT and abort the process; StressRunner.cpp's
 ///        runMisuse re-execs this binary in a child process and captures the death.
 ///
@@ -9,7 +13,6 @@
 ///        violate; its equivalent contract is "outside a compute pass," which MisuseRhi.cpp
 ///        triggers). Both are the same family of misuse -- a dispatch recorded in the wrong scope
 ///        -- realized against each interface's own pass-scope vocabulary.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressRunner.h"
 #include "Tests/TestShaders.h"

@@ -1,12 +1,15 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LifeNoApi.cpp
-/// @brief Implements S-LIFE (spec section 7) against the address-first prototype. See LifeRhi.cpp's
+/// @brief Implements LifeNoApi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements S-LIFE (spec section 7) against the address-first prototype. See
+/// LifeRhi.cpp's
 ///        header comment for the shared per-frame content/verification design and the
 ///        wait-idle-per-frame simplification this correctness run makes on both sides.
 ///        Allocation counters here cover both the private texture-placement memory (one allocation
 ///        per extent) and the texture object itself, since the prototype's memory and texture
 ///        lifetimes are separate contracts (Memory.h vs Texture.h) that both need proving settled.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Workload/StressCases.h"
@@ -58,6 +61,7 @@ ExtentResource makeExtentResource(Device* device, Counters& counters, workload::
     return resource;
 }
 
+//======================================================================================================================
 void destroyExtentResource(Device* device, Counters& counters, ExtentResource& resource) {
     if (resource.texture != nullptr) {
         destroyTexture(device, resource.texture);

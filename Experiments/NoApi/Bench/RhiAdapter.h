@@ -1,9 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RhiAdapter.h
-/// @brief Declares the maintained-RHI adapter: the incumbent half of M5.1's Stage 3 comparison,
+/// @brief Declares RhiAdapter for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the maintained-RHI adapter: the incumbent half of M5.1's Stage 3 comparison,
 ///        executing the frozen representative graph by hand-encoding production rhi::CommandList
 ///        calls (spec section 6, plan Stage 3 item 1).
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "Bench/Metrics.h"
@@ -39,6 +41,7 @@ namespace lmx::noapi::bench {
 /// material parameters already fixed by draw index, and R10's staging content).
 class RhiAdapter final : public Adapter {
 public:
+    explicit RhiAdapter(bool enableValidation = true) : m_enableValidation(enableValidation) {}
     bool setup() override;
     void runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) override;
     void teardown() override;
@@ -60,6 +63,7 @@ public:
     }
 
 private:
+    bool m_enableValidation = true;
     // One texture-subresource barrier the one-time compile derived, resolved to this adapter's own
     // live rhi::Texture.
     struct TextureBarrierOp {

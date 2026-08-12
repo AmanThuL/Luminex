@@ -1,10 +1,12 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file StressCommon.h
-/// @brief Shared, API-neutral helpers for M5.1 Stage 4's stress-case adapters: deterministic
+/// @brief Declares StressCommon for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Shared, API-neutral helpers for M5.1 Stage 4's stress-case adapters: deterministic
 /// content
 ///        generation for the hazard matrix (spec section 7), shared with both HazardRhi.cpp and
 ///        HazardNoApi.cpp so the two sides assert against byte-identical expectations.
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "Bench/Metrics.h"

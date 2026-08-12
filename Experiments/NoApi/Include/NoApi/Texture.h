@@ -21,8 +21,8 @@ struct TextureDesc {
     uint32_t arrayLayers = 1;                  ///< Array layers; six for a cube map.
     uint32_t sampleCount = 1;          ///< Samples per texel; one for non-multisampled textures.
     Format format = Format::Undefined; ///< Texel format; must not be `Format::Undefined`.
-    TextureUsage usage =
-        TextureUsage::None; ///< Every use the texture is allowed; must be non-empty.
+    /// Every use the texture is allowed; must be non-empty.
+    TextureUsage usage = TextureUsage::None;
     std::string_view label; ///< Debug label; must be non-empty.
 };
 
@@ -31,8 +31,8 @@ struct TextureDesc {
 /// A view never allocates. It selects a subrange of an existing texture and optionally reinterprets
 /// its format, which is the only place in this interface where a subresource range is named.
 struct TextureViewDesc {
-    Format format =
-        Format::Undefined; ///< Reinterpreted format, or `Format::Undefined` to keep the texture's.
+    /// Reinterpreted format, or `Format::Undefined` to keep the texture's.
+    Format format = Format::Undefined;
     uint32_t baseMipLevel = 0;         ///< First mip level the view exposes.
     uint32_t mipCount = kAllMipLevels; ///< Mip levels the view exposes, from `baseMipLevel`.
     uint32_t baseArrayLayer = 0;       ///< First array layer the view exposes.

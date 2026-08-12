@@ -25,8 +25,8 @@ namespace lmx::noapi {
 /// performs the traffic it counts, so reading it after `endCommands` adds no measurable work inside
 /// a timed region -- this is a snapshot of counters already updated in place, not a computation.
 struct CommandBufferStats {
-    uint64_t setAddressCalls =
-        0;                     ///< Every `setAddress` the recording made (`bindAddress`'s count).
+    /// Every `setAddress` the recording made (`bindAddress`'s count).
+    uint64_t setAddressCalls = 0;
     uint64_t rootCalls = 0;    ///< Every `pushRoot` call.
     uint64_t rootBytes = 0;    ///< Bytes `pushRoot` copied into the frame allocator.
     uint64_t barrierCalls = 0; ///< Barrier primitives emitted onto an encoder.

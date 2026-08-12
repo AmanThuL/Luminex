@@ -9,7 +9,9 @@
 namespace lmx::noapi::workload {
 
 //======================================================================================================================
-uint32_t bindTextureIndexForDraw(uint32_t drawIndex) { return drawIndex % kBindTextureCount; }
+uint32_t bindTextureIndexForDraw(uint32_t drawIndex) {
+    return drawIndex % kBindTextureCount;
+}
 
 namespace {
 using enum HazardOpKind;
@@ -21,18 +23,20 @@ using enum HazardKind;
 constexpr uint32_t kPerMipProducer = 1;
 constexpr uint32_t kPerMipConsumer = 2;
 
+//======================================================================================================================
 HazardCase whole(std::string id, HazardKind kind, HazardOpKind producer, HazardOpKind consumer) {
     return {.id = std::move(id), .hazard = kind, .producer = producer, .consumer = consumer};
 }
 
+//======================================================================================================================
 HazardCase perMip(std::string id, HazardKind kind, HazardOpKind producer, HazardOpKind consumer) {
     return {.id = std::move(id),
-           .hazard = kind,
-           .producer = producer,
-           .consumer = consumer,
-           .perMip = true,
-           .producerMip = kPerMipProducer,
-           .consumerMip = kPerMipConsumer};
+            .hazard = kind,
+            .producer = producer,
+            .consumer = consumer,
+            .perMip = true,
+            .producerMip = kPerMipProducer,
+            .consumerMip = kPerMipConsumer};
 }
 } // namespace
 

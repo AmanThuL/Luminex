@@ -1,10 +1,12 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file IndirectRhi.cpp
-/// @brief Implements I1-I4 (spec section 7) against the maintained RHI: drawIndirect (I1,
+/// @brief Implements IndirectRhi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements I1-I4 (spec section 7) against the maintained RHI: drawIndirect (I1,
 ///        CPU-written args at byte offset 256), drawIndexedIndirect (I2, compute-written at offset
 ///        0), dispatchIndirect (I3, CPU-written at offset 64), dispatchIndirect (I4,
 ///        compute-written at offset 128).
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Workload/StressCases.h"

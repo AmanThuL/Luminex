@@ -1,6 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file BindNoApi.cpp
-/// @brief Implements S-BIND (spec section 7) against the address-first prototype. See BindRhi.cpp's
+/// @brief Implements BindNoApi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements S-BIND (spec section 7) against the address-first prototype. See
+/// BindRhi.cpp's
 ///        header comment for the shared grid-tiling design and setup/per-frame split; this file
 ///        realises the same case through bindless slot writes and root-data pushes instead of
 ///        CommandList::bindTexture/setUniforms.
@@ -12,7 +16,6 @@
 ///        answer to a per-draw texture bind, and it is exactly as timed as CommandList::bindTexture
 ///        is on the RHI side (spec section 8: "binding and root-data work cannot be moved outside
 ///        the timed region").
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Bench/StressShaders.h"
@@ -401,14 +404,15 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
     submit(queue, setupList, fence, fenceValue);
     waitSemaphore(fence, fenceValue);
 
-    // requestedBytes is the scored figure (Bench/Metrics.h's AllocationSnapshot header comment);
-    // metalReportedBytes is additional evidence only, the prototype's true Metal-reported total.
+    // Both byte totals are unscored descriptive evidence (Bench/Metrics.h); the Metal-reported
+    // value remains prototype-only and is never compared with incumbent requested bytes.
     result.endOfSetup = {.textureCreateCalls = workload::kBindTextureCount + 1,
                          .bufferCreateCalls = 0,
                          .samplerCreateCalls = 1,
                          .pipelineCreateCalls = 1,
                          .requestedBytes = deviceCreationStats(device).requestedBytes,
                          .metalReportedBytes = residentBytes(residency)};
+    const BindlessTableStats oneTimeTableStats = bindlessTableStats(table);
 
     const uint32_t gridSize = static_cast<uint32_t>(std::lround(std::sqrt(double(drawCount))));
     const float cellNdc = 2.0f / static_cast<float>(gridSize);
@@ -419,8 +423,8 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         root.reset();
 
-        // ---- BEGIN TIMED REGION (spec section 8; same clock and boundary as measureBindScaleRhi
-        // and the representative-graph adapters) -------------------------------------------------
+        // Begin timed region (spec section 8; same clock and boundary as measureBindScaleRhi and
+        // the representative-graph adapters).
         const auto start = std::chrono::steady_clock::now();
         CommandBuffer* commands = beginCommands(queue, &root, "sbind.measure.draws");
         setBindlessTable(commands, table);
@@ -463,21 +467,23 @@ MeasuredRun measureBindScaleNoApi(uint32_t drawCount, uint32_t warmupFrames,
         ++fenceValue;
         submit(queue, list, fence, fenceValue);
         const auto end = std::chrono::steady_clock::now();
-        // ---- END TIMED REGION -------------------------------------------------------------------
+        // End timed region.
 
         waitSemaphore(fence, fenceValue);
         if (frame >= warmupFrames) {
             result.perFrameTimedRegionNs.push_back(static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count()));
-            const FrameBindingCounters frameCounters{.setAddressCalls = frameStats.setAddressCalls,
-                                                     .pushRootCalls = frameStats.rootCalls,
-                                                     .pushRootBytes = frameStats.rootBytes,
-                                                     .barrierCalls = frameStats.barrierCalls};
+            const FrameBindingCounters frameCounters{
+                .setAddressCalls = frameStats.setAddressCalls,
+                .pushRootCalls = frameStats.rootCalls,
+                .pushRootBytes = frameStats.rootBytes,
+                .oneTimeTableWriteCalls = oneTimeTableStats.writeCalls,
+                .oneTimeTableWriteBytes = oneTimeTableStats.writeBytes,
+                .barrierCalls = frameStats.barrierCalls};
             if (!countersEverSet) {
                 result.counters = frameCounters;
                 countersEverSet = true;
-            } else if (result.counters.setAddressCalls != frameCounters.setAddressCalls ||
-                       result.counters.pushRootCalls != frameCounters.pushRootCalls) {
+            } else if (result.counters != frameCounters) {
                 result.countersStableAcrossFrames = false;
             }
         }

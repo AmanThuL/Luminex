@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file HazardRhi.cpp
-/// @brief Implements H01-H24 (spec section 7's hazard matrix) against the maintained RHI.
+/// @brief Implements HazardRhi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements H01-H24 (spec section 7's hazard matrix) against the maintained RHI.
 ///
 /// Every case follows the same shape: an earlier op ("producer" role) and a later op ("consumer"
 /// role) separated by exactly one textureBarrier, over a target texture whose content is verified
@@ -29,7 +32,6 @@
 /// INEXPRESSIBLE on this side rather than faked; see runOneHazardCaseRhi's gap check below. The
 /// nearest expressible variant is the equivalent whole-resource (mip 0) producer/consumer pairing,
 /// already covered by H01-H13.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Bench/StressRunner.h"
@@ -52,6 +54,7 @@ using workload::HazardOpKind;
 
 enum class Role { Write, Read };
 
+//======================================================================================================================
 rhi::TextureUse useForRole(HazardOpKind kind, Role role) {
     switch (kind) {
     case HazardOpKind::Raster:
@@ -64,10 +67,12 @@ rhi::TextureUse useForRole(HazardOpKind kind, Role role) {
     return rhi::TextureUse::ShaderRead;
 }
 
+//======================================================================================================================
 rhi::TextureSubresourceRange mipRange(uint32_t mip) {
     return {.baseMipLevel = mip, .mipLevelCount = 1};
 }
 
+//======================================================================================================================
 // Shaders/SamplerSmoke.slang's fullscreen-triangle vertex shader emits NDC positions directly from
 // its UV parameter (vertexMain: `position = uv * 2 - 1`), so the same UV that samples row 0 of a
 // source texture lands at the *bottom* of the rasterized target once Metal's viewport transform

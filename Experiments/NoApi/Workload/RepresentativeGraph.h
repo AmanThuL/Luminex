@@ -1,9 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RepresentativeGraph.h
-/// @brief Declares the frozen thirteen-pass representative graph (spec section 6): its resource
+/// @brief Declares RepresentativeGraph for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the frozen thirteen-pass representative graph (spec section 6): its resource
 ///        table, pass table, sinks, and the expected compiled schedule a consistency test checks
 ///        both encoders' adapters against.
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "Workload/Types.h"

@@ -1,9 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Runner.h
-/// @brief Declares the adapter-neutral M5.1 bench runner: the frame loop, per-frame readback
+/// @brief Declares Runner for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the adapter-neutral M5.1 bench runner: the frame loop, per-frame readback
 ///        capture, deterministic hashing and raw dumping, and the interface both encoders'
 ///        NoApiBench adapters implement (spec section 6, plan Stage 3 item 1).
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "Bench/Metrics.h"

@@ -1,10 +1,12 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file StressRunner.h
-/// @brief Declares the M5.1 Stage 4 stress-case dispatch: `--run-stress=<caseId|all>
+/// @brief Declares StressRunner for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the M5.1 Stage 4 stress-case dispatch: `--run-stress=<caseId|all>
 ///        --adapter=<rhi|noapi>` over H01-H24, S-BIND, S-LIFE, I1-I4, and
 ///        `--run-misuse=<caseId|all>
 ///        --adapter=<rhi|noapi>` over M1-M6 (plan Stage 4 items 1-3, spec section 7).
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include <cstdint>

@@ -1,9 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file NoApiAdapter.h
-/// @brief Declares the prototype adapter: the address-first half of M5.1's Stage 3 comparison,
+/// @brief Declares NoApiAdapter for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the prototype adapter: the address-first half of M5.1's Stage 3 comparison,
 ///        executing the frozen representative graph through `lmx::noapi` (spec section 6, plan
 ///        Stage 3 item 2).
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "Bench/Metrics.h"
@@ -197,6 +199,8 @@ private:
     // every frame.
     uint64_t m_tableWriteCallsAtLastSample = 0;
     uint64_t m_tableWriteBytesAtLastSample = 0;
+    uint64_t m_oneTimeTableWriteCalls = 0;
+    uint64_t m_oneTimeTableWriteBytes = 0;
     std::vector<PipelineCompileRecord> m_pipelineCompileTimes;
 };
 

@@ -493,6 +493,8 @@ task("format")
         for _, f in ipairs(os.files("RHI/**.h")) do table.insert(args, f) end
         for _, f in ipairs(os.files("RHI/**.cpp")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Tests/**.cpp")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("Experiments/NoApi/**.h")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("Experiments/NoApi/**.cpp")) do table.insert(args, f) end
         os.execv("clang-format", args)
     end)
 

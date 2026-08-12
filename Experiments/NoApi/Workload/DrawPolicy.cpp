@@ -33,20 +33,22 @@ GridPosition drawGridPosition(uint32_t drawIndex) {
 }
 
 //======================================================================================================================
-uint32_t drawMaterialIndex(uint32_t drawIndex) { return drawIndex % kMaterialCount; }
+uint32_t drawMaterialIndex(uint32_t drawIndex) {
+    return drawIndex % kMaterialCount;
+}
 
 //======================================================================================================================
 DrawMaterialParams drawMaterialParams(uint32_t drawIndex) {
     return {.roughness = unitFloat(splitmix64(kSeed, {drawIndex, kRoughnessTag})),
-           .metallic = unitFloat(splitmix64(kSeed, {drawIndex, kMetallicTag})),
-           .emissiveScale = unitFloat(splitmix64(kSeed, {drawIndex, kEmissiveScaleTag}))};
+            .metallic = unitFloat(splitmix64(kSeed, {drawIndex, kMetallicTag})),
+            .emissiveScale = unitFloat(splitmix64(kSeed, {drawIndex, kEmissiveScaleTag}))};
 }
 
 //======================================================================================================================
 DrawPlacement drawPlacement(uint32_t drawIndex) {
     const GridPosition grid = drawGridPosition(drawIndex);
     return {.x = static_cast<float>(grid.x) * kGridSpacing - kGridHalfExtent,
-           .z = static_cast<float>(grid.y) * kGridSpacing - kGridHalfExtent};
+            .z = static_cast<float>(grid.y) * kGridSpacing - kGridHalfExtent};
 }
 
 //======================================================================================================================
@@ -55,11 +57,11 @@ CameraPose cameraForFrame(uint32_t frameIndex) {
                         (static_cast<float>(frameIndex % kCorrectnessFrameCount) /
                          static_cast<float>(kCorrectnessFrameCount));
     return {.eyeX = kCameraRadius * std::cos(angle),
-           .eyeY = kCameraHeight,
-           .eyeZ = kCameraRadius * std::sin(angle),
-           .targetX = 0.0f,
-           .targetY = 0.0f,
-           .targetZ = 0.0f};
+            .eyeY = kCameraHeight,
+            .eyeZ = kCameraRadius * std::sin(angle),
+            .targetX = 0.0f,
+            .targetY = 0.0f,
+            .targetZ = 0.0f};
 }
 
 //======================================================================================================================

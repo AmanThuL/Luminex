@@ -2,19 +2,18 @@
 """M5.1 Stage 4 collection driver (spec section 8, plan Stage 4 item 5).
 
 Runs the frozen paired-repetition protocol for one or more timed workloads (graph, bind1024,
-bind4096) by launching `NoApiBench --measure` twice per repetition -- once per adapter, in AB
-order on even repetition index and BA order on odd -- assembling the resulting per-repetition
-medians into paired_bootstrap.py's input schema, and running that frozen decision statistic.
+bind4096) by launching `NoApiBench --measure` once per repetition. That fresh process executes
+both adapters back to back, in AB order on even repetition index and BA order on odd, before this
+driver assembles the resulting medians into paired_bootstrap.py's input schema and runs the frozen
+decision statistic.
 Writes every raw per-run JSON NoApiBench produced, the assembled pairs, the bootstrap analysis,
 and the recorded environment to --out.
 
-Per spec section 8: "one repetition = one fresh process executing both encoders back to back" --
-NoApiBench's own process boundary is that fresh process; this script launches it twice per
-repetition (once per adapter), which is the two-process reading of that sentence this milestone's
-harness uses (a single NoApiBench invocation runs exactly one adapter). "16 warm-up frames then
-256 measured frames" is `--warmup`/`--frames` on each invocation; NoApiBench itself computes and
-reports the per-repetition median (spec: "the repetition's statistic is the median per-frame
-value").
+Per spec section 8: "one repetition = one fresh process executing both encoders back to back".
+`--adapter-order` makes one NoApiBench invocation run both adapters in the requested order while
+still writing one raw JSON per adapter. "16 warm-up frames then 256 measured frames" is
+`--warmup`/`--frames` for each adapter; NoApiBench itself computes and reports each half of the
+pair's median (spec: "the repetition's statistic is the median per-frame value").
 
 Validation must be off for every measured run (NoApiBench's own --measure refuses otherwise);
 this script does not set or touch MTL_DEBUG_LAYER, and unsets it in the child's environment so an
@@ -56,45 +55,54 @@ def _default_out() -> Path:
     return _REPO_ROOT.parent / "lmx-m5.1-measurements"
 
 
-def run_bench(bench: Path, workload: str, adapter: str, warmup: int, frames: int,
-              json_path: Path) -> dict:
-    """Runs one `NoApiBench --measure` invocation and returns its parsed JSON blob.
+def run_bench_pair(bench: Path, workload: str, order: tuple[str, str], warmup: int, frames: int,
+                   json_paths: dict[str, Path]) -> dict[str, dict]:
+    """Runs one paired `NoApiBench --measure` invocation and returns both JSON blobs.
 
     Raises RuntimeError on a nonzero exit or unparseable output -- a collection run that produced
     no usable measurement must stop, not silently drop a repetition.
     """
     env = dict(os.environ)
     env.pop("MTL_DEBUG_LAYER", None)
-    cmd = [str(bench), f"--measure={workload}", f"--adapter={adapter}", f"--warmup={warmup}",
-           f"--frames={frames}", f"--json={json_path}"]
+    env.pop("MTL_CAPTURE_ENABLED", None)
+    env.pop("LMX_BENCH_CAPTURE_PATH", None)
+    cmd = [str(bench), f"--measure={workload}", f"--adapter-order={','.join(order)}",
+           f"--warmup={warmup}", f"--frames={frames}",
+           f"--json-rhi={json_paths['rhi']}", f"--json-noapi={json_paths['noapi']}"]
     # NoApiBench resolves shaders relative to its own working directory (AGENTS.md gotcha).
     proc = subprocess.run(cmd, cwd=bench.parent, env=env, capture_output=True, text=True)
     if proc.returncode != 0:
         raise RuntimeError(
-            f"NoApiBench --measure={workload} --adapter={adapter} exited {proc.returncode}\n"
+            f"NoApiBench --measure={workload} --adapter-order={','.join(order)} "
+            f"exited {proc.returncode}\n"
             f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
-    try:
-        return json.loads(json_path.read_text())
-    except (OSError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"could not read/parse {json_path}: {exc}\nstdout:\n{proc.stdout}")
+    blobs = {}
+    for adapter, json_path in json_paths.items():
+        try:
+            blobs[adapter] = json.loads(json_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"could not read/parse {json_path}: {exc}\nstdout:\n{proc.stdout}")
+    return blobs
 
 
 def collect_workload(bench: Path, workload: str, repetitions: int, warmup: int, frames: int,
                       raw_dir: Path) -> list[list[float]]:
     """Runs `repetitions` paired repetitions of `workload`, returning [[incumbentNs, prototypeNs], ...].
 
-    Repetition parity decides launch order only (AB on even index, BA on odd); the measurement
-    itself -- each adapter's own process, own setup, own warm-up -- is identical either way, which
-    is what makes the order swap a check against scheduling/thermal drift rather than a second
-    experimental variable.
+    Repetition parity decides in-process order only (AB on even index, BA on odd); each adapter
+    keeps its own setup and warm-up within the shared repetition process, which makes the order swap
+    a check against scheduling/thermal drift rather than a second experimental variable.
     """
     pairs: list[list[float]] = []
     for repetition in range(repetitions):
         order = _ADAPTERS if repetition % 2 == 0 else tuple(reversed(_ADAPTERS))
+        json_paths = {
+            adapter: raw_dir / f"{workload}.{adapter}.rep{repetition:02d}.json"
+            for adapter in _ADAPTERS
+        }
+        blobs = run_bench_pair(bench, workload, order, warmup, frames, json_paths)
         medians: dict[str, float] = {}
-        for adapter in order:
-            json_path = raw_dir / f"{workload}.{adapter}.rep{repetition:02d}.json"
-            blob = run_bench(bench, workload, adapter, warmup, frames, json_path)
+        for adapter, blob in blobs.items():
             medians[adapter] = blob["medianNs"]
             if not blob.get("countersStableAcrossFrames", True):
                 print(f"WARNING: {workload}/{adapter} repetition {repetition}: binding counters "
@@ -153,20 +161,45 @@ def main() -> int:
         print(f"collect.py: --bench '{args.bench}' does not exist or is not a file",
               file=sys.stderr)
         return 1
-    if args.repetitions != _DEFAULT_REPETITIONS:
-        print(f"NOTE: --repetitions={args.repetitions} != the spec's frozen {_DEFAULT_REPETITIONS} "
-              "-- this run's results are UNSCORED and must not feed the ADR (spec section 2).",
-              file=sys.stderr)
+    workloads = [w.strip() for w in args.workloads.split(",") if w.strip()]
+    unsupported = sorted(set(workloads) - set(_DEFAULT_WORKLOADS))
+    if unsupported:
+        print(f"collect.py: unsupported timed workload(s): {', '.join(unsupported)}; expected "
+              f"only {', '.join(_DEFAULT_WORKLOADS)}", file=sys.stderr)
+        return 1
+    if not workloads or args.repetitions <= 0 or args.warmup < 0 or args.frames <= 0:
+        print("collect.py: workloads must be non-empty, repetitions/frames positive, and warmup "
+              "non-negative", file=sys.stderr)
+        return 1
+
+    frozen_protocol = (args.repetitions == _DEFAULT_REPETITIONS and
+                       args.warmup == _DEFAULT_WARMUP and args.frames == _DEFAULT_FRAMES)
+    if not frozen_protocol:
+        print("NOTE: repetition/warmup/frame counts differ from the frozen 12/16/256 protocol -- "
+              "this run is UNSCORED and must not feed the ADR.", file=sys.stderr)
+        if args.label.lower() == "scored":
+            print("collect.py: refusing --label=scored for a non-frozen protocol", file=sys.stderr)
+            return 1
 
     raw_dir = args.out / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     collect_environment(args.out)
 
-    workloads = [w.strip() for w in args.workloads.split(",") if w.strip()]
+    (args.out / "collection.json").write_text(json.dumps({
+        "scoredProtocol": frozen_protocol,
+        "repetitions": args.repetitions,
+        "warmupFrames": args.warmup,
+        "measuredFrames": args.frames,
+        "workloads": workloads,
+    }, indent=2) + "\n")
     metrics = {}
     for workload in workloads:
-        pairs = collect_workload(args.bench, workload, args.repetitions, args.warmup, args.frames,
-                                 raw_dir)
+        try:
+            pairs = collect_workload(args.bench, workload, args.repetitions, args.warmup,
+                                     args.frames, raw_dir)
+        except RuntimeError as exc:
+            print(f"collect.py: {exc}", file=sys.stderr)
+            return 1
         metrics[f"{workload}.medianNs"] = {"pairs": pairs}
 
     bootstrap_input = args.out / f"{args.label}.bootstrap_input.json"

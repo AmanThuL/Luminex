@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file StressRunner.cpp
-/// @brief Implements StressRunner.h's dispatch and the M1-M6 subprocess death-test protocol.
+/// @brief Implements StressRunner for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements StressRunner.h's dispatch and the M1-M6 subprocess death-test protocol.
 ///
 /// Parent/child protocol for `runMisuse`: the parent re-execs this same NoApiBench binary
 /// (`kMisuseChildExecutablePath`, captured from argv[0] at process start by
@@ -11,7 +14,6 @@
 /// return (the LMX_ASSERT it hits calls std::abort(), raising SIGABRT). The parent waits for the
 /// child, reads the captured stderr, and treats "the child died on SIGABRT and its stderr contains
 /// an LMX_ASSERT line naming the case's contract" as a pass.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressRunner.h"
 #include "Bench/StressCommon.h"
@@ -44,22 +46,26 @@ void setMisuseChildExecutablePath(std::string_view argv0) {
 std::vector<CaseResult> runHazardCases(AdapterKind adapter, const std::string& caseId) {
     return adapter == AdapterKind::Rhi ? runHazardCasesRhi(caseId) : runHazardCasesNoApi(caseId);
 }
+//======================================================================================================================
 std::vector<CaseResult> runBindCases(AdapterKind adapter, const std::string& caseId) {
     return adapter == AdapterKind::Rhi ? runBindCasesRhi(caseId) : runBindCasesNoApi(caseId);
 }
+//======================================================================================================================
 std::vector<CaseResult> runLifeCases(AdapterKind adapter, const std::string& caseId) {
     return adapter == AdapterKind::Rhi ? runLifeCasesRhi(caseId) : runLifeCasesNoApi(caseId);
 }
+//======================================================================================================================
 std::vector<CaseResult> runIndirectCases(AdapterKind adapter, const std::string& caseId) {
     return adapter == AdapterKind::Rhi ? runIndirectCasesRhi(caseId)
                                        : runIndirectCasesNoApi(caseId);
 }
 
-//======================================================================================================================
 namespace {
+//======================================================================================================================
 bool idIsHazard(const std::string& id) {
     return !id.empty() && id[0] == 'H';
 }
+//======================================================================================================================
 bool idIsIndirect(const std::string& id) {
     return !id.empty() && id[0] == 'I' && id != "all";
 }
@@ -135,7 +141,6 @@ int runMisuseChild(const std::string& caseId, AdapterKind adapter) {
     return adapter == AdapterKind::Rhi ? runMisuseChildRhi(caseId) : runMisuseChildNoApi(caseId);
 }
 
-//======================================================================================================================
 namespace {
 
 // Spawns a fresh child process running this same binary with kMisuseEnvCase/kMisuseEnvAdapter set,
@@ -148,6 +153,7 @@ struct ChildOutcome {
     std::string stderrText;
 };
 
+//======================================================================================================================
 ChildOutcome spawnMisuseChild(const std::string& caseId, const std::string& adapterName) {
     ChildOutcome outcome;
     int pipeFds[2];

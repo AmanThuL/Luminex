@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RhiAdapter.cpp
-/// @brief Implements the maintained-RHI adapter.
+/// @brief Implements RhiAdapter for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements the maintained-RHI adapter.
 ///
 /// Per-frame work placement against the spec section 8 timed region:
 ///
@@ -105,7 +108,6 @@
 /// for its own persistent targets are not needed for correctness here. A future
 /// performance-protocol adapter that paces three deep instead of waiting idle every frame would
 /// need to add them.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/RhiAdapter.h"
 
@@ -399,7 +401,7 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createCubeTexture(rhi::Device& device
 bool RhiAdapter::setup() {
     m_diagScene = std::getenv("LMX_NOAPI_DIAG_SCENE") != nullptr;
 
-    auto device = rhi::createDevice();
+    auto device = rhi::createDevice({.enableValidation = m_enableValidation});
     if (!device) {
         std::cerr << "RhiAdapter::setup: createDevice failed: " << device.error().message << "\n";
         return false;
@@ -1063,23 +1065,27 @@ void RhiAdapter::bindTextureCounted(rhi::CommandList& commands, uint32_t slot,
     m_frameCounters.bindCalls += 1;
 }
 
+//======================================================================================================================
 void RhiAdapter::bindBufferCounted(rhi::CommandList& commands, uint32_t slot, rhi::Buffer& buffer) {
     commands.bindBuffer(slot, buffer);
     m_frameCounters.bindCalls += 1;
 }
 
+//======================================================================================================================
 void RhiAdapter::bindSamplerCounted(rhi::CommandList& commands, uint32_t slot,
                                     rhi::Sampler& sampler) {
     commands.bindSampler(slot, sampler);
     m_frameCounters.bindCalls += 1;
 }
 
+//======================================================================================================================
 void RhiAdapter::bindStorageBufferCounted(rhi::CommandList& commands, uint32_t slot,
                                           rhi::Buffer& buffer, rhi::StorageAccess access) {
     commands.bindStorageBuffer(slot, buffer, access);
     m_frameCounters.bindCalls += 1;
 }
 
+//======================================================================================================================
 void RhiAdapter::bindStorageTextureCounted(rhi::CommandList& commands, uint32_t slot,
                                            rhi::Texture& texture, const rhi::TextureViewDesc& view,
                                            rhi::StorageAccess access) {
@@ -1087,6 +1093,7 @@ void RhiAdapter::bindStorageTextureCounted(rhi::CommandList& commands, uint32_t 
     m_frameCounters.bindCalls += 1;
 }
 
+//======================================================================================================================
 void RhiAdapter::setUniformsCounted(rhi::CommandList& commands, uint32_t slot, const void* data,
                                     uint64_t size) {
     commands.setUniforms(slot, data, size);
@@ -1341,7 +1348,7 @@ void RhiAdapter::encodeReadback(rhi::CommandList& commands) {
 void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) {
     m_frameCounters = FrameBindingCounters{};
 
-    // ---- BEGIN TIMED REGION -----------------------------------------------------------------
+    // ---- BEGIN TIMED REGION
     // M5.1 Stage 4 (spec section 8): std::chrono::steady_clock on both adapters, identically. The
     // production RHI bundles the frame-slot pacing wait inside beginFrame() itself with no separate
     // hook to time around, so this adapter's clock necessarily starts at the top of the call that
@@ -1415,7 +1422,7 @@ void RhiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback
 
     m_device->endFrame(nullptr);
     const auto timedRegionEnd = std::chrono::steady_clock::now();
-    // ---- END TIMED REGION -------------------------------------------------------------------
+    // ---- END TIMED REGION
 
     m_lastFrameTimedRegionNs = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(timedRegionEnd - timedRegionStart)
@@ -1442,19 +1449,17 @@ AllocationSnapshot RhiAdapter::allocationSnapshot() const {
         .bufferCreateCalls = static_cast<uint32_t>(m_creationCounters.bufferCreateCalls),
         .samplerCreateCalls = static_cast<uint32_t>(m_creationCounters.samplerCreateCalls),
         .pipelineCreateCalls = static_cast<uint32_t>(m_creationCounters.pipelineCreateCalls),
-        // metalReportedBytes stays std::nullopt: the public RHI cannot produce Metal's padded
-        // allocated size (Bench/Metrics.h's AllocationSnapshot header comment).
     };
 
-    uint64_t bytes = 0;
+    uint64_t requestedBytes = 0;
     const auto addTexture = [&](const rhi::Texture* texture) {
         if (texture != nullptr) {
-            bytes += textureRequestedBytes(*texture);
+            requestedBytes += textureRequestedBytes(*texture);
         }
     };
     const auto addBuffer = [&](const rhi::Buffer* buffer) {
         if (buffer != nullptr) {
-            bytes += buffer->size();
+            requestedBytes += buffer->size();
         }
     };
 
@@ -1489,7 +1494,7 @@ AllocationSnapshot RhiAdapter::allocationSnapshot() const {
         addBuffer(m_diagSceneColor.get());
     }
 
-    snapshot.requestedBytes = bytes;
+    snapshot.requestedBytes = requestedBytes;
     return snapshot;
 }
 

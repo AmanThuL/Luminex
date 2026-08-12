@@ -1,13 +1,16 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file HazardNoApi.cpp
-/// @brief Implements H01-H24 (spec section 7's hazard matrix) against the address-first prototype.
+/// @brief Implements HazardNoApi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements H01-H24 (spec section 7's hazard matrix) against the address-first
+/// prototype.
 ///
 /// Mirrors HazardRhi.cpp's RAW/WAR/WAW shape exactly (see that file's header comment for the shared
 /// per-role semantics); every op here is realised through `lmx::noapi` instead of the production
 /// RHI. Unlike the RHI side, `RenderPassDesc::ColorAttachment` names an explicit `mipLevel`
 /// (NoApi/RenderPass.h), so every per-mip case -- including the five raster-at-a-non-zero-mip cases
 /// the RHI side reports inexpressible -- runs here without a gap.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Bench/StressShaders.h"
@@ -76,6 +79,7 @@ struct HazardHarnessNoApi {
     std::vector<Pipeline*> pipelines;
     Sampler* sampler = nullptr;
 
+    //==================================================================================================================
     ~HazardHarnessNoApi() {
         if (device == nullptr) {
             return;
@@ -102,12 +106,14 @@ struct HazardHarnessNoApi {
         destroyDevice(device);
     }
 
+    //==================================================================================================================
     Suballocation stage(const void* data, uint64_t size) {
         const Suballocation storage = upload.allocate(size, 16);
         std::memcpy(storage.cpu, data, size);
         return storage;
     }
 
+    //==================================================================================================================
     Texture* makeTexture(const TextureDesc& desc) {
         const SizeAlign required = textureSizeAlign(device, desc);
         const uint64_t aligned =
@@ -118,11 +124,13 @@ struct HazardHarnessNoApi {
         return *texture;
     }
 
+    //==================================================================================================================
     CommandBuffer* begin(std::string_view label) {
         root.reset();
         return beginCommands(queue, &root, label);
     }
 
+    //==================================================================================================================
     void submitAndWait(CommandBuffer* commands) {
         endCommands(commands);
         const std::array<CommandBuffer*, 1> list{commands};
@@ -211,6 +219,7 @@ Pipeline* makeCopyPipeline(HazardHarnessNoApi& h) {
     h.pipelines.push_back(*pipeline);
     return *pipeline;
 }
+//======================================================================================================================
 Pipeline* makeReadPipeline(HazardHarnessNoApi& h) {
     Result<Pipeline*> pipeline = createComputePipeline(
         h.device,
@@ -219,6 +228,7 @@ Pipeline* makeReadPipeline(HazardHarnessNoApi& h) {
     h.pipelines.push_back(*pipeline);
     return *pipeline;
 }
+//======================================================================================================================
 Pipeline* makeRasterPipeline(HazardHarnessNoApi& h, Format depthFormat = Format::Undefined) {
     const std::array<ColorTargetDesc, 1> targets{
         ColorTargetDesc{.format = Format::RGBA8Unorm, .writeMask = 0xF}};

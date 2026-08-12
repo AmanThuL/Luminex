@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Metrics.h
-/// @brief Declares the adapter-neutral shapes M5.1 Stage 4's measurement instrumentation reports
+/// @brief Declares Metrics for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the adapter-neutral shapes M5.1 Stage 4's measurement instrumentation reports
 ///        through (plan Stage 4 item 4, spec sections 8-9): per-frame binding traffic and
 ///        allocation snapshots, read from each adapter after the fact rather than computed inside a
 ///        timed region.
@@ -14,7 +17,6 @@
 ///        which is itself part of the recorded evidence (spec section 9: "primary metrics are ...
 ///        counted
 ///        ... under the same counting rules"), not a gap.
-//----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include <cstdint>
@@ -28,12 +30,18 @@ namespace lmx::noapi::bench {
 /// dimension and section 8's barrier count). Fields with no meaning on one side stay zero there --
 /// see this file's header comment for why they are not collapsed into a shared count.
 struct FrameBindingCounters {
+    bool operator==(const FrameBindingCounters&) const = default;
+
     // Prototype-side (address-first): zero on the incumbent adapter.
     uint64_t setAddressCalls = 0; ///< Every `MTL4::ArgumentTable::setAddress` (bindAddress calls).
     uint64_t pushRootCalls = 0;   ///< Every `pushRoot` call.
     uint64_t pushRootBytes = 0;   ///< Bytes `pushRoot` copied into the frame ring.
     uint64_t tableWriteCalls = 0; ///< Bindless table slot writes this frame.
     uint64_t tableWriteBytes = 0; ///< Bytes written to the bindless table this frame.
+    /// Exact one-time table population numerator for the run. Consumers amortize this over the
+    /// frozen 16 warm-up + 256 measured frames; it is repeated unchanged in every frame snapshot.
+    uint64_t oneTimeTableWriteCalls = 0;
+    uint64_t oneTimeTableWriteBytes = 0;
 
     // Incumbent-side (object-shaped RHI): zero on the prototype adapter.
     uint64_t bindCalls = 0;         ///< Every bindTexture/bindBuffer/bindSampler/bindStorage* call.
@@ -50,24 +58,20 @@ struct FrameBindingCounters {
 /// section 9's allocation dimension: "allocation call counts and resident bytes ... at end of setup
 /// and end of run").
 ///
-/// A scored comparison needs one common basis, and the public RHI cannot produce the prototype's
-/// true Metal-reported allocated size (its `Buffer`/`Texture` interfaces report only the caller's
-/// requested logical size, never Metal's padded/aligned allocation) -- so `requestedBytes` is the
-/// scored figure on BOTH sides: the incumbent's own best-available number (computed from the same
-/// descriptors it created every resource with) and the prototype's equivalent computed the same way
-/// (summed requested allocation sizes, not Metal's rounded-up ones). `metalReportedBytes` carries
-/// the prototype's true figure as additional, clearly separate evidence -- `std::nullopt` on the
-/// incumbent, which cannot produce it -- so a comparison can never silently mix the two bases
-/// (spec's fairness rule: "any asymmetry you cannot avoid must be reported, not silently
-/// accepted").
+/// Neither byte field is scored. The public incumbent RHI does not expose backend-internal rings
+/// or the Metal allocated sizes needed by the frozen resident-byte definition, so a complete
+/// like-for-like total cannot be observed without changing production code. `requestedBytes` is
+/// descriptive logical size only. `metalReportedBytes` is optional prototype-only diagnostic data
+/// and must never be compared against the incumbent's requested total. Allocation call counts
+/// remain the scored deterministic metrics.
 struct AllocationSnapshot {
     uint32_t textureCreateCalls =
         0;                          ///< Textures created (live count; see each adapter's own note).
     uint32_t bufferCreateCalls = 0; ///< Buffers/allocations created (live or cumulative; see note).
     uint32_t samplerCreateCalls = 0;            ///< Samplers created.
     uint32_t pipelineCreateCalls = 0;           ///< Graphics + compute pipelines created.
-    uint64_t requestedBytes = 0;                ///< Scored figure; both sides, same computation.
-    std::optional<uint64_t> metalReportedBytes; ///< Prototype only; nullopt on the incumbent.
+    uint64_t requestedBytes = 0;                ///< Unscored descriptive logical bytes requested.
+    std::optional<uint64_t> metalReportedBytes; ///< Unscored prototype-only Metal diagnostic.
 };
 
 /// One `--measure` invocation's collected samples (plan Stage 4 item 4, spec section 8's protocol):

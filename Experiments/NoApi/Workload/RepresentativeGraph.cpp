@@ -1,8 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file RepresentativeGraph.cpp
-/// @brief Defines the frozen thirteen-pass representative graph's resource table, pass table, and
-///        sinks (spec section 6).
+/// @brief Implements RepresentativeGraph for the NoApi experiment.
 //----------------------------------------------------------------------------------------------------------------------
+
+/// @details Defines the frozen thirteen-pass representative graph's resource table, pass table, and
+///        sinks (spec section 6).
 
 #include "Workload/RepresentativeGraph.h"
 #include "Workload/ProdValues.h"
@@ -15,7 +17,10 @@ namespace {
 // mipLevelCount == 0 means "the whole chain").
 constexpr SubresourceRange kWholeResource{};
 
-SubresourceRange mip(uint32_t level) { return SubresourceRange{.baseMipLevel = level, .mipLevelCount = 1}; }
+//======================================================================================================================
+SubresourceRange mip(uint32_t level) {
+    return SubresourceRange{.baseMipLevel = level, .mipLevelCount = 1};
+}
 
 //======================================================================================================================
 std::vector<TextureResource> buildTextures() {
@@ -199,9 +204,10 @@ std::vector<SinkDeclaration> buildSinks() {
 
 //======================================================================================================================
 const RepresentativeGraph& representativeGraph() {
-    static const RepresentativeGraph graph{
-        .textures = buildTextures(), .buffers = buildBuffers(), .passes = buildPasses(),
-        .sinks = buildSinks()};
+    static const RepresentativeGraph graph{.textures = buildTextures(),
+                                           .buffers = buildBuffers(),
+                                           .passes = buildPasses(),
+                                           .sinks = buildSinks()};
     return graph;
 }
 
@@ -212,7 +218,7 @@ const std::vector<std::string>& expectedScheduleOrder() {
     // to a later one, so compile()'s topological order -- declaration order as its tie-break --
     // answers exactly the declared P01..P13 order.
     static const std::vector<std::string> order = {"P01", "P02", "P03", "P04", "P05", "P06", "P07",
-                                                    "P08", "P09", "P10", "P11", "P12", "P13"};
+                                                   "P08", "P09", "P10", "P11", "P12", "P13"};
     return order;
 }
 

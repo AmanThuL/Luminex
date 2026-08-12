@@ -1,6 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file NoApiAdapter.cpp
-/// @brief Implements the address-first prototype adapter.
+/// @brief Implements NoApiAdapter for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements the address-first prototype adapter.
 ///
 /// Per-frame work placement against the spec section 8 timed region, stated on exactly the terms
 /// RhiAdapter.cpp states its own:
@@ -72,7 +75,6 @@
 ///   from an address -- but it means the published index-1 binding is pure overhead on this target,
 ///   counted against the prototype rather than dropped. Recorded in
 ///   docs/research/2026-08-12-execution-model-evidence.md section 5.10.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/NoApiAdapter.h"
 
@@ -174,7 +176,6 @@ constexpr uint32_t kMaterialMipCount = 7; // 64, 32, 16, 8, 4, 2, 1
 // own uniform slices.
 constexpr uint64_t kStagingAlignment = 256;
 
-//======================================================================================================================
 // Shader-visible root blocks. Each is the CPU half of the identically-named Slang declaration in
 // Experiments/NoApi/Shaders; the two declarations are the whole layout contract, and the
 // static_asserts below pin the offsets Slang's emitted MSL was read to produce (16-byte-sized
@@ -408,6 +409,8 @@ bool NoApiAdapter::setup() {
     const BindlessTableStats tableStats = bindlessTableStats(m_table);
     m_tableWriteCallsAtLastSample = tableStats.writeCalls;
     m_tableWriteBytesAtLastSample = tableStats.writeBytes;
+    m_oneTimeTableWriteCalls = tableStats.writeCalls;
+    m_oneTimeTableWriteBytes = tableStats.writeBytes;
     return true;
 }
 
@@ -1266,7 +1269,7 @@ void NoApiAdapter::encodeReadback(CommandBuffer* commands) {
 void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadback) {
     const uint32_t slot = m_ring.beginFrame();
 
-    // ---- BEGIN TIMED REGION -----------------------------------------------------------------
+    // Begin timed region.
     // M5.1 Stage 4 (spec section 8): std::chrono::steady_clock on both adapters, wrapping exactly
     // the span this file's header comment already documents as the timed region. The frame-slot
     // pacing wait above (m_ring.beginFrame()) is excluded by construction -- the clock starts after
@@ -1319,7 +1322,7 @@ void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadba
     const std::array<CommandBuffer*, 1> list{commands};
     m_ring.endFrame(m_queue, list);
     const auto timedRegionEnd = std::chrono::steady_clock::now();
-    // ---- END TIMED REGION -------------------------------------------------------------------
+    // End timed region.
 
     m_lastFrameTimedRegionNs = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(timedRegionEnd - timedRegionStart)
@@ -1331,6 +1334,8 @@ void NoApiAdapter::runFrame(uint32_t frameIndex, std::vector<uint8_t>& outReadba
         .pushRootBytes = frameStats.rootBytes,
         .tableWriteCalls = tableStats.writeCalls - m_tableWriteCallsAtLastSample,
         .tableWriteBytes = tableStats.writeBytes - m_tableWriteBytesAtLastSample,
+        .oneTimeTableWriteCalls = m_oneTimeTableWriteCalls,
+        .oneTimeTableWriteBytes = m_oneTimeTableWriteBytes,
         .barrierCalls = frameStats.barrierCalls,
     };
     m_tableWriteCallsAtLastSample = tableStats.writeCalls;
@@ -1358,13 +1363,10 @@ AllocationSnapshot NoApiAdapter::allocationSnapshot() const {
                                 .bufferCreateCalls = creation.liveAllocations,
                                 .samplerCreateCalls = creation.liveSamplers,
                                 .pipelineCreateCalls = creation.livePipelines,
-                                // Scored basis (Bench/Metrics.h's AllocationSnapshot header
-                                // comment): requested sizes on both sides, so a comparison against
-                                // the incumbent's own requested-size figure is apples to apples.
+                                // Unscored descriptive logical size (Bench/Metrics.h).
                                 .requestedBytes = creation.requestedBytes};
     if (m_residency != nullptr) {
-        // Additional evidence only, not the scored figure: the prototype's true Metal-reported
-        // allocated size, which the incumbent cannot produce and must not be compared against.
+        // Unscored prototype-only Metal diagnostic; never compare with incumbent requested bytes.
         snapshot.metalReportedBytes = residentBytes(m_residency);
     }
     return snapshot;

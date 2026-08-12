@@ -1,8 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file StressCases.h
-/// @brief Declares the frozen bounded stress workloads: S-BIND, the H01-H24 hazard matrix, S-LIFE,
-///        I1-I4, and M1-M6 (spec section 7).
+/// @brief Declares StressCases for the NoApi experiment.
 //----------------------------------------------------------------------------------------------------------------------
+
+/// @details Declares the frozen bounded stress workloads: S-BIND, the H01-H24 hazard matrix,
+/// S-LIFE,
+///        I1-I4, and M1-M6 (spec section 7).
 
 #pragma once
 #include "Workload/Types.h"
@@ -47,13 +50,13 @@ enum class HazardKind { ReadAfterWrite, WriteAfterRead, WriteAfterWrite };
 /// byte per channel, and a correct hazard ordering is what lets the consumer observe it rather than
 /// whatever the resource held before.
 struct HazardCase {
-    std::string id;              ///< "H01".."H24".
+    std::string id; ///< "H01".."H24".
     HazardKind hazard = HazardKind::ReadAfterWrite;
     HazardOpKind producer = HazardOpKind::Raster;
     HazardOpKind consumer = HazardOpKind::Raster;
-    bool perMip = false;         ///< Whole-resource (single-mip texture) when false.
-    uint32_t producerMip = 0;    ///< Meaningful only when perMip.
-    uint32_t consumerMip = 0;    ///< Meaningful only when perMip; always != producerMip.
+    bool perMip = false;      ///< Whole-resource (single-mip texture) when false.
+    uint32_t producerMip = 0; ///< Meaningful only when perMip.
+    uint32_t consumerMip = 0; ///< Meaningful only when perMip; always != producerMip.
 };
 
 /// A 4-mip 256x256 RGBA8Unorm texture, shared by every per-mip hazard case (spec: "per-mip cases
@@ -85,8 +88,9 @@ inline constexpr Extent kExtentE3{512, 512};
 /// One frame of the frozen 12-frame S-LIFE schedule (spec section 7).
 struct LifetimeFrame {
     uint32_t frameIndex = 0;
-    Extent extent;                 ///< Extent this frame renders at.
-    bool resizeIssuedThisFrame = false; ///< Whether a resize to `resizeTarget` is issued this frame.
+    Extent extent; ///< Extent this frame renders at.
+    bool resizeIssuedThisFrame =
+        false; ///< Whether a resize to `resizeTarget` is issued this frame.
     Extent resizeTarget;
     /// Frame 4 uploads new content to a texture consumed by frame 4's own graph (spec section 7).
     bool midFlightUpload = false;
@@ -117,12 +121,12 @@ const std::vector<IndirectCase>& indirectCases();
 // ---------------------------------------------------------------------------------------------
 
 enum class MisuseId {
-    PassScopeViolation,   ///< M1
-    UsageMismatch,         ///< M2
-    ViewRangeOverflow,      ///< M3
-    AlignmentViolation,     ///< M4
-    InvalidHandle,          ///< M5
-    RetiredFrameSlotUse,    ///< M6
+    PassScopeViolation,  ///< M1
+    UsageMismatch,       ///< M2
+    ViewRangeOverflow,   ///< M3
+    AlignmentViolation,  ///< M4
+    InvalidHandle,       ///< M5
+    RetiredFrameSlotUse, ///< M6
 };
 
 struct MisuseCase {

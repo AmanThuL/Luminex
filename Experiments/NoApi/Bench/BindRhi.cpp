@@ -1,6 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file BindRhi.cpp
-/// @brief Implements S-BIND (spec section 7) against the maintained RHI: `drawCount` draws over 256
+/// @brief Implements BindRhi for the NoApi experiment.
+//----------------------------------------------------------------------------------------------------------------------
+
+/// @details Implements S-BIND (spec section 7) against the maintained RHI: `drawCount` draws over
+/// 256
 ///        unique 64x64 RGBA8Unorm textures (texture index = draw index mod 256), one sampled
 ///        texture plus one per-draw uniform block per draw, into a 512x512 RGBA8Unorm target with
 ///        no depth.
@@ -18,7 +22,6 @@
 ///        single solid colour, so the expected image has no blending or filtering ambiguity: cell
 ///        (col, row) must hold exactly texture `(row * gridSize + col) % 256`'s colour, tinted by
 ///        that draw's uniform block.
-//----------------------------------------------------------------------------------------------------------------------
 
 #include "Bench/StressCommon.h"
 #include "Workload/Splitmix64.h"
@@ -221,7 +224,7 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
                                 uint32_t measuredFrames) {
     MeasuredRun result;
 
-    auto deviceResult = rhi::createDevice();
+    auto deviceResult = rhi::createDevice({.enableValidation = false});
     if (!deviceResult) {
         result.error = "device creation failed: " + deviceResult.error().message;
         return result;
@@ -329,8 +332,6 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
                          .bufferCreateCalls = drawCount,
                          .samplerCreateCalls = 1,
                          .pipelineCreateCalls = 1};
-    // requestedBytes is the scored figure on both sides (Bench/Metrics.h's AllocationSnapshot
-    // header comment); metalReportedBytes stays std::nullopt -- the public RHI cannot produce it.
     for (const std::unique_ptr<rhi::Texture>& texture : textures) {
         result.endOfSetup.requestedBytes += textureRequestedBytes(*texture);
     }
@@ -347,7 +348,7 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
 
         // ---- BEGIN TIMED REGION (spec section 8; identical clock and boundary to RhiAdapter.cpp
         // and NoApiAdapter.cpp: begins after the frame-slot pacing wait beginFrame() bundles,
-        // includes every binding call and the submit, excludes the readback wait below) ----------
+        // includes every binding call and the submit, excludes the readback wait below)
         const auto start = std::chrono::steady_clock::now();
         rhi::CommandList& cmd = device->beginFrame();
         cmd.beginRenderPass({.colorTarget = target.get(), .clear = true, .label = "sbind.draws"});
@@ -364,7 +365,7 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
         cmd.endRenderPass();
         device->endFrame(nullptr);
         const auto end = std::chrono::steady_clock::now();
-        // ---- END TIMED REGION -----------------------------------------------------------------
+        // ---- END TIMED REGION
 
         device->waitIdle();
         if (frame >= warmupFrames) {
@@ -373,8 +374,7 @@ MeasuredRun measureBindScaleRhi(uint32_t drawCount, uint32_t warmupFrames,
             if (!countersEverSet) {
                 result.counters = frameCounters;
                 countersEverSet = true;
-            } else if (result.counters.bindCalls != frameCounters.bindCalls ||
-                       result.counters.barrierCalls != frameCounters.barrierCalls) {
+            } else if (result.counters != frameCounters) {
                 result.countersStableAcrossFrames = false;
             }
         }
