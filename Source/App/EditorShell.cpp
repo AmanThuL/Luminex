@@ -37,9 +37,6 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // Tuned so a roughly screen-wide drag turns the camera 180 degrees.
 constexpr float kLookRadiansPerPixel = 0.0025f;
 
-// The rolling history still samples every retired frame; only the changing text is held this long.
-constexpr float kPassTimingRefreshSeconds = 0.25f;
-
 // The default topology's share of the work area: Scene and Inspector flank a central column whose
 // lower quarter holds Performance, and the Viewport takes what remains.
 constexpr float kSceneWidthFraction = 0.18f;
@@ -343,9 +340,37 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
 //======================================================================================================================
 void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
-    m_frameTimesMs[m_frameTimeCursor] = deltaSeconds * 1000.0f;
-    m_frameTimeCursor = (m_frameTimeCursor + 1) % m_frameTimesMs.size();
-    updatePassTimingDisplay(deltaSeconds, frameRecords);
+    // m_viewportWidth/Height and m_drawItems still name the previous iteration here -- buildPanels
+    // (below) is what updates them for this frame -- which is exactly what keeps this sample
+    // coherent with frameRecords' own newest-joined-as-of-the-previous-iteration record.
+    const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
+    std::optional<PerformanceFrameSample> sample;
+    if (newestTimed != nullptr) {
+        // ImGui works in points; the Viewport panel converts to pixels via DisplayFramebufferScale
+        // before this shell ever sees m_viewportWidth/Height, so this inverts that same conversion
+        // to recover the logical size the panel is actually laid out in.
+        const ImGuiIO& io = ImGui::GetIO();
+        const float scaleX =
+            io.DisplayFramebufferScale.x > 0.0f ? io.DisplayFramebufferScale.x : 1.0f;
+        const float scaleY =
+            io.DisplayFramebufferScale.y > 0.0f ? io.DisplayFramebufferScale.y : 1.0f;
+        sample = PerformanceFrameSample{
+            .frameId = newestTimed->record.frameId,
+            .timings = newestTimed->timings,
+            .objectCount = static_cast<uint32_t>(m_activeScene->objects.size()),
+            .drawCount = static_cast<uint32_t>(m_drawItems.size()),
+            .viewportLogicalWidth =
+                static_cast<uint32_t>(static_cast<float>(m_viewportWidth) / scaleX),
+            .viewportLogicalHeight =
+                static_cast<uint32_t>(static_cast<float>(m_viewportHeight) / scaleY),
+            .sceneTargetPixelWidth = renderer.width(),
+            .sceneTargetPixelHeight = renderer.height(),
+            .transientRequestedBytes = newestTimed->record.debug.memory.requested,
+            .transientHighWaterBytes = newestTimed->record.debug.memory.highWater,
+            .transientAliasSavingsBytes = newestTimed->record.debug.memory.aliasSavings,
+        };
+    }
+    m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
@@ -484,17 +509,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
 
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
-        drawPerformancePanel(open,
-                             PerformancePanelContext{.viewportWidth = m_viewportWidth,
-                                                     .viewportHeight = m_viewportHeight,
-                                                     .viewportHovered = m_viewportHovered,
-                                                     .viewportFocused = m_viewportFocused,
-                                                     .sceneTargetWidth = renderer.width(),
-                                                     .sceneTargetHeight = renderer.height(),
-                                                     .frameTimesMs = m_frameTimesMs,
-                                                     .frameTimeCursor = m_frameTimeCursor,
-                                                     .passTimings = m_displayedPassTimings,
-                                                     .passTimingsPaused = m_passTimingsPaused});
+        drawPerformancePanel(open, m_performanceModel);
         setPanelVisible(EditorPanel::Performance, open);
     }
 
@@ -514,27 +529,6 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
     // Nothing moved a window, so ImGui has no reason of its own to rewrite the ini; without this
     // the new visibility would be lost on exit.
     ImGui::MarkIniSettingsDirty();
-}
-
-//======================================================================================================================
-void EditorShell::updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords) {
-    if (m_passTimingsPaused) {
-        return;
-    }
-
-    const RetainedFrame* newest = frameRecords.newestTimedFrame();
-    if (newest == nullptr) {
-        return;
-    }
-
-    const bool scheduleChanged =
-        m_passTimingHistory.addFrame(newest->record.frameId, newest->timings);
-    m_passTimingRefreshSeconds += deltaSeconds;
-    if (scheduleChanged || m_displayedPassTimings.empty() ||
-        m_passTimingRefreshSeconds >= kPassTimingRefreshSeconds) {
-        m_displayedPassTimings = m_passTimingHistory.summaries();
-        m_passTimingRefreshSeconds = 0.0f;
-    }
 }
 
 //======================================================================================================================

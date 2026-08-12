@@ -1,14 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file PerformancePanel.h
-/// @brief Declares the Performance panel's drawing entry point and the observations it displays.
+/// @brief Declares the Performance panel's drawing entry point.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/PassTimingHistory.h"
-
-#include <cstddef>
-#include <cstdint>
-#include <span>
+#include "App/PerformanceModel.h"
 
 namespace lmx::app {
 
@@ -16,32 +12,16 @@ namespace lmx::app {
 /// exactly this name, so both sides read it from here.
 inline constexpr const char* kPerformancePanelWindowName = "Performance";
 
-/// The rolling observations the Performance panel displays, borrowed for one draw call.
+/// Draws the Performance panel over one coherent `PerformanceModel::snapshot()`: the wall-clock
+/// frame interval and FPS, the Viewport panel's logical size and the scene target's pixel extent
+/// shown as separate labelled values, the rolling per-pass GPU table (Pass/Average/Latest/
+/// Min-Max/Samples, schedule order), the `Timed pass sum` with its explicit
+/// not-total-GPU-frame-time caveat, and the snapshot's frame ID, object/draw counts, and transient
+/// memory. `open` follows the window's close button, exactly as `ImGui::Begin` writes it.
 ///
-/// Every span and reference names storage the shell owns and keeps alive across the call; the panel
-/// retains nothing.
-struct PerformancePanelContext {
-    uint32_t viewportWidth = 0;          ///< Viewport panel width in backing pixels.
-    uint32_t viewportHeight = 0;         ///< Viewport panel height in backing pixels.
-    bool viewportHovered = false;        ///< Whether the pointer is over the Viewport panel.
-    bool viewportFocused = false;        ///< Whether the Viewport panel has keyboard focus.
-    uint32_t sceneTargetWidth = 0;       ///< Renderer color-target width in pixels.
-    uint32_t sceneTargetHeight = 0;      ///< Renderer color-target height in pixels.
-    std::span<const float> frameTimesMs; ///< Ring of wall-clock frame times, oldest at the cursor.
-    size_t frameTimeCursor = 0;          ///< Index of the oldest entry in `frameTimesMs`.
-    /// Published pass summaries in schedule order; empty until a frame's timings have retired.
-    std::span<const PassTimingSummary> passTimings;
-    /// Whether timing collection and publication are frozen. The panel's checkbox writes it, and
-    /// the shell reads it when deciding whether to sample the newest retired frame.
-    bool& passTimingsPaused;
-};
-
-/// Draws the Performance panel: frame rate, viewport and scene-target extents, the frame-time plot,
-/// and the rolling per-pass GPU table. `open` follows the window's close button, exactly as
-/// `ImGui::Begin` writes it.
-///
-/// A changed ordered pass-label sequence resets every timing series upstream of this panel, so the
-/// rows here never average timings from unlike graph shapes.
-void drawPerformancePanel(bool& open, const PerformancePanelContext& context);
+/// Pause and Clear History are model calls (`PerformanceModel::setPaused`,
+/// `PerformanceModel::clearHistory`) -- this panel holds no timing state of its own, so what the
+/// controls do and what the snapshot shows can never drift apart.
+void drawPerformancePanel(bool& open, PerformanceModel& model);
 
 } // namespace lmx::app

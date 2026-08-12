@@ -9,13 +9,12 @@
 #include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
-#include "App/PassTimingHistory.h"
+#include "App/PerformanceModel.h"
 #include "App/WorkspaceModel.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -162,7 +161,6 @@ private:
     // close button, and the only place that tells ImGui the ini needs rewriting for a change that
     // moved no window.
     void setPanelVisible(EditorPanel panel, bool visible);
-    void updatePassTimingDisplay(float deltaSeconds, const FrameRecordRing& frameRecords);
     // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
     // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
     // the new scene's initial pose -- the only per-scene UI state this shell carries. Returns
@@ -239,18 +237,10 @@ private:
     // operation: the frame loop for quit and capture, this shell for a layout reset.
     EditorActions m_actions;
 
-    // Frame times for the Performance plot. A ring: ImGui::PlotLines takes the cursor as its
-    // values_offset and unrolls it, so there is no discontinuity to shuffle away.
-    std::array<float, 120> m_frameTimesMs{};
-    size_t m_frameTimeCursor = 0;
-
-    // Raw measurements are collected every time a new frame retires, but publishing a fresh text
-    // snapshot only four times per second keeps the sub-millisecond digits readable. Pause stops
-    // both collection and publication, so the visible comparison stays fixed until resumed.
-    PassTimingHistory m_passTimingHistory;
-    std::vector<PassTimingSummary> m_displayedPassTimings;
-    float m_passTimingRefreshSeconds = 0.0f;
-    bool m_passTimingsPaused = false;
+    // The coherent, pausable, clearable performance snapshot behind the Performance panel. Fed one
+    // PerformanceFrameSample each buildUI when a GPU frame has newly retired; owns all of the
+    // panel's timing, resolution, count, and transient-memory state so the panel itself holds none.
+    PerformanceModel m_performanceModel;
 };
 
 } // namespace lmx::app
