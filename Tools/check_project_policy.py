@@ -48,7 +48,7 @@ PROCESS_PATTERNS = (
 )
 PROCESS_ROOTS = ("Source/", "Shaders/", "Tests/", "Tools/GpuDebug/", "Experiments/NoApi/")
 COMMIT_SUBJECT = re.compile(
-    r"^(?:rhi|metal|render|shader|scene|asset|engine|editor|app|core|tool|build|ci|docs|test): "
+    r"^(?:rhi|metal|render|shader|scene|asset|engine|editor|app|core|tool|build|ci|docs|test|spike): "
     r"[a-z0-9]"
 )
 NON_IMPERATIVE_START = re.compile(
