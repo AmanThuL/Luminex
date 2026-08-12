@@ -31,6 +31,10 @@ Usage:
         --candidate <path/to/FrameDataBench> [--out DIR] [--repetitions 12] \\
         [--workloads F-FIT-512,F-DYNAMIC-1024,...] [--warmup 16] [--frames 256]
 
+    python3 frame_data_paired.py --selftest
+        Checks this script's own pure logic (the acceptance-threshold sign convention analyze_pairs
+        applies) against synthetic data and exits 0 iff every check passed; launches no subprocess.
+
 Exit codes: 0 the collection ran to completion for every requested workload (individual workloads
 may still be reported "not comparable" -- that is data, not a driver failure). 1 a configuration
 error (missing executable, bad arguments) or a side effect that indicates the two binaries are not
@@ -125,13 +129,20 @@ def analyze_pairs(pairs: list[list[float]]) -> dict:
     median_delta = statistics.median(deltas)
     excludes_zero = (lo > 0.0 and hi > 0.0) or (lo < 0.0 and hi < 0.0)
     # Spec section 11's own two acceptance thresholds, computed here so a reader never has to apply
-    # the rule by hand against the raw numbers: a dynamic case needs materialWin (>= 25% candidate
-    # win with the interval excluding zero); F-FIT-512 and both static cases need
-    # withinRegressionBound (upper 95% bound no more than +5%). Both are reported for every
-    # workload -- which one is the relevant gate is a per-workload judgment this driver does not
-    # make.
+    # the rule by hand against the raw numbers. Both read off this function's delta convention
+    # (paired_deltas_pct: (baseline - candidate) / baseline * 100, positive = candidate cheaper), so
+    # a regression -- the candidate being slower -- is a NEGATIVE delta, and the "upper" bound on
+    # how much slower the candidate is allowed to be is therefore the CI's LOWER numeric bound, not
+    # its upper one.
+    #   - materialWin: a dynamic case needs >= 25% candidate win with the interval excluding zero.
+    #   - withinRegressionBound: spec section 11's "candidate's upper 95% confidence bound is no
+    #     more than +5%" is a statement about the regression tail's magnitude, which in this sign
+    #     convention is `lo` (the most-negative, i.e. most-regressed, end of the interval) -- so the
+    #     bound holds iff `lo >= -REGRESSION_BOUND_PCT`. F-FIT-512 and both static cases need this
+    #     one; which field is the relevant gate for a given workload is a per-workload judgment this
+    #     driver does not make.
     material_win = median_delta >= MATERIAL_WIN_THRESHOLD_PCT and excludes_zero
-    within_regression_bound = hi <= REGRESSION_BOUND_PCT
+    within_regression_bound = lo >= -REGRESSION_BOUND_PCT
     return {
         "pairCount": len(pairs),
         "pairCountMatchesSpec": len(pairs) == DEFAULT_REPETITIONS,
@@ -144,6 +155,57 @@ def analyze_pairs(pairs: list[list[float]]) -> dict:
         "direction": "candidateFaster" if median_delta > 0 else (
             "candidateSlower" if median_delta < 0 else "tie"),
     }
+
+
+def _pairs_for_deltas(deltas_pct: list[float], baseline: float = 1_000_000.0) -> list[list[float]]:
+    """Synthetic [baseline, candidate] pairs whose paired_deltas_pct is exactly `deltas_pct`."""
+    return [[baseline, baseline * (1.0 - delta / 100.0)] for delta in deltas_pct]
+
+
+def run_selftest() -> bool:
+    """Synthetic checks of analyze_pairs' sign convention -- exactly the class of bug a silent sign
+    inversion in `within_regression_bound` was (a uniformly regressed candidate scored as passing,
+    a uniformly much-faster one scored as failing). No FrameDataBench binary is touched.
+
+    Cases: a uniformly 8%-slower candidate must fail the regression bound and not register as a
+    material win; a uniformly 40%-faster one must pass the bound and register as a material win;
+    a small spread straddling zero (no real difference) must still pass the bound.
+    """
+    failures: list[str] = []
+
+    def check(condition: bool, what: str) -> None:
+        if not condition:
+            failures.append(what)
+
+    regressed = analyze_pairs(_pairs_for_deltas([-8.0] * 12))
+    check(regressed["withinRegressionBound"] is False,
+         "uniform -8% delta: withinRegressionBound should be False, got "
+         f"{regressed['withinRegressionBound']} (ci95Pct={regressed['ci95Pct']})")
+    check(regressed["materialWin"] is False,
+         f"uniform -8% delta: materialWin should be False, got {regressed['materialWin']}")
+
+    faster = analyze_pairs(_pairs_for_deltas([40.0] * 12))
+    check(faster["withinRegressionBound"] is True,
+         "uniform +40% delta: withinRegressionBound should be True, got "
+         f"{faster['withinRegressionBound']} (ci95Pct={faster['ci95Pct']})")
+    check(faster["materialWin"] is True,
+         f"uniform +40% delta: materialWin should be True, got {faster['materialWin']}")
+
+    straddling = analyze_pairs(
+        _pairs_for_deltas([3.0, -3.0, 2.0, -2.0, 1.0, -1.0, 0.0, 4.0, -4.0, 2.0, -2.0, 0.0]))
+    check(straddling["withinRegressionBound"] is True,
+         "straddling small CI: withinRegressionBound should be True, got "
+         f"{straddling['withinRegressionBound']} (ci95Pct={straddling['ci95Pct']})")
+    check(straddling["ciExcludesZero"] is False,
+         f"straddling small CI: ciExcludesZero should be False, got {straddling['ciExcludesZero']}")
+
+    if failures:
+        print(f"frame_data_paired.py --selftest: {len(failures)} check(s) failed:", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return False
+    print("frame_data_paired.py --selftest: all checks passed")
+    return True
 
 
 def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: int, warmup: int,
@@ -280,6 +342,12 @@ def collect_environment(out_dir: Path) -> None:
 
 
 def main() -> int:
+    # --selftest is a distinct mode (no --baseline/--candidate, no subprocess launched) recognized
+    # before argparse, which would otherwise reject it for lacking those required arguments --
+    # mirrors FrameDataBench's own --selftest precedent (Benchmarks/FrameData/Main.cpp).
+    if "--selftest" in sys.argv[1:]:
+        return 0 if run_selftest() else 1
+
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--baseline", required=True, type=Path,
