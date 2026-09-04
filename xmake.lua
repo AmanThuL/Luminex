@@ -102,6 +102,7 @@ target("ImGui")
 -- its headers; nothing else links it, so it stays out of Tests.
 target("ImGuiNodeEditor")
     set_kind("static")
+    set_warnings("none")
     add_files("ThirdParty/imgui-node-editor/imgui_node_editor.cpp",
               "ThirdParty/imgui-node-editor/imgui_node_editor_api.cpp",
               "ThirdParty/imgui-node-editor/imgui_canvas.cpp",
@@ -292,6 +293,7 @@ task("setup")
         local imgui_untracked = os.iorunv("git", {"-C", "ThirdParty/imgui", "ls-files",
                                                    "--others", "--exclude-standard"}):trim()
         assert(imgui_untracked == "", "ThirdParty/imgui contains untracked files")
+
         if not os.isdir("ThirdParty/imgui-node-editor") then
             -- Fetch the exact untagged commit without cloning the rest of the repo's history.
             os.mkdir("ThirdParty/imgui-node-editor")
