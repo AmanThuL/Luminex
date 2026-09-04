@@ -12,8 +12,10 @@
 #include "Render/GraphDump.h"
 
 #include <imgui.h>
-// imgui_node_editor.h pulls in imgui_internal.h. It is included here and nowhere else, so no
-// Luminex header ever exposes an ax::NodeEditor type or Dear ImGui's internal surface.
+// Included here and nowhere else, so no Luminex header ever exposes an ax::NodeEditor type. The
+// node editor's public header does not pull in imgui_internal.h -- only its own internal headers
+// do, and this file includes none of them -- so Dear ImGui's internal surface stays out of reach
+// here too.
 #include <imgui_node_editor.h>
 
 #include <algorithm>
@@ -46,6 +48,18 @@ constexpr float kDetailsMinWidth = 220.0f;
 /// Floor on the canvas child's width. A zero width would read as "take everything left" to
 /// ImGui::BeginChild, which is the opposite of what a panel too narrow to split should do.
 constexpr float kCanvasMinWidth = 80.0f;
+
+/// Size the detached Render Graph window takes the first time it is ever opened, in ImGui points.
+constexpr float kDetachedWidth = 1280.0f;
+constexpr float kDetachedHeight = 800.0f;
+
+/// Gap left between the main window's work area and the detached window's first-open position.
+constexpr float kDetachedMargin = 16.0f;
+
+/// Docking class of the Render Graph window. Any non-zero value distinguishes it from the unclassed
+/// panels; it is a literal rather than ImHashStr("...") because that lives in imgui_internal.h,
+/// which this panel deliberately does not include.
+constexpr ImGuiID kRenderGraphWindowClassId = 0x6C6D7867u; // 'lmxg'
 
 /// Narrowest a node body may be, so a short-labelled pass still reads as a box.
 constexpr float kNodeMinWidth = 150.0f;
@@ -529,6 +543,26 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state) {
 //======================================================================================================================
 void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
                           const FrameRecordRing& frameRecords) {
+    // A class of its own, refusing unclassed dock targets and overriding the viewport into
+    // NoAutoMerge: together those keep this panel out of the main dockspace and out of the main
+    // OS window, so an open Render Graph always has its own window to be large in.
+    static const ImGuiWindowClass windowClass = [] {
+        ImGuiWindowClass created;
+        created.ClassId = kRenderGraphWindowClassId;
+        created.DockingAllowUnclassed = false;
+        created.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+        return created;
+    }();
+    ImGui::SetNextWindowClass(&windowClass);
+    // First open only; afterwards imgui.ini carries whatever the user left. Placing it just right
+    // of the main window's work area is a hint, not a guarantee -- a main window that fills the
+    // display leaves the OS to clamp the position back on screen.
+    const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos({mainViewport->WorkPos.x + mainViewport->WorkSize.x + kDetachedMargin,
+                             mainViewport->WorkPos.y},
+                            ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize({kDetachedWidth, kDetachedHeight}, ImGuiCond_FirstUseEver);
+
     if (!ImGui::Begin(kRenderGraphPanelWindowName, &open)) {
         ImGui::End();
         return;

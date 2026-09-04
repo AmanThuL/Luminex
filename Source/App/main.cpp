@@ -285,6 +285,14 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         (*device)->endFrame(swapchain->get());
         ++presentedFrames;
 
+        // Platform viewports follow the present because the ImGui backend renders each extra window
+        // on the same device queue with the per-frame-slot allocator this frame just finished
+        // encoding against; running them after endFrame keeps that slot's use strictly ordered. The
+        // skipped-drawable path continues above without opening an ImGui frame, so it never reaches
+        // here with stale platform draw data.
+        ImGui::UpdatePlatformWindows();
+        ImGui::RenderPlatformWindowsDefault();
+
         if (capturingThisFrame) {
             {
                 lmx::rhi::debug::SchemaContext ctx;
