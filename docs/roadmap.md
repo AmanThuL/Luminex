@@ -21,7 +21,9 @@ reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: `bindFrameData
 per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed with no alias. NoApi is
 archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection model; M5.4
-(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
+(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame. M5.5
+(`docs/milestones/m5.5.md`) opened that view in its own detached OS window and made its layout
+readable for real frames: collapsible stage groups, compact pins, and row wrapping.
 
 ## M4 — Correct image formation
 

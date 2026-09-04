@@ -8,7 +8,8 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
+- Current baseline: `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
+  `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 
@@ -54,10 +55,14 @@ thin RHI and one implemented backend.
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
   exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress. The Performance panel
   shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
-  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel draws
-  the exact newest-retired-frame's compiled record as a node canvas — passes and sinks as nodes,
-  version dependencies as edges, culled passes in their own band — with a details pane scoped to
-  the selected node and a Reset Layout button; dragged node positions are session state only.
+  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel opens
+  in its own OS window (Dear ImGui platform viewports; it never docks) and draws the exact
+  newest-retired-frame's compiled record as a grouped, wrapped node canvas — stage groups (a shared
+  label prefix, at least two members, scheduled and culled kept separate) collapsed by default and
+  opened by double-click or the details pane's Expand button, compact pins that show their full
+  label on hover or selection, and a `columns` control that wraps long chains into rows — with a
+  details pane scoped to the selected item and a Reset Layout button that also reseeds the column
+  count from the canvas width; dragged node positions are session state only.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
@@ -67,15 +72,18 @@ thin RHI and one implemented backend.
   version, per-panel visibility) persist together in `imgui.ini` next to the built binary (build
   dir, gitignored): a clean or pre-M5.3 ini rebuilds the default five-panel layout once, a matching
   schema restores it unchanged, and Reset Default Layout rebuilds it on demand without touching
-  unrelated ini entries.
+  unrelated ini entries. Render Graph is never part of that dock layout — its window class forbids
+  docking into an unclassed node, so it always opens as its own OS window, positioned beside the
+  main window on first use and remembered by `imgui.ini` afterwards like any other window.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
   Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
   App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
-  (absolute path, written once). The editor's read-only Render Graph panel shows the same compiled
-  record live as a node canvas with a selection-scoped details pane (uses, schedule, culling,
-  transitions, transient lifetimes and memory) and a button to dump the displayed frame on demand.
+  (absolute path, written once). The editor's read-only Render Graph panel, in its own detached OS
+  window, shows the same compiled record live as a grouped, wrapped node canvas with a
+  selection-scoped details pane (uses, schedule, culling, transitions, transient lifetimes and
+  memory) and a button to dump the displayed frame on demand.
   Guide: `docs/guides/gpu-debugging.md`, whose Parity checks section documents the exact procedure
   and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
 
@@ -101,16 +109,19 @@ plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, a docked five-panel editor shell — Scene / Viewport
-/ Inspector / Performance / Render Graph, drawn from `Source/App/Panels/` — with a main menu
+(`TextureBake.h`)) → `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
+Inspector / Performance docked together, Render Graph always detached into its own OS window via
+Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
 (File/Window/Layout/Debug, GPU capture with a `C` shortcut), versioned `imgui.ini` workspace
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
 subject-scoped editing (camera, rendering, one of three directional lights, or one object); the
-Render Graph panel shapes the retained compiled frame into the ImGui-free `GraphNodeModel` and
-draws it on a vendored `ImGuiNodeEditor` canvas with a selection-scoped details pane, deterministic
-layout stable across unchanged frames, and session-only dragged positions; frame loop, joins its
-own UI pass to the graph, `--screenshot` path).
+Render Graph panel shapes the retained compiled frame into the ImGui-free `GraphNodeModel`, groups
+and wraps it into a `GraphLayout` (collapsible stage groups, compact pins, a columns-per-row wrap),
+and draws it on a vendored `ImGuiNodeEditor` canvas with a selection-scoped details pane,
+deterministic layout stable across unchanged frames, and session-only dragged positions; frame
+loop, joins its own UI pass to the graph plus the platform-window render after present,
+`--screenshot` path).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
 ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
 BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as

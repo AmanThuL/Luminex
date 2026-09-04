@@ -2,6 +2,7 @@
 
 #include "App/FrameRecordRing.h"
 #include "App/GraphInspectorModel.h"
+#include "App/GraphLayout.h"
 #include "App/GraphNodeModel.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
@@ -223,6 +224,47 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
         INFO("edge to '" + to.label + "'");
         if (to.kind == lmx::app::GraphNodeKind::Pass) {
             REQUIRE(to.scheduleOrder.has_value());
+        }
+    }
+
+    // The layout groups the two scheduled passes under their shared "lmx.test.inspector" prefix
+    // and leaves the lone culled pass ungrouped: fillStaging and moveToTarget share that
+    // four-segment prefix and are both scheduled, so they form a two-member group, while
+    // orphanFill shares the prefix too but was culled -- its own would-be group has one member and
+    // never reaches the two-member minimum, so it stays a plain, ungrouped item.
+    const lmx::app::GraphLayout collapsed = lmx::app::layoutGraph(
+        nodeModel, lmx::app::GraphLayoutOptions{.columnsPerRow = 0, .expandedGroups = {}});
+
+    REQUIRE(collapsed.groups.size() == 1);
+    REQUIRE(collapsed.groups[0].key == "lmx.test.inspector");
+    REQUIRE_FALSE(collapsed.groups[0].culled);
+    REQUIRE(collapsed.groups[0].members.size() == 2);
+
+    uint32_t collapsedGroupMemberTotal = 0;
+    for (const lmx::app::GraphLayoutGroup& group : collapsed.groups) {
+        collapsedGroupMemberTotal += static_cast<uint32_t>(group.members.size());
+    }
+    REQUIRE(collapsed.items.size() ==
+            nodeModel.nodes.size() - collapsedGroupMemberTotal + collapsed.groups.size());
+    // Anchored: 4 nodes (2 scheduled passes, 1 culled pass, 1 sink), one 2-member group folded to
+    // one box, so 3 items -- an implementation that formed no groups would still satisfy the
+    // arithmetic above vacuously.
+    REQUIRE(collapsed.items.size() == 3);
+
+    std::vector<std::string> expandedKeys;
+    for (const lmx::app::GraphLayoutGroup& group : collapsed.groups) {
+        expandedKeys.push_back(group.key);
+    }
+    const lmx::app::GraphLayout expanded = lmx::app::layoutGraph(
+        nodeModel,
+        lmx::app::GraphLayoutOptions{.columnsPerRow = 0, .expandedGroups = expandedKeys});
+    // Expanding the only group restores the M5.4 item-per-node picture.
+    REQUIRE(expanded.items.size() == nodeModel.nodes.size());
+
+    for (const lmx::app::GraphLayout* layout : {&collapsed, &expanded}) {
+        for (const lmx::app::GraphLayoutEdge& edge : layout->edges) {
+            REQUIRE(edge.fromItem < layout->items.size());
+            REQUIRE(edge.toItem < layout->items.size());
         }
     }
 }
