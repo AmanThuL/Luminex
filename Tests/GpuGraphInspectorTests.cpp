@@ -208,7 +208,11 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     std::vector<std::string> sortedModelCulled = modelCulled;
     std::sort(sortedModelCulled.begin(), sortedModelCulled.end());
     REQUIRE(nodeModelCulled == sortedModelCulled);
+    // Anchored, not just equal-to-each-other: this frame demonstrably culls one pass, so an
+    // implementation that culled nothing would still satisfy the equality above vacuously.
+    REQUIRE(nodeModelCulled == std::vector<std::string>{"lmx.test.inspector.orphanFill"});
 
+    REQUIRE_FALSE(nodeModel.edges.empty());
     for (const lmx::app::GraphNodeEdge& edge : nodeModel.edges) {
         const lmx::app::GraphNode& from = nodeModel.nodes[edge.fromNode];
         INFO("edge from '" + from.label + "'");
