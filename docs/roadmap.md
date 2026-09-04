@@ -168,12 +168,12 @@ action works; selection, filtering, scene changes, resize, and hidden-Viewport i
 - Add a node canvas over `CompiledFrameRecord`: passes are nodes, version dependencies are edges,
   sinks are endpoints, and culled passes remain separate from the scheduled DAG. Selection exposes
   subresources, barriers, timing, lifetimes, and reuse; alias links differ from execution edges.
-- Keep automatic layout deterministic and stable for an unchanged graph. Preserve the existing
-  detailed list and deterministic text dump as alternate views of the same record.
+- Keep automatic layout deterministic and stable for an unchanged graph; drags are session state.
+  The panel is canvas-first: the M5.3 list becomes a selected-node details pane; the dump remains.
 
 **Exit gate:** unchanged frames produce stable positions; dependencies agree with resource versions
 and schedule; culled passes and aliases cannot resemble scheduled edges; details agree with the
-selected pass, version, and transient assignment; list, node, and dump identify the same frame.
+selected pass, version, and transient assignment; node view and dump identify the same frame.
 
 **Defer:** graph mutation, user passes, capture-file browsing, manual scheduling, and changes to
 Render Graph execution or RHI semantics.
