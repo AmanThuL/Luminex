@@ -178,6 +178,28 @@ selected pass, version, and transient assignment; node view and dump identify th
 **Defer:** graph mutation, user passes, capture-file browsing, manual scheduling, and changes to
 Render Graph execution or RHI semantics.
 
+## M5.5 — Render graph legibility and detached window
+
+**Outcome:** the node view becomes readable for real frames: it opens in its own OS window, and its
+layout compacts, groups, and wraps the compiled graph without changing what M5.4 draws from.
+
+**Deliver:**
+
+- Enable Dear ImGui platform viewports. The Render Graph window always owns its own OS window
+  through a dedicated window class and never docks; the other panels keep the main window.
+- Add a pure layout step over `GraphNodeModel`: stage groups by dotted label prefix, collapsed by
+  default and expandable in place; compact nodes with short pin labels and full labels on hover and
+  selection; row wrapping with a columns-per-row control.
+
+**Exit gate:** the detached window is validation-clean across open, resize, move, close, and GPU
+capture; a collapsed group carries exactly the edges that cross its boundary and its members'
+summed timing; positions are deterministic for a given record, expansion set, and column count; the
+M5.4 exit gate still holds; fixed-camera renderer output is unchanged.
+
+**Defer:** other panels as OS windows as a supported workflow, persisted node positions, manual
+grouping, an orientation toggle, graph mutation, and changes to Render Graph execution or RHI
+semantics.
+
 ## M6 — Temporal and display foundation
 
 **Outcome:** every frame owns explicit current and previous state, a portable reconstruction path,
