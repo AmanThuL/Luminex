@@ -99,7 +99,11 @@ target("ImGui")
 -- thedmd/imgui-node-editor (node_editor_pin below), vendored the same way as Dear ImGui: no
 -- xrepo package exists, and the maintained patch keeps it building against our post-1.93 ImGui
 -- pin (imgui_pin above) after upstream stalled on an unreleased `master`. Depends on ImGui for
--- its headers; nothing else links it, so it stays out of Tests.
+-- its headers; nothing else links it, so it stays out of Tests. set_warnings("none") silences three
+-- standing warnings in its vendored source (an unused-but-set variable, a deprecated
+-- std::aligned_storage use, and an unused Log() parameter) that are not ours to fix; left under the
+-- project's default allextra policy, they would sit in every build log and mask a new first-party
+-- warning from this target.
 target("ImGuiNodeEditor")
     set_kind("static")
     set_warnings("none")
