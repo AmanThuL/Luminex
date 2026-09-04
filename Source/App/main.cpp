@@ -138,8 +138,6 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
     lmx::render::TransientPool transientPool(**device);
     uint64_t skippedFrames = 0;
     bool running = true;
-    // Set by the 'c' key or the frame hook, consumed by the next frame that actually renders.
-    bool captureRequested = false;
     uint64_t previousTicksNs = SDL_GetTicksNS();
     // Accumulation in double avoids precision loss in the float shader time during long runs.
     double elapsedSeconds = 0.0;
@@ -158,7 +156,7 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
                 // Do not capture from key repeats or keyboard input owned by ImGui.
                 if (event.key.key == SDLK_C && !event.key.repeat &&
                     !ImGui::GetIO().WantCaptureKeyboard) {
-                    captureRequested = true;
+                    shell->actions().requestCapture();
                 }
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
@@ -172,6 +170,11 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
             default:
                 break;
             }
+        }
+        // The menu's Quit reaches the same exit the window close button does, one frame after it
+        // was chosen -- the frame that drew the menu still finishes normally.
+        if (shell->actions().consumeQuit()) {
+            running = false;
         }
         if (!running) {
             break;
@@ -187,7 +190,7 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
             }
         }
         if (captureAtFrame > 0 && frameIndex == captureAtFrame) {
-            captureRequested = true;
+            shell->actions().requestCapture();
         }
 
         const uint64_t nowNs = SDL_GetTicksNS();
@@ -213,10 +216,10 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
             continue;
         }
 
-        // Capture exactly one acquired frame. Failed requests are consumed rather than retried.
+        // Capture exactly one acquired frame. Consumed only past the acquire above, so a skipped
+        // drawable retains the request; failed attempts are consumed rather than retried.
         bool capturingThisFrame = false;
-        if (captureRequested) {
-            captureRequested = false;
+        if (shell->actions().consumeCapture()) {
             capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, capturePath);
         }
 

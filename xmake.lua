@@ -129,7 +129,7 @@ target("TextureBake")
 
 target("App")
     set_kind("binary")
-    add_files("Source/App/*.cpp")
+    add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
     add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
@@ -142,9 +142,11 @@ target("Tests")
     -- Keep test shader outputs separate from App; both targets may compile in parallel.
     -- Use singular "test" because the default macOS filesystem aliases it with the Tests binary.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
-    add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/ExposureReset.cpp",
+    add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/EditorActions.cpp",
+              "Source/App/EditorSelection.cpp", "Source/App/ExposureReset.cpp",
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
-              "Source/App/PassTimingHistory.cpp")
+              "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
+              "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.

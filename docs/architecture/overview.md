@@ -41,7 +41,17 @@ is a repository-root component; the other runtime layers remain under `Source/`:
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).
-- **App** owns SDL3, the editor shell, scene selection, startup error reporting, and the frame loop.
+- **App** owns SDL3, the docked editor shell, and the frame loop. `Source/App/Panels/` holds the
+  five panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
+  coordinates them and the process-global ImGui context. Selection (`EditorSelection.h`), panel
+  visibility and the workspace persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised
+  action intents (`EditorActions.h`), and the Performance panel's coherent snapshot
+  (`PerformanceModel.h`) are ImGui/SDL/Metal-backend-free models that compile into the Tests target
+  alongside the rest of App's plain logic. A registered ImGui settings handler persists the
+  workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
+  ImGui's own docking data. Menu drawing and keyboard shortcuts only raise action intents; the frame
+  loop consumes quit and capture at the boundary that already owns each operation, and the shell
+  consumes a layout-reset intent at the start of the next frame.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and

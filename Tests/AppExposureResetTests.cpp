@@ -93,3 +93,35 @@ TEST_CASE("an unchanged context does not reset (a failed resize, or any other no
 
     REQUIRE_FALSE(shouldResetExposure(previous, current));
 }
+
+//======================================================================================================================
+// setAutoExposureEnabled is what the Inspector's Rendering section and the Viewport toolbar's quick
+// toggle both call, so the disabled->enabled edge has to fire the same trigger from either site.
+TEST_CASE("setAutoExposureEnabled writes settings and resets on the disabled->enabled edge",
+          "[app]") {
+    EditorRenderSettings settings;
+    settings.autoExposureEnabled = false;
+    ExposureResetContext exposureContext = loaded(engine::defaultSceneId(), false);
+    bool exposureResetPending = false;
+
+    setAutoExposureEnabled(settings, exposureContext, exposureResetPending, true);
+
+    REQUIRE(settings.autoExposureEnabled);
+    REQUIRE(exposureContext.autoExposureEnabled);
+    REQUIRE(exposureResetPending);
+}
+
+//======================================================================================================================
+TEST_CASE("setAutoExposureEnabled writes settings without resetting on the enabled->disabled edge",
+          "[app]") {
+    EditorRenderSettings settings;
+    settings.autoExposureEnabled = true;
+    ExposureResetContext exposureContext = loaded(engine::defaultSceneId(), true);
+    bool exposureResetPending = false;
+
+    setAutoExposureEnabled(settings, exposureContext, exposureResetPending, false);
+
+    REQUIRE_FALSE(settings.autoExposureEnabled);
+    REQUIRE_FALSE(exposureContext.autoExposureEnabled);
+    REQUIRE_FALSE(exposureResetPending);
+}

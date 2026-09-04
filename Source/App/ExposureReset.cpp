@@ -25,4 +25,16 @@ bool shouldResetExposure(const ExposureResetContext& previous,
     return false;
 }
 
+//======================================================================================================================
+void setAutoExposureEnabled(EditorRenderSettings& settings, ExposureResetContext& exposureContext,
+                            bool& exposureResetPending, bool enabled) {
+    settings.autoExposureEnabled = enabled;
+    ExposureResetContext candidate = exposureContext;
+    candidate.autoExposureEnabled = enabled;
+    if (shouldResetExposure(exposureContext, candidate)) {
+        exposureResetPending = true;
+    }
+    exposureContext = candidate;
+}
+
 } // namespace lmx::app
