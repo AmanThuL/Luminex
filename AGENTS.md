@@ -8,9 +8,9 @@ thin RHI and one implemented backend.
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
-- Current baseline: `docs/milestones/m5.3.md` (editor workspace and selection) over
-  `docs/milestones/m5.2.md` (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over
-  `docs/milestones/m5.md`
+- Current baseline: `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
+  `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
+  (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
@@ -54,8 +54,10 @@ thin RHI and one implemented backend.
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
   exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress. The Performance panel
   shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
-  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel keeps
-  the exact newest-retired-frame timings.
+  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel draws
+  the exact newest-retired-frame's compiled record as a node canvas — passes and sinks as nodes,
+  version dependencies as edges, culled passes in their own band — with a details pane scoped to
+  the selected node and a Reset Layout button; dragged node positions are session state only.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
@@ -71,9 +73,10 @@ thin RHI and one implemented backend.
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
   Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
   App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
-  (absolute path, written once). The editor's read-only Render Graph inspector panel shows the same
-  compiled record live (uses, schedule, culling, transitions, transient lifetimes and memory) with a
-  button to dump the displayed frame on demand. Guide: `docs/guides/gpu-debugging.md`, whose Parity
+  (absolute path, written once). The editor's read-only Render Graph panel shows the same compiled
+  record live as a node canvas with a selection-scoped details pane (uses, schedule, culling,
+  transitions, transient lifetimes and memory) and a button to dump the displayed frame on demand.
+  Guide: `docs/guides/gpu-debugging.md`, whose Parity
   checks section documents the exact procedure and commands for verifying auto-exposure/bloom
   toggles leave pre-M5 output unchanged.
 
@@ -104,8 +107,11 @@ generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baki
 (File/Window/Layout/Debug, GPU capture with a `C` shortcut), versioned `imgui.ini` workspace
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
-subject-scoped editing (camera, rendering, one of three directional lights, or one object); frame
-loop, joins its own UI pass to the graph, `--screenshot` path).
+subject-scoped editing (camera, rendering, one of three directional lights, or one object); the
+Render Graph panel shapes the retained compiled frame into the ImGui-free `GraphNodeModel` and
+draws it on a vendored `ImGuiNodeEditor` canvas with a selection-scoped details pane, deterministic
+layout stable across unchanged frames, and session-only dragged positions; frame loop, joins its
+own UI pass to the graph, `--screenshot` path).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
 ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
 BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as

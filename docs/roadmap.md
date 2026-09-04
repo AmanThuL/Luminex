@@ -13,14 +13,14 @@ without expanding it.
 M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute/copy/barrier
 execution substrate — compute pipelines, storage resources, subresource views, general copies,
 indirect execution — beneath a culled, conservatively pooled validating render graph with a
-deterministic dump, a read-only editor inspector, and a pausable rolling timing summary;
-histogram exposure and bloom exercise it while preserving deterministic manual exposure
+deterministic dump, a read-only editor inspector, and a pausable rolling timing summary; histogram
+exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
-reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: typed `bindFrameData` over
-retirement-safe growable per-slot pages, `bindBuffer` kept for static reuse, and `setUniforms`
-removed with no alias. NoApi is archived at tag `m5.1-noapi-evidence`, with no experiment source on
-`main`. M5.3 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection model.
+reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: `bindFrameData` over growable
+per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed. NoApi is archived at tag
+`m5.1-noapi-evidence`. M5.3 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection
+model; M5.4 (`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
 
 ## M4 — Correct image formation
 
