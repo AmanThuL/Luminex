@@ -298,6 +298,57 @@ void declareAliasFrame(AliasFrame& frame) {
     graph.presentTexture(nextVersion(display));
 }
 
+// Nothing a sink reaches: every pass writes an imported target the frame never roots, so the
+// proved DAG is empty and the whole picture is the culled band. The three-segment labels never
+// group, which leaves the band holding one box per pass.
+struct DeadFrame {
+    FakeTexture orphanA{64};
+    FakeTexture orphanB{64};
+    RenderGraph graph;
+};
+
+//======================================================================================================================
+void declareDeadFrame(DeadFrame& frame) {
+    RenderGraph& graph = frame.graph;
+    const GraphTexture spareA =
+        graph.importTexture(frame.orphanA, rhi::Format::BGRA8Unorm, "lmx.orphanA");
+    const GraphTexture spareB =
+        graph.importTexture(frame.orphanB, rhi::Format::BGRA8Unorm, "lmx.orphanB");
+
+    PassDesc first;
+    first.color = ColorAttachment{.handle = spareA};
+    graph.addPass("lmx.pass.dead", first, kNoWork);
+
+    PassDesc second;
+    second.color = ColorAttachment{.handle = spareB};
+    graph.addPass("lmx.pass.gone", second, kNoWork);
+}
+
+// The same empty DAG, with two four-segment labels that do share a stage: the group they form is
+// culled, so the band holds one box standing for both.
+struct DeadStageFrame {
+    FakeTexture orphanA{64};
+    FakeTexture orphanB{64};
+    RenderGraph graph;
+};
+
+//======================================================================================================================
+void declareDeadStageFrame(DeadStageFrame& frame) {
+    RenderGraph& graph = frame.graph;
+    const GraphTexture spareA =
+        graph.importTexture(frame.orphanA, rhi::Format::BGRA8Unorm, "lmx.orphanA");
+    const GraphTexture spareB =
+        graph.importTexture(frame.orphanB, rhi::Format::BGRA8Unorm, "lmx.orphanB");
+
+    PassDesc first;
+    first.color = ColorAttachment{.handle = spareA};
+    graph.addPass("lmx.pass.blur.wide", first, kNoWork);
+
+    PassDesc second;
+    second.color = ColorAttachment{.handle = spareB};
+    graph.addPass("lmx.pass.blur.narrow", second, kNoWork);
+}
+
 //======================================================================================================================
 GraphNodeModel modelOf(RenderGraph& graph, uint64_t frameId,
                        std::span<const rhi::PassTiming> timings = {}) {
@@ -670,4 +721,92 @@ TEST_CASE("an alias link maps to items and disappears inside a collapsed stage",
     REQUIRE(expanded.aliasLinks[0].fromItem == 1);
     REQUIRE(expanded.aliasLinks[0].toItem == 2);
     REQUIRE(expanded.aliasLinks[0].sourceLink == 0);
+}
+
+//======================================================================================================================
+// A frame can declare nothing that survives culling. The layout still has to place it: there is no
+// DAG to lay out, so the band it puts everything in starts at the top of the canvas rather than
+// below rows that do not exist.
+TEST_CASE("a frame with nothing scheduled lays out an empty DAG and a band at the top", "[app]") {
+    DeadFrame frame;
+    declareDeadFrame(frame);
+    const GraphNodeModel model = modelOf(frame.graph, 11);
+
+    // The frame really is entirely dead, so the placement below is not vacuous.
+    REQUIRE(model.nodes.size() == 2);
+    REQUIRE(model.nodes[0].cullReason == CullReason::NoSinkReachesIt);
+    REQUIRE(model.nodes[1].cullReason == CullReason::NoSinkReachesIt);
+
+    const GraphLayout layout = layoutGraph(model, {});
+    REQUIRE(layout.groups.empty());
+    REQUIRE(layout.items.size() == 2);
+    REQUIRE(layout.edges.empty());
+
+    // No row above the band, so its base is zero and only the band gap separates it from the top.
+    for (const GraphLayoutItem& item : layout.items) {
+        REQUIRE(item.culled);
+        REQUIRE(item.row == 0);
+        REQUIRE(item.rank == 0);
+        REQUIRE(item.y == kGraphLayoutCulledBandGap);
+    }
+    // Ordinals along the band, which is what `layer` and `column` mean for a culled item.
+    REQUIRE(layout.items[0].layer == 0);
+    REQUIRE(layout.items[1].layer == 1);
+    REQUIRE(layout.items[0].x == 0.0f);
+    REQUIRE(layout.items[1].x == kGraphLayoutColumnSpacing);
+}
+
+//======================================================================================================================
+// Grouping does not need a proved DAG either: a stage every one of whose passes was culled folds
+// into one box, and that box is the whole picture.
+TEST_CASE("an all-culled frame folds its stage into one box in the band", "[app]") {
+    DeadStageFrame frame;
+    declareDeadStageFrame(frame);
+    const GraphNodeModel model = modelOf(frame.graph, 12);
+
+    const GraphLayout layout = layoutGraph(model, {});
+    REQUIRE(layout.groups.size() == 1);
+    REQUIRE(layout.groups[0].key == "lmx.pass.blur#culled");
+    REQUIRE(layout.groups[0].culled);
+    REQUIRE(layout.groups[0].members == std::vector<uint32_t>{0, 1});
+
+    REQUIRE(layout.items.size() == 1);
+    REQUIRE(layout.items[0].kind == GraphLayoutItemKind::Group);
+    REQUIRE(layout.items[0].culled);
+    REQUIRE(layout.items[0].row == 0);
+    REQUIRE(layout.items[0].x == 0.0f);
+    REQUIRE(layout.items[0].y == kGraphLayoutCulledBandGap);
+
+    // Opening it puts both members in the band, side by side, at the same height.
+    const GraphLayout expanded = layoutGraph(model, {.expandedGroups = {"lmx.pass.blur#culled"}});
+    REQUIRE(expanded.items.size() == 2);
+    REQUIRE(expanded.items[0].y == kGraphLayoutCulledBandGap);
+    REQUIRE(expanded.items[1].y == kGraphLayoutCulledBandGap);
+    REQUIRE(expanded.items[1].x == kGraphLayoutColumnSpacing);
+}
+
+//======================================================================================================================
+// Asking for more columns than there are layers is not a degenerate wrap: it is the unlimited case
+// spelled out, and it must place exactly what an unlimited row does.
+TEST_CASE("a column count above the layer count leaves every item in row 0", "[app]") {
+    ChainFrame frame;
+    declareChainFrame(frame);
+    const GraphNodeModel model = modelOf(frame.graph, 13);
+
+    const GraphLayout wide = layoutGraph(model, {.columnsPerRow = 16});
+    const GraphLayout unlimited = layoutGraph(model, {});
+
+    // Five layers, well under the sixteen columns asked for, so nothing can wrap.
+    REQUIRE(wide.items.size() == 6);
+    for (const GraphLayoutItem& item : wide.items) {
+        REQUIRE(item.layer < 5);
+        REQUIRE(item.row == 0);
+        REQUIRE(item.column == item.layer);
+        REQUIRE(item.x == static_cast<float>(item.layer) * kGraphLayoutColumnSpacing);
+        REQUIRE(item.y == static_cast<float>(item.rank) * kGraphLayoutRowSpacing);
+    }
+    for (uint32_t index = 0; index < wide.items.size(); ++index) {
+        REQUIRE(wide.items[index].x == unlimited.items[index].x);
+        REQUIRE(wide.items[index].y == unlimited.items[index].y);
+    }
 }

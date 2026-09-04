@@ -262,10 +262,35 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     // Expanding the only group restores the M5.4 item-per-node picture.
     REQUIRE(expanded.items.size() == nodeModel.nodes.size());
 
-    for (const lmx::app::GraphLayout* layout : {&collapsed, &expanded}) {
-        for (const lmx::app::GraphLayoutEdge& edge : layout->edges) {
-            REQUIRE(edge.fromItem < layout->items.size());
-            REQUIRE(edge.toItem < layout->items.size());
+    // What collapsing owes the reader: an edge may not point at a pass the picture folded away,
+    // and it may not be a box pointing at itself. Both endpoints are checked against the actual
+    // membership of every folded group rather than against the item count, which any edge index
+    // satisfies by construction.
+    std::vector<uint32_t> hiddenNodes;
+    for (const lmx::app::GraphLayoutGroup& group : collapsed.groups) {
+        if (group.expanded) {
+            continue;
         }
+        hiddenNodes.insert(hiddenNodes.end(), group.members.begin(), group.members.end());
+    }
+    REQUIRE_FALSE(hiddenNodes.empty());
+
+    REQUIRE_FALSE(collapsed.edges.empty());
+    for (const lmx::app::GraphLayoutEdge& edge : collapsed.edges) {
+        for (const uint32_t endpoint : {edge.fromItem, edge.toItem}) {
+            const lmx::app::GraphLayoutItem& item = collapsed.items[endpoint];
+            if (item.kind != lmx::app::GraphLayoutItemKind::Node) {
+                continue;
+            }
+            INFO("edge endpoint draws node '" + nodeModel.nodes[item.index].label + "'");
+            REQUIRE(std::find(hiddenNodes.begin(), hiddenNodes.end(), item.index) ==
+                    hiddenNodes.end());
+        }
+        REQUIRE(edge.fromItem != edge.toItem);
+    }
+
+    // Expanding hides nothing, so the only property left to hold is that no box points at itself.
+    for (const lmx::app::GraphLayoutEdge& edge : expanded.edges) {
+        REQUIRE(edge.fromItem != edge.toItem);
     }
 }
