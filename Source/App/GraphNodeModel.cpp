@@ -49,8 +49,13 @@ std::string_view sinkKindName(render::SinkKind kind) {
 }
 
 //======================================================================================================================
-// The graph's version contract in one predicate: these four roles are what advance a resource from
-// version v to v + 1, so they are what makes a pass the producer other passes depend on.
+// Derived from role alone: these four roles are the ones that can advance a resource from version v
+// to v + 1. That is a superset of the compiler's actual producer rule (RenderGraph.cpp's
+// `discarded` check), which withholds the producer entry when a color or depth attachment stores
+// with StoreOp::Discard -- information this model's DebugUse rows do not carry. A discarding write,
+// then, still gets an output pin for a version nothing produced; the graph rejects any consumer of
+// that version, so no edge can be fabricated for it, and the pin stays unconnected. That
+// unconnected pin also participates in the shape signature like any other.
 bool producesNextVersion(render::UseRole role) {
     switch (role) {
     case render::UseRole::Write:

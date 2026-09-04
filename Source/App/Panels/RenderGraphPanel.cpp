@@ -565,6 +565,7 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         // and Luminex's own imgui.ini workspace schema stays the panel's only persisted layout.
         config.SettingsFile = nullptr;
         state.editor.reset(new NodeEditorHandle{ed::CreateEditor(&config)});
+        LMX_ASSERT(state.editor->context != nullptr, "ed::CreateEditor returned a null context");
     }
 
     const ImVec2 available = ImGui::GetContentRegionAvail();

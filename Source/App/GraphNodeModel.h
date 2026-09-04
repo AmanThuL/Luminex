@@ -16,8 +16,12 @@
 
 namespace lmx::app {
 
-/// Horizontal distance between two adjacent layers, in canvas units.
-inline constexpr float kGraphNodeColumnSpacing = 280.0f;
+/// Horizontal distance between two adjacent layers, in canvas units. Pins carry full resource
+/// names, so a column must fit two pin columns (inputs and outputs) sized to the shipped
+/// renderer's longest names; this model is ImGui-free and cannot measure text itself, so the
+/// value is a fixed constant sized generously for the renderer's real pass names rather than a
+/// computed fit.
+inline constexpr float kGraphNodeColumnSpacing = 520.0f;
 
 /// Vertical distance between two adjacent ranks within a layer, in canvas units.
 inline constexpr float kGraphNodeRowSpacing = 140.0f;

@@ -177,9 +177,9 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
         }
     }
 
-    // M5.4: the node canvas is shaped from the same retained frame and must agree with both the
-    // dump and the list model above -- frame identity, scheduled order, the culled set, and that no
-    // edge names a culled pass.
+    // The node canvas is shaped from the same retained frame and must agree with both the dump and
+    // the list model above -- frame identity, scheduled order, the culled set, and that no edge
+    // names a culled pass.
     const lmx::app::GraphNodeModel nodeModel =
         lmx::app::buildGraphNodeModel(newest->record, newest->timings);
     REQUIRE(nodeModel.frameId == newest->record.frameId);
