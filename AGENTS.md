@@ -70,11 +70,12 @@ thin RHI and one implemented backend.
   The main menu (File/Window/Layout/Debug) exposes quit, per-panel visibility, Reset Default
   Layout, and GPU capture. Dock layout and Luminex's own versioned workspace metadata (schema
   version, per-panel visibility) persist together in `imgui.ini` next to the built binary (build
-  dir, gitignored): a clean or pre-M5.3 ini rebuilds the default five-panel layout once, a matching
-  schema restores it unchanged, and Reset Default Layout rebuilds it on demand without touching
-  unrelated ini entries. Render Graph is never part of that dock layout — its window class forbids
-  docking into an unclassed node, so it always opens as its own OS window, positioned beside the
-  main window on first use and remembered by `imgui.ini` afterwards like any other window.
+  dir, gitignored): a clean or pre-M5.3 ini rebuilds the default four-panel dock layout once, a
+  matching schema restores it unchanged, and Reset Default Layout rebuilds it on demand without
+  touching unrelated ini entries. Render Graph is never part of that dock layout — its window class
+  forbids docking into an unclassed node, so it always opens as its own OS window, positioned
+  beside the main window on first use and remembered by `imgui.ini` afterwards like any other
+  window.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3

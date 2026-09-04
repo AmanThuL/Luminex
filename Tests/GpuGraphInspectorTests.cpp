@@ -228,10 +228,11 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     }
 
     // The layout groups the two scheduled passes under their shared "lmx.test.inspector" prefix
-    // and leaves the lone culled pass ungrouped: fillStaging and moveToTarget share that
-    // four-segment prefix and are both scheduled, so they form a two-member group, while
-    // orphanFill shares the prefix too but was culled -- its own would-be group has one member and
-    // never reaches the two-member minimum, so it stays a plain, ungrouped item.
+    // and leaves the lone culled pass ungrouped: fillStaging and moveToTarget share that prefix
+    // (their four-segment labels clear the stage-key threshold) and are both scheduled, so they
+    // form a two-member group, while orphanFill shares the prefix too but was culled -- its own
+    // would-be group has one member and never reaches the two-member minimum, so it stays a plain,
+    // ungrouped item.
     const lmx::app::GraphLayout collapsed = lmx::app::layoutGraph(
         nodeModel, lmx::app::GraphLayoutOptions{.columnsPerRow = 0, .expandedGroups = {}});
 

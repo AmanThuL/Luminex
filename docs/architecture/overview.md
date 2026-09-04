@@ -52,7 +52,7 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   (`EditorActions.h`), the Performance panel's coherent snapshot (`PerformanceModel.h`), the Render
   Graph panel's node shaping (`GraphNodeModel.h`, deriving nodes, edges, a culled band, and alias
   links from a `CompiledFrameRecord`), and its stage grouping and placement (`GraphLayout.h`,
-  collapsing a shared-label-prefix run of at least two same-culled-status passes into one group
+  collapsing a shared-label-prefix set of at least two same-culled-status passes into one group
   node, deduplicating the edges and pins that cross a collapsed boundary, and wrapping long chains
   into rows under a caller-chosen column count) are ImGui/SDL/Metal-backend-free models that
   compile into the Tests target alongside the rest of App's plain logic. The Render Graph panel
