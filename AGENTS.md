@@ -14,9 +14,9 @@ thin RHI and one implemented backend.
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
-  slang, Dear ImGui docking-branch commit), Damaged Helmet, the CC0 Studio Small 09 HDRI, and the
-  official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored `Assets/Fetched/`, with upstream
-  provenance/license metadata.
+  slang, Dear ImGui docking-branch commit, imgui-node-editor), Damaged Helmet, the CC0 Studio
+  Small 09 HDRI, and the official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored
+  `Assets/Fetched/`, with upstream provenance/license metadata.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
   and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
   (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
