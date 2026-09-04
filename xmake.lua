@@ -163,8 +163,8 @@ target("Tests")
     add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/EditorActions.cpp",
               "Source/App/EditorSelection.cpp", "Source/App/ExposureReset.cpp",
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
-              "Source/App/GraphNodeModel.cpp", "Source/App/PassTimingHistory.cpp",
-              "Source/App/PerformanceModel.cpp",
+              "Source/App/GraphLayout.cpp", "Source/App/GraphNodeModel.cpp",
+              "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
               "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
