@@ -14,8 +14,8 @@
 
 namespace lmx::app {
 
-/// The Dear ImGui window name this panel submits. The shell's dock builder places the window under
-/// exactly this name, so both sides read it from here.
+/// The Dear ImGui window name this panel submits. The Window menu's visibility checkbox names the
+/// same panel, so both sides read the name from here rather than spelling it twice.
 inline constexpr const char* kRenderGraphPanelWindowName = "Render Graph";
 
 /// The node-editor context behind the canvas, declared but never defined outside the panel's
@@ -53,6 +53,12 @@ struct RenderGraphPanelState {
     /// Index into `GraphLayout::items` of the single selected item, or empty when the selection is
     /// empty or covers more than one item. Panel-local: it is never a scene subject.
     std::optional<uint32_t> selectedItem;
+    /// The value the column-count control is being edited toward. It equals
+    /// `layoutOptions.columnsPerRow` except while an edit is in flight -- a held step button, or a
+    /// number being typed -- because adopting each intermediate value would relayout the picture
+    /// and drop the dragged positions and the selection with it. Seeded from the canvas width on
+    /// the first draw and by Reset Layout, exactly as the column count is.
+    int columnsEdit = 0;
 };
 
 /// Destroys the node-editor context and clears the canvas state, leaving `state` reusable.

@@ -87,9 +87,10 @@ struct GraphLayoutItem {
     uint32_t index = 0;                  ///< Node index, or index into GraphLayout::groups.
     std::vector<GraphLayoutPin> inputs;  ///< Versions arriving, in first-seen order.
     std::vector<GraphLayoutPin> outputs; ///< Versions leaving, in first-seen order.
-    uint32_t layer = 0;                  ///< Longest visible-edge path from a producer-less item.
-    uint32_t rank = 0;                   ///< Position within the layer.
-    uint32_t row = 0;                    ///< Wrapped row holding the layer.
+    uint32_t layer = 0;                  ///< Longest visible-edge path from a producer-less item,
+                                         ///< or the ordinal along the band for a culled item.
+    uint32_t rank = 0;                   ///< Position within the layer; always 0 in the band.
+    uint32_t row = 0;                    ///< Wrapped row holding the layer, or the band's own row.
     uint32_t column = 0;                 ///< Column within that row.
     float x = 0.0f;                      ///< Horizontal position, in canvas units.
     float y = 0.0f;                      ///< Vertical position, in canvas units.

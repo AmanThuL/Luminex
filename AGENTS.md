@@ -70,7 +70,7 @@ thin RHI and one implemented backend.
   The main menu (File/Window/Layout/Debug) exposes quit, per-panel visibility, Reset Default
   Layout, and GPU capture. Dock layout and Luminex's own versioned workspace metadata (schema
   version, per-panel visibility) persist together in `imgui.ini` next to the built binary (build
-  dir, gitignored): a clean or pre-M5.3 ini rebuilds the default four-panel dock layout once, a
+  dir, gitignored): a clean or pre-M5.5 ini rebuilds the default four-panel dock layout once, a
   matching schema restores it unchanged, and Reset Default Layout rebuilds it on demand without
   touching unrelated ini entries. Render Graph is never part of that dock layout — its window class
   forbids docking into an unclassed node, so it always opens as its own OS window, positioned

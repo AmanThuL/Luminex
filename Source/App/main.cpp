@@ -149,8 +149,17 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
             ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
             case SDL_EVENT_QUIT:
-            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 running = false;
+                break;
+            case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+                // Platform viewports are real SDL windows, so the detached Render Graph raises the
+                // same window events the main window does and only its id tells them apart.
+                // Closing it must not end the run. That is latent while viewport windows are
+                // borderless and have no close affordance, but the id filter is the contract, not
+                // the border.
+                if (event.window.windowID == SDL_GetWindowID(window)) {
+                    running = false;
+                }
                 break;
             case SDL_EVENT_KEY_DOWN:
                 // Do not capture from key repeats or keyboard input owned by ImGui.
@@ -160,8 +169,12 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
                 }
                 break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                // Minimized windows report a zero extent, which is invalid for a swapchain.
-                if (event.window.data1 > 0 && event.window.data2 > 0) {
+                // The same id filter, and here it is load-bearing today: resizing the detached
+                // Render Graph window would otherwise resize the one swapchain the main window
+                // presents from. Minimized windows report a zero extent, which is invalid for a
+                // swapchain.
+                if (event.window.windowID == SDL_GetWindowID(window) && event.window.data1 > 0 &&
+                    event.window.data2 > 0) {
                     (*swapchain)
                         ->resize(static_cast<uint32_t>(event.window.data1),
                                  static_cast<uint32_t>(event.window.data2));
