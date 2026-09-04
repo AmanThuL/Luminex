@@ -2,13 +2,16 @@
 
 #include "App/FrameRecordRing.h"
 #include "App/GraphInspectorModel.h"
+#include "App/GraphNodeModel.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 #include "Render/TransientPool.h"
 
+#include <algorithm>
 #include <format>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -171,6 +174,51 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     for (const lmx::app::GraphInspectorPassRow& pass : model.passes) {
         if (pass.cullReason) {
             REQUIRE_FALSE(pass.gpuMilliseconds.has_value());
+        }
+    }
+
+    // M5.4: the node canvas is shaped from the same retained frame and must agree with both the
+    // dump and the list model above -- frame identity, scheduled order, the culled set, and that no
+    // edge names a culled pass.
+    const lmx::app::GraphNodeModel nodeModel =
+        lmx::app::buildGraphNodeModel(newest->record, newest->timings);
+    REQUIRE(nodeModel.frameId == newest->record.frameId);
+
+    std::vector<std::pair<uint32_t, std::string>> scheduledNodes;
+    for (const lmx::app::GraphNode& node : nodeModel.nodes) {
+        if (node.kind == lmx::app::GraphNodeKind::Pass && node.scheduleOrder.has_value()) {
+            scheduledNodes.emplace_back(*node.scheduleOrder, node.label);
+        }
+    }
+    std::sort(scheduledNodes.begin(), scheduledNodes.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+    std::vector<std::string> nodeModelScheduled;
+    for (const auto& [order, label] : scheduledNodes) {
+        nodeModelScheduled.push_back(label);
+    }
+    REQUIRE(nodeModelScheduled == modelScheduled);
+
+    std::vector<std::string> nodeModelCulled;
+    for (const lmx::app::GraphNode& node : nodeModel.nodes) {
+        if (node.kind == lmx::app::GraphNodeKind::Pass && node.cullReason.has_value()) {
+            nodeModelCulled.push_back(node.label);
+        }
+    }
+    std::sort(nodeModelCulled.begin(), nodeModelCulled.end());
+    std::vector<std::string> sortedModelCulled = modelCulled;
+    std::sort(sortedModelCulled.begin(), sortedModelCulled.end());
+    REQUIRE(nodeModelCulled == sortedModelCulled);
+
+    for (const lmx::app::GraphNodeEdge& edge : nodeModel.edges) {
+        const lmx::app::GraphNode& from = nodeModel.nodes[edge.fromNode];
+        INFO("edge from '" + from.label + "'");
+        REQUIRE(from.kind == lmx::app::GraphNodeKind::Pass);
+        REQUIRE(from.scheduleOrder.has_value());
+
+        const lmx::app::GraphNode& to = nodeModel.nodes[edge.toNode];
+        INFO("edge to '" + to.label + "'");
+        if (to.kind == lmx::app::GraphNodeKind::Pass) {
+            REQUIRE(to.scheduleOrder.has_value());
         }
     }
 }
