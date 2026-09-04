@@ -76,9 +76,8 @@ thin RHI and one implemented backend.
   (absolute path, written once). The editor's read-only Render Graph panel shows the same compiled
   record live as a node canvas with a selection-scoped details pane (uses, schedule, culling,
   transitions, transient lifetimes and memory) and a button to dump the displayed frame on demand.
-  Guide: `docs/guides/gpu-debugging.md`, whose Parity
-  checks section documents the exact procedure and commands for verifying auto-exposure/bloom
-  toggles leave pre-M5 output unchanged.
+  Guide: `docs/guides/gpu-debugging.md`, whose Parity checks section documents the exact procedure
+  and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`

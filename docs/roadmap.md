@@ -18,9 +18,10 @@ exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
 reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: `bindFrameData` over growable
-per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed. NoApi is archived at tag
-`m5.1-noapi-evidence`. M5.3 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection
-model; M5.4 (`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
+per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed with no alias. NoApi is
+archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
+(`docs/milestones/m5.3.md`) shipped the editor workspace and selection model; M5.4
+(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
 
 ## M4 — Correct image formation
 
@@ -45,9 +46,8 @@ dielectric/conductor, depth-reconstruction, gradient, and known-color tests pass
 not manually encode sRGB; undeclared graph use fails validation; unchanged passes match the M3
 reference; every pass reports a visible GPU timestamp.
 
-**Defer:** general compute and storage execution, transient pooling, graph optimization, automatic
-exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
-tracing.
+**Defer:** compute and storage execution, transient pooling, graph optimization, automatic exposure,
+bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray tracing.
 
 ## M4.1 — RHI foundation and reference lookdev
 
