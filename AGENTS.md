@@ -21,7 +21,9 @@ thin RHI and one implemented backend.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
   and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
   (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
-  pins and hashes are in `xmake.lua`. Optional:
+  pins and hashes are in `xmake.lua`. Setup re-applies the maintained ThirdParty patches
+  idempotently: a tree already carrying the current patch is left alone, and one carrying an older
+  revision of it is restored to the pin before the patch is applied. Optional:
   `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
   fallback works without it).
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes

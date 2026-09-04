@@ -230,6 +230,38 @@ task("setup")
     set_menu {usage = "xmake setup", description = "fetch pinned dependencies and scene assets",
               options = {}}
     on_run(function ()
+        -- Applies a maintained ThirdParty patch and leaves the tree holding exactly it, whatever
+        -- state the checkout was already in: pristine, already carrying this patch, or carrying an
+        -- older revision of it. That last state is the one that used to fail setup outright -- the
+        -- reverse-check misses, and the forward check then fails on context the stale patch already
+        -- moved -- so the tracked tree is restored before checking again. Doing so is safe because
+        -- HEAD has just been asserted to be the pin, which leaves patch residue as the only thing
+        -- discardable. Untracked files are never touched, only reported.
+        local function apply_maintained_patch(dir, patch)
+            local already_applied = false
+            try {
+                function ()
+                    os.iorunv("git", {"-C", dir, "apply", "--reverse", "--check", patch})
+                    already_applied = true
+                end,
+                catch {
+                    function ()
+                    end
+                }
+            }
+            if not already_applied then
+                os.execv("git", {"-C", dir, "checkout", "-q", "--", "."})
+                os.execv("git", {"-C", dir, "apply", "--check", patch})
+                os.execv("git", {"-C", dir, "apply", patch})
+            end
+            local applied = os.iorunv("git", {"-C", dir, "diff", "--no-ext-diff", "--binary"})
+            assert(applied == io.readfile(patch),
+                   format("%s has tracked changes beyond the maintained patch", dir))
+            local untracked = os.iorunv("git", {"-C", dir, "ls-files", "--others",
+                                                "--exclude-standard"}):trim()
+            assert(untracked == "", format("%s contains untracked files", dir))
+        end
+
         if not os.isdir("ThirdParty/metal-cpp") then
             os.mkdir("ThirdParty/metal-cpp")
             os.execv("git", {"-C", "ThirdParty/metal-cpp", "init", "-q"})
@@ -279,29 +311,7 @@ task("setup")
 
         local imgui_patch = path.join(os.projectdir(),
                                       "Tools/Patches/imgui-metal4-remove-texture.patch")
-        local patch_already_applied = false
-        try {
-            function ()
-                os.iorunv("git", {"-C", "ThirdParty/imgui", "apply", "--reverse", "--check",
-                                  imgui_patch})
-                patch_already_applied = true
-            end,
-            catch {
-                function ()
-                end
-            }
-        }
-        if not patch_already_applied then
-            os.execv("git", {"-C", "ThirdParty/imgui", "apply", "--check", imgui_patch})
-            os.execv("git", {"-C", "ThirdParty/imgui", "apply", imgui_patch})
-        end
-        local imgui_diff = os.iorunv("git", {"-C", "ThirdParty/imgui", "diff",
-                                              "--no-ext-diff", "--binary"})
-        assert(imgui_diff == io.readfile(imgui_patch),
-               "ThirdParty/imgui has tracked changes beyond the maintained patch")
-        local imgui_untracked = os.iorunv("git", {"-C", "ThirdParty/imgui", "ls-files",
-                                                   "--others", "--exclude-standard"}):trim()
-        assert(imgui_untracked == "", "ThirdParty/imgui contains untracked files")
+        apply_maintained_patch("ThirdParty/imgui", imgui_patch)
 
         if not os.isdir("ThirdParty/imgui-node-editor") then
             -- Fetch the exact untagged commit without cloning the rest of the repo's history.
@@ -321,31 +331,7 @@ task("setup")
 
         local node_editor_patch = path.join(os.projectdir(),
                                             "Tools/Patches/imgui-node-editor-imgui-1.93.patch")
-        local node_editor_patch_already_applied = false
-        try {
-            function ()
-                os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", "--reverse",
-                                  "--check", node_editor_patch})
-                node_editor_patch_already_applied = true
-            end,
-            catch {
-                function ()
-                end
-            }
-        }
-        if not node_editor_patch_already_applied then
-            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", "--check",
-                             node_editor_patch})
-            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", node_editor_patch})
-        end
-        local node_editor_diff = os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor", "diff",
-                                                    "--no-ext-diff", "--binary"})
-        assert(node_editor_diff == io.readfile(node_editor_patch),
-               "ThirdParty/imgui-node-editor has tracked changes beyond the maintained patch")
-        local node_editor_untracked = os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor",
-                                                         "ls-files", "--others",
-                                                         "--exclude-standard"}):trim()
-        assert(node_editor_untracked == "", "ThirdParty/imgui-node-editor contains untracked files")
+        apply_maintained_patch("ThirdParty/imgui-node-editor", node_editor_patch)
         os.mkdir("Assets/Fetched/DamagedHelmet")
         local helmet_files = {
             {name = "DamagedHelmet.glb", source = "glTF-Binary/DamagedHelmet.glb"},
