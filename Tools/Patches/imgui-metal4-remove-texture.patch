@@ -20,10 +20,42 @@ index 61f797f..244fce3 100644
  // Called by Init/NewFrame/Shutdown
  IMGUI_IMPL_API bool ImGui_ImplMetal4_CreateDeviceObjects(MTL::Device* device);
 diff --git a/backends/imgui_impl_metal4.mm b/backends/imgui_impl_metal4.mm
-index 6044c23..89680bc 100644
+index 6044c23..b2e4a03 100644
 --- a/backends/imgui_impl_metal4.mm
 +++ b/backends/imgui_impl_metal4.mm
-@@ -137,6 +137,20 @@ void ImGui_ImplMetal4_RenderDrawData(ImDrawData* draw_data,
+@@ -30,6 +30,7 @@
+ #include "imgui_impl_metal4.h"
+ #import <time.h>
+ #import <Metal/Metal.h>
++#include <vector>
+ 
+ #ifdef IMGUI_IMPL_METAL_CPP
+ #include <Metal/Metal.hpp>
+@@ -77,6 +78,15 @@ struct ImGui_Metal4_ConstantData
+ // renderer backend. Stores the render pipeline state cache and the default
+ // font texture, and manages the reusable buffer cache.
+ @interface MetalContext : NSObject
++{
++@public
++    // One pending signal value per frame-in-flight slot, sized in Init() alongside
++    // commandAllocators. A single shared counter cannot work here: RenderWindow() signals only the
++    // event of the slot it rendered on, so the next NewFrame(), which runs on a *different* slot,
++    // would wait on a value that slot's event was never signalled with and block forever. A slot
++    // that has never signalled keeps 0, which a fresh shared event already satisfies.
++    std::vector<uint64_t>                                   eventValues;
++}
+ @property (nonatomic, strong) id<MTLDevice>                 device;
+ @property (nonatomic, strong) id<MTL4CommandQueue>          commandQueue;
+ @property (nonatomic, strong) id<MTLDepthStencilState>      depthStencilState;
+@@ -92,7 +102,6 @@ struct ImGui_Metal4_ConstantData
+ @property (nonatomic, strong) NSObject*                     bufferCacheLock;
+ @property (nonatomic, assign) double                        lastBufferCachePurge;
+ @property (nonatomic, strong) NSArray<id<MTLSharedEvent>>*  events; // for tracking when a commands are complete to reset allocator
+-@property (nonatomic) uint64_t                              eventValue;
+ @property (nonatomic, strong) NSArray<id<MTL4CommandAllocator>>* commandAllocators;
+ @property (nonatomic, strong) NSMutableArray<NSMutableArray<id<MTLBuffer>>*>*  constantBuffers;
+ @property (nonatomic) uint64_t                              constantBufferChunkCount;
+@@ -137,6 +146,20 @@ void ImGui_ImplMetal4_RenderDrawData(ImDrawData* draw_data,
                                     (__bridge id<MTL4RenderCommandEncoder>)(commandEncoder));
  }
  
@@ -44,3 +76,29 @@ index 6044c23..89680bc 100644
  bool ImGui_ImplMetal_CreateDeviceObjects(MTL::Device* device)
  {
      return ImGui_ImplMetal4_CreateDeviceObjects((__bridge id<MTLDevice>)(device));
+@@ -161,7 +184,7 @@ void ImGui_ImplMetal4_NewFrame(MTL4RenderPassDescriptor* renderPassDescriptor, i
+         ImGui_ImplMetal4_CreateDeviceObjects(bd->SharedMetalContext.device);
+     
+     bd->SharedMetalContext.currentConstantBufferIndex = 0;
+-    [bd->SharedMetalContext.events[frameInFlightIndex] waitUntilSignaledValue:bd->SharedMetalContext.eventValue timeoutMS:UINT64_MAX];
++    [bd->SharedMetalContext.events[frameInFlightIndex] waitUntilSignaledValue:bd->SharedMetalContext->eventValues[frameInFlightIndex] timeoutMS:UINT64_MAX];
+     [bd->SharedMetalContext.commandAllocators[frameInFlightIndex] reset];
+ }
+ 
+@@ -469,6 +492,7 @@ bool ImGui_ImplMetal4_CreateDeviceObjects(id<MTLDevice> device)
+     }
+     bd->SharedMetalContext.constantBufferChunkCount = 1;
+     bd->SharedMetalContext.events = events;
++    bd->SharedMetalContext->eventValues.assign((size_t)bd->SharedMetalContext.framesInFlight, 0);
+ 
+     MTL4ArgumentTableDescriptor* argumentTableDescriptor = [[MTL4ArgumentTableDescriptor alloc] init];
+     argumentTableDescriptor.maxBufferBindCount = 2; // vertex buffer + constant buffer
+@@ -899,7 +923,7 @@ static void ImGui_ImplMetal_RenderWindow(ImGuiViewport* viewport, void*)
+     [bd->SharedMetalContext.commandQueue commit:&commandBuffer count:1];
+     [bd->SharedMetalContext.commandQueue signalDrawable:drawable];
+     [drawable present];
+-    [bd->SharedMetalContext.commandQueue signalEvent:bd->SharedMetalContext.events[bd->SharedMetalContext.currentFrameSlot] value:++(bd->SharedMetalContext.eventValue)];
++    [bd->SharedMetalContext.commandQueue signalEvent:bd->SharedMetalContext.events[bd->SharedMetalContext.currentFrameSlot] value:++(bd->SharedMetalContext->eventValues[bd->SharedMetalContext.currentFrameSlot])];
+ }
+ 
+ static void ImGui_ImplMetal_InitMultiViewportSupport()
