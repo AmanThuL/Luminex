@@ -245,6 +245,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     if (!scene) {
         LMX_LOG_ERROR("EditorShell::create: initial scene '{}' failed to load: {}",
                       library.entry(initialScene).displayName, scene.error().message);
+        releaseRenderGraphPanelState(self->m_renderGraphPanel);
         ImGui_ImplSDL3_Shutdown();
         rhi::metal4::imguiShutdown();
         ImGui::DestroyContext();
@@ -299,6 +300,9 @@ EditorShell::~EditorShell() {
     // Shutting down while relative mouse mode is still on would leave the user's cursor hidden and
     // captured with no window left to release it.
     endMouseLook();
+    // The node-editor context unregisters from the ImGui context too, so it goes before both
+    // backends and, like them, well before DestroyContext().
+    releaseRenderGraphPanelState(m_renderGraphPanel);
     // Backends unregister from the ImGui context, so destroy the context last.
     ImGui_ImplSDL3_Shutdown();
     rhi::metal4::imguiShutdown();
@@ -548,7 +552,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
 
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
         bool open = true;
-        drawRenderGraphPanel(open, frameRecords);
+        drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords);
         setPanelVisible(EditorPanel::RenderGraph, open);
     }
 }
