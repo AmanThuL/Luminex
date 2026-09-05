@@ -38,6 +38,7 @@ std::string sceneIdList(std::string_view separator) {
 AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view screenshotPath;
     std::string_view sceneName = engine::sceneIdString(engine::defaultSceneId());
+    bool maximized = true;
 
     for (size_t i = 0; i < arguments.size(); ++i) {
         const std::string_view argument = arguments[i];
@@ -54,10 +55,12 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--scene needs an ID: App --scene <" + sceneIdList("|") + ">");
             }
             sceneName = arguments[i];
+        } else if (argument == "--windowed") {
+            maximized = false;
         } else {
             return fail("unknown argument '" + std::string(argument) +
                         "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
-                        ">]");
+                        ">] [--windowed]");
         }
     }
 
@@ -69,6 +72,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
 
     AppOptions options;
     options.initialScene = *sceneId;
+    options.maximized = maximized;
     if (!screenshotPath.empty()) {
         options.mode = RunMode::Screenshot;
         options.screenshotPath = screenshotPath;

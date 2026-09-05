@@ -6,7 +6,6 @@
 #include "Render/RenderGraph.h"
 #include "Render/TransientPool.h"
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -362,8 +361,7 @@ TEST_CASE("a sink node has one edge from its producer and the producing pass rec
     REQUIRE(rooted->fromNode == 2);
     REQUIRE(rooted->resourceName == "lmx.displayColor");
 
-    // One layer past its producer, and nothing depends on a sink.
-    REQUIRE(sink.layer == model.nodes[2].layer + 1);
+    // Nothing depends on a sink.
     for (const GraphNodeEdge& edge : model.edges) {
         REQUIRE(edge.fromNode != 3);
     }
@@ -371,8 +369,8 @@ TEST_CASE("a sink node has one edge from its producer and the producing pass rec
 
 //======================================================================================================================
 // Culled work is not part of the DAG the compiler proved. It keeps its declarations for the details
-// pane but gets no pin, no edge, and no place in the layered picture -- it sits in its own band.
-TEST_CASE("a culled pass has no pins, no edges, and sits in the culled band", "[app]") {
+// pane but gets no pin and no edge, so nothing in the drawn graph can depend on it.
+TEST_CASE("a culled pass has no pins and no edges", "[app]") {
     FakeTexture color{64};
     FakeTexture displayed{64};
     FakeTexture unused{64};
@@ -429,23 +427,6 @@ TEST_CASE("a culled pass has no pins, no edges, and sits in the culled band", "[
         REQUIRE(edge.fromNode != 2);
         REQUIRE(edge.toNode != 2);
     }
-
-    uint32_t maxScheduledRank = 0;
-    for (const GraphNode& node : model.nodes) {
-        if (node.cullReason.has_value()) {
-            continue;
-        }
-        maxScheduledRank = std::max(maxScheduledRank, node.rank);
-        REQUIRE(node.y < orphanNode.y);
-    }
-
-    const float band =
-        static_cast<float>(maxScheduledRank + 1) * kGraphNodeRowSpacing + kGraphCulledBandGap;
-    REQUIRE(orphanNode.y == band);
-    REQUIRE(observerNode.y == band);
-    // Ordered along the band by declaration index.
-    REQUIRE(orphanNode.x == 0.0f);
-    REQUIRE(observerNode.x == kGraphNodeColumnSpacing);
 }
 
 //======================================================================================================================
@@ -491,71 +472,6 @@ TEST_CASE("alias links come only from aliasedFrom transitions", "[app]") {
 
     const GraphNodeModel unpooledModel = buildGraphNodeModel(*unpooled, {});
     REQUIRE(unpooledModel.aliasLinks.empty());
-}
-
-//======================================================================================================================
-// The layout is what makes the canvas readable across runs and machines. It is derived from the
-// declarations alone, so two compiles of the same frame place every node identically and the
-// numbers a driver reported never move a box.
-TEST_CASE("layout is identical for two compiles and unchanged by timings or frame ID", "[app]") {
-    BaseFrame first;
-    declareBaseFrame(first, {});
-    const auto firstRecord = first.graph.compileFrame(1);
-    REQUIRE(firstRecord.has_value());
-
-    BaseFrame second;
-    declareBaseFrame(second, {});
-    const auto secondRecord = second.graph.compileFrame(98765);
-    REQUIRE(secondRecord.has_value());
-
-    const std::array<rhi::PassTiming, 3> timings = {
-        rhi::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 1.5},
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 2.5},
-        rhi::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 3.5}};
-
-    const GraphNodeModel plain = buildGraphNodeModel(*firstRecord, {});
-    const GraphNodeModel measured = buildGraphNodeModel(*secondRecord, timings);
-
-    // The timings really did land, so the comparison below is not vacuous.
-    REQUIRE(measured.nodes[1].gpuMilliseconds == 1.5);
-    REQUIRE_FALSE(plain.nodes[1].gpuMilliseconds.has_value());
-    REQUIRE(measured.frameId == 98765);
-
-    REQUIRE(plain.nodes.size() == measured.nodes.size());
-    for (size_t index = 0; index < plain.nodes.size(); ++index) {
-        REQUIRE(plain.nodes[index].layer == measured.nodes[index].layer);
-        REQUIRE(plain.nodes[index].rank == measured.nodes[index].rank);
-        REQUIRE(plain.nodes[index].x == measured.nodes[index].x);
-        REQUIRE(plain.nodes[index].y == measured.nodes[index].y);
-    }
-
-    // Longest path from the producer-less pass: shadow, scene, display, then the sink.
-    REQUIRE(plain.nodes[1].layer == 0);
-    REQUIRE(plain.nodes[0].layer == 1);
-    REQUIRE(plain.nodes[2].layer == 2);
-    REQUIRE(plain.nodes[3].layer == 3);
-    for (const GraphNode& node : plain.nodes) {
-        REQUIRE(node.x == static_cast<float>(node.layer) * kGraphNodeColumnSpacing);
-        REQUIRE(node.y == static_cast<float>(node.rank) * kGraphNodeRowSpacing);
-        REQUIRE(node.rank == 0); // one node per layer in this frame
-    }
-
-    // Rooting the shadow map too puts a sink one layer past the shadow pass, which is the layer the
-    // scene pass already occupies: within a layer the passes rank first, then the sinks.
-    BaseFrame shared;
-    declareBaseFrame(shared, {.extraSink = true});
-    const auto sharedRecord = shared.graph.compileFrame(3);
-    REQUIRE(sharedRecord.has_value());
-
-    const GraphNodeModel sharedModel = buildGraphNodeModel(*sharedRecord, {});
-    REQUIRE(sharedModel.nodes.size() == 5);
-    REQUIRE(sharedModel.nodes[4].kind == GraphNodeKind::Sink);
-    REQUIRE(sharedModel.nodes[4].sinkKind == SinkKind::Export);
-    REQUIRE(sharedModel.nodes[0].layer == 1);
-    REQUIRE(sharedModel.nodes[4].layer == 1);
-    REQUIRE(sharedModel.nodes[0].rank == 0);
-    REQUIRE(sharedModel.nodes[4].rank == 1);
-    REQUIRE(sharedModel.nodes[4].y == kGraphNodeRowSpacing);
 }
 
 //======================================================================================================================

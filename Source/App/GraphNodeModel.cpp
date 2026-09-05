@@ -272,58 +272,6 @@ GraphNodeModel buildGraphNodeModel(const CompiledFrameRecord& record,
         }
     }
 
-    // Longest path from the producer-less scheduled passes. The compiled schedule is already
-    // topological, so one forward sweep settles every layer: a pass's producers are all behind it.
-    std::vector<std::vector<uint32_t>> incoming(model.nodes.size());
-    for (uint32_t index = 0; index < model.edges.size(); ++index) {
-        incoming[model.edges[index].toNode].push_back(index);
-    }
-    uint32_t maxLayer = 0;
-    for (const uint32_t passIndex : rows.schedule) {
-        uint32_t layer = 0;
-        for (const uint32_t edge : incoming[passIndex]) {
-            layer = std::max(layer, model.nodes[model.edges[edge].fromNode].layer + 1);
-        }
-        model.nodes[passIndex].layer = layer;
-        maxLayer = std::max(maxLayer, layer);
-    }
-    for (uint32_t index = passCount; index < model.nodes.size(); ++index) {
-        GraphNode& node = model.nodes[index];
-        LMX_ASSERT(node.producerPass.has_value(), "a sink node has no producing pass");
-        node.layer = model.nodes[*node.producerPass].layer + 1;
-        maxLayer = std::max(maxLayer, node.layer);
-    }
-
-    // Ranking visits the scheduled passes in execution order and then the sinks in declaration
-    // order, so within a layer the passes come first and every tie breaks the same way twice.
-    std::vector<uint32_t> ranked(rows.schedule);
-    for (uint32_t index = passCount; index < model.nodes.size(); ++index) {
-        ranked.push_back(index);
-    }
-    std::vector<uint32_t> nextRank(maxLayer + 1, 0);
-    uint32_t maxRank = 0;
-    for (const uint32_t nodeIndex : ranked) {
-        GraphNode& node = model.nodes[nodeIndex];
-        node.rank = nextRank[node.layer]++;
-        node.x = static_cast<float>(node.layer) * kGraphNodeColumnSpacing;
-        node.y = static_cast<float>(node.rank) * kGraphNodeRowSpacing;
-        maxRank = std::max(maxRank, node.rank);
-    }
-
-    const uint32_t bandRank = ranked.empty() ? 0 : maxRank + 1;
-    uint32_t culledOrdinal = 0;
-    for (uint32_t index = 0; index < passCount; ++index) {
-        GraphNode& node = model.nodes[index];
-        if (!node.cullReason) {
-            continue;
-        }
-        node.layer = culledOrdinal;
-        node.rank = bandRank;
-        node.x = static_cast<float>(culledOrdinal) * kGraphNodeColumnSpacing;
-        node.y = static_cast<float>(bandRank) * kGraphNodeRowSpacing + kGraphCulledBandGap;
-        ++culledOrdinal;
-    }
-
     for (const render::DebugTransition& transition : debug.transitions) {
         if (!transition.aliasedFrom) {
             continue;

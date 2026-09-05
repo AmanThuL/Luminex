@@ -28,7 +28,7 @@ LINE_BUDGETS = {
     "docs/milestones/": 300,
     "docs/plans/": 300,
     "docs/postmortems/": 300,
-    "docs/roadmap.md": 300,
+    "docs/roadmap.md": 400,
 }
 HOME_PATH = re.compile(
     r"(?i)(?:/" + r"Users/[^/\s`]+|/" + r"home/[^/\s`]+|[A-Z]:\\Users\\[^\\\s`]+)"

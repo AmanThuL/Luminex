@@ -20,10 +20,11 @@ driver-reported value, so it answers "was this pass declared, ordered, and kept?
 it take", which is the timing trace's question.
 
 Reach for it first when a pass appears to do nothing: a pass listed under `culled` never ran, and
-its reason says whether it produces nothing or no sink reaches it. The editor's Render Graph panel
-shows the same compiled record live as a node canvas with a selection-scoped details pane, and its
-Dump frame button renders this same text format for the currently displayed frame to
-`graph-dump-frame-<id>.txt` next to the binary, without setting the environment variable.
+its reason says whether it produces nothing or no sink reaches it. The editor's Render Graph panel,
+opened in its own detached OS window, shows the same compiled record live as a grouped, wrapped
+node canvas with a selection-scoped details pane, and its Dump frame button renders this same text
+format for the currently displayed frame to `graph-dump-frame-<id>.txt` next to the binary, without
+setting the environment variable.
 
 ## Capture and inspect a frame
 

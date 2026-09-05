@@ -153,8 +153,9 @@ float splitFraction(float extent, float available) {
 }
 
 //======================================================================================================================
-// Builds the five-panel default topology: Scene left, Inspector right, Performance below the
-// Viewport with Render Graph as a tab beside it, and the Viewport in what remains.
+// Builds the four docked panels of the default topology: Scene left, Inspector right, Performance
+// below the Viewport, and the Viewport in what remains. The fifth panel, Render Graph, is never
+// docked -- it lives in its own OS window.
 void buildDefaultLayout(ImGuiID dockspaceId) {
     const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
     const DefaultLayoutExtents extents = defaultLayoutExtents(work.x, work.y);
@@ -184,8 +185,8 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
     ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
     ImGui::DockBuilderDockWindow(kPerformancePanelWindowName, performanceId);
-    // Render Graph shares the lower dock as a tab; it remains independently closable and floatable.
-    ImGui::DockBuilderDockWindow(kRenderGraphPanelWindowName, performanceId);
+    // Render Graph is deliberately absent: its window class forbids docking into an unclassed
+    // node, so it always owns its own OS window and there is no dock node to place it in.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
     ImGui::DockBuilderFinish(dockspaceId);
 }
@@ -218,7 +219,10 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-    // Platform viewports need additional OS windows and swapchains; this RHI owns one.
+    // Platform viewports draw windows the RHI's single swapchain knows nothing about: the vendored
+    // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
+    // command buffer on the shared device queue. main.cpp drives them after each presented frame.
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
     ImGui::StyleColorsDark();
 
     if (!ImGui_ImplSDL3_InitForMetal(window)) {

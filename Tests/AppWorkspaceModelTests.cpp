@@ -7,6 +7,7 @@
 
 #include "App/WorkspaceModel.h"
 
+#include <format>
 #include <optional>
 #include <string>
 
@@ -120,6 +121,23 @@ TEST_CASE("a newer unrecognized schema is treated as legacy", "[app]") {
 }
 
 //======================================================================================================================
+// Schema 1 is the topology M5.3 and M5.4 persisted, with the Render Graph panel docked into the
+// main dockspace. It is not merely "some older number": restoring that ini's dock data would put
+// the panel back as a tab of the main window, so this pins that such an ini rebuilds instead.
+TEST_CASE("a pre-M5.5 Schema=1 section is treated as legacy", "[app]") {
+    constexpr std::string_view dockedTopologyText = "Schema=1\nRenderGraph=1\n";
+
+    const ParsedWorkspaceSettings parsed = parseWorkspaceSettings(dockedTopologyText);
+    REQUIRE(parsed.schemaState == WorkspaceSchemaState::Present);
+    REQUIRE(parsed.schemaVersion == 1);
+    REQUIRE(kWorkspaceSchemaVersion > 1);
+
+    const WorkspaceDecision decision = decideWorkspace(parsed);
+    REQUIRE(decision.kind == WorkspaceDecisionKind::BuildDefault);
+    REQUIRE_FALSE(decision.visibility.isVisible(EditorPanel::RenderGraph));
+}
+
+//======================================================================================================================
 TEST_CASE("an older schema is treated as legacy", "[app]") {
     constexpr std::string_view olderSchemaText = "Schema=0\nRenderGraph=1\n";
 
@@ -160,12 +178,12 @@ TEST_CASE("a section with no schema key is treated as legacy", "[app]") {
 
 //======================================================================================================================
 TEST_CASE("unknown keys are ignored and missing panel keys keep their default", "[app]") {
-    constexpr std::string_view textWithExtras =
-        "Schema=1\nRenderGraph=1\nSomeFutureKey=42\nGarbageLine\n";
+    const std::string textWithExtras = std::format(
+        "Schema={}\nRenderGraph=1\nSomeFutureKey=42\nGarbageLine\n", kWorkspaceSchemaVersion);
 
     const ParsedWorkspaceSettings parsed = parseWorkspaceSettings(textWithExtras);
     REQUIRE(parsed.schemaState == WorkspaceSchemaState::Present);
-    REQUIRE(parsed.schemaVersion == 1);
+    REQUIRE(parsed.schemaVersion == kWorkspaceSchemaVersion);
     REQUIRE(parsed.visibility.isVisible(EditorPanel::RenderGraph)); // Present in the text.
     REQUIRE(parsed.visibility.isVisible(EditorPanel::Scene));       // Absent: keeps default (open).
     REQUIRE(parsed.visibility.isVisible(EditorPanel::Viewport));    // Absent: keeps default (open).
@@ -205,16 +223,18 @@ TEST_CASE("write then parse round-trips every panel combination", "[app]") {
 // as the body of its `imgui.ini` section, and `decideWorkspace` demotes anything it cannot read
 // back to legacy. Renaming a key or reordering the lines would therefore silently rebuild the
 // default layout over every user's saved workspace, so the on-disk spelling is pinned literally
-// here rather than only round-tripped through the parser that shares the same spelling.
+// here rather than only round-tripped through the parser that shares the same spelling. The
+// version number is the one part that is meant to move, so it comes from the constant.
 TEST_CASE("write emits the exact persisted section text for default visibility", "[app]") {
     const std::string text = writeWorkspaceSettings(kWorkspaceSchemaVersion, WorkspaceVisibility{});
 
-    REQUIRE(text == "Schema=1\n"
-                    "Scene=1\n"
-                    "Viewport=1\n"
-                    "Inspector=1\n"
-                    "Performance=1\n"
-                    "RenderGraph=0\n");
+    REQUIRE(text == std::format("Schema={}\n"
+                                "Scene=1\n"
+                                "Viewport=1\n"
+                                "Inspector=1\n"
+                                "Performance=1\n"
+                                "RenderGraph=0\n",
+                                kWorkspaceSchemaVersion));
 }
 
 //======================================================================================================================

@@ -56,10 +56,11 @@ struct WorkspaceSettings {
     WorkspaceVisibility visibility;
 };
 
-/// The editor shell: the Dear ImGui context, the dockspace and its five panels, the fly camera, and
-/// the active engine::Scene the Inspector edits. One per process -- ImGui's context, and the
-/// Metal 4 renderer glue behind it, are both process-global -- which is why this is created
-/// through a factory and is neither copyable nor movable.
+/// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
+/// Render Graph window beside them, the fly camera, and the active engine::Scene the Inspector
+/// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
+/// process-global -- which is why this is created through a factory and is neither copyable nor
+/// movable.
 ///
 /// It owns no RHI object and no Scene. The SceneLibrary (which owns every Scene it has built, for
 /// the device's lifetime) is passed in and outlives the shell; everything else the shell touches

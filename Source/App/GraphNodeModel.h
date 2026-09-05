@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file GraphNodeModel.h
-/// @brief Declares the ImGui-free node, edge, and layout shaping behind the Render Graph canvas.
+/// @brief Declares the ImGui-free node and edge shaping behind the Render Graph canvas.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -15,20 +15,6 @@
 #include <vector>
 
 namespace lmx::app {
-
-/// Horizontal distance between two adjacent layers, in canvas units. Pins carry full resource
-/// names, so a column must fit two pin columns (inputs and outputs) sized to the shipped
-/// renderer's longest names; this model is ImGui-free and cannot measure text itself, so the
-/// value is a fixed constant sized generously for the renderer's real pass names rather than a
-/// computed fit.
-inline constexpr float kGraphNodeColumnSpacing = 520.0f;
-
-/// Vertical distance between two adjacent ranks within a layer, in canvas units.
-inline constexpr float kGraphNodeRowSpacing = 140.0f;
-
-/// Vertical gap between the scheduled graph's last rank and the culled band, in canvas units. It
-/// exists so a culled pass is never read as one more rank of the DAG that was proved.
-inline constexpr float kGraphCulledBandGap = 120.0f;
 
 /// What a node stands for. Imported resources are deliberately absent: they are pins, not nodes,
 /// because their contents came from outside the frame and no node in the frame produced them.
@@ -57,7 +43,7 @@ struct GraphNodeTransientSpan {
 };
 
 /// One box on the canvas: a declared pass or a declared sink, with everything the details pane
-/// shows for it and the position the layout put it at.
+/// shows for it. Where it is drawn is `GraphLayout`'s decision, not this model's.
 ///
 /// A culled pass carries its declarations and its cull reason but has no pins and no edges, because
 /// it is not part of the graph the compiler proved. `passKind` is meaningless on a sink node and
@@ -77,10 +63,6 @@ struct GraphNode {
     std::vector<GraphNodeTransientSpan> transientsAlive;     ///< Transients live across it.
     render::SinkKind sinkKind = render::SinkKind::Export;    ///< Sinks: how the result leaves.
     std::optional<uint32_t> producerPass; ///< Sinks: the pass that wrote the rooted version.
-    uint32_t layer = 0;                   ///< Column the layout assigned.
-    uint32_t rank = 0;                    ///< Row within the layer.
-    float x = 0.0f;                       ///< Horizontal position, in canvas units.
-    float y = 0.0f;                       ///< Vertical position, in canvas units.
 };
 
 /// One execution dependency: the version an output pin produced arriving at the input pin that
@@ -109,11 +91,10 @@ struct GraphAliasLink {
     uint64_t size = 0;             ///< Bytes of the shared placement.
 };
 
-/// One compiled frame shaped as a drawable graph: nodes, pins, execution edges, reuse links, and a
-/// deterministic layered layout.
+/// One compiled frame shaped as a drawable graph: nodes, pins, execution edges, and reuse links.
 ///
 /// It is a pure function of its inputs -- the same record and timings always shape to the same
-/// nodes at the same positions, on every machine and run -- and carries no ImGui or node-editor
+/// nodes with the same pins, on every machine and run -- and carries no ImGui or node-editor
 /// type, so it is unit-testable without a UI. `nodes` holds every declared pass in declaration
 /// order followed by every declared sink in declaration order, so a pass's node index is its
 /// declaration index and a sink's is the pass count plus its sink index.
@@ -133,7 +114,7 @@ struct GraphNodeModel {
 /// writing version `v` produces `v + 1`, and the producer of `(r, v + 1)` is the scheduled pass
 /// whose use of `(r, v)` writes. A version-0 input pin stays unconnected, since nothing in the
 /// frame produced it. Culled passes keep their declarations for the details pane but get no pins
-/// and no edges, and sit in a band below the scheduled graph.
+/// and no edges, because they are not part of the graph the compiler proved.
 ///
 /// The node facts -- uses, barriers, transient spans, and the timing join -- are the rows
 /// buildGraphInspectorModel() produces for the same record, so the canvas and the list can never

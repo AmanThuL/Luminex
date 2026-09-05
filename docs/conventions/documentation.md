@@ -59,6 +59,7 @@ remove the executor plan from the published baseline.
   numbers, commit hashes, review rounds, or task identifiers as explanations.
 - Use repository-relative paths in files and examples. Never store a personal home-directory path.
 - Keep operational documents concise: README and `AGENTS.md` at most 250 lines; conventions,
-  architecture, guides, roadmap, milestones, postmortems, and the active plan at most 300 lines.
+  architecture, guides, milestones, postmortems, and the active plan at most 300 lines; the roadmap
+  at most 400, since it gains one section per accepted milestone by design.
   Frozen research and historical specs are exempt.
 - Keep raw captures, temporary measurements, and recovery bundles outside the published source tree.
