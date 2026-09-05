@@ -203,7 +203,10 @@ local slang_sha256 = "a1c5ecae0d2425b13fe7f616686f2df7cc7028d3f6a85fb717497cf98b
 -- monotonic counter onto a per-frame-slot shared event, so the next NewFrame -- which runs on a
 -- different slot -- waits forever on a value that slot's event never received. It gives each slot
 -- its own pending value, and is what makes the detached Render Graph window survive past its
--- second frame. Re-pinning must rebase it too.
+-- second frame. Its third hunk drains an autorelease pool around the backend's platform-window
+-- create/render path and releases what it owns: the file is compiled without ARC and the frame
+-- loop drains no pool, so upstream's ARC-shaped code leaked one drawable -- one IOSurface -- per
+-- frame of the detached window. Re-pinning must rebase all three.
 local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 -- thedmd/imgui-node-editor `master` at 2026-03-29 (unreleased; the repo has no tags past 0.9.1,
 -- which predates the docking-branch ImGui API this project pins). Patched against our imgui_pin

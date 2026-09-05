@@ -20,7 +20,7 @@ index 61f797f..244fce3 100644
  // Called by Init/NewFrame/Shutdown
  IMGUI_IMPL_API bool ImGui_ImplMetal4_CreateDeviceObjects(MTL::Device* device);
 diff --git a/backends/imgui_impl_metal4.mm b/backends/imgui_impl_metal4.mm
-index 6044c23..b2e4a03 100644
+index 6044c23..a1c225b 100644
 --- a/backends/imgui_impl_metal4.mm
 +++ b/backends/imgui_impl_metal4.mm
 @@ -30,6 +30,7 @@
@@ -93,12 +93,81 @@ index 6044c23..b2e4a03 100644
  
      MTL4ArgumentTableDescriptor* argumentTableDescriptor = [[MTL4ArgumentTableDescriptor alloc] init];
      argumentTableDescriptor.maxBufferBindCount = 2; // vertex buffer + constant buffer
-@@ -899,7 +923,7 @@ static void ImGui_ImplMetal_RenderWindow(ImGuiViewport* viewport, void*)
+@@ -815,28 +839,39 @@ static void ImGui_ImplMetal_CreateWindow(ImGuiViewport* viewport)
+     void* handle = viewport->PlatformHandleRaw ? viewport->PlatformHandleRaw : viewport->PlatformHandle;
+     IM_ASSERT(handle != nullptr);
+ 
+-    id<MTLDevice> device = bd->SharedMetalContext.device;
+-    CAMetalLayer* layer = [CAMetalLayer layer];
+-    layer.device = device;
+-    layer.framebufferOnly = YES;
+-    layer.pixelFormat = bd->SharedMetalContext.framebufferDescriptor.colorPixelFormat;
++    // This file is compiled without ARC and the caller's frame loop drains no autorelease pool, so
++    // the autoreleased layer is retained explicitly and everything created with alloc/new here is
++    // released in DestroyWindow.
++    @autoreleasepool
++    {
++        id<MTLDevice> device = bd->SharedMetalContext.device;
++        CAMetalLayer* layer = [[CAMetalLayer layer] retain];
++        layer.device = device;
++        layer.framebufferOnly = YES;
++        layer.pixelFormat = bd->SharedMetalContext.framebufferDescriptor.colorPixelFormat;
+ #if TARGET_OS_OSX
+-    NSWindow* window = (__bridge NSWindow*)handle;
+-    NSView* view = window.contentView;
+-    view.layer = layer;
+-    view.wantsLayer = YES;
++        NSWindow* window = (__bridge NSWindow*)handle;
++        NSView* view = window.contentView;
++        view.layer = layer;
++        view.wantsLayer = YES;
+ #endif
+-    data->MetalLayer = layer;
+-    data->CommandQueue = [device newCommandQueue];
+-    data->RenderPassDescriptor = [[MTL4RenderPassDescriptor alloc] init];
+-    data->Handle = handle;
++        data->MetalLayer = layer;
++        data->CommandQueue = [device newCommandQueue];
++        data->RenderPassDescriptor = [[MTL4RenderPassDescriptor alloc] init];
++        data->Handle = handle;
++    }
+ }
+ 
+ static void ImGui_ImplMetal_DestroyWindow(ImGuiViewport* viewport)
+ {
+     // The main viewport (owned by the application) will always have RendererUserData == 0 since we didn't create the data for it.
+     if (ImGuiViewportDataMetal* data = (ImGuiViewportDataMetal*)viewport->RendererUserData)
++    {
++        [data->RenderPassDescriptor release];
++        [data->CommandQueue release];
++        [data->MetalLayer release];
+         IM_DELETE(data);
++    }
+     viewport->RendererUserData = nullptr;
+ }
+ 
+@@ -853,6 +888,13 @@ static void ImGui_ImplMetal_SetWindowSize(ImGuiViewport* viewport, ImVec2 size)
+ 
+ static void ImGui_ImplMetal_RenderWindow(ImGuiViewport* viewport, void*)
+ {
++    // Compiled without ARC, and called from a frame loop that drains no autorelease pool: every
++    // autoreleased object below -- the window's view and layer accessors, the drawable, the
++    // encoder -- would otherwise outlive the frame, and a drawable that is never released keeps
++    // its IOSurface while the layer allocates a fresh one each frame. The owned command buffer is
++    // released explicitly for the same reason.
++    @autoreleasepool
++    {
+     ImGuiViewportDataMetal* data = (ImGuiViewportDataMetal*)viewport->RendererUserData;
+ 
+ #if TARGET_OS_OSX
+@@ -899,7 +941,9 @@ static void ImGui_ImplMetal_RenderWindow(ImGuiViewport* viewport, void*)
      [bd->SharedMetalContext.commandQueue commit:&commandBuffer count:1];
      [bd->SharedMetalContext.commandQueue signalDrawable:drawable];
      [drawable present];
 -    [bd->SharedMetalContext.commandQueue signalEvent:bd->SharedMetalContext.events[bd->SharedMetalContext.currentFrameSlot] value:++(bd->SharedMetalContext.eventValue)];
 +    [bd->SharedMetalContext.commandQueue signalEvent:bd->SharedMetalContext.events[bd->SharedMetalContext.currentFrameSlot] value:++(bd->SharedMetalContext->eventValues[bd->SharedMetalContext.currentFrameSlot])];
++    [commandBuffer release];
++    }
  }
  
  static void ImGui_ImplMetal_InitMultiViewportSupport()
