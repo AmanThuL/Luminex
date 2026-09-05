@@ -21,7 +21,9 @@ reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: `bindFrameData
 per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed with no alias. NoApi is
 archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection model; M5.4
-(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
+(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame. M5.5
+(`docs/milestones/m5.5.md`) opened that view in its own detached OS window and made its layout
+readable for real frames: collapsible stage groups, compact pins, and row wrapping.
 
 ## M4 — Correct image formation
 
@@ -177,6 +179,34 @@ selected pass, version, and transient assignment; node view and dump identify th
 
 **Defer:** graph mutation, user passes, capture-file browsing, manual scheduling, and changes to
 Render Graph execution or RHI semantics.
+
+## M5.5 — Render graph legibility and detached window
+
+**Outcome:** the node view becomes readable for real frames: it opens in its own native OS window,
+and its cards, links, and layout read the way a Falcor-style graph editor does, without changing
+what M5.4 draws from.
+
+**Deliver:**
+
+- Enable Dear ImGui platform viewports. The Render Graph window always owns its own OS window,
+  with native title bar and close button, through a dedicated window class and never docks; the
+  other panels keep the main window. Vendored-backend defects this exposes (event pacing, missing
+  autorelease pools) are fixed in the maintained patch, and RHI wrappers release Metal objects
+  inside their own pools.
+- Add a pure layout step over `GraphNodeModel`: stage groups by dotted label prefix, collapsed by
+  default and expandable in place; layers and ranks left to right, with optional row wrapping.
+  The panel places cards from measured sizes: title-bar cards, pins on the card edges, pin-to-pin
+  curved links coloured per resource, short pin labels with full labels on hover and selection.
+
+**Exit gate:** the detached window is validation-clean across open, resize, move, close, and GPU
+capture, and its footprint does not grow with frames; a collapsed group carries exactly the edges
+that cross its boundary and its members' summed timing; layers, ranks, rows, and columns are
+deterministic for a given record, expansion set, and column count, and cards never overlap; the
+M5.4 exit gate still holds; fixed-camera renderer output is unchanged.
+
+**Defer:** other panels as OS windows as a supported workflow, persisted node positions, manual
+grouping, an orientation toggle, graph mutation, and changes to Render Graph execution or RHI
+semantics.
 
 ## M6 — Temporal and display foundation
 

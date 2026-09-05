@@ -43,7 +43,12 @@ struct WorkspaceVisibility {
 /// The current workspace persistence schema (spec section 4). Changes only when a persisted
 /// workspace contract or the required default topology changes -- never for cosmetic spacing or
 /// labels.
-inline constexpr uint32_t kWorkspaceSchemaVersion = 1;
+///
+/// Version 2 is that kind of change: the Render Graph panel left the dockspace for a window of its
+/// own, so a version 1 ini's dock data still carries a node holding it. Restoring that data would
+/// bring the panel back as a tab, and dock data is only ever restored wholesale, so every version
+/// 1 ini is legacy and rebuilds the default layout once.
+inline constexpr uint32_t kWorkspaceSchemaVersion = 2;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
 /// non-negative integer.

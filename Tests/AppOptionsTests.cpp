@@ -17,6 +17,41 @@ TEST_CASE("app options default to a windowed Sponza scene", "[app][options]") {
     REQUIRE(result->mode == RunMode::Windowed);
     REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath.empty());
+    REQUIRE(result->maximized);
+}
+
+//======================================================================================================================
+TEST_CASE("--windowed clears the maximized default", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--windowed"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE(result);
+    REQUIRE_FALSE(result->maximized);
+}
+
+//======================================================================================================================
+TEST_CASE("--windowed composes with --scene", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--scene"},
+                                      std::string_view{"damaged-helmet"},
+                                      std::string_view{"--windowed"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE(result);
+    REQUIRE_FALSE(result->maximized);
+    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
+}
+
+//======================================================================================================================
+TEST_CASE("--windowed is irrelevant but accepted in screenshot mode", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--windowed"},
+                                      std::string_view{"--screenshot"},
+                                      std::string_view{"capture.bmp"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE(result);
+    REQUIRE(result->mode == RunMode::Screenshot);
+    REQUIRE_FALSE(result->maximized);
+    REQUIRE(result->screenshotPath == "capture.bmp");
 }
 
 //======================================================================================================================
@@ -76,7 +111,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.bmp>] [--scene "
-            "<sponza|damaged-helmet|material-lab>]");
+            "<sponza|damaged-helmet|material-lab>] [--windowed]");
 }
 
 //======================================================================================================================
