@@ -13,14 +13,15 @@ without expanding it.
 M5 preserves M4.1's graph-declared, scene-linear HDR renderer and adds a compute/copy/barrier
 execution substrate — compute pipelines, storage resources, subresource views, general copies,
 indirect execution — beneath a culled, conservatively pooled validating render graph with a
-deterministic dump, a read-only editor inspector, and a pausable rolling timing summary;
-histogram exposure and bloom exercise it while preserving deterministic manual exposure
+deterministic dump, a read-only editor inspector, and a pausable rolling timing summary; histogram
+exposure and bloom exercise it while preserving deterministic manual exposure
 (`docs/milestones/m5.md`). M5.1's measured experiment (ADR 0010, `docs/milestones/m5.1.md`)
 retained the object-shaped RHI and selected an address-first per-frame data path as a bounded
-reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: typed `bindFrameData` over
-retirement-safe growable per-slot pages, `bindBuffer` kept for static reuse, and `setUniforms`
-removed with no alias. NoApi is archived at tag `m5.1-noapi-evidence`, with no experiment source on
-`main`. M5.3 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection model.
+reshape. M5.2 (`docs/milestones/m5.2.md`) shipped that migration: `bindFrameData` over growable
+per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed with no alias. NoApi is
+archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
+(`docs/milestones/m5.3.md`) shipped the editor workspace and selection model; M5.4
+(`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame.
 
 ## M4 — Correct image formation
 
@@ -45,9 +46,8 @@ dielectric/conductor, depth-reconstruction, gradient, and known-color tests pass
 not manually encode sRGB; undeclared graph use fails validation; unchanged passes match the M3
 reference; every pass reports a visible GPU timestamp.
 
-**Defer:** general compute and storage execution, transient pooling, graph optimization, automatic
-exposure, bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray
-tracing.
+**Defer:** compute and storage execution, transient pooling, graph optimization, automatic exposure,
+bloom, temporal reconstruction, local-light scaling, advanced material lobes, and ray tracing.
 
 ## M4.1 — RHI foundation and reference lookdev
 
@@ -168,12 +168,12 @@ action works; selection, filtering, scene changes, resize, and hidden-Viewport i
 - Add a node canvas over `CompiledFrameRecord`: passes are nodes, version dependencies are edges,
   sinks are endpoints, and culled passes remain separate from the scheduled DAG. Selection exposes
   subresources, barriers, timing, lifetimes, and reuse; alias links differ from execution edges.
-- Keep automatic layout deterministic and stable for an unchanged graph. Preserve the existing
-  detailed list and deterministic text dump as alternate views of the same record.
+- Keep automatic layout deterministic and stable for an unchanged graph; drags are session state.
+  The panel is canvas-first: the M5.3 list becomes a selected-node details pane; the dump remains.
 
 **Exit gate:** unchanged frames produce stable positions; dependencies agree with resource versions
 and schedule; culled passes and aliases cannot resemble scheduled edges; details agree with the
-selected pass, version, and transient assignment; list, node, and dump identify the same frame.
+selected pass, version, and transient assignment; node view and dump identify the same frame.
 
 **Defer:** graph mutation, user passes, capture-file browsing, manual scheduling, and changes to
 Render Graph execution or RHI semantics.

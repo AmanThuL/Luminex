@@ -96,6 +96,24 @@ target("ImGui")
     add_frameworks("Metal", "QuartzCore", "Cocoa")
     add_mxxflags("-fno-objc-arc")
 
+-- thedmd/imgui-node-editor (node_editor_pin below), vendored the same way as Dear ImGui: no
+-- xrepo package exists, and the maintained patch keeps it building against our post-1.93 ImGui
+-- pin (imgui_pin above) after upstream stalled on an unreleased `master`. Depends on ImGui for
+-- its headers; nothing else links it, so it stays out of Tests. set_warnings("none") silences three
+-- standing warnings in its vendored source (an unused-but-set variable, a deprecated
+-- std::aligned_storage use, and an unused Log() parameter) that are not ours to fix; left under the
+-- project's default allextra policy, they would sit in every build log and mask a new first-party
+-- warning from this target.
+target("ImGuiNodeEditor")
+    set_kind("static")
+    set_warnings("none")
+    add_files("ThirdParty/imgui-node-editor/imgui_node_editor.cpp",
+              "ThirdParty/imgui-node-editor/imgui_node_editor_api.cpp",
+              "ThirdParty/imgui-node-editor/imgui_canvas.cpp",
+              "ThirdParty/imgui-node-editor/crude_json.cpp")
+    add_includedirs("ThirdParty/imgui-node-editor", {public = true})
+    add_deps("ImGui")
+
 includes("RHI/xmake.lua")
 
 -- Camera + procedural mesh helpers on top of RHI. glm is public so App/Tests only need
@@ -130,7 +148,7 @@ target("TextureBake")
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
-    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui")
+    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui", "ImGuiNodeEditor")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
     add_rules("slang2metallib")
@@ -145,7 +163,8 @@ target("Tests")
     add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/EditorActions.cpp",
               "Source/App/EditorSelection.cpp", "Source/App/ExposureReset.cpp",
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
-              "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
+              "Source/App/GraphNodeModel.cpp", "Source/App/PassTimingHistory.cpp",
+              "Source/App/PerformanceModel.cpp",
               "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
@@ -181,6 +200,10 @@ local slang_sha256 = "a1c5ecae0d2425b13fe7f616686f2df7cc7028d3f6a85fb717497cf98b
 -- Re-pinning requires rebasing the texture-removal patch and verifying ARC and ImTextureID
 -- conventions; setup rejects a mismatched checkout before applying the patch.
 local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
+-- thedmd/imgui-node-editor `master` at 2026-03-29 (unreleased; the repo has no tags past 0.9.1,
+-- which predates the docking-branch ImGui API this project pins). Patched against our imgui_pin
+-- below; re-pinning requires re-verifying the patch's version gates.
+local node_editor_pin = "021aa0ea4da13fed864bafb2a92d4c5205076866"
 
 local helmet_pin = "2bac6f8c57bf471df0d2a1e8a8ec023c7801dddf" -- KhronosGroup/glTF-Sample-Assets
 local helmet_sha256 = "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
@@ -274,6 +297,50 @@ task("setup")
         local imgui_untracked = os.iorunv("git", {"-C", "ThirdParty/imgui", "ls-files",
                                                    "--others", "--exclude-standard"}):trim()
         assert(imgui_untracked == "", "ThirdParty/imgui contains untracked files")
+
+        if not os.isdir("ThirdParty/imgui-node-editor") then
+            -- Fetch the exact untagged commit without cloning the rest of the repo's history.
+            os.mkdir("ThirdParty/imgui-node-editor")
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "init", "-q"})
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "remote", "add", "origin",
+                             "https://github.com/thedmd/imgui-node-editor.git"})
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "fetch", "--depth", "1",
+                             "origin", node_editor_pin})
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "checkout", "-q", "FETCH_HEAD"})
+        end
+        local node_editor_head = os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor",
+                                                    "rev-parse", "HEAD"}):trim()
+        assert(node_editor_head == node_editor_pin,
+               format("ThirdParty/imgui-node-editor is at %s; expected pinned commit %s",
+                      node_editor_head, node_editor_pin))
+
+        local node_editor_patch = path.join(os.projectdir(),
+                                            "Tools/Patches/imgui-node-editor-imgui-1.93.patch")
+        local node_editor_patch_already_applied = false
+        try {
+            function ()
+                os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", "--reverse",
+                                  "--check", node_editor_patch})
+                node_editor_patch_already_applied = true
+            end,
+            catch {
+                function ()
+                end
+            }
+        }
+        if not node_editor_patch_already_applied then
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", "--check",
+                             node_editor_patch})
+            os.execv("git", {"-C", "ThirdParty/imgui-node-editor", "apply", node_editor_patch})
+        end
+        local node_editor_diff = os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor", "diff",
+                                                    "--no-ext-diff", "--binary"})
+        assert(node_editor_diff == io.readfile(node_editor_patch),
+               "ThirdParty/imgui-node-editor has tracked changes beyond the maintained patch")
+        local node_editor_untracked = os.iorunv("git", {"-C", "ThirdParty/imgui-node-editor",
+                                                         "ls-files", "--others",
+                                                         "--exclude-standard"}):trim()
+        assert(node_editor_untracked == "", "ThirdParty/imgui-node-editor contains untracked files")
         os.mkdir("Assets/Fetched/DamagedHelmet")
         local helmet_files = {
             {name = "DamagedHelmet.glb", source = "glTF-Binary/DamagedHelmet.glb"},
@@ -409,9 +476,10 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
         os.execv("python3", {"Tools/bake_gltf_textures.py",
                              "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", texturebake_bin})
 
-        print("setup done: metal-cpp %s, slang %s, imgui %s, Sponza archive %s, helmet %s, " ..
-              "MaterialLab environment %s", metalcpp_pin, slang_pin, imgui_pin,
-              sponza_archive_sha256, helmet_pin, material_lab_environment_sha256)
+        print("setup done: metal-cpp %s, slang %s, imgui %s, imgui-node-editor %s, " ..
+              "Sponza archive %s, helmet %s, MaterialLab environment %s", metalcpp_pin, slang_pin,
+              imgui_pin, node_editor_pin, sponza_archive_sha256, helmet_pin,
+              material_lab_environment_sha256)
     end)
 
 task("format")

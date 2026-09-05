@@ -45,9 +45,13 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   five panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Selection (`EditorSelection.h`), panel
   visibility and the workspace persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised
-  action intents (`EditorActions.h`), and the Performance panel's coherent snapshot
-  (`PerformanceModel.h`) are ImGui/SDL/Metal-backend-free models that compile into the Tests target
-  alongside the rest of App's plain logic. A registered ImGui settings handler persists the
+  action intents (`EditorActions.h`), the Performance panel's coherent snapshot
+  (`PerformanceModel.h`), and the Render Graph panel's node shaping (`GraphNodeModel.h`, deriving
+  nodes, edges, a culled band, alias links, and a deterministic layout from a `CompiledFrameRecord`)
+  are ImGui/SDL/Metal-backend-free models that compile into the Tests target alongside the rest of
+  App's plain logic. The Render Graph panel draws that model on a vendored `ImGuiNodeEditor` canvas
+  (ADR 0011) with a selection-scoped details pane; dragged node positions are session state, and a
+  changed shape reapplies the deterministic layout. A registered ImGui settings handler persists the
   workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
   ImGui's own docking data. Menu drawing and keyboard shortcuts only raise action intents; the frame
   loop consumes quit and capture at the boundary that already owns each operation, and the shell

@@ -9,6 +9,7 @@
 #include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
 #include "App/FrameRecordRing.h"
+#include "App/Panels/RenderGraphPanel.h"
 #include "App/PerformanceModel.h"
 #include "App/WorkspaceModel.h"
 #include "Engine/SceneLibrary.h"
@@ -239,6 +240,12 @@ private:
     // PerformanceFrameSample each buildUI when a GPU frame has newly retired; owns all of the
     // panel's timing, resolution, count, and transient-memory state so the panel itself holds none.
     PerformanceModel m_performanceModel;
+
+    // The Render Graph canvas's session state: the node-editor context, the shape it is laid out
+    // for, and the selected node. Owned here rather than by the panel because the context has to
+    // outlive any one draw -- it holds what the user dragged, zoomed, and panned -- and has to be
+    // released before ImGui::DestroyContext(), a boundary only this shell sees.
+    RenderGraphPanelState m_renderGraphPanel;
 };
 
 } // namespace lmx::app
