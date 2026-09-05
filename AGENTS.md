@@ -62,7 +62,7 @@ thin RHI and one implemented backend.
   zoom, and it never docks) and draws the exact newest-retired-frame's compiled record as a node
   canvas of Falcor-style cards — a title band in the pass kind's colour, inputs and outputs as dots
   centred on the card's edges, links coloured per resource — placed left to right from the cards'
-  measured sizes and opened at 1:1 on the leading columns, with pan and zoom for the rest. Stage groups (a shared label prefix, at least two members, scheduled and culled
+  measured sizes and opened with the leading columns filling the view, pan and zoom for the rest. Stage groups (a shared label prefix, at least two members, scheduled and culled
   kept separate) are collapsed by default and opened by double-click or the details pane's Expand
   button; pins are compact and show their full label on hover or selection; the `columns` control
   defaults to 0, no wrap, and a positive value wraps long chains into rows. A details pane is

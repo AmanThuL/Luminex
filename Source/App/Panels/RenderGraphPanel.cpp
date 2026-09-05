@@ -100,6 +100,11 @@ constexpr float kProvisionalColumnPitch = 600.0f;
 constexpr float kProvisionalRankPitch = 200.0f;
 constexpr float kProvisionalRowPitch = 1200.0f;
 
+/// Share of the view a chain too long to fit is opened filling. The leading columns are zoomed to
+/// this much of the visible width, so the head of the graph reads large while the tail waits behind
+/// a pan, rather than the whole chain shrinking until none of it can be read.
+constexpr float kLeadingViewFill = 0.9f;
+
 /// Bounds the column-count control accepts, and the width it is drawn at. Zero is the default and
 /// means no wrap: one row, left to right, which is the only arrangement a chain reads cleanly in.
 constexpr int kMinColumns = 0;
@@ -694,22 +699,34 @@ bool applyMeasuredPositions(const GraphLayout& layout, MeasuredColumns& columns)
 }
 
 //======================================================================================================================
-// Brings the head of the chain into view without touching the zoom: a graph the reader has to zoom
-// into to read is worse than one they have to pan across. The selection is a means, not a state --
-// it is set, navigated to, and cleared within the frame, so nothing stays selected.
+// Opens the picture on as much of the chain as can be read: a graph the reader has to zoom into is
+// worse than one they have to pan across. A graph that already fits the view is centred at the
+// zoom in force; a longer one is opened on the leading columns, zoomed so those columns fill the
+// view rather than so the whole chain does.
+//
+// The selection is a means, not a state -- it is set, navigated to, and cleared within the frame,
+// so nothing stays selected and the details pane still reads empty.
 //
 // `ed::GetCurrentZoom()` is the view's inverse scale, canvas units per screen pixel (see
-// `ImGuiEx::Canvas::ViewRect()`), so multiplying by the screen size is how many canvas units the
-// panel can show at the zoom it already has.
+// `ImGuiEx::Canvas::ViewRect()`, which is `(widget size - origin) * InvScale`), so multiplying by
+// the screen size is how many canvas units the panel can show at the zoom it already has.
 void navigateToLeadingColumns(const GraphLayout& layout, const MeasuredColumns& columns) {
     if (columns.x.empty()) {
         return;
     }
-    const float visible = ed::GetScreenSize().x * ed::GetCurrentZoom() - 2.0f * kColumnGap;
-    uint32_t lastColumn = 0;
-    for (uint32_t column = 0; column < columns.x.size(); ++column) {
-        if (columns.x[column] + columns.width[column] <= visible) {
-            lastColumn = column;
+    const float viewWidth = ed::GetScreenSize().x * ed::GetCurrentZoom();
+    const uint32_t lastIndex = static_cast<uint32_t>(columns.x.size()) - 1;
+    const bool wholeGraphFits = columns.x[lastIndex] + columns.width[lastIndex] <= viewWidth;
+
+    // The first column reaching most of the view is the last one opened on; a chain whose columns
+    // never reach that far is short enough to open on all of them.
+    uint32_t lastColumn = lastIndex;
+    if (!wholeGraphFits) {
+        for (uint32_t column = 0; column <= lastIndex; ++column) {
+            if (columns.x[column] + columns.width[column] >= kLeadingViewFill * viewWidth) {
+                lastColumn = column;
+                break;
+            }
         }
     }
 
@@ -725,9 +742,10 @@ void navigateToLeadingColumns(const GraphLayout& layout, const MeasuredColumns& 
     if (!any) {
         return;
     }
-    // zoomIn = false is ZoomMode::None: the view is recentred on the selection and its scale is
-    // left exactly as the reader left it.
-    ed::NavigateToSelection(false, 0.0f);
+    // zoomIn = false is ZoomMode::None, which recentres and leaves the scale exactly as the reader
+    // left it; true is ZoomMode::WithMargin, which fits the leading columns with a 5% margin, so
+    // they start at that margin instead of centred in a half-empty canvas.
+    ed::NavigateToSelection(!wholeGraphFits, 0.0f);
     ed::ClearSelection();
 }
 
