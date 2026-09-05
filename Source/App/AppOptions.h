@@ -26,6 +26,9 @@ struct AppOptions {
     RunMode mode = RunMode::Windowed; ///< Execution path selected by command-line options.
     engine::SceneId initialScene = engine::defaultSceneId(); ///< Scene selected at startup.
     std::filesystem::path screenshotPath; ///< Destination used in screenshot mode.
+    /// The interactive window opens maximized to the display's usable bounds; `--windowed` keeps
+    /// the fixed default size instead. Irrelevant, but accepted, in screenshot mode.
+    bool maximized = true;
 };
 
 /// Reports an invalid command-line option with user-facing context.
@@ -37,7 +40,8 @@ struct AppOptionsError {
 using AppOptionsResult = std::expected<AppOptions, AppOptionsError>;
 
 /// Parses arguments after the executable name. Repeated options use the final value; a bare `--`
-/// is ignored. An empty screenshot path preserves windowed mode. Returned options own argv data.
+/// is ignored. An empty screenshot path preserves windowed mode. `--windowed` clears `maximized`.
+/// Returned options own argv data.
 AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments);
 
 } // namespace lmx::app

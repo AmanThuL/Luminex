@@ -47,8 +47,9 @@ thin RHI and one implemented backend.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
-- Scenes: `xmake run App` opens the editor with Sponza selected by default (catalog selector in the
-  Scene panel). Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
+- Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
+  selected by default (catalog selector in the Scene panel); `--windowed` keeps the fixed 1280×720
+  default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
   requires CWD = its build dir (shaders resolve relative to CWD). Sponza's first load decodes its
   referenced textures — expect several seconds in a debug build.
@@ -79,8 +80,8 @@ thin RHI and one implemented backend.
   matching schema restores it unchanged, and Reset Default Layout rebuilds it on demand without
   touching unrelated ini entries. Render Graph is never part of that dock layout — its window class
   forbids docking into an unclassed node, so it always opens as its own OS window, positioned
-  beside the main window on first use and remembered by `imgui.ini` afterwards like any other
-  window.
+  centred over the main window's work area on first use and remembered by `imgui.ini` afterwards
+  like any other window.
 - GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3

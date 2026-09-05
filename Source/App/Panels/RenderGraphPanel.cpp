@@ -56,9 +56,6 @@ constexpr float kCanvasMinWidth = 80.0f;
 constexpr float kDetachedWidth = 1280.0f;
 constexpr float kDetachedHeight = 800.0f;
 
-/// Gap left between the main window's work area and the detached window's first-open position.
-constexpr float kDetachedMargin = 16.0f;
-
 /// Docking class of the Render Graph window. Any non-zero value distinguishes it from the unclassed
 /// panels; it is a literal rather than ImHashStr("...") because that lives in imgui_internal.h,
 /// which this panel deliberately does not include.
@@ -1108,12 +1105,16 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         return created;
     }();
     ImGui::SetNextWindowClass(&windowClass);
-    // First open only; afterwards imgui.ini carries whatever the user left. Placing it just right
-    // of the main window's work area is a hint, not a guarantee -- a main window that fills the
-    // display leaves the OS to clamp the position back on screen.
+    // First open only; afterwards imgui.ini carries whatever the user left. Centred over the main
+    // window's work area keeps the detached window reachable whether the main window is maximized
+    // (where "just right of it" would land off-screen) or --windowed's fixed size; the clamp to
+    // the work area's origin covers a detached window taller or wider than that area.
     const ImGuiViewport* mainViewport = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos({mainViewport->WorkPos.x + mainViewport->WorkSize.x + kDetachedMargin,
-                             mainViewport->WorkPos.y},
+    const ImVec2 centeredPos = {
+        mainViewport->WorkPos.x + (mainViewport->WorkSize.x - kDetachedWidth) * 0.5f,
+        mainViewport->WorkPos.y + (mainViewport->WorkSize.y - kDetachedHeight) * 0.5f};
+    ImGui::SetNextWindowPos({std::max(centeredPos.x, mainViewport->WorkPos.x),
+                             std::max(centeredPos.y, mainViewport->WorkPos.y)},
                             ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({kDetachedWidth, kDetachedHeight}, ImGuiCond_FirstUseEver);
 

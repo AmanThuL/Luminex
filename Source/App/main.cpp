@@ -93,7 +93,14 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
         return 1;
     }
-    LMX_LOG_INFO("swapchain: {}x{} pixels BGRA8Unorm", pixelWidth, pixelHeight);
+
+    // Points size a maximized window to the display's usable bounds; pixels are what the
+    // swapchain above was created at, following SDL_GetWindowSizeInPixels.
+    int pointWidth = 0;
+    int pointHeight = 0;
+    SDL_GetWindowSize(window, &pointWidth, &pointHeight);
+    LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels BGRA8Unorm", pointWidth,
+                 pointHeight, pixelWidth, pixelHeight);
 
     // The viewport adopts its panel size after the first UI layout.
     auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
@@ -195,7 +202,12 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         ++frameIndex;
 
         if (maxFrames > 0) {
+            // SDL_SetWindowSize is a silent no-op on a still-maximized window on macOS (returns
+            // success, emits no event); SDL_RestoreWindow first is what lets this hook exercise
+            // the down/up resize path whether the run started maximized or --windowed, where the
+            // window was never maximized and the restore is a no-op.
             if (frameIndex == kResizeDownFrame) {
+                SDL_RestoreWindow(window);
                 SDL_SetWindowSize(window, kResizeDownWidth, kResizeDownHeight);
             } else if (frameIndex == kResizeUpFrame) {
                 SDL_SetWindowSize(window, kWindowWidth, kWindowHeight);
@@ -340,15 +352,19 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
 }
 
 //======================================================================================================================
-int runWindowed(lmx::engine::SceneId initialScene) {
+int runWindowed(const lmx::app::AppOptions& options) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         LMX_LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
         return 1;
     }
 
-    SDL_Window* window =
-        SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight,
-                         SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE);
+    // kWindowWidth/kWindowHeight is the pre-maximize size and what --windowed keeps.
+    SDL_WindowFlags windowFlags =
+        SDL_WINDOW_METAL | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_RESIZABLE;
+    if (options.maximized) {
+        windowFlags |= SDL_WINDOW_MAXIMIZED;
+    }
+    SDL_Window* window = SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight, windowFlags);
     if (window == nullptr) {
         LMX_LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
         SDL_Quit();
@@ -364,7 +380,7 @@ int runWindowed(lmx::engine::SceneId initialScene) {
         return 1;
     }
 
-    const int exitCode = run(window, SDL_Metal_GetLayer(view), initialScene);
+    const int exitCode = run(window, SDL_Metal_GetLayer(view), options.initialScene);
 
     SDL_Metal_DestroyView(view);
     SDL_DestroyWindow(window);
@@ -394,5 +410,5 @@ int main(int argc, char** argv) {
     if (options->mode == lmx::app::RunMode::Screenshot) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene);
     }
-    return runWindowed(options->initialScene);
+    return runWindowed(*options);
 }
