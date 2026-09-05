@@ -168,6 +168,14 @@ struct ItemStyle {
     ImU32 titleText = kTitleTextColor;
 };
 
+/// Where the measured pass put the columns, in canvas units: every column's left edge and the width
+/// of its widest card. It is what the settling navigation reads to decide how much of the chain
+/// fits on screen without changing the zoom.
+struct MeasuredColumns {
+    std::vector<float> x;
+    std::vector<float> width;
+};
+
 /// A card title reads outwards from both ends: what the declaration is on the left, what it cost or
 /// why it never ran on the right.
 struct CardTitle {
@@ -630,8 +638,10 @@ void applyProvisionalPositions(const GraphLayout& layout) {
 // culled band takes a gap of its own so it never reads as one more row of the DAG that was proved.
 //
 // Returns false while any card has yet to report a size, which is true for exactly the first frame
-// a picture is drawn -- a card has no size until the editor has laid it out once.
-bool applyMeasuredPositions(const GraphLayout& layout) {
+// a picture is drawn -- a card has no size until the editor has laid it out once. On success it
+// also reports the column geometry it had to compute anyway.
+bool applyMeasuredPositions(const GraphLayout& layout, MeasuredColumns& columns) {
+    columns = {};
     if (layout.items.empty()) {
         return true;
     }
@@ -678,7 +688,47 @@ bool applyMeasuredPositions(const GraphLayout& layout) {
                                    rowY[item.row] + static_cast<float>(item.rank) *
                                                         (rowCardHeight[item.row] + kRankGap)));
     }
+    columns.x = std::move(columnX);
+    columns.width = std::move(columnWidth);
     return true;
+}
+
+//======================================================================================================================
+// Brings the head of the chain into view without touching the zoom: a graph the reader has to zoom
+// into to read is worse than one they have to pan across. The selection is a means, not a state --
+// it is set, navigated to, and cleared within the frame, so nothing stays selected.
+//
+// `ed::GetCurrentZoom()` is the view's inverse scale, canvas units per screen pixel (see
+// `ImGuiEx::Canvas::ViewRect()`), so multiplying by the screen size is how many canvas units the
+// panel can show at the zoom it already has.
+void navigateToLeadingColumns(const GraphLayout& layout, const MeasuredColumns& columns) {
+    if (columns.x.empty()) {
+        return;
+    }
+    const float visible = ed::GetScreenSize().x * ed::GetCurrentZoom() - 2.0f * kColumnGap;
+    uint32_t lastColumn = 0;
+    for (uint32_t column = 0; column < columns.x.size(); ++column) {
+        if (columns.x[column] + columns.width[column] <= visible) {
+            lastColumn = column;
+        }
+    }
+
+    bool any = false;
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        const GraphLayoutItem& item = layout.items[index];
+        if (item.culled || item.column > lastColumn) {
+            continue;
+        }
+        ed::SelectNode(itemNodeId(layout, index), true);
+        any = true;
+    }
+    if (!any) {
+        return;
+    }
+    // zoomIn = false is ZoomMode::None: the view is recentred on the selection and its scale is
+    // left exactly as the reader left it.
+    ed::NavigateToSelection(false, 0.0f);
+    ed::ClearSelection();
 }
 
 //======================================================================================================================
@@ -705,8 +755,9 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         state.appliedSignature = layout.signature;
         state.layoutPhase = GraphLayoutPhase::Provisional;
     }
+    MeasuredColumns columns;
     if (state.layoutPhase == GraphLayoutPhase::Provisional || resetLayout) {
-        if (applyMeasuredPositions(layout)) {
+        if (applyMeasuredPositions(layout, columns)) {
             state.layoutPhase = GraphLayoutPhase::Measured;
         } else {
             applyProvisionalPositions(layout);
@@ -745,9 +796,9 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         state.selectedItem.reset();
     }
     if (state.layoutPhase == GraphLayoutPhase::Measured) {
-        // Card bounds are current by now, which is what makes fitting to content meaningful on the
-        // very frame the measured positions were applied.
-        ed::NavigateToContent(0.0f);
+        // Card bounds are current by now, which is what makes navigating meaningful on the very
+        // frame the measured positions were applied.
+        navigateToLeadingColumns(layout, columns);
         state.layoutPhase = GraphLayoutPhase::Settled;
     }
 

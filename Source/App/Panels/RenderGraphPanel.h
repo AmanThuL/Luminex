@@ -38,7 +38,7 @@ struct NodeEditorHandleDeleter {
 /// frame, and then left alone so the user's drags survive.
 enum class GraphLayoutPhase {
     Provisional, ///< Drawn on the coarse grid; no card has reported a size yet.
-    Measured,    ///< Measured positions were applied this frame; the view has yet to fit to them.
+    Measured,    ///< Measured positions were applied this frame; the view has yet to move to them.
     Settled      ///< Positions are final, and whatever the user drags from here is kept.
 };
 
