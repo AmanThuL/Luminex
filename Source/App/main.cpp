@@ -154,9 +154,8 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
             case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
                 // Platform viewports are real SDL windows, so the detached Render Graph raises the
                 // same window events the main window does and only its id tells them apart.
-                // Closing it must not end the run. That is latent while viewport windows are
-                // borderless and have no close affordance, but the id filter is the contract, not
-                // the border.
+                // Closing it must not end the run, and its window carries a real close button, so
+                // the id filter is what keeps that button from quitting Luminex.
                 if (event.window.windowID == SDL_GetWindowID(window)) {
                     running = false;
                 }

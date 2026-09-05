@@ -65,6 +65,11 @@ struct RenderGraphPanelState {
     /// `Provisional` whenever the drawn picture changes, and by Reset Layout when the cards have
     /// yet to report a size.
     GraphLayoutPhase layoutPhase = GraphLayoutPhase::Provisional;
+    /// Whether the panel's window owned an OS window of its own on the previous frame. The window
+    /// flags have to be chosen before `ImGui::Begin` can answer that, so the answer is carried a
+    /// frame: while it holds, the panel draws no title bar of its own and the OS draws the only
+    /// one.
+    bool ownsPlatformWindow = false;
     /// Index into `GraphLayout::items` of the single selected item, or empty when the selection is
     /// empty or covers more than one item. Panel-local: it is never a scene subject.
     std::optional<uint32_t> selectedItem;
@@ -86,7 +91,7 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 /// to the selected item on the right, under a header row carrying the frame identity, its transient
 /// totals, a button that dumps that same record to a file next to the binary, a layout reset, and
 /// the column count the layout wraps at -- zero, the default, being no wrap at all. `open` follows
-/// the window's close button, exactly as `ImGui::Begin` writes it.
+/// the window's close button, and equally the OS window's, exactly as `ImGui::Begin` writes it.
 ///
 /// A stage of passes draws as one group node until it is double-clicked open, and a pin carries a
 /// short label until it is hovered or its item is selected, so what the canvas shows is the frame's

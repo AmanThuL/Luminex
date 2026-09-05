@@ -1019,6 +1019,7 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state) {
     state.selectedItem.reset();
     state.columnsEdit = 0;
     state.layoutPhase = GraphLayoutPhase::Provisional;
+    state.ownsPlatformWindow = false;
 }
 
 //======================================================================================================================
@@ -1026,12 +1027,15 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
                           const FrameRecordRing& frameRecords) {
     // A class of its own, refusing unclassed dock targets and overriding the viewport into
     // NoAutoMerge: together those keep this panel out of the main dockspace and out of the main
-    // OS window, so an open Render Graph always has its own window to be large in.
+    // OS window, so an open Render Graph always has its own window to be large in. Clearing
+    // NoDecoration overrides io.ConfigViewportsNoDecoration for this window alone, which is what
+    // gives it a real macOS title bar with close, minimise, and zoom.
     static const ImGuiWindowClass windowClass = [] {
         ImGuiWindowClass created;
         created.ClassId = kRenderGraphWindowClassId;
         created.DockingAllowUnclassed = false;
         created.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+        created.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration;
         return created;
     }();
     ImGui::SetNextWindowClass(&windowClass);
@@ -1047,7 +1051,17 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
     // NoDocking is the half of the rule a window class cannot state: DockingAllowUnclassed only
     // refuses drop targets, while a DockId persisted by a pre-M5.5 imgui.ini would otherwise be
     // rebound on Begin without any class being consulted. On this flag Begin undocks instead.
-    if (!ImGui::Begin(kRenderGraphPanelWindowName, &open, ImGuiWindowFlags_NoDocking)) {
+    //
+    // NoTitleBar follows the previous frame's answer to "does this window own an OS window?",
+    // because the flags have to be decided before Begin can say. While it does, the OS title bar is
+    // the only one: two stacked title bars is what drawing both would give.
+    ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
+    if (state.ownsPlatformWindow) {
+        windowFlags |= ImGuiWindowFlags_NoTitleBar;
+    }
+    const bool visible = ImGui::Begin(kRenderGraphPanelWindowName, &open, windowFlags);
+    state.ownsPlatformWindow = ImGui::GetWindowViewport() != ImGui::GetMainViewport();
+    if (!visible) {
         ImGui::End();
         return;
     }

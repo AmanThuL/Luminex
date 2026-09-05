@@ -58,8 +58,9 @@ thin RHI and one implemented backend.
   exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress. The Performance panel
   shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
   pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel opens
-  in its own OS window (Dear ImGui platform viewports; it never docks) and draws the exact
-  newest-retired-frame's compiled record as a node canvas of Falcor-style cards — a title band in the pass kind's colour, inputs and outputs as dots
+  in its own real OS window (Dear ImGui platform viewports; a macOS title bar with close/minimise/
+  zoom, and it never docks) and draws the exact newest-retired-frame's compiled record as a node
+  canvas of Falcor-style cards — a title band in the pass kind's colour, inputs and outputs as dots
   centred on the card's edges, links coloured per resource — placed left to right from the cards'
   measured sizes. Stage groups (a shared label prefix, at least two members, scheduled and culled
   kept separate) are collapsed by default and opened by double-click or the details pane's Expand
