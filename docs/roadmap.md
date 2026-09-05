@@ -182,20 +182,26 @@ Render Graph execution or RHI semantics.
 
 ## M5.5 — Render graph legibility and detached window
 
-**Outcome:** the node view becomes readable for real frames: it opens in its own OS window, and its
-layout compacts, groups, and wraps the compiled graph without changing what M5.4 draws from.
+**Outcome:** the node view becomes readable for real frames: it opens in its own native OS window,
+and its cards, links, and layout read the way a Falcor-style graph editor does, without changing
+what M5.4 draws from.
 
 **Deliver:**
 
-- Enable Dear ImGui platform viewports. The Render Graph window always owns its own OS window
-  through a dedicated window class and never docks; the other panels keep the main window.
+- Enable Dear ImGui platform viewports. The Render Graph window always owns its own OS window,
+  with native title bar and close button, through a dedicated window class and never docks; the
+  other panels keep the main window. Vendored-backend defects this exposes (event pacing, missing
+  autorelease pools) are fixed in the maintained patch, and RHI wrappers release Metal objects
+  inside their own pools.
 - Add a pure layout step over `GraphNodeModel`: stage groups by dotted label prefix, collapsed by
-  default and expandable in place; compact nodes with short pin labels and full labels on hover and
-  selection; row wrapping with a columns-per-row control.
+  default and expandable in place; layers and ranks left to right, with optional row wrapping.
+  The panel places cards from measured sizes: title-bar cards, pins on the card edges, pin-to-pin
+  curved links coloured per resource, short pin labels with full labels on hover and selection.
 
 **Exit gate:** the detached window is validation-clean across open, resize, move, close, and GPU
-capture; a collapsed group carries exactly the edges that cross its boundary and its members'
-summed timing; positions are deterministic for a given record, expansion set, and column count; the
+capture, and its footprint does not grow with frames; a collapsed group carries exactly the edges
+that cross its boundary and its members' summed timing; layers, ranks, rows, and columns are
+deterministic for a given record, expansion set, and column count, and cards never overlap; the
 M5.4 exit gate still holds; fixed-camera renderer output is unchanged.
 
 **Defer:** other panels as OS windows as a supported workflow, persisted node positions, manual
