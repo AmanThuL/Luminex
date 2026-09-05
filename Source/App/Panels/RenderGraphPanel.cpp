@@ -20,6 +20,7 @@
 #include <imgui_node_editor.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -63,17 +64,45 @@ constexpr float kDetachedMargin = 16.0f;
 /// which this panel deliberately does not include.
 constexpr ImGuiID kRenderGraphWindowClassId = 0x6C6D7867u; // 'lmxg'
 
-/// Narrowest a node body may be, so a short-labelled pass still reads as a box.
-constexpr float kNodeMinWidth = 150.0f;
+/// Narrowest a card may be, so a short-labelled pass still reads as a box.
+constexpr float kCardMinWidth = 170.0f;
 
-/// Horizontal gap held between a node's input and output pin columns.
-constexpr float kPinColumnGap = 24.0f;
+/// Horizontal gap held between a card's input and output pin columns.
+constexpr float kColumnInnerGap = 32.0f;
 
-/// Radius of the dot that stands for a pin, in canvas units.
+/// Radius of the dot that stands for a pin, and the gap between that dot and its label.
 constexpr float kPinDotRadius = 5.0f;
+constexpr float kPinLabelGap = 6.0f;
 
-/// Bounds the column count control accepts, and the width it is drawn at.
-constexpr int kMinColumns = 1;
+/// Inner padding a card applies to its own title band and body. The node editor's node padding is
+/// pushed to zero so the title band can reach the card's rounded edge and a pin dot can sit on it,
+/// which leaves the card to pad itself.
+constexpr float kTitlePadX = 10.0f;
+constexpr float kTitlePadY = 4.0f;
+constexpr float kTitleGap = 16.0f;
+constexpr float kBodyPadY = 6.0f;
+constexpr float kBodyBottomPad = 6.0f;
+
+/// Corner radius the editor rounds a card with, matched by the title band's top corners.
+constexpr float kCardRounding = 6.0f;
+
+/// Measured placement, in canvas units: between two columns of cards, between two ranks of one row,
+/// between two rows, and between the last row and the culled band. Pixels are decided here rather
+/// than in `GraphLayout` because only this side can measure the text a card has to hold.
+constexpr float kColumnGap = 120.0f;
+constexpr float kRankGap = 40.0f;
+constexpr float kRowGap = 100.0f;
+constexpr float kCulledBandGap = 140.0f;
+
+/// The coarse grid a picture is drawn at for the one frame before its cards have been measured.
+/// Nothing is read off it but the sizes the cards report afterwards, so it only has to be roomy.
+constexpr float kProvisionalColumnPitch = 600.0f;
+constexpr float kProvisionalRankPitch = 200.0f;
+constexpr float kProvisionalRowPitch = 1200.0f;
+
+/// Bounds the column-count control accepts, and the width it is drawn at. Zero is the default and
+/// means no wrap: one row, left to right, which is the only arrangement a chain reads cleanly in.
+constexpr int kMinColumns = 0;
 constexpr int kMaxColumns = 32;
 constexpr float kColumnsControlWidth = 110.0f;
 
@@ -93,28 +122,57 @@ constexpr uint32_t kPinIdStride = 1000;
 /// share one id space without either having to know the other's count.
 constexpr uintptr_t kGroupIdBase = 100000;
 
-/// Solid execution edges, and the dashed overlays drawn outside the node editor's link path.
-constexpr float kEdgeThickness = 1.7f;
+/// Solid execution edges, the link curve's round-out, and the dashed overlays drawn outside the
+/// node editor's own link path.
+constexpr float kEdgeThickness = 2.5f;
+constexpr float kLinkStrength = 180.0f;
 constexpr float kDashThickness = 1.4f;
-const ImVec4 kEdgeColor{0.62f, 0.70f, 0.80f, 1.0f};
 constexpr ImU32 kAliasLinkColor = IM_COL32(214, 122, 196, 220);
 constexpr ImU32 kCulledBorderColor = IM_COL32(140, 140, 146, 220);
 
-/// A collapsed stage's fill and accent, and the band drawn behind its header. They are deliberately
-/// unlike any pass kind's colours: a group is not one declaration but several folded together.
-const ImVec4 kGroupBackgroundColor{0.19f, 0.19f, 0.24f, 1.0f};
-const ImVec4 kGroupAccentColor{0.92f, 0.86f, 0.66f, 1.0f};
-constexpr ImU32 kGroupHeaderBandColor = IM_COL32(255, 255, 255, 28);
+/// Eight readable hues, one per resource by `resource % 8`. A resource keeps its hue for the whole
+/// picture, so two links crossing are told apart by what travels along them rather than by where
+/// they happen to run. None of them is the magenta the alias overlay owns.
+const std::array<ImVec4, 8> kLinkPalette = {
+    ImVec4(0.49f, 0.69f, 0.91f, 0.92f), // blue
+    ImVec4(0.91f, 0.66f, 0.42f, 0.92f), // orange
+    ImVec4(0.53f, 0.82f, 0.60f, 0.92f), // green
+    ImVec4(0.89f, 0.81f, 0.47f, 0.92f), // yellow
+    ImVec4(0.47f, 0.81f, 0.81f, 0.92f), // teal
+    ImVec4(0.91f, 0.56f, 0.56f, 0.92f), // salmon
+    ImVec4(0.69f, 0.63f, 0.91f, 0.92f), // lavender
+    ImVec4(0.77f, 0.77f, 0.59f, 0.92f)  // sand
+};
 
-/// What a culled item is drawn in, whether it is one dead pass or a whole dead stage.
-const ImVec4 kCulledBackgroundColor{0.17f, 0.17f, 0.18f, 1.0f};
+/// The title band's fill, one per kind, and the text drawn over it. A group is deliberately unlike
+/// any pass kind: it is not one declaration but several folded together.
+const ImVec4 kRasterTitleColor{0.16f, 0.30f, 0.48f, 1.0f};
+const ImVec4 kComputeTitleColor{0.29f, 0.21f, 0.45f, 1.0f};
+const ImVec4 kCopyTitleColor{0.13f, 0.36f, 0.30f, 1.0f};
+const ImVec4 kGroupTitleColor{0.36f, 0.28f, 0.14f, 1.0f};
+const ImVec4 kSinkTitleColor{0.45f, 0.33f, 0.11f, 1.0f};
+const ImVec4 kCulledTitleColor{0.26f, 0.26f, 0.28f, 1.0f};
+constexpr ImU32 kTitleTextColor = IM_COL32(238, 238, 244, 255);
+constexpr ImU32 kCulledTitleTextColor = IM_COL32(196, 196, 202, 255);
+
+/// A collapsed stage's accent, and what a culled item of either kind is accented in.
+const ImVec4 kGroupAccentColor{0.92f, 0.86f, 0.66f, 1.0f};
 const ImVec4 kCulledAccentColor{0.58f, 0.58f, 0.60f, 1.0f};
 
-/// The three colours one canvas item is drawn in.
+/// The colours one canvas card is drawn in: the band across its top, the dots and border that
+/// carry its kind, and the text laid over the band.
 struct ItemStyle {
-    ImVec4 background;
+    ImVec4 title;
     ImVec4 accent;
     ImVec4 border;
+    ImU32 titleText = kTitleTextColor;
+};
+
+/// A card title reads outwards from both ends: what the declaration is on the left, what it cost or
+/// why it never ran on the right.
+struct CardTitle {
+    std::string left;
+    std::string right;
 };
 
 //======================================================================================================================
@@ -186,24 +244,24 @@ std::optional<uint32_t> itemOfCanvasId(const GraphLayout& layout, uintptr_t canv
 }
 
 //======================================================================================================================
-// The node body's fill, chosen so the declaration path a pass took is readable at a glance and a
+// The title band's fill, chosen so the declaration path a pass took is readable at a glance and a
 // culled pass reads as inert next to the graph that was proved.
-ImVec4 nodeBackgroundColor(const GraphNode& node) {
+ImVec4 nodeTitleColor(const GraphNode& node) {
     if (node.cullReason) {
-        return kCulledBackgroundColor;
+        return kCulledTitleColor;
     }
     if (node.kind == GraphNodeKind::Sink) {
-        return ImVec4(0.31f, 0.24f, 0.10f, 1.0f);
+        return kSinkTitleColor;
     }
     switch (node.passKind) {
     case render::PassKind::Raster:
-        return ImVec4(0.13f, 0.21f, 0.33f, 1.0f);
+        return kRasterTitleColor;
     case render::PassKind::Compute:
-        return ImVec4(0.22f, 0.16f, 0.33f, 1.0f);
+        return kComputeTitleColor;
     case render::PassKind::Copy:
-        return ImVec4(0.13f, 0.28f, 0.24f, 1.0f);
+        return kCopyTitleColor;
     }
-    return ImVec4(0.13f, 0.21f, 0.33f, 1.0f);
+    return kRasterTitleColor;
 }
 
 //======================================================================================================================
@@ -231,12 +289,13 @@ ImVec4 nodeAccentColor(const GraphNode& node) {
 ItemStyle itemStyleOf(const GraphNodeModel& model, const GraphLayoutItem& item) {
     ItemStyle style;
     if (item.kind == GraphLayoutItemKind::Group) {
-        style.background = item.culled ? kCulledBackgroundColor : kGroupBackgroundColor;
+        style.title = item.culled ? kCulledTitleColor : kGroupTitleColor;
         style.accent = item.culled ? kCulledAccentColor : kGroupAccentColor;
     } else {
-        style.background = nodeBackgroundColor(model.nodes[item.index]);
+        style.title = nodeTitleColor(model.nodes[item.index]);
         style.accent = nodeAccentColor(model.nodes[item.index]);
     }
+    style.titleText = item.culled ? kCulledTitleTextColor : kTitleTextColor;
     style.border = item.culled ? ImVec4(0.0f, 0.0f, 0.0f, 0.0f)
                                : ImVec4(style.accent.x * 0.7f, style.accent.y * 0.7f,
                                         style.accent.z * 0.7f, 0.9f);
@@ -244,43 +303,46 @@ ItemStyle itemStyleOf(const GraphNodeModel& model, const GraphLayoutItem& item) 
 }
 
 //======================================================================================================================
-std::string nodeHeaderText(const GraphNode& node) {
+// Schedule position and name on the left, kind and cost on the right. A culled pass never ran, so
+// what it would have cost is replaced by why it was dropped.
+CardTitle nodeTitleText(const GraphNode& node) {
     if (node.kind == GraphNodeKind::Sink) {
-        return std::format("sink -- {}", node.label);
+        return {.left = node.label, .right = "sink"};
     }
-    std::string header = node.scheduleOrder ? std::format("#{} {}", *node.scheduleOrder, node.label)
-                                            : std::format("{}", node.label);
-    header += std::format(" -- {}", passKindLabel(node.passKind));
-    if (node.gpuMilliseconds) {
-        header += std::format(" -- {:.3f} ms", *node.gpuMilliseconds);
+    CardTitle title;
+    title.left =
+        node.scheduleOrder ? std::format("#{}  {}", *node.scheduleOrder, node.label) : node.label;
+    if (node.cullReason) {
+        title.right = std::format("culled  {}", cullReasonLabel(*node.cullReason));
+        return title;
     }
-    return header;
+    title.right =
+        node.gpuMilliseconds
+            ? std::format("{}  {:.3f} ms", passKindLabel(node.passKind), *node.gpuMilliseconds)
+            : std::format("{}  unmeasured", passKindLabel(node.passKind));
+    return title;
 }
 
 //======================================================================================================================
 // A collapsed stage says what it stands for and what it cost. The measured count appears only when
-// it differs from the member count, so a fully measured stage is not made to look partial.
-std::string groupHeaderText(const GraphLayoutGroup& group) {
-    std::string header = std::format("[+] {} -- {} passes", group.stage, group.members.size());
+// it differs from the member count, so a fully measured stage is not made to look partial. The
+// leading marker is what says the box can be opened.
+CardTitle groupTitleText(const GraphLayoutGroup& group) {
+    CardTitle title{.left = std::format("> {}", group.stage), .right = {}};
+    if (group.culled) {
+        title.right = std::format("{} passes  culled", group.members.size());
+        return title;
+    }
     if (!group.gpuMillisecondsSum) {
-        return header + " -- unmeasured";
+        title.right = std::format("{} passes  unmeasured", group.members.size());
+        return title;
     }
-    header += std::format(" -- {:.3f} ms", *group.gpuMillisecondsSum);
+    title.right =
+        std::format("{} passes  {:.3f} ms", group.members.size(), *group.gpuMillisecondsSum);
     if (group.measuredMembers < group.members.size()) {
-        header += std::format(" ({} measured)", group.measuredMembers);
+        title.right += std::format(" ({} measured)", group.measuredMembers);
     }
-    return header;
-}
-
-//======================================================================================================================
-std::string itemCullLine(const GraphNodeModel& model, const GraphLayoutItem& item) {
-    if (!item.culled) {
-        return {};
-    }
-    if (item.kind == GraphLayoutItemKind::Group) {
-        return "culled -- never executed";
-    }
-    return std::format("culled: {}", cullReasonLabel(*model.nodes[item.index].cullReason));
+    return title;
 }
 
 //======================================================================================================================
@@ -289,47 +351,59 @@ const std::string& pinText(const GraphLayoutPin& pin, bool fullLabel) {
 }
 
 //======================================================================================================================
-float widestPinColumn(const std::vector<GraphLayoutPin>& pins, bool fullLabels) {
-    const float dotWidth = kPinDotRadius * 2.0f + ImGui::GetStyle().ItemSpacing.x;
+// How much of a card one pin column claims: the half of the dot that falls inside the card, the gap
+// after it, and the widest label. An empty column claims nothing.
+float pinColumnWidth(const std::vector<GraphLayoutPin>& pins, bool fullLabels) {
+    if (pins.empty()) {
+        return 0.0f;
+    }
     float widest = 0.0f;
     for (const GraphLayoutPin& pin : pins) {
-        widest =
-            std::max(widest, dotWidth + ImGui::CalcTextSize(pinText(pin, fullLabels).c_str()).x);
+        widest = std::max(widest, ImGui::CalcTextSize(pinText(pin, fullLabels).c_str()).x);
     }
-    return widest;
-}
-
-//======================================================================================================================
-// The dot the compact pin style is built on: an item-sized blank the layout can align against, with
-// the mark drawn into it by hand because a text glyph would not scale with the canvas.
-void drawPinDot(const ImVec4& accent) {
-    const float height = ImGui::GetTextLineHeight();
-    const ImVec2 cursor = ImGui::GetCursorScreenPos();
-    ImGui::GetWindowDrawList()->AddCircleFilled(
-        ImVec2(cursor.x + kPinDotRadius, cursor.y + height * 0.5f), kPinDotRadius, ImColor(accent));
-    ImGui::Dummy(ImVec2(kPinDotRadius * 2.0f, height));
+    return kPinDotRadius + kPinLabelGap + widest;
 }
 
 //======================================================================================================================
 // A pin reads outwards: an input's dot leads its label and an output's label leads its dot, so the
-// two columns point the way the versions travel. The full label the short one abbreviates is what
-// a hover reports; the caller shows it once, after every node has been submitted.
-void drawPin(const GraphLayoutPin& pin, ed::PinId id, ed::PinKind kind, const ImVec4& accent,
-             bool fullLabel, std::string& hoveredLabel) {
+// two columns point the way the versions travel, and both dots are centred on the card's edge so a
+// link lands on the silhouette rather than somewhere inside it.
+//
+// The dot is drawn by hand into the node's content channel, which the editor keeps above the node
+// background and border, and it is deliberately not an ImGui item: an item half outside the card
+// would grow the card's bounds around it and the edge the dot is centred on would move.
+//
+// The full label the short one abbreviates is what a hover reports; the caller shows it once, after
+// every node has been submitted.
+void drawPin(const GraphLayoutPin& pin, ed::PinId id, ed::PinKind kind, float edgeX,
+             const ImVec4& accent, bool fullLabel, std::string& hoveredLabel) {
+    const std::string& text = pinText(pin, fullLabel);
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float rowY = ImGui::GetCursorScreenPos().y;
+    const ImVec2 dot(edgeX, rowY + lineHeight * 0.5f);
+
     ed::BeginPin(id, kind);
+    // PinPivotSize re-arms the automatic pivot, so it has to be stated before the rect that
+    // replaces it; the other order would compute a pivot over the row and throw the dot away.
+    ed::PinPivotSize(ImVec2(0.0f, 0.0f));
+    ed::PinPivotRect(dot, dot);
     if (kind == ed::PinKind::Input) {
-        drawPinDot(accent);
-        ImGui::SameLine();
-        ImGui::TextUnformatted(pinText(pin, fullLabel).c_str());
+        ImGui::SetCursorScreenPos(ImVec2(edgeX, rowY));
+        ImGui::Dummy(ImVec2(kPinDotRadius + kPinLabelGap, lineHeight));
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::TextUnformatted(text.c_str());
     } else {
-        ImGui::TextUnformatted(pinText(pin, fullLabel).c_str());
-        ImGui::SameLine();
-        drawPinDot(accent);
+        const float width = ImGui::CalcTextSize(text.c_str()).x;
+        ImGui::SetCursorScreenPos(ImVec2(edgeX - kPinDotRadius - kPinLabelGap - width, rowY));
+        ImGui::TextUnformatted(text.c_str());
+        ImGui::SameLine(0.0f, 0.0f);
+        ImGui::Dummy(ImVec2(kPinLabelGap + kPinDotRadius, lineHeight));
     }
     ed::EndPin();
     if (ImGui::IsItemHovered()) {
         hoveredLabel = pin.label;
     }
+    ImGui::GetWindowDrawList()->AddCircleFilled(dot, kPinDotRadius, ImColor(accent));
 }
 
 //======================================================================================================================
@@ -360,8 +434,13 @@ void addDashedRect(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, I
 }
 
 //======================================================================================================================
-// One box, whether it draws one declaration or a folded stage. Its width is measured from the text
-// this frame actually puts in it, so expanding a selection's labels widens exactly those boxes.
+// One card, whether it draws one declaration or a folded stage: a title band in the kind's colour
+// across the full width, then a body with the versions arriving down the left edge and the versions
+// leaving down the right. Its width is measured from the text this frame actually puts in it, so
+// expanding a selection's labels widens exactly those cards.
+//
+// The editor's node padding is zero for the whole canvas, so the cursor at BeginNode is the card's
+// top-left corner and the title band and the pin dots can be placed against the card's own edges.
 void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t itemIndex,
               bool fullLabels, std::string& hoveredLabel) {
     const GraphLayoutItem& item = layout.items[itemIndex];
@@ -370,66 +449,65 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
 
     const bool isGroup = item.kind == GraphLayoutItemKind::Group;
     const ItemStyle style = itemStyleOf(model, item);
-    const std::string header = isGroup ? groupHeaderText(layout.groups[item.index])
-                                       : nodeHeaderText(model.nodes[item.index]);
-    const std::string cullLine = itemCullLine(model, item);
-    const float inputsWidth = widestPinColumn(item.inputs, fullLabels);
-    const float outputsWidth = widestPinColumn(item.outputs, fullLabels);
-    float bodyWidth = std::max(kNodeMinWidth, ImGui::CalcTextSize(header.c_str()).x);
-    if (!cullLine.empty()) {
-        bodyWidth = std::max(bodyWidth, ImGui::CalcTextSize(cullLine.c_str()).x);
-    }
-    if (outputsWidth > 0.0f) {
-        bodyWidth = std::max(bodyWidth, inputsWidth + kPinColumnGap + outputsWidth);
-    } else {
-        bodyWidth = std::max(bodyWidth, inputsWidth);
-    }
+    const CardTitle title = isGroup ? groupTitleText(layout.groups[item.index])
+                                    : nodeTitleText(model.nodes[item.index]);
+    const float rightWidth = ImGui::CalcTextSize(title.right.c_str()).x;
+    const float titleWidth =
+        kTitlePadX * 2.0f + ImGui::CalcTextSize(title.left.c_str()).x + kTitleGap + rightWidth;
+    const float inputsWidth = pinColumnWidth(item.inputs, fullLabels);
+    const float outputsWidth = pinColumnWidth(item.outputs, fullLabels);
+    const float cardWidth =
+        std::max({kCardMinWidth, titleWidth, inputsWidth + kColumnInnerGap + outputsWidth});
 
     const uintptr_t itemId = itemIdValue(layout, itemIndex);
-    ed::PushStyleColor(ed::StyleColor_NodeBg, style.background);
     ed::PushStyleColor(ed::StyleColor_NodeBorder, style.border);
     ed::BeginNode(ed::NodeId(itemId));
 
-    // Inside the canvas, ImGui screen space and the editor's canvas space are the same plane, so
-    // this origin is what lets the output column be placed against the node's right edge below.
+    // Inside the canvas, ImGui screen space and the editor's canvas space are the same plane, and
+    // with zero node padding this origin is the card's own top-left corner.
     const ImVec2 origin = ImGui::GetCursorScreenPos();
-    ImGui::Dummy(ImVec2(bodyWidth, 0.0f));
-    if (isGroup) {
-        // A band behind the header is what separates a stage standing in for several passes from a
-        // single one, before any of the text is read.
-        const ImVec2 band = ImGui::GetCursorScreenPos();
-        ImGui::GetWindowDrawList()->AddRectFilled(
-            band, ImVec2(band.x + bodyWidth, band.y + ImGui::GetTextLineHeight()),
-            kGroupHeaderBandColor);
-    }
-    ImGui::TextColored(style.accent, "%s", header.c_str());
-    if (!cullLine.empty()) {
-        ImGui::TextDisabled("%s", cullLine.c_str());
-    }
+    const float lineHeight = ImGui::GetTextLineHeight();
+    const float titleHeight = lineHeight + kTitlePadY * 2.0f;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    drawList->AddRectFilled(origin, ImVec2(origin.x + cardWidth, origin.y + titleHeight),
+                            ImColor(style.title), kCardRounding, ImDrawFlags_RoundCornersTop);
+    drawList->AddText(ImVec2(origin.x + kTitlePadX, origin.y + kTitlePadY), style.titleText,
+                      title.left.c_str());
+    drawList->AddText(ImVec2(origin.x + cardWidth - kTitlePadX - rightWidth, origin.y + kTitlePadY),
+                      style.titleText, title.right.c_str());
+    ImGui::Dummy(ImVec2(cardWidth, titleHeight));
 
-    if (!item.inputs.empty() || !item.outputs.empty()) {
-        const float pinsTop = ImGui::GetCursorScreenPos().y;
+    const float pinsTop = origin.y + titleHeight + kBodyPadY;
+    float bodyBottom = pinsTop;
+    if (!item.inputs.empty()) {
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, pinsTop));
         ImGui::BeginGroup();
         for (uint32_t pin = 0; pin < item.inputs.size(); ++pin) {
-            drawPin(item.inputs[pin], pinIdOf(itemId, pin), ed::PinKind::Input, style.accent,
-                    fullLabels, hoveredLabel);
+            drawPin(item.inputs[pin], pinIdOf(itemId, pin), ed::PinKind::Input, origin.x,
+                    style.accent, fullLabels, hoveredLabel);
         }
         ImGui::EndGroup();
-
-        if (!item.outputs.empty()) {
-            ImGui::SetCursorScreenPos(ImVec2(origin.x + bodyWidth - outputsWidth, pinsTop));
-            ImGui::BeginGroup();
-            for (uint32_t pin = 0; pin < item.outputs.size(); ++pin) {
-                const uint32_t ordinal = static_cast<uint32_t>(item.inputs.size()) + pin;
-                drawPin(item.outputs[pin], pinIdOf(itemId, ordinal), ed::PinKind::Output,
-                        style.accent, fullLabels, hoveredLabel);
-            }
-            ImGui::EndGroup();
+        bodyBottom = std::max(bodyBottom, ImGui::GetItemRectMax().y);
+    }
+    if (!item.outputs.empty()) {
+        ImGui::SetCursorScreenPos(ImVec2(origin.x, pinsTop));
+        ImGui::BeginGroup();
+        for (uint32_t pin = 0; pin < item.outputs.size(); ++pin) {
+            const uint32_t ordinal = static_cast<uint32_t>(item.inputs.size()) + pin;
+            drawPin(item.outputs[pin], pinIdOf(itemId, ordinal), ed::PinKind::Output,
+                    origin.x + cardWidth, style.accent, fullLabels, hoveredLabel);
         }
+        ImGui::EndGroup();
+        bodyBottom = std::max(bodyBottom, ImGui::GetItemRectMax().y);
     }
 
+    // A pinless card would otherwise be a title band with nothing under it, and every card needs a
+    // body deep enough for the bottom rounding to read.
+    ImGui::SetCursorScreenPos(ImVec2(origin.x, bodyBottom));
+    ImGui::Dummy(ImVec2(cardWidth, kBodyBottomPad));
+
     ed::EndNode();
-    ed::PopStyleColor(2);
+    ed::PopStyleColor();
 }
 
 //======================================================================================================================
@@ -534,21 +612,105 @@ std::vector<bool> fullLabelItems(const GraphLayout& layout, std::optional<uint32
 }
 
 //======================================================================================================================
+// The coarse grid a picture is drawn at once, so that every card reports a size the measured pass
+// can then place it from. Overlap here is harmless: nothing is read off these positions.
+void applyProvisionalPositions(const GraphLayout& layout) {
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        const GraphLayoutItem& item = layout.items[index];
+        ed::SetNodePosition(itemNodeId(layout, index),
+                            ImVec2(static_cast<float>(item.column) * kProvisionalColumnPitch,
+                                   static_cast<float>(item.row) * kProvisionalRowPitch +
+                                       static_cast<float>(item.rank) * kProvisionalRankPitch));
+    }
+}
+
+//======================================================================================================================
+// Turns the layout's cells into pixels using the sizes the cards actually reported: a column is as
+// wide as its widest card, a row is as tall as its deepest stack of its own tallest card, and the
+// culled band takes a gap of its own so it never reads as one more row of the DAG that was proved.
+//
+// Returns false while any card has yet to report a size, which is true for exactly the first frame
+// a picture is drawn -- a card has no size until the editor has laid it out once.
+bool applyMeasuredPositions(const GraphLayout& layout) {
+    if (layout.items.empty()) {
+        return true;
+    }
+
+    std::vector<ImVec2> sizes(layout.items.size());
+    uint32_t columnCount = 0;
+    uint32_t rowCount = 0;
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        sizes[index] = ed::GetNodeSize(itemNodeId(layout, index));
+        if (sizes[index].x <= 0.0f || sizes[index].y <= 0.0f) {
+            return false;
+        }
+        columnCount = std::max(columnCount, layout.items[index].column + 1);
+        rowCount = std::max(rowCount, layout.items[index].row + 1);
+    }
+
+    std::vector<float> columnWidth(columnCount, 0.0f);
+    std::vector<float> rowCardHeight(rowCount, 0.0f);
+    std::vector<uint32_t> rowRanks(rowCount, 0);
+    std::vector<bool> rowIsBand(rowCount, false);
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        const GraphLayoutItem& item = layout.items[index];
+        columnWidth[item.column] = std::max(columnWidth[item.column], sizes[index].x);
+        rowCardHeight[item.row] = std::max(rowCardHeight[item.row], sizes[index].y);
+        rowRanks[item.row] = std::max(rowRanks[item.row], item.rank + 1);
+        rowIsBand[item.row] = rowIsBand[item.row] || item.culled;
+    }
+
+    std::vector<float> columnX(columnCount, 0.0f);
+    for (uint32_t column = 1; column < columnCount; ++column) {
+        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + kColumnGap;
+    }
+    std::vector<float> rowY(rowCount, 0.0f);
+    for (uint32_t row = 1; row < rowCount; ++row) {
+        const float height =
+            static_cast<float>(rowRanks[row - 1]) * (rowCardHeight[row - 1] + kRankGap);
+        rowY[row] = rowY[row - 1] + height + (rowIsBand[row] ? kCulledBandGap : kRowGap);
+    }
+
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        const GraphLayoutItem& item = layout.items[index];
+        ed::SetNodePosition(itemNodeId(layout, index),
+                            ImVec2(columnX[item.column],
+                                   rowY[item.row] + static_cast<float>(item.rank) *
+                                                        (rowCardHeight[item.row] + kRankGap)));
+    }
+    return true;
+}
+
+//======================================================================================================================
 void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
                 RenderGraphPanelState& state, bool resetLayout) {
     LMX_ASSERT(model.nodes.size() <= kGroupIdBase,
                "a compiled frame declares more nodes than the canvas id space holds");
 
     ed::SetCurrentEditor(state.editor->context);
+    // Zero node padding lets a card own its edges: the title band reaches the rounded corners and a
+    // pin dot sits on the silhouette. The two link directions are the editor's own defaults, stated
+    // here so the round curves below are read against something explicit rather than a default.
+    ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+    ed::PushStyleVar(ed::StyleVar_NodeRounding, kCardRounding);
+    ed::PushStyleVar(ed::StyleVar_LinkStrength, kLinkStrength);
+    ed::PushStyleVar(ed::StyleVar_SourceDirection, ImVec2(1.0f, 0.0f));
+    ed::PushStyleVar(ed::StyleVar_TargetDirection, ImVec2(-1.0f, 0.0f));
     ed::Begin("lmx.renderGraph", ImVec2(0.0f, 0.0f));
 
     // Item indices only mean something within one picture, so the positions the user dragged and
     // the item they selected are both surrendered the moment the drawn picture changes.
-    const bool applyLayout = resetLayout || state.appliedSignature != layout.signature;
-    if (applyLayout) {
-        for (uint32_t index = 0; index < layout.items.size(); ++index) {
-            ed::SetNodePosition(itemNodeId(layout, index),
-                                ImVec2(layout.items[index].x, layout.items[index].y));
+    const bool pictureChanged = state.appliedSignature != layout.signature;
+    if (pictureChanged) {
+        state.appliedSignature = layout.signature;
+        state.layoutPhase = GraphLayoutPhase::Provisional;
+    }
+    if (state.layoutPhase == GraphLayoutPhase::Provisional || resetLayout) {
+        if (applyMeasuredPositions(layout)) {
+            state.layoutPhase = GraphLayoutPhase::Measured;
+        } else {
+            applyProvisionalPositions(layout);
+            state.layoutPhase = GraphLayoutPhase::Provisional;
         }
     }
 
@@ -564,7 +726,8 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         const uint32_t fromOrdinal =
             static_cast<uint32_t>(layout.items[edge.fromItem].inputs.size()) + edge.fromPin;
         ed::Link(ed::LinkId(static_cast<uintptr_t>(index) + 1), pinIdOf(fromId, fromOrdinal),
-                 pinIdOf(itemIdValue(layout, edge.toItem), edge.toPin), kEdgeColor, kEdgeThickness);
+                 pinIdOf(itemIdValue(layout, edge.toItem), edge.toPin),
+                 kLinkPalette[edge.resource % kLinkPalette.size()], kEdgeThickness);
     }
 
     drawItemOverlays(model, layout);
@@ -577,16 +740,19 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         ed::Resume();
     }
 
-    if (applyLayout) {
-        // Item bounds are current by now, which is what makes fitting to content meaningful on the
-        // very first frame a picture is drawn.
+    if (pictureChanged) {
         ed::ClearSelection();
-        ed::NavigateToContent(0.0f);
-        state.appliedSignature = layout.signature;
         state.selectedItem.reset();
+    }
+    if (state.layoutPhase == GraphLayoutPhase::Measured) {
+        // Card bounds are current by now, which is what makes fitting to content meaningful on the
+        // very frame the measured positions were applied.
+        ed::NavigateToContent(0.0f);
+        state.layoutPhase = GraphLayoutPhase::Settled;
     }
 
     ed::End();
+    ed::PopStyleVar(5);
 
     // Read after End(): that is where this frame's input is turned into the editor's selection and
     // its double-click.
@@ -832,16 +998,6 @@ float canvasWidthFor(float availableWidth) {
     return canvasWidth;
 }
 
-//======================================================================================================================
-// How many columns a row holds by default: as many as the canvas is wide enough to show, and never
-// fewer than two, because a single column is a list rather than a graph.
-uint32_t autoColumnCount(float canvasWidth) {
-    const float columns = std::floor(canvasWidth / kGraphLayoutColumnSpacing);
-    // The same bounds the manual control accepts, so no path can seed a count it refuses.
-    return std::clamp(static_cast<uint32_t>(std::max(columns, 0.0f)), 2u,
-                      static_cast<uint32_t>(kMaxColumns));
-}
-
 } // namespace
 
 //======================================================================================================================
@@ -862,6 +1018,7 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state) {
     state.appliedSignature.clear();
     state.selectedItem.reset();
     state.columnsEdit = 0;
+    state.layoutPhase = GraphLayoutPhase::Provisional;
 }
 
 //======================================================================================================================
@@ -906,7 +1063,7 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
 
     const GraphNodeModel model = buildGraphNodeModel(newest->record, newest->timings);
     // Measured before the header row, which changes the height left for the children but not the
-    // width, so the column count and the canvas child are sized from the same number.
+    // width they are given.
     const float canvasWidth = canvasWidthFor(ImGui::GetContentRegionAvail().x);
 
     ImGui::Text("frame %llu -- pooling %s", static_cast<unsigned long long>(model.frameId),
@@ -916,11 +1073,9 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         dumpFrame(newest->record, model.frameId);
     }
     ImGui::SameLine();
+    // Reset Layout re-measures the cards and places them again, which is also what drops whatever
+    // the user dragged. It seeds no column count: the default is one row, left to right.
     const bool resetLayout = ImGui::Button("Reset Layout");
-    if (resetLayout || state.appliedSignature.empty()) {
-        state.layoutOptions.columnsPerRow = autoColumnCount(canvasWidth);
-        state.columnsEdit = static_cast<int>(state.layoutOptions.columnsPerRow);
-    }
     ImGui::SameLine();
     ImGui::SetNextItemWidth(kColumnsControlWidth);
     // The control edits its own value and the layout adopts it only once the edit is finished:
@@ -931,6 +1086,8 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         state.columnsEdit = std::clamp(state.columnsEdit, kMinColumns, kMaxColumns);
         state.layoutOptions.columnsPerRow = static_cast<uint32_t>(state.columnsEdit);
     }
+    ImGui::SameLine();
+    ImGui::TextDisabled(state.layoutOptions.columnsPerRow == 0 ? "no wrap" : "0 = no wrap");
     ImGui::Text("transients: requested %llu B, high-water %llu B, saved %llu B",
                 static_cast<unsigned long long>(model.memory.requested),
                 static_cast<unsigned long long>(model.memory.highWater),

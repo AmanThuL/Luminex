@@ -525,9 +525,10 @@ TEST_CASE("a group sums the GPU time of its measured members and counts them", "
 }
 
 //======================================================================================================================
-// Wrapping is what keeps a long chain on screen. A row is as tall as its busiest layer, so the row
-// below it starts clear of the deepest stack above.
-TEST_CASE("columns wrap layers into rows sized by their rank counts", "[app]") {
+// Wrapping is what keeps a long chain on screen when a reader asks for it. Which row and column a
+// layer lands in is the whole of what the layout decides; how tall that row is drawn is measured
+// from the cards, and so belongs to the canvas.
+TEST_CASE("columns wrap layers into rows and leave ranks stacked within them", "[app]") {
     ChainFrame frame;
     declareChainFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 7);
@@ -543,28 +544,24 @@ TEST_CASE("columns wrap layers into rows sized by their rank counts", "[app]") {
         REQUIRE(layout.items[index].rank == ranks[index]);
         REQUIRE(layout.items[index].row == layers[index] / 2);
         REQUIRE(layout.items[index].column == layers[index] % 2);
-        REQUIRE(layout.items[index].x ==
-                static_cast<float>(layers[index] % 2) * kGraphLayoutColumnSpacing);
     }
 
-    // Row 0 holds layers 0 and 1, and layer 1 stacks two items, so it is two ranks tall.
-    const float firstRow = 2.0f * kGraphLayoutRowSpacing + kGraphLayoutRowGap;
-    const float otherRow = 1.0f * kGraphLayoutRowSpacing + kGraphLayoutRowGap;
-    REQUIRE(layout.items[0].y == 0.0f);
-    REQUIRE(layout.items[1].y == 0.0f);
-    REQUIRE(layout.items[5].y == kGraphLayoutRowSpacing);
-    REQUIRE(layout.items[2].y == firstRow);
-    REQUIRE(layout.items[3].y == firstRow);
-    REQUIRE(layout.items[4].y == firstRow + otherRow);
+    // Row 0 holds layers 0 and 1, and layer 1 stacks two items, so that row is two ranks tall and
+    // the row below it starts clear of both.
+    REQUIRE(layout.items[0].row == 0);
+    REQUIRE(layout.items[1].row == 0);
+    REQUIRE(layout.items[5].row == 0);
+    REQUIRE(layout.items[5].rank == 1);
+    REQUIRE(layout.items[2].row == 1);
+    REQUIRE(layout.items[3].row == 1);
+    REQUIRE(layout.items[4].row == 2);
 
     // Unlimited columns leave the same five layers in one row.
     const GraphLayout wide = layoutGraph(model, {});
     for (uint32_t index = 0; index < layers.size(); ++index) {
         REQUIRE(wide.items[index].row == 0);
         REQUIRE(wide.items[index].column == layers[index]);
-        REQUIRE(wide.items[index].x ==
-                static_cast<float>(layers[index]) * kGraphLayoutColumnSpacing);
-        REQUIRE(wide.items[index].y == static_cast<float>(ranks[index]) * kGraphLayoutRowSpacing);
+        REQUIRE(wide.items[index].rank == ranks[index]);
     }
 }
 
@@ -587,21 +584,19 @@ TEST_CASE("a culled pass sits in the culled band below the last row", "[app]") {
     REQUIRE(orphan.culled);
     REQUIRE(observer.culled);
 
-    // One row holding one item per layer, so the band starts a row and a band gap below the top.
-    const float band =
-        1.0f * kGraphLayoutRowSpacing + kGraphLayoutRowGap + kGraphLayoutCulledBandGap;
-    REQUIRE(orphan.y == band);
-    REQUIRE(observer.y == band);
-    REQUIRE(orphan.x == 0.0f);
-    REQUIRE(observer.x == kGraphLayoutColumnSpacing);
+    // One row holds every proved layer, so the band is the row after it and reads left to right.
     REQUIRE(orphan.row == 1);
     REQUIRE(observer.row == 1);
+    REQUIRE(orphan.column == 0);
+    REQUIRE(observer.column == 1);
+    REQUIRE(orphan.rank == 0);
+    REQUIRE(observer.rank == 0);
 
     for (const GraphLayoutItem& item : layout.items) {
         if (item.culled) {
             continue;
         }
-        REQUIRE(item.y < band);
+        REQUIRE(item.row == 0);
     }
 
     // A whole culled stage collapses into one box, and that box goes to the band too.
@@ -611,18 +606,18 @@ TEST_CASE("a culled pass sits in the culled band below the last row", "[app]") {
     REQUIRE(splitLayout.items.size() == 5);
     REQUIRE(splitLayout.items[1].kind == GraphLayoutItemKind::Group);
     REQUIRE(splitLayout.items[1].culled);
-    REQUIRE(splitLayout.items[1].x == 0.0f);
+    REQUIRE(splitLayout.items[1].column == 0);
     REQUIRE(splitLayout.items[3].culled);
-    REQUIRE(splitLayout.items[3].x == kGraphLayoutColumnSpacing);
-    REQUIRE(splitLayout.items[1].y == splitLayout.items[3].y);
+    REQUIRE(splitLayout.items[3].column == 1);
+    REQUIRE(splitLayout.items[1].row == splitLayout.items[3].row);
     REQUIRE_FALSE(splitLayout.items[0].culled);
 }
 
 //======================================================================================================================
 // The layout is what makes the canvas readable across runs and machines. It is derived from the
-// declarations alone, so two compiles of the same frame place every item identically and the
+// declarations alone, so two compiles of the same frame give every item the same cell and the
 // numbers a driver reported never move a box.
-TEST_CASE("item positions are identical for two compiles and ignore timings", "[app]") {
+TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]") {
     BloomFrame first;
     declareBloomFrame(first);
     const GraphNodeModel plain = modelOf(first.graph, 1);
@@ -649,17 +644,14 @@ TEST_CASE("item positions are identical for two compiles and ignore timings", "[
         REQUIRE(plainLayout.items[index].rank == measuredLayout.items[index].rank);
         REQUIRE(plainLayout.items[index].row == measuredLayout.items[index].row);
         REQUIRE(plainLayout.items[index].column == measuredLayout.items[index].column);
-        REQUIRE(plainLayout.items[index].x == measuredLayout.items[index].x);
-        REQUIRE(plainLayout.items[index].y == measuredLayout.items[index].y);
     }
 
     // Longest path over the expanded chain, one item per layer.
     for (uint32_t index = 0; index < plainLayout.items.size(); ++index) {
         REQUIRE(plainLayout.items[index].layer == index);
         REQUIRE(plainLayout.items[index].rank == 0);
-        REQUIRE(plainLayout.items[index].x ==
-                static_cast<float>(index) * kGraphLayoutColumnSpacing);
-        REQUIRE(plainLayout.items[index].y == 0.0f);
+        REQUIRE(plainLayout.items[index].row == 0);
+        REQUIRE(plainLayout.items[index].column == index);
     }
 }
 
@@ -742,18 +734,17 @@ TEST_CASE("a frame with nothing scheduled lays out an empty DAG and a band at th
     REQUIRE(layout.items.size() == 2);
     REQUIRE(layout.edges.empty());
 
-    // No row above the band, so its base is zero and only the band gap separates it from the top.
+    // No row above the band, so the band is row 0 and starts at the top of the canvas.
     for (const GraphLayoutItem& item : layout.items) {
         REQUIRE(item.culled);
         REQUIRE(item.row == 0);
         REQUIRE(item.rank == 0);
-        REQUIRE(item.y == kGraphLayoutCulledBandGap);
     }
     // Ordinals along the band, which is what `layer` and `column` mean for a culled item.
     REQUIRE(layout.items[0].layer == 0);
     REQUIRE(layout.items[1].layer == 1);
-    REQUIRE(layout.items[0].x == 0.0f);
-    REQUIRE(layout.items[1].x == kGraphLayoutColumnSpacing);
+    REQUIRE(layout.items[0].column == 0);
+    REQUIRE(layout.items[1].column == 1);
 }
 
 //======================================================================================================================
@@ -774,15 +765,15 @@ TEST_CASE("an all-culled frame folds its stage into one box in the band", "[app]
     REQUIRE(layout.items[0].kind == GraphLayoutItemKind::Group);
     REQUIRE(layout.items[0].culled);
     REQUIRE(layout.items[0].row == 0);
-    REQUIRE(layout.items[0].x == 0.0f);
-    REQUIRE(layout.items[0].y == kGraphLayoutCulledBandGap);
+    REQUIRE(layout.items[0].column == 0);
 
-    // Opening it puts both members in the band, side by side, at the same height.
+    // Opening it puts both members in the band, side by side, in the same row.
     const GraphLayout expanded = layoutGraph(model, {.expandedGroups = {"lmx.pass.blur#culled"}});
     REQUIRE(expanded.items.size() == 2);
-    REQUIRE(expanded.items[0].y == kGraphLayoutCulledBandGap);
-    REQUIRE(expanded.items[1].y == kGraphLayoutCulledBandGap);
-    REQUIRE(expanded.items[1].x == kGraphLayoutColumnSpacing);
+    REQUIRE(expanded.items[0].row == 0);
+    REQUIRE(expanded.items[1].row == 0);
+    REQUIRE(expanded.items[0].column == 0);
+    REQUIRE(expanded.items[1].column == 1);
 }
 
 //======================================================================================================================
@@ -802,11 +793,10 @@ TEST_CASE("a column count above the layer count leaves every item in row 0", "[a
         REQUIRE(item.layer < 5);
         REQUIRE(item.row == 0);
         REQUIRE(item.column == item.layer);
-        REQUIRE(item.x == static_cast<float>(item.layer) * kGraphLayoutColumnSpacing);
-        REQUIRE(item.y == static_cast<float>(item.rank) * kGraphLayoutRowSpacing);
     }
     for (uint32_t index = 0; index < wide.items.size(); ++index) {
-        REQUIRE(wide.items[index].x == unlimited.items[index].x);
-        REQUIRE(wide.items[index].y == unlimited.items[index].y);
+        REQUIRE(wide.items[index].row == unlimited.items[index].row);
+        REQUIRE(wide.items[index].column == unlimited.items[index].column);
+        REQUIRE(wide.items[index].rank == unlimited.items[index].rank);
     }
 }

@@ -14,22 +14,6 @@
 
 namespace lmx::app {
 
-/// Horizontal distance between two adjacent columns, in canvas units. A pin draws as a dot with a
-/// short label -- the resource's last name segment and its version -- so a node is roughly 200
-/// units wide and two of them never meet at this pitch.
-inline constexpr float kGraphLayoutColumnSpacing = 260.0f;
-
-/// Vertical distance between two adjacent ranks within a column, in canvas units.
-inline constexpr float kGraphLayoutRowSpacing = 110.0f;
-
-/// Vertical gap below a wrapped row before the next one begins, in canvas units. It is what keeps
-/// the last rank of one row from reading as one more rank of the next.
-inline constexpr float kGraphLayoutRowGap = 80.0f;
-
-/// Vertical gap between the last wrapped row and the culled band, in canvas units. It exists so a
-/// culled pass is never read as one more rank of the DAG that was proved.
-inline constexpr float kGraphLayoutCulledBandGap = 120.0f;
-
 /// What the caller wants drawn: how far a chain may run before it wraps, and which stage groups
 /// are open.
 struct GraphLayoutOptions {
@@ -82,6 +66,9 @@ struct GraphLayoutPin {
 /// the boundary pins its visible edges cross, so what a collapsed stage shows is exactly what
 /// enters and leaves it. `layer`, `rank`, `row`, and `column` describe the proved DAG; a culled
 /// item is not in that DAG and instead reports the band row and its ordinal along it.
+///
+/// A cell, never a pixel: a box is placed by the drawing code, which is the only side that can
+/// measure the text the box has to hold.
 struct GraphLayoutItem {
     GraphLayoutItemKind kind = GraphLayoutItemKind::Node; ///< Which index below is meaningful.
     uint32_t index = 0;                  ///< Node index, or index into GraphLayout::groups.
@@ -92,8 +79,6 @@ struct GraphLayoutItem {
     uint32_t rank = 0;                   ///< Position within the layer; always 0 in the band.
     uint32_t row = 0;                    ///< Wrapped row holding the layer, or the band's own row.
     uint32_t column = 0;                 ///< Column within that row.
-    float x = 0.0f;                      ///< Horizontal position, in canvas units.
-    float y = 0.0f;                      ///< Vertical position, in canvas units.
     bool culled = false;                 ///< Whether it sits in the culled band.
 };
 
@@ -122,11 +107,13 @@ struct GraphLayoutAliasLink {
 };
 
 /// One drawable picture of a compiled frame: which stages exist, which boxes are drawn, what
-/// connects them, and where they sit.
+/// connects them, and which cell of the grid each of them takes.
 ///
 /// It is a pure function of the node model, the expansion set, and the column count -- timings,
 /// frame ID, and byte offsets never move a box -- and carries no ImGui or node-editor type, so it
-/// is unit-testable without a UI.
+/// is unit-testable without a UI. Layers, ranks, rows, and columns are that pure part; a pixel
+/// position is those plus the font metrics of the text each box holds, which only the drawing code
+/// can measure, so it owns that half.
 struct GraphLayout {
     std::vector<GraphLayoutGroup> groups;         ///< Stage groups, ordered by first member.
     std::vector<GraphLayoutItem> items;           ///< Drawn boxes, in declaration order.
@@ -136,15 +123,15 @@ struct GraphLayout {
     std::string signature;                        ///< Identity of the drawn picture; see below.
 };
 
-/// Groups, collapses, layers, and places a node model into the picture the canvas draws.
+/// Groups, collapses, layers, and assigns grid cells to a node model, the picture the canvas draws.
 ///
 /// Items are the model's nodes with every collapsed group's members replaced by one box, ordered so
 /// a group takes the place of its first member and the whole list still reads in declaration order.
 /// Layer is the longest visible-edge path from the producer-less scheduled items and a sink sits
 /// one layer past its producer; rank orders a layer by its items' lowest schedule position and then
 /// puts the sinks after, by declaration. With `columnsPerRow = C > 0` layer L sits at row `L / C`
-/// and column `L % C`, each row is as tall as its busiest layer plus a gap, and rows stack
-/// downwards. Culled items form a band below the last row, ordered by declaration index.
+/// and column `L % C`, and with `C = 0` the whole chain stays in row 0. Culled items form a band
+/// one row past the last, ordered by declaration index.
 ///
 /// Collapsing can hide the ordering the schedule proved -- a stage feeding a pass that feeds the
 /// same stage is one box pointing at itself -- so layers are settled in schedule order and an edge

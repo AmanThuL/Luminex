@@ -59,12 +59,14 @@ thin RHI and one implemented backend.
   shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
   pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel opens
   in its own OS window (Dear ImGui platform viewports; it never docks) and draws the exact
-  newest-retired-frame's compiled record as a grouped, wrapped node canvas — stage groups (a shared
-  label prefix, at least two members, scheduled and culled kept separate) collapsed by default and
-  opened by double-click or the details pane's Expand button, compact pins that show their full
-  label on hover or selection, and a `columns` control that wraps long chains into rows — with a
-  details pane scoped to the selected item and a Reset Layout button that also reseeds the column
-  count from the canvas width; dragged node positions are session state only.
+  newest-retired-frame's compiled record as a node canvas of Falcor-style cards — a title band in the pass kind's colour, inputs and outputs as dots
+  centred on the card's edges, links coloured per resource — placed left to right from the cards'
+  measured sizes. Stage groups (a shared label prefix, at least two members, scheduled and culled
+  kept separate) are collapsed by default and opened by double-click or the details pane's Expand
+  button; pins are compact and show their full label on hover or selection; the `columns` control
+  defaults to 0, no wrap, and a positive value wraps long chains into rows. A details pane is
+  scoped to the selected item, Reset Layout re-measures and re-places, and dragged node positions
+  are session state only.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
@@ -84,7 +86,7 @@ thin RHI and one implemented backend.
   Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
   App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
   (absolute path, written once). The editor's read-only Render Graph panel, in its own detached OS
-  window, shows the same compiled record live as a grouped, wrapped node canvas with a
+  window, shows the same compiled record live as a grouped node canvas with a
   selection-scoped details pane (uses, schedule, culling, transitions, transient lifetimes and
   memory) and a button to dump the displayed frame on demand.
   Guide: `docs/guides/gpu-debugging.md`, whose Parity checks section documents the exact procedure
@@ -120,8 +122,9 @@ persistence with legacy migration and Reset Default Layout, and a single selecti
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
 subject-scoped editing (camera, rendering, one of three directional lights, or one object); the
 Render Graph panel shapes the retained compiled frame into the ImGui-free `GraphNodeModel`, groups
-and wraps it into a `GraphLayout` (collapsible stage groups, compact pins, a columns-per-row wrap),
-and draws it on a vendored `ImGuiNodeEditor` canvas with a selection-scoped details pane,
+it into a `GraphLayout` of layers, ranks, rows and columns (collapsible stage groups, compact pins,
+an optional columns-per-row wrap, no pixels), and draws it on a vendored `ImGuiNodeEditor` canvas as
+cards the panel places from their own measured sizes, with a selection-scoped details pane,
 deterministic layout stable across unchanged frames, and session-only dragged positions; frame
 loop, joins its own UI pass to the graph plus the platform-window render after present,
 `--screenshot` path).

@@ -309,28 +309,14 @@ GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& o
     const uint32_t columns =
         options.columnsPerRow > 0 ? options.columnsPerRow : std::max(layerCount, 1u);
     const uint32_t rowCount = layerCount == 0 ? 0 : (maxLayer / columns) + 1;
-    std::vector<float> rowBase(rowCount + 1, 0.0f);
-    for (uint32_t row = 0; row < rowCount; ++row) {
-        uint32_t tallest = 0;
-        for (uint32_t layer = row * columns; layer < layerCount && layer < (row + 1) * columns;
-             ++layer) {
-            tallest = std::max(tallest, rankCount[layer]);
-        }
-        rowBase[row + 1] = rowBase[row] + static_cast<float>(tallest) * kGraphLayoutRowSpacing +
-                           kGraphLayoutRowGap;
-    }
-
     for (const uint32_t index : placed) {
         GraphLayoutItem& item = layout.items[index];
         item.row = item.layer / columns;
         item.column = item.layer % columns;
-        item.x = static_cast<float>(item.column) * kGraphLayoutColumnSpacing;
-        item.y = rowBase[item.row] + static_cast<float>(item.rank) * kGraphLayoutRowSpacing;
     }
 
     // Culled items are not in the DAG that was proved, so they take no layer of it. Item order is
     // declaration order, which is the order the band reads in.
-    const float band = rowBase[rowCount] + kGraphLayoutCulledBandGap;
     uint32_t ordinal = 0;
     for (GraphLayoutItem& item : layout.items) {
         if (!item.culled) {
@@ -340,8 +326,6 @@ GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& o
         item.rank = 0;
         item.row = rowCount;
         item.column = ordinal;
-        item.x = static_cast<float>(ordinal) * kGraphLayoutColumnSpacing;
-        item.y = band;
         ++ordinal;
     }
 

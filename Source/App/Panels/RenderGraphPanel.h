@@ -31,6 +31,17 @@ struct NodeEditorHandleDeleter {
     void operator()(NodeEditorHandle* handle) const;
 };
 
+/// How far the canvas has got in turning the current picture's grid cells into pixels.
+///
+/// A card's size is known only after the node editor has laid it out once, so a picture is drawn a
+/// first time on a coarse grid purely to be measured, placed from those measurements on the next
+/// frame, and then left alone so the user's drags survive.
+enum class GraphLayoutPhase {
+    Provisional, ///< Drawn on the coarse grid; no card has reported a size yet.
+    Measured,    ///< Measured positions were applied this frame; the view has yet to fit to them.
+    Settled      ///< Positions are final, and whatever the user drags from here is kept.
+};
+
 /// Everything the Render Graph canvas keeps between frames: the node-editor context, what the user
 /// asked the layout for, the picture the canvas is currently laid out for, and the selected item.
 ///
@@ -43,21 +54,24 @@ struct RenderGraphPanelState {
     /// until then. Session state only: no settings file is configured, so nothing is persisted.
     std::unique_ptr<NodeEditorHandle, NodeEditorHandleDeleter> editor;
     /// What the user asked of the layout: the column count and the groups they opened. Expansion
-    /// keys are label-derived, so the set outlives a shape change; the column count is seeded from
-    /// the canvas width on the first draw and by Reset Layout.
+    /// keys are label-derived, so the set outlives a shape change; the column count defaults to
+    /// zero, which is no wrap -- one row running left to right.
     GraphLayoutOptions layoutOptions;
     /// The `GraphLayout::signature` the current node positions were laid out from. Empty before the
     /// first layout. While it matches the drawn picture the canvas keeps whatever the user dragged;
     /// when it differs the layout's positions are reapplied.
     std::string appliedSignature;
+    /// How far the current picture has got from grid cells to measured pixels. Reset to
+    /// `Provisional` whenever the drawn picture changes, and by Reset Layout when the cards have
+    /// yet to report a size.
+    GraphLayoutPhase layoutPhase = GraphLayoutPhase::Provisional;
     /// Index into `GraphLayout::items` of the single selected item, or empty when the selection is
     /// empty or covers more than one item. Panel-local: it is never a scene subject.
     std::optional<uint32_t> selectedItem;
     /// The value the column-count control is being edited toward. It equals
     /// `layoutOptions.columnsPerRow` except while an edit is in flight -- a held step button, or a
     /// number being typed -- because adopting each intermediate value would relayout the picture
-    /// and drop the dragged positions and the selection with it. Seeded from the canvas width on
-    /// the first draw and by Reset Layout, exactly as the column count is.
+    /// and drop the dragged positions and the selection with it. Zero, the default, is no wrap.
     int columnsEdit = 0;
 };
 
@@ -71,8 +85,8 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 /// joined by frame ID: the compiled frame as a node canvas on the left, and a details pane scoped
 /// to the selected item on the right, under a header row carrying the frame identity, its transient
 /// totals, a button that dumps that same record to a file next to the binary, a layout reset, and
-/// the column count the layout wraps at. `open` follows the window's close button, exactly as
-/// `ImGui::Begin` writes it.
+/// the column count the layout wraps at -- zero, the default, being no wrap at all. `open` follows
+/// the window's close button, exactly as `ImGui::Begin` writes it.
 ///
 /// A stage of passes draws as one group node until it is double-clicked open, and a pin carries a
 /// short label until it is hovered or its item is selected, so what the canvas shows is the frame's
