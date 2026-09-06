@@ -2,12 +2,18 @@
 
 Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple Silicon) with a
 thin RHI and one implemented backend.
+The long-term direction is a graph-scheduled, GPU-driven hybrid renderer sharing scene, material,
+light and temporal semantics; visible rendering quality and reproducible engineering evidence both
+serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.md`.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
+- Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
+  slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
+  separate extension. These are planned boundaries, not current renderer capabilities.
 - Current baseline: `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
   `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
