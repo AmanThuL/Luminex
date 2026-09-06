@@ -503,3 +503,5 @@ task("policy")
         os.execv("python3", {"Tools/check_rhi_headers.py"})
         os.execv("python3", {"Tools/check_cpp_layout.py"})
     end)
+
+includes("Experiments/GpuSubmission/xmake.lua")

@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""Exercise the built CLI's non-GPU contract and failure-path safety from another CWD."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+BENCH = None
+
+
+class CliTests(unittest.TestCase):
+    def invoke(self, *args, env=None):
+        return subprocess.run([str(BENCH), *args], cwd="/tmp", env=env,
+                              text=True, capture_output=True, timeout=60)
+
+    def test_model_selftest(self):
+        result = self.invoke("--selftest")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("selftest passed", result.stdout)
+
+    def test_matrix_has_only_twenty_scored_cases(self):
+        result = self.invoke("--list-cases")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        cases = json.loads(result.stdout)
+        self.assertEqual(len(cases), 20)
+        self.assertEqual(len({case["id"] for case in cases}), 20)
+        self.assertEqual(sum(case["bins"] == 1 for case in cases), 18)
+        self.assertTrue(all(case["count"] > 0 for case in cases))
+        self.assertEqual(result.stdout, self.invoke("--list-cases").stdout)
+
+    def test_invalid_arguments_fail(self):
+        for args in [[], ["--selftest", "--verify"], ["--measure", "--lane", "bogus"],
+                     ["--verify", "--frames", "0"], ["--verify", "--frames", "-1"],
+                     ["--verify", "--frames", "4294967296"], ["--verify", "--frames"],
+                     ["--measure", "--order", "AA"], ["--selftest", "--bogus", "x"]]:
+            with self.subTest(args=args):
+                self.assertNotEqual(self.invoke(*args).returncode, 0)
+
+    def test_existing_output_is_untouched(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sentinel = Path(directory) / "keep.txt"
+            sentinel.write_text("user data")
+            result = self.invoke("--verify", "--output", directory)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("already exists", result.stderr)
+            self.assertEqual(sentinel.read_text(), "user data")
+            self.assertEqual(list(Path(directory).iterdir()), [sentinel])
+
+    def test_measure_refuses_instrumentation_before_gpu_or_output(self):
+        for variable in ["MTL_DEBUG_LAYER", "MTL_CAPTURE_ENABLED", "MTL_SHADER_VALIDATION"]:
+            with self.subTest(variable=variable), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "new"
+                env = dict(os.environ, **{variable: "1"})
+                result = self.invoke("--measure", "--output", str(target), env=env)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("refuses validation/capture", result.stderr)
+                self.assertFalse(target.exists())
+
+    def test_capture_requires_single_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "new"
+            result = self.invoke("--verify", "--output", str(target), "--capture",
+                                 str(Path(directory) / "frame.gputrace"))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("one explicit case", result.stderr)
+            self.assertFalse(target.exists())
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--bench", required=True, type=Path)
+    args, rest = parser.parse_known_args()
+    BENCH = args.bench.resolve(strict=True)
+    unittest.main(argv=[__file__, *rest])
