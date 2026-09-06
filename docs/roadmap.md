@@ -24,13 +24,14 @@ archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
 (`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame. M5.5
 (`docs/milestones/m5.5.md`) shipped on main with a maximized editor and a centred detached graph
 window; measured cards, collapsible stage groups, compact pins, and row wrapping aid inspection.
+M5.6 closed as reliability failure / DEFER (ADR 0012), with no performance conclusion or runtime change.
 
 ## Direction after M5.5
 
-Prioritize a reproducible GPU work-submission lab: M5.6 measures a bounded Metal workload, M6
-supplies temporal contracts, and M7 adopts proven GPU-scene and submission behavior. M8–M11 retain
-their boundaries. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md)
-records the evidence; this roadmap alone owns scheduling.
+The GPU work-submission lab is closed without an accepted performance finding; M6 supplies temporal
+contracts and M7 considers only proven GPU-scene/submission behavior. M8–M11 retain their boundaries.
+The [closure record](research/2026-09-06-gpu-submission-closure.md) retains the evidence route and
+project-fit context; this roadmap alone owns scheduling.
 
 Neural shader evaluation is the next optional study after M5.6, not a dependency of M6 or a new
 compiler commitment. Purchased hardware or rented graphics-capable hosts can enable earlier
@@ -222,39 +223,25 @@ semantics.
 
 ## M5.6 — GPU work-submission experiment
 
-**Outcome:** reproducible measurements identify when GPU-generated work repays its preparation
-cost on Metal 4, and what M7 should adopt; a negative or inconclusive result is a valid outcome.
+**Outcome:** closed as reliability failure / **DEFER**, with no accepted performance conclusion.
+Production retains M5.5 rendering behavior; no GPU-submission implementation is adopted.
 
-**State:** [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) remains in progress. Four modes are implemented; collection stopped after GPU resets/retirement failures. [Attempt evidence](research/2026-09-06-gpu-submission-evidence.md) is unaccepted; [producer diagnosis](research/2026-09-06-gpu-submission-argument-source-diagnostic.md) retired CPU-filled full-N work twice but GPU generation retired once and timed out once. Root cause remains open. No adoption or final evidence tag; the [spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md) remains binding.
+**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](decisions/0012-gpu-submission-defer.md), [milestone](milestones/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
 
-**Deliver:**
+**Retained evidence:** four native modes, seeded workload/CPU oracle and separate public-RHI
+reference; pre-collection correctness tests; incomplete paired corpus and all failures; bounded
+diagnostics with no scored timings; explicit unavailable ICB, GPU-span/stage and capture gates.
+The [custody record](research/2026-09-06-gpu-submission-closure.md) names local bundles and checksums.
 
-- Freeze a seeded opaque synthetic workload, camera sequence, quality tolerances, measurement
-  protocol, and adoption thresholds before collecting results. Vary instance count, triangles per
-  instance, visibility, and a bounded set of material bins; keep geometry and shading identical.
-- Compare CPU direct draws, CPU-encoded indirect draws, and compute-written indirect arguments;
-  then attempt one GPU-encoded Metal indirect-command-buffer (ICB) path. Verify the pinned Slang
-  toolchain and Metal 4 encoding, barrier, residency, and three-slot reuse contracts first. Record
-  unsupported combinations explicitly; per-object CPU indirect encoding is not GPU autonomy.
-- Separate submission-only tests using the same predetermined visible set from end-to-end tests
-  including CPU or GPU frustum culling, command generation, compaction, and execution. Check visible
-  IDs and final images against a CPU oracle; use a separate instanced/batched control for repeated
-  geometry so an unnecessarily expensive direct baseline cannot manufacture a win.
-- Produce offscreen machine-readable results with device/OS/driver/compiler identity, scene seed,
-  repeated paired samples and uncertainty, CPU encode and wait time, GPU preparation and render
-  time, command counts, and memory costs. Distinguish requested bytes from measured allocation or
-  residency; unsupported hardware counters are unavailable, never inferred from frame time.
-  Separate warmup/compilation, validation, headline timing and diagnostic stage timing. Ordinary
-  routes use compiled-graph fixtures/dumps; native captures cover ICB-specific execution. Editor
-  and detached-window work are excluded from headline measurements.
+**Accepted closure exception:** stop rather than complete the prescribed measurement matrix;
+preserve failures, accept DEFER without wins/break-even claims, freeze source and remove the active
+executor from the production baseline. This exception closes the investigation, not its failed
+reliability/measurement gates. Only conclusions return to main; no experiment code/build include.
+Root-cause diagnosis is separate future work, not a condition keeping M5.6 active or blocking M6.
 
-**Exit gate:** checkpoint A passes unchanged under Metal validation; additional checks cover ICB
-generation and three-frame reuse. Supported variants match the frozen oracle, and a repeatable
-command reports regressions and break-even ranges. An ADR records adopt, retain, or defer. If the ICB
-path is blocked, publish the capability evidence and limited indirect results without claiming
-GPU autonomy. Freeze experiment source at an immutable evidence tag on `exp/<topic>`; only the
-conclusions return to the baseline, with adopted production behavior implemented by M7. M6 does
-not wait for another API, vendor, or an unsuccessful capability investigation to become viable.
+**Future evidence gate:** any adoption still requires a demonstrated correction, exact-artifact
+validation, new freeze and full paired collection, honest capture/capability coverage and original
+uncertainty/regression guards. A validation-on or isolated retirement pass cannot substitute.
 
 **Defer:** production GPU-scene ownership or public RHI redesign before interface gate B, general
 bindless materials, HZB/temporal occlusion, mesh/task shaders, DGC, Work Graphs, multi-API parity,

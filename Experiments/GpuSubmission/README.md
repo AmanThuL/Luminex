@@ -2,8 +2,13 @@
 
 An isolated Metal 4 workload executor and a separate public-RHI correctness reference. This
 directory is experimental evidence, not renderer code. See the
-[accepted design](../../docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md),
+[frozen design](../../docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md),
 [native contracts](Metal/README.md), and [result schema](Tools/schema.md).
+
+**Closed — reliability failure / DEFER:** the user approved terminal closure with no performance
+conclusion. Source is frozen at `m5.6-gpu-submission-evidence`; no further GPU collection is active.
+The [closure record](../../docs/research/2026-09-06-gpu-submission-closure.md) preserves the unmet
+gates and restart conditions. Commands below are reproduction documentation, not successful gates.
 
 **2026-09-06 safety stop:** the first formal no-verify collection triggered GPU global restarts
 and retirement assertions. It is incomplete and no performance finding is accepted. Do not run

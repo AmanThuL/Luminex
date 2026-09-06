@@ -1,13 +1,13 @@
-# ADR 0012: Defer GPU work-submission adoption pending required evidence
+# ADR 0012: Close GPU submission experiment with adoption deferred
 
-**Status**: Proposed
+**Status**: Accepted
 **Date**: 2026-09-06
 
 ## Context
 
-The [M5.6 spec](../specs/2026-09-06-m5.6-gpu-work-submission-design.md) compares native
+The frozen M5.6 protocol compared native
 Metal 4 submission mechanisms, with a separate untimed production RHI correctness anchor.
-Four native modes are implemented: `direct`, `cpu-indirect`, `gpu-args`, and `batched`.
+The experiment implemented four native modes: `direct`, `cpu-indirect`, `gpu-args`, and `batched`.
 Their timings do not measure production renderer performance. Production M5.5 runtime code
 in `Source/` and `RHI/` remains unchanged, including the frame-data contract adopted by
 [ADR 0010](0010-execution-model-partial-reshape.md).
@@ -15,21 +15,26 @@ in `Source/` and `RHI/` remains unchanged, including the frame-data contract ado
 Formal collection was stopped after GPU global restarts and retirement failures. It contains
 1,043 structurally valid pairs, two aborted processes and one operator-interrupted pair, not
 the required 1,920 supported pairs. No performance finding or break-even region is accepted.
-The protocol specifies 20 cases, submission suite S and end-to-end suite E, 12 alternating
+The protocol specified 20 cases, submission suite S and end-to-end suite E, 12 alternating
 AB/BA pairs per comparison, and 32 warmup plus 256 measured frames per run. The four
-comparisons are each other implemented mode against `direct`, plus `gpu-args` against
-`batched`. The [attempt report](../research/2026-09-06-gpu-submission-evidence.md) retains the
-incomplete matrix, failures, artifact identities and pre-collection validation environment.
+comparisons were each other implemented mode against `direct`, plus `gpu-args` against
+`batched`. The [closure report](../research/2026-09-06-gpu-submission-closure.md) owns the
+bundle indexes, diagnostic synthesis and reopening conditions.
 
-## Proposed decision
+## Decision
 
-**DEFER GPU-generation adoption; keep M5.6 open.** Required reliability, measurement and capture
-evidence is incomplete. Partial headline results cannot override those gates. This is a proposed
-not a claim that GPU submission cannot win or that direct submission won every comparison.
-Keep the production submission path; introduce no ICB or public RHI API through this decision.
-This ADR remains Proposed; the active implementation plan has not satisfied stages 5–6.
+Close M5.6 as **reliability failure / DEFER / NO performance conclusion** under the terminal
+disposition explicitly authorized by the user on 2026-09-06. Retain the incumbent production
+submission path; introduce no experimental runtime, ICB or public RHI API. No root-cause fix,
+performance win or direct-submission superiority is claimed.
 
-The spec requires an E-suite material win on the same metric against both direct and batched
+The user waived the complete 1,920-pair measurement requirement solely for closure. This accepted
+terminal contract supersedes only the former closure prerequisite; the original reliability,
+measurement, capture and adoption gates were not passed. The milestone's Implemented status
+means completed administrative and evidence closure, not successful validation. Future adoption
+still requires full validity and the original gates.
+
+Future adoption requires an E-suite material win on the same metric against both direct and batched
 at two adjacent tested N scales, with median improvement at least 15% and a paired 95% interval
 above zero. GPU-span and throughput guard intervals must also stay above the -15% loss margin.
 Unavailable guards prevent adoption regardless of headline CPU work or throughput.
@@ -41,8 +46,9 @@ Unavailable guards prevent adoption regardless of headline CPU work or throughpu
   Pre-collection scored-artifact replay passed all 160 case/suite/mode combinations over 256 frames;
   actual post-retirement parity passed separately from capture inspection. The 900-frame
   E-suite stress passed for all four native modes.
-- Final reported tests passed: experiment CPU 21 cases / 37,011 assertions, experiment GPU
-  6 / 54,105; production unit 405 / 77,439, production GPU 97 / 11,395; unchanged checkpoint A
+- Historical pre-collection tests reported on 2026-09-06 passed: experiment CPU 21 cases /
+  37,011 assertions, experiment GPU 6 / 54,105; production unit 405 / 77,439,
+  production GPU 97 / 11,395; unchanged checkpoint A
   19 / 1,856. These precede the collection faults; they are not post-fault certification.
 - `gpu-icb` is unavailable in this experiment. The pinned Slang 2026.14.1 probe encountered
   E30015 for opaque `command_buffer`, `render_command`, and `primitive_type`; the lowering
@@ -59,7 +65,12 @@ Unavailable guards prevent adoption regardless of headline CPU work or throughpu
 - The no-verify collection subsequently failed in two pairs at N=16,384/T=32/visibility=0.5/B=1.
   Faulting modes and root cause remain unresolved. Source/ABI audits found no demonstrated cause.
   Verification adds synchronous readback and changes overlap, so it does not certify uninterrupted
-  three-slot measurement scheduling. No further GPU runs were attempted after the safety stop.
+  three-slot measurement scheduling. Later bounded diagnostics reproduced resets and sensitivity
+  to validation and argument production; wider dependency masks did not establish a fix.
+  Successful individual retirements do not certify reliability. Root cause remains unresolved.
+
+Last recorded Metal environment on 2026-09-06: Apple M3 Max, macOS 26.5.2 (25F84),
+Slang 2026.14.1, metal-cpp 26.4 and clang 21.0.0. This is provenance, not certification.
 
 ## Consequences and closure
 
@@ -68,7 +79,16 @@ oracle, then considers only proven GPU work at interface gate B. Neither an ICB 
 nor an RHI extension follows automatically from this experiment. Any adoption needs bounded
 production evidence and the missing gates; frozen experimental code is not promoted.
 
-The final `m5.6-gpu-submission-evidence` tag is reserved for closure and has not been created.
-Keep raw bundles outside the published tree. First localize the fault in an isolated test session
-without hiding overlap, then verify any proven fix and recollect under a new freeze. Do not replace
-failed pairs. [M5.6](../milestones/m5.6.md) remains Proposed, and experimental code stays off main.
+Historical documents belong to the local frozen evidence tag `m5.6-gpu-submission-evidence`:
+`docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md`,
+`docs/research/2026-09-06-gpu-submission-evidence.md`, the historical executor plan and all
+per-attempt research notes, including `docs/research/2026-09-06-gpu-submission-diagnostic.md`
+and the dependency, instrumentation and argument-source diagnostics. These are frozen tag inventory,
+not live dependencies on main or claims of a published remote tag.
+
+Keep raw bundles outside the published tree. Reopening follows the closure report: localize the
+fault in an isolated session without hiding overlap, validate any proven fix and complete fresh
+collection under a new freeze. Do not replace failed attempts. Correctness, reliable retirement,
+capture visibility and honest capability coverage remain adoption prerequisites.
+[M5.6](../milestones/m5.6.md) is closed under this terminal contract; experimental code stays off main.
+Root-cause investigation is separate future work, not an active M5.6 plan or required closure step.
