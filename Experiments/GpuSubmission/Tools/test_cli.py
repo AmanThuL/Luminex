@@ -69,6 +69,24 @@ class CliTests(unittest.TestCase):
             self.assertIn("one explicit case", result.stderr)
             self.assertFalse(target.exists())
 
+    def test_diagnosis_rejects_unsafe_scope_before_gpu(self):
+        selection = ["--case", "n16384-t32-v50-b1", "--suite", "E", "--variant", "gpu-args"]
+        for extra in [[], selection + ["--frames", "901"],
+                      selection + ["--warmup", "33"], selection + ["--lane", "gpu-span"],
+                      selection + ["--capture", "/tmp/unused-diagnostic.gputrace"],
+                      ["--case", "empty", "--suite", "E", "--variant", "gpu-icb"],
+                      ["--case", "bogus", "--suite", "E", "--variant", "direct"]]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "new"
+                result = self.invoke("--diagnose", "--output", str(target), *extra)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(target.exists())
+
+    def test_diagnosis_cannot_be_combined_with_measurement(self):
+        result = self.invoke("--measure", "--diagnose")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("exactly one action", result.stderr)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

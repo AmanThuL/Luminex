@@ -19,6 +19,10 @@ struct RunConfig {
     /// Directory holding pinned Slang Scene/Prepare artifacts.
     std::filesystem::path shaderDirectory;
     std::filesystem::path capturePath; ///< New absolute .gputrace; runNative captures one frame.
+    /// Unscored native feedback observer; requires verify=false and an empty capturePath.
+    /// Bounded by warmup/frames; logs to stderr and joins callbacks at normal slot retirement.
+    /// Adds no readbacks, canary checks/writes, GPU submissions or per-frame idle waits.
+    bool diagnostics = false;
 };
 
 /// One submitted frame, joined to exact slot retirement before its run returns.
@@ -35,6 +39,7 @@ struct FrameSample {
 };
 
 /// Fully drained run; byte counts are explained separately in capabilitiesJson's memory object.
+/// With diagnostics=true all timings are unscored observer data and verified remains false.
 struct RunResult {
     std::vector<FrameSample> samples; ///< Ordered, complete frame IDs; excludes warmup.
     double throughput = 0; ///< Completed frames/second, first commit to final retirement.
@@ -52,10 +57,15 @@ struct RunResult {
 /// Headline only; counter lanes and ICB return an unavailable diagnostic. Scoring rejects
 /// validation. Capture requires verify=true and writes one trace plus an experiment-specific
 /// metadata sidecar.
+/// Diagnostics permits validation environment flags and retains three-slot pipelining, with
+/// immutable submission feedback and flushed stderr setup/start/submission/error logs. Callback
+/// delivery joins the exact retirement event; all diagnostic timings are unscored. Diagnostics
+/// combined with verify or a capture path fails before device creation.
 Result<RunResult> runNative(const Case&, Suite, Variant, Lane, const RunConfig&);
 
 /// Replays exact scored artifacts with debug=0 and returns retired pixels and observed visible IDs.
 /// Does not start capture, even when capturePath is set; capture belongs to runNative exclusively.
+/// Rejects diagnostics: this entry point always performs verification and readback.
 Result<FrameImage> renderNativeFrame(const Case&, Suite, Variant, uint32_t logicalFrame,
                                      const RunConfig&);
 

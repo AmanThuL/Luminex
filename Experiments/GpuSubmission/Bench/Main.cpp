@@ -137,7 +137,7 @@ Options parse(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string key = argv[i];
         if (key == "--measure" || key == "--verify" || key == "--capabilities" ||
-            key == "--list-cases" || key == "--selftest") {
+            key == "--list-cases" || key == "--selftest" || key == "--diagnose") {
             if (!options.action.empty())
                 throw std::runtime_error("choose exactly one action");
             options.action = key;
@@ -176,7 +176,7 @@ Options parse(int argc, char** argv) {
     }
     if (options.action.empty())
         throw std::runtime_error(
-            "expected --capabilities, --list-cases, --selftest, --verify or --measure");
+            "expected --capabilities, --list-cases, --selftest, --verify, --measure or --diagnose");
     if (!options.config.frames)
         throw std::runtime_error("frames must be positive");
     if (options.order != "AB" && options.order != "BA")
@@ -305,6 +305,53 @@ void measure(const Options& options) {
     }
     out << "]}";
     write(options.output / "result.json", out.str());
+}
+
+//======================================================================================================================
+void diagnose(const Options& options) {
+    if (options.caseId == "all" || options.suite == "all" || options.variant == "all")
+        throw std::runtime_error("diagnosis requires one explicit case, suite and variant");
+    if (options.lane != sub::Lane::Headline || !options.config.capturePath.empty() ||
+        enabled("MTL_CAPTURE_ENABLED"))
+        throw std::runtime_error("diagnosis refuses captures and timestamp lanes");
+    if (options.config.frames > 900 || options.config.warmup > 32)
+        throw std::runtime_error("diagnosis is bounded to 900 frames and 32 warmup frames");
+    auto spec = sub::findCase(options.caseId);
+    auto suite = sub::parseSuite(options.suite);
+    auto variant = sub::parseVariant(options.variant);
+    if (!spec || !suite || !variant)
+        throw std::runtime_error("invalid diagnostic case, suite or variant");
+    if (*variant == sub::Variant::GpuIcb)
+        throw std::runtime_error("diagnosis requires an implemented ordinary variant");
+    prepareOutput(options.output);
+    const auto manifest = sub::manifestJson(*spec);
+    write(options.output / "manifest.json", manifest);
+    const auto identity = identities(options.config.shaderDirectory);
+    const std::string context =
+        "{\"schemaVersion\":1,\"format\":\"lmx.submission.diagnostic\","
+        "\"scored\":false,\"protocol\":\"pipelined-feedback-v1\",\"case\":" +
+        caseJson(*spec) + ",\"suite\":" + quote(options.suite) +
+        ",\"variant\":" + quote(options.variant) +
+        ",\"warmup\":" + std::to_string(options.config.warmup) +
+        ",\"frameCount\":" + std::to_string(options.config.frames) +
+        ",\"manifestHash\":" + quote(hash(manifest)) + ',' + identity +
+        ",\"environment\":" + environment();
+    write(options.output / "diagnostic-start.json", context + '}');
+    std::cerr << "UNSCORED diagnostic start case=" << options.caseId << " suite=" << options.suite
+              << " mode=" << options.variant << '\n';
+    auto config = options.config;
+    config.diagnostics = true;
+    config.verify = false;
+    auto run = sub::runNative(*spec, *suite, *variant, sub::Lane::Headline, config);
+    if (!run) {
+        write(options.output / "diagnostic.json",
+              context + ",\"status\":\"failed\",\"error\":" + quote(run.error()) + '}');
+        throw std::runtime_error(run.error());
+    }
+    write(options.output / "diagnostic.json",
+          context + ",\"status\":\"retired\",\"verified\":false,\"retiredFrames\":" +
+              std::to_string(run->samples.size()) + '}');
+    std::cerr << "UNSCORED diagnostic retired; no image/argument parity claim\n";
 }
 
 //======================================================================================================================
@@ -449,6 +496,8 @@ int execute(const Options& options) {
         std::cout << "selftest passed\n";
     } else if (options.action == "--measure")
         measure(options);
+    else if (options.action == "--diagnose")
+        diagnose(options);
     else
         verify(options);
     return 0;

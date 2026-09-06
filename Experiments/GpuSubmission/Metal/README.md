@@ -26,8 +26,16 @@ a callback-local autorelease pool, which drains before delivery is published; no
 native object escapes into the ledger. Errors log their domain, code and description immediately.
 The ledger has no native ownership edge and therefore cannot form a queue/handler ownership cycle.
 Its callback bitmap is reserved before warmup and included in requested CPU storage. When
-`verify=false`, no ledger, commit options, callbacks, callback locks, or callback delivery waits
+`verify=false` and `diagnostics=false`, no ledger, commit options, callbacks, callback locks, or callback delivery waits
 are created or executed. Feedback times are not exposed as a GPU-span feature.
+
+`diagnostics=true` is an explicitly unscored alternative, incompatible with verification and
+capture. It uses the same completion ledger but no readback submissions, canaries, image oracle,
+or per-frame wait-idle. All three slots remain in use; exact-slot reuse waits additionally observe
+that slot's feedback. Setup, warmup/replay boundaries, each submission identity and callback errors
+are flushed to stderr. This observer can change CPU overhead and scheduling and is not performance
+evidence. The CLI writes diagnostic-start.json before GPU work and diagnostic.json on a returned
+outcome; it never writes a measurement result.json. A retired diagnosis is not an image-parity pass.
 
 `Tests/VerificationFeedbackTests.cpp` exercises delayed/out-of-order delivery, persistent GPU
 errors, still-pending callbacks after an error, shared callback ownership after submitter release,

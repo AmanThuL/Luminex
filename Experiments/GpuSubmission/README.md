@@ -12,6 +12,22 @@ Pre-collection verification passed with readback-altered scheduling; that does n
 uninterrupted measurement path. See the [attempt record](../../docs/research/2026-09-06-gpu-submission-evidence.md).
 CPU selftests, report regeneration and evidence indexing do not submit GPU work.
 
+## Bounded diagnosis
+
+After arranging a GPU test session, `--diagnose` accepts one explicit case, suite and ordinary
+variant, at most 32 warmup and 900 replay frames. It logs completion failures without the
+verification path's synchronous readback. Timing is unscored, and success means retirement only.
+It cannot be combined with `--measure`, captures or timestamp lanes. For example:
+
+```sh
+GpuSubmissionBench --diagnose --case n16384-t32-v50-b1 --suite S --variant gpu-args --frames 256 --output <fresh-directory>
+```
+
+The first controlled follow-up reproduced a queue timeout with API/shader validation off in this
+single-mode path, even though the fully validated run retired. Stop after a reset and retain the
+diagnostic artifacts; enabling validation is not a proven fix. The
+[follow-up record](../../docs/research/2026-09-06-gpu-submission-diagnostic.md) states the scope.
+
 ## Build and validate
 
 Use the pinned dependencies from `xmake setup`, an Apple Silicon Metal 4 device, and release mode.

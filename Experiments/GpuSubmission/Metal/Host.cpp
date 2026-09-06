@@ -185,7 +185,7 @@ private:
     Suite m_suite = Suite::S;
     Variant m_variant = Variant::Direct;
     uint64_t m_sequence = 0, m_resourceAllocated = 0;
-    bool m_verify = false, m_capturing = false;
+    bool m_verify = false, m_capturing = false, m_diagnostics = false;
 };
 
 //======================================================================================================================
@@ -306,6 +306,15 @@ Result<void> NativeHost::initialize(const Case& spec, Suite suite, Variant varia
     m_suite = suite;
     m_variant = variant;
     m_verify = config.verify;
+    m_diagnostics = config.diagnostics && !m_verify;
+    if (m_diagnostics) {
+        std::fprintf(stderr,
+                     "UNSCORED diagnostic setup case=%s suite=%s mode=%s warmup=%u "
+                     "frames=%u slots=%u\n",
+                     spec.id.c_str(), name(suite).c_str(), name(variant).c_str(), config.warmup,
+                     config.frames, kSlots);
+        std::fflush(stderr);
+    }
     state->prepareLabel = text("lmx.submission.prepare.arguments");
     state->rasterLabel = text("lmx.submission.raster");
     state->readbackLabel = text("lmx.submission.validation.readback");
@@ -313,11 +322,12 @@ Result<void> NativeHost::initialize(const Case& spec, Suite suite, Variant varia
         2 * kImageBytes + (m_verify ? kImageBytes : 0) + spec.bins * kParamStride +
         uint64_t{spec.count} * (sizeof(Instance) + 24) + 10 * kGuardBytes + 64;
     const uint64_t feedbackCapacity =
-        m_verify ? std::max<uint64_t>(2, 2 * (uint64_t{config.warmup} + config.frames)) : 0;
+        m_verify ? std::max<uint64_t>(2, 2 * (uint64_t{config.warmup} + config.frames))
+                 : (m_diagnostics ? uint64_t{config.warmup} + config.frames : 0);
     if (slotBytes * kSlots + spec.bins * 16 + feedbackCapacity > kStorageLimit) {
         return std::unexpected("Native three-slot requested storage exceeds 256 MiB ceiling");
     }
-    if (m_verify) {
+    if (m_verify || m_diagnostics) {
         m_feedback = std::make_shared<detail::VerificationFeedback>(feedbackCapacity);
         requestedBytes += m_feedback->requestedBytes();
     }
@@ -505,6 +515,10 @@ void NativeHost::commit(FrameSlot& slot, std::string_view kind, Clock::time_poin
             " suite=" + name(m_suite) + " mode=" + name(m_variant) +
             " slot=" + std::to_string(slot.slotIndex) +
             " frame=" + std::to_string(slot.logicalFrame) + " kind=" + std::string(kind);
+        if (m_diagnostics) {
+            std::fprintf(stderr, "UNSCORED diagnostic submit %s\n", identity.c_str());
+            std::fflush(stderr);
+        }
         options->addFeedbackHandler(MTL4::CommitFeedbackHandlerFunction{
             [ledger = m_feedback, sequence, identity](MTL4::CommitFeedback* feedback) {
                 std::string failure;
@@ -523,6 +537,7 @@ void NativeHost::commit(FrameSlot& slot, std::string_view kind, Clock::time_poin
                 }
                 if (!failure.empty()) {
                     std::fprintf(stderr, "%s\n", failure.c_str());
+                    std::fflush(stderr);
                 }
                 // No native objects, slot references or host pointer escape the callback pool.
                 ledger->complete(sequence, std::move(failure));
@@ -876,6 +891,9 @@ Result<void> compare(const FrameImage& reference, const FrameImage& candidate) {
 //======================================================================================================================
 Result<FrameImage> renderNativeFrame(const Case& spec, Suite suite, Variant variant,
                                      uint32_t logicalFrame, const RunConfig& config) {
+    if (config.diagnostics) {
+        return std::unexpected("Unscored diagnostics requires runNative without verification");
+    }
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
     auto input = makeFrame(spec, logicalFrame);
     if (!input) {
@@ -905,8 +923,12 @@ Result<RunResult> runNative(const Case& spec, Suite suite, Variant variant, Lane
             "unavailable: gpu-span and stages require verified timestamp "
             "boundaries; this host implements only the marker-free headline lane");
     }
-    if (!config.verify && (enabled("MTL_DEBUG_LAYER") || enabled("MTL_SHADER_VALIDATION") ||
-                           enabled("MTL_CAPTURE_ENABLED") || !config.capturePath.empty())) {
+    if (config.diagnostics && (config.verify || !config.capturePath.empty())) {
+        return std::unexpected("Unscored diagnostics requires verify=false and no capture path");
+    }
+    if (!config.verify && !config.diagnostics &&
+        (enabled("MTL_DEBUG_LAYER") || enabled("MTL_SHADER_VALIDATION") ||
+         enabled("MTL_CAPTURE_ENABLED") || !config.capturePath.empty())) {
         return std::unexpected(
             "Scored native runs refuse validation/capture; use verification replay");
     }
@@ -973,6 +995,11 @@ Result<RunResult> runNative(const Case& spec, Suite suite, Variant variant, Lane
         }
         return compare(references[phase], *image);
     };
+    if (config.diagnostics) {
+        std::fprintf(stderr, "UNSCORED diagnostic start case=%s suite=%s mode=%s phase=warmup\n",
+                     spec.id.c_str(), name(suite).c_str(), name(variant).c_str());
+        std::fflush(stderr);
+    }
     for (uint32_t frame = 0; frame < config.warmup; ++frame) {
         auto& slot = host.state->slots[frame % kSlots];
         if (auto retired = retire(slot); !retired) {
@@ -999,6 +1026,11 @@ Result<RunResult> runNative(const Case& spec, Suite suite, Variant variant, Lane
         }
     }
     Clock::time_point firstCommit;
+    if (config.diagnostics) {
+        std::fprintf(stderr, "UNSCORED diagnostic start case=%s suite=%s mode=%s phase=replay\n",
+                     spec.id.c_str(), name(suite).c_str(), name(variant).c_str());
+        std::fflush(stderr);
+    }
     for (uint32_t frame = 0; frame < config.frames; ++frame) {
         auto& slot = host.state->slots[frame % kSlots];
         if (auto retired = retire(slot); !retired) {
