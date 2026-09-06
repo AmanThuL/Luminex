@@ -26,6 +26,10 @@ struct RunConfig {
     /// Unscored gpu-args discriminator: dispatch writes precede all consumer stages.
     /// Requires diagnostics=true; does not change the default measured dependency.
     bool diagnosticAllStages = false;
+    /// Unscored hypothetical producer discriminator, not a fix or a parity claim.
+    /// Requires runNative diagnostics, Suite S and gpu-args; excludes diagnosticAllStages.
+    /// Writes all N arguments from the CPU bitmap and skips Prepare and its dependency barrier.
+    bool diagnosticCpuArguments = false;
 };
 
 /// One submitted frame, joined to exact slot retirement before its run returns.
@@ -68,7 +72,7 @@ Result<RunResult> runNative(const Case&, Suite, Variant, Lane, const RunConfig&)
 
 /// Replays exact scored artifacts with debug=0 and returns retired pixels and observed visible IDs.
 /// Does not start capture, even when capturePath is set; capture belongs to runNative exclusively.
-/// Rejects either diagnostic flag: this entry point always performs verification and readback.
+/// Rejects all diagnostic flags: this entry point always performs verification and readback.
 Result<FrameImage> renderNativeFrame(const Case&, Suite, Variant, uint32_t logicalFrame,
                                      const RunConfig&);
 

@@ -137,6 +137,28 @@ class CliTests(unittest.TestCase):
                 self.assertFalse(target.exists())
 
 
+    def test_diagnostic_argument_source_is_isolated(self):
+        cases = [
+            ("--measure", "S", "gpu-args", "cpu", "declared", "requires --diagnose"),
+            ("--verify", "S", "gpu-args", "gpu", "declared", "requires --diagnose"),
+            ("--diagnose", "E", "gpu-args", "cpu", "declared", "requires suite S"),
+            ("--diagnose", "S", "direct", "gpu", "declared", "requires gpu-args"),
+            ("--diagnose", "S", "gpu-args", "cpu", "all", "requires suite S"),
+            ("--diagnose", "S", "gpu-args", "", "declared", "must be gpu or cpu"),
+            ("--diagnose", "S", "gpu-args", "bogus", "declared", "must be gpu or cpu"),
+        ]
+        for action, suite, variant, source, dependency, message in cases:
+            with self.subTest(source=source, action=action), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "new"
+                result = self.invoke(action, "--case", "n16384-t32-v50-b1", "--suite", suite,
+                                     "--variant", variant, "--frames", "1", "--output", str(target),
+                                     "--diagnostic-arguments", source,
+                                     "--diagnostic-dependency", dependency)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertFalse(target.exists())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bench", required=True, type=Path)

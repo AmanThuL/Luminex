@@ -136,6 +136,7 @@ struct Options {
     std::string action, caseId = "all", suite = "all", pair = "gpu-args,direct", order = "AB";
     std::string variant = "all";
     std::string diagnosticDependency;
+    std::string diagnosticArguments;
     sub::Lane lane = sub::Lane::Headline;
     sub::RunConfig config;
     fs::path output;
@@ -182,6 +183,10 @@ Options parse(int argc, char** argv) {
             if (value != "declared" && value != "all")
                 throw std::runtime_error("diagnostic dependency must be declared or all");
             options.diagnosticDependency = value;
+        } else if (key == "--diagnostic-arguments") {
+            if (value != "gpu" && value != "cpu")
+                throw std::runtime_error("diagnostic arguments must be gpu or cpu");
+            options.diagnosticArguments = value;
         } else if (key == "--lane") {
             auto lane = sub::parseLane(value);
             if (!lane)
@@ -207,6 +212,8 @@ Options parse(int argc, char** argv) {
         throw std::runtime_error("diagnostic dependency requires --diagnose and declared or all");
     if (!options.config.frames)
         throw std::runtime_error("frames must be positive");
+    if (!options.diagnosticArguments.empty() && options.action != "--diagnose")
+        throw std::runtime_error("diagnostic arguments requires --diagnose");
     if (options.order != "AB" && options.order != "BA")
         throw std::runtime_error("order must be AB or BA");
     return options;
@@ -353,13 +360,19 @@ void diagnose(const Options& options) {
         throw std::runtime_error("diagnosis requires an implemented ordinary variant");
     if (options.diagnosticDependency == "all" && *variant != sub::Variant::GpuArgs)
         throw std::runtime_error("all-stage diagnostic dependency requires gpu-args");
+    if (!options.diagnosticArguments.empty() && *variant != sub::Variant::GpuArgs)
+        throw std::runtime_error("diagnostic arguments requires gpu-args");
+    if (options.diagnosticArguments == "cpu" &&
+        (*suite != sub::Suite::S || options.diagnosticDependency == "all"))
+        throw std::runtime_error(
+            "CPU diagnostic arguments requires suite S and declared dependency");
     prepareOutput(options.output);
     const auto manifest = sub::manifestJson(*spec);
     write(options.output / "manifest.json", manifest);
     const auto identity = identities(options.config.shaderDirectory);
     const std::string context =
         "{\"schemaVersion\":1,\"format\":\"lmx.submission.diagnostic\","
-        "\"scored\":false,\"protocol\":\"pipelined-feedback-dependency-v2\",\"case\":" +
+        "\"scored\":false,\"protocol\":\"pipelined-feedback-arguments-v3\",\"case\":" +
         caseJson(*spec) + ",\"suite\":" + quote(options.suite) +
         ",\"variant\":" + quote(options.variant) +
         ",\"warmup\":" + std::to_string(options.config.warmup) +
@@ -368,7 +381,11 @@ void diagnose(const Options& options) {
         ",\"environment\":" + environment() +
         ",\"diagnosticShaderValidationEnvironment\":" + diagnosticShaderValidationEnvironment() +
         ",\"diagnosticDependency\":" +
-        quote(options.diagnosticDependency.empty() ? "declared" : options.diagnosticDependency);
+        quote(options.diagnosticDependency.empty() ? "declared" : options.diagnosticDependency) +
+        ",\"diagnosticArguments\":" +
+        quote(options.diagnosticArguments.empty()
+                  ? (*variant == sub::Variant::GpuArgs ? "gpu" : "native")
+                  : options.diagnosticArguments);
     write(options.output / "diagnostic-start.json", context + '}');
     std::cerr << "UNSCORED diagnostic start case=" << options.caseId << " suite=" << options.suite
               << " mode=" << options.variant << '\n';
@@ -376,6 +393,7 @@ void diagnose(const Options& options) {
     config.diagnostics = true;
     config.verify = false;
     config.diagnosticAllStages = options.diagnosticDependency == "all";
+    config.diagnosticCpuArguments = options.diagnosticArguments == "cpu";
     auto run = sub::runNative(*spec, *suite, *variant, sub::Lane::Headline, config);
     if (!run) {
         write(options.output / "diagnostic.json",

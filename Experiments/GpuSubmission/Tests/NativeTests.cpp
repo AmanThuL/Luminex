@@ -149,6 +149,61 @@ TEST_CASE("submission diagnostic dependencies cannot enter verification or measu
 }
 
 //======================================================================================================================
+TEST_CASE("submission CPU argument diagnostic rejects unsupported routes before device creation",
+          "[unit][submission][native]") {
+    RunConfig config;
+    REQUIRE_FALSE(config.diagnosticCpuArguments);
+    config.diagnosticCpuArguments = true;
+    auto run = runNative({}, Suite::S, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("requires diagnostics") != std::string::npos);
+
+    config.diagnostics = true;
+    for (auto mode : {Variant::Direct, Variant::CpuIndirect, Variant::Batched, Variant::GpuIcb}) {
+        CAPTURE(mode);
+        run = runNative({}, Suite::S, mode, Lane::Headline, config);
+        REQUIRE_FALSE(run.has_value());
+        REQUIRE(run.error().find("gpu-args") != std::string::npos);
+    }
+    run = runNative({}, Suite::E, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("Suite S") != std::string::npos);
+
+    config.diagnosticAllStages = true;
+    run = runNative({}, Suite::S, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("no compute producer") != std::string::npos);
+    config.diagnosticAllStages = false;
+
+    config.verify = true;
+    run = runNative({}, Suite::S, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("verify=false") != std::string::npos);
+    config.verify = false;
+    config.capturePath = "/tmp/luminex-rejected-cpu-arguments.gputrace";
+    run = runNative({}, Suite::S, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("no capture path") != std::string::npos);
+    config.capturePath.clear();
+
+    for (auto lane : {Lane::GpuSpan, Lane::Stages}) {
+        run = runNative({}, Suite::S, Variant::GpuArgs, lane, config);
+        REQUIRE_FALSE(run.has_value());
+        REQUIRE(run.error().starts_with("unavailable"));
+    }
+    for (bool diagnostics : {false, true}) {
+        for (bool allStages : {false, true}) {
+            CAPTURE(diagnostics, allStages);
+            config.diagnostics = diagnostics;
+            config.diagnosticAllStages = allStages;
+            const auto image = renderNativeFrame({}, Suite::S, Variant::GpuArgs, 0, config);
+            REQUIRE_FALSE(image.has_value());
+            REQUIRE(image.error().find("without verification") != std::string::npos);
+        }
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("submission native scored artifacts preserve empty sparse dense and tail images",
           "[gpu][submission][native]") {
     const std::array cases{

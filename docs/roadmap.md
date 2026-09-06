@@ -225,7 +225,7 @@ semantics.
 **Outcome:** reproducible measurements identify when GPU-generated work repays its preparation
 cost on Metal 4, and what M7 should adopt; a negative or inconclusive result is a valid outcome.
 
-**State:** [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) remains in progress. Four modes are implemented; collection stopped after GPU resets/retirement failures. [Attempt evidence](research/2026-09-06-gpu-submission-evidence.md) is unaccepted; [validation-state diagnosis](research/2026-09-06-gpu-submission-instrumentation-diagnostic.md) retired an API-only run but reproduced timeout with all validation off. Root cause remains open. No adoption or final evidence tag; the [spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md) remains binding.
+**State:** [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) remains in progress. Four modes are implemented; collection stopped after GPU resets/retirement failures. [Attempt evidence](research/2026-09-06-gpu-submission-evidence.md) is unaccepted; [producer diagnosis](research/2026-09-06-gpu-submission-argument-source-diagnostic.md) retired CPU-filled full-N work twice but GPU generation retired once and timed out once. Root cause remains open. No adoption or final evidence tag; the [spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md) remains binding.
 
 **Deliver:**
 

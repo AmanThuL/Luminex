@@ -44,6 +44,17 @@ The [instrumentation record](../../docs/research/2026-09-06-gpu-submission-instr
 retains the four configurations and a later API-only/all-off pair. The latter failed with API
 validation off despite an API-only retirement pass; validation is not an adopted correction.
 
+`--diagnostic-arguments cpu|gpu` is restricted to diagnostics and gpu-args. CPU mode requires
+Suite S, fills the same N records from the bitmap and skips compute and its barrier; it retains
+all N draws, including zero-instance entries. It cannot combine with an all-stage dependency.
+Protocol v3 records the source; `declared` is only the selected dependency option when CPU mode
+has no producer barrier. See the [producer comparison](../../docs/research/2026-09-06-gpu-submission-argument-source-diagnostic.md).
+
+`python3 Experiments/GpuSubmission/Tools/audit_diagnostics.py <run-directory> ...` checks explicit
+v1/v2/v3 start/outcome records without GPU work. Exit 0 means internally consistent records,
+including recorded failures, not passed reliability/parity gates or authenticated artifact hashes.
+Regression coverage: `python3 Experiments/GpuSubmission/Tools/test_audit_diagnostics.py`.
+
 ## Build and validate
 
 Use the pinned dependencies from `xmake setup`, an Apple Silicon Metal 4 device, and release mode.

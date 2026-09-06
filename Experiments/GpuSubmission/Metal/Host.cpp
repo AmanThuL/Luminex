@@ -187,6 +187,7 @@ private:
     uint64_t m_sequence = 0, m_resourceAllocated = 0;
     bool m_verify = false, m_capturing = false, m_diagnostics = false;
     bool m_diagnosticAllStages = false;
+    bool m_diagnosticCpuArguments = false;
 };
 
 //======================================================================================================================
@@ -316,6 +317,7 @@ Result<void> NativeHost::initialize(const Case& spec, Suite suite, Variant varia
     m_verify = config.verify;
     m_diagnostics = config.diagnostics && !m_verify;
     m_diagnosticAllStages = config.diagnosticAllStages;
+    m_diagnosticCpuArguments = config.diagnosticCpuArguments;
     if (m_diagnostics) {
         std::fprintf(stderr,
                      "UNSCORED diagnostic setup case=%s suite=%s mode=%s warmup=%u "
@@ -608,6 +610,13 @@ Result<FrameSample> NativeHost::submit(uint32_t slotIndex, const FrameInput& inp
     // E's GPU path never reads or uploads the oracle bitmap, IDs, count, or bin offsets.
     auto* ids = reinterpret_cast<uint32_t*>(data(slot.buffers[4]));
     auto* arguments = reinterpret_cast<DrawArgs*>(data(slot.buffers[3]));
+    if (m_diagnosticCpuArguments) {
+        for (uint32_t id = 0; id < m_spec.count; ++id) {
+            arguments[id] = DrawArgs{3 * m_spec.triangles, input.bitmap[id] ? 1u : 0u,
+                                     id * 3 * m_spec.triangles, 0};
+        }
+        sample.copiedBytes += uint64_t{m_spec.count} * sizeof(DrawArgs);
+    }
     slot.visibleCount = 0;
     slot.binOffsets.fill(0);
     if (!gpu) {
@@ -643,7 +652,8 @@ Result<FrameSample> NativeHost::submit(uint32_t slotIndex, const FrameInput& inp
         sample.copiedBytes += sizeof(params);
     }
     slot.table->setAddress(address(slot.buffers[0]), 0);
-    if (gpu && m_spec.count) {
+    const bool prepareArguments = gpu && m_spec.count && !m_diagnosticCpuArguments;
+    if (prepareArguments) {
         auto* encoder = slot.commands->computeCommandEncoder();
         LMX_ASSERT(encoder, "create preparation encoder");
         encoder->setLabel(state->prepareLabel.get());
@@ -656,7 +666,7 @@ Result<FrameSample> NativeHost::submit(uint32_t slotIndex, const FrameInput& inp
     auto* encoder = slot.commands->renderCommandEncoder(slot.pass.get());
     LMX_ASSERT(encoder, "create raster encoder");
     encoder->setLabel(state->rasterLabel.get());
-    if (gpu && m_spec.count) {
+    if (prepareArguments) {
         encoder->barrierAfterQueueStages(MTL::StageDispatch,
                                          m_diagnosticAllStages ? MTL::StageAll : kRenderStages,
                                          MTL4::VisibilityOptionDevice);
@@ -901,7 +911,7 @@ Result<void> compare(const FrameImage& reference, const FrameImage& candidate) {
 //======================================================================================================================
 Result<FrameImage> renderNativeFrame(const Case& spec, Suite suite, Variant variant,
                                      uint32_t logicalFrame, const RunConfig& config) {
-    if (config.diagnostics || config.diagnosticAllStages) {
+    if (config.diagnostics || config.diagnosticAllStages || config.diagnosticCpuArguments) {
         return std::unexpected("Unscored diagnostics requires runNative without verification");
     }
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
@@ -935,6 +945,15 @@ Result<RunResult> runNative(const Case& spec, Suite suite, Variant variant, Lane
     }
     if (config.diagnosticAllStages && (!config.diagnostics || variant != Variant::GpuArgs)) {
         return std::unexpected("All-stage diagnostic dependency requires diagnostics and gpu-args");
+    }
+    if (config.diagnosticCpuArguments &&
+        (!config.diagnostics || suite != Suite::S || variant != Variant::GpuArgs)) {
+        return std::unexpected(
+            "CPU argument diagnostic requires diagnostics, Suite S and gpu-args");
+    }
+    if (config.diagnosticCpuArguments && config.diagnosticAllStages) {
+        return std::unexpected(
+            "CPU argument diagnostic excludes all-stage dependency: no compute producer");
     }
     if (config.diagnostics && (config.verify || !config.capturePath.empty())) {
         return std::unexpected("Unscored diagnostics requires verify=false and no capture path");
