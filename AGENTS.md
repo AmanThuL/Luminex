@@ -18,6 +18,9 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
+- M5.6 closed as reliability failure / DEFER, with no accepted performance conclusion (ADR 0012).
+  Evidence and experiment source are frozen at `m5.6-gpu-submission-evidence`; see
+  `docs/milestones/m5.6.md`. The shipped rendering baseline remains M5.5; M6 is unblocked.
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
