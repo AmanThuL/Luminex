@@ -22,8 +22,20 @@ per-slot pages, `bindBuffer` kept for static reuse, `setUniforms` removed with n
 archived at tag `m5.1-noapi-evidence`, with no experiment source on `main`. M5.3
 (`docs/milestones/m5.3.md`) shipped the editor workspace and selection model; M5.4
 (`docs/milestones/m5.4.md`, ADR 0011) added a node view of the compiled frame. M5.5
-(`docs/milestones/m5.5.md`) opened that view in its own detached OS window and made its layout
-readable for real frames: collapsible stage groups, compact pins, and row wrapping.
+(`docs/milestones/m5.5.md`) shipped on main with a maximized editor and a centred detached graph
+window; measured cards, collapsible stage groups, compact pins, and row wrapping aid inspection.
+
+## Direction after M5.5
+
+Prioritize a reproducible GPU work-submission lab: M5.6 measures a bounded Metal workload, M6
+supplies temporal contracts, and M7 adopts proven GPU-scene and submission behavior. M8–M11 retain
+their boundaries. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md)
+records the evidence; this roadmap alone owns scheduling.
+
+Neural shader evaluation is the next optional study after M5.6, not a dependency of M6 or a new
+compiler commitment. Purchased hardware or rented graphics-capable hosts can enable earlier
+comparisons. ADR 0007 still governs production backends: D3D12 second, Vulkan research only;
+benchmark adapters do not by themselves constitute a production backend.
 
 ## M4 — Correct image formation
 
@@ -208,6 +220,46 @@ M5.4 exit gate still holds; fixed-camera renderer output is unchanged.
 grouping, an orientation toggle, graph mutation, and changes to Render Graph execution or RHI
 semantics.
 
+## M5.6 — GPU work-submission experiment
+
+**Outcome:** reproducible measurements identify when GPU-generated work repays its preparation
+cost on Metal 4, and what M7 should adopt; a negative or inconclusive result is a valid outcome.
+
+**Design:** [accepted spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md); [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) is in progress. No scored evidence yet.
+
+**Deliver:**
+
+- Freeze a seeded opaque synthetic workload, camera sequence, quality tolerances, measurement
+  protocol, and adoption thresholds before collecting results. Vary instance count, triangles per
+  instance, visibility, and a bounded set of material bins; keep geometry and shading identical.
+- Compare CPU direct draws, CPU-encoded indirect draws, and compute-written indirect arguments;
+  then attempt one GPU-encoded Metal indirect-command-buffer (ICB) path. Verify the pinned Slang
+  toolchain and Metal 4 encoding, barrier, residency, and three-slot reuse contracts first. Record
+  unsupported combinations explicitly; per-object CPU indirect encoding is not GPU autonomy.
+- Separate submission-only tests using the same predetermined visible set from end-to-end tests
+  including CPU or GPU frustum culling, command generation, compaction, and execution. Check visible
+  IDs and final images against a CPU oracle; use a separate instanced/batched control for repeated
+  geometry so an unnecessarily expensive direct baseline cannot manufacture a win.
+- Produce offscreen machine-readable results with device/OS/driver/compiler identity, scene seed,
+  repeated paired samples and uncertainty, CPU encode and wait time, GPU preparation and render
+  time, command counts, and memory costs. Distinguish requested bytes from measured allocation or
+  residency; unsupported hardware counters are unavailable, never inferred from frame time.
+  Separate warmup/compilation, validation, headline timing and diagnostic stage timing. Ordinary
+  routes use compiled-graph fixtures/dumps; native captures cover ICB-specific execution. Editor
+  and detached-window work are excluded from headline measurements.
+
+**Exit gate:** checkpoint A passes unchanged under Metal validation; additional checks cover ICB
+generation and three-frame reuse. Supported variants match the frozen oracle, and a repeatable
+command reports regressions and break-even ranges. An ADR records adopt, retain, or defer. If the ICB
+path is blocked, publish the capability evidence and limited indirect results without claiming
+GPU autonomy. Freeze experiment source at an immutable evidence tag on `exp/<topic>`; only the
+conclusions return to the baseline, with adopted production behavior implemented by M7. M6 does
+not wait for another API, vendor, or an unsuccessful capability investigation to become viable.
+
+**Defer:** production GPU-scene ownership or public RHI redesign before interface gate B, general
+bindless materials, HZB/temporal occlusion, mesh/task shaders, DGC, Work Graphs, multi-API parity,
+and a universal GPU score. Experiment-local instance tables do not define persistent scene IDs.
+
 ## M6 — Temporal and display foundation
 
 **Outcome:** every frame owns explicit current and previous state, a portable reconstruction path,
@@ -237,6 +289,11 @@ opaque-path experiments.
 
 **Outcome:** stable GPU scene data drives measured visibility, indirect submission, and bounded local
 lighting while retaining CPU and Forward+ reference paths.
+
+**Sequence:** after interface gate B approves the required contracts, implement production scene
+tables, a CPU visibility oracle, and a maintained benchmark against M5.6's frozen workload/oracle;
+keep the original experiment untouched. Then add temporal occlusion and local-light scaling.
+M5.6 neither selects an ICB default nor makes clustered lighting a prerequisite of measurements.
 
 **Deliver:** stable instance, material, mesh, and texture identities; GPU scene tables; bindless
 materials; point, spot, and area-light records; clustered light lists with an overflow policy;
@@ -322,9 +379,22 @@ transparent and froxel lighting has a defined fallback; the prototype materially
 floor on dynamic-light and occluder tests; forced residency budgets degrade to coarse resident data
 without holes or use-after-free.
 
-## Independent research after M11
+## Independent research and graduation gates
 
-A Vulkan backend, virtual shadow maps, virtualized geometry streaming, stochastic direct lighting,
-ReSTIR, frame generation, and neural methods remain independent research programs. None becomes a
-baseline dependency until a representative target, scene, fallback, performance and memory budget,
-validation oracle, and debugging surface justify graduation into a future roadmap revision.
+After M5.6, one bounded neural-shader study may compare a fixed tiny network and ordinary shader
+fallback against a supported Metal tensor path, using existing Slang facilities where possible.
+Require numerical and rendered-image oracles plus whole-pass cost, conversion cost, and memory;
+add a D3D12 comparison only on a validated host. A bespoke IR, general operator set, quantization,
+and multi-vendor coverage are not entry requirements. This study may close without adoption.
+
+Neural material distillation follows only if a representative material shows a useful quality/cost
+tradeoff; keep an analytic or texture baseline and include training/export cost. A hybrid mesh/splat
+runtime needs paired representations, an error oracle, and depth/transparency/temporal composition
+contracts before automatic representation selection. Splat conformance is better scoped as an
+independent corpus/reference tool tied to a pinned specification, not a renderer milestone.
+
+D3D12 Work Graphs and Vulkan DGC follow the basic benchmark; mesh/task studies need M9's geometry
+controls. Separate same-device API comparisons from cross-device system comparisons. Vulkan,
+virtual shadow maps, virtualized geometry, stochastic direct lighting, ReSTIR, and frame generation
+remain research. Every study needs a target, fallback, budget, oracle, and debugging surface;
+freeze `exp/<topic>` evidence and graduate production changes through the roadmap and required ADRs.
