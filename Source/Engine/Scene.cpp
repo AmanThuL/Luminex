@@ -12,16 +12,17 @@
 #include "Engine/GeometryGenerator.h"
 #include "Engine/GltfLoader.h"
 #include "Engine/Ibl.h"
+#include "Engine/SceneEnvironment.h"
 #include "Engine/TextureBake.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/euler_angles.hpp>
-#include <glm/gtx/matrix_decompose.hpp>
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <limits>
@@ -51,6 +52,17 @@ std::optional<std::filesystem::path> findRepoAsset(std::string_view relative) {
 }
 
 //======================================================================================================================
+// The one translate-rotate-scale composition SceneObject::modelMatrix and decomposeTransform's
+// round-trip check both go through, so the two can never disagree about the order.
+glm::mat4 composeTransform(const DecomposedTransform& transform) {
+    glm::mat4 model = glm::translate(glm::mat4{1.0f}, transform.position);
+    model = glm::rotate(model, glm::radians(transform.eulerDegrees.y), glm::vec3{0.0f, 1.0f, 0.0f});
+    model = glm::rotate(model, glm::radians(transform.eulerDegrees.x), glm::vec3{1.0f, 0.0f, 0.0f});
+    model = glm::rotate(model, glm::radians(transform.eulerDegrees.z), glm::vec3{0.0f, 0.0f, 1.0f});
+    return glm::scale(model, transform.scale);
+}
+
+//======================================================================================================================
 AssetError missingAsset(std::string_view sceneName, std::string_view relative) {
     return AssetError{AssetErrorCode::NotFound,
                       std::string(sceneName) + " scene: " + std::string(relative) +
@@ -60,68 +72,6 @@ AssetError missingAsset(std::string_view sceneName, std::string_view relative) {
 //======================================================================================================================
 AssetError uploadFailure(rhi::Error error) {
     return AssetError{AssetErrorCode::UploadFailed, std::move(error.message)};
-}
-
-constexpr glm::vec3 kLightDirections[3] = {
-    {0.577f, -0.577f, 0.577f},
-    {-0.577f, -0.577f, 0.577f},
-    {0.0f, -0.707f, -0.707f},
-};
-
-constexpr float kLightStrengths[3] = {0.7f, 0.2f, 0.2f};
-static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
-              "kLightStrengths and kLightDirections must have the same length");
-
-//======================================================================================================================
-// All catalog scenes use the same sky and directional-light rig.
-AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::string_view label) {
-    // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
-    auto sphere = render::createMesh(device, render::fromGeo(makeSphere(0.5f, 20, 20)),
-                                     std::string(label) + ".skySphere");
-    if (!sphere) {
-        return std::unexpected(uploadFailure(std::move(sphere.error())));
-    }
-    scene.skySphere = std::move(*sphere);
-
-    constexpr std::array<uint8_t, 4> kNeutralSky = {149, 170, 196, 255};
-    const rhi::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
-    const std::array<rhi::TextureMip, 6> faces = {face, face, face, face, face, face};
-    // The sRGB view decodes this authored display colour before lighting consumes it.
-    auto cubemap = device.createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm_sRGB,
-                                         .kind = rhi::TextureKind::Cube,
-                                         .mipLevels = 1,
-                                         .sampled = true,
-                                         .label = std::string(label) + ".sky"},
-                                        faces);
-    if (!cubemap) {
-        return std::unexpected(uploadFailure(std::move(cubemap.error())));
-    }
-    scene.skyCubemap = std::move(*cubemap);
-
-    // One authored constant reaches both consumers: the sRGB texture view above decodes those
-    // bytes on the GPU, and the same decode runs here so the generated IBL describes the sky the
-    // renderer actually samples. Deriving it rather than reading the cube back keeps the two from
-    // drifting apart.
-    const glm::vec3 skyRadiance = srgbToLinear(glm::vec3(static_cast<float>(kNeutralSky[0]),
-                                                         static_cast<float>(kNeutralSky[1]),
-                                                         static_cast<float>(kNeutralSky[2])) /
-                                               255.0f);
-    auto generated = ibl::generate(device, ibl::makeConstantCubemap(skyRadiance, 1), label);
-    if (!generated) {
-        return std::unexpected(uploadFailure(std::move(generated.error())));
-    }
-    scene.irradianceMap = std::move(generated->irradiance);
-    scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
-    scene.dfgLut = std::move(generated->dfgLut);
-
-    for (size_t i = 0; i < std::size(kLightDirections); ++i) {
-        scene.lights[i].direction = kLightDirections[i];
-        scene.lights[i].strength = glm::vec3(srgbToLinear(kLightStrengths[i]));
-    }
-
-    return {};
 }
 
 //======================================================================================================================
@@ -136,15 +86,25 @@ std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t
 }
 
 //======================================================================================================================
-// Builds shared glTF scene resources and bounds; each catalog scene supplies its camera pose.
-AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
-                                                        std::string_view relativeAssetPath,
-                                                        std::string_view sceneName) {
+// Resolves a catalog scene's repo-relative asset before handing it to the public loader, so a
+// missing fetch reports the `xmake setup` hint instead of a bare file-not-found.
+AssetResult<std::unique_ptr<Scene>> loadCatalogGltfScene(rhi::Device& device,
+                                                         std::string_view relativeAssetPath,
+                                                         std::string_view sceneName) {
     const auto path = findRepoAsset(relativeAssetPath);
     if (!path) {
         return std::unexpected(missingAsset(sceneName, relativeAssetPath));
     }
-    auto loaded = loadGltf(path->string());
+    return loadGltfScene(device, path->string(), sceneName);
+}
+
+} // namespace
+
+//======================================================================================================================
+AssetResult<std::unique_ptr<Scene>> loadGltfScene(rhi::Device& device, std::string_view assetPath,
+                                                  std::string_view sceneName) {
+    const std::filesystem::path path(assetPath);
+    auto loaded = loadGltf(path.string());
     if (!loaded) {
         return std::unexpected(loaded.error());
     }
@@ -177,7 +137,7 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
 
         // The baked DDS carries a deterministic, correctly-filtered full mip chain; prefer it
         // whenever `xmake setup` has produced one.
-        const std::filesystem::path baked = bakedDdsPath(*path, index);
+        const std::filesystem::path baked = bakedDdsPath(path, index);
         if (std::filesystem::exists(baked)) {
             auto texture = createTextureFromDds(device, baked.string(), srgb, label);
             if (!texture) {
@@ -200,7 +160,7 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                          "time instead of using `xmake setup`'s offline bake (slower startup; "
                          "matches the offline bake for color/data images, but a normal map here "
                          "skips the offline bake's per-level renormalization)",
-                         sceneName, path->string());
+                         sceneName, path.string());
             warnedUnbakedFallback = true;
         }
         // Same box filter the offline bake uses, just run in-process. srgb selects the
@@ -299,11 +259,15 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
         scene->meshes.push_back(std::move(*mesh));
     }
 
-    glm::vec3 aabbMin{std::numeric_limits<float>::max()};
-    glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
     scene->objects.reserve(gltfScene.instances.size());
     for (size_t i = 0; i < gltfScene.instances.size(); ++i) {
         const GltfInstance& instance = gltfScene.instances[i];
+        if (instance.meshIndex >= gltfScene.meshes.size() ||
+            instance.materialIndex >= scene->materials.size()) {
+            return std::unexpected(
+                AssetError{AssetErrorCode::Malformed,
+                           std::string(sceneName) + " scene: instance index is out of range"});
+        }
         const auto decomposed = decomposeTransform(instance.world);
         if (!decomposed) {
             return std::unexpected(
@@ -318,16 +282,31 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
                                   .scale = decomposed->scale,
                                   .meshIndex = instance.meshIndex,
                                   .materialIndex = instance.materialIndex});
+    }
 
-        if (instance.meshIndex >= gltfScene.meshes.size() ||
-            instance.materialIndex >= scene->materials.size()) {
-            return std::unexpected(
-                AssetError{AssetErrorCode::Malformed,
-                           std::string(sceneName) + " scene: instance index is out of range"});
-        }
-        const GeoData& mesh = gltfScene.meshes[instance.meshIndex];
+    scene->animation.tracks.reserve(gltfScene.tracks.size());
+    for (GltfAnimationTrack& track : gltfScene.tracks) {
+        scene->animation.tracks.push_back(
+            {.objectIndex = track.instanceIndex, .keys = std::move(track.keys)});
+    }
+    scene->animation.duration = gltfScene.animationDuration;
+    scene->animation.loop = true;
+    // A clip's pose at t = 0 need not be the file's authored rest pose, so the scene is posed
+    // before anything measures it: the bounds below, and with them the camera fit and the shadow
+    // ortho fit, then describe the geometry the first frame actually draws. Seeding the previous
+    // transforms last keeps that first frame reporting no motion.
+    if (!scene->animation.tracks.empty()) {
+        scene->animate(0.0);
+    }
+    scene->resetMotion();
+
+    glm::vec3 aabbMin{std::numeric_limits<float>::max()};
+    glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
+    for (const SceneObject& object : scene->objects) {
+        const glm::mat4 model = object.modelMatrix();
+        const GeoData& mesh = gltfScene.meshes[object.meshIndex];
         for (const VertexPNTU& v : mesh.vertices) {
-            const glm::vec3 world = glm::vec3(instance.world * glm::vec4(v.px, v.py, v.pz, 1.0f));
+            const glm::vec3 world = glm::vec3(model * glm::vec4(v.px, v.py, v.pz, 1.0f));
             aabbMin = glm::min(aabbMin, world);
             aabbMax = glm::max(aabbMax, world);
         }
@@ -341,38 +320,117 @@ AssetResult<std::unique_ptr<Scene>> loadGltfBackedScene(rhi::Device& device,
     // Half the AABB diagonal gives a conservative world-space bounding sphere.
     scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
 
-    if (auto sky = attachSkyAndLights(device, *scene, sceneName); !sky) {
+    if (auto sky = attachNeutralEnvironment(device, *scene, sceneName); !sky) {
         return std::unexpected(sky.error());
     }
 
     return scene;
 }
 
-} // namespace
-
 //======================================================================================================================
 std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world) {
-    glm::vec3 scale{1.f}, translation{0.f}, skew{0.f};
-    glm::vec4 perspective{0.f};
-    glm::quat orientation{1.f, 0.f, 0.f, 0.f};
-    if (!glm::decompose(world, scale, orientation, translation, skew, perspective)) {
-        return std::nullopt;
+    constexpr float kTolerance = 1e-4f;
+    if (std::abs(world[0][3]) > kTolerance || std::abs(world[1][3]) > kTolerance ||
+        std::abs(world[2][3]) > kTolerance || std::abs(world[3][3] - 1.0f) > kTolerance) {
+        return std::nullopt; // a projective row is not a translate-rotate-scale pose
     }
+
+    glm::vec3 columns[3] = {glm::vec3(world[0]), glm::vec3(world[1]), glm::vec3(world[2])};
+    glm::vec3 scale{glm::length(columns[0]), glm::length(columns[1]), glm::length(columns[2])};
+    // A mirroring basis has no rotation of its own; glm::decompose's convention -- which this
+    // extraction has always followed -- puts the flip in all three scale components at once.
+    if (glm::dot(columns[0], glm::cross(columns[1], columns[2])) < 0.0f) {
+        scale = -scale;
+        for (glm::vec3& column : columns) {
+            column = -column;
+        }
+    }
+
+    glm::mat3 basis{1.0f};
+    int degenerate = 0;
+    for (int i = 0; i < 3; ++i) {
+        const float length = glm::length(columns[i]);
+        if (length > kTolerance) {
+            basis[i] = columns[i] / length;
+        } else {
+            ++degenerate;
+        }
+    }
+    if (degenerate == 1) {
+        // Two axes still fix the frame; the third is their right-handed completion. A zero scale
+        // on one axis is a legitimate authored pose -- glm::decompose would divide by that axis's
+        // length and return NaN rather than reporting a failure, which is why this does not use it.
+        for (int i = 0; i < 3; ++i) {
+            if (glm::length(columns[i]) <= kTolerance) {
+                basis[i] = glm::cross(basis[(i + 1) % 3], basis[(i + 2) % 3]);
+            }
+        }
+    } else if (degenerate == 2) {
+        return std::nullopt; // one surviving axis fixes no rotation
+    }
+
     // Extraction must match SceneObject's Y-X-Z composition order to round-trip compound rotation.
     float yaw = 0.f, pitch = 0.f, roll = 0.f;
-    glm::extractEulerAngleYXZ(glm::mat4_cast(orientation), yaw, pitch, roll);
-    return DecomposedTransform{.position = translation,
-                               .eulerDegrees = glm::degrees(glm::vec3(pitch, yaw, roll)),
-                               .scale = scale};
+    glm::extractEulerAngleYXZ(glm::mat4(basis), yaw, pitch, roll);
+    const DecomposedTransform decomposed{.position = glm::vec3(world[3]),
+                                         .eulerDegrees = glm::degrees(glm::vec3(pitch, yaw, roll)),
+                                         .scale = scale};
+
+    // Proving the factorisation by recomposing it is what makes this a decision rather than a
+    // guess: shear, which no translate-rotate-scale chain can produce, fails here instead of being
+    // silently orthogonalised, and a NaN fails the comparison rather than escaping into a caller.
+    const glm::mat4 recomposed = composeTransform(decomposed);
+    for (int col = 0; col < 4; ++col) {
+        for (int row = 0; row < 4; ++row) {
+            const float scaled = kTolerance * std::max(1.0f, std::abs(world[col][row]));
+            if (!(std::abs(recomposed[col][row] - world[col][row]) <= scaled)) {
+                return std::nullopt;
+            }
+        }
+    }
+    return decomposed;
 }
 
 //======================================================================================================================
 glm::mat4 SceneObject::modelMatrix() const {
-    glm::mat4 model = glm::translate(glm::mat4{1.0f}, position);
-    model = glm::rotate(model, glm::radians(eulerDegrees.y), glm::vec3{0.0f, 1.0f, 0.0f});
-    model = glm::rotate(model, glm::radians(eulerDegrees.x), glm::vec3{1.0f, 0.0f, 0.0f});
-    model = glm::rotate(model, glm::radians(eulerDegrees.z), glm::vec3{0.0f, 0.0f, 1.0f});
-    return glm::scale(model, scale);
+    return composeTransform({.position = position, .eulerDegrees = eulerDegrees, .scale = scale});
+}
+
+//======================================================================================================================
+void Scene::resetMotion() {
+    // Mechanically the same promotion commitFrame performs; the two differ only in why they run.
+    commitFrame();
+}
+
+//======================================================================================================================
+void Scene::commitFrame() {
+    for (SceneObject& object : objects) {
+        object.previousModel = object.modelMatrix();
+    }
+}
+
+//======================================================================================================================
+void Scene::advanceAnimation(double dt) {
+    animationTime += dt;
+    if (animation.loop && animation.duration > 0.0) {
+        animationTime = std::fmod(animationTime, animation.duration);
+        if (animationTime < 0.0) {
+            animationTime += animation.duration;
+        }
+    }
+}
+
+//======================================================================================================================
+void Scene::animate(double seconds) {
+    for (const RigidTrack& track : animation.tracks) {
+        LMX_ASSERT(track.objectIndex < objects.size(), "RigidTrack.objectIndex out of range");
+        const auto decomposed = decomposeTransform(sampleRigidTrack(track, seconds));
+        LMX_ASSERT(decomposed.has_value(), "a rigid track sampled to an indecomposable pose");
+        SceneObject& object = objects[track.objectIndex];
+        object.position = decomposed->position;
+        object.eulerDegrees = decomposed->eulerDegrees;
+        object.scale = decomposed->scale;
+    }
 }
 
 //======================================================================================================================
@@ -386,7 +444,9 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
                    "SceneObject.materialIndex out of range");
         items.push_back({.mesh = &meshes[object.meshIndex],
                          .model = object.modelMatrix(),
-                         .material = materials[object.materialIndex]});
+                         .material = materials[object.materialIndex],
+                         .previousModel = object.previousModel,
+                         .motionClass = object.motionClass});
     }
 
     render::SceneView sceneView;
@@ -413,7 +473,7 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
 
 //======================================================================================================================
 AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device) {
-    auto scene = loadGltfBackedScene(device, "Assets/Fetched/Sponza/Sponza.gltf", "Sponza");
+    auto scene = loadCatalogGltfScene(device, "Assets/Fetched/Sponza/Sponza.gltf", "Sponza");
     if (!scene) {
         return std::unexpected(scene.error());
     }
@@ -433,8 +493,29 @@ AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device) {
 
 //======================================================================================================================
 AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device) {
-    auto scene = loadGltfBackedScene(device, "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb",
-                                     "DamagedHelmet");
+    auto scene = loadCatalogGltfScene(device, "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb",
+                                      "DamagedHelmet");
+    if (!scene) {
+        return std::unexpected(scene.error());
+    }
+
+    const glm::vec3 center{(*scene)->boundingSphere};
+    const float radius = (*scene)->boundingSphere.w;
+    // A +Z showcase view looks toward the model with the default -Z forward vector.
+    (*scene)->initialCamera.position = center + glm::vec3(0.0f, 0.0f, radius * 2.5f);
+    (*scene)->initialCamera.yaw = 0.0f;
+    (*scene)->initialCamera.pitch = 0.0f;
+    (*scene)->initialCamera.fovY = glm::radians(45.0f);
+    (*scene)->initialCamera.nearZ = 0.01f;
+    (*scene)->initialCamera.farZ = radius * 20.0f;
+
+    return std::move(*scene);
+}
+
+//======================================================================================================================
+AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rhi::Device& device) {
+    auto scene = loadCatalogGltfScene(device, "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb",
+                                      "CesiumMilkTruck");
     if (!scene) {
         return std::unexpected(scene.error());
     }

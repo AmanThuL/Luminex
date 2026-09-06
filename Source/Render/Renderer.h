@@ -8,6 +8,7 @@
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
+#include "Render/Temporal.h"
 
 #include <glm/glm.hpp>
 
@@ -59,6 +60,12 @@ struct DrawItem {
     const Mesh* mesh = nullptr; ///< Borrowed mesh drawn by this item.
     glm::mat4 model{1.0f};      ///< Object-to-world transform.
     Material material;          ///< Material copied for this frame.
+    /// The object-to-world transform this item was drawn with in the previous declared frame.
+    /// Equal to `model` when the item has not moved, so a still object reprojects onto itself.
+    glm::mat4 previousModel{1.0f};
+    /// How this item's motion is produced; `Invalid` writes the motion sentinel instead of
+    /// reprojecting through `previousModel`.
+    MotionClass motionClass = MotionClass::Rigid;
 };
 
 /// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
