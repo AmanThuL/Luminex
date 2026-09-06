@@ -225,7 +225,7 @@ semantics.
 **Outcome:** reproducible measurements identify when GPU-generated work repays its preparation
 cost on Metal 4, and what M7 should adopt; a negative or inconclusive result is a valid outcome.
 
-**Design:** [accepted spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md); [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) is in progress. No scored evidence yet.
+**State:** [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) remains in progress. Four modes and pre-collection validation are implemented; formal collection stopped after GPU global restarts/retirement failures. [Attempt evidence](research/2026-09-06-gpu-submission-evidence.md) is incomplete and unaccepted; no adoption or final evidence tag. The [spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md) remains binding.
 
 **Deliver:**
 

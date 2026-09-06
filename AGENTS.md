@@ -12,6 +12,9 @@ thin RHI and one implemented backend.
   `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
+- Active experiment: M5.6 in `docs/plans/2026-09-06-m5.6-gpu-work-submission.md`.
+  Its no-verify collection is stopped after GPU global restarts; acceptance is incomplete.
+  See `docs/research/2026-09-06-gpu-submission-evidence.md`; production baseline is unchanged.
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,

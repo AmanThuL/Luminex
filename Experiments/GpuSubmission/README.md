@@ -5,6 +5,13 @@ directory is experimental evidence, not renderer code. See the
 [accepted design](../../docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md),
 [native contracts](Metal/README.md), and [result schema](Tools/schema.md).
 
+**2026-09-06 safety stop:** the first formal no-verify collection triggered GPU global restarts
+and retirement assertions. It is incomplete and no performance finding is accepted. Do not run
+the measurement commands below on a shared GPU without arranging an isolated test session/host.
+Pre-collection verification passed with readback-altered scheduling; that does not certify the
+uninterrupted measurement path. See the [attempt record](../../docs/research/2026-09-06-gpu-submission-evidence.md).
+CPU selftests, report regeneration and evidence indexing do not submit GPU work.
+
 ## Build and validate
 
 Use the pinned dependencies from `xmake setup`, an Apple Silicon Metal 4 device, and release mode.
