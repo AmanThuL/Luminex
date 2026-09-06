@@ -12,7 +12,7 @@ The shipped baseline is [M5.5](milestones/m5.5.md): scene-linear PBR/HDR over M5
 
 Luminex is a Metal 4-first modern rendering playground and portfolio: visible image quality and verifiable graphics engineering are both outcomes. The [foundation goals](specs/2026-08-07-luminex-upgrade-design.md) and [research synthesis](research/2026-08-09-rendering-pipeline-synthesis.md) motivate a graph-scheduled, GPU-driven hybrid renderer whose raster, screen-space, ray, reconstruction and cache paths share scene, material, light and temporal semantics. Grow the thin RHI through actual consumers. ADR 0007 governs production backends: D3D12 second when a validated host exists; Vulkan is research only. A benchmark adapter is not a production backend, and additional hardware is not a renderer gate.
 
-The next visible outcome is reliable motion and native TAA, followed by GPU visibility and bounded local lighting. M5.6 separately studies submission mechanisms; its results inform production work without blocking M6 or preselecting ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
+The next visible outcome is reliable motion and native TAA, followed by GPU visibility and bounded local lighting. M5.6 closed as reliability failure / DEFER with no accepted performance conclusion (ADR 0012); it does not block M6 or preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
 
 Each milestone has one recognizable completion outcome. Use a few independently accepted slices; implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs. M6's five slices and M7's four are fixed below; M8–M11 retain bounded work areas until planned. Identifiers organize work; the stated prerequisites, rather than numerical order, determine entry. Only one implementation plan is active at a time; independent entry does not start another plan.
 
@@ -134,20 +134,29 @@ Every rendering slice includes a diagnostic fixture, relevant intermediate views
 
 ## M5.6 — GPU work-submission experiment
 
-**Outcome:** reproducible measurements identify when GPU-generated work repays its preparation cost on Metal 4, and what M7 should adopt; a negative or inconclusive result is a valid outcome.
+**Outcome:** closed as reliability failure / **DEFER**, with no accepted performance conclusion.
+Production retains M5.5 rendering behavior; no GPU-submission implementation is adopted.
 
-**Design:** [accepted spec](specs/2026-09-06-m5.6-gpu-work-submission-design.md); [implementation plan](plans/2026-09-06-m5.6-gpu-work-submission.md) is in progress. No accepted performance conclusion; experiment progress and failures remain on its isolated branch, and the production baseline is unchanged.
+**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](decisions/0012-gpu-submission-defer.md), [milestone](milestones/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
 
-**Deliver:**
+**Retained evidence:** four native modes, seeded workload/CPU oracle and separate public-RHI
+reference; pre-collection correctness tests; incomplete paired corpus and all failures; bounded
+diagnostics with no scored timings; explicit unavailable ICB, GPU-span/stage and capture gates.
+The [custody record](research/2026-09-06-gpu-submission-closure.md) names local bundles and checksums.
 
-- Freeze a seeded opaque synthetic workload, camera sequence, quality tolerances, measurement protocol, and adoption thresholds before collecting results. Vary instance count, triangles per instance, visibility, and a bounded set of material bins; keep geometry and shading identical.
-- Compare CPU direct draws, CPU-encoded indirect draws, and compute-written indirect arguments; then attempt one GPU-encoded Metal indirect-command-buffer (ICB) path. Verify the pinned Slang toolchain and Metal 4 encoding, barrier, residency, and three-slot reuse contracts first. Record unsupported combinations explicitly; per-object CPU indirect encoding is not GPU autonomy.
-- Separate submission-only tests using the same predetermined visible set from end-to-end tests including CPU or GPU frustum culling, command generation, compaction, and execution. Check visible IDs and final images against a CPU oracle; use a separate instanced/batched control for repeated geometry so an unnecessarily expensive direct baseline cannot manufacture a win.
-- Produce offscreen machine-readable results with device/OS/driver/compiler identity, scene seed, repeated paired samples and uncertainty, CPU encode and wait time, GPU preparation and render time, command counts, and memory costs. Distinguish requested bytes from measured allocation or residency; unsupported hardware counters are unavailable, never inferred from frame time. Separate warmup/compilation, validation, headline timing and diagnostic stage timing. Ordinary routes use compiled-graph fixtures/dumps; native captures cover ICB-specific execution. Editor and detached-window work are excluded from headline measurements.
+**Accepted closure exception:** stop rather than complete the prescribed measurement matrix;
+preserve failures, accept DEFER without wins/break-even claims, freeze source and remove the active
+executor from the production baseline. This exception closes the investigation, not its failed
+reliability/measurement gates. Only conclusions return to main; no experiment code/build include.
+Root-cause diagnosis is separate future work, not a condition keeping M5.6 active or blocking M6.
 
-**Exit gate:** checkpoint A passes unchanged under Metal validation; additional checks cover ICB generation and three-frame reuse. Supported variants match the frozen oracle, and a repeatable command reports regressions and break-even ranges. An ADR records adopt, retain, or defer. If the ICB path is blocked, publish the capability evidence and limited indirect results without claiming GPU autonomy. Freeze experiment source at an immutable evidence tag on `exp/<topic>`; only the conclusions return to the baseline, with adopted production behavior implemented by M7. M6 does not wait for another API, vendor, or an unsuccessful capability investigation to become viable.
+**Future evidence gate:** any adoption still requires a demonstrated correction, exact-artifact
+validation, new freeze and full paired collection, honest capture/capability coverage and original
+uncertainty/regression guards. A validation-on or isolated retirement pass cannot substitute.
 
-**Defer:** production GPU-scene ownership or public RHI redesign before interface gate B, general bindless materials, HZB/temporal occlusion, mesh/task shaders, DGC, Work Graphs, multi-API parity, and a universal GPU score. Experiment-local instance tables do not define persistent scene IDs.
+**Defer:** production GPU-scene ownership or public RHI redesign before interface gate B, general
+bindless materials, HZB/temporal occlusion, mesh/task shaders, DGC, Work Graphs, multi-API parity,
+and a universal GPU score. Experiment-local instance tables do not define persistent scene IDs.
 
 ## M6 — Temporal and display foundation
 
