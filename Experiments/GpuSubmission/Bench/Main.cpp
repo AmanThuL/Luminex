@@ -113,6 +113,25 @@ std::string environment() {
     return out.str();
 }
 
+//======================================================================================================================
+std::string diagnosticShaderValidationEnvironment() {
+    std::ostringstream out;
+    out << '{';
+    bool first = true;
+    for (const char* key :
+         {"MTL_SHADER_VALIDATION_DEFAULT_STATE", "MTL_SHADER_VALIDATION_ENABLE_PIPELINES",
+          "MTL_SHADER_VALIDATION_DISABLE_PIPELINES", "MTL_SHADER_VALIDATION_REPORT_TO_STDERR",
+          "MTL_SHADER_VALIDATION_FAIL_MODE", "MTL_SHADER_VALIDATION_DUMP_PIPELINES"}) {
+        if (!first)
+            out << ',';
+        first = false;
+        const char* value = std::getenv(key);
+        out << quote(key) << ':' << (value ? quote(value) : "null");
+    }
+    out << '}';
+    return out.str();
+}
+
 struct Options {
     std::string action, caseId = "all", suite = "all", pair = "gpu-args,direct", order = "AB";
     std::string variant = "all";
@@ -346,7 +365,9 @@ void diagnose(const Options& options) {
         ",\"warmup\":" + std::to_string(options.config.warmup) +
         ",\"frameCount\":" + std::to_string(options.config.frames) +
         ",\"manifestHash\":" + quote(hash(manifest)) + ',' + identity +
-        ",\"environment\":" + environment() + ",\"diagnosticDependency\":" +
+        ",\"environment\":" + environment() +
+        ",\"diagnosticShaderValidationEnvironment\":" + diagnosticShaderValidationEnvironment() +
+        ",\"diagnosticDependency\":" +
         quote(options.diagnosticDependency.empty() ? "declared" : options.diagnosticDependency);
     write(options.output / "diagnostic-start.json", context + '}');
     std::cerr << "UNSCORED diagnostic start case=" << options.caseId << " suite=" << options.suite
@@ -506,6 +527,9 @@ int execute(const Options& options) {
             if (!frame || sub::classify(*frame) != frame->visibleIds)
                 throw std::runtime_error("model selftest failed");
         }
+        std::cout << "{\"environment\":" << environment()
+                  << ",\"diagnosticShaderValidationEnvironment\":"
+                  << diagnosticShaderValidationEnvironment() << "}\n";
         std::cout << "selftest passed\n";
     } else if (options.action == "--measure")
         measure(options);

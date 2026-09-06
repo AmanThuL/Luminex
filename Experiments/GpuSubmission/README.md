@@ -35,6 +35,15 @@ on the queue, not just indirect argument consumption. The
 [dependency follow-up](../../docs/research/2026-09-06-gpu-submission-dependency-diagnostic.md)
 observed retirement and timeout with `all`; this is a discriminator, not a correction.
 
+Selective shader-validation diagnostics retain the exact six allowlisted selection/reporting
+environment values in `diagnosticShaderValidationEnvironment` (unset is null). Native diagnostic
+setup also logs each pipeline's queried `shaderValidation` state: 0 default, 1 enabled, 2 disabled.
+Do not infer actual instrumentation from requested flags alone. The CPU `--selftest` prints the
+same environment serialization before its success line, without creating a Metal device.
+The [instrumentation record](../../docs/research/2026-09-06-gpu-submission-instrumentation-diagnostic.md)
+retains the four configurations and a later API-only/all-off pair. The latter failed with API
+validation off despite an API-only retirement pass; validation is not an adopted correction.
+
 ## Build and validate
 
 Use the pinned dependencies from `xmake setup`, an Apple Silicon Metal 4 device, and release mode.

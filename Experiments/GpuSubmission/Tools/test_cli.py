@@ -32,6 +32,36 @@ class CliTests(unittest.TestCase):
         self.assertTrue(all(case["count"] > 0 for case in cases))
         self.assertEqual(result.stdout, self.invoke("--list-cases").stdout)
 
+    def test_diagnostic_shader_validation_environment(self):
+        values = {
+            "MTL_SHADER_VALIDATION_DEFAULT_STATE": "none",
+            "MTL_SHADER_VALIDATION_ENABLE_PIPELINES": 'raster, prepare "quoted"\\label\n\t',
+            "MTL_SHADER_VALIDATION_DISABLE_PIPELINES": " prepare,uid-123 ",
+            "MTL_SHADER_VALIDATION_REPORT_TO_STDERR": "1",
+            "MTL_SHADER_VALIDATION_FAIL_MODE": "allow",
+            "MTL_SHADER_VALIDATION_DUMP_PIPELINES": "0",
+        }
+        env = {key: value for key, value in os.environ.items() if key not in values}
+        env["MTL_SHADER_VALIDATION_UNLISTED_TEST"] = "must-not-leak-metal"
+        env["LMX_PRIVATE_TEST"] = "must-not-leak-private"
+        scored_environment = None
+        for label, overrides in [("unset", {}), ("empty", dict.fromkeys(values, "")),
+                                 ("selected", values)]:
+            with self.subTest(label=label):
+                result = self.invoke("--selftest", env=dict(env, **overrides))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("selftest passed", result.stdout)
+                metadata = json.loads(result.stdout.splitlines()[0])
+                self.assertEqual(metadata["diagnosticShaderValidationEnvironment"],
+                                 {key: overrides.get(key) for key in values})
+                if scored_environment is None:
+                    scored_environment = metadata["environment"]
+                self.assertEqual(metadata["environment"], scored_environment)
+                self.assertTrue(values.keys().isdisjoint(metadata["environment"]))
+                for secret in ["must-not-leak-metal", "must-not-leak-private",
+                               "MTL_SHADER_VALIDATION_UNLISTED_TEST", "LMX_PRIVATE_TEST"]:
+                    self.assertNotIn(secret, result.stdout + result.stderr)
+
     def test_invalid_arguments_fail(self):
         for args in [[], ["--selftest", "--verify"], ["--measure", "--lane", "bogus"],
                      ["--verify", "--frames", "0"], ["--verify", "--frames", "-1"],

@@ -277,6 +277,13 @@ Result<void> NativeHost::pipelines(const std::filesystem::path& directory) {
     if (!state->prepare || state->prepare->maxTotalThreadsPerThreadgroup() < 64) {
         return std::unexpected("Create 64-thread preparation pipeline: " + describe(error));
     }
+    if (m_diagnostics) {
+        std::fprintf(stderr,
+                     "UNSCORED diagnostic pipeline shaderValidation raster=%lu prepare=%lu\n",
+                     static_cast<unsigned long>(state->raster->shaderValidation()),
+                     static_cast<unsigned long>(state->prepare->shaderValidation()));
+        std::fflush(stderr);
+    }
     auto depth = NS::TransferPtr(MTL::DepthStencilDescriptor::alloc()->init());
     depth->setLabel(text("lmx.submission.reversedZ").get());
     depth->setDepthCompareFunction(MTL::CompareFunctionGreater);
