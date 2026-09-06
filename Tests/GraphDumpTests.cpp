@@ -320,3 +320,41 @@ TEST_CASE("the same declarations dump identically", "[render][graph]") {
     REQUIRE(second.has_value());
     REQUIRE(dumpCompiledFrame(*first) == dumpCompiledFrame(*second));
 }
+
+//======================================================================================================================
+// A pass with two colour attachments, and a reader of each. The dump has to distinguish the extra
+// from the primary, and to keep the two derived transitions apart, which is what a single "color
+// attachment" line for both would hide.
+TEST_CASE("a multi-attachment frame's dump matches its golden file", "[render][graph]") {
+    FakeTexture sceneColor{64};
+    FakeTexture motionVectors{64};
+    FakeTexture sceneDepth{64};
+    FakeTexture displayColor{64};
+    RenderGraph graph;
+    const GraphTexture color =
+        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+    const GraphTexture motion =
+        graph.importTexture(motionVectors, rhi::Format::RG16Float, "lmx.render.motionVectors");
+    const GraphTexture depth =
+        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+    const GraphTexture display =
+        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = color};
+    scene.extraColor.push_back(ColorAttachment{.handle = motion});
+    scene.depth = DepthAttachment{.handle = depth};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(nextVersion(color));
+    displayPass.textureReads.push_back(nextVersion(motion));
+    displayPass.color = ColorAttachment{.handle = display};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+
+    graph.presentTexture(nextVersion(display));
+
+    const auto record = graph.compileFrame(3);
+    REQUIRE(record.has_value());
+    requireMatchesGolden(dumpCompiledFrame(*record), "frame-mrt.txt");
+}
