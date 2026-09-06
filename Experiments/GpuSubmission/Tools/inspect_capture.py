@@ -29,7 +29,18 @@ def main():
         parser.error("inspection currently supports the matching phase-zero capture only")
     bundle = bundlelib.walk_bundle(args.capture)
     hits = bundlelib.scan_labels(bundle)
-    labels = {hit.label for hit in hits}
+    joined_labels = {hit.label for hit in hits}
+    # scan_labels returns only label/blob joins, not all serialized setLabel calls.
+    labels = set()
+    for stream in bundle.device_resource_files:
+        raw = stream.read_bytes()
+        for desc, offset in bundlelib._iter_aligned_descriptors(raw):
+            if desc != b"CS":
+                continue
+            start = ((offset + len(desc) + 4) // 4) * 4 + 8
+            end = raw.find(b"\0", start)
+            if end != -1:
+                labels.add(raw[start:end].decode("ascii", errors="replace"))
     resources = [schemalib.Resource(t["label"], "texture2d", t["format"], t["width"],
                                    t["height"], 1, None) for t in meta["textures"]]
     schema = schemalib.Schema({}, resources, [], [])
@@ -54,12 +65,13 @@ def main():
     guard = struct.pack("<I", 0xC04D0000 ^ meta["completionValue"]) * 64
     candidates = []
     for blob in bundle.blobs:
-        if blob.size_bytes != argument["requestedBytes"]:
+        if blob.size_bytes != argument["allocatedBytes"]:
             continue
         data = blob.path.read_bytes()
-        if data[:256] == guard and data[-256:] == guard:
+        tail = argument["dataOffset"] + argument["dataBytes"]
+        if data[:256] == guard and data[tail:tail + 256] == guard:
             candidates.append((blob, data))
-    observed, records, agreement = [], [], None
+    observed, records, agreement, matching_phases = [], [], None, []
     if meta["variant"] == "gpu-args" and meta["candidateCount"] and len(candidates) == 1:
         blob, data = candidates[0]
         start = argument["dataOffset"]
@@ -69,18 +81,29 @@ def main():
             raise ValueError("captured GPU arguments have an invalid layout/value")
         observed = [i for i, record in enumerate(records) if record[1]]
         agreement = observed == expected
-        if not agreement:
-            raise ValueError("captured argument visibility differs from independent manifest oracle")
+        # Native trace blobs can hold replay INITIAL state, not compute's final output.
+        # Identify a retained warmup phase explicitly; never relabel it as the captured frame.
+        count = meta["candidateCount"]
+        step = manifest["generator"]["rotationStep"]
+        expected_set = set(expected)
+        for phase in range(len(manifest["phases"])):
+            ids = [i for i in range(count) if (i + phase * step) % count in expected_set]
+            if ids == observed:
+                matching_phases.append(phase)
     report = dict(schemaVersion=1, suite=meta["suite"], variant=meta["variant"],
                   candidateCount=meta["candidateCount"], expectedVisible=len(expected),
                   observedVisible=len(observed) if agreement is not None else None,
-                  labels=[dict(label=b["label"], present=b["label"] in labels)
+                  labels=[dict(label=b["label"], present=b["label"] in labels,
+                               blobJoined=b["label"] in joined_labels)
                           for b in meta["buffers"] + meta["textures"]],
                   images=images, argumentAgreement=agreement,
-                  argumentAttribution="unique exact size and changing slot guard; not label identity",
+                  matchingVisibilityPhases=matching_phases,
+                  snapshotSemantics="raw replay initial-state blob; not a post-dispatch readback",
+                  argumentAttribution="unique allocated size and changing slot guard at requested offsets; not label identity",
                   argumentBlobs=[b.path.name for b, _ in candidates],
                   argumentNote="No live arguments in an empty capture" if not meta["candidateCount"]
-                  else ("verified" if agreement else "unresolved; absent/ambiguous guarded blob"),
+                  else ("phase-zero values agree; this does not prove snapshot execution time"
+                        if agreement else "not phase-zero output; inspect matchingVisibilityPhases"),
                   firstArguments=records[:8], lastArguments=records[-8:])
     (args.output / "inspection.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

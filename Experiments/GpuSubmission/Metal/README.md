@@ -85,6 +85,16 @@ have a 256-byte prefix guard; use the sidecar's data offset when inspecting argu
 not the production capture-schema format and requires no production tool modifications. Existing
 capture or sidecar paths are never overwritten.
 
+The native bundle's raw buffer blobs are replay initial state, not a guaranteed post-dispatch
+snapshot. `Tools/inspect_capture.py` checks allocated blob lengths, canaries at requested offsets,
+serialized labels, and possible visibility phases independently. In the initial sparse capture,
+the argument blob matches warmup phase 6, while the captured dispatch consumes phase 0. This is
+not a scored-retirement mismatch: the separate validation replay reads and checks phase 0 after
+retirement. Do not claim final generated arguments were inspected in that trace without a replay
+inspector. Preserve the capture gate as unavailable when that inspection is missing. Native trace
+deduplication uses internal file symlinks; retain originals and use dereferenced copies when
+importing into the stricter self-contained validation/collection bundle.
+
 ## Bounded ICB probe
 
 Checked with the repository's pinned Slang `2026.14.1` on 2026-09-06. From the experiment worktree:

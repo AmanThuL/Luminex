@@ -22,6 +22,11 @@ These are explicit reviewer attestations, never conclusions from file existence.
 A reviewer may be identified as "Codex (artifact/source inspection)"; no human
 review gate is required. Mark facts true only when the inspection establishes them;
 unknown bindings or other unproven facts cannot satisfy the corresponding gate.
+Alternatively, the index may explicitly declare top-level status="unavailable" or
+"unresolved", a nonempty reason, and existing safe bundle-relative references.
+The same schema, identities and validated environment are required. This emits
+only that nonverified capture gate; all other assembly gates remain mandatory.
+Absent status (or status="verified") still requires every positive capture review.
 
 The Markdown freeze document has exactly one fenced json block: schemaVersion=1,
 the same three hashes, status="frozen", reviewed=true, reviewer, reviewedAt,
@@ -35,7 +40,8 @@ cover all four modes in E for one changing-visibility representative case (a
 matrix point or tail), each with >=900 frames; optional S rows are also checked.
 Checkpoint evidence must include the exact Catch2 checkpoint-a filter, a positive
 All tests passed summary, and Metal API validation's enabled message.
-Missing, failed, unsafe, inconsistent or unreviewed evidence aborts without output.
+Missing, failed, unsafe, inconsistent or unreviewed positive evidence aborts without
+output; only the explicit nonverified capture declaration above is supported.
 """
 
 import argparse
@@ -190,6 +196,14 @@ def capture_gate(root, source, expected):
     schema(data)
     identity(data, expected)
     validated_environment(data)
+    status = data.get('status', 'verified')
+    require(status in ('verified', 'unavailable', 'unresolved'), 'invalid capture status')
+    if status != 'verified':
+        reason = data.get('reason')
+        require(isinstance(reason, str) and reason.strip(),
+                'nonverified capture requires a nonempty reason')
+        refs = review_references(root, data)
+        return dict(status=status, reason=reason, references=sorted({source, *refs}))
     entries = data.get('captures')
     require(type(entries) is list and len(entries) == 3, 'need empty, sparse and dense captures')
     kinds, refs, trace_refs = set(), {source}, set()

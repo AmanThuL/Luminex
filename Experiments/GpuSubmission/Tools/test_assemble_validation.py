@@ -300,11 +300,106 @@ class AssemblyTests(unittest.TestCase):
 
     def test_files_are_not_capture_review(self):
         original = self.read(self.capture_index)
-        for field in assembly.CAPTURE_FACTS:
-            data = copy.deepcopy(original)
-            data['captures'][0][field] = False
+        for explicit in (False, True):
+            for field in assembly.CAPTURE_FACTS:
+                for missing in (False, True):
+                    with self.subTest(explicit=explicit, field=field, missing=missing):
+                        data = copy.deepcopy(original)
+                        if explicit:
+                            data['status'] = 'verified'
+                        if missing:
+                            del data['captures'][0][field]
+                        else:
+                            data['captures'][0][field] = False
+                        self.write_json(self.capture_index, data)
+                        self.reject('review facts')
+
+    def nonverified_capture(self, status='unavailable'):
+        return dict(schemaVersion=1, **self.ids, environment={'validation': True},
+                    status=status, reason='Capture exposes warmup input, not generated output.',
+                    references=['evidence/sparse-review.md'])
+
+    def test_nonverified_capture_preserves_other_gates_and_defers(self):
+        for status in ('unavailable', 'unresolved'):
+            with self.subTest(status=status):
+                index = self.nonverified_capture(status)
+                self.write_json(self.capture_index, index)
+                destination = self.assemble()
+                result = paired.load(destination)
+                self.assertEqual(len(result['results']), 160)
+                self.assertEqual(result['gates']['capture'], dict(
+                    status=status, reason=index['reason'],
+                    references=sorted([self.capture_index, *index['references']])))
+                self.assertTrue(all(gate['status'] == 'verified'
+                                    for name, gate in result['gates'].items()
+                                    if name != 'capture'))
+                sources = {item['path'] for item in result['sources']}
+                self.assertTrue({self.capture_index, *index['references']} <= sources)
+                manifests = {row['case']: row['manifestHash'] for row in result['results']}
+                caps = dict(modes=list(assembly.ORDINARY), icb={'reason': 'Unresolved probe'})
+                gates = paired.gates_for(self.root, self.ids, manifests,
+                                         paired.frozen_cases(), caps)
+                self.assertEqual(gates['capture']['status'], status)
+                self.assertEqual(gates['validation']['status'], 'verified')
+                decisions = paired.decide([], paired.frozen_cases(), caps, gates)
+                self.assertTrue(all(item['decision'] == 'defer' for item in decisions))
+                self.assertIn('required correctness/capture/lifetime/freeze gates or collection '
+                              'incomplete', decisions[0]['reasons'])
+                destination.unlink()
+
+    def test_nonverified_capture_requires_reason_and_references(self):
+        for field, values in (('reason', (None, '', '  ', False, 1)),
+                              ('references', (None, [], 'evidence/sparse-review.md',
+                                              ['evidence/sparse-review.md'] * 2))):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    data = self.nonverified_capture()
+                    data[field] = value
+                    self.write_json(self.capture_index, data)
+                    self.reject()
+            data = self.nonverified_capture()
+            del data[field]
             self.write_json(self.capture_index, data)
-            self.reject('review facts')
+            self.reject()
+
+    def test_nonverified_capture_requires_matching_identity_schema_and_validation(self):
+        mutations = [('schemaVersion', True), ('environment', {'validation': False})]
+        mutations += [(field, 'a' * 64) for field in assembly.IDENTITIES]
+        for field, value in mutations:
+            with self.subTest(field=field):
+                data = self.nonverified_capture()
+                data[field] = value
+                self.write_json(self.capture_index, data)
+                self.reject()
+
+    def test_unknown_capture_status_never_falls_back_to_positive_review(self):
+        original = self.read(self.capture_index)
+        for status in ('failed', 'unknown', '', None, True, 1, [], {}):
+            with self.subTest(status=status):
+                self.write_json(self.capture_index, dict(original, status=status))
+                self.reject('capture status')
+
+    def test_nonverified_capture_keeps_artifact_path_security(self):
+        trace = self.root / 'evidence/sparse.gputrace'
+        (trace / 'linked.bin').symlink_to(self.root / 'evidence/protocol.txt')
+        (self.root / 'evidence/alias.md').symlink_to(self.root / 'evidence/protocol.txt')
+        self.write_text('evidence/empty.txt', '')
+        self.write_text('reports/review.md', 'Synthetic review')
+        for ref in ('../outside', '/etc/passwd', 'evidence/../protocol.txt',
+                    'evidence\\protocol.txt', 'file://capture', 'evidence//protocol.txt',
+                    './evidence/protocol.txt', '', 'evidence/missing', 'evidence/empty.txt',
+                    'evidence/alias.md', 'evidence/sparse.gputrace', 'reports/review.md'):
+            with self.subTest(ref=ref):
+                data = self.nonverified_capture()
+                data['references'] = [ref]
+                self.write_json(self.capture_index, data)
+                self.reject()
+
+    def test_nonverified_capture_does_not_bypass_freeze_gate(self):
+        self.write_json(self.capture_index, self.nonverified_capture())
+        self.freeze_record['reviewed'] = False
+        self.write_freeze()
+        self.reject('review facts')
 
     def test_capture_scope_and_reviewer_are_explicit(self):
         original = self.read(self.capture_index)
