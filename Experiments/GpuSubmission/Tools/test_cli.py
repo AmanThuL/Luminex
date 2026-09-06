@@ -87,6 +87,25 @@ class CliTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("exactly one action", result.stderr)
 
+    def test_diagnostic_dependency_cannot_enter_measurement(self):
+        cases = [
+            ("--measure", "gpu-args", "all", "diagnostic dependency requires --diagnose"),
+            ("--verify", "gpu-args", "all", "diagnostic dependency requires --diagnose"),
+            ("--measure", "gpu-args", "declared", "diagnostic dependency requires --diagnose"),
+            ("--diagnose", "gpu-args", "bogus", "diagnostic dependency must be declared or all"),
+            ("--diagnose", "gpu-args", "", "diagnostic dependency must be declared or all"),
+            ("--diagnose", "direct", "all", "requires gpu-args"),
+        ]
+        for action, variant, dependency, message in cases:
+            with self.subTest(action=action, dependency=dependency), tempfile.TemporaryDirectory() as directory:
+                target = Path(directory) / "new"
+                result = self.invoke(action, "--case", "n16384-t32-v50-b1", "--suite", "S",
+                                     "--variant", variant, "--frames", "1", "--output", str(target),
+                                     "--diagnostic-dependency", dependency)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

@@ -116,6 +116,7 @@ std::string environment() {
 struct Options {
     std::string action, caseId = "all", suite = "all", pair = "gpu-args,direct", order = "AB";
     std::string variant = "all";
+    std::string diagnosticDependency;
     sub::Lane lane = sub::Lane::Headline;
     sub::RunConfig config;
     fs::path output;
@@ -158,7 +159,11 @@ Options parse(int argc, char** argv) {
             options.order = value;
         else if (key == "--variant")
             options.variant = value;
-        else if (key == "--lane") {
+        else if (key == "--diagnostic-dependency") {
+            if (value != "declared" && value != "all")
+                throw std::runtime_error("diagnostic dependency must be declared or all");
+            options.diagnosticDependency = value;
+        } else if (key == "--lane") {
             auto lane = sub::parseLane(value);
             if (!lane)
                 throw std::runtime_error(lane.error());
@@ -177,6 +182,10 @@ Options parse(int argc, char** argv) {
     if (options.action.empty())
         throw std::runtime_error(
             "expected --capabilities, --list-cases, --selftest, --verify, --measure or --diagnose");
+    if (!options.diagnosticDependency.empty() &&
+        (options.action != "--diagnose" ||
+         (options.diagnosticDependency != "declared" && options.diagnosticDependency != "all")))
+        throw std::runtime_error("diagnostic dependency requires --diagnose and declared or all");
     if (!options.config.frames)
         throw std::runtime_error("frames must be positive");
     if (options.order != "AB" && options.order != "BA")
@@ -323,25 +332,29 @@ void diagnose(const Options& options) {
         throw std::runtime_error("invalid diagnostic case, suite or variant");
     if (*variant == sub::Variant::GpuIcb)
         throw std::runtime_error("diagnosis requires an implemented ordinary variant");
+    if (options.diagnosticDependency == "all" && *variant != sub::Variant::GpuArgs)
+        throw std::runtime_error("all-stage diagnostic dependency requires gpu-args");
     prepareOutput(options.output);
     const auto manifest = sub::manifestJson(*spec);
     write(options.output / "manifest.json", manifest);
     const auto identity = identities(options.config.shaderDirectory);
     const std::string context =
         "{\"schemaVersion\":1,\"format\":\"lmx.submission.diagnostic\","
-        "\"scored\":false,\"protocol\":\"pipelined-feedback-v1\",\"case\":" +
+        "\"scored\":false,\"protocol\":\"pipelined-feedback-dependency-v2\",\"case\":" +
         caseJson(*spec) + ",\"suite\":" + quote(options.suite) +
         ",\"variant\":" + quote(options.variant) +
         ",\"warmup\":" + std::to_string(options.config.warmup) +
         ",\"frameCount\":" + std::to_string(options.config.frames) +
         ",\"manifestHash\":" + quote(hash(manifest)) + ',' + identity +
-        ",\"environment\":" + environment();
+        ",\"environment\":" + environment() + ",\"diagnosticDependency\":" +
+        quote(options.diagnosticDependency.empty() ? "declared" : options.diagnosticDependency);
     write(options.output / "diagnostic-start.json", context + '}');
     std::cerr << "UNSCORED diagnostic start case=" << options.caseId << " suite=" << options.suite
               << " mode=" << options.variant << '\n';
     auto config = options.config;
     config.diagnostics = true;
     config.verify = false;
+    config.diagnosticAllStages = options.diagnosticDependency == "all";
     auto run = sub::runNative(*spec, *suite, *variant, sub::Lane::Headline, config);
     if (!run) {
         write(options.output / "diagnostic.json",

@@ -186,6 +186,7 @@ private:
     Variant m_variant = Variant::Direct;
     uint64_t m_sequence = 0, m_resourceAllocated = 0;
     bool m_verify = false, m_capturing = false, m_diagnostics = false;
+    bool m_diagnosticAllStages = false;
 };
 
 //======================================================================================================================
@@ -307,6 +308,7 @@ Result<void> NativeHost::initialize(const Case& spec, Suite suite, Variant varia
     m_variant = variant;
     m_verify = config.verify;
     m_diagnostics = config.diagnostics && !m_verify;
+    m_diagnosticAllStages = config.diagnosticAllStages;
     if (m_diagnostics) {
         std::fprintf(stderr,
                      "UNSCORED diagnostic setup case=%s suite=%s mode=%s warmup=%u "
@@ -648,7 +650,8 @@ Result<FrameSample> NativeHost::submit(uint32_t slotIndex, const FrameInput& inp
     LMX_ASSERT(encoder, "create raster encoder");
     encoder->setLabel(state->rasterLabel.get());
     if (gpu && m_spec.count) {
-        encoder->barrierAfterQueueStages(MTL::StageDispatch, kRenderStages,
+        encoder->barrierAfterQueueStages(MTL::StageDispatch,
+                                         m_diagnosticAllStages ? MTL::StageAll : kRenderStages,
                                          MTL4::VisibilityOptionDevice);
     }
     encoder->setRenderPipelineState(state->raster.get());
@@ -891,7 +894,7 @@ Result<void> compare(const FrameImage& reference, const FrameImage& candidate) {
 //======================================================================================================================
 Result<FrameImage> renderNativeFrame(const Case& spec, Suite suite, Variant variant,
                                      uint32_t logicalFrame, const RunConfig& config) {
-    if (config.diagnostics) {
+    if (config.diagnostics || config.diagnosticAllStages) {
         return std::unexpected("Unscored diagnostics requires runNative without verification");
     }
     auto pool = NS::TransferPtr(NS::AutoreleasePool::alloc()->init());
@@ -922,6 +925,9 @@ Result<RunResult> runNative(const Case& spec, Suite suite, Variant variant, Lane
         return std::unexpected(
             "unavailable: gpu-span and stages require verified timestamp "
             "boundaries; this host implements only the marker-free headline lane");
+    }
+    if (config.diagnosticAllStages && (!config.diagnostics || variant != Variant::GpuArgs)) {
+        return std::unexpected("All-stage diagnostic dependency requires diagnostics and gpu-args");
     }
     if (config.diagnostics && (config.verify || !config.capturePath.empty())) {
         return std::unexpected("Unscored diagnostics requires verify=false and no capture path");

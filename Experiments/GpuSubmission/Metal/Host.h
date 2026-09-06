@@ -23,6 +23,9 @@ struct RunConfig {
     /// Bounded by warmup/frames; logs to stderr and joins callbacks at normal slot retirement.
     /// Adds no readbacks, canary checks/writes, GPU submissions or per-frame idle waits.
     bool diagnostics = false;
+    /// Unscored gpu-args discriminator: dispatch writes precede all consumer stages.
+    /// Requires diagnostics=true; does not change the default measured dependency.
+    bool diagnosticAllStages = false;
 };
 
 /// One submitted frame, joined to exact slot retirement before its run returns.
@@ -65,7 +68,7 @@ Result<RunResult> runNative(const Case&, Suite, Variant, Lane, const RunConfig&)
 
 /// Replays exact scored artifacts with debug=0 and returns retired pixels and observed visible IDs.
 /// Does not start capture, even when capturePath is set; capture belongs to runNative exclusively.
-/// Rejects diagnostics: this entry point always performs verification and readback.
+/// Rejects either diagnostic flag: this entry point always performs verification and readback.
 Result<FrameImage> renderNativeFrame(const Case&, Suite, Variant, uint32_t logicalFrame,
                                      const RunConfig&);
 

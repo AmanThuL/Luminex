@@ -128,6 +128,27 @@ TEST_CASE("submission native reports unavailable routes without fabricating timi
 }
 
 //======================================================================================================================
+TEST_CASE("submission diagnostic dependencies cannot enter verification or measurement",
+          "[unit][submission][native]") {
+    RunConfig config;
+    config.diagnosticAllStages = true;
+    auto run = runNative({}, Suite::S, Variant::GpuArgs, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("requires diagnostics") != std::string::npos);
+    config.diagnostics = true;
+    run = runNative({}, Suite::S, Variant::Direct, Lane::Headline, config);
+    REQUIRE_FALSE(run.has_value());
+    REQUIRE(run.error().find("gpu-args") != std::string::npos);
+    for (bool allStages : {false, true}) {
+        config.diagnostics = !allStages;
+        config.diagnosticAllStages = allStages;
+        auto image = renderNativeFrame({}, Suite::S, Variant::GpuArgs, 0, config);
+        REQUIRE_FALSE(image.has_value());
+        REQUIRE(image.error().find("without verification") != std::string::npos);
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("submission native scored artifacts preserve empty sparse dense and tail images",
           "[gpu][submission][native]") {
     const std::array cases{

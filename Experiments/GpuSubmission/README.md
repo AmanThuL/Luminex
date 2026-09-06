@@ -28,6 +28,13 @@ single-mode path, even though the fully validated run retired. Stop after a rese
 diagnostic artifacts; enabling validation is not a proven fix. The
 [follow-up record](../../docs/research/2026-09-06-gpu-submission-diagnostic.md) states the scope.
 
+`--diagnostic-dependency declared|all` is accepted only with `--diagnose`; `all` additionally
+requires `gpu-args`. It expands the dispatch consumer mask to all stages without changing the
+measured default. Both diagnostic JSON files record the choice. This also orders later passes
+on the queue, not just indirect argument consumption. The
+[dependency follow-up](../../docs/research/2026-09-06-gpu-submission-dependency-diagnostic.md)
+observed retirement and timeout with `all`; this is a discriminator, not a correction.
+
 ## Build and validate
 
 Use the pinned dependencies from `xmake setup`, an Apple Silicon Metal 4 device, and release mode.
