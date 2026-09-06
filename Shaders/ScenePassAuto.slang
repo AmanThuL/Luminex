@@ -31,6 +31,7 @@
 // the sky directly -- its ad-hoc mirror reflection was replaced by the prefiltered environment on
 // t8.
 import Lighting;
+import Motion;
 import Shadow;
 
 // Mip count of the prefiltered chain, mirroring Source/Engine/Ibl.h's kSpecularMipCount. Perceptual
@@ -66,10 +67,17 @@ struct ObjectUniforms
     float metallic;
     float occlusionStrength;
     float3 emissive;
+    // The object-to-world transform of the previous declared frame, read by the motion entry
+    // points alone. Equal to `model` for an object that did not move, which is what makes a still
+    // surface reproject onto itself.
+    float4x4 previousModel;
 };
 
 // Bit 0 enables the texture-slot-1 normal map through a draw-uniform branch.
 static const uint kFlagHasNormalMap = 1u;
+// Bit 1 marks a draw whose motion cannot be derived from `previousModel`; its fragments write
+// Motion.slang's sentinel instead of a reprojection.
+static const uint kFlagMotionInvalid = 2u;
 
 [[vk::binding(1, 0)]]
 ConstantBuffer<ObjectUniforms> gObject : register(b1); // → MSL [[buffer(1)]]
@@ -83,6 +91,11 @@ struct PassUniforms
     float preExposure; // exp2(exposure in EV), applied to the fragment's linear output
     DirLight lights[3];
     int shadowFilter; // Shadow.slang's kShadowFilterPcf / kShadowFilterPcss
+    // The motion pair, unjittered on purpose: jitter moves where the frame is sampled, never where
+    // the surface is, so a still scene rendered with a moving jitter sequence must still produce
+    // zero motion. Rasterisation uses ObjectUniforms.mvp, which carries the jitter.
+    float4x4 viewProjUnjittered;
+    float4x4 previousViewProjUnjittered;
 };
 
 [[vk::binding(2, 0)]]
@@ -156,8 +169,7 @@ struct VSOutput
     float4 shadowPos : POSITION1;
 };
 
-[shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput shadeVertex(uint vid)
 {
     Vertex v = gVertices[vid];
     float4 positionW = mul(gObject.model, float4(v.position, 1.0));
@@ -176,8 +188,7 @@ VSOutput vertexMain(uint vid: SV_VertexID)
     return o;
 }
 
-[shader("fragment")]
-float4 fragmentMain(VSOutput input): SV_Target
+float4 shadeSurface(VSOutput input)
 {
     // sRGB sampling decodes base colour before lighting.
     float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * gObject.albedo;
@@ -240,4 +251,56 @@ float4 fragmentMain(VSOutput input): SV_Target
     // The one difference from ScenePass.slang: the multiplier comes from the persistent exposure
     // buffer (spec 9), not PassUniforms.preExposure.
     return float4(litColor * gExposureOverride[0], baseColorSample.a);
+}
+
+[shader("vertex")]
+VSOutput vertexMain(uint vid: SV_VertexID)
+{
+    return shadeVertex(vid);
+}
+
+[shader("fragment")]
+float4 fragmentMain(VSOutput input): SV_Target
+{
+    return shadeSurface(input);
+}
+
+// The motion variant of the pair above: the same shading, plus the unjittered clip pair the
+// fragment turns into this pixel's motion. It is a second entry point rather than a branch in the
+// one above so that a temporal-off frame compiles and rasterises exactly what it did before the
+// motion attachment existed.
+struct MotionVSOutput
+{
+    VSOutput base;
+    float4 clipCurrent : TEXCOORD1;
+    float4 clipPrevious : TEXCOORD2;
+};
+
+struct MotionFSOutput
+{
+    float4 color : SV_Target0;
+    float2 motion : SV_Target1;
+};
+
+[shader("vertex")]
+MotionVSOutput vertexMainMotion(uint vid: SV_VertexID)
+{
+    float3 position = gVertices[vid].position;
+    MotionVSOutput o;
+    o.base = shadeVertex(vid);
+    o.clipCurrent = mul(gPass.viewProjUnjittered, mul(gObject.model, float4(position, 1.0)));
+    o.clipPrevious =
+        mul(gPass.previousViewProjUnjittered, mul(gObject.previousModel, float4(position, 1.0)));
+    return o;
+}
+
+[shader("fragment")]
+MotionFSOutput fragmentMainMotion(MotionVSOutput input)
+{
+    MotionFSOutput o;
+    o.color = shadeSurface(input.base);
+    o.motion = (gObject.flags & kFlagMotionInvalid) != 0u
+                   ? kMotionInvalid
+                   : motionFromClip(input.clipCurrent, input.clipPrevious);
+    return o;
 }

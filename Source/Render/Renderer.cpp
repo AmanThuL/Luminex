@@ -37,9 +37,12 @@ struct ObjectUniforms {
     float metallic;          // 280
     float occlusionStrength; // 284 -- fills the register before emissive's 16-byte alignment
     glm::vec3 emissive;      // 288
-    float emissivePadding;   // 300 -- the float3's tail, rounds the struct to 304
+    float emissivePadding;   // 300 -- the float3's tail
+    // Append-only growth for the motion entry points (spec 5). Every frame uploads it, temporal
+    // on or off, so nothing branches on the temporal state to decide what a draw's bytes are.
+    glm::mat4 previousModel; // 304
 };
-static_assert(sizeof(ObjectUniforms) == 304, "must match ScenePass.slang's ObjectUniforms");
+static_assert(sizeof(ObjectUniforms) == 368, "must match ScenePass.slang's ObjectUniforms");
 
 // Mirrors Shaders/ShadowPass.slang's ObjectUniforms.
 struct ShadowObjectUniforms {
@@ -68,18 +71,29 @@ struct PassUniforms {
     DirLightUniform lights[3]; // 160
     int32_t shadowFilter;      // 256
     int32_t tailPadding[3];    // 260
+    // The motion pair, unjittered: rasterisation carries the jitter in ObjectUniforms.mvp, and
+    // motion must not, or a still scene would move by the jitter delta every frame.
+    glm::mat4 viewProjUnjittered;         // 272
+    glm::mat4 previousViewProjUnjittered; // 336
 };
-static_assert(sizeof(PassUniforms) == 272, "must match ScenePass.slang's PassUniforms");
+static_assert(sizeof(PassUniforms) == 400, "must match ScenePass.slang's PassUniforms");
 
 // Mirrors Shaders/Sky.slang's SkyUniforms.
 struct SkyUniforms {
-    glm::mat4 viewProj;   // 0
-    glm::vec3 eyePos;     // 64
-    float eyePadding;     // 76 -- the float3's tail
-    float preExposure;    // 80
-    float tailPadding[3]; // 84 -- the struct's own 16-byte alignment
+    glm::mat4 viewProj;  // 0 -- unjittered on the temporal path; jitterNdc offsets the raster
+    glm::vec3 eyePos;    // 64
+    float eyePadding;    // 76 -- the float3's tail
+    float preExposure;   // 80
+    float jitterNdcX;    // 84
+    float jitterNdcY;    // 88
+    float jitterPadding; // 92 -- rounds the pair up to the matrix's 16-byte alignment
+    // The previous frame's camera. Drawing the sphere at the previous eye is what leaves the sky's
+    // motion carrying the camera's rotation and nothing else.
+    glm::mat4 previousViewProj;  // 96
+    glm::vec3 previousEyePos;    // 160
+    float previousEyePosPadding; // 172 -- the float3's tail, rounds the struct to 176
 };
-static_assert(sizeof(SkyUniforms) == 96, "must match Sky.slang's SkyUniforms");
+static_assert(sizeof(SkyUniforms) == 176, "must match Sky.slang's SkyUniforms");
 
 // Mirrors Shaders/HistogramAccumulate.slang's HistogramParams. Every field is a scalar, so HLSL
 // cbuffer packing (which Slang's Metal path still follows) leaves them contiguous -- no vector
@@ -145,14 +159,30 @@ struct BloomUpsampleParams {
 static_assert(sizeof(BloomUpsampleParams) == 16,
               "must match BloomUpsample.slang's BloomUpsampleParams");
 
+// Mirrors Shaders/TemporalReproject.slang's TemporalReprojectParams.
+struct TemporalReprojectParams {
+    uint32_t width;
+    uint32_t height;
+};
+static_assert(sizeof(TemporalReprojectParams) == 8,
+              "must match TemporalReproject.slang's TemporalReprojectParams");
+
+// Mirrors Shaders/TemporalDebugView.slang's TemporalDebugViewParams.
+struct TemporalDebugViewParams {
+    uint32_t view;
+};
+static_assert(sizeof(TemporalDebugViewParams) == 4,
+              "must match TemporalDebugView.slang's TemporalDebugViewParams");
+
 // Mirrors Shaders/DisplayTransform.slang's DisplayParams.
 struct DisplayParams {
     float bloomIntensity;
 };
 static_assert(sizeof(DisplayParams) == 4, "must match DisplayTransform.slang's DisplayParams");
 
-// ScenePass.slang's kFlagHasNormalMap.
+// ScenePass.slang's kFlagHasNormalMap and kFlagMotionInvalid.
 constexpr uint32_t kFlagHasNormalMap = 1u;
+constexpr uint32_t kFlagMotionInvalid = 2u;
 
 // Shaders/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
 constexpr int32_t kShadowFilterPcf = 0;
@@ -224,6 +254,21 @@ constexpr uint32_t kBloomUpsampleSmallSlot = 1;
 constexpr uint32_t kBloomUpsampleDstSlot = 2;
 constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
 
+// TemporalReproject.slang's slot map.
+constexpr uint32_t kReprojectHistorySlot = 0;    // texture
+constexpr uint32_t kReprojectSceneColorSlot = 1; // texture
+constexpr uint32_t kReprojectMotionSlot = 2;     // texture
+constexpr uint32_t kReprojectDiagnosticSlot = 3; // storage texture
+constexpr uint32_t kReprojectSamplerSlot = 0;    // sampler
+constexpr uint32_t kReprojectParamsSlot = 0;     // buffer
+
+// TemporalDebugView.slang's slot map, plus the view selectors its fragment branches on.
+constexpr uint32_t kDebugViewMotionSlot = 0;     // texture
+constexpr uint32_t kDebugViewDiagnosticSlot = 1; // texture
+constexpr uint32_t kDebugViewParamsSlot = 0;     // buffer
+constexpr uint32_t kDebugViewMotionVectors = 1;
+constexpr uint32_t kDebugViewReprojectionError = 2;
+
 constexpr uint32_t kHistogramBins = 256;
 constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint32_t);
 // Wide enough to cover everything from near-black shadow detail to a strongly overexposed
@@ -233,6 +278,9 @@ constexpr float kExposureLogLuminanceMin = -12.0f;
 constexpr float kExposureLogLuminanceMax = 4.0f;
 
 constexpr uint32_t kComputeThreadsPerGroup2D = 8;
+
+// kSceneColorFormat's texel size, which is what the history's reported footprint is derived from.
+constexpr uint64_t kSceneColorBytesPerTexel = 8;
 
 //======================================================================================================================
 uint32_t divRoundUp(uint32_t value, uint32_t divisor) {
@@ -326,7 +374,8 @@ void registerUniformLayoutsForCapture() {
                     {"flags", offsetof(ObjectUniforms, flags), "uint"},
                     {"metallic", offsetof(ObjectUniforms, metallic), "float"},
                     {"occlusionStrength", offsetof(ObjectUniforms, occlusionStrength), "float"},
-                    {"emissive", offsetof(ObjectUniforms, emissive), "float3"}}});
+                    {"emissive", offsetof(ObjectUniforms, emissive), "float3"},
+                    {"previousModel", offsetof(ObjectUniforms, previousModel), "float4x4"}}});
 
     schema.registerUniformStruct(
         {.name = "ShadowObjectUniforms",
@@ -353,6 +402,10 @@ void registerUniformLayoutsForCapture() {
     // Preserve offset order for comparison with raw capture bytes.
     passFields.push_back(
         {"shadowFilter", offsetof(PassUniforms, shadowFilter), "int"}); // kShadowFilterPcf/Pcss
+    passFields.push_back(
+        {"viewProjUnjittered", offsetof(PassUniforms, viewProjUnjittered), "float4x4"});
+    passFields.push_back({"previousViewProjUnjittered",
+                          offsetof(PassUniforms, previousViewProjUnjittered), "float4x4"});
     schema.registerUniformStruct({.name = "PassUniforms",
                                   .slot = kPassUniformsSlot,
                                   .sizeBytes = sizeof(PassUniforms),
@@ -364,7 +417,11 @@ void registerUniformLayoutsForCapture() {
          .sizeBytes = sizeof(SkyUniforms),
          .fields = {{"viewProj", offsetof(SkyUniforms, viewProj), "float4x4"},
                     {"eyePos", offsetof(SkyUniforms, eyePos), "float3"},
-                    {"preExposure", offsetof(SkyUniforms, preExposure), "float"}}});
+                    {"preExposure", offsetof(SkyUniforms, preExposure), "float"},
+                    {"jitterNdcX", offsetof(SkyUniforms, jitterNdcX), "float"},
+                    {"jitterNdcY", offsetof(SkyUniforms, jitterNdcY), "float"},
+                    {"previousViewProj", offsetof(SkyUniforms, previousViewProj), "float4x4"},
+                    {"previousEyePos", offsetof(SkyUniforms, previousEyePos), "float3"}}});
 }
 
 //======================================================================================================================
@@ -484,6 +541,16 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(library.error());
     }
+    if (auto library = device.loadShaderLibrary("Shaders/TemporalReproject"); library) {
+        self->m_temporalReprojectLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/TemporalDebugView"); library) {
+        self->m_temporalDebugViewLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
 
     const auto makeScenePipeline = [&](rhi::ShaderLibrary* library, rhi::FillMode fill,
                                        const char* label) {
@@ -500,6 +567,27 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                               // nearer fragment is the larger one.
                                               .depthCompare = rhi::DepthCompare::Greater,
                                               .label = label});
+    };
+    // The motion twin of makeScenePipeline: the motion entry points, and the motion target as a
+    // second colour attachment. Compiled up front rather than on the frame temporal is first
+    // enabled, because a pipeline compile in the middle of a frame is a hitch a toggle should not
+    // cost.
+    const auto makeSceneMotionPipeline = [&](rhi::ShaderLibrary* library, rhi::FillMode fill,
+                                             const char* label) {
+        return device.createGraphicsPipeline(
+            {.library = library,
+             .vertexEntry = "vertexMainMotion",
+             .fragmentEntry = "fragmentMainMotion",
+             .colorFormat = kSceneColorFormat,
+             .extraColorFormats = {kMotionFormat, rhi::Format::Unknown, rhi::Format::Unknown},
+             .extraColorCount = 1,
+             .depthFormat = rhi::Format::D32Float,
+             .depthTestEnable = true,
+             .depthWriteEnable = true,
+             .fillMode = fill,
+             .cullMode = rhi::CullMode::Back,
+             .depthCompare = rhi::DepthCompare::Greater,
+             .label = label});
     };
     if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rhi::FillMode::Solid,
                                           "lmx.render.scenePipeline");
@@ -530,6 +618,38 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                           "lmx.render.sceneWireframePipelineAuto");
         pipeline) {
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    if (auto pipeline = makeSceneMotionPipeline(self->m_sceneLibrary.get(), rhi::FillMode::Solid,
+                                                "lmx.render.scenePipelineMotion");
+        pipeline) {
+        self->m_scenePipelineMotion = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline =
+            makeSceneMotionPipeline(self->m_sceneLibrary.get(), rhi::FillMode::Wireframe,
+                                    "lmx.render.sceneWireframePipelineMotion");
+        pipeline) {
+        self->m_sceneWireframePipelineMotion = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline =
+            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Solid,
+                                    "lmx.render.scenePipelineAutoMotion");
+        pipeline) {
+        self->m_scenePipelineAutoMotion = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline =
+            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Wireframe,
+                                    "lmx.render.sceneWireframePipelineAutoMotion");
+        pipeline) {
+        self->m_sceneWireframePipelineAutoMotion = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
@@ -586,6 +706,36 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(pipeline.error());
     }
 
+    const auto makeSkyMotionPipeline = [&](rhi::ShaderLibrary* library, const char* label) {
+        return device.createGraphicsPipeline(
+            {.library = library,
+             .vertexEntry = "vertexMainMotion",
+             .fragmentEntry = "fragmentMainMotion",
+             .colorFormat = kSceneColorFormat,
+             .extraColorFormats = {kMotionFormat, rhi::Format::Unknown, rhi::Format::Unknown},
+             .extraColorCount = 1,
+             .depthFormat = rhi::Format::D32Float,
+             .depthTestEnable = true,
+             .depthWriteEnable = false,
+             .cullMode = rhi::CullMode::None,
+             .depthCompare = rhi::DepthCompare::GreaterEqual,
+             .label = label});
+    };
+    if (auto pipeline =
+            makeSkyMotionPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipelineMotion");
+        pipeline) {
+        self->m_skyPipelineMotion = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline =
+            makeSkyMotionPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAutoMotion");
+        pipeline) {
+        self->m_skyPipelineAutoMotion = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     if (auto pipeline = device.createGraphicsPipeline({.library = self->m_displayLibrary.get(),
@@ -597,6 +747,35 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                                        .label = "lmx.render.displayPipeline"});
         pipeline) {
         self->m_displayPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    // The debug view overwrites the finished display image, so it renders into the display target
+    // exactly as the display pass does. It is a raster pass rather than a compute one because
+    // BGRA8Unorm carries no storage-write usage in this RHI, and the display target's format is
+    // what the swapchain and the screenshot path require.
+    if (auto pipeline =
+            device.createGraphicsPipeline({.library = self->m_temporalDebugViewLibrary.get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = kDisplayFormat,
+                                           .depthFormat = rhi::Format::Unknown,
+                                           .cullMode = rhi::CullMode::None,
+                                           .label = "lmx.render.temporalDebugViewPipeline"});
+        pipeline) {
+        self->m_temporalDebugViewPipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_temporalReprojectLibrary.get(),
+             .computeEntry = "computeTemporalReproject",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.temporalReprojectPipeline"});
+        pipeline) {
+        self->m_temporalReprojectPipeline = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
@@ -784,6 +963,18 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(sampler.error());
     }
 
+    // The history fetch's sampler: linear, and clamped so a border texel's footprint cannot reach
+    // the opposite edge. No anisotropy -- a reprojected fetch has no screen-space footprint to be
+    // anisotropic about.
+    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
+                                             .addressMode = rhi::AddressMode::Clamp,
+                                             .label = "lmx.render.temporalSampler"});
+        sampler) {
+        self->m_temporalSampler = std::move(*sampler);
+    } else {
+        return std::unexpected(sampler.error());
+    }
+
     if (auto targets = self->resize(width, height); !targets) {
         return std::unexpected(targets.error());
     }
@@ -839,6 +1030,51 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     m_depth = std::move(*depth);
     m_width = width;
     m_height = height;
+
+    // The temporal targets exist only once a frame has declared the temporal path; once they do,
+    // they follow the scene targets' extent, under the same caller idle guarantee this function
+    // already requires. The history's contents are dropped with the old texture, which the extent
+    // change makes a reset anyway (HistoryResetReason::ExtentChanged).
+    if (m_motion != nullptr || m_historyColor != nullptr) {
+        if (auto targets = createTemporalTargets(); !targets) {
+            return std::unexpected(targets.error());
+        }
+    }
+    return {};
+}
+
+//======================================================================================================================
+rhi::Result<void> Renderer::createTemporalTargets() {
+    LMX_ASSERT(m_width > 0 && m_height > 0,
+               "Renderer::createTemporalTargets: the render extent must be non-empty");
+
+    // Readable on the same terms as the scene targets: motion is the one output a GPU test has to
+    // compare against an arithmetic oracle rather than against a picture.
+    auto motion = m_device.createTexture({.width = m_width,
+                                          .height = m_height,
+                                          .format = kMotionFormat,
+                                          .renderTarget = true,
+                                          .sampled = true,
+                                          .cpuReadback = m_cpuReadback,
+                                          .label = "lmx.render.motion"});
+    if (!motion) {
+        return std::unexpected(motion.error());
+    }
+    // The colour history: written by a copy from scene colour at the end of every temporal frame
+    // and sampled by the next frame's reprojection, which is the read-previous / write-current
+    // chain the exposure buffer already uses across the frame boundary.
+    auto history = m_device.createTexture({.width = m_width,
+                                           .height = m_height,
+                                           .format = kSceneColorFormat,
+                                           .sampled = true,
+                                           .cpuReadback = m_cpuReadback,
+                                           .label = "lmx.render.historyColor"});
+    if (!history) {
+        return std::unexpected(history.error());
+    }
+
+    m_motion = std::move(*motion);
+    m_historyColor = std::move(*history);
     return {};
 }
 
@@ -860,6 +1096,35 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                    "SceneView exposure EV minimum must not exceed its maximum");
     }
 
+    const bool temporalEnabled = view.temporal.enabled;
+    if (temporalEnabled && m_motion == nullptr) {
+        // First frame the caller asks for temporal: the two targets are created here rather than
+        // in create(), so a frame that never enables it never pays for them.
+        const auto targets = createTemporalTargets();
+        LMX_ASSERT(targets.has_value(), targets.error().message);
+    }
+
+    const FrameExtents extents{.renderWidth = m_width,
+                               .renderHeight = m_height,
+                               .outputWidth = m_width,
+                               .outputHeight = m_height};
+    const FrameSignature signature{.sceneGeneration = view.temporal.sceneGeneration,
+                                   .extents = extents,
+                                   .fovY = camera.fovY,
+                                   .nearZ = camera.nearZ,
+                                   .temporalEnabled = temporalEnabled};
+    const HistoryResetReason resetReason =
+        deriveHistoryReset(m_previousSignature, signature, view.temporal.cameraCut);
+    const bool historyValid = temporalEnabled && resetReason == HistoryResetReason::None;
+
+    const glm::vec2 jitterPixels = temporalEnabled && view.temporal.jitterEnabled
+                                       ? haltonJitterPixels(m_temporalFrame)
+                                       : glm::vec2{0.0f};
+    const CameraFrameState cameraState = buildCameraFrameState(camera, extents, jitterPixels);
+    // A frame with no predecessor reprojects onto itself, which is the only honest answer: its
+    // history is being reset anyway, so a fabricated previous camera would only invent motion.
+    const CameraFrameState previousCamera = m_previousCamera.value_or(cameraState);
+
     const ShadowMatrices shadow = fitShadowOrtho(view.boundingSphere, view.lights[0].direction);
 
     // The graph snapshots formats at import for attachment validation; these named constants are
@@ -871,12 +1136,30 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // that stage set also covers their ordinary fragment attachment work.
     const GraphTexture shadowMap = graph.importTexture(
         *m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap", rhi::TextureUse::ShaderRead);
+    // The scene colour's terminal use is the display pass's read on an ordinary frame and the
+    // history commit's copy on a temporal one, so it is what the previous frame left rather than a
+    // constant.
     const GraphTexture sceneColor = graph.importTexture(
-        *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", rhi::TextureUse::ShaderRead);
+        *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
     const GraphTexture displayColor = graph.importTexture(
         *m_color, kDisplayFormat, "lmx.render.displayColor", rhi::TextureUse::ShaderRead);
     const GraphTexture sceneDepth = graph.importTexture(
         *m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
+
+    // The temporal pair, imported only by a frame that declares the temporal path. Motion's
+    // terminal use is its attachment write on a frame that shows no debug view and the view's own
+    // read on one that does, so the import states what the previous frame recorded. History's is
+    // the commit copy at the end of the previous temporal frame, which is what this frame's
+    // reprojection reads across the frame boundary.
+    GraphTexture motionTargetHandle;
+    GraphTexture historyImport;
+    if (temporalEnabled) {
+        motionTargetHandle =
+            graph.importTexture(*m_motion, kMotionFormat, "lmx.render.motion", m_previousMotionUse);
+        historyImport =
+            graph.importTexture(*m_historyColor, kSceneColorFormat, "lmx.render.historyColor",
+                                rhi::TextureUse::CopyDestination);
+    }
 
     // Exposure feedback (spec 9): the persistent exposure buffer is imported here, before the
     // scene pass, because -- when auto-exposure is on -- the scene and sky passes read it
@@ -934,8 +1217,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                       }
                   });
 
-    const float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
-    const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
+    // Rasterisation takes the jitter; motion never does. With temporal off the two are the same
+    // matrix, derived exactly as this frame's projection * view was before jitter existed.
+    const glm::mat4 viewProj =
+        temporalEnabled ? cameraState.viewProjectionJittered : cameraState.viewProjection;
 
     // One stop is one doubling, so the slider's unit becomes a multiply here. This is what every
     // fragment applies in manual mode -- ScenePass.slang/Sky.slang, unchanged from before auto-
@@ -957,6 +1242,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     }
     passUniforms.shadowFilter =
         view.shadowFilter == ShadowFilter::PCSS ? kShadowFilterPcss : kShadowFilterPcf;
+    passUniforms.viewProjUnjittered = cameraState.viewProjection;
+    passUniforms.previousViewProjUnjittered = previousCamera.viewProjection;
 
     const GraphTexture shadowRead = nextVersion(shadowMap);
 
@@ -994,10 +1281,23 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // moment the pass ends -- so depthTarget() would hand a caller garbage rather than depth.
     sceneDesc.depth = DepthAttachment{
         .handle = sceneDepth, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
+    // Attachment 1 on the temporal path only. Zero is the motion of a surface that did not move,
+    // which is the right value for the pixels no draw covers: a consumer reading the clear
+    // reprojects onto itself rather than onto a neighbour.
+    if (temporalEnabled) {
+        sceneDesc.extraColor.push_back(ColorAttachment{.handle = motionTargetHandle,
+                                                       .load = LoadOp::Clear,
+                                                       .store = StoreOp::Store,
+                                                       .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}});
+    }
+    // The sky's own jitter, in NDC: its motion pair has to stay unjittered, so its vertex entry
+    // point offsets the rasterised position instead of carrying the jitter in its matrix.
+    const glm::vec2 jitterNdc{2.0f * jitterPixels.x / static_cast<float>(m_width),
+                              2.0f * jitterPixels.y / static_cast<float>(m_height)};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
-        [this, &commands, view, passUniforms, viewProj, shadowRead,
-         exposureCurrent](const PassResources& resources) {
+        [this, &commands, view, passUniforms, viewProj, shadowRead, exposureCurrent,
+         temporalEnabled, cameraState, previousCamera, jitterNdc](const PassResources& resources) {
             // Resolved rather than captured: the graph hands over the shadow map only because this
             // pass declared reading it, which is what ordered it after the pass that wrote it.
             const GraphResult<rhi::Texture*> shadowMapTexture = resources.texture(shadowRead);
@@ -1007,7 +1307,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
             // branch in one, is what keeps the manual pipeline's compiled output identical to
             // pre-M5 -- see ScenePassAuto.slang's header.
-            if (view.autoExposureEnabled) {
+            if (temporalEnabled) {
+                // The motion twins of the four pipelines below: same shading, one more attachment.
+                if (view.autoExposureEnabled) {
+                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAutoMotion
+                                                         : *m_scenePipelineAutoMotion);
+                } else {
+                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineMotion
+                                                         : *m_scenePipelineMotion);
+                }
+            } else if (view.autoExposureEnabled) {
                 commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAuto
                                                      : *m_scenePipelineAuto);
             } else {
@@ -1056,6 +1365,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 uniforms.metallic = material.metallic;
                 uniforms.occlusionStrength = material.occlusionStrength;
                 uniforms.emissive = material.emissive;
+                uniforms.previousModel = item.previousModel;
+                if (item.motionClass == MotionClass::Invalid) {
+                    uniforms.flags |= kFlagMotionInvalid;
+                }
 
                 commands.bindTexture(kDiffuseTextureSlot, material.diffuse != nullptr
                                                               ? *material.diffuse
@@ -1085,14 +1398,27 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
             // clear.
             if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
-                const SkyUniforms sky{.viewProj = viewProj,
+                // Unjittered, unlike the scene draws' mvp: the sky's vertex entry point applies
+                // jitterNdc itself so its motion pair stays unjittered. Off the temporal path the
+                // jitter is zero and this is the same matrix the scene rasterised with.
+                const SkyUniforms sky{.viewProj = cameraState.viewProjection,
                                       .eyePos = passUniforms.eyePos,
                                       .eyePadding = 0.0f,
                                       .preExposure = passUniforms.preExposure,
-                                      .tailPadding = {}};
+                                      .jitterNdcX = jitterNdc.x,
+                                      .jitterNdcY = jitterNdc.y,
+                                      .jitterPadding = 0.0f,
+                                      .previousViewProj = previousCamera.viewProjection,
+                                      .previousEyePos = previousCamera.position,
+                                      .previousEyePosPadding = 0.0f};
                 // Same pipeline switch as the scene draws above, for the same reason (spec 9).
-                commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAuto
-                                                               : *m_skyPipeline);
+                if (temporalEnabled) {
+                    commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAutoMotion
+                                                                   : *m_skyPipelineMotion);
+                } else {
+                    commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAuto
+                                                                   : *m_skyPipeline);
+                }
                 // Shaders/Sky.slang/SkyAuto.slang are the only readers of this slot, so it is
                 // bound here rather than with the pass's shared set.
                 commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
@@ -1105,6 +1431,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphTexture sceneColorRead = nextVersion(sceneColor);
     const uint32_t sceneWidth = m_width;
     const uint32_t sceneHeight = m_height;
+    const GraphTexture motionRead =
+        temporalEnabled ? nextVersion(motionTargetHandle) : GraphTexture{};
+
+    // ---- Reprojection diagnostic (spec 6). Declared only where there is history to reproject:
+    // after any reset the previous frame's pixels describe something else, and comparing against
+    // them would report a difference that says nothing about the motion vectors. Nothing but a
+    // debug view consumes the result, so a frame that shows no view culls the whole pass.
+    GraphTexture diagnostic;
+    if (historyValid) {
+        diagnostic =
+            declareReprojection(graph, commands, historyImport, sceneColorRead, motionRead);
+    }
 
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
@@ -1404,7 +1742,54 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.draw(3);
         });
 
-    return nextVersion(displayColor);
+    GraphTexture displayResult = nextVersion(displayColor);
+
+    // ---- Debug views (spec 6), drawn over the finished image. The reprojection view is the only
+    // consumer of the diagnostic, and so the only thing that keeps the pass producing it alive.
+    const TemporalDebugView debugView = view.temporal.debugView;
+    if (temporalEnabled && debugView != TemporalDebugView::Off) {
+        const bool readsDiagnostic =
+            debugView == TemporalDebugView::ReprojectionError && historyValid;
+        displayResult = declareTemporalDebugView(graph, commands, debugView, motionRead, diagnostic,
+                                                 readsDiagnostic, displayResult);
+    }
+
+    // ---- History commit (spec 4): this frame's scene colour becomes the next frame's history,
+    // whatever the reset reason was, so the frame after a reset has valid history again.
+    if (temporalEnabled) {
+        declareHistoryCommit(graph, commands, sceneColorRead, historyImport);
+    }
+
+    // The frame just declared becomes the previous one. A frame the caller abandoned before
+    // declaring never reaches here, so it never becomes anyone's predecessor.
+    ++m_declaredFrames;
+    m_temporalStatus.lastReset = resetReason;
+    if (resetReason != HistoryResetReason::None) {
+        m_temporalStatus.lastResetFrame = m_declaredFrames;
+    }
+    m_temporalStatus.jitterIndex = m_temporalFrame % kJitterSequenceLength;
+    m_temporalStatus.historyValid = historyValid;
+    m_temporalStatus.historyBytes =
+        m_historyColor != nullptr ? uint64_t{m_width} * m_height * kSceneColorBytesPerTexel : 0;
+    m_previousSignature = signature;
+    m_previousCamera = cameraState;
+    // What this frame's last access to each of the two was, for the next frame's imports to state.
+    // The motion record survives frames with temporal off, which touch the motion target nowhere:
+    // overwriting it there would let a later re-enabling frame claim the last access was its own
+    // attachment write, and its fragment-stage barrier would not drain the dispatch-stage read the
+    // last temporal frame actually ended with.
+    if (temporalEnabled) {
+        m_previousMotionUse = debugView != TemporalDebugView::Off ? rhi::TextureUse::ShaderRead
+                                                                  : rhi::TextureUse::RenderTarget;
+    }
+    // The scene colour is written and read by every frame, temporal or not, so its record is
+    // whatever this frame's own last access was.
+    m_previousSceneColorUse =
+        temporalEnabled ? rhi::TextureUse::CopySource : rhi::TextureUse::ShaderRead;
+    if (temporalEnabled) {
+        ++m_temporalFrame;
+    }
+    return displayResult;
 }
 
 //======================================================================================================================
@@ -1427,6 +1812,123 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera, const Sc
         commands.textureBarrier(*m_color, rhi::TextureUse::RenderTarget,
                                 rhi::TextureUse::ShaderRead);
     }
+}
+
+//======================================================================================================================
+GraphTexture Renderer::declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
+                                           GraphTexture history, GraphTexture sceneColor,
+                                           GraphTexture motion) {
+    const uint32_t width = m_width;
+    const uint32_t height = m_height;
+    const GraphTexture diagnostic = graph.createTexture({.width = width,
+                                                         .height = height,
+                                                         .format = kSceneColorFormat,
+                                                         .sampled = true,
+                                                         .storageWrite = true},
+                                                        "lmx.render.temporalDiagnostic");
+
+    ComputePassDesc reprojectDesc;
+    reprojectDesc.shaderTextureReads.push_back(history);
+    reprojectDesc.shaderTextureReads.push_back(sceneColor);
+    reprojectDesc.shaderTextureReads.push_back(motion);
+    reprojectDesc.textureWrites.push_back(diagnostic);
+    graph.addComputePass(
+        "lmx.pass.temporal.reproject", std::move(reprojectDesc),
+        [this, &commands, history, sceneColor, motion, diagnostic, width,
+         height](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
+            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
+            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
+            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
+            const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
+            LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
+            const GraphResult<rhi::Texture*> target = resources.texture(diagnostic);
+            LMX_ASSERT(target.has_value(), target.error().message);
+
+            const TemporalReprojectParams params{.width = width, .height = height};
+            commands.bindComputePipeline(*m_temporalReprojectPipeline);
+            commands.bindTexture(kReprojectHistorySlot, **historyTexture);
+            commands.bindTexture(kReprojectSceneColorSlot, **sceneTexture);
+            commands.bindTexture(kReprojectMotionSlot, **motionTexture);
+            commands.bindStorageTexture(kReprojectDiagnosticSlot, **target, {},
+                                        rhi::StorageAccess::Write);
+            // Clamped: a border texel's reprojected footprint must not fold in the opposite edge.
+            commands.bindSampler(kReprojectSamplerSlot, *m_temporalSampler);
+            commands.bindFrameData(kReprojectParamsSlot, params);
+            commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
+                              divRoundUp(height, kComputeThreadsPerGroup2D), 1);
+        });
+    return nextVersion(diagnostic);
+}
+
+//======================================================================================================================
+// A raster pass rather than the compute one the pass table names: the display target is
+// BGRA8Unorm, which carries no storage-write usage in this RHI, and a fullscreen triangle
+// overwrites every texel of it just as a dispatch would. The target is not an sRGB view, so the
+// shader's encodings reach the bytes unchanged.
+GraphTexture Renderer::declareTemporalDebugView(RenderGraph& graph, rhi::CommandList& commands,
+                                                TemporalDebugView debugView, GraphTexture motion,
+                                                GraphTexture diagnostic, bool readsDiagnostic,
+                                                GraphTexture displayResult) {
+    PassDesc debugDesc;
+    debugDesc.textureReads.push_back(motion);
+    if (readsDiagnostic) {
+        debugDesc.textureReads.push_back(diagnostic);
+    }
+    debugDesc.color = ColorAttachment{
+        .handle = displayResult, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
+    graph.addPass("lmx.pass.temporal.debugView", std::move(debugDesc),
+                  [this, &commands, motion, diagnostic, readsDiagnostic,
+                   debugView](const PassResources& resources) {
+                      const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
+                      LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
+
+                      commands.bindPipeline(*m_temporalDebugViewPipeline);
+                      commands.bindTexture(kDebugViewMotionSlot, **motionTexture);
+                      if (readsDiagnostic) {
+                          const GraphResult<rhi::Texture*> errors = resources.texture(diagnostic);
+                          LMX_ASSERT(errors.has_value(), errors.error().message);
+                          commands.bindTexture(kDebugViewDiagnosticSlot, **errors);
+                      } else {
+                          // A reset frame has no diagnostic to show. Every texel the shader loads
+                          // lies outside this 1x1 fallback, and an out-of-bounds Load answers with
+                          // zeroes -- whose zero alpha is the shader's "nothing to compare", which
+                          // is exactly the frame's state.
+                          commands.bindTexture(kDebugViewDiagnosticSlot, *m_blackBloomFallback);
+                      }
+                      const TemporalDebugViewParams params{
+                          .view = debugView == TemporalDebugView::MotionVectors
+                                      ? kDebugViewMotionVectors
+                                      : kDebugViewReprojectionError};
+                      commands.bindFrameData(kDebugViewParamsSlot, params);
+                      commands.draw(3);
+                  });
+    return nextVersion(displayResult);
+}
+
+//======================================================================================================================
+void Renderer::declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
+                                    GraphTexture sceneColor, GraphTexture history) {
+    const uint32_t width = m_width;
+    const uint32_t height = m_height;
+
+    CopyPassDesc commitDesc;
+    commitDesc.textureSources.push_back(sceneColor);
+    commitDesc.textureDestinations.push_back(history);
+    graph.addCopyPass(
+        "lmx.pass.temporal.commitHistory", std::move(commitDesc),
+        [&commands, sceneColor, history, width, height](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
+            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
+            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
+            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
+
+            const rhi::TextureCopyRegion region{.width = width, .height = height};
+            commands.copyTexture(**sceneTexture, region, **historyTexture, region);
+        });
+    // Nothing else in the frame consumes it -- the consumer is the next frame -- so the export is
+    // what keeps the copy alive through culling.
+    graph.exportTexture(nextVersion(history));
 }
 
 //======================================================================================================================
