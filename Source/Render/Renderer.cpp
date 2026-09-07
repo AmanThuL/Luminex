@@ -124,8 +124,12 @@ struct ExposureResolveParams {
     float compensationEv;
     float logLuminanceMin;
     float logLuminanceMax;
+    float adaptUp;
+    float adaptDown;
+    float deltaSeconds;
+    float pad;
 };
-static_assert(sizeof(ExposureResolveParams) == 32,
+static_assert(sizeof(ExposureResolveParams) == 48,
               "must match ExposureResolve.slang's ExposureResolveParams");
 
 // Mirrors Shaders/BloomThreshold.slang's BloomThresholdParams.
@@ -158,21 +162,6 @@ struct BloomUpsampleParams {
 };
 static_assert(sizeof(BloomUpsampleParams) == 16,
               "must match BloomUpsample.slang's BloomUpsampleParams");
-
-// Mirrors Shaders/TemporalReproject.slang's TemporalReprojectParams.
-struct TemporalReprojectParams {
-    uint32_t width;
-    uint32_t height;
-};
-static_assert(sizeof(TemporalReprojectParams) == 8,
-              "must match TemporalReproject.slang's TemporalReprojectParams");
-
-// Mirrors Shaders/TemporalDebugView.slang's TemporalDebugViewParams.
-struct TemporalDebugViewParams {
-    uint32_t view;
-};
-static_assert(sizeof(TemporalDebugViewParams) == 4,
-              "must match TemporalDebugView.slang's TemporalDebugViewParams");
 
 // Mirrors Shaders/DisplayTransform.slang's DisplayParams.
 struct DisplayParams {
@@ -254,21 +243,6 @@ constexpr uint32_t kBloomUpsampleSmallSlot = 1;
 constexpr uint32_t kBloomUpsampleDstSlot = 2;
 constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
 
-// TemporalReproject.slang's slot map.
-constexpr uint32_t kReprojectHistorySlot = 0;    // texture
-constexpr uint32_t kReprojectSceneColorSlot = 1; // texture
-constexpr uint32_t kReprojectMotionSlot = 2;     // texture
-constexpr uint32_t kReprojectDiagnosticSlot = 3; // storage texture
-constexpr uint32_t kReprojectSamplerSlot = 0;    // sampler
-constexpr uint32_t kReprojectParamsSlot = 0;     // buffer
-
-// TemporalDebugView.slang's slot map, plus the view selectors its fragment branches on.
-constexpr uint32_t kDebugViewMotionSlot = 0;     // texture
-constexpr uint32_t kDebugViewDiagnosticSlot = 1; // texture
-constexpr uint32_t kDebugViewParamsSlot = 0;     // buffer
-constexpr uint32_t kDebugViewMotionVectors = 1;
-constexpr uint32_t kDebugViewReprojectionError = 2;
-
 constexpr uint32_t kHistogramBins = 256;
 constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint32_t);
 // Wide enough to cover everything from near-black shadow detail to a strongly overexposed
@@ -276,11 +250,15 @@ constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint
 // HistogramAccumulate.slang and ExposureResolve.slang must agree on both.
 constexpr float kExposureLogLuminanceMin = -12.0f;
 constexpr float kExposureLogLuminanceMax = 4.0f;
+// The seconds one declared frame advances the scene by, which is what exposure adaptation steps
+// against. The App's clock is a fixed step per frame rather than wall time -- engine::
+// kAnimationBakeRate -- and this restates the number rather than including it, because Engine sits
+// above Render in the dependency chain. A renderer that stepped by wall time would resolve a
+// different exposure for the same frame on a different machine, which is not something a frozen
+// stability tolerance can survive.
+constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 
 constexpr uint32_t kComputeThreadsPerGroup2D = 8;
-
-// kSceneColorFormat's texel size, which is what the history's reported footprint is derived from.
-constexpr uint64_t kSceneColorBytesPerTexel = 8;
 
 //======================================================================================================================
 uint32_t divRoundUp(uint32_t value, uint32_t divisor) {
@@ -541,17 +519,6 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalReproject"); library) {
-        self->m_temporalReprojectLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
-    }
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalDebugView"); library) {
-        self->m_temporalDebugViewLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
-    }
-
     const auto makeScenePipeline = [&](rhi::ShaderLibrary* library, rhi::FillMode fill,
                                        const char* label) {
         return device.createGraphicsPipeline({.library = library,
@@ -579,8 +546,8 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
              .colorFormat = kSceneColorFormat,
-             .extraColorFormats = {kMotionFormat, rhi::Format::Unknown, rhi::Format::Unknown},
-             .extraColorCount = 1,
+             .extraColorFormats = {kMotionFormat, kReactiveFormat, rhi::Format::Unknown},
+             .extraColorCount = 2,
              .depthFormat = rhi::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = true,
@@ -712,8 +679,8 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
              .colorFormat = kSceneColorFormat,
-             .extraColorFormats = {kMotionFormat, rhi::Format::Unknown, rhi::Format::Unknown},
-             .extraColorCount = 1,
+             .extraColorFormats = {kMotionFormat, kReactiveFormat, rhi::Format::Unknown},
+             .extraColorCount = 2,
              .depthFormat = rhi::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = false,
@@ -747,35 +714,6 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
                                                        .label = "lmx.render.displayPipeline"});
         pipeline) {
         self->m_displayPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
-    }
-
-    // The debug view overwrites the finished display image, so it renders into the display target
-    // exactly as the display pass does. It is a raster pass rather than a compute one because
-    // BGRA8Unorm carries no storage-write usage in this RHI, and the display target's format is
-    // what the swapchain and the screenshot path require.
-    if (auto pipeline =
-            device.createGraphicsPipeline({.library = self->m_temporalDebugViewLibrary.get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = kDisplayFormat,
-                                           .depthFormat = rhi::Format::Unknown,
-                                           .cullMode = rhi::CullMode::None,
-                                           .label = "lmx.render.temporalDebugViewPipeline"});
-        pipeline) {
-        self->m_temporalDebugViewPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
-    }
-
-    if (auto pipeline = device.createComputePipeline(
-            {.library = self->m_temporalReprojectLibrary.get(),
-             .computeEntry = "computeTemporalReproject",
-             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
-             .label = "lmx.render.temporalReprojectPipeline"});
-        pipeline) {
-        self->m_temporalReprojectPipeline = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
@@ -907,17 +845,21 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     } else {
         return std::unexpected(buffer.error());
     }
-    // One float, persistent across frames (spec 9's feedback buffer): the resolve pass writes it,
-    // and -- when auto-exposure is on -- the *next* frame's scene and sky passes read it directly
-    // as a storage buffer (declarePasses()'s exposureCurrent/bufferReads below), never through a
-    // CPU readback. No cpuReadback flag: nothing on the App side ever reads this buffer back.
+    // The persistent {applied, previous} pair (spec 9's feedback buffer, widened by M6.2 spec 7):
+    // the seed and resolve passes write it, and -- when auto-exposure is on -- the *next* frame's
+    // scene and sky passes read index 0 directly as a storage buffer (declarePasses()'s
+    // exposureCurrent/bufferReads below), never through a CPU readback. Unit exposure in both slots
+    // is what a buffer no frame has seeded or resolved yet holds, which is the same answer EV 0
+    // gives. cpuReadback only where the caller asked for it: the App never reads this back -- that
+    // is the whole point of keeping the feedback GPU-resident -- and the tests do.
     {
-        constexpr float kInitialExposure = 1.0f;
-        if (auto buffer = device.createBuffer({.size = sizeof(float),
+        constexpr std::array<float, kExposureBufferFloats> kInitialExposure{1.0f, 1.0f};
+        if (auto buffer = device.createBuffer({.size = sizeof(kInitialExposure),
                                                .storageRead = true,
                                                .storageWrite = true,
+                                               .cpuReadback = cpuReadback,
                                                .label = "lmx.render.exposureBuffer"},
-                                              &kInitialExposure);
+                                              kInitialExposure.data());
             buffer) {
             self->m_exposureBuffer = std::move(*buffer);
         } else {
@@ -963,16 +905,12 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(sampler.error());
     }
 
-    // The history fetch's sampler: linear, and clamped so a border texel's footprint cannot reach
-    // the opposite edge. No anisotropy -- a reprojected fetch has no screen-space footprint to be
-    // anisotropic about.
-    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
-                                             .addressMode = rhi::AddressMode::Clamp,
-                                             .label = "lmx.render.temporalSampler"});
-        sampler) {
-        self->m_temporalSampler = std::move(*sampler);
+    // The reconstruction stage owns both history pairs and the passes over them, so it is built
+    // before the first resize(), which is what allocates its slots at this renderer's extent.
+    if (auto stage = TemporalResolve::create(device, self->m_cpuReadback); stage) {
+        self->m_temporalResolve = std::move(*stage);
     } else {
-        return std::unexpected(sampler.error());
+        return std::unexpected(stage.error());
     }
 
     if (auto targets = self->resize(width, height); !targets) {
@@ -1009,33 +947,21 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (!color) {
         return std::unexpected(color.error());
     }
-    // Sampled as well as rendered into: the frame's own depth is the only record of where its
-    // geometry is, and a caller that wants to read a distance back out of the image -- the depth
-    // reconstruction the reversed projection is pinned by, and any later pass that shades from
-    // depth -- has nowhere else to get it. It costs the driver's lossless depth compression,
-    // which is why the flag is stated here rather than left on by habit.
-    auto depth = m_device.createTexture({.width = width,
-                                         .height = height,
-                                         .format = rhi::Format::D32Float,
-                                         .renderTarget = true,
-                                         .sampled = true,
-                                         .label = "lmx.render.sceneDepth"});
-    if (!depth) {
-        return std::unexpected(depth.error());
-    }
-
     // Swap the targets only after every allocation succeeds.
     m_hdrColor = std::move(*hdrColor);
     m_color = std::move(*color);
-    m_depth = std::move(*depth);
     m_width = width;
     m_height = height;
 
     // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
-    // this function already requires. The history's contents are dropped with the old texture,
-    // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged).
+    // this function already requires. The histories' contents are dropped with the old textures,
+    // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
+    // among them: it ping-pongs by temporal frame parity, so the stage owns both slots of it.
     if (auto targets = createTemporalTargets(); !targets) {
         return std::unexpected(targets.error());
+    }
+    if (auto slots = m_temporalResolve->resize(width, height); !slots) {
+        return std::unexpected(slots.error());
     }
     return {};
 }
@@ -1057,28 +983,29 @@ rhi::Result<void> Renderer::createTemporalTargets() {
     if (!motion) {
         return std::unexpected(motion.error());
     }
-    // The colour history: written by a copy from scene colour at the end of every temporal frame
-    // and sampled by the next frame's reprojection, which is the read-previous / write-current
-    // chain the exposure buffer already uses across the frame boundary.
-    auto history = m_device.createTexture({.width = m_width,
-                                           .height = m_height,
-                                           .format = kSceneColorFormat,
-                                           .sampled = true,
-                                           .cpuReadback = m_cpuReadback,
-                                           .label = "lmx.render.historyColor"});
-    if (!history) {
-        return std::unexpected(history.error());
+    // The per-pixel reactive weight: the scene pass's second extra attachment, read by the resolve
+    // alone. One byte per pixel, and colour-renderable rather than storage, because a fragment
+    // writes it as an ordinary attachment.
+    auto reactive = m_device.createTexture({.width = m_width,
+                                            .height = m_height,
+                                            .format = kReactiveFormat,
+                                            .renderTarget = true,
+                                            .sampled = true,
+                                            .cpuReadback = m_cpuReadback,
+                                            .label = "lmx.render.reactive"});
+    if (!reactive) {
+        return std::unexpected(reactive.error());
     }
 
     m_motion = std::move(*motion);
-    m_historyColor = std::move(*history);
+    m_reactive = std::move(*reactive);
     return {};
 }
 
 //======================================================================================================================
 GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& commands,
                                      const Camera& camera, const SceneView& view) {
-    LMX_ASSERT(m_hdrColor && m_color && m_depth && m_shadowMap && m_motion && m_historyColor,
+    LMX_ASSERT(m_hdrColor && m_color && m_shadowMap && m_motion && m_reactive && m_temporalResolve,
                "Renderer::declarePasses: targets are missing -- create() failed");
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
@@ -1091,6 +1018,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         LMX_ASSERT(view.exposureTargetGrey > 0.0f, "SceneView exposureTargetGrey must be positive");
         LMX_ASSERT(view.exposureEvMin <= view.exposureEvMax,
                    "SceneView exposure EV minimum must not exceed its maximum");
+        LMX_ASSERT(view.exposureAdaptUpStopsPerSecond >= 0.0f &&
+                       view.exposureAdaptDownStopsPerSecond >= 0.0f,
+                   "SceneView exposure adaptation rates must not be negative");
     }
 
     const bool temporalEnabled = view.temporal.enabled;
@@ -1107,6 +1037,15 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const HistoryResetReason resetReason =
         deriveHistoryReset(m_previousSignature, signature, view.temporal.cameraCut);
     const bool historyValid = temporalEnabled && resetReason == HistoryResetReason::None;
+    // Ping-pong by declared temporal frame parity: this frame renders depth into `slot` and writes
+    // its colour there, and reads the other slot as the previous frame's depth and history. A
+    // frame with temporal off renders depth into slot 0 and touches no colour history at all.
+    const uint32_t slot = temporalEnabled ? m_temporalFrame % 2 : 0;
+    const uint32_t previousSlot = 1 - slot;
+    m_currentSlot = slot;
+    const ReconstructionMode reconstruction = view.temporal.reconstruction;
+    const bool nativeTaa = temporalEnabled && reconstruction == ReconstructionMode::NativeTaa;
+    const TemporalDebugView debugView = view.temporal.debugView;
 
     const glm::vec2 jitterPixels = temporalEnabled && view.temporal.jitterEnabled
                                        ? haltonJitterPixels(m_temporalFrame)
@@ -1134,22 +1073,33 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
     const GraphTexture displayColor = graph.importTexture(
         *m_color, kDisplayFormat, "lmx.render.displayColor", rhi::TextureUse::ShaderRead);
-    const GraphTexture sceneDepth = graph.importTexture(
-        *m_depth, rhi::Format::D32Float, "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
+    // A frame with temporal off imports slot 0 under the pre-temporal name and use, which is what
+    // keeps its declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
+    const GraphTexture sceneDepth =
+        temporalEnabled
+            ? m_temporalResolve->importDepth(graph, slot)
+            : graph.importTexture(m_temporalResolve->depthSlot(0), rhi::Format::D32Float,
+                                  "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
 
     // The temporal pair, imported only by a frame that declares the temporal path. Motion's
     // terminal use is its attachment write on a frame that shows no debug view and the view's own
     // read on one that does, so the import states what the previous frame recorded. History's is
     // the commit copy at the end of the previous temporal frame, which is what this frame's
-    // reprojection reads across the frame boundary.
+    // reprojection reads across the frame boundary; the reactive attachment's is its own
+    // attachment write on a Raw frame and the resolve's read on a NativeTaa one.
     GraphTexture motionTargetHandle;
+    GraphTexture reactiveTargetHandle;
+    GraphTexture previousDepth;
+    GraphTexture colorSlotImport;
     GraphTexture historyImport;
     if (temporalEnabled) {
         motionTargetHandle =
             graph.importTexture(*m_motion, kMotionFormat, "lmx.render.motion", m_previousMotionUse);
-        historyImport =
-            graph.importTexture(*m_historyColor, kSceneColorFormat, "lmx.render.historyColor",
-                                rhi::TextureUse::CopyDestination);
+        reactiveTargetHandle = graph.importTexture(*m_reactive, kReactiveFormat,
+                                                   "lmx.render.reactive", m_previousReactiveUse);
+        previousDepth = m_temporalResolve->importDepth(graph, previousSlot);
+        colorSlotImport = m_temporalResolve->importColor(graph, slot);
+        historyImport = m_temporalResolve->importColor(graph, previousSlot);
     }
 
     // Exposure feedback (spec 9): the persistent exposure buffer is imported here, before the
@@ -1164,15 +1114,25 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // it holds: that pass wrote it with a storage write, this frame's scene and sky passes read it,
     // and the edge between them crosses a frame boundary where nothing else orders it -- the frames
     // in flight are paced against a frame two back, not against the one before. Stating the prior
-    // producer is what lets this frame's derivation put a barrier in front of its first reader.
-    // Manual mode imports it plainly: no pass reads it, so there is no edge to state.
+    // producer is what lets this frame's derivation put a barrier in front of its first reader. A
+    // manual temporal frame states the same thing for the same reason: its seed dispatch below
+    // overwrites what the previous frame's seed wrote. Manual with temporal off imports it plainly:
+    // no declared pass touches it, so there is no edge to state.
+    const bool exposureWrittenByEarlierFrame = view.autoExposureEnabled || view.temporal.enabled;
     const GraphBuffer exposureImport =
-        view.autoExposureEnabled
+        exposureWrittenByEarlierFrame
             ? graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer",
                                  rhi::BufferUse::StorageWrite)
             : graph.importBuffer(*m_exposureBuffer, "lmx.render.exposureBuffer");
     GraphBuffer exposureCurrent = exposureImport;
-    if (view.autoExposureEnabled && view.exposureReset) {
+    // Auto mode seeds on spec 9's reset frames, where the seed is what restarts the metering loop.
+    // Manual mode seeds on every temporal frame (M6.2 spec 7): the buffer is the single source of
+    // the exposure the scene pass applies, so a manual EV edit has to land in it -- with the value
+    // before the edit shifted into `previous` -- for a temporal resolve to correct the history it
+    // is about to blend. A manual frame with temporal off declares nothing here, which is what
+    // keeps the pre-temporal frame's declaration exact.
+    const bool seedExposure = view.autoExposureEnabled ? view.exposureReset : view.temporal.enabled;
+    if (seedExposure) {
         const float manualExposure = std::exp2(view.exposureEv);
         ComputePassDesc seedDesc;
         seedDesc.bufferWrites.push_back(exposureImport);
@@ -1183,12 +1143,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                 LMX_ASSERT(exposure.has_value(), exposure.error().message);
                 const ExposureSeedParams params{.exposure = manualExposure};
                 commands.bindComputePipeline(*m_exposureSeedPipeline);
+                // Read-write, not write: the kernel shifts index 0 into index 1 before it sets it.
                 commands.bindStorageBuffer(kSeedExposureSlot, **exposure,
-                                           rhi::StorageAccess::Write);
+                                           rhi::StorageAccess::ReadWrite);
                 commands.bindFrameData(kSeedParamsSlot, params);
                 commands.dispatch(1, 1, 1);
             });
         exposureCurrent = nextVersion(exposureImport);
+        if (!view.autoExposureEnabled) {
+            // Auto mode's resolve exports the end of the chain the seed starts, so the seed reaches
+            // a sink. In manual mode nothing declared in this frame consumes what the seed wrote --
+            // its consumer is the next frame -- so the version it produces is exported the way the
+            // history commit's is, or dead-pass culling would drop the pass that records the pair.
+            graph.exportBuffer(exposureCurrent);
+        }
     }
 
     PassDesc shadowDesc;
@@ -1277,6 +1245,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // reprojects onto itself rather than onto a neighbour.
     if (temporalEnabled) {
         sceneDesc.extraColor.push_back(ColorAttachment{.handle = motionTargetHandle,
+                                                       .load = LoadOp::Clear,
+                                                       .store = StoreOp::Store,
+                                                       .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}});
+        // Attachment 2, on the same terms. Zero is "accumulate freely", which is the right value
+        // for a texel no draw covers: the clear colour has no emissive that could switch on.
+        sceneDesc.extraColor.push_back(ColorAttachment{.handle = reactiveTargetHandle,
                                                        .load = LoadOp::Clear,
                                                        .store = StoreOp::Store,
                                                        .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}});
@@ -1425,15 +1399,38 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphTexture motionRead =
         temporalEnabled ? nextVersion(motionTargetHandle) : GraphTexture{};
 
-    // ---- Reprojection diagnostic (spec 6). Declared only where there is history to reproject:
-    // after any reset the previous frame's pixels describe something else, and comparing against
-    // them would report a difference that says nothing about the motion vectors. Nothing but a
-    // debug view consumes the result, so a frame that shows no view culls the whole pass.
-    GraphTexture diagnostic;
-    if (historyValid) {
-        diagnostic =
-            declareReprojection(graph, commands, historyImport, sceneColorRead, motionRead);
+    // ---- Temporal reconstruction (M6.2 spec 6). The stage declares the reprojection diagnostic,
+    // this frame's accumulation or its raw commit, and the debug view; this frame routes what it
+    // produced into bloom and display. The debug view draws over the version the display pass
+    // produces, which is declared further down -- the graph's schedule is topological, so naming
+    // that version here still orders the view behind its producer.
+    GraphTexture displayResult = nextVersion(displayColor);
+    TemporalResolveOutputs temporalOutputs;
+    if (temporalEnabled) {
+        TemporalInputs temporalInputs;
+        temporalInputs.sceneColor = sceneColorRead;
+        temporalInputs.depth = nextVersion(sceneDepth);
+        temporalInputs.previousDepth = previousDepth;
+        temporalInputs.motion = motionRead;
+        temporalInputs.reactive = nextVersion(reactiveTargetHandle);
+        temporalInputs.history = historyImport;
+        temporalInputs.colorSlot = colorSlotImport;
+        // The version the scene pass and the histogram read: after the seed, so "applied this
+        // frame" means the same thing to shading, metering and the exposure correction alike.
+        temporalInputs.exposure = exposureCurrent;
+        temporalInputs.camera = cameraState;
+        temporalInputs.previousCamera = previousCamera;
+        temporalInputs.extents = extents;
+        temporalInputs.resetReason = resetReason;
+        temporalInputs.mode = reconstruction;
+        temporalOutputs =
+            m_temporalResolve->declare(graph, commands, temporalInputs, debugView, displayResult);
     }
+
+    // What bloom and the display transform read: the accumulated picture under NativeTaa, the raw
+    // jittered frame otherwise. The histogram deliberately keeps metering the raw scene colour, so
+    // metering stays independent of the accumulation it corrects.
+    const GraphTexture displayInput = nativeTaa ? temporalOutputs.resolved : sceneColorRead;
 
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
@@ -1490,6 +1487,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     ComputePassDesc resolveDesc;
     resolveDesc.bufferReads.push_back(histogramFinal);
+    // The kernel reads the exposure it adapts from out of the same version it overwrites, and the
+    // write alone is what states that: a declared write already orders this pass after every
+    // earlier producer and consumer of that version, so naming the read as well would add a
+    // declaration to the temporal-off frame's record without adding an edge to derive from it.
     resolveDesc.bufferWrites.push_back(exposureCurrent);
     graph.addComputePass(
         "lmx.pass.exposure.resolve", std::move(resolveDesc),
@@ -1506,11 +1507,18 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                                .evMax = view.exposureEvMax,
                                                .compensationEv = view.exposureCompensationEv,
                                                .logLuminanceMin = kExposureLogLuminanceMin,
-                                               .logLuminanceMax = kExposureLogLuminanceMax};
+                                               .logLuminanceMax = kExposureLogLuminanceMax,
+                                               .adaptUp = view.exposureAdaptUpStopsPerSecond,
+                                               .adaptDown = view.exposureAdaptDownStopsPerSecond,
+                                               .deltaSeconds = kExposureFrameSeconds,
+                                               .pad = 0.0f};
             commands.bindComputePipeline(*m_exposureResolvePipeline);
             commands.bindStorageBuffer(kResolveHistogramSlot, **histogram,
                                        rhi::StorageAccess::Read);
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Write);
+            // Read-write, not write: the kernel steps from the exposure this frame applied, which
+            // it reads out of index 0 before overwriting it.
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+                                       rhi::StorageAccess::ReadWrite);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(1, 1, 1);
         });
@@ -1558,14 +1566,14 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     static constexpr rhi::TextureSubresourceRange kBloomMip0{.baseMipLevel = 0, .mipLevelCount = 1};
     ComputePassDesc thresholdDesc;
-    thresholdDesc.shaderTextureReads.push_back(sceneColorRead);
+    thresholdDesc.shaderTextureReads.push_back(displayInput);
     thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kBloomMip0));
     const float bloomThreshold = view.bloomThreshold;
     graph.addComputePass(
         "lmx.pass.bloom.threshold", std::move(thresholdDesc),
-        [this, &commands, sceneColorRead, bloomChain, sceneWidth, sceneHeight, bloomWidth,
+        [this, &commands, displayInput, bloomChain, sceneWidth, sceneHeight, bloomWidth,
          bloomHeight, bloomThreshold](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> scene = resources.texture(sceneColorRead);
+            const GraphResult<rhi::Texture*> scene = resources.texture(displayInput);
             LMX_ASSERT(scene.has_value(), scene.error().message);
             const GraphResult<rhi::Texture*> chain = resources.texture(bloomChain);
             LMX_ASSERT(chain.has_value(), chain.error().message);
@@ -1695,7 +1703,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     PassDesc displayDesc;
     // Declaring the read is what orders this pass after the scene pass and puts the scene
     // target's transition to a shader read in front of it; nothing here places a barrier.
-    displayDesc.textureReads.push_back(sceneColorRead);
+    displayDesc.textureReads.push_back(displayInput);
     // Bloom's read is declared only when the toggle is on: an undeclared bloomResult reaches no
     // sink through this pass, so dead-pass culling drops threshold/downsample/upsample together
     // when it is off (spec 10) -- the same pattern the exposure passes above use.
@@ -1711,9 +1719,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const float bloomIntensity = view.bloomIntensity;
     graph.addPass(
         "lmx.pass.display", std::move(displayDesc),
-        [this, &commands, sceneColorRead, bloomResult, bloomEnabled,
+        [this, &commands, displayInput, bloomResult, bloomEnabled,
          bloomIntensity](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> hdrTexture = resources.texture(sceneColorRead);
+            const GraphResult<rhi::Texture*> hdrTexture = resources.texture(displayInput);
             LMX_ASSERT(hdrTexture.has_value(), hdrTexture.error().message);
 
             commands.bindPipeline(*m_displayPipeline);
@@ -1733,24 +1741,6 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             commands.draw(3);
         });
 
-    GraphTexture displayResult = nextVersion(displayColor);
-
-    // ---- Debug views (spec 6), drawn over the finished image. The reprojection view is the only
-    // consumer of the diagnostic, and so the only thing that keeps the pass producing it alive.
-    const TemporalDebugView debugView = view.temporal.debugView;
-    if (temporalEnabled && debugView != TemporalDebugView::Off) {
-        const bool readsDiagnostic =
-            debugView == TemporalDebugView::ReprojectionError && historyValid;
-        displayResult = declareTemporalDebugView(graph, commands, debugView, motionRead, diagnostic,
-                                                 readsDiagnostic, displayResult);
-    }
-
-    // ---- History commit (spec 4): this frame's scene colour becomes the next frame's history,
-    // whatever the reset reason was, so the frame after a reset has valid history again.
-    if (temporalEnabled) {
-        declareHistoryCommit(graph, commands, sceneColorRead, historyImport);
-    }
-
     // The frame just declared becomes the previous one. A frame the caller abandoned before
     // declaring never reaches here, so it never becomes anyone's predecessor.
     ++m_declaredFrames;
@@ -1760,22 +1750,44 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     }
     m_temporalStatus.jitterIndex = m_temporalFrame % kJitterSequenceLength;
     m_temporalStatus.historyValid = historyValid;
-    m_temporalStatus.historyBytes = uint64_t{m_width} * m_height * kSceneColorBytesPerTexel;
+    m_temporalStatus.historyBytes = m_temporalResolve->colorBytes();
+    m_temporalStatus.depthHistoryBytes = m_temporalResolve->depthBytes();
+    m_temporalStatus.reconstruction = reconstruction;
+    // The age counts declared temporal frames since the last non-None reason, whatever the mode:
+    // both modes leave a real frame in the colour slot, so the count survives a mode switch. A
+    // frame with temporal off starts it over, because the history the next temporal frame finds is
+    // not the one this count would have described.
+    if (!temporalEnabled) {
+        m_temporalStatus.historyAge = 0;
+    } else if (resetReason != HistoryResetReason::None) {
+        m_temporalStatus.historyAge = 1;
+    } else {
+        m_temporalStatus.historyAge = std::min<uint32_t>(m_temporalStatus.historyAge + 1, 65535);
+    }
+    m_temporalStatus.warmupComplete = m_temporalStatus.historyAge >= kTemporalWarmupFrames;
     m_previousSignature = signature;
     m_previousCamera = cameraState;
-    // What this frame's last access to each of the two was, for the next frame's imports to state.
-    // The motion record survives frames with temporal off, which touch the motion target nowhere:
-    // overwriting it there would let a later re-enabling frame claim the last access was its own
-    // attachment write, and its fragment-stage barrier would not drain the dispatch-stage read the
-    // last temporal frame actually ended with.
+    // What this frame's last access to each persistent target was, for the next frame's imports to
+    // state. The motion and reactive records survive frames with temporal off, which touch neither
+    // target: overwriting them there would let a later re-enabling frame claim the last access was
+    // its own attachment write, and its fragment-stage barrier would not drain the dispatch-stage
+    // read the last temporal frame actually ended with.
     if (temporalEnabled) {
-        m_previousMotionUse = debugView != TemporalDebugView::Off ? rhi::TextureUse::ShaderRead
-                                                                  : rhi::TextureUse::RenderTarget;
+        // The resolve reads motion on every NativeTaa frame, and the debug view reads it whenever
+        // one is shown.
+        m_previousMotionUse = nativeTaa || debugView != TemporalDebugView::Off
+                                  ? rhi::TextureUse::ShaderRead
+                                  : rhi::TextureUse::RenderTarget;
+        // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
+        m_previousReactiveUse =
+            nativeTaa ? rhi::TextureUse::ShaderRead : rhi::TextureUse::RenderTarget;
+        m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid);
     }
-    // The scene colour is written and read by every frame, temporal or not, so its record is
-    // whatever this frame's own last access was.
+    // The scene colour is written and read by every frame. Under Raw the commit copy is the last
+    // thing to touch it; under NativeTaa and with temporal off, bloom, the histogram and the
+    // display transform all read it and none copies out of it.
     m_previousSceneColorUse =
-        temporalEnabled ? rhi::TextureUse::CopySource : rhi::TextureUse::ShaderRead;
+        temporalEnabled && !nativeTaa ? rhi::TextureUse::CopySource : rhi::TextureUse::ShaderRead;
     if (temporalEnabled) {
         ++m_temporalFrame;
     }
@@ -1805,123 +1817,6 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera, const Sc
 }
 
 //======================================================================================================================
-GraphTexture Renderer::declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
-                                           GraphTexture history, GraphTexture sceneColor,
-                                           GraphTexture motion) {
-    const uint32_t width = m_width;
-    const uint32_t height = m_height;
-    const GraphTexture diagnostic = graph.createTexture({.width = width,
-                                                         .height = height,
-                                                         .format = kSceneColorFormat,
-                                                         .sampled = true,
-                                                         .storageWrite = true},
-                                                        "lmx.render.temporalDiagnostic");
-
-    ComputePassDesc reprojectDesc;
-    reprojectDesc.shaderTextureReads.push_back(history);
-    reprojectDesc.shaderTextureReads.push_back(sceneColor);
-    reprojectDesc.shaderTextureReads.push_back(motion);
-    reprojectDesc.textureWrites.push_back(diagnostic);
-    graph.addComputePass(
-        "lmx.pass.temporal.reproject", std::move(reprojectDesc),
-        [this, &commands, history, sceneColor, motion, diagnostic, width,
-         height](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
-            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
-            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
-            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
-            const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
-            LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
-            const GraphResult<rhi::Texture*> target = resources.texture(diagnostic);
-            LMX_ASSERT(target.has_value(), target.error().message);
-
-            const TemporalReprojectParams params{.width = width, .height = height};
-            commands.bindComputePipeline(*m_temporalReprojectPipeline);
-            commands.bindTexture(kReprojectHistorySlot, **historyTexture);
-            commands.bindTexture(kReprojectSceneColorSlot, **sceneTexture);
-            commands.bindTexture(kReprojectMotionSlot, **motionTexture);
-            commands.bindStorageTexture(kReprojectDiagnosticSlot, **target, {},
-                                        rhi::StorageAccess::Write);
-            // Clamped: a border texel's reprojected footprint must not fold in the opposite edge.
-            commands.bindSampler(kReprojectSamplerSlot, *m_temporalSampler);
-            commands.bindFrameData(kReprojectParamsSlot, params);
-            commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
-                              divRoundUp(height, kComputeThreadsPerGroup2D), 1);
-        });
-    return nextVersion(diagnostic);
-}
-
-//======================================================================================================================
-// A raster pass rather than the compute one the pass table names: the display target is
-// BGRA8Unorm, which carries no storage-write usage in this RHI, and a fullscreen triangle
-// overwrites every texel of it just as a dispatch would. The target is not an sRGB view, so the
-// shader's encodings reach the bytes unchanged.
-GraphTexture Renderer::declareTemporalDebugView(RenderGraph& graph, rhi::CommandList& commands,
-                                                TemporalDebugView debugView, GraphTexture motion,
-                                                GraphTexture diagnostic, bool readsDiagnostic,
-                                                GraphTexture displayResult) {
-    PassDesc debugDesc;
-    debugDesc.textureReads.push_back(motion);
-    if (readsDiagnostic) {
-        debugDesc.textureReads.push_back(diagnostic);
-    }
-    debugDesc.color = ColorAttachment{
-        .handle = displayResult, .load = LoadOp::Clear, .store = StoreOp::Store, .clearColor = {}};
-    graph.addPass("lmx.pass.temporal.debugView", std::move(debugDesc),
-                  [this, &commands, motion, diagnostic, readsDiagnostic,
-                   debugView](const PassResources& resources) {
-                      const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
-                      LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
-
-                      commands.bindPipeline(*m_temporalDebugViewPipeline);
-                      commands.bindTexture(kDebugViewMotionSlot, **motionTexture);
-                      if (readsDiagnostic) {
-                          const GraphResult<rhi::Texture*> errors = resources.texture(diagnostic);
-                          LMX_ASSERT(errors.has_value(), errors.error().message);
-                          commands.bindTexture(kDebugViewDiagnosticSlot, **errors);
-                      } else {
-                          // A reset frame has no diagnostic to show. Every texel the shader loads
-                          // lies outside this 1x1 fallback, and an out-of-bounds Load answers with
-                          // zeroes -- whose zero alpha is the shader's "nothing to compare", which
-                          // is exactly the frame's state.
-                          commands.bindTexture(kDebugViewDiagnosticSlot, *m_blackBloomFallback);
-                      }
-                      const TemporalDebugViewParams params{
-                          .view = debugView == TemporalDebugView::MotionVectors
-                                      ? kDebugViewMotionVectors
-                                      : kDebugViewReprojectionError};
-                      commands.bindFrameData(kDebugViewParamsSlot, params);
-                      commands.draw(3);
-                  });
-    return nextVersion(displayResult);
-}
-
-//======================================================================================================================
-void Renderer::declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
-                                    GraphTexture sceneColor, GraphTexture history) {
-    const uint32_t width = m_width;
-    const uint32_t height = m_height;
-
-    CopyPassDesc commitDesc;
-    commitDesc.textureSources.push_back(sceneColor);
-    commitDesc.textureDestinations.push_back(history);
-    graph.addCopyPass(
-        "lmx.pass.temporal.commitHistory", std::move(commitDesc),
-        [&commands, sceneColor, history, width, height](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
-            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
-            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
-            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
-
-            const rhi::TextureCopyRegion region{.width = width, .height = height};
-            commands.copyTexture(**sceneTexture, region, **historyTexture, region);
-        });
-    // Nothing else in the frame consumes it -- the consumer is the next frame -- so the export is
-    // what keeps the copy alive through culling.
-    graph.exportTexture(nextVersion(history));
-}
-
-//======================================================================================================================
 rhi::Texture& Renderer::colorTarget() {
     LMX_ASSERT(m_color != nullptr, "Renderer::colorTarget: no color target -- create() failed");
     return *m_color;
@@ -1936,8 +1831,16 @@ rhi::Texture& Renderer::hdrColorTarget() {
 
 //======================================================================================================================
 rhi::Texture& Renderer::depthTarget() {
-    LMX_ASSERT(m_depth != nullptr, "Renderer::depthTarget: no depth target -- create() failed");
-    return *m_depth;
+    LMX_ASSERT(m_temporalResolve != nullptr,
+               "Renderer::depthTarget: no depth target -- create() failed");
+    return m_temporalResolve->depthSlot(m_currentSlot);
+}
+
+//======================================================================================================================
+rhi::Texture* Renderer::historyTarget() {
+    LMX_ASSERT(m_temporalResolve != nullptr,
+               "Renderer::historyTarget: no history -- create() failed");
+    return &m_temporalResolve->colorSlot(m_currentSlot);
 }
 
 } // namespace lmx::render

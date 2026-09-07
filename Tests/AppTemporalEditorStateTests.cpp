@@ -40,44 +40,20 @@ TEST_CASE("onSceneSelected bumps the generation on every call, including a resel
 }
 
 //======================================================================================================================
-TEST_CASE("selecting TemporalLab the first time turns on temporal inputs and the Motion view",
-          "[app]") {
+// Selecting any scene, including TemporalLab, leaves the render settings exactly as the caller set
+// them -- TemporalLab no longer applies a once-only default (spec section 9).
+TEST_CASE("selecting any scene leaves the render settings untouched", "[app]") {
     TemporalEditorState state;
     EditorRenderSettings settings;
-    REQUIRE_FALSE(settings.temporalEnabled);
-
-    onSceneSelected(state, settings, temporalLabId());
-
-    REQUIRE(settings.temporalEnabled);
-    REQUIRE(settings.temporalDebugView == render::TemporalDebugView::MotionVectors);
-    REQUIRE(state.temporalLabDefaultsApplied);
-}
-
-//======================================================================================================================
-TEST_CASE("selecting a non-TemporalLab scene never applies TemporalLab's defaults", "[app]") {
-    TemporalEditorState state;
-    EditorRenderSettings settings;
-
-    onSceneSelected(state, settings, engine::defaultSceneId());
-
-    REQUIRE_FALSE(settings.temporalEnabled);
-    REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);
-    REQUIRE_FALSE(state.temporalLabDefaultsApplied);
-}
-
-//======================================================================================================================
-// The user may turn temporal back off after TemporalLab's first-selection default switched it on;
-// a later reselect of the same scene must not override that choice.
-TEST_CASE("reselecting TemporalLab does not override the user's own later choice", "[app]") {
-    TemporalEditorState state;
-    EditorRenderSettings settings;
-
-    onSceneSelected(state, settings, temporalLabId());
     settings.temporalEnabled = false;
     settings.temporalDebugView = render::TemporalDebugView::Off;
 
-    onSceneSelected(state, settings, engine::defaultSceneId());
     onSceneSelected(state, settings, temporalLabId());
+
+    REQUIRE_FALSE(settings.temporalEnabled);
+    REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);
+
+    onSceneSelected(state, settings, engine::defaultSceneId());
 
     REQUIRE_FALSE(settings.temporalEnabled);
     REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);

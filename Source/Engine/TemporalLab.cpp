@@ -53,6 +53,11 @@ constexpr float kPoleZ = -4.0f;
 constexpr float kPoleSwing = 0.5f;
 constexpr double kPoleSwingSeconds = 2.0;
 constexpr glm::vec3 kInvalidCubePosition{0.0f, 1.0f, 4.0f};
+constexpr glm::vec3 kSignPosition{0.0f, 2.5f, -6.0f};
+constexpr glm::vec2 kSignSize{1.5f, 0.75f};
+constexpr glm::vec3 kSignEmissive{1.0f, 0.8f, 0.3f};
+constexpr double kSignPeriodSeconds = 6.0;
+constexpr float kSignStrengthOn = 4.0f;
 constexpr glm::vec3 kCameraStart{0.0f, 3.0f, 10.0f};
 constexpr glm::vec3 kCameraEnd{2.0f, 3.0f, 8.0f};
 constexpr float kCameraYawDrift = 0.1f;
@@ -134,6 +139,11 @@ float phase(double time, double seconds) {
 //   the scene's control for the motion sentinel -- geometry that must never be reprojected even
 //   though it holds perfectly still.
 //
+//   Emissive sign: a static 1.5x0.75 quad at (0, 2.5, -6) facing +Z, dark grey base colour with an
+//   emissive strength that flashes 0/4 every 3 s (period 6 s, dividing the clip). Its geometry
+//   never moves -- only its emissive strength is animated -- so it is a manual-QA reference for
+//   temporal reconstruction against an exposure-driving light source.
+//
 //   Camera track: an eased there-and-back over 8 s -- out to (2, 3, 8) by t = 4 and home to
 //   (0, 3, 10) by t = 8, so the loop closes without a cut. Position eases by
 //   (1 - cos(2*pi*t/8))/2, giving both endpoints zero velocity; yaw drifts 0.1*sin(2*pi*t/8)
@@ -170,6 +180,16 @@ AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
     const auto sphereMeshIndex = static_cast<uint32_t>(scene->meshes.size());
     scene->meshes.push_back(std::move(*sphereMesh));
 
+    // A flat quad in the mesh's own XZ plane; the sign object rotates it 90 degrees about X so its
+    // +Y face normal becomes +Z, standing it upright to face the camera.
+    auto signMesh = render::createMesh(
+        device, render::fromGeo(makeGrid(kSignSize.x, kSignSize.y, 2, 2)), "TemporalLab.signMesh");
+    if (!signMesh) {
+        return std::unexpected(uploadFailure(std::move(signMesh.error())));
+    }
+    const auto signMeshIndex = static_cast<uint32_t>(scene->meshes.size());
+    scene->meshes.push_back(std::move(*signMesh));
+
     const std::vector<uint8_t> checkerPixels = makeCheckerPixels();
     const BakedMipChain checkerChain =
         bakeMips(checkerPixels, kCheckerSize, kCheckerSize, BakeMode::Srgb);
@@ -186,13 +206,14 @@ AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
     rhi::Texture* checkerTexturePtr = checkerTexture->get();
     scene->textures.push_back(std::move(*checkerTexture));
 
-    const auto addMaterial = [&](const glm::vec3& srgb, float roughness,
-                                 rhi::Texture* diffuse) -> uint32_t {
+    const auto addMaterial = [&](const glm::vec3& srgb, float roughness, rhi::Texture* diffuse,
+                                 const glm::vec3& emissive = glm::vec3(0.0f)) -> uint32_t {
         render::Material material;
         material.albedo = glm::vec4(srgbToLinear(srgb), 1.0f);
         material.roughness = roughness;
         material.metallic = 0.0f;
         material.diffuse = diffuse;
+        material.emissive = emissive;
         const auto index = static_cast<uint32_t>(scene->materials.size());
         scene->materials.push_back(material);
         return index;
@@ -203,6 +224,7 @@ AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
     const uint32_t orbitMaterial = addMaterial(glm::vec3(0.95f, 0.8f, 0.2f), 0.3f, nullptr);
     const uint32_t poleMaterial = addMaterial(glm::vec3(0.9f), 0.6f, nullptr);
     const uint32_t invalidMaterial = addMaterial(glm::vec3(0.5f, 0.15f, 0.6f), 0.5f, nullptr);
+    const uint32_t signMaterial = addMaterial(glm::vec3(0.2f), 0.9f, nullptr, kSignEmissive);
 
     glm::vec3 aabbMin{std::numeric_limits<float>::max()};
     glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
@@ -259,6 +281,17 @@ AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
               invalidMaterial, render::MotionClass::Invalid);
     expandAabb(kInvalidCubePosition, glm::vec3(0.5f));
 
+    // The flashing sign: static geometry (no rigid track), driven only by an EmissiveTrack.
+    const auto signIndex = static_cast<uint32_t>(scene->objects.size());
+    scene->objects.push_back({.name = "temporal-lab emissive sign",
+                              .position = kSignPosition,
+                              .eulerDegrees = glm::vec3(90.0f, 0.0f, 0.0f),
+                              .scale = glm::vec3(1.0f),
+                              .meshIndex = signMeshIndex,
+                              .materialIndex = signMaterial,
+                              .motionClass = render::MotionClass::Rigid});
+    expandAabb(kSignPosition, glm::vec3(kSignSize.x * 0.5f, kSignSize.y * 0.5f, 0.0f));
+
     scene->animation.tracks.push_back(makeTrack(rotatingCube, [](double time) {
         return RigidKey{
             .translation = kRotatingCubePosition,
@@ -281,6 +314,17 @@ AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
                             .scale = poleScale};
         }));
     }
+
+    // The sign alternates off/on strength every half period, dividing the 24 s clip evenly so the
+    // loop closes on a key.
+    EmissiveTrack signTrack;
+    signTrack.objectIndex = signIndex;
+    const double signStepSeconds = kSignPeriodSeconds * 0.5;
+    for (double time = 0.0; time <= kClipDuration; time += signStepSeconds) {
+        const bool on = (signTrack.keys.size() % 2) != 0;
+        signTrack.keys.push_back({.time = time, .strength = on ? kSignStrengthOn : 0.0f});
+    }
+    scene->animation.emissiveTracks.push_back(std::move(signTrack));
 
     scene->animation.cameraTrack.reserve(kKeyCount);
     for (size_t i = 0; i < kKeyCount; ++i) {

@@ -12,7 +12,11 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "Engine/GeometryGenerator.h"
 #include "RHI/RHI.h"
+#include "Render/Camera.h"
+#include "Render/Mesh.h"
+#include "Render/Renderer.h"
 
 #include <glm/glm.hpp>
 
@@ -64,17 +68,28 @@ std::array<uint32_t, kBins> cpuHistogram(std::span<const glm::vec3> pixels, floa
     return bins;
 }
 
+// The two floats Shaders/ExposureResolve.slang and Shaders/ExposureSeed.slang keep in
+// lmx.render.exposureBuffer: what the scene pass multiplies by next, and what it multiplied by on
+// the previous declared temporal frame (M6.2 spec 7).
+struct ExposurePair {
+    float applied = 1.0f;
+    float previous = 1.0f;
+};
+
 //======================================================================================================================
-// Mirrors ExposureResolve.slang's computeExposureResolve, statement for statement.
-float cpuResolveExposure(const std::array<uint32_t, kBins>& bins, float lowPercentile,
-                         float highPercentile, float targetGrey, float evMin, float evMax,
-                         float compensationEv) {
+// Mirrors ExposureResolve.slang's computeExposureResolve, statement for statement -- including the
+// bounded EV step it adapts by, which is why it takes the exposure the frame applied and the two
+// rates alongside spec 9's metering parameters.
+ExposurePair cpuResolveExposure(const std::array<uint32_t, kBins>& bins, float lowPercentile,
+                                float highPercentile, float targetGrey, float evMin, float evMax,
+                                float compensationEv, float applied, float adaptUpStopsPerSecond,
+                                float adaptDownStopsPerSecond, float deltaSeconds) {
     uint64_t totalCount = 0;
     for (uint32_t count : bins) {
         totalCount += count;
     }
     if (totalCount == 0) {
-        return 1.0f;
+        return {.applied = 1.0f, .previous = applied};
     }
 
     const float lowCount = lowPercentile * 0.01f * static_cast<float>(totalCount);
@@ -99,9 +114,19 @@ float cpuResolveExposure(const std::array<uint32_t, kBins>& bins, float lowPerce
 
     const float averageLogLuminance = weight > 0.0f ? weightedLogLuminance / weight : 0.0f;
     const float averageLuminance = std::exp2(averageLogLuminance);
-    float exposure = (targetGrey / std::max(averageLuminance, 1e-6f)) * std::exp2(compensationEv);
-    exposure = std::clamp(exposure, std::exp2(evMin), std::exp2(evMax));
-    return exposure;
+    const float exposure =
+        (targetGrey / std::max(averageLuminance, 1e-6f)) * std::exp2(compensationEv);
+
+    const float rate = exposure > applied ? adaptUpStopsPerSecond : adaptDownStopsPerSecond;
+    float adapted = exposure;
+    if (rate > 0.0f) {
+        const float maxStep = rate * deltaSeconds;
+        const float evApplied = std::log2(std::max(applied, 1e-6f));
+        const float evTarget = std::log2(std::max(exposure, 1e-6f));
+        adapted = std::exp2(evApplied + std::clamp(evTarget - evApplied, -maxStep, maxStep));
+    }
+    return {.applied = std::clamp(adapted, std::exp2(evMin), std::exp2(evMax)),
+            .previous = applied};
 }
 
 //======================================================================================================================
@@ -290,6 +315,10 @@ TEST_CASE("the GPU histogram matches a CPU reference on a known image", "[gpu]")
 // requires: at a known manual EV (folded into kPreExposure here, since the resolve pass never
 // reads EV directly) and known content, the target exposure equals the CPU prediction after
 // exactly one frame's histogram + resolve.
+//
+// Both adaptation rates are zero, which M6.2 spec 7 defines as adaptation disabled: the resolve
+// takes the instantaneous target unchanged, so this stays the same bit-for-bit assertion over the
+// same metering formula it was before there was an EV step at all.
 TEST_CASE("auto exposure converges to the CPU-predicted target after one frame", "[gpu]") {
     constexpr uint32_t kWidth = 8, kHeight = 8;
     constexpr float kPreExposure = 1.0f;    // exp2(manual EV 0)
@@ -298,6 +327,8 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     constexpr float kEvMin = -100.0f, kEvMax = 100.0f; // wide enough the clamp never engages
     constexpr float kCompensationEv = 0.0f;
     constexpr float kLowPercentile = 0.0f, kHighPercentile = 100.0f;
+    constexpr float kAdaptUp = 0.0f, kAdaptDown = 0.0f; // adaptation disabled -- instantaneous
+    constexpr float kDeltaSeconds = 1.0f / 60.0f;       // Renderer.cpp's kExposureFrameSeconds
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -354,11 +385,16 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
         &kPreExposure);
     INFO(errorOf(appliedExposure));
     REQUIRE(appliedExposure.has_value());
-    auto exposure = (*device)->createBuffer({.size = sizeof(float),
+    // The resolve reads the applied exposure it steps from out of index 0 and shifts it into
+    // index 1, so the buffer it writes is the two-float pair and is seeded rather than left
+    // uninitialised.
+    constexpr std::array<float, 2> kInitialPair{kPreExposure, kPreExposure};
+    auto exposure = (*device)->createBuffer({.size = sizeof(kInitialPair),
+                                             .storageRead = true,
                                              .storageWrite = true,
                                              .cpuReadback = true,
                                              .label = "lmx.test.convergenceExposureBuffer"},
-                                            nullptr);
+                                            kInitialPair.data());
     INFO(errorOf(exposure));
     REQUIRE(exposure.has_value());
 
@@ -371,6 +407,7 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     struct ExposureResolveParams {
         float lowPercentile, highPercentile, targetGrey, evMin, evMax, compensationEv;
         float logLuminanceMin, logLuminanceMax;
+        float adaptUp, adaptDown, deltaSeconds, pad;
     };
     const HistogramParams histogramParams{.logLuminanceMin = kLogLuminanceMin,
                                           .logLuminanceMax = kLogLuminanceMax,
@@ -383,7 +420,11 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
                                               .evMax = kEvMax,
                                               .compensationEv = kCompensationEv,
                                               .logLuminanceMin = kLogLuminanceMin,
-                                              .logLuminanceMax = kLogLuminanceMax};
+                                              .logLuminanceMax = kLogLuminanceMax,
+                                              .adaptUp = kAdaptUp,
+                                              .adaptDown = kAdaptDown,
+                                              .deltaSeconds = kDeltaSeconds,
+                                              .pad = 0.0f};
 
     CommandList& commands = (*device)->beginFrame();
     commands.beginCopyPass("lmx.test.convergenceClear");
@@ -405,22 +446,27 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
     commands.beginComputePass("lmx.test.convergenceResolve");
     commands.bindComputePipeline(**resolvePipeline);
     commands.bindStorageBuffer(0, **histogram, StorageAccess::Read);
-    commands.bindStorageBuffer(1, **exposure, StorageAccess::Write);
+    commands.bindStorageBuffer(1, **exposure, StorageAccess::ReadWrite);
     commands.bindFrameData(2, resolveParams);
     commands.dispatch(1, 1, 1);
     commands.endComputePass();
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
-    float gpuExposure = 0.0f;
-    (*exposure)->readback(&gpuExposure, sizeof(gpuExposure));
+    std::array<float, 2> gpuPair{};
+    (*exposure)->readback(gpuPair.data(), sizeof(gpuPair));
+    const float gpuExposure = gpuPair[0];
 
     const std::array<uint32_t, kBins> bins = cpuHistogram(
         std::vector<glm::vec3>(size_t{kWidth} * kHeight, glm::vec3(kSceneLuminance)), kPreExposure);
-    const float expected = cpuResolveExposure(bins, kLowPercentile, kHighPercentile, kTargetGrey,
-                                              kEvMin, kEvMax, kCompensationEv);
+    const ExposurePair expected =
+        cpuResolveExposure(bins, kLowPercentile, kHighPercentile, kTargetGrey, kEvMin, kEvMax,
+                           kCompensationEv, kPreExposure, kAdaptUp, kAdaptDown, kDeltaSeconds);
 
-    REQUIRE(gpuExposure == Catch::Approx(expected).epsilon(1e-5));
+    REQUIRE(gpuExposure == Catch::Approx(expected.applied).epsilon(1e-5));
+    // The pair's second float is what the frame applied, which is what a history recorded at that
+    // exposure has to be corrected by.
+    REQUIRE(gpuPair[1] == Catch::Approx(kPreExposure));
     // The formula's own sanity: a uniform image at luminance 2 metered toward 0.18 grey wants an
     // exposure a little under 0.09 -- the binning's ~0.06-stop quantization is why "a little
     // under" rather than exact.
@@ -456,36 +502,299 @@ TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is appli
     };
 
     const auto runSeed = [&](float manualEv) {
-        // A stale value the buffer might otherwise still hold, standing in for whatever the
-        // previous scene/session/size left in it -- the seed dispatch must overwrite it
+        // A stale pair the buffer might otherwise still hold, standing in for whatever the
+        // previous scene/session/size left in it -- the seed dispatch must overwrite index 0
         // regardless of what it was.
-        constexpr float kStaleValue = 0.1f;
-        auto exposure = (*device)->createBuffer({.size = sizeof(float),
+        constexpr std::array<float, 2> kStalePair{0.1f, 0.2f};
+        auto exposure = (*device)->createBuffer({.size = sizeof(kStalePair),
+                                                 .storageRead = true,
                                                  .storageWrite = true,
                                                  .cpuReadback = true,
                                                  .label = "lmx.test.seedExposureBuffer"},
-                                                &kStaleValue);
+                                                kStalePair.data());
         const ExposureSeedParams params{.exposure = std::exp2(manualEv)};
 
         CommandList& commands = (*device)->beginFrame();
         commands.beginComputePass("lmx.test.exposureSeed");
         commands.bindComputePipeline(**pipeline);
-        commands.bindStorageBuffer(0, **exposure, StorageAccess::Write);
+        commands.bindStorageBuffer(0, **exposure, StorageAccess::ReadWrite);
         commands.bindFrameData(1, params);
         commands.dispatch(1, 1, 1);
         commands.endComputePass();
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
 
-        float result = 0.0f;
-        (*exposure)->readback(&result, sizeof(result));
-        return result;
+        std::array<float, 2> result{};
+        (*exposure)->readback(result.data(), sizeof(result));
+        return result[0];
     };
 
     constexpr float kManualEv = 2.0f;
     constexpr float kExpected = 4.0f; // exp2(2)
 
     REQUIRE(runSeed(kManualEv) == Catch::Approx(kExpected));
+}
+
+//======================================================================================================================
+// The other half of the seed's contract (M6.2 spec 7): it shifts as well as sets. A manual-mode
+// temporal frame declares it every frame precisely so the buffer records both the exposure the
+// scene pass is about to apply and the one it applied last, which is the ratio a reprojected
+// history has to be corrected by. Two dispatches over one buffer is the smallest thing that can
+// tell a shift from an overwrite.
+TEST_CASE("the exposure seed shifts the applied exposure into previous", "[gpu]") {
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/ExposureSeed");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
+                                                      .computeEntry = "computeExposureSeed",
+                                                      .threadsPerThreadgroup = {1, 1, 1},
+                                                      .label = "lmx.test.exposureShiftPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    struct ExposureSeedParams {
+        float exposure;
+    };
+
+    constexpr std::array<float, 2> kInitialPair{0.1f, 0.2f};
+    auto exposure = (*device)->createBuffer({.size = sizeof(kInitialPair),
+                                             .storageRead = true,
+                                             .storageWrite = true,
+                                             .cpuReadback = true,
+                                             .label = "lmx.test.shiftExposureBuffer"},
+                                            kInitialPair.data());
+    INFO(errorOf(exposure));
+    REQUIRE(exposure.has_value());
+
+    const auto seed = [&](float value) {
+        const ExposureSeedParams params{.exposure = value};
+        CommandList& commands = (*device)->beginFrame();
+        commands.beginComputePass("lmx.test.exposureSeedShift");
+        commands.bindComputePipeline(**pipeline);
+        commands.bindStorageBuffer(0, **exposure, StorageAccess::ReadWrite);
+        commands.bindFrameData(1, params);
+        commands.dispatch(1, 1, 1);
+        commands.endComputePass();
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+
+        std::array<float, 2> pair{};
+        (*exposure)->readback(pair.data(), sizeof(pair));
+        return pair;
+    };
+
+    const std::array<float, 2> first = seed(1.0f);
+    REQUIRE(first[0] == Catch::Approx(1.0f));
+    REQUIRE(first[1] == Catch::Approx(kInitialPair[0]));
+
+    const std::array<float, 2> second = seed(4.0f);
+    REQUIRE(second[0] == Catch::Approx(4.0f));
+    REQUIRE(second[1] == Catch::Approx(1.0f));
+}
+
+//======================================================================================================================
+// M6.2 spec 7's adaptation, measured the way the spec states it: a bounded step in stops per
+// second, so settle time follows from step size and rate exactly rather than from an exponential
+// tail nobody can put a frozen tolerance on. The histogram is held fixed, which pins the
+// instantaneous target while the applied exposure walks toward it -- 3 stops away at 3 stops per
+// second is half way (1.5 stops) after 30 frames of the App's fixed 1/60 s step and settled after
+// 60, in either direction. The last case is the rate *selection*: descending picks adaptDown.
+TEST_CASE("auto exposure adapts toward its target at the stated stops per second", "[gpu]") {
+    constexpr uint32_t kWidth = 8, kHeight = 8;
+    constexpr float kSceneLuminance = 2.0f;
+    constexpr float kTargetGrey = 0.18f;
+    constexpr float kEvMin = -100.0f, kEvMax = 100.0f; // wide enough the clamp never engages
+    constexpr float kCompensationEv = 0.0f;
+    constexpr float kLowPercentile = 0.0f, kHighPercentile = 100.0f;
+    constexpr float kDeltaSeconds = 1.0f / 60.0f; // Renderer.cpp's kExposureFrameSeconds
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/ExposureResolve");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
+                                                      .computeEntry = "computeExposureResolve",
+                                                      .threadsPerThreadgroup = {1, 1, 1},
+                                                      .label = "lmx.test.adaptResolvePipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    // A histogram the resolve re-reads unchanged every frame, so the target it meters is one
+    // constant the adaptation walks toward.
+    const std::array<uint32_t, kBins> bins = cpuHistogram(
+        std::vector<glm::vec3>(size_t{kWidth} * kHeight, glm::vec3(kSceneLuminance)), 1.0f);
+    auto histogram = (*device)->createBuffer(
+        {.size = sizeof(bins), .storageRead = true, .label = "lmx.test.adaptHistogramBuffer"},
+        bins.data());
+    INFO(errorOf(histogram));
+    REQUIRE(histogram.has_value());
+
+    struct ExposureResolveParams {
+        float lowPercentile, highPercentile, targetGrey, evMin, evMax, compensationEv;
+        float logLuminanceMin, logLuminanceMax;
+        float adaptUp, adaptDown, deltaSeconds, pad;
+    };
+
+    // The instantaneous target this histogram meters to, taken from the CPU reference with
+    // adaptation disabled -- the same number the rate-0 convergence case above asserts the GPU
+    // produces, so the walk below is measured against a target the GPU agrees on.
+    const float target =
+        cpuResolveExposure(bins, kLowPercentile, kHighPercentile, kTargetGrey, kEvMin, kEvMax,
+                           kCompensationEv, 1.0f, 0.0f, 0.0f, kDeltaSeconds)
+            .applied;
+
+    const auto runFrames = [&](float initialApplied, float adaptUp, float adaptDown,
+                               uint32_t frames) {
+        const std::array<float, 2> initial{initialApplied, initialApplied};
+        auto exposure = (*device)->createBuffer({.size = sizeof(initial),
+                                                 .storageRead = true,
+                                                 .storageWrite = true,
+                                                 .cpuReadback = true,
+                                                 .label = "lmx.test.adaptExposureBuffer"},
+                                                initial.data());
+        INFO(errorOf(exposure));
+        REQUIRE(exposure.has_value());
+
+        const ExposureResolveParams params{.lowPercentile = kLowPercentile,
+                                           .highPercentile = kHighPercentile,
+                                           .targetGrey = kTargetGrey,
+                                           .evMin = kEvMin,
+                                           .evMax = kEvMax,
+                                           .compensationEv = kCompensationEv,
+                                           .logLuminanceMin = kLogLuminanceMin,
+                                           .logLuminanceMax = kLogLuminanceMax,
+                                           .adaptUp = adaptUp,
+                                           .adaptDown = adaptDown,
+                                           .deltaSeconds = kDeltaSeconds,
+                                           .pad = 0.0f};
+
+        for (uint32_t frame = 0; frame < frames; ++frame) {
+            CommandList& commands = (*device)->beginFrame();
+            commands.beginComputePass("lmx.test.adaptResolve");
+            commands.bindComputePipeline(**pipeline);
+            commands.bindStorageBuffer(0, **histogram, StorageAccess::Read);
+            commands.bindStorageBuffer(1, **exposure, StorageAccess::ReadWrite);
+            commands.bindFrameData(2, params);
+            commands.dispatch(1, 1, 1);
+            commands.endComputePass();
+            (*device)->endFrame(nullptr);
+            (*device)->waitIdle();
+        }
+
+        std::array<float, 2> pair{};
+        (*exposure)->readback(pair.data(), sizeof(pair));
+        return pair;
+    };
+
+    constexpr float kRate = 3.0f; // stops per second, in both directions for the walk below
+    constexpr float kThreeStopsBelow = 0.125f;   // exp2(-3)
+    constexpr float kThreeStopsAbove = 8.0f;     // exp2(+3)
+    constexpr float kHalfWayBelow = 0.35355339f; // exp2(-1.5)
+    constexpr float kHalfWayAbove = 2.82842712f; // exp2(+1.5)
+
+    SECTION("rising three stops is half way after thirty frames and settled after sixty") {
+        const std::array<float, 2> halfWay = runFrames(target * kThreeStopsBelow, kRate, kRate, 30);
+        REQUIRE(halfWay[0] == Catch::Approx(target * kHalfWayBelow).epsilon(1e-3));
+
+        const std::array<float, 2> settled = runFrames(target * kThreeStopsBelow, kRate, kRate, 60);
+        REQUIRE(settled[0] == Catch::Approx(target).epsilon(1e-3));
+
+        // The 60th frame is the one that lands on the target, so its `previous` is still the step
+        // below it. One frame further and the pair holds the same exposure twice, which is what a
+        // settled image means for the history correction: a ratio of one.
+        const std::array<float, 2> held = runFrames(target * kThreeStopsBelow, kRate, kRate, 61);
+        REQUIRE(held[0] == Catch::Approx(target).epsilon(1e-3));
+        REQUIRE(held[1] == Catch::Approx(target).epsilon(1e-3));
+    }
+
+    SECTION("falling three stops is half way after thirty frames and settled after sixty") {
+        const std::array<float, 2> halfWay = runFrames(target * kThreeStopsAbove, kRate, kRate, 30);
+        REQUIRE(halfWay[0] == Catch::Approx(target * kHalfWayAbove).epsilon(1e-3));
+
+        const std::array<float, 2> settled = runFrames(target * kThreeStopsAbove, kRate, kRate, 60);
+        REQUIRE(settled[0] == Catch::Approx(target).epsilon(1e-3));
+    }
+
+    SECTION("the direction of the step selects which rate bounds it") {
+        constexpr float kDownRate = 1.5f;
+        // One frame down from three stops above the target moves by kDownRate * dt stops, not by
+        // the rising rate the same call also passes.
+        const std::array<float, 2> stepped =
+            runFrames(target * kThreeStopsAbove, kRate, kDownRate, 1);
+        const float expected = target * std::exp2(3.0f - kDownRate * kDeltaSeconds);
+        REQUIRE(stepped[0] == Catch::Approx(expected).epsilon(1e-4));
+        REQUIRE(stepped[1] == Catch::Approx(target * kThreeStopsAbove).epsilon(1e-4));
+    }
+}
+
+//======================================================================================================================
+// The whole frame this time, not one kernel: a manual-mode temporal frame has to leave the applied
+// exposure and the one before it in the buffer, because that pair is what a temporal resolve
+// corrects a reprojected history by (M6.2 spec 7). The renderer declares the seed on every such
+// frame and exports what it wrote so dead-pass culling cannot drop it -- nothing in the frame
+// itself reads it, its consumer is the next frame -- and the last case here is the other half of
+// that rule: with temporal off, manual mode declares no seed at all, so the buffer is untouched
+// and the pre-temporal frame's declaration stays exact.
+TEST_CASE("a manual temporal frame records the EV edit and the value before it", "[gpu]") {
+    using namespace lmx::render;
+
+    constexpr uint32_t kExtent = 32;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = createMesh(**device, makeCube(), "lmx.test.exposurePairCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kExtent, kExtent, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    Camera camera;
+    camera.position = {0.0f, 0.0f, 5.0f};
+
+    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
+    SceneView view;
+    view.items = items;
+    view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
+    view.temporal.enabled = true;
+
+    const auto renderOneFrame = [&](float exposureEv, bool temporalEnabled) {
+        view.exposureEv = exposureEv;
+        view.temporal.enabled = temporalEnabled;
+        CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+
+        std::array<float, lmx::render::kExposureBufferFloats> pair{};
+        (*renderer)->exposureBuffer().readback(pair.data(), sizeof(pair));
+        return pair;
+    };
+
+    // EV 0 first: the pair records unit exposure over whatever the buffer was created holding.
+    const auto initial = renderOneFrame(0.0f, /*temporalEnabled=*/true);
+    REQUIRE(initial[0] == Catch::Approx(1.0f));
+
+    // The edit. The frame that applies exp2(2) is the frame that has to remember exp2(0).
+    const auto edited = renderOneFrame(2.0f, /*temporalEnabled=*/true);
+    REQUIRE(edited[0] == Catch::Approx(4.0f));
+    REQUIRE(edited[1] == Catch::Approx(1.0f));
+
+    // Temporal off declares no seed, so a further EV edit reaches shading through PassUniforms
+    // alone and leaves the buffer exactly as the last temporal frame left it.
+    const auto untouched = renderOneFrame(-1.0f, /*temporalEnabled=*/false);
+    REQUIRE(untouched[0] == Catch::Approx(4.0f));
+    REQUIRE(untouched[1] == Catch::Approx(1.0f));
 }
 
 //======================================================================================================================

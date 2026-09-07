@@ -262,8 +262,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
     // The startup scene is a selection like any other (spec 9): the generation counter bumps from
-    // its 0-as-unset start, motion has nothing to report yet, and TemporalLab's once-only defaults
-    // fire here exactly as they would on a later switch into it.
+    // its 0-as-unset start, motion has nothing to report yet.
     self->m_activeScene->resetMotion();
     onSceneSelected(self->m_temporalState, self->m_settings, initialScene);
 
@@ -595,11 +594,14 @@ render::SceneView EditorShell::sceneView() {
     view.exposureEvMin = m_settings.exposureEvMin;
     view.exposureEvMax = m_settings.exposureEvMax;
     view.exposureCompensationEv = m_settings.exposureCompensationEv;
+    view.exposureAdaptUpStopsPerSecond = m_settings.exposureAdaptUpStopsPerSecond;
+    view.exposureAdaptDownStopsPerSecond = m_settings.exposureAdaptDownStopsPerSecond;
     view.bloomEnabled = m_settings.bloomEnabled;
     view.bloomThreshold = m_settings.bloomThreshold;
     view.bloomIntensity = m_settings.bloomIntensity;
     view.temporal.enabled = m_settings.temporalEnabled;
     view.temporal.jitterEnabled = m_settings.jitterEnabled;
+    view.temporal.reconstruction = m_settings.reconstruction;
     view.temporal.debugView = m_settings.temporalDebugView;
     view.temporal.sceneGeneration = m_temporalState.sceneGeneration;
     // Consumed here rather than left for main.cpp: a cut is a one-shot camera event, not a render
@@ -623,7 +625,7 @@ void EditorShell::advanceFrameAnimation() {
 
     engine::Scene& scene = *m_activeScene;
     const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
-    const bool hasAnyTrack = !scene.animation.tracks.empty() || hasCameraTrack;
+    const bool hasAnyTrack = engine::hasAnimationTracks(scene.animation);
 
     if (m_settings.animationPlaying && hasAnyTrack) {
         scene.advanceAnimation(kFixedStep);

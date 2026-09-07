@@ -10,6 +10,7 @@
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
+#include "Render/TemporalResolve.h"
 
 #include <glm/glm.hpp>
 
@@ -84,15 +85,6 @@ enum class ShadowFilter {
     PCSS, ///< Contact-hardening percentage-closer soft shadows.
 };
 
-/// What the temporal passes draw into the display target instead of the frame's own picture. Off is
-/// the shipped image; the other two overwrite it with a diagnostic and are meant to be read, not
-/// looked at.
-enum class TemporalDebugView : uint8_t {
-    Off,              ///< The display transform's own output reaches the viewport unchanged.
-    MotionVectors,    ///< Motion recentred on grey, with the invalid sentinel drawn magenta.
-    ReprojectionError ///< The reprojected history's difference from this frame's scene colour.
-};
-
 /// The frame's temporal opt-in, in the terms the caller owns: what is on, what changed, and which
 /// diagnostic to draw. Everything the renderer derives from these -- the jitter sample, the history
 /// reset reason, whether the reprojection pass may run -- is derived per frame and never set here.
@@ -110,6 +102,9 @@ struct TemporalSettings {
     /// Monotonic counter the scene bumps on any content change. A different generation resets the
     /// history, because the pixels it holds describe other geometry.
     uint64_t sceneGeneration = 0;
+    /// Which reconstruction the frame runs. Both modes declare the same inputs and both leave a
+    /// real frame in the colour slot, so switching between them is not a history reset.
+    ReconstructionMode reconstruction = ReconstructionMode::Raw;
 };
 
 /// What the last declared frame decided about its history, for the editor to display and a test to
@@ -127,7 +122,19 @@ struct TemporalStatus {
     /// reset reason. A frame with temporal off derives a reason like any other but reprojects
     /// nothing, so it reports false whatever that reason was.
     bool historyValid = false;
-    uint64_t historyBytes = 0; ///< Bytes the history texture holds; the allocation is permanent.
+    /// Bytes both colour history slots hold; the allocation is permanent.
+    uint64_t historyBytes = 0;
+    /// Bytes both depth slots hold, on historyBytes' terms.
+    uint64_t depthHistoryBytes = 0;
+    /// Which reconstruction the last declared frame ran. A frame with temporal off reports the
+    /// mode it was given, which nothing acted on.
+    ReconstructionMode reconstruction = ReconstructionMode::Raw;
+    /// Declared temporal frames since the last non-None reset reason: 1 on the reset frame itself,
+    /// saturating at 65535. A frame with temporal off resets it to 0, because the history it would
+    /// have counted is not the one the next temporal frame will find.
+    uint32_t historyAge = 0;
+    /// Whether historyAge has reached kTemporalWarmupFrames, so the accumulation is converged.
+    bool warmupComplete = false;
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
@@ -190,6 +197,16 @@ struct SceneView {
     float exposureEvMin = -8.0f;         ///< Clamp on the resolved exposure, in stops.
     float exposureEvMax = 8.0f;          ///< Clamp on the resolved exposure, in stops.
     float exposureCompensationEv = 0.0f; ///< Extra stops applied by metering, before the clamp.
+    /// How fast auto exposure may brighten, in stops per second. The resolve steps the applied
+    /// exposure toward the metered target by at most this much per frame rather than snapping to
+    /// it, which is what turns a lighting change into a settle a temporal history can follow. Zero
+    /// disables adaptation in this direction and reproduces the instantaneous behaviour bit for
+    /// bit. Only meaningful when autoExposureEnabled is true; manual exposure applies exposureEv
+    /// directly.
+    float exposureAdaptUpStopsPerSecond = 3.0f;
+    /// How fast auto exposure may darken, in stops per second, on exposureAdaptUpStopsPerSecond's
+    /// terms. Slower than brightening by default, which is the asymmetry the eye expects.
+    float exposureAdaptDownStopsPerSecond = 1.5f;
 
     /// Bloom (spec 10): threshold/prefilter on pre-exposed luminance, a downsample/upsample chain,
     /// composited before the display transform. Enabled by default, identically in the editor and
@@ -246,6 +263,15 @@ void registerUniformLayoutsForCapture();
 constexpr rhi::Format kSceneColorFormat = rhi::Format::RGBA16Float;
 constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm; ///< Display-encoded target format.
 
+/// Floats in the persistent exposure buffer: `{ applied, previous }`. `applied` is what the scene
+/// pass multiplies by this frame; `previous` is what it multiplied by on the previous declared
+/// temporal frame. The buffer is the single source of both, in manual and auto mode alike, so a
+/// temporal resolve correcting a history for the exposure it was recorded at never needs a
+/// CPU-remembered value that could disagree with what the GPU actually applied across a mode
+/// switch. Shaders/ExposureSeed.slang and Shaders/ExposureResolve.slang write the pair;
+/// Shaders/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
+constexpr uint32_t kExposureBufferFloats = 2;
+
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
 class Renderer {
 public:
@@ -292,11 +318,14 @@ public:
     /// itself never touches it from outside declarePasses.
     rhi::Texture& hdrColorTarget();
 
-    /// The frame's depth buffer, D32Float and reversed (near = 1, falling toward 0 with distance).
-    /// Held past the scene pass and sampled rather than discarded, so a caller can invert a texel
-    /// back to a view-space distance as z_view = -nearZ / d -- which is what pins the projection's
-    /// convention against real geometry. Barrier it to ShaderRead before sampling: render()
-    /// declares no read of it, so the graph has emitted no transition.
+    /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
+    /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
+    /// invert a texel back to a view-space distance as z_view = -nearZ / d -- which is what pins
+    /// the projection's convention against real geometry. Barrier it to ShaderRead before sampling:
+    /// render() declares no read of it, so the graph has emitted no transition.
+    ///
+    /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
+    /// declared rendered into; a frame with temporal off renders into slot 0.
     rhi::Texture& depthTarget();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it
@@ -308,10 +337,17 @@ public:
     /// resize().
     rhi::Texture* motionTarget() { return m_motion.get(); }
 
-    /// The colour history the temporal passes reproject, in kSceneColorFormat. Borrowed on
-    /// motionTarget()'s terms: allocated with the scene targets, replaced on resize(), and held
-    /// whether or not any frame enables temporal.
-    rhi::Texture* historyTarget() { return m_historyColor.get(); }
+    /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
+    /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
+    /// Borrowed on motionTarget()'s terms; a frame with temporal off leaves slot 0 untouched and
+    /// this reports it anyway.
+    rhi::Texture* historyTarget();
+
+    /// The persistent kExposureBufferFloats pair the frame's exposure passes keep. Created with
+    /// the renderer and never replaced, so it is never null. Readable from the CPU only when
+    /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
+    /// reads it back, which is the whole point of keeping the feedback GPU-resident.
+    rhi::Buffer& exposureBuffer() { return *m_exposureBuffer; }
 
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
@@ -333,34 +369,13 @@ private:
     Renderer(rhi::Device& device, bool cpuReadback)
         : m_device(device), m_transientPool(device), m_cpuReadback(cpuReadback) {}
 
-    // Creates the motion and history targets at the current extent, replacing any pair already
-    // held. Called from resize() -- and so from create(), which resizes once -- so the two exist
-    // for every frame whether or not it declares the temporal path.
+    // Creates the motion and reactive attachments at the current extent, replacing any pair
+    // already held. Called from resize() -- and so from create(), which resizes once -- so both
+    // exist for every frame whether or not it declares the temporal path.
     //
     // Its own function rather than resize()'s body because the two allocations answer to
-    // kMotionFormat and the history's copy-destination usage rather than to the scene targets'.
+    // kMotionFormat and kReactiveFormat rather than to the scene targets'.
     rhi::Result<void> createTemporalTargets();
-
-    /// Declares the reprojection diagnostic over `history`, `sceneColor` and `motion` and answers
-    /// with the version of the transient it writes. Only a caller holding valid history may
-    /// declare it; the pass is culled unless a debug view consumes what it produces.
-    GraphTexture declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
-                                     GraphTexture history, GraphTexture sceneColor,
-                                     GraphTexture motion);
-
-    /// Declares the debug view over the display version `displayResult`, answering with the
-    /// version it produces. `diagnostic` is read only when `readsDiagnostic`; otherwise the pass
-    /// binds the renderer's zero fallback, which is what a frame with no history has to show.
-    GraphTexture declareTemporalDebugView(RenderGraph& graph, rhi::CommandList& commands,
-                                          TemporalDebugView debugView, GraphTexture motion,
-                                          GraphTexture diagnostic, bool readsDiagnostic,
-                                          GraphTexture displayResult);
-
-    /// Declares the copy that makes `sceneColor` the next frame's history, and exports the version
-    /// it produces so the pass survives culling -- its consumer is the next frame, which no sink
-    /// in this one reaches.
-    void declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
-                              GraphTexture sceneColor, GraphTexture history);
 
     rhi::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
@@ -387,8 +402,6 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_temporalReprojectLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_temporalDebugViewLibrary;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
@@ -407,8 +420,6 @@ private:
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineMotion;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAutoMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_temporalDebugViewPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_temporalReprojectPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;
@@ -419,14 +430,17 @@ private:
     // the two always share an extent and are replaced together by resize().
     std::unique_ptr<rhi::Texture> m_hdrColor;
     std::unique_ptr<rhi::Texture> m_color;
-    std::unique_ptr<rhi::Texture> m_depth;
     std::unique_ptr<rhi::Texture> m_shadowMap;
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
     // flight hold in their residency sets, and the caller's idle guarantee covers resize() alone.
     std::unique_ptr<rhi::Texture> m_motion;
-    std::unique_ptr<rhi::Texture> m_historyColor;
+    std::unique_ptr<rhi::Texture> m_reactive;
+    // The reconstruction stage, which owns both history pairs -- the depth the scene pass renders
+    // into included -- and every pass that reads or writes them. Created with the renderer and
+    // resized alongside the scene targets, so its slots always share their extent.
+    std::unique_ptr<TemporalResolve> m_temporalResolve;
     // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
     // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
     // every entry point the file's whole global set), so an empty slot has to hold something that
@@ -451,12 +465,6 @@ private:
     std::unique_ptr<rhi::Sampler> m_linearSampler;
     std::unique_ptr<rhi::Sampler> m_shadowSampler;
     std::unique_ptr<rhi::Sampler> m_iblSampler;
-    // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
-    // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold
-    // the opposite edge's texels into that fetch and report a difference that is an artefact of
-    // the addressing rather than of the motion. Its own sampler rather than the IBL one, whose
-    // clamping exists for the DFG table's domain and would tie the two to one another.
-    std::unique_ptr<rhi::Sampler> m_temporalSampler;
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -467,8 +475,15 @@ private:
     // draws a debug view) and by copying out of the scene colour, and the next frame's first
     // access has to be ordered behind whichever of those actually happened.
     rhi::TextureUse m_previousMotionUse = rhi::TextureUse::RenderTarget;
+    // The reactive attachment is written by every temporal frame and read only by the resolve, so
+    // its terminal use is what the frame's mode decided rather than a constant.
+    rhi::TextureUse m_previousReactiveUse = rhi::TextureUse::RenderTarget;
     rhi::TextureUse m_previousSceneColorUse = rhi::TextureUse::ShaderRead;
     uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
+    // The history slot the frame just declared used, which is what depthTarget() and
+    // historyTarget() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
+    // rather than recomputed because m_temporalFrame advances past it before declarePasses returns.
+    uint32_t m_currentSlot = 0;
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
     uint32_t m_width = 0;

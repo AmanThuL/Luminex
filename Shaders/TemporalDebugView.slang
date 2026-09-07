@@ -1,20 +1,42 @@
-// The temporal debug views (spec 6), drawn over the finished display image as a fullscreen pass.
-// Both encodings are meant to be read back and compared, not looked at: values land in the display
-// target unencoded, because this pass replaces the display transform's output rather than feeding
-// it.
+// The temporal debug views (M6.2 spec 8), drawn over the finished display image as a fullscreen
+// pass. Most encodings are meant to be read back and compared, not looked at: values land in the
+// display target unencoded, because this pass replaces the display transform's output rather than
+// feeding it. The one exception is ReprojectedHistory, which is a colour signal and therefore goes
+// through the same tone map and transfer the display pass applied, so it can be held beside the
+// picture it came from.
 //
-// Slots: textures 0 motion, 1 reprojection diagnostic; buffer 0 params.
+// Slots: textures 0 motion, 1 reprojection diagnostic, 2 rejection mask, 3 reprojected history,
+// 4 resolved colour; buffer 0 params.
+import Encode;
 import Motion;
+import Tonemap;
 
 struct TemporalDebugViewParams
 {
-    uint view; // kViewMotionVectors or kViewReprojectionError
+    uint view; // One of the kView* selectors below.
 };
 
-// Mirrors Source/Render/Renderer.h's TemporalDebugView, whose Off never reaches this shader --
-// the pass is not declared at all in that mode.
+// Mirrors Source/Render/TemporalResolve.h's TemporalDebugView, whose Off never reaches this shader
+// -- the pass is not declared at all in that mode.
 static const uint kViewMotionVectors = 1u;
 static const uint kViewReprojectionError = 2u;
+static const uint kViewReprojectedHistory = 3u;
+static const uint kViewRejectionMask = 4u;
+static const uint kViewBlendWeight = 5u;
+static const uint kViewHistoryAge = 6u;
+
+// Mirrors Shaders/TemporalResolve.slang's reason codes, which the rejection mask stores as
+// R = code / 255 with kClippedBit set alongside.
+static const uint kReasonNone = 0u;
+static const uint kReasonOffScreen = 1u;
+static const uint kReasonInvalid = 2u;
+static const uint kReasonDisoccluded = 3u;
+static const uint kReasonReactive = 4u;
+static const uint kClippedBit = 0x80u;
+
+// One jitter period, mirroring Source/Render/TemporalResolve.h's kTemporalWarmupFrames: the age at
+// which the history is considered warm, and so the value HistoryAge shows as white.
+static const float kTemporalWarmupFrames = 16.0;
 
 // Motion is a fraction of the extent and would be invisible unscaled; 8 puts an eighth of the
 // screen at full range and keeps the encoding invertible by a reader.
@@ -29,6 +51,15 @@ Texture2D<float2> gMotion : register(t0); // → MSL [[texture(0)]]
 
 [[vk::binding(1, 0)]]
 Texture2D<float4> gDiagnostic : register(t1); // → MSL [[texture(1)]]
+
+[[vk::binding(2, 0)]]
+Texture2D<float4> gRejection : register(t2); // → MSL [[texture(2)]]
+
+[[vk::binding(3, 0)]]
+Texture2D<float4> gReprojected : register(t3); // → MSL [[texture(3)]]
+
+[[vk::binding(4, 0)]]
+Texture2D<float4> gResolved : register(t4); // → MSL [[texture(4)]]
 
 [[vk::binding(0, 0)]]
 ConstantBuffer<TemporalDebugViewParams> gParams : register(b0); // → MSL [[buffer(0)]]
@@ -48,6 +79,29 @@ VSOutput vertexMain(uint vid: SV_VertexID)
     return o;
 }
 
+// Flat colours rather than a ramp: the mask is a set of named states, and a reader picking a pixel
+// out of a screenshot has to be able to say which one it is without a legend of near neighbours.
+float3 rejectionColor(uint reason)
+{
+    if (reason == kReasonOffScreen)
+    {
+        return float3(0.0, 0.0, 1.0);
+    }
+    if (reason == kReasonInvalid)
+    {
+        return float3(1.0, 0.0, 1.0);
+    }
+    if (reason == kReasonDisoccluded)
+    {
+        return float3(1.0, 0.0, 0.0);
+    }
+    if (reason == kReasonReactive)
+    {
+        return float3(1.0, 1.0, 0.0);
+    }
+    return float3(0.0, 0.0, 0.0);
+}
+
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
@@ -60,6 +114,44 @@ float4 fragmentMain(VSOutput input): SV_Target
             return float4(1.0, 0.0, 1.0, 1.0);
         }
         return float4(0.5 + motion * kMotionScale, 0.5, 1.0);
+    }
+
+    if (gParams.view == kViewReprojectedHistory)
+    {
+        float4 reprojected = gReprojected.Load(coord);
+        if (reprojected.a == 0.0)
+        {
+            // Rejected: there is no history to show, which is itself the thing to see.
+            return float4(0.0, 0.0, 1.0, 1.0);
+        }
+        return float4(linearToSrgb(pbrNeutralToneMap(reprojected.rgb)), 1.0);
+    }
+
+    if (gParams.view == kViewRejectionMask)
+    {
+        float4 rejection = gRejection.Load(coord);
+        uint code = uint(round(rejection.r * 255.0));
+        float3 color = rejectionColor(code & ~kClippedBit);
+        if ((code & kClippedBit) != 0u)
+        {
+            color.g += 0.5;
+        }
+        return float4(color, 1.0);
+    }
+
+    if (gParams.view == kViewBlendWeight)
+    {
+        float weight = gRejection.Load(coord).g;
+        return float4(weight, weight, weight, 1.0);
+    }
+
+    if (gParams.view == kViewHistoryAge)
+    {
+        // The age lives in the resolved colour's alpha, so white means the pixel has accumulated a
+        // full jitter period and the picture there is as converged as it is going to get.
+        float age = floor(gResolved.Load(coord).a);
+        float grey = min(age / kTemporalWarmupFrames, 1.0);
+        return float4(grey, grey, grey, 1.0);
     }
 
     float4 diagnostic = gDiagnostic.Load(coord);

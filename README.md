@@ -21,12 +21,13 @@ inspectable codebase.
 | Area | Current implementation |
 |---|---|
 | GPU backend | Native Metal 4 through metal-cpp; three frames in flight, argument tables, explicit residency, shared-event pacing, and per-pass GPU timing |
-| Frame | A validating render graph schedules raster, compute and copy passes — depth-only shadow → scene and sky → exposure and bloom → a neutral display transform → docked ImGui viewport — deriving its own barriers from declared resource uses, culling passes no result depends on, and pooling transient targets across non-overlapping lifetimes |
+| Frame | A validating render graph schedules raster, compute and copy passes — depth-only shadow → scene and sky → temporal resolve → bloom → a neutral display transform → docked ImGui viewport — with exposure metered from raw scene color, deriving its own barriers from declared resource uses, culling passes no result depends on, and pooling transient targets across non-overlapping lifetimes |
 | Materials | Full glTF metallic-roughness inputs (base color, metallic-roughness, occlusion, emissive, normal) shaded with a GGX BRDF and diffuse/specular image-based lighting |
 | Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
 | Content | Deterministically converted Crytek Sponza, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
 | Motion | Camera and rigid-object motion vectors with an explicit invalid-motion sentinel, and a persistent, reset-aware temporal history feeding diagnostic reprojection views |
+| Temporal stability | Native-resolution temporal anti-aliasing with disocclusion rejection and neighbourhood clipping, plus adaptive exposure that corrects its own history for the brightness it was recorded at |
 | Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, stable rolling per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
 | Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, a deterministic motion lab exercising rigid, orbiting and invalid-flagged motion, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
@@ -46,7 +47,9 @@ flowchart TB
     end
     subgraph Frame["Render graph, declared and validated per frame"]
         direction LR
-        Shadow["Shadow pass"] -->|shadow map| Scene2["Scene + sky pass"] -->|HDR color| Post["Exposure + bloom<br/>compute passes"] --> Display["Display transform"]
+        Shadow["Shadow pass"] -->|shadow map| Scene2["Scene + sky pass"] -->|HDR color + motion + depth| Temporal["Native TAA resolve"] --> Bloom["Bloom"] --> Display["Display transform"]
+        Scene2 -->|raw HDR color| Exposure["Exposure feedback"]
+        Temporal --> Display
     end
     subgraph Presentation
         direction LR
@@ -142,7 +145,7 @@ command recording, synchronization, residency and swapchain contracts; rendering
 
 ## What's next
 
-- A temporal reconstruction path over the existing scene-linear frame
+- Temporal upscaling and dynamic resolution over the native TAA path
 - Cascaded shadows, atmosphere and transparent surfaces on the shared lighting model
 - GPU scene data, visibility culling and indirect submission after the frame contract is stable
 - A second RHI backend once the render graph's semantics are frozen for portability

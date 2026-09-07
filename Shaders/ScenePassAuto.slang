@@ -188,7 +188,30 @@ VSOutput shadeVertex(uint vid)
     return o;
 }
 
-float4 shadeSurface(VSOutput input)
+// The reactive weight the temporal resolve reads out of `lmx.render.reactive` (M6.2 spec 5): how
+// much of this pixel refuses to accumulate. Emissive radiance is the one signal in this shader that
+// can appear or vanish without any surface moving, so a history blended over it would fade the
+// change in instead of showing it. kReactiveEmissiveScale mirrors Source/Render/TemporalResolve.h
+// and is the pre-exposed luminance that maps to a fully reactive pixel.
+static const float kReactiveEmissiveScale = 4.0;
+static const float3 kLuminanceWeights = float3(0.2126, 0.7152, 0.0722);
+
+float reactiveFromEmissive(float3 preExposedEmissive)
+{
+    return saturate(dot(preExposedEmissive, kLuminanceWeights) / kReactiveEmissiveScale);
+}
+
+// What one shaded fragment produces: the pre-exposed colour every entry point writes, and the
+// pre-exposed emissive term inside it, which only the motion entry point needs. Splitting the
+// value out rather than shading twice is what keeps fragmentMain's compiled output identical to
+// what it was before a reactive attachment existed.
+struct SurfaceShading
+{
+    float4 color;
+    float3 emissive;
+};
+
+SurfaceShading shadeSurfaceDetailed(VSOutput input)
 {
     // sRGB sampling decodes base colour before lighting.
     float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * gObject.albedo;
@@ -245,12 +268,16 @@ float4 shadeSurface(VSOutput input)
 
     // Emissive is radiance the surface produces rather than reflects, so it takes no lighting term
     // and is added last; pre-exposure then applies to the whole sum exactly once.
-    litColor += gObject.emissive * gEmissive.Sample(gLinearSampler, input.uv).rgb;
+    float3 emissiveTerm = gObject.emissive * gEmissive.Sample(gLinearSampler, input.uv).rgb;
+    litColor += emissiveTerm;
 
     // Pre-exposed, still linear: the display transform is the only thing that leaves this space.
     // The one difference from ScenePass.slang: the multiplier comes from the persistent exposure
     // buffer (spec 9), not PassUniforms.preExposure.
-    return float4(litColor * gExposureOverride[0], baseColorSample.a);
+    SurfaceShading shaded;
+    shaded.color = float4(litColor * gExposureOverride[0], baseColorSample.a);
+    shaded.emissive = emissiveTerm * gExposureOverride[0];
+    return shaded;
 }
 
 [shader("vertex")]
@@ -262,7 +289,7 @@ VSOutput vertexMain(uint vid: SV_VertexID)
 [shader("fragment")]
 float4 fragmentMain(VSOutput input): SV_Target
 {
-    return shadeSurface(input);
+    return shadeSurfaceDetailed(input).color;
 }
 
 // The motion variant of the pair above: the same shading, plus the unjittered clip pair the
@@ -280,6 +307,7 @@ struct MotionFSOutput
 {
     float4 color : SV_Target0;
     float2 motion : SV_Target1;
+    float reactive : SV_Target2;
 };
 
 [shader("vertex")]
@@ -298,7 +326,9 @@ MotionVSOutput vertexMainMotion(uint vid: SV_VertexID)
 MotionFSOutput fragmentMainMotion(MotionVSOutput input)
 {
     MotionFSOutput o;
-    o.color = shadeSurface(input.base);
+    SurfaceShading shaded = shadeSurfaceDetailed(input.base);
+    o.color = shaded.color;
+    o.reactive = reactiveFromEmissive(shaded.emissive);
     o.motion = (gObject.flags & kFlagMotionInvalid) != 0u
                    ? kMotionInvalid
                    : motionFromClip(input.clipCurrent, input.clipPrevious);

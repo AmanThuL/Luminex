@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneAnimation.cpp
-/// @brief Implements rigid and camera track sampling.
+/// @brief Implements rigid, camera, and emissive track sampling and playback queries.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/SceneAnimation.h"
@@ -47,6 +47,12 @@ KeySpan bracket(std::span<const Key> keys, double time) {
 } // namespace
 
 //======================================================================================================================
+bool hasAnimationTracks(const SceneAnimation& animation) {
+    return !animation.tracks.empty() || !animation.cameraTrack.empty() ||
+           !animation.emissiveTracks.empty();
+}
+
+//======================================================================================================================
 glm::mat4 sampleRigidTrack(const RigidTrack& track, double time) {
     const std::span<const RigidKey> keys(track.keys);
     const KeySpan span = bracket(keys, time);
@@ -78,6 +84,17 @@ CameraKey sampleCameraTrack(std::span<const CameraKey> keys, double time) {
             .position = glm::mix(earlier.position, later.position, weight),
             .yaw = glm::mix(earlier.yaw, later.yaw, weight),
             .pitch = glm::mix(earlier.pitch, later.pitch, weight)};
+}
+
+//======================================================================================================================
+float sampleEmissiveTrack(const EmissiveTrack& track, double time) {
+    LMX_ASSERT(!track.keys.empty(), "sampling an emissive track requires at least one key");
+    const std::span<const EmissiveKey> keys(track.keys);
+    size_t index = 0;
+    while (index + 1 < keys.size() && keys[index + 1].time <= time) {
+        ++index;
+    }
+    return keys[index].strength;
 }
 
 } // namespace lmx::engine

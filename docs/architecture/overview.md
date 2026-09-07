@@ -22,8 +22,8 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   path instead of being copied through the frame-data arena. `RenderPassDesc` and
   `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
   beyond the primary (`ExtraColorTarget`/`extraColorFormats`), validated for colour-renderable
-  formats and matching extent; `RG16Float` is colour-renderable and CPU-readable, which is what a
-  motion-vector target needs.
+  formats and matching extent; `RG16Float` and `R8Unorm` are colour-renderable and CPU-readable,
+  which is what motion-vector and reactive-weight targets need.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables, a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
@@ -44,9 +44,17 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   record as deterministic text. Render also owns camera temporal history and the GPU-resident
   motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
-  `Renderer`-created `lmx.render.motion`/`lmx.render.historyColor` textures the temporal passes
-  declare when `SceneView::temporal.enabled` is set. Those two are allocated with the scene targets
-  and recreated by `resize()` alongside them, so the allocation is permanent rather than made on
+  `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
+  when `SceneView::temporal.enabled` is set. The `TemporalResolve` reconstruction stage (ADR 0014)
+  owns two ping-ponged colour/depth slot pairs (`lmx.render.historyColor0/1`,
+  `lmx.render.sceneDepth0/1`) and the pipelines that reproject, reject, clip and blend a native
+  `NativeTaa` frame or commit a raw copy under `Raw`; every temporal frame's colour slot holds that
+  frame's output in either mode, which is what makes a mode switch not a reset. Colour imports
+  record their final consumer's access: `ShaderRead` after NativeTaa or Raw's HistoryAge view,
+  otherwise `CopyDestination` for a Raw commit; the previous slot changes only when read
+  ([ADR 0015](../decisions/0015-temporal-slot-terminal-access.md)). These targets are
+  allocated with the scene targets and recreated by `resize()` alongside them, so the allocation is
+  permanent rather than made on
   first enable.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
