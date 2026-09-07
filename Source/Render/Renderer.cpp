@@ -1031,14 +1031,11 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     m_width = width;
     m_height = height;
 
-    // The temporal targets exist only once a frame has declared the temporal path; once they do,
-    // they follow the scene targets' extent, under the same caller idle guarantee this function
-    // already requires. The history's contents are dropped with the old texture, which the extent
-    // change makes a reset anyway (HistoryResetReason::ExtentChanged).
-    if (m_motion != nullptr || m_historyColor != nullptr) {
-        if (auto targets = createTemporalTargets(); !targets) {
-            return std::unexpected(targets.error());
-        }
+    // The temporal targets follow the scene targets' extent, under the same caller idle guarantee
+    // this function already requires. The history's contents are dropped with the old texture,
+    // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged).
+    if (auto targets = createTemporalTargets(); !targets) {
+        return std::unexpected(targets.error());
     }
     return {};
 }
@@ -1081,7 +1078,7 @@ rhi::Result<void> Renderer::createTemporalTargets() {
 //======================================================================================================================
 GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& commands,
                                      const Camera& camera, const SceneView& view) {
-    LMX_ASSERT(m_hdrColor && m_color && m_depth && m_shadowMap,
+    LMX_ASSERT(m_hdrColor && m_color && m_depth && m_shadowMap && m_motion && m_historyColor,
                "Renderer::declarePasses: targets are missing -- create() failed");
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
                "SceneView::boundingSphere needs a positive radius -- it is what the shadow "
@@ -1097,12 +1094,6 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     }
 
     const bool temporalEnabled = view.temporal.enabled;
-    if (temporalEnabled && m_motion == nullptr) {
-        // First frame the caller asks for temporal: the two targets are created here rather than
-        // in create(), so a frame that never enables it never pays for them.
-        const auto targets = createTemporalTargets();
-        LMX_ASSERT(targets.has_value(), targets.error().message);
-    }
 
     const FrameExtents extents{.renderWidth = m_width,
                                .renderHeight = m_height,
@@ -1769,8 +1760,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     }
     m_temporalStatus.jitterIndex = m_temporalFrame % kJitterSequenceLength;
     m_temporalStatus.historyValid = historyValid;
-    m_temporalStatus.historyBytes =
-        m_historyColor != nullptr ? uint64_t{m_width} * m_height * kSceneColorBytesPerTexel : 0;
+    m_temporalStatus.historyBytes = uint64_t{m_width} * m_height * kSceneColorBytesPerTexel;
     m_previousSignature = signature;
     m_previousCamera = cameraState;
     // What this frame's last access to each of the two was, for the next frame's imports to state.

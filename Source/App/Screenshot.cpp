@@ -159,6 +159,9 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
             activeScene->animate(activeScene->animationTime);
         }
         if (hasCameraTrack) {
+            // On frame 0 this re-derives the pose `initialCamera` already holds (the track's first
+            // key), which is redundant and deliberately harmless -- one unconditional sample is
+            // clearer than a special case that must stay in step with the authored first key.
             const engine::CameraKey pose = engine::sampleCameraTrack(
                 activeScene->animation.cameraTrack, activeScene->animationTime);
             camera.position = pose.position;

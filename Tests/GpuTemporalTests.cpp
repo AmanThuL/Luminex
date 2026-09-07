@@ -1,5 +1,6 @@
 #include "GpuTestSupport.h"
 
+#include "Engine/GeometryGenerator.h"
 #include "Engine/Scene.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
@@ -123,6 +124,30 @@ void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& cam
 }
 
 //======================================================================================================================
+// The same frame without the drain: exactly what App/main.cpp submits every frame, so a temporal
+// resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
+// the shipped loop never performs.
+void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
+                         const SceneView& view) {
+    lmx::rhi::CommandList& commands = device.beginFrame();
+    renderer.render(commands, camera, view, /*barrierForSampling=*/false);
+    device.endFrame(nullptr);
+}
+
+//======================================================================================================================
+// The world-space direction the ray through pixel (x, y)'s centre travels in, for a square render
+// extent. It stands in for the sky sphere's local vertex position: the sphere is drawn centred on
+// the eye, so the view transform cancels the translation and only the direction reaches clip space
+// -- which also makes the oracle independent of how far along the ray the point is taken.
+glm::vec3 skyDirectionAtPixel(const Camera& camera, uint32_t x, uint32_t y) {
+    const float ndcX = (static_cast<float>(x) + 0.5f) / static_cast<float>(kSize) * 2.0f - 1.0f;
+    const float ndcY = 1.0f - (static_cast<float>(y) + 0.5f) / static_cast<float>(kSize) * 2.0f;
+    const float tangent = std::tan(camera.fovY * 0.5f);
+    const glm::vec4 viewDirection{ndcX * tangent, ndcY * tangent, -1.0f, 0.0f};
+    return glm::vec3(glm::inverse(camera.viewMatrix()) * viewDirection);
+}
+
+//======================================================================================================================
 // The Tests binary runs with its own target dir as CWD, so the golden files are addressed from the
 // repo root the build passes in.
 std::string goldenPath(std::string_view name) {
@@ -152,9 +177,10 @@ void requireMatchesGolden(const std::string& dump, std::string_view name) {
 
 //======================================================================================================================
 // Parity: with temporal off the renderer declares the frame it declared before temporal existed.
-// The golden was produced by the pre-temporal renderer, so a declaration, an import, or an
-// attachment that the temporal path leaked into the off path fails here rather than in a screenshot
-// nobody diffs.
+// The golden matches the M5.5-tip renderer's dump of the same frame, so a declaration, an import,
+// or an attachment that the temporal path leaked into the off path fails here rather than in a
+// screenshot nobody diffs. It is a regression guard over this renderer's own output, not
+// independent evidence: the parity claim rests on the three screenshot hashes.
 TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][temporal]") {
     using namespace lmx::rhi;
 
@@ -748,4 +774,156 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
 
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
+}
+
+//======================================================================================================================
+// The shipped submission pattern rather than the drained one: five temporal frames with no
+// waitIdle between them, so three of them are in flight over the motion and history targets at
+// once while the debug view is switched on, off and on again. Under MTL_DEBUG_LAYER a frame that
+// read a resource another frame had already retired, or a barrier the graph derived against the
+// wrong previous use, is reported here rather than in a drained case that never overlaps.
+TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+    using lmx::render::HistoryResetReason;
+    using lmx::render::TemporalDebugView;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
+    SceneView view = temporalSceneView(items);
+    const Camera camera = temporalCamera();
+
+    // The debug view is what makes the frame *read* motion and the history, so the overlap covers
+    // the reprojection dispatch and not just the attachment write.
+    view.temporal.enabled = true;
+    view.temporal.debugView = TemporalDebugView::ReprojectionError;
+    renderFrameInFlight(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::FirstFrame);
+    const uint64_t historyBytes = (*renderer)->temporalStatus().historyBytes;
+    REQUIRE(historyBytes > 0);
+
+    renderFrameInFlight(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
+    REQUIRE((*renderer)->temporalStatus().historyValid);
+
+    view.temporal.enabled = false;
+    view.temporal.debugView = TemporalDebugView::Off;
+    renderFrameInFlight(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
+    REQUIRE_FALSE((*renderer)->temporalStatus().historyValid);
+
+    view.temporal.enabled = true;
+    view.temporal.debugView = TemporalDebugView::MotionVectors;
+    renderFrameInFlight(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::TemporalEnabled);
+
+    renderFrameInFlight(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
+    REQUIRE((*renderer)->temporalStatus().historyValid);
+
+    // The one drain, after every submission: the targets were never reallocated, so the run's own
+    // completion is the assertion the overlap makes.
+    (*device)->waitIdle();
+    REQUIRE((*renderer)->temporalStatus().historyBytes == historyBytes);
+}
+
+//======================================================================================================================
+// The sky's motion is rotation-only: the sphere is drawn centred on the previous eye for the
+// previous frame's matrices, so a translation cancels exactly and only the camera's rotation
+// survives. Both halves are pinned here against the same motionBetween() oracle the geometry cases
+// use, over a scene that is nothing but sky -- the sphere covers every texel, so the probes read
+// the sky path rather than a piece of geometry in front of it.
+TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
+    const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
+    const std::array<TextureMip, 6> skyFaces = {skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto skySphere = lmx::render::createMesh(
+        **device, lmx::render::fromGeo(lmx::engine::makeSphere(0.5f, 20, 20)),
+        "lmx.test.temporalSkySphere");
+    INFO(errorOf(skySphere));
+    REQUIRE(skySphere.has_value());
+
+    auto skyCubemap = (*device)->createTexture({.width = 1,
+                                                .height = 1,
+                                                .format = Format::RGBA8Unorm,
+                                                .kind = TextureKind::Cube,
+                                                .sampled = true,
+                                                .label = "lmx.test.temporalSkyCubemap"},
+                                               skyFaces);
+    INFO(errorOf(skyCubemap));
+    REQUIRE(skyCubemap.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    // No items at all: the sky sphere is the frame's only geometry.
+    SceneView view = temporalSceneView({});
+    view.skySphere = &*skySphere;
+    view.skyCubemap = skyCubemap->get();
+    view.temporal.enabled = true;
+
+    constexpr std::array<std::pair<uint32_t, uint32_t>, 3> kProbes = {
+        std::pair<uint32_t, uint32_t>{12, 12}, {32, 32}, {50, 44}};
+
+    Camera origin;
+    Camera translated;
+    translated.position = {0.4f, 0.15f, -0.25f};
+    Camera rotated = translated;
+    rotated.yaw = 0.05f;
+
+    renderFrame(**device, **renderer, origin, view);
+    renderFrame(**device, **renderer, translated, view);
+
+    // Translation alone: the sphere moves with the eye, so every sky texel reprojects onto itself.
+    const std::vector<uint8_t> translationPixels = readMotion(**renderer);
+    for (const std::pair<uint32_t, uint32_t> probe : kProbes) {
+        const glm::vec2 actual = motionAt(translationPixels, probe.first, probe.second);
+        INFO("translated probe (" + std::to_string(probe.first) + "," +
+             std::to_string(probe.second) + ") motion " + std::to_string(actual.x) + "," +
+             std::to_string(actual.y));
+        REQUIRE(actual.x == 0.0f);
+        REQUIRE(actual.y == 0.0f);
+    }
+
+    renderFrame(**device, **renderer, rotated, view);
+
+    const lmx::render::FrameExtents extents{
+        .renderWidth = kSize, .renderHeight = kSize, .outputWidth = kSize, .outputHeight = kSize};
+    const lmx::render::CameraFrameState current =
+        lmx::render::buildCameraFrameState(rotated, extents, {});
+    const lmx::render::CameraFrameState previous =
+        lmx::render::buildCameraFrameState(translated, extents, {});
+
+    const std::vector<uint8_t> rotationPixels = readMotion(**renderer);
+    for (const std::pair<uint32_t, uint32_t> probe : kProbes) {
+        const glm::vec3 direction = skyDirectionAtPixel(rotated, probe.first, probe.second);
+        const glm::vec4 currentPoint{direction + rotated.position, 1.0f};
+        const glm::vec4 previousPoint{direction + translated.position, 1.0f};
+        const glm::vec2 expected = lmx::render::motionBetween(
+            current.viewProjection * currentPoint, previous.viewProjection * previousPoint);
+        const glm::vec2 actual = motionAt(rotationPixels, probe.first, probe.second);
+        INFO("rotated probe (" + std::to_string(probe.first) + "," + std::to_string(probe.second) +
+             ") expected " + std::to_string(expected.x) + "," + std::to_string(expected.y) +
+             " actual " + std::to_string(actual.x) + "," + std::to_string(actual.y));
+        REQUIRE(actual.x == Catch::Approx(expected.x).margin(2e-3));
+        REQUIRE(actual.y == Catch::Approx(expected.y).margin(2e-3));
+    }
 }

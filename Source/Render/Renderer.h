@@ -127,7 +127,7 @@ struct TemporalStatus {
     /// reset reason. A frame with temporal off derives a reason like any other but reprojects
     /// nothing, so it reports false whatever that reason was.
     bool historyValid = false;
-    uint64_t historyBytes = 0; ///< Bytes the history texture holds, or 0 while none is allocated.
+    uint64_t historyBytes = 0; ///< Bytes the history texture holds; the allocation is permanent.
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
@@ -254,7 +254,8 @@ public:
     static rhi::Result<std::unique_ptr<Renderer>> create(rhi::Device& device, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
-    /// Recreates the scene targets at the new size. The shadow map is fixed-size and untouched.
+    /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
+    /// new size. The shadow map is fixed-size and untouched.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
@@ -302,14 +303,14 @@ public:
     /// describes the frame just declared rather than the one about to be.
     TemporalStatus temporalStatus() const { return m_temporalStatus; }
 
-    /// The frame's motion target in kMotionFormat, or null while temporal has never been enabled
-    /// and the allocation therefore does not exist. Borrowed: the renderer owns it and replaces it
-    /// on resize().
+    /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
+    /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
+    /// resize().
     rhi::Texture* motionTarget() { return m_motion.get(); }
 
-    /// The colour history the temporal passes reproject, in kSceneColorFormat, or null while
-    /// temporal has never been enabled. Borrowed on motionTarget()'s terms; disabling temporal
-    /// keeps it allocated rather than freeing memory frames in flight may still hold.
+    /// The colour history the temporal passes reproject, in kSceneColorFormat. Borrowed on
+    /// motionTarget()'s terms: allocated with the scene targets, replaced on resize(), and held
+    /// whether or not any frame enables temporal.
     rhi::Texture* historyTarget() { return m_historyColor.get(); }
 
     /// Returns the current target width in pixels.
@@ -332,9 +333,12 @@ private:
     Renderer(rhi::Device& device, bool cpuReadback)
         : m_device(device), m_transientPool(device), m_cpuReadback(cpuReadback) {}
 
-    // Creates the motion and history targets at the current extent, and does nothing when they
-    // already exist for it. Called when a frame first declares the temporal path and again from
-    // resize() once they exist, which is why the two allocations live outside resize()'s own body.
+    // Creates the motion and history targets at the current extent, replacing any pair already
+    // held. Called from resize() -- and so from create(), which resizes once -- so the two exist
+    // for every frame whether or not it declares the temporal path.
+    //
+    // Its own function rather than resize()'s body because the two allocations answer to
+    // kMotionFormat and the history's copy-destination usage rather than to the scene targets'.
     rhi::Result<void> createTemporalTargets();
 
     /// Declares the reprojection diagnostic over `history`, `sceneColor` and `motion` and answers
@@ -417,10 +421,10 @@ private:
     std::unique_ptr<rhi::Texture> m_color;
     std::unique_ptr<rhi::Texture> m_depth;
     std::unique_ptr<rhi::Texture> m_shadowMap;
-    // Both exist only once a frame has declared the temporal path, and both are then replaced by
-    // resize() like the scene targets. Disabling temporal keeps them: freeing here would drop
-    // memory the frames still in flight hold in their residency sets, and the caller's idle
-    // guarantee covers resize() alone.
+    // Allocated with the scene targets and replaced by resize() like them, whether or not any
+    // frame declares the temporal path: the allocation is permanent and reported through
+    // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
+    // flight hold in their residency sets, and the caller's idle guarantee covers resize() alone.
     std::unique_ptr<rhi::Texture> m_motion;
     std::unique_ptr<rhi::Texture> m_historyColor;
     // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
