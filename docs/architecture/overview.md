@@ -19,7 +19,11 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   `CommandList::bindFrameData(slot, value)`: it allocates, copies, and binds the caller's block in
   one call and returns a `GpuAddress` — a standard-layout, arithmetic-free value naming the block's
   GPU location for the open frame. Data that survives the frame stays on the unchanged `bindBuffer`
-  path instead of being copied through the frame-data arena.
+  path instead of being copied through the frame-data arena. `RenderPassDesc` and
+  `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
+  beyond the primary (`ExtraColorTarget`/`extraColorFormats`), validated for colour-renderable
+  formats and matching extent; `RG16Float` is colour-renderable and CPU-readable, which is what a
+  motion-vector target needs.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables, a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
@@ -37,10 +41,18 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
   heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
-  record as deterministic text.
+  record as deterministic text. Render also owns camera temporal history and the GPU-resident
+  motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
+  `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
+  `Renderer`-created `lmx.render.motion`/`lmx.render.historyColor` textures the temporal passes
+  declare when `SceneView::temporal.enabled` is set.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).
+  It also owns object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
+  `Scene::resetMotion`/`commitFrame`) and rigid animation (`SceneAnimation`, glTF-baked
+  `RigidTrack`s, the shared `SceneEnvironment.h` sky/light rig, and the `temporal-lab`/`milk-truck`
+  catalog entries).
 - **App** owns SDL3, the editor shell, and the frame loop. `Source/App/Panels/` holds the five
   panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and
@@ -66,7 +78,11 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   operation, calls `ImGui::UpdatePlatformWindows()`/`RenderPlatformWindowsDefault()` after each
   presented frame so the vendored Metal 4 ImGui backend renders any detached window with its own
   command buffer and per-slot event, and the shell consumes a layout-reset intent at the start of
-  the next frame.
+  the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
+  animation play, camera-track follow); the pure `TemporalEditorState` tracks the scene-generation
+  counter and camera-cut latch, and the frame loop calls `advanceFrameAnimation()`/`commitFrame()`
+  around `declarePasses` so a declared frame — and only a declared frame — advances Engine's
+  animation clock and Render's history.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and

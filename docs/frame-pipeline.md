@@ -1,4 +1,4 @@
-# Luminex — one frame, as of the M5.2 frame-data path (2026-08-12)
+# Luminex — one frame, as of the M6.1 temporal state and motion path (2026-09-07)
 
 What the renderer does between `beginFrame` and `endFrame`, written for planning what to build
 next. Updated at milestone boundaries.
@@ -13,10 +13,11 @@ culling) before any of it reaches the GPU. `execute()` then runs that schedule, 
 WAR, and WAW barriers each declared cross-pass access conflict justifies.
 
 Below is the *default* frame — auto-exposure off (manual EV, the default mode), bloom on (its
-default). Auto-exposure and bloom are both ordinary declared passes either way; toggling either off
-does not remove it from the graph, it removes the one declaration that reaches a sink, and dead-pass
-culling drops the rest (`docs/guides/gpu-debugging.md`'s dump shows exactly this for a toggled-off
-frame).
+default), temporal inputs off (`SceneView::temporal.enabled == false`, the default for the editor
+and `--screenshot`, exactly M5.5's declaration). Auto-exposure, bloom, and temporal are all ordinary
+declared passes either way; toggling one off removes only the declaration reaching a sink, and
+dead-pass culling drops the rest (`docs/guides/gpu-debugging.md`'s dump shows exactly this for a
+toggled-off frame).
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
@@ -59,6 +60,14 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
 │            cull none, GreaterEqual, t2 cubemap, the same preExposure (or the same exposure-buffer
 │            read, in auto mode)
+│       │  temporal only: also declares `lmx.render.motion` (RG16Float, extra attachment 1, cleared
+│       │  to 0) — `uvCurrent - uvPrevious` from unjittered clip positions (`Temporal.h`,
+│       │  `Motion.slang`); an `Invalid`-class draw writes the `+inf` sentinel instead
+│
+├─ [temporal only, reset reason None] 2b. lmx.pass.temporal.reproject   compute, reads history +
+│       scene colour + motion → transient lmx.render.temporalDiagnostic (abs difference, alpha 0
+│       out of extent or invalid). Declared only when HistoryResetReason is None; culled when no
+│       debug-view sink reads it
 │
 ├─ 3. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
 ├─ 4. lmx.pass.exposure.histogram        compute, reads scene color + exposure buffer
@@ -96,6 +105,16 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       fallback access occurs and the sum stays bit-identical to no bloom at all)
 │       → Khronos PBR Neutral tone map → sRGB encode → display color (BGRA8Unorm, viewport-sized)
 │       Shaders/DisplayTransform.slang — the only shader in the frame that encodes sRGB
+│
+├─ [temporal only, a debug view selected] 9b. lmx.pass.temporal.debugView   raster, not compute —
+│       BGRA8Unorm carries no storage-write usage under this RHI; a fullscreen triangle overwrites
+│       the display target with the Motion view (R,G = 0.5 + motion × 8, invalid magenta) or the
+│       Reprojection view (grey = clamped diagnostic luminance, out-of-extent blue)
+│
+├─ [temporal only] 9c. lmx.pass.temporal.commitHistory   copy, scene colour → history; exported so
+│       it survives culling regardless of the debug view. History imports with previousUse =
+│       CopyDestination — this same copy is the previous frame's actual terminal access, so a
+│       declared prior ShaderRead would leave the cross-frame read-after-write unbarriered (ADR 0013)
 │
 ├─ 10. lmx.pass.ui          → swapchain drawable
 │       Dear ImGui (docked editor shell); the Viewport window samples the display color texture;
@@ -219,6 +238,12 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   pixel agree on what space the target holds; the clear always uses the *manual* exposure value even
   in auto mode, since auto's actual value lives only in the GPU-side buffer and every scene with a
   sky draws over the clear entirely.
+- **Exposure reset mapping.** M6.1's temporal history and the exposure buffer each choose their own
+  reset policy ("each history chooses"). Exposure clears on `SceneChanged`, `ExtentChanged`, and the
+  auto-exposure enable transition (spec 9's triggers, unchanged); it ignores `CameraCut` and
+  `ProjectionChanged`, which the temporal history treats as resets of its own.
+  `App/ExposureReset.h` is untouched. Driving both from one event is M6.2's job, where TAA needs
+  exposure correction alongside reprojection.
 - **Reversed infinite-far depth**: `Camera::projectionMatrix` maps the near plane to 1 and lets
   depth fall toward 0 without ever reaching it, concentrating float precision at the far plane
   instead of the near one. Scene and shadow pipelines clear to 0 and keep the `Greater` fragment;
@@ -233,37 +258,38 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
 
 ## Scenes
 
-Three, behind the Scene panel's catalog selector, drawn from one catalog (`--scene` accepts the same IDs):
-**Sponza** (`sponza`, the default world scene, converted deterministically from the official
-Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents), and
-**MaterialLab** (`material-lab`, always available — a code-generated roughness×metallic sphere
-grid plus horizontally arranged color, texture, normal, and depth diagnostics). MaterialLab uses
-the pinned CC0 Studio Small 09 HDRI for both its visible sky and generated IBL when setup has
-fetched it, and logs before falling back to a deterministic neutral environment otherwise. Sponza
-and Damaged Helmet retain the shared code-generated neutral cubemap and IBL set. Missing required
+Five, behind the Scene panel's catalog selector, drawn from one catalog (`--scene` accepts the same
+IDs): **Sponza** (`sponza`, the default world scene, converted deterministically from the official
+Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated tangents),
+**CesiumMilkTruck** (`milk-truck`, glTF, a fetched rigid-animation sample), **MaterialLab**
+(`material-lab`, always available — a code-generated roughness×metallic sphere grid plus
+horizontally arranged color, texture, normal, and depth diagnostics), and **TemporalLab**
+(`temporal-lab`, always available — a deterministic checkerboard floor, rigid and orbiting motion,
+and one `Invalid`-flagged object for verifying the M6.1 motion contract). MaterialLab and
+TemporalLab use the pinned CC0 Studio Small 09 HDRI for their visible sky and generated IBL when
+setup has fetched it, and log before falling back to a deterministic neutral environment otherwise.
+The other scenes retain the shared code-generated neutral cubemap and IBL set. Missing required
 glTF assets disable their dropdown entries with setup guidance; an unavailable explicit CLI scene
 exits with an error instead of falling back.
 
 ## Known gaps / candidate techniques for the next milestone
 
 1. **Exposure adaptation and smoothing** — spec 9 resolves an instantaneous target only; temporal
-   adaptation, a history-reset framework, and automatic exposure as a default mode are M6.
+   adaptation and automatic exposure as a default mode remain M6.2+.
 2. **Bloom's upsample is nearest-neighbour** — a deterministic, testable choice (spec 10), but it
    produces a visibly blocky halo around small bright highlights at the current chain depth;
    bilinear or a wider filter kernel is a candidate improvement, not a correctness fix.
-3. **PCSS parameterization** — the migrated blocker search still mixes a view-space near-plane
-   constant with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
-4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load;
-   MaterialLab now supplies a small studio environment, so caching becomes worthwhile if more
-   authored environments or faster scene switching arrive.
-5. **Direct lighting is single-scatter** — the analytic BRDF has no multi-scatter compensation;
-   only the image-based term does.
-6. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
+3. **PCSS parameterization** — the migrated blocker search mixes a view-space near-plane constant
+   with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
+4. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load, and
+   direct lighting stays single-scatter (only the image-based term compensates); caching becomes
+   worthwhile as more authored environments or faster scene switching arrive.
+5. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
    glTF file that reused one image in both a color and a data role would need the offline bake to
    distinguish them, which it does not yet do.
-7. **Sponza startup is still synchronous** — decode and upload still block the window before it
+6. **Sponza startup is still synchronous** — decode and upload still block the window before it
    becomes responsive; asynchronous staging remains future work.
-8. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
+7. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
    conventions above are what a future D3D12 backend has to reproduce.
 
 Cross-references: `docs/specs/2026-08-11-m5-execution-substrate-design.md` (sections 6/7/9/10 —
