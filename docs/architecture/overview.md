@@ -45,7 +45,9 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.historyColor` textures the temporal passes
-  declare when `SceneView::temporal.enabled` is set.
+  declare when `SceneView::temporal.enabled` is set. Those two are allocated with the scene targets
+  and recreated by `resize()` alongside them, so the allocation is permanent rather than made on
+  first enable.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).

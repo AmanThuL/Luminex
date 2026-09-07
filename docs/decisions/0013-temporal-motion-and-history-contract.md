@@ -28,7 +28,11 @@ single source for this arithmetic; nothing else restates it.
 committed previous model matrix, advanced by `Scene::commitFrame()`. Render owns camera history and
 the one GPU-resident history texture (`lmx.render.historyColor`, `RGBA16Float` at the render extent)
 — `Renderer` keeps the previous `CameraFrameState` and creates, imports and overwrites the history
-texture. Nothing persists on the GPU that the Renderer does not own and import. *Previous* means the
+texture. The history and motion targets are created with the scene targets — in `resize()`, and so
+in `create()`, which resizes once — and recreated by `resize()` under the caller's idle guarantee,
+rather than on the first frame that enables temporal. Both functions already return a `Result`, so
+an allocation failure is reported rather than asserted mid-declaration. Nothing persists on the GPU
+that the Renderer does not own and import. *Previous* means the
 previous *declared* frame: `Renderer::declarePasses` advances its temporal state as its last act, so
 a frame skipped before declaration never becomes "previous," and `Scene::commitFrame()` is called
 only after a frame is actually declared.
@@ -53,7 +57,8 @@ The motion and scene-colour imports on the temporal path are held to the same ru
 **Additive multi-attachment growth.** RHI `RenderPassDesc` keeps `colorTarget` as attachment 0 and
 gains `ExtraColorTarget extraColor[kMaxExtraColorTargets]` (`kMaxExtraColorTargets = 3`) with
 `extraColorCount`; `GraphicsPipelineDesc` gains matching `extraColorFormats`/count. Every existing
-field, signature and `[checkpoint-a]` test source is unchanged. The render graph's `PassDesc` gains
+field and signature is unchanged, and every `[checkpoint-a]` test case is unchanged (the filter
+reports the same 1,856 assertions in 19 cases). The render graph's `PassDesc` gains
 `extraColor`, each producing its own resource version, validated and scheduled exactly like the
 primary attachment. This is the only shape multiple render targets take in Luminex; a future pass
 needing a third or fourth target reuses the same fields rather than inventing a parallel path.
@@ -75,9 +80,10 @@ an unchanged graph dump. M6.2 flips the default when TAA ships.
 - `kMaxExtraColorTargets = 3` bounds render-graph and Metal 4 pipeline attachment arrays; a pass
   needing a fourth simultaneous colour output requires revisiting this ADR, not silently growing the
   array.
-- Disabling temporal after enabling it keeps the history and motion target allocations rather than
-  freeing them under in-flight frames; `TemporalStatus::historyBytes` reports this so a caller can
-  see the retained cost.
+- The history and motion allocations are permanent for a renderer's life: they are made with the
+  scene targets and never freed on disable, since freeing would drop memory in-flight frames still
+  hold. `TemporalStatus::historyBytes` reports the cost, which a session that never enables temporal
+  pays too.
 - The motion convention and sentinel are binding on every future consumer (TAA, MetalFX) so history
   rejection and disocclusion logic added in M6.2+ can rely on `isinf` without re-deriving the
   contract.

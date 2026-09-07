@@ -142,26 +142,25 @@ one pass, a cycle, an attachment/format mismatch, a transient consumed before it
 sink naming a transient, or an export of a version nothing produced, and otherwise answers one
 serial topological order holding only the passes a declared sink (`exportTexture`, `exportBuffer`,
 swapchain presentation, or a readback destination) reaches. `execute()` re-validates, then runs that
-schedule: each pass becomes one labelled render, compute, or copy pass, its body runs inside that
-scope with a `PassResources` that resolves only the handles the pass declared — an undeclared
-resolve is a reported failure, not a resolved pointer. Barrier derivation covers RAW, WAR, and WAW
-conflicts, including per-subresource texture writers. Persistent-import overloads seed the prior
-frame's terminal texture or buffer access, so reused renderer targets and exposure
-feedback are ordered across command buffers as well. Compilation answers with a `CompiledFrameRecord`
-describing everything it decided, which `Render/GraphDump.h` renders as deterministic text. A graph
-is declared fresh every frame; scheduling optimization beyond dead-pass culling and conservative
-transient pooling stays deliberately absent.
+schedule: each pass becomes one labelled render, compute, or copy pass, its body runs inside that scope
+with a `PassResources` that resolves only the handles the pass declared — an undeclared resolve is a
+reported failure, not a resolved pointer. Barrier derivation covers RAW, WAR, and WAW conflicts,
+including per-subresource texture writers. Persistent-import overloads seed the prior frame's terminal
+texture or buffer access, so reused renderer targets and exposure feedback are ordered across command
+buffers as well. Compilation answers with a `CompiledFrameRecord` describing everything it decided, which
+`Render/GraphDump.h` renders as deterministic text. A graph is declared fresh every frame; scheduling
+optimization beyond dead-pass culling and conservative transient pooling stays deliberately absent.
 
-Transients are placed in a `Render/TransientPool`: one placement heap per frame-in-flight slot,
-reused only after `Device::beginFrame()` has proved that slot's previous frame retired, and resized
-into a new generation when a frame's footprint changes. Compilation assigns offsets first-fit over
-lifetime-disjoint transients whose descriptors agree on kind, format, extent, mip count, usage,
-size, and alignment, emits a whole-resource barrier wherever one transient takes bytes another held,
-and records every lifetime, assignment, the heap high-water mark, and the alias savings.
-`RenderGraph::setPoolingEnabled(false)` — the editor's Transient pooling checkbox — gives every
-transient its own bytes and cannot change the picture, because a transient holds nothing until a
-pass writes it. The histogram and exposure buffers are imported, not transient: both must outlive
-the frame that wrote them (the exposure buffer for a full frame, into the next one's shading).
+Transients are placed in a `Render/TransientPool`: one placement heap per frame-in-flight slot, reused
+only after `Device::beginFrame()` has proved that slot's previous frame retired, and resized into a new
+generation when a frame's footprint changes. Compilation assigns offsets first-fit over lifetime-disjoint
+transients whose descriptors agree on kind, format, extent, mip count, usage, size, and alignment, emits
+a whole-resource barrier wherever one transient takes bytes another held, and records every lifetime,
+assignment, the heap high-water mark, and the alias savings. `RenderGraph::setPoolingEnabled(false)` —
+the editor's Transient pooling checkbox — gives every transient its own bytes and cannot change the
+picture, because a transient holds nothing until a pass writes it. The histogram and exposure buffers are
+imported, not transient: both must outlive the frame that wrote them (the exposure buffer for a full
+frame, into the next one's shading).
 
 Every pass -- render or compute -- is also a GPU timing boundary: `rhi::Device::passTimings()`
 reports each pass's label and GPU milliseconds for the most recently retired frame, and
@@ -190,35 +189,36 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   high-water capacity. A 12-frame GPU stress test attributes any cross-frame overwrite to its
   culprit by color.
 - **Everything lives in one residency set** attached to the queue; textures join at creation.
-- **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable when the
-  caller asks), scene depth (`D32Float`, kept sampled rather than discarded so a caller can
-  reconstruct view-space distance from it), and display color (`BGRA8Unorm`, what the viewport and
-  a screenshot read) all resize with the Viewport panel (debounced, GPU-drained); the shadow map
-  is fixed at 2048². The histogram buffer (256 × uint32) and the one-float exposure buffer are
-  fixed-size and persistent — a resize is one of spec 9's reset triggers precisely because the
-  histogram's binning covered a differently-sized image the frame before.
+- **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable on request),
+  scene depth (`D32Float`, kept sampled so a caller can reconstruct view-space distance), display
+  color (`BGRA8Unorm`, what the viewport and a screenshot read), and the temporal pair
+  `lmx.render.motion`/`lmx.render.historyColor` all resize with the Viewport panel (debounced,
+  GPU-drained); the shadow map is fixed at 2048². The temporal pair is created with the rest, not
+  on first enable, so its cost is permanent and reported by `TemporalStatus::historyBytes`. The
+  histogram buffer (256 × uint32) and the one-float exposure buffer are fixed-size and persistent —
+  a resize is one of spec 9's reset triggers precisely because the histogram's binning covered a
+  differently-sized image the frame before.
 - **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, textures,
   and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
   material-referenced images; decoded CPU image data is dropped before the builder returns.
-- **IBL assets are per-scene and generated at build time** (`Source/Engine/Ibl.h`): a
-  cosine-convolved irradiance cube (16² faces), a GGX-prefiltered specular chain (64² base, 5
-  mips), and a split-sum DFG lookup table (64², `RG16Float`), all uploaded `RGBA16Float`/`RG16Float`
-  so radiance above 1.0 survives. A `SceneView` that carries none substitutes black-cube and
-  zero-DFG fallbacks rather than reading an unbound slot.
-- **Base-color and normal images bake offline when `xmake setup` runs**: `Tools/TextureBake`
-  (wrapping `Source/Engine/TextureBake.h`) box-filters a full mip chain in linear light (sRGB
-  images decode/filter/re-encode; normal maps renormalize per level) and writes a DDS plus a
-  manifest recording the source hash. `Scene` prefers the baked DDS beside a glTF file and falls
-  back to the same filter computed in-process (slower load, not incorrect) when it is absent.
-  `Device::generateMipmaps` no longer exists — Metal's blit variant was measured to point-pick.
+- **IBL assets are per-scene and generated at build time** (`Source/Engine/Ibl.h`): a cosine-convolved
+  irradiance cube (16² faces), a GGX-prefiltered specular chain (64² base, 5 mips), and a split-sum DFG
+  lookup table (64², `RG16Float`), all uploaded `RGBA16Float`/`RG16Float` so radiance above 1.0 survives.
+  A `SceneView` that carries none substitutes black-cube and zero-DFG fallbacks rather than reading an
+  unbound slot.
+- **Base-color and normal images bake offline when `xmake setup` runs**: `Tools/TextureBake` (wrapping
+  `Source/Engine/TextureBake.h`) box-filters a full mip chain in linear light (sRGB images
+  decode/filter/re-encode; normal maps renormalize per level) and writes a DDS plus a manifest recording
+  the source hash. `Scene` prefers the baked DDS beside a glTF file and falls back to the same filter
+  computed in-process (slower load, not incorrect) when it is absent. `Device::generateMipmaps` no longer
+  exists — Metal's blit variant was measured to point-pick.
 
 ## The math, briefly
 
 - **GGX metallic-roughness BRDF** (`Shaders/Lighting.slang`): Trowbridge-Reitz `D`, height-correlated
-  Smith `V` (combined `G / (4 N·V N·L)` form), Schlick `F` with `F0 = mix(0.04, baseColor,
-  metallic)`, energy-conserving Lambert diffuse `(1 - F)(1 - metallic) baseColor / π`. Perceptual
-  roughness is floored at 0.045 before squaring to `alpha`, bounding the specular lobe the raster
-  grid can resolve.
+  Smith `V` (combined `G / (4 N·V N·L)` form), Schlick `F` with `F0 = mix(0.04, baseColor, metallic)`,
+  energy-conserving Lambert diffuse `(1 - F)(1 - metallic) baseColor / π`. Perceptual roughness is
+  floored at 0.045 before squaring to `alpha`, bounding the specular lobe the raster grid can resolve.
 - **Image-based lighting**: the split-sum reconstruction (Karis 2013) plus Fdez-Agüera's
   multiple-scattering compensation, so a white furnace returns its own radiance at every roughness
   and metallic value rather than losing energy to single-scattering loss as roughness rises.
