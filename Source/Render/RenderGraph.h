@@ -174,10 +174,9 @@ enum class StoreOp {
     Discard, ///< Permit produced contents to expire with the pass.
 };
 
-/// The pass's single colour attachment. `handle` is the version the pass writes, so the pass
-/// produces nextVersion(handle). The named resource must have been imported with a
-/// colour-renderable format, and must share its extent with the depth attachment when the pass
-/// declares both.
+/// One colour attachment of a pass. `handle` is the version the pass writes, so the pass produces
+/// nextVersion(handle). The named resource must have been imported with a colour-renderable format,
+/// and must share its extent with every other attachment the pass declares.
 struct ColorAttachment {
     GraphTexture handle;            ///< Input version this attachment overwrites.
     LoadOp load = LoadOp::Clear;    ///< Whether prior contents are preserved.
@@ -209,10 +208,16 @@ struct PassDesc {
     std::vector<TextureUseDesc> textureReads;     ///< Sampled or otherwise read textures.
     std::vector<GraphBuffer> bufferReads;         ///< Buffers consumed by the pass.
     std::vector<GraphBuffer> indirectBufferReads; ///< Buffers consumed by indirect draws.
-    /// At most one of each, matching the single-colour-attachment render pass this RHI models. A
-    /// pass may declare neither, either, or both.
+    /// At most one of each. A pass may declare neither, either, or both.
     std::optional<ColorAttachment> color; ///< Optional color target.
     std::optional<DepthAttachment> depth; ///< Optional depth target.
+    /// Colour attachments past the primary, in attachment order: `extraColor[0]` is attachment 1,
+    /// which a fragment shader writes as SV_Target1. Each is an attachment on `color`'s terms --
+    /// it declares its own attachment use and produces the next version of what it names -- and
+    /// each shares the primary's extent. A pass may declare at most rhi::kMaxExtraColorTargets of
+    /// them, may not declare one without a primary, since extras are attachments 1 and up, and may
+    /// not name one texture twice across its colour attachments.
+    std::vector<ColorAttachment> extraColor;
     /// Writes that are not attachments. Each names the version it consumes and produces the next.
     std::vector<TextureUseDesc> textureWrites; ///< Non-attachment texture writes.
     std::vector<GraphBuffer> bufferWrites;     ///< Non-attachment buffer writes.
@@ -703,6 +708,7 @@ private:
         // Attachments are kept whole because execute() needs their load, store, and clear values;
         // everything else about a pass is in its declarations.
         std::optional<ColorAttachment> color;
+        std::vector<ColorAttachment> extraColor;
         std::optional<DepthAttachment> depth;
         ExecuteFn execute;
         std::vector<Declaration> declarations;
@@ -717,6 +723,17 @@ private:
                          UseRole role) const;
     void flattenBuffers(std::vector<Declaration>& into, const std::vector<GraphBuffer>& handles,
                         UseRole role) const;
+
+    // The rules a pass's extra colour attachments answer to on their own: how many the hardware
+    // binds past attachment zero, that attachment zero is there at all, and that each extra is a
+    // renderable target of the primary's extent named once across the pass's attachments.
+    GraphResult<void> validateExtraColorAttachments(const Pass& pass) const;
+
+    // The colour attachment a ColorAttachment declaration was flattened from. One pass names a
+    // resource at most once across its colour attachments -- compilation refuses a frame that does
+    // not -- so the resource index picks out exactly one of them.
+    const ColorAttachment& colorAttachmentOf(const Pass& pass,
+                                             const Declaration& declaration) const;
 
     // Whether pass `passIndex` named exactly this resource version anywhere in its declarations.
     bool passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint32_t version) const;

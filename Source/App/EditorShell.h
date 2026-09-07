@@ -11,6 +11,7 @@
 #include "App/FrameRecordRing.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/PerformanceModel.h"
+#include "App/TemporalEditorState.h"
 #include "App/WorkspaceModel.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
@@ -121,6 +122,25 @@ public:
     /// what turns "a reset happened" into "the next frame's SceneView says so."
     bool consumeExposureReset();
 
+    /// Advances the active scene's animation clock and camera-track follow for the frame about to
+    /// be declared. Call once per frame, after buildUI and before declarePasses, and only when the
+    /// frame will actually be declared (drawable acquired) -- a skipped frame calls neither this
+    /// nor commitFrame().
+    ///
+    /// When `EditorRenderSettings::animationPlaying` is set and the active scene has rigid or
+    /// camera tracks, steps `Scene::animationTime` by a fixed 1/60 s and resamples every track at
+    /// the new time (`Scene::advanceAnimation` + `Scene::animate`). Independently, when
+    /// `followCameraTrack` is set, the scene has a camera track, and the user is not mid fly-camera
+    /// look (holding the right mouse button), overwrites the fly camera's position/yaw/pitch from
+    /// `sampleCameraTrack` at the (possibly just-advanced) animation time -- fovY/nearZ/farZ are
+    /// left alone, since the track carries no lens state.
+    void advanceFrameAnimation();
+
+    /// Promotes the active scene's motion to "previous" for next frame's reprojection
+    /// (`Scene::commitFrame()`). Call once per frame, after the frame's render graph has executed
+    /// successfully; a skipped frame calls neither this nor advanceFrameAnimation().
+    void commitFrame();
+
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }
 
@@ -203,6 +223,11 @@ private:
     // sites after the decision is made. Starts with sceneId unset, which is what makes the very
     // first call at create() read as "first frame" without a separate flag to keep in sync.
     ExposureResetContext m_exposureContext;
+    // Scene-generation counter, camera-cut latch, and TemporalLab's once-only defaults
+    // (TemporalEditorState.h). onSceneSelected() is called both by create() (the initial scene) and
+    // by selectScene() (every later switch), so the very first frame already reports a real
+    // generation rather than 0-as-unset.
+    TemporalEditorState m_temporalState;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

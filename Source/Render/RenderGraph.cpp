@@ -32,18 +32,19 @@ constexpr uint32_t kCubeFaceCount = 6;
 
 //======================================================================================================================
 // The colour attachment role, on the same terms the RHI's own desc validation uses: 8-bit unorm
-// targets, sRGB included, plus the half-float scene-colour format. A block-compressed format
-// cannot be rendered into, RG16Float carries lookup data and is sampled rather than rendered
-// into, and a depth format belongs in the other slot.
+// targets, sRGB included, plus the two float formats -- the half-float scene colour and the
+// two-channel half-float a motion-vector target carries. It has to answer exactly as the RHI's
+// predicate does, or the graph refuses a target the device would have accepted. A
+// block-compressed format cannot be rendered into, and a depth format belongs in the other slot.
 bool isColorRenderableFormat(rhi::Format format) {
     switch (format) {
     case rhi::Format::BGRA8Unorm:
     case rhi::Format::RGBA8Unorm:
     case rhi::Format::RGBA8Unorm_sRGB:
     case rhi::Format::RGBA16Float:
+    case rhi::Format::RG16Float:
         return true;
     case rhi::Format::Unknown:
-    case rhi::Format::RG16Float:
     case rhi::Format::BC1Unorm:
     case rhi::Format::BC1Unorm_sRGB:
     case rhi::Format::D32Float:
@@ -335,6 +336,25 @@ uint64_t versionKey(uint32_t resource, uint32_t version) {
 }
 
 //======================================================================================================================
+// One colour attachment slot of an RHI render-pass descriptor, filled from a declared attachment.
+// The primary and every extra go through it, so the store rule and its message are written once
+// and a slot cannot be filled two subtly different ways. `what` names the attachment in that
+// message -- "its colour attachment", "extra color attachment 1".
+void fillColorTarget(const ColorAttachment& attachment, rhi::Texture* texture,
+                     std::string_view passLabel, std::string_view what, rhi::Texture*& target,
+                     bool& clear, float (&clearColor)[4]) {
+    LMX_ASSERT(attachment.store == StoreOp::Store,
+               std::format("pass '{}' discards {}, which this RHI cannot express -- a colour "
+                           "attachment is always stored",
+                           passLabel, what));
+    target = texture;
+    clear = attachment.load == LoadOp::Clear;
+    for (size_t channel = 0; channel < 4; ++channel) {
+        clearColor[channel] = attachment.clearColor[channel];
+    }
+}
+
+//======================================================================================================================
 std::unexpected<GraphError> fail(std::string message) {
     return std::unexpected(GraphError{.message = std::move(message)});
 }
@@ -604,21 +624,26 @@ void RenderGraph::addPass(std::string_view label, PassDesc desc, ExecuteFn execu
     flattenTextures(declarations, desc.textureReads, UseRole::Read);
     flattenBuffers(declarations, desc.bufferReads, UseRole::Read);
     flattenBuffers(declarations, desc.indirectBufferReads, UseRole::IndirectArgument);
-    if (desc.color) {
-        checkTexture(desc.color->handle);
-        declarations.push_back({.resource = desc.color->handle.index,
-                                .version = desc.color->handle.version,
-                                .role = UseRole::ColorAttachment,
+    // Every attachment is declared the same way -- a whole-resource write of the version it names
+    // -- so only the handle and the role differ between them.
+    const auto declareAttachment = [&](GraphTexture handle, UseRole role) {
+        checkTexture(handle);
+        declarations.push_back({.resource = handle.index,
+                                .version = handle.version,
+                                .role = role,
                                 .range = {},
                                 .isWrite = true});
+    };
+    if (desc.color) {
+        declareAttachment(desc.color->handle, UseRole::ColorAttachment);
+    }
+    // Extras follow the primary, in attachment order, so the flattened list reads in the order the
+    // hardware binds them.
+    for (const ColorAttachment& extra : desc.extraColor) {
+        declareAttachment(extra.handle, UseRole::ColorAttachment);
     }
     if (desc.depth) {
-        checkTexture(desc.depth->handle);
-        declarations.push_back({.resource = desc.depth->handle.index,
-                                .version = desc.depth->handle.version,
-                                .role = UseRole::DepthAttachment,
-                                .range = {},
-                                .isWrite = true});
+        declareAttachment(desc.depth->handle, UseRole::DepthAttachment);
     }
     flattenTextures(declarations, desc.textureWrites, UseRole::Write);
     flattenBuffers(declarations, desc.bufferWrites, UseRole::Write);
@@ -626,6 +651,7 @@ void RenderGraph::addPass(std::string_view label, PassDesc desc, ExecuteFn execu
     m_passes.push_back({.label = std::string(label),
                         .kind = PassKind::Raster,
                         .color = desc.color,
+                        .extraColor = std::move(desc.extraColor),
                         .depth = desc.depth,
                         .execute = std::move(execute),
                         .declarations = std::move(declarations)});
@@ -704,6 +730,22 @@ void RenderGraph::readbackBuffer(GraphBuffer handle) {
 }
 
 //======================================================================================================================
+const ColorAttachment& RenderGraph::colorAttachmentOf(const Pass& pass,
+                                                      const Declaration& declaration) const {
+    LMX_ASSERT(declaration.role == UseRole::ColorAttachment,
+               "only a colour-attachment declaration comes from a ColorAttachment");
+    if (pass.color && pass.color->handle.index == declaration.resource) {
+        return *pass.color;
+    }
+    const auto extra = std::ranges::find(
+        pass.extraColor, declaration.resource,
+        [](const ColorAttachment& attachment) { return attachment.handle.index; });
+    LMX_ASSERT(extra != pass.extraColor.end(),
+               "a colour-attachment declaration must come from an attachment of its pass");
+    return *extra;
+}
+
+//======================================================================================================================
 bool RenderGraph::passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint32_t version) const {
     LMX_ASSERT(passIndex < m_passes.size(), "pass index names no declared pass");
     for (const Declaration& declaration : m_passes[passIndex].declarations) {
@@ -721,6 +763,59 @@ GraphResult<Schedule> RenderGraph::compile() const {
         return std::unexpected(record.error());
     }
     return std::move(record->debug.schedule);
+}
+
+//======================================================================================================================
+GraphResult<void> RenderGraph::validateExtraColorAttachments(const Pass& pass) const {
+    if (pass.extraColor.empty()) {
+        return {};
+    }
+    // Extras are attachments 1 and up: the count is what the hardware can bind past attachment
+    // zero, and attachment zero has to be there for any of them to mean anything.
+    if (pass.extraColor.size() > rhi::kMaxExtraColorTargets) {
+        return fail(std::format("pass '{}' declares {} extra color attachments, past the {} a "
+                                "pass can bind beyond its primary one",
+                                pass.label, pass.extraColor.size(), rhi::kMaxExtraColorTargets));
+    }
+    if (!pass.color) {
+        const Resource& first = m_resources[pass.extraColor.front().handle.index];
+        return fail(std::format("pass '{}' declares extra color attachment 0 '{}' and no color "
+                                "attachment: extras are attachments 1 and up, so a pass "
+                                "without attachment zero cannot have them",
+                                pass.label, first.name));
+    }
+
+    const Resource& primary = m_resources[pass.color->handle.index];
+    for (uint32_t index = 0; index < pass.extraColor.size(); ++index) {
+        const Resource& extra = m_resources[pass.extraColor[index].handle.index];
+        if (!isColorRenderableFormat(extra.format)) {
+            return fail(std::format("pass '{}' extra color attachment {} '{}' declares format "
+                                    "{}, which is not color-renderable",
+                                    pass.label, index, extra.name, formatName(extra.format)));
+        }
+        // One rasterisation writes every attachment, so an extra of another extent has
+        // fragments with nowhere to land.
+        if (extra.width != primary.width || extra.height != primary.height) {
+            return fail(std::format("pass '{}' attachment extent mismatch: color '{}' is {}x{} "
+                                    "and extra color attachment {} '{}' is {}x{}",
+                                    pass.label, primary.name, primary.width, primary.height, index,
+                                    extra.name, extra.width, extra.height));
+        }
+        // Two attachments over one texture would have the pass write those texels twice in one
+        // rasterisation, and no version says what they then hold.
+        const bool repeatsPrimary = pass.extraColor[index].handle.index == pass.color->handle.index;
+        const auto repeated = std::ranges::find(
+            pass.extraColor.begin(), pass.extraColor.begin() + index,
+            pass.extraColor[index].handle.index,
+            [](const ColorAttachment& attachment) { return attachment.handle.index; });
+        if (repeatsPrimary || repeated != pass.extraColor.begin() + index) {
+            return fail(std::format("pass '{}' declares texture '{}' as two of its color "
+                                    "attachments: a pass writes each of its attachments once, "
+                                    "so it may not name one texture twice",
+                                    pass.label, extra.name));
+        }
+    }
+    return {};
 }
 
 //======================================================================================================================
@@ -753,6 +848,9 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                         pass.label, color.name, color.width, color.height,
                                         depth.name, depth.width, depth.height));
             }
+        }
+        if (const GraphResult<void> extras = validateExtraColorAttachments(pass); !extras) {
+            return std::unexpected(extras.error());
         }
     }
 
@@ -847,6 +945,13 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                pass.color ? pass.color->load : LoadOp::Clear, "color attachment")) {
             return fail(*message);
         }
+        for (uint32_t index = 0; index < pass.extraColor.size(); ++index) {
+            if (const auto message =
+                    loadsTransient(pass.extraColor[index].handle, pass.extraColor[index].load,
+                                   std::format("extra color attachment {}", index))) {
+                return fail(*message);
+            }
+        }
         if (const auto message =
                 loadsTransient(pass.depth ? std::optional{pass.depth->handle} : std::nullopt,
                                pass.depth ? pass.depth->load : LoadOp::Clear, "depth attachment")) {
@@ -889,10 +994,11 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
                                 resource.name, declaration.version));
             }
             writerOfVersion.emplace(versionKey(declaration.resource, declaration.version), pass);
-            const bool discarded = (declaration.role == UseRole::ColorAttachment &&
-                                    m_passes[pass].color->store == StoreOp::Discard) ||
-                                   (declaration.role == UseRole::DepthAttachment &&
-                                    m_passes[pass].depth->store == StoreOp::Discard);
+            const bool discarded =
+                (declaration.role == UseRole::ColorAttachment &&
+                 colorAttachmentOf(m_passes[pass], declaration).store == StoreOp::Discard) ||
+                (declaration.role == UseRole::DepthAttachment &&
+                 m_passes[pass].depth->store == StoreOp::Discard);
             if (discarded) {
                 continue;
             }
@@ -1296,7 +1402,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
         const Pass& pass = m_passes[passIndex];
         const auto loadsAttachment = [&](const Declaration& declaration) {
             return (declaration.role == UseRole::ColorAttachment &&
-                    pass.color->load == LoadOp::Load) ||
+                    colorAttachmentOf(pass, declaration).load == LoadOp::Load) ||
                    (declaration.role == UseRole::DepthAttachment &&
                     pass.depth->load == LoadOp::Load);
         };
@@ -1658,17 +1764,20 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
             rhi::RenderPassDesc desc;
             desc.label = pass.label;
             if (pass.color) {
-                const ColorAttachment& color = *pass.color;
-                LMX_ASSERT(color.store == StoreOp::Store,
-                           std::format("pass '{}' discards its colour attachment, which this RHI "
-                                       "cannot express -- a colour attachment is always stored",
-                                       pass.label));
-                desc.colorTarget = m_resources[color.handle.index].texture;
-                desc.clear = color.load == LoadOp::Clear;
-                for (size_t channel = 0; channel < 4; ++channel) {
-                    desc.clearColor[channel] = color.clearColor[channel];
-                }
+                fillColorTarget(*pass.color, m_resources[pass.color->handle.index].texture,
+                                pass.label, "its colour attachment", desc.colorTarget, desc.clear,
+                                desc.clearColor);
             }
+            // Each extra carries its own load action and clear value, so a pass may clear one
+            // attachment while loading another.
+            for (uint32_t index = 0; index < pass.extraColor.size(); ++index) {
+                const ColorAttachment& extra = pass.extraColor[index];
+                fillColorTarget(extra, m_resources[extra.handle.index].texture, pass.label,
+                                std::format("extra color attachment {}", index),
+                                desc.extraColor[index].target, desc.extraColor[index].clear,
+                                desc.extraColor[index].clearColor);
+            }
+            desc.extraColorCount = static_cast<uint32_t>(pass.extraColor.size());
             if (pass.depth) {
                 const DepthAttachment& depth = *pass.depth;
                 LMX_ASSERT(

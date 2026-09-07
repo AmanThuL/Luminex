@@ -14,7 +14,8 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
-- Current baseline: `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
+- Current baseline: `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
+  `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
   `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
@@ -59,9 +60,14 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
   selected by default (catalog selector in the Scene panel); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
-  <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
-  requires CWD = its build dir (shaders resolve relative to CWD). Sponza's first load decodes its
-  referenced textures — expect several seconds in a debug build.
+  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab> --screenshot <out.bmp>`. `--frames N`
+  (default 1) renders N frames before writing the last, advancing the scene's animation by 1/60 s
+  and following its camera track (if any) between them; `--temporal` enables the temporal path for
+  the capture and `--temporal-view off|motion|reprojection` selects a diagnostic overlay (and
+  implies `--temporal`) — e.g. `xmake run App --scene temporal-lab --frames 4 --temporal-view
+  motion --screenshot out.bmp`. Running the binary directly requires CWD = its build dir (shaders
+  resolve relative to CWD). Sponza's first load decodes its referenced textures — expect several
+  seconds in a debug build.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
   Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
@@ -109,40 +115,50 @@ interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
 shared-event pacing, per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float
-formats, depth-only passes, compute passes with storage bindings, subresource views, and explicit
+formats, depth-only passes, compute passes with storage bindings, subresource views, explicit
 texture and buffer barriers, copy passes with general copies and fills (the path to any subresource
-but level zero), indirect draws and dispatches over RHI-owned argument layouts, and untracked
-placement heaps whose resources are created at explicit offsets;
+but level zero), indirect draws and dispatches over RHI-owned argument layouts, untracked
+placement heaps whose resources are created at explicit offsets, and up to `kMaxExtraColorTargets`
+(3) additional colour attachments per render pass/pipeline beyond the primary, with `RG16Float`
+colour-renderable and CPU-readable;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph` — raster/compute/copy passes with per-subresource uses over imported
-resources and over one-frame transients the graph creates, dead-pass culling from declared sinks
-only, conservative aliasing of lifetime-disjoint transients into `TransientPool`'s per-frame-slot
-placement heaps, and a `CompiledFrameRecord` per frame — schedule, barriers, transient lifetimes and
-assignments, memory totals — that `GraphDump.h` renders as deterministic text; `Renderer` — declares
-shadow, scene+sky, histogram exposure (clear/accumulate/resolve, GPU-resident feedback into the next
-frame), bloom (threshold/downsample/upsample), and display-transform passes into a graph consuming a
-plain `SceneView`; `fitShadowOrtho` and friends are free functions) →
+validating `RenderGraph` — raster/compute/copy passes with per-subresource uses (including extra
+colour attachments) over imported resources and over one-frame transients the graph creates,
+dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
+into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
+schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
+as deterministic text; `Renderer` — declares shadow, scene+sky, histogram exposure
+(clear/accumulate/resolve, GPU-resident feedback into the next frame), bloom
+(threshold/downsample/upsample), display-transform, and, opt-in via `SceneView::temporal.enabled`,
+motion/history passes (reproject, debug view, commit history) into a graph consuming a plain
+`SceneView`; `fitShadowOrtho` and friends are free functions; `Temporal.h`/`TemporalHistory.h` hold
+the motion convention, jitter sequence, and reset-reason derivation, spec'd in ADR 0013) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
-generation (`HdrEnvironment.h`, `Ibl.h`), deterministic offline texture mip baking
-(`TextureBake.h`)) → `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
+generation (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
+baking (`TextureBake.h`), rigid animation (`SceneAnimation`, glTF-baked `RigidTrack`s, camera
+tracks) and object previous-transform tracking (`SceneObject::previousModel`/`motionClass`,
+`Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`)) →
+`Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
 (File/Window/Layout/Debug, GPU capture with a `C` shortcut), versioned `imgui.ini` workspace
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
-subject-scoped editing (camera, rendering, one of three directional lights, or one object); the
-Render Graph panel shapes the retained compiled frame into the ImGui-free `GraphNodeModel`, groups
-it into a `GraphLayout` of layers, ranks, rows and columns (collapsible stage groups, compact pins,
-an optional columns-per-row wrap, no pixels), and draws it on a vendored `ImGuiNodeEditor` canvas as
-cards the panel places from their own measured sizes, with a selection-scoped details pane,
-deterministic layout stable across unchanged frames, and session-only dragged positions; frame
-loop, joins its own UI pass to the graph plus the platform-window render after present,
+subject-scoped editing (camera, rendering — including a Temporal block of toggles, debug-view
+combo, animation transport and a camera-cut button — one of three directional lights, or one
+object); the Render Graph panel shapes the retained compiled frame into the ImGui-free
+`GraphNodeModel`, groups it into a `GraphLayout` of layers, ranks, rows and columns (collapsible
+stage groups, compact pins, an optional columns-per-row wrap, no pixels), and draws it on a
+vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measured sizes, with a
+selection-scoped details pane, deterministic layout stable across unchanged frames, and
+session-only dragged positions; frame loop advances animation and commits scene motion around
+`declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
 `--screenshot` path).
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow (shared modules), ScenePass/ScenePassAuto,
-ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/BloomDownsample/
-BloomUpsample, DisplayTransform (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample as
-test oracles).
+Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion (shared modules), ScenePass/
+ScenePassAuto, ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureResolve, BloomThreshold/
+BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject, TemporalDebugView (+ Triangle/
+SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke as test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 
 ## Hard rules

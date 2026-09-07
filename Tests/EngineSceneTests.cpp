@@ -2,12 +2,15 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
 #include "Engine/Color.h"
 #include "Engine/Scene.h"
+#include "Engine/SceneAnimation.h"
 #include "Engine/SceneLibrary.h"
 #include "Engine/TextureBake.h"
 #include "EngineTestSupport.h"
@@ -1188,27 +1191,37 @@ TEST_CASE("scene IDs are stable and reject unknown input", "[engine]") {
     REQUIRE(sceneIdString(*parseSceneId("sponza")) == "sponza");
     REQUIRE(sceneIdString(*parseSceneId("damaged-helmet")) == "damaged-helmet");
     REQUIRE(sceneIdString(*parseSceneId("material-lab")) == "material-lab");
+    REQUIRE(sceneIdString(*parseSceneId("milk-truck")) == "milk-truck");
+    REQUIRE(sceneIdString(*parseSceneId("temporal-lab")) == "temporal-lab");
     REQUIRE_FALSE(parseSceneId("3"));
     REQUIRE_FALSE(parseSceneId("Sponza"));
     REQUIRE(sceneIdString(defaultSceneId()) == "sponza");
 }
 
 //======================================================================================================================
-TEST_CASE("SceneLibrary lists the three scenes in a fixed order", "[gpu]") {
+TEST_CASE("SceneLibrary lists the five scenes in a fixed order", "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 3);
+    REQUIRE(library.entries().size() == 5);
     REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
     REQUIRE(sceneIdString(library.entries()[1].id) == "damaged-helmet");
     REQUIRE(library.entries()[1].stableId == "damaged-helmet");
-    REQUIRE(sceneIdString(library.entries()[2].id) == "material-lab");
-    REQUIRE(library.entries()[2].stableId == "material-lab");
-    REQUIRE(library.entries()[2].displayName == "MaterialLab");
-    REQUIRE(library.entries()[2].role == SceneRole::Diagnostic);
+    REQUIRE(sceneIdString(library.entries()[2].id) == "milk-truck");
+    REQUIRE(library.entries()[2].stableId == "milk-truck");
+    REQUIRE(library.entries()[2].displayName == "Milk Truck");
+    REQUIRE(library.entries()[2].role == SceneRole::Sample);
+    REQUIRE(sceneIdString(library.entries()[3].id) == "material-lab");
+    REQUIRE(library.entries()[3].stableId == "material-lab");
+    REQUIRE(library.entries()[3].displayName == "MaterialLab");
+    REQUIRE(library.entries()[3].role == SceneRole::Diagnostic);
+    REQUIRE(sceneIdString(library.entries()[4].id) == "temporal-lab");
+    REQUIRE(library.entries()[4].stableId == "temporal-lab");
+    REQUIRE(library.entries()[4].displayName == "TemporalLab");
+    REQUIRE(library.entries()[4].role == SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -1230,9 +1243,16 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     REQUIRE(library.entries()[1].available == helmetPresent);
     REQUIRE(library.entries()[1].hint.empty() == helmetPresent);
 
-    // MaterialLab has a deterministic fallback: available regardless of what this checkout fetched.
-    REQUIRE(library.entries()[2].available);
-    REQUIRE(library.entries()[2].hint.empty());
+    const bool truckPresent =
+        findRepoAsset("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb").has_value();
+    REQUIRE(library.entries()[2].available == truckPresent);
+    REQUIRE(library.entries()[2].hint.empty() == truckPresent);
+
+    // Both labs are code-generated: available regardless of what this checkout fetched.
+    REQUIRE(library.entries()[3].available);
+    REQUIRE(library.entries()[3].hint.empty());
+    REQUIRE(library.entries()[4].available);
+    REQUIRE(library.entries()[4].hint.empty());
 }
 
 //======================================================================================================================
@@ -1253,4 +1273,530 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
     auto second = library.get(defaultSceneId());
     REQUIRE(second.has_value());
     REQUIRE(*first == *second); // the same cached Scene*, not rebuilt
+}
+
+//======================================================================================================================
+TEST_CASE("sampleRigidTrack interpolates translation and scale linearly between keys", "[engine]") {
+    RigidTrack track;
+    track.keys.push_back({.time = 0.0,
+                          .translation = glm::vec3(0.0f, 0.0f, 0.0f),
+                          .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                          .scale = glm::vec3(1.0f)});
+    track.keys.push_back({.time = 2.0,
+                          .translation = glm::vec3(4.0f, -2.0f, 6.0f),
+                          .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                          .scale = glm::vec3(3.0f)});
+
+    const glm::mat4 mid = sampleRigidTrack(track, 1.0);
+    REQUIRE(near3(glm::vec3(mid[3]), glm::vec3(2.0f, -1.0f, 3.0f)));
+    REQUIRE(matricesNear(
+        mid,
+        glm::scale(glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, -1.0f, 3.0f)), glm::vec3(2.0f)),
+        1e-5f));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleRigidTrack slerps a quarter turn to its half angle", "[engine]") {
+    RigidTrack track;
+    track.keys.push_back({.time = 0.0,
+                          .translation = glm::vec3(0.0f),
+                          .rotation = glm::angleAxis(0.0f, glm::vec3(0.0f, 1.0f, 0.0f)),
+                          .scale = glm::vec3(1.0f)});
+    track.keys.push_back(
+        {.time = 1.0,
+         .translation = glm::vec3(0.0f),
+         .rotation = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)),
+         .scale = glm::vec3(1.0f)});
+
+    // Halfway along a quarter turn about +Y is exactly 45 degrees: +X maps to (cos45, 0, -sin45).
+    const glm::mat4 half = sampleRigidTrack(track, 0.5);
+    const glm::vec3 axis = glm::vec3(half * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    REQUIRE(near3(axis, glm::vec3(std::sqrt(0.5f), 0.0f, -std::sqrt(0.5f))));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleRigidTrack holds the previous key when the track steps", "[engine]") {
+    RigidTrack track;
+    track.step = true;
+    track.keys.push_back({.time = 0.0, .translation = glm::vec3(0.0f)});
+    track.keys.push_back({.time = 1.0, .translation = glm::vec3(10.0f, 0.0f, 0.0f)});
+
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, 0.999)[3]), glm::vec3(0.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, 1.0)[3]), glm::vec3(10.0f, 0.0f, 0.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleRigidTrack clamps before the first key and after the last", "[engine]") {
+    RigidTrack track;
+    track.keys.push_back({.time = 1.0, .translation = glm::vec3(-5.0f, 0.0f, 0.0f)});
+    track.keys.push_back({.time = 3.0, .translation = glm::vec3(5.0f, 0.0f, 0.0f)});
+
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, -100.0)[3]), glm::vec3(-5.0f, 0.0f, 0.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(track, 100.0)[3]), glm::vec3(5.0f, 0.0f, 0.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleCameraTrack interpolates position and angles linearly and clamps at the ends",
+          "[engine]") {
+    const std::array<CameraKey, 2> keys = {
+        CameraKey{
+            .time = 0.0, .position = glm::vec3(0.0f, 3.0f, 10.0f), .yaw = 0.0f, .pitch = -0.2f},
+        CameraKey{
+            .time = 4.0, .position = glm::vec3(2.0f, 3.0f, 8.0f), .yaw = 0.4f, .pitch = 0.2f}};
+
+    const CameraKey mid = sampleCameraTrack(keys, 2.0);
+    REQUIRE(near3(mid.position, glm::vec3(1.0f, 3.0f, 9.0f)));
+    REQUIRE(mid.yaw == Catch::Approx(0.2f));
+    REQUIRE(mid.pitch == Catch::Approx(0.0f).margin(1e-6));
+
+    REQUIRE(near3(sampleCameraTrack(keys, -1.0).position, keys[0].position));
+    REQUIRE(near3(sampleCameraTrack(keys, 9.0).position, keys[1].position));
+}
+
+namespace {
+
+//======================================================================================================================
+// A device-free Scene whose one object indexes placeholder mesh and material slots: enough for
+// view(), commitFrame() and animate() without a GPU.
+Scene makeMotionTestScene() {
+    Scene scene;
+    scene.meshes.resize(1);
+    scene.materials.resize(1);
+    scene.objects.push_back({.name = "object", .position = glm::vec3(1.0f, 0.0f, 0.0f)});
+    scene.resetMotion();
+    return scene;
+}
+
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("Scene::commitFrame promotes the current model and view reports both", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    std::vector<render::DrawItem> items;
+
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(items.size() == 1);
+    REQUIRE(matricesNear(items[0].model, items[0].previousModel, 1e-6f));
+
+    const glm::mat4 first = scene.objects[0].modelMatrix();
+    scene.commitFrame();
+    scene.objects[0].position = glm::vec3(4.0f, 0.0f, 0.0f);
+
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(matricesNear(items[0].previousModel, first, 1e-6f));
+    REQUIRE(near3(glm::vec3(items[0].model[3]), glm::vec3(4.0f, 0.0f, 0.0f)));
+    REQUIRE(items[0].motionClass == render::MotionClass::Rigid);
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    scene.objects[0].position = glm::vec3(9.0f, 0.0f, 0.0f);
+    scene.resetMotion();
+
+    std::vector<render::DrawItem> items;
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(matricesNear(items[0].model, items[0].previousModel, 1e-6f));
+    REQUIRE(near3(glm::vec3(items[0].previousModel[3]), glm::vec3(9.0f, 0.0f, 0.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::view forwards an object's declared motion class", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    scene.objects[0].motionClass = render::MotionClass::Invalid;
+
+    std::vector<render::DrawItem> items;
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(items[0].motionClass == render::MotionClass::Invalid);
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::advanceAnimation wraps at the clip duration only while looping", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    scene.animation.duration = 2.0;
+    scene.animation.loop = true;
+
+    scene.advanceAnimation(1.5);
+    REQUIRE(scene.animationTime == Catch::Approx(1.5));
+    scene.advanceAnimation(1.0);
+    REQUIRE(scene.animationTime == Catch::Approx(0.5));
+
+    scene.animation.loop = false;
+    scene.animationTime = 0.0;
+    scene.advanceAnimation(1.5);
+    scene.advanceAnimation(1.0);
+    REQUIRE(scene.animationTime == Catch::Approx(2.5));
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    RigidTrack track;
+    track.objectIndex = 0;
+    track.keys.push_back({.time = 0.0,
+                          .translation = glm::vec3(0.0f),
+                          .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                          .scale = glm::vec3(1.0f)});
+    track.keys.push_back(
+        {.time = 1.0,
+         .translation = glm::vec3(0.0f, 2.0f, 0.0f),
+         .rotation = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)),
+         .scale = glm::vec3(2.0f)});
+    scene.animation.tracks.push_back(track);
+    scene.animation.duration = 1.0;
+
+    scene.animate(1.0);
+    REQUIRE(near3(scene.objects[0].position, glm::vec3(0.0f, 2.0f, 0.0f)));
+    REQUIRE(near3(scene.objects[0].scale, glm::vec3(2.0f)));
+    REQUIRE(scene.objects[0].eulerDegrees.y == Catch::Approx(90.0f).margin(1e-3));
+    REQUIRE(matricesNear(scene.objects[0].modelMatrix(), sampleRigidTrack(track, 1.0), 1e-4f));
+}
+
+namespace {
+
+//======================================================================================================================
+// Projects a world-space AABB's 8 corners into a `width` by `height` frame, using that frame's own
+// aspect ratio rather than the square one projectAabbToScreen assumes -- TemporalLab is authored
+// for the editor's wide viewport.
+ScreenBox projectAabbToFrame(const render::Camera& camera, uint32_t width, uint32_t height,
+                             const glm::vec3& center, const glm::vec3& halfExtent) {
+    ScreenBox box{std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest(),
+                  std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()};
+    const float aspect = static_cast<float>(width) / static_cast<float>(height);
+    const glm::mat4 viewProj = camera.projectionMatrix(aspect) * camera.viewMatrix();
+    for (float sx : {-1.0f, 1.0f}) {
+        for (float sy : {-1.0f, 1.0f}) {
+            for (float sz : {-1.0f, 1.0f}) {
+                const glm::vec3 corner = center + glm::vec3(sx, sy, sz) * halfExtent;
+                const glm::vec4 clip = viewProj * glm::vec4(corner, 1.0f);
+                const float px = (clip.x / clip.w * 0.5f + 0.5f) * static_cast<float>(width);
+                const float py =
+                    (1.0f - (clip.y / clip.w * 0.5f + 0.5f)) * static_cast<float>(height);
+                box.minX = std::min(box.minX, px);
+                box.maxX = std::max(box.maxX, px);
+                box.minY = std::min(box.minY, py);
+                box.maxY = std::max(box.maxY, py);
+            }
+        }
+    }
+    return box;
+}
+
+//======================================================================================================================
+render::Camera cameraFrom(const SceneCamera& authored) {
+    render::Camera camera;
+    camera.position = authored.position;
+    camera.yaw = authored.yaw;
+    camera.pitch = authored.pitch;
+    camera.fovY = authored.fovY;
+    camera.nearZ = authored.nearZ;
+    camera.farZ = authored.farZ;
+    return camera;
+}
+
+} // namespace
+
+//======================================================================================================================
+TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world positions",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadTemporalLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const SceneObject* floor = findObject(**scene, "temporal-lab floor");
+    REQUIRE(floor != nullptr);
+    REQUIRE(near3(floor->position, glm::vec3(0.0f)));
+    REQUIRE(near3(floor->scale, glm::vec3(1.0f)));
+
+    const SceneObject* rotating = findObject(**scene, "temporal-lab rotating cube");
+    REQUIRE(rotating != nullptr);
+    REQUIRE(near3(rotating->position, glm::vec3(-3.0f, 1.0f, 0.0f)));
+
+    const SceneObject* reference = findObject(**scene, "temporal-lab reference cube");
+    REQUIRE(reference != nullptr);
+    REQUIRE(near3(reference->position, glm::vec3(3.0f, 1.0f, 0.0f)));
+
+    const SceneObject* invalid = findObject(**scene, "temporal-lab invalid cube");
+    REQUIRE(invalid != nullptr);
+    REQUIRE(near3(invalid->position, glm::vec3(0.0f, 1.0f, 4.0f)));
+    REQUIRE(invalid->motionClass == render::MotionClass::Invalid);
+
+    for (int i = 0; i < 5; ++i) {
+        const SceneObject* pole = findObject(**scene, "temporal-lab pole " + std::to_string(i));
+        REQUIRE(pole != nullptr);
+        REQUIRE(
+            near3(pole->position, glm::vec3(-1.0f + 0.5f * static_cast<float>(i), 1.5f, -4.0f)));
+        REQUIRE(near3(pole->scale, glm::vec3(0.05f, 3.0f, 0.05f)));
+    }
+
+    // Everything except the floor, the reference cube and the invalid cube is tracked, and no
+    // track ever drives the object the motion sentinel belongs to.
+    REQUIRE((*scene)->animation.tracks.size() == 7);
+    REQUIRE((*scene)->animation.duration == Catch::Approx(24.0));
+    REQUIRE((*scene)->animation.loop);
+    for (const RigidTrack& track : (*scene)->animation.tracks) {
+        REQUIRE((*scene)->objects[track.objectIndex].motionClass == render::MotionClass::Rigid);
+        REQUIRE(track.keys.size() == 24 * 60 + 1);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their documented periods",
+          "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadTemporalLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    const auto trackFor = [&](std::string_view name) -> const RigidTrack& {
+        const SceneObject* object = findObject(**scene, name);
+        REQUIRE(object != nullptr);
+        const auto index = static_cast<uint32_t>(object - (*scene)->objects.data());
+        for (const RigidTrack& track : (*scene)->animation.tracks) {
+            if (track.objectIndex == index) {
+                return track;
+            }
+        }
+        FAIL("no track for " + std::string(name));
+        return (*scene)->animation.tracks.front();
+    };
+
+    // The cube turns once per 4 s: a quarter turn maps +X onto -Z.
+    const RigidTrack& rotating = trackFor("temporal-lab rotating cube");
+    const glm::vec3 turned =
+        glm::vec3(sampleRigidTrack(rotating, 1.0) * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    REQUIRE(near3(turned, glm::vec3(0.0f, 0.0f, -1.0f)));
+    REQUIRE(matricesNear(sampleRigidTrack(rotating, 0.0), sampleRigidTrack(rotating, 24.0), 1e-4f));
+
+    // The sphere orbits the reference cube once per 6 s at radius 2.
+    const RigidTrack& orbit = trackFor("temporal-lab orbit sphere");
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(orbit, 0.0)[3]), glm::vec3(5.0f, 1.0f, 0.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(orbit, 1.5)[3]), glm::vec3(3.0f, 1.0f, 2.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(orbit, 3.0)[3]), glm::vec3(1.0f, 1.0f, 0.0f)));
+
+    // The poles swing 0.5 in x once per 2 s, together.
+    const RigidTrack& pole = trackFor("temporal-lab pole 0");
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(pole, 0.0)[3]), glm::vec3(-1.0f, 1.5f, -4.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(pole, 0.5)[3]), glm::vec3(-0.5f, 1.5f, -4.0f)));
+    REQUIRE(near3(glm::vec3(sampleRigidTrack(pole, 1.5)[3]), glm::vec3(-1.5f, 1.5f, -4.0f)));
+
+    // The camera loops every 8 s and opens on its own first key.
+    const std::vector<CameraKey>& cameraTrack = (*scene)->animation.cameraTrack;
+    REQUIRE(cameraTrack.size() == 24 * 60 + 1);
+    REQUIRE(near3(cameraTrack.front().position, (*scene)->initialCamera.position));
+    REQUIRE(cameraTrack.front().yaw == (*scene)->initialCamera.yaw);
+    REQUIRE(cameraTrack.front().pitch == (*scene)->initialCamera.pitch);
+    REQUIRE(near3(sampleCameraTrack(cameraTrack, 0.0).position, glm::vec3(0.0f, 3.0f, 10.0f)));
+    REQUIRE(near3(sampleCameraTrack(cameraTrack, 4.0).position, glm::vec3(2.0f, 3.0f, 8.0f)));
+    REQUIRE(near3(sampleCameraTrack(cameraTrack, 8.0).position, glm::vec3(0.0f, 3.0f, 10.0f)));
+    REQUIRE(std::abs(sampleCameraTrack(cameraTrack, 2.0).yaw) == Catch::Approx(0.1f).margin(1e-3));
+}
+
+//======================================================================================================================
+// A pure projection check (no rendering): the initial camera frames every probe in a 1280x720
+// viewport, the moving objects do not overlap the still ones they are read against, and the poles
+// stay separated on screen across their whole swing.
+TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated", "[gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadTemporalLabScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+
+    constexpr uint32_t kWidth = 1280;
+    constexpr uint32_t kHeight = 720;
+    const render::Camera camera = cameraFrom((*scene)->initialCamera);
+    const auto boxAt = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
+        return projectAabbToFrame(camera, kWidth, kHeight, center, halfExtent);
+    };
+    const auto insideViewport = [&](const ScreenBox& box) {
+        return box.minX >= 0.0f && box.maxX <= static_cast<float>(kWidth) && box.minY >= 0.0f &&
+               box.maxY <= static_cast<float>(kHeight);
+    };
+
+    const ScreenBox rotatingBox =
+        boxAt(glm::vec3(-3.0f, 1.0f, 0.0f), glm::vec3(0.71f, 0.5f, 0.71f));
+    const ScreenBox referenceBox = boxAt(glm::vec3(3.0f, 1.0f, 0.0f), glm::vec3(0.5f));
+    const ScreenBox invalidBox = boxAt(glm::vec3(0.0f, 1.0f, 4.0f), glm::vec3(0.5f));
+    // The orbit's near and far extremes both have to stay in frame.
+    const ScreenBox orbitNear = boxAt(glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.4f));
+    const ScreenBox orbitFar = boxAt(glm::vec3(5.0f, 1.0f, 0.0f), glm::vec3(0.4f));
+    for (const ScreenBox& box : {rotatingBox, referenceBox, invalidBox, orbitNear, orbitFar}) {
+        INFO("box: x[" + std::to_string(box.minX) + "," + std::to_string(box.maxX) + "] y[" +
+             std::to_string(box.minY) + "," + std::to_string(box.maxY) + "]");
+        REQUIRE(insideViewport(box));
+    }
+    REQUIRE(disjoint(rotatingBox, referenceBox));
+    REQUIRE(disjoint(rotatingBox, invalidBox));
+    REQUIRE(disjoint(invalidBox, referenceBox));
+    REQUIRE(disjoint(referenceBox, orbitFar));
+
+    for (float swing : {-0.5f, 0.0f, 0.5f}) {
+        std::vector<ScreenBox> poleBoxes;
+        for (int i = 0; i < 5; ++i) {
+            const glm::vec3 center{-1.0f + 0.5f * static_cast<float>(i) + swing, 1.5f, -4.0f};
+            poleBoxes.push_back(boxAt(center, glm::vec3(0.025f, 1.5f, 0.025f)));
+            INFO("pole " + std::to_string(i) + " at swing " + std::to_string(swing));
+            REQUIRE(insideViewport(poleBoxes.back()));
+        }
+        for (size_t i = 1; i < poleBoxes.size(); ++i) {
+            INFO("poles " + std::to_string(i - 1) + " and " + std::to_string(i) + " at swing " +
+                 std::to_string(swing));
+            REQUIRE(disjoint(poleBoxes[i - 1], poleBoxes[i]));
+        }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its wheel clip",
+          "[gpu]") {
+    const std::optional<std::filesystem::path> path =
+        findRepoAsset("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb");
+    if (!path) {
+        SKIP("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb not present (xmake setup fetches "
+             "it)");
+    }
+
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = loadMilkTruckScene(**device);
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+    REQUIRE_FALSE((*scene)->objects.empty());
+    REQUIRE((*scene)->boundingSphere.w > 0.0f);
+
+    // The file animates its two wheel nodes and nothing else, so the body must have no track.
+    REQUIRE((*scene)->animation.tracks.size() == 2);
+    REQUIRE((*scene)->animation.duration > 0.0);
+    REQUIRE((*scene)->animation.tracks.size() < (*scene)->objects.size());
+    for (const RigidTrack& track : (*scene)->animation.tracks) {
+        REQUIRE(track.objectIndex < (*scene)->objects.size());
+        REQUIRE(track.keys.size() == static_cast<size_t>((*scene)->animation.duration * 60.0) + 1);
+        // A wheel spins in place: its baked translation never moves.
+        REQUIRE(near3(track.keys.front().translation, track.keys.back().translation));
+    }
+
+    // The scene is posed at t = 0 by the load, not left at the file's authored rest pose: a clip
+    // whose first key differs from that rest pose would otherwise jump on the first frame.
+    for (const RigidTrack& track : (*scene)->animation.tracks) {
+        REQUIRE(matricesNear((*scene)->objects[track.objectIndex].modelMatrix(),
+                             sampleRigidTrack(track, 0.0), 1e-4f));
+    }
+
+    // Nothing has moved yet, so every draw reprojects onto itself.
+    std::vector<render::DrawItem> items;
+    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(items.size() == (*scene)->objects.size());
+    for (const render::DrawItem& item : items) {
+        REQUIRE(matricesNear(item.model, item.previousModel, 1e-6f));
+        REQUIRE(item.motionClass == render::MotionClass::Rigid);
+    }
+
+    // Playing the clip moves the wheels and leaves the rest of the truck exactly where it was.
+    const glm::mat4 bodyBefore = items[0].model;
+    (*scene)->commitFrame();
+    (*scene)->advanceAnimation(1.0 / 60.0);
+    (*scene)->animate((*scene)->animationTime);
+    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    bool anyMoved = false;
+    for (const render::DrawItem& item : items) {
+        anyMoved = anyMoved || !matricesNear(item.model, item.previousModel, 1e-6f);
+    }
+    REQUIRE(anyMoved);
+    REQUIRE(matricesNear(items[0].model, bodyBefore, 1e-6f));
+}
+
+//======================================================================================================================
+// A zero scale is a legitimate authored pose -- glTF conformance clips collapse an object to
+// nothing and back -- and both the loader's validation and Scene::animate's write-back go through
+// decomposeTransform, so it has to survive the round trip rather than be rejected or return NaN.
+TEST_CASE("decomposeTransform round-trips a zero-scale pose", "[engine]") {
+    RigidTrack track;
+    track.step = true;
+    track.keys.push_back(
+        {.time = 0.0,
+         .translation = glm::vec3(2.0f, 1.0f, -3.0f),
+         .rotation = glm::angleAxis(glm::half_pi<float>(), glm::vec3(0.0f, 1.0f, 0.0f)),
+         .scale = glm::vec3(1.0f)});
+    track.keys.push_back({.time = 1.0,
+                          .translation = glm::vec3(2.0f, 1.0f, -3.0f),
+                          .rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f),
+                          .scale = glm::vec3(0.0f)});
+
+    const glm::mat4 collapsed = sampleRigidTrack(track, 1.0);
+    const auto decomposed = decomposeTransform(collapsed);
+    REQUIRE(decomposed.has_value());
+    REQUIRE(near3(decomposed->scale, glm::vec3(0.0f)));
+    SceneObject object;
+    object.position = decomposed->position;
+    object.eulerDegrees = decomposed->eulerDegrees;
+    object.scale = decomposed->scale;
+    REQUIRE(matricesNear(object.modelMatrix(), collapsed, 1e-5f));
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    RigidTrack track;
+    track.objectIndex = 0;
+    track.keys.push_back(
+        {.time = 0.0, .translation = glm::vec3(1.0f, 0.0f, 0.0f), .scale = glm::vec3(1.0f)});
+    track.keys.push_back(
+        {.time = 1.0, .translation = glm::vec3(1.0f, 0.0f, 0.0f), .scale = glm::vec3(0.0f)});
+    scene.animation.tracks.push_back(track);
+    scene.animation.duration = 1.0;
+
+    scene.animate(1.0);
+    REQUIRE(near3(scene.objects[0].scale, glm::vec3(0.0f)));
+    REQUIRE(matricesNear(scene.objects[0].modelMatrix(), sampleRigidTrack(track, 1.0), 1e-5f));
+
+    scene.animate(0.0);
+    REQUIRE(near3(scene.objects[0].scale, glm::vec3(1.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("decomposeTransform rejects a sheared transform instead of orthogonalising it",
+          "[engine]") {
+    glm::mat4 sheared{1.0f};
+    sheared[1][0] = 0.5f; // Y basis leans into X: no translate-rotate-scale chain produces this
+    REQUIRE_FALSE(decomposeTransform(sheared).has_value());
+}
+
+//======================================================================================================================
+// The synthetic clip's value at t = 0 is (0, 0, 0) while its node authors (10, 0, 0), so a scene
+// left at the file's rest pose is visibly wrong and would jump on its first animated frame. This
+// pins that loadGltfScene poses the scene at the clip's t = 0 and only then seeds the previous
+// transforms, so the first frame draws the played pose and still reports no motion.
+TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its authored rest pose",
+          "[engine][gpu]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-scene-animated-pose-test";
+    const std::filesystem::path gltfPath = lmx::test::writeAnimatedQuadGltf(dir, "LINEAR");
+
+    auto scene = loadGltfScene(**device, gltfPath.string(), "AnimatedQuad");
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+    REQUIRE((*scene)->objects.size() == 1);
+    REQUIRE((*scene)->animation.tracks.size() == 1);
+
+    const glm::mat4 clipAtZero = sampleRigidTrack((*scene)->animation.tracks[0], 0.0);
+    REQUIRE(near3(glm::vec3(clipAtZero[3]), glm::vec3(0.0f)));
+
+    std::vector<render::DrawItem> items;
+    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(items.size() == 1);
+    REQUIRE(matricesNear(items[0].model, clipAtZero, 1e-4f));
+    REQUIRE(matricesNear(items[0].previousModel, items[0].model, 1e-6f));
+    // The authored rest pose, which the scene must *not* be left at.
+    REQUIRE_FALSE(near3(glm::vec3(items[0].model[3]), glm::vec3(10.0f, 0.0f, 0.0f)));
+
+    // The bounds describe the posed geometry: the quad spans x in [-1, 1] about the clip's origin,
+    // not about the authored (10, 0, 0).
+    REQUIRE(glm::vec3((*scene)->boundingSphere).x == Catch::Approx(0.0f).margin(1e-4));
 }

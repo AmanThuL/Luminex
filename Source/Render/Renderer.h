@@ -8,11 +8,14 @@
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
+#include "Render/Temporal.h"
+#include "Render/TemporalHistory.h"
 
 #include <glm/glm.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 
 namespace lmx::render {
@@ -59,6 +62,12 @@ struct DrawItem {
     const Mesh* mesh = nullptr; ///< Borrowed mesh drawn by this item.
     glm::mat4 model{1.0f};      ///< Object-to-world transform.
     Material material;          ///< Material copied for this frame.
+    /// The object-to-world transform this item was drawn with in the previous declared frame.
+    /// Equal to `model` when the item has not moved, so a still object reprojects onto itself.
+    glm::mat4 previousModel{1.0f};
+    /// How this item's motion is produced; `Invalid` writes the motion sentinel instead of
+    /// reprojecting through `previousModel`.
+    MotionClass motionClass = MotionClass::Rigid;
 };
 
 /// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
@@ -73,6 +82,52 @@ struct DirectionalLight {
 enum class ShadowFilter {
     PCF,  ///< Fixed-kernel percentage-closer filtering.
     PCSS, ///< Contact-hardening percentage-closer soft shadows.
+};
+
+/// What the temporal passes draw into the display target instead of the frame's own picture. Off is
+/// the shipped image; the other two overwrite it with a diagnostic and are meant to be read, not
+/// looked at.
+enum class TemporalDebugView : uint8_t {
+    Off,              ///< The display transform's own output reaches the viewport unchanged.
+    MotionVectors,    ///< Motion recentred on grey, with the invalid sentinel drawn magenta.
+    ReprojectionError ///< The reprojected history's difference from this frame's scene colour.
+};
+
+/// The frame's temporal opt-in, in the terms the caller owns: what is on, what changed, and which
+/// diagnostic to draw. Everything the renderer derives from these -- the jitter sample, the history
+/// reset reason, whether the reprojection pass may run -- is derived per frame and never set here.
+struct TemporalSettings {
+    /// Declares the motion attachment, the history commit and the diagnostic passes. False is the
+    /// pre-temporal frame, declaration for declaration.
+    bool enabled = false;
+    /// Offsets rasterisation by the frame's Halton sample. Motion is built from the unjittered
+    /// matrices either way, so this changes where the frame is sampled and nothing else.
+    bool jitterEnabled = false;
+    TemporalDebugView debugView = TemporalDebugView::Off; ///< Diagnostic drawn over the display.
+    /// Raised for exactly one frame by the caller when the camera teleported. It is an event, not a
+    /// state: no motion heuristic guesses a cut, so a caller that never raises it never gets one.
+    bool cameraCut = false;
+    /// Monotonic counter the scene bumps on any content change. A different generation resets the
+    /// history, because the pixels it holds describe other geometry.
+    uint64_t sceneGeneration = 0;
+};
+
+/// What the last declared frame decided about its history, for the editor to display and a test to
+/// assert against.
+struct TemporalStatus {
+    HistoryResetReason lastReset = HistoryResetReason::None; ///< Reason derived for the last frame.
+    uint64_t lastResetFrame = 0; ///< Count of declared frames when a non-None reason last applied.
+    /// Position in the Halton sequence the last declared temporal frame stood at. The sequence
+    /// advances on every temporal frame whether or not `jitterEnabled` was set -- turning jitter on
+    /// resumes the sequence where it stands rather than restarting it -- so a frame with jitter off
+    /// reports the index it would have used and rasterised unjittered. A frame with temporal off
+    /// advances nothing and leaves this where the last temporal frame left it.
+    uint32_t jitterIndex = 0;
+    /// Whether the last declared frame could reproject the history it found: temporal on, and no
+    /// reset reason. A frame with temporal off derives a reason like any other but reprojects
+    /// nothing, so it reports false whatever that reason was.
+    bool historyValid = false;
+    uint64_t historyBytes = 0; ///< Bytes the history texture holds; the allocation is permanent.
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
@@ -142,6 +197,11 @@ struct SceneView {
     bool bloomEnabled = true;
     float bloomThreshold = 1.0f; ///< Pre-exposed luminance below this contributes nothing.
     float bloomIntensity = 0.2f; ///< Multiplier applied to the composited bloom result.
+
+    /// Temporal state and motion (spec sections 4-6). Default-constructed means off, and a frame
+    /// with it off declares, imports and uploads exactly what the renderer declared before there
+    /// was a temporal path at all.
+    TemporalSettings temporal;
 };
 
 /// The light's view-projection and the same matrix with the NDC -> texcoord map baked in, which is
@@ -194,7 +254,8 @@ public:
     static rhi::Result<std::unique_ptr<Renderer>> create(rhi::Device& device, uint32_t width,
                                                          uint32_t height, bool cpuReadback = false);
 
-    /// Recreates the scene targets at the new size. The shadow map is fixed-size and untouched.
+    /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
+    /// new size. The shadow map is fixed-size and untouched.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
@@ -238,6 +299,20 @@ public:
     /// declares no read of it, so the graph has emitted no transition.
     rhi::Texture& depthTarget();
 
+    /// What the last declared frame decided about its history. Advanced by declarePasses(), so it
+    /// describes the frame just declared rather than the one about to be.
+    TemporalStatus temporalStatus() const { return m_temporalStatus; }
+
+    /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
+    /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
+    /// resize().
+    rhi::Texture* motionTarget() { return m_motion.get(); }
+
+    /// The colour history the temporal passes reproject, in kSceneColorFormat. Borrowed on
+    /// motionTarget()'s terms: allocated with the scene targets, replaced on resize(), and held
+    /// whether or not any frame enables temporal.
+    rhi::Texture* historyTarget() { return m_historyColor.get(); }
+
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
     /// Returns the current target height in pixels.
@@ -257,6 +332,35 @@ public:
 private:
     Renderer(rhi::Device& device, bool cpuReadback)
         : m_device(device), m_transientPool(device), m_cpuReadback(cpuReadback) {}
+
+    // Creates the motion and history targets at the current extent, replacing any pair already
+    // held. Called from resize() -- and so from create(), which resizes once -- so the two exist
+    // for every frame whether or not it declares the temporal path.
+    //
+    // Its own function rather than resize()'s body because the two allocations answer to
+    // kMotionFormat and the history's copy-destination usage rather than to the scene targets'.
+    rhi::Result<void> createTemporalTargets();
+
+    /// Declares the reprojection diagnostic over `history`, `sceneColor` and `motion` and answers
+    /// with the version of the transient it writes. Only a caller holding valid history may
+    /// declare it; the pass is culled unless a debug view consumes what it produces.
+    GraphTexture declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
+                                     GraphTexture history, GraphTexture sceneColor,
+                                     GraphTexture motion);
+
+    /// Declares the debug view over the display version `displayResult`, answering with the
+    /// version it produces. `diagnostic` is read only when `readsDiagnostic`; otherwise the pass
+    /// binds the renderer's zero fallback, which is what a frame with no history has to show.
+    GraphTexture declareTemporalDebugView(RenderGraph& graph, rhi::CommandList& commands,
+                                          TemporalDebugView debugView, GraphTexture motion,
+                                          GraphTexture diagnostic, bool readsDiagnostic,
+                                          GraphTexture displayResult);
+
+    /// Declares the copy that makes `sceneColor` the next frame's history, and exports the version
+    /// it produces so the pass survives culling -- its consumer is the next frame, which no sink
+    /// in this one reaches.
+    void declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
+                              GraphTexture sceneColor, GraphTexture history);
 
     rhi::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
@@ -283,6 +387,8 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_temporalReprojectLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_temporalDebugViewLibrary;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
@@ -291,6 +397,18 @@ private:
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
+    // The motion twins of the six pipelines above: the same entry points' motion variants, compiled
+    // against a second colour attachment in kMotionFormat. A temporal frame binds these instead,
+    // which is what leaves the pipelines above -- and so the picture a temporal-off frame produces
+    // -- exactly as they were.
+    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAutoMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAutoMotion;
+    std::unique_ptr<rhi::GraphicsPipeline> m_temporalDebugViewPipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_temporalReprojectPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;
@@ -303,6 +421,12 @@ private:
     std::unique_ptr<rhi::Texture> m_color;
     std::unique_ptr<rhi::Texture> m_depth;
     std::unique_ptr<rhi::Texture> m_shadowMap;
+    // Allocated with the scene targets and replaced by resize() like them, whether or not any
+    // frame declares the temporal path: the allocation is permanent and reported through
+    // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
+    // flight hold in their residency sets, and the caller's idle guarantee covers resize() alone.
+    std::unique_ptr<rhi::Texture> m_motion;
+    std::unique_ptr<rhi::Texture> m_historyColor;
     // The "nothing here" textures every draw binds when a material or a scene leaves a slot empty.
     // They exist because the fragment shader reads every texture slot unconditionally (Slang gives
     // every entry point the file's whole global set), so an empty slot has to hold something that
@@ -327,6 +451,26 @@ private:
     std::unique_ptr<rhi::Sampler> m_linearSampler;
     std::unique_ptr<rhi::Sampler> m_shadowSampler;
     std::unique_ptr<rhi::Sampler> m_iblSampler;
+    // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
+    // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold
+    // the opposite edge's texels into that fetch and report a difference that is an artefact of
+    // the addressing rather than of the motion. Its own sampler rather than the IBL one, whose
+    // clamping exists for the DFG table's domain and would tie the two to one another.
+    std::unique_ptr<rhi::Sampler> m_temporalSampler;
+    // What the previous declared frame was, recorded every frame -- temporal on or off -- because
+    // that is what makes re-enabling distinguishable from the first frame ever declared.
+    std::optional<FrameSignature> m_previousSignature;
+    std::optional<CameraFrameState> m_previousCamera;
+    // What the previous declared frame last did with the two targets whose terminal use depends on
+    // the path it took. Barriers are derived from the passes in one graph, so a cross-frame edge
+    // exists only where the import states it: a temporal frame ends by reading motion (when it
+    // draws a debug view) and by copying out of the scene colour, and the next frame's first
+    // access has to be ordered behind whichever of those actually happened.
+    rhi::TextureUse m_previousMotionUse = rhi::TextureUse::RenderTarget;
+    rhi::TextureUse m_previousSceneColorUse = rhi::TextureUse::ShaderRead;
+    uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
+    uint64_t m_declaredFrames = 0;
+    TemporalStatus m_temporalStatus;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

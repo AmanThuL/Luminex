@@ -7,6 +7,7 @@
 #include "App/EditorRenderSettings.h"
 #include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
+#include "App/TemporalEditorState.h"
 #include "Engine/Scene.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -33,6 +34,9 @@ struct InspectorPanelContext {
     /// Raised when an edit here is one of the exposure reset triggers, and consumed by the frame
     /// loop rather than by this panel.
     bool& exposureResetPending;
+    /// The scene generation counter, camera-cut latch, and TemporalLab defaults the shell keeps
+    /// (TemporalEditorState.h). The Temporal block's "Camera cut" button raises the latch here.
+    TemporalEditorState& temporalState;
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

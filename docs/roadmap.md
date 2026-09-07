@@ -6,7 +6,7 @@ This roadmap owns current milestone identifiers, boundaries, dependencies, outco
 
 ## Current baseline
 
-The shipped baseline is [M5.5](milestones/m5.5.md): scene-linear PBR/HDR over M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing; M5.2's ADR 0010 frame-data path; and the M5.3–M5.5 selection workspace and detached graph view. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
+The shipped baseline is [M6.1](milestones/m6.1.md) over [M5.5](milestones/m5.5.md): opt-in engine-owned rigid-object motion with Renderer-owned camera history, a declared motion-vector convention, and one Renderer-owned, reset-aware history texture (ADR 0013), layered over M5.5's scene-linear PBR/HDR, M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing, M5.2's ADR 0010 frame-data path, and the M5.3–M5.5 selection workspace and detached graph view. With temporal inputs off, the frame declaration and fixed-camera output are unchanged from M5.5. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
 
 ## Project direction and delivery
 

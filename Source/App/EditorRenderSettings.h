@@ -35,6 +35,21 @@ struct EditorRenderSettings {
     bool bloomEnabled = true;    ///< Whether the bloom passes contribute to the display transform.
     float bloomThreshold = 1.0f; ///< Scene-linear luminance above which bloom is gathered.
     float bloomIntensity = 0.2f; ///< Weight of the bloom contribution.
+
+    /// Opt-in temporal path (motion, history, reprojection); off keeps the pre-temporal frame.
+    bool temporalEnabled = false;
+    /// Offsets rasterisation by the frame's Halton sample; meaningless while temporalEnabled is
+    /// false. TemporalLab's once-only defaults never turn this on -- see TemporalEditorState.h.
+    bool jitterEnabled = false;
+    /// Diagnostic drawn over the display transform's own output.
+    render::TemporalDebugView temporalDebugView = render::TemporalDebugView::Off;
+    /// Whether the scene clock advances each frame. True by default so a scene with tracks plays
+    /// on load, matching the pre-temporal frame loop's always-on behavior for a static scene.
+    bool animationPlaying = true;
+    /// Whether the fly camera is overridden by the scene's camera track when one exists. Has no
+    /// effect while the right mouse button is held (the fly-camera latch takes over) or while the
+    /// active scene has no camera track.
+    bool followCameraTrack = true;
 };
 
 } // namespace lmx::app

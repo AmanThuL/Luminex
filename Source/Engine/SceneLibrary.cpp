@@ -33,10 +33,15 @@ constexpr std::array kSceneDescriptors{
     SceneDescriptor{"damaged-helmet", "Damaged Helmet", SceneRole::Sample,
                     "Khronos DamagedHelmet sample",
                     "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", false, &loadHelmetScene},
+    SceneDescriptor{"milk-truck", "Milk Truck", SceneRole::Sample, "Khronos CesiumMilkTruck sample",
+                    "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb", false,
+                    &loadMilkTruckScene},
     // Code-generated diagnostics with an internal environment fallback: no catalog-level asset
     // requirement, so an empty availabilityPath keeps it always available (see repoPathExists).
     SceneDescriptor{"material-lab", "MaterialLab", SceneRole::Diagnostic, "", "", false,
                     &loadMaterialLabScene},
+    SceneDescriptor{"temporal-lab", "TemporalLab", SceneRole::Diagnostic, "", "", false,
+                    &loadTemporalLabScene},
 };
 
 static_assert([] {
