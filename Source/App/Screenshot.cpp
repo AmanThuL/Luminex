@@ -112,7 +112,7 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 
 //======================================================================================================================
 int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
-                  bool temporal, render::TemporalDebugView temporalView) {
+                  TemporalMode temporal, render::TemporalDebugView temporalView) {
     auto device = rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -149,7 +149,7 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
 
     render::Camera camera = cameraFromScene(activeScene->initialCamera);
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
-    const bool hasAnyTrack = !activeScene->animation.tracks.empty() || hasCameraTrack;
+    const bool hasAnyTrack = engine::hasAnimationTracks(activeScene->animation);
 
     for (uint32_t frame = 0; frame < frames; ++frame) {
         // The first frame renders at the scene's authored t = 0; later frames advance by the same
@@ -181,7 +181,11 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
         }
         // A one-shot process has no prior generation to differ from and never teleports its own
         // camera, so both stay at SceneView's defaults (0, false).
-        view.temporal.enabled = temporal;
+        view.temporal.enabled = temporal != TemporalMode::Off;
+        view.temporal.jitterEnabled = temporal != TemporalMode::Off;
+        view.temporal.reconstruction = temporal == TemporalMode::Raw
+                                           ? render::ReconstructionMode::Raw
+                                           : render::ReconstructionMode::NativeTaa;
         view.temporal.debugView = temporalView;
 
         rhi::CommandList& commands = (*device)->beginFrame();

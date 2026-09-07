@@ -29,17 +29,11 @@ passes
     color attachment[1] r4 v0 mips[0..] layers[0..]
     color attachment[2] r5 v0 mips[0..] layers[0..]
     depth attachment r3 v0 mips[0..] layers[0..]
-  p4 compute "lmx.pass.temporal.resolve"
-    shader read r1 v1 mips[0..] layers[0..]
-    shader read r3 v1 mips[0..] layers[0..]
-    shader read r6 v0 mips[0..] layers[0..]
-    shader read r4 v1 mips[0..] layers[0..]
-    shader read r5 v1 mips[0..] layers[0..]
-    shader read r8 v0 mips[0..] layers[0..]
-    read r9 v1
-    write r7 v0 mips[0..] layers[0..]
+  p4 copy "lmx.pass.temporal.commitHistory"
+    copy source r1 v1 mips[0..] layers[0..]
+    copy destination r7 v0 mips[0..] layers[0..]
   p9 compute "lmx.pass.bloom.threshold"
-    shader read r7 v1 mips[0..] layers[0..]
+    shader read r1 v1 mips[0..] layers[0..]
     write r12 v0 mips[0..0] layers[0..]
   p10 compute "lmx.pass.bloom.downsample0"
     read r12 v1 mips[0..0] layers[0..]
@@ -70,7 +64,7 @@ passes
     read r13 v3 mips[1..1] layers[0..]
     write r13 v3 mips[0..0] layers[0..]
   p18 raster "lmx.pass.display"
-    read r7 v1 mips[0..] layers[0..]
+    read r1 v1 mips[0..] layers[0..]
     read r13 v4 mips[0..0] layers[0..]
     color attachment r2 v0 mips[0..] layers[0..]
   p5 raster "lmx.pass.temporal.debugView"
@@ -95,17 +89,13 @@ transitions
   before p0 buffer r9 StorageWrite -> StorageWrite
   before p1 texture r0 mips[0..] layers[0..] ShaderRead -> RenderTarget
   before p2 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
-  before p2 texture r1 mips[0..] layers[0..] ShaderRead -> RenderTarget
+  before p2 texture r1 mips[0..] layers[0..] CopySource -> RenderTarget
   before p2 texture r4 mips[0..] layers[0..] ShaderRead -> RenderTarget
-  before p2 texture r5 mips[0..] layers[0..] ShaderRead -> RenderTarget
+  before p2 texture r5 mips[0..] layers[0..] RenderTarget -> RenderTarget
   before p2 texture r3 mips[0..] layers[0..] ShaderRead -> RenderTarget
-  before p4 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
-  before p4 texture r3 mips[0..] layers[0..] RenderTarget -> ShaderRead
-  before p4 texture r4 mips[0..] layers[0..] RenderTarget -> ShaderRead
-  before p4 texture r5 mips[0..] layers[0..] RenderTarget -> ShaderRead
-  before p4 buffer r9 StorageWrite -> StorageRead
-  before p4 texture r7 mips[0..] layers[0..] ShaderRead -> StorageWrite
-  before p9 texture r7 mips[0..] layers[0..] StorageWrite -> ShaderRead
+  before p4 texture r1 mips[0..] layers[0..] RenderTarget -> CopySource
+  before p4 texture r7 mips[0..] layers[0..] CopyDestination -> CopyDestination
+  before p9 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p10 texture r12 mips[0..0] layers[0..] StorageWrite -> StorageRead
   before p11 texture r12 mips[1..1] layers[0..] StorageWrite -> StorageRead
   before p12 texture r12 mips[2..2] layers[0..] StorageWrite -> StorageRead
@@ -114,7 +104,7 @@ transitions
   before p15 texture r13 mips[3..] layers[0..] StorageWrite -> StorageRead
   before p16 texture r13 mips[2..2] layers[0..] StorageWrite -> StorageRead
   before p17 texture r13 mips[1..1] layers[0..] StorageWrite -> StorageRead
-  before p18 texture r7 mips[0..] layers[0..] StorageWrite -> ShaderRead
+  before p18 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p18 texture r13 mips[0..0] layers[0..] StorageWrite -> ShaderRead
   before p18 texture r2 mips[0..] layers[0..] ShaderRead -> RenderTarget
   before p5 texture r4 mips[0..] layers[0..] RenderTarget -> ShaderRead

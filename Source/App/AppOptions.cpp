@@ -35,6 +35,34 @@ std::string sceneIdList(std::string_view separator) {
     return result;
 }
 
+//======================================================================================================================
+// A following token starting with "--" is the next option, not this option's value.
+bool looksLikeValue(std::string_view token) {
+    return !token.starts_with("--");
+}
+
+//======================================================================================================================
+// The CLI token that names `view`, for the --temporal off / --temporal-view conflict message --
+// the inverse of the value parsing in parseAppOptions.
+std::string_view temporalViewName(render::TemporalDebugView view) {
+    switch (view) {
+    case render::TemporalDebugView::Off:
+        return "off";
+    case render::TemporalDebugView::MotionVectors:
+        return "motion";
+    case render::TemporalDebugView::ReprojectionError:
+        return "reprojection";
+    case render::TemporalDebugView::ReprojectedHistory:
+        return "reprojected";
+    case render::TemporalDebugView::RejectionMask:
+        return "rejection";
+    case render::TemporalDebugView::BlendWeight:
+        return "weight";
+    case render::TemporalDebugView::HistoryAge:
+        return "age";
+    }
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -43,7 +71,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view sceneName = engine::sceneIdString(engine::defaultSceneId());
     bool maximized = true;
     uint32_t frames = 1;
-    bool temporal = false;
+    TemporalMode temporal = TemporalMode::Taa;
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
 
     for (size_t i = 0; i < arguments.size(); ++i) {
@@ -76,11 +104,28 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             }
             frames = parsedFrames;
         } else if (argument == "--temporal") {
-            temporal = true;
+            // The value is optional: a following token that does not itself look like another
+            // option is consumed as the mode; absent (or followed by another flag) means taa.
+            if (i + 1 < arguments.size() && looksLikeValue(arguments[i + 1])) {
+                ++i;
+                const std::string_view value = arguments[i];
+                if (value == "off") {
+                    temporal = TemporalMode::Off;
+                } else if (value == "raw") {
+                    temporal = TemporalMode::Raw;
+                } else if (value == "taa") {
+                    temporal = TemporalMode::Taa;
+                } else {
+                    return fail("--temporal needs one of off|raw|taa, got '" + std::string(value) +
+                                "'");
+                }
+            } else {
+                temporal = TemporalMode::Taa;
+            }
         } else if (argument == "--temporal-view") {
             if (++i >= arguments.size()) {
-                return fail(
-                    "--temporal-view needs a value: App --temporal-view <off|motion|reprojection>");
+                return fail("--temporal-view needs a value: App --temporal-view "
+                            "<off|motion|reprojection|reprojected|rejection|weight|age>");
             }
             const std::string_view value = arguments[i];
             if (value == "off") {
@@ -89,19 +134,34 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 temporalView = render::TemporalDebugView::MotionVectors;
             } else if (value == "reprojection") {
                 temporalView = render::TemporalDebugView::ReprojectionError;
+            } else if (value == "reprojected") {
+                temporalView = render::TemporalDebugView::ReprojectedHistory;
+            } else if (value == "rejection") {
+                temporalView = render::TemporalDebugView::RejectionMask;
+            } else if (value == "weight") {
+                temporalView = render::TemporalDebugView::BlendWeight;
+            } else if (value == "age") {
+                temporalView = render::TemporalDebugView::HistoryAge;
             } else {
-                return fail("--temporal-view needs one of off|motion|reprojection, got '" +
+                return fail("--temporal-view needs one of "
+                            "off|motion|reprojection|reprojected|rejection|weight|age, got '" +
                             std::string(value) + "'");
             }
-            // Naming a view is itself an opt-in, even "off" -- it says the caller cares about the
-            // temporal path's behavior, not merely its display.
-            temporal = true;
         } else {
-            return fail("unknown argument '" + std::string(argument) +
-                        "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
-                        ">] [--windowed] [--frames <N>] [--temporal] "
-                        "[--temporal-view <off|motion|reprojection>]");
+            return fail(
+                "unknown argument '" + std::string(argument) +
+                "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
+                ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa>] "
+                "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
+                "(--frames N renders N frames and captures the last, including temporal warmup)");
         }
+    }
+
+    // --temporal off leaves nothing for the temporal path to draw a diagnostic over.
+    if (temporal == TemporalMode::Off && temporalView != render::TemporalDebugView::Off) {
+        return fail("--temporal off conflicts with --temporal-view " +
+                    std::string(temporalViewName(temporalView)) +
+                    ": the temporal path must run to draw a diagnostic view");
     }
 
     const std::optional<engine::SceneId> sceneId = engine::parseSceneId(sceneName);

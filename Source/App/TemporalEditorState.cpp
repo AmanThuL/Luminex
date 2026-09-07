@@ -1,13 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file TemporalEditorState.cpp
-/// @brief Implements the editor's scene generation counter, camera-cut latch, and default one-shot.
+/// @brief Implements the editor's scene generation counter and camera-cut latch.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/TemporalEditorState.h"
-
-#include "Core/Assert.h"
-
-#include <optional>
 
 namespace lmx::app {
 
@@ -24,19 +20,9 @@ bool consumeCameraCut(TemporalEditorState& state) {
 }
 
 //======================================================================================================================
-void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& settings,
-                     engine::SceneId id) {
+void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& /*settings*/,
+                     engine::SceneId /*id*/) {
     ++state.sceneGeneration;
-    if (state.temporalLabDefaultsApplied) {
-        return;
-    }
-    const std::optional<engine::SceneId> temporalLab = engine::parseSceneId("temporal-lab");
-    LMX_ASSERT(temporalLab.has_value(), "TemporalEditorState: catalog has no 'temporal-lab' scene");
-    if (id == *temporalLab) {
-        settings.temporalEnabled = true;
-        settings.temporalDebugView = render::TemporalDebugView::MotionVectors;
-        state.temporalLabDefaultsApplied = true;
-    }
 }
 
 } // namespace lmx::app

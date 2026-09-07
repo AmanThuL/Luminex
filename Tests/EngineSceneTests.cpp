@@ -1353,6 +1353,32 @@ TEST_CASE("sampleCameraTrack interpolates position and angles linearly and clamp
     REQUIRE(near3(sampleCameraTrack(keys, 9.0).position, keys[1].position));
 }
 
+//======================================================================================================================
+TEST_CASE("sampleEmissiveTrack holds the last key at or before the sample time", "[engine]") {
+    EmissiveTrack track;
+    track.keys.push_back({.time = 0.0, .strength = 0.0f});
+    track.keys.push_back({.time = 3.0, .strength = 4.0f});
+    track.keys.push_back({.time = 6.0, .strength = 0.0f});
+
+    REQUIRE(sampleEmissiveTrack(track, 0.0) == Catch::Approx(0.0f));
+    REQUIRE(sampleEmissiveTrack(track, 1.0) == Catch::Approx(0.0f));
+    REQUIRE(sampleEmissiveTrack(track, 2.999) == Catch::Approx(0.0f));
+    REQUIRE(sampleEmissiveTrack(track, 3.0) == Catch::Approx(4.0f));
+    REQUIRE(sampleEmissiveTrack(track, 4.0) == Catch::Approx(4.0f));
+    REQUIRE(sampleEmissiveTrack(track, 5.999) == Catch::Approx(4.0f));
+    REQUIRE(sampleEmissiveTrack(track, 6.0) == Catch::Approx(0.0f));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleEmissiveTrack clamps before the first key and after the last", "[engine]") {
+    EmissiveTrack track;
+    track.keys.push_back({.time = 1.0, .strength = 2.0f});
+    track.keys.push_back({.time = 3.0, .strength = 5.0f});
+
+    REQUIRE(sampleEmissiveTrack(track, -100.0) == Catch::Approx(2.0f));
+    REQUIRE(sampleEmissiveTrack(track, 100.0) == Catch::Approx(5.0f));
+}
+
 namespace {
 
 //======================================================================================================================
@@ -1452,6 +1478,60 @@ TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[e
     REQUIRE(matricesNear(scene.objects[0].modelMatrix(), sampleRigidTrack(track, 1.0), 1e-4f));
 }
 
+//======================================================================================================================
+TEST_CASE("Scene::animate writes an object's sampled emissive strength, and view() multiplies it "
+          "into the draw item's authored emissive colour",
+          "[engine]") {
+    Scene scene = makeMotionTestScene();
+    scene.materials[0].emissive = glm::vec3(1.0f, 0.8f, 0.3f);
+
+    EmissiveTrack track;
+    track.objectIndex = 0;
+    track.keys.push_back({.time = 0.0, .strength = 0.0f});
+    track.keys.push_back({.time = 3.0, .strength = 4.0f});
+    scene.animation.emissiveTracks.push_back(track);
+
+    scene.animate(3.0);
+    REQUIRE(scene.objects[0].emissiveStrength == Catch::Approx(4.0f));
+
+    std::vector<render::DrawItem> items;
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(near3(items[0].material.emissive, glm::vec3(4.0f, 3.2f, 1.2f)));
+
+    // The authored colour on the material itself is never overwritten.
+    REQUIRE(near3(scene.materials[0].emissive, glm::vec3(1.0f, 0.8f, 0.3f)));
+}
+
+//======================================================================================================================
+TEST_CASE("an emissive-only clip participates in automatic playback", "[engine]") {
+    Scene scene = makeMotionTestScene();
+    REQUIRE_FALSE(hasAnimationTracks(scene.animation));
+    constexpr double kStep = 1.0 / kAnimationBakeRate;
+    scene.animation.duration = 1.0;
+    scene.animation.emissiveTracks.push_back(
+        {.objectIndex = 0,
+         .keys = {{.time = 0.0, .strength = 0.0f}, {.time = kStep, .strength = 4.0f}}});
+    scene.animate(0.0);
+    REQUIRE(scene.objects[0].emissiveStrength == 0.0f);
+
+    // Both App playback paths use this query, including when no object or camera moves.
+    REQUIRE(hasAnimationTracks(scene.animation));
+    scene.advanceAnimation(kStep);
+    scene.animate(scene.animationTime);
+    REQUIRE(scene.objects[0].emissiveStrength == 4.0f);
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::view leaves emissive untouched when an object has no emissive track",
+          "[engine]") {
+    Scene scene = makeMotionTestScene();
+    scene.materials[0].emissive = glm::vec3(0.5f, 0.5f, 0.5f);
+
+    std::vector<render::DrawItem> items;
+    scene.view(items, render::ShadowFilter::PCF, false);
+    REQUIRE(near3(items[0].material.emissive, glm::vec3(0.5f, 0.5f, 0.5f)));
+}
+
 namespace {
 
 //======================================================================================================================
@@ -1531,6 +1611,10 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
         REQUIRE(near3(pole->scale, glm::vec3(0.05f, 3.0f, 0.05f)));
     }
 
+    const SceneObject* sign = findObject(**scene, "temporal-lab emissive sign");
+    REQUIRE(sign != nullptr);
+    REQUIRE(near3(sign->position, glm::vec3(0.0f, 2.5f, -6.0f)));
+
     // Everything except the floor, the reference cube and the invalid cube is tracked, and no
     // track ever drives the object the motion sentinel belongs to.
     REQUIRE((*scene)->animation.tracks.size() == 7);
@@ -1593,6 +1677,24 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
     REQUIRE(near3(sampleCameraTrack(cameraTrack, 4.0).position, glm::vec3(2.0f, 3.0f, 8.0f)));
     REQUIRE(near3(sampleCameraTrack(cameraTrack, 8.0).position, glm::vec3(0.0f, 3.0f, 10.0f)));
     REQUIRE(std::abs(sampleCameraTrack(cameraTrack, 2.0).yaw) == Catch::Approx(0.1f).margin(1e-3));
+
+    // The sign flashes strength 0/4 every 3 s, a period of 6 s dividing the 24 s clip.
+    const SceneObject* sign = findObject(**scene, "temporal-lab emissive sign");
+    REQUIRE(sign != nullptr);
+    const auto signIndex = static_cast<uint32_t>(sign - (*scene)->objects.data());
+    const EmissiveTrack* signTrack = nullptr;
+    for (const EmissiveTrack& track : (*scene)->animation.emissiveTracks) {
+        if (track.objectIndex == signIndex) {
+            signTrack = &track;
+        }
+    }
+    REQUIRE(signTrack != nullptr);
+    (*scene)->animate(1.0);
+    REQUIRE((*scene)->objects[signIndex].emissiveStrength == Catch::Approx(0.0f));
+    (*scene)->animate(4.0);
+    REQUIRE((*scene)->objects[signIndex].emissiveStrength == Catch::Approx(4.0f));
+    (*scene)->animate(6.0);
+    REQUIRE((*scene)->objects[signIndex].emissiveStrength == Catch::Approx(0.0f));
 }
 
 //======================================================================================================================

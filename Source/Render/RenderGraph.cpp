@@ -32,10 +32,11 @@ constexpr uint32_t kCubeFaceCount = 6;
 
 //======================================================================================================================
 // The colour attachment role, on the same terms the RHI's own desc validation uses: 8-bit unorm
-// targets, sRGB included, plus the two float formats -- the half-float scene colour and the
-// two-channel half-float a motion-vector target carries. It has to answer exactly as the RHI's
-// predicate does, or the graph refuses a target the device would have accepted. A
-// block-compressed format cannot be rendered into, and a depth format belongs in the other slot.
+// targets, sRGB included, the single-channel unorm a mask target carries, plus the two float
+// formats -- the half-float scene colour and the two-channel half-float a motion-vector target
+// carries. It has to answer exactly as the RHI's predicate does, or the graph refuses a target
+// the device would have accepted. A block-compressed format cannot be rendered into, and a depth
+// format belongs in the other slot.
 bool isColorRenderableFormat(rhi::Format format) {
     switch (format) {
     case rhi::Format::BGRA8Unorm:
@@ -43,6 +44,7 @@ bool isColorRenderableFormat(rhi::Format format) {
     case rhi::Format::RGBA8Unorm_sRGB:
     case rhi::Format::RGBA16Float:
     case rhi::Format::RG16Float:
+    case rhi::Format::R8Unorm:
         return true;
     case rhi::Format::Unknown:
     case rhi::Format::BC1Unorm:
@@ -400,6 +402,8 @@ std::string_view formatName(rhi::Format format) {
         return "RGBA16Float";
     case rhi::Format::RG16Float:
         return "RG16Float";
+    case rhi::Format::R8Unorm:
+        return "R8Unorm";
     case rhi::Format::BC1Unorm:
         return "BC1Unorm";
     case rhi::Format::BC1Unorm_sRGB:
