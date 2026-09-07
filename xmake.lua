@@ -165,7 +165,7 @@ target("Tests")
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
               "Source/App/GraphLayout.cpp", "Source/App/GraphNodeModel.cpp",
               "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
-              "Source/App/WorkspaceModel.cpp")
+              "Source/App/TemporalEditorState.cpp", "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.

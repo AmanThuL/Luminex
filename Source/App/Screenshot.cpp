@@ -8,6 +8,7 @@
 #include "App/EditorShell.h"
 #include "Core/Log.h"
 #include "Engine/Scene.h"
+#include "Engine/SceneAnimation.h"
 #include "Engine/SceneLibrary.h"
 #include "RHI/RHI.h"
 #include "Render/Renderer.h"
@@ -110,7 +111,8 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 } // namespace
 
 //======================================================================================================================
-int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId) {
+int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+                  bool temporal, render::TemporalDebugView temporalView) {
     auto device = rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -145,24 +147,50 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId)
     (*renderer)->clearColor[2] = kSceneClearGray;
     (*renderer)->clearColor[3] = 1.0f;
 
-    std::vector<render::DrawItem> items;
-    render::SceneView view =
-        activeScene->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
-    // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off (spec
-    // 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom output --
-    // "with auto exposure off and bloom off, a frame is byte-identical to the pre-change tip" --
-    // and is not a documented user-facing option.
-    if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
-        view.bloomEnabled = false;
+    render::Camera camera = cameraFromScene(activeScene->initialCamera);
+    const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
+    const bool hasAnyTrack = !activeScene->animation.tracks.empty() || hasCameraTrack;
+
+    for (uint32_t frame = 0; frame < frames; ++frame) {
+        // The first frame renders at the scene's authored t = 0; later frames advance by the same
+        // fixed step the editor's frame loop uses, so a warmup run matches what playback produces.
+        if (frame > 0 && hasAnyTrack) {
+            activeScene->advanceAnimation(1.0 / engine::kAnimationBakeRate);
+            activeScene->animate(activeScene->animationTime);
+        }
+        if (hasCameraTrack) {
+            const engine::CameraKey pose = engine::sampleCameraTrack(
+                activeScene->animation.cameraTrack, activeScene->animationTime);
+            camera.position = pose.position;
+            camera.yaw = pose.yaw;
+            camera.pitch = pose.pitch;
+        }
+
+        std::vector<render::DrawItem> items;
+        render::SceneView view =
+            activeScene->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+        // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
+        // (spec 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom
+        // output -- "with auto exposure off and bloom off, a frame is byte-identical to the
+        // pre-change tip" -- and is not a documented user-facing option.
+        if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
+            view.bloomEnabled = false;
+        }
+        // A one-shot process has no prior generation to differ from and never teleports its own
+        // camera, so both stay at SceneView's defaults (0, false).
+        view.temporal.enabled = temporal;
+        view.temporal.debugView = temporalView;
+
+        rhi::CommandList& commands = (*device)->beginFrame();
+        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        (*device)->endFrame(nullptr);
+
+        // readback() has no synchronization; wait until the GPU releases the shared target, and
+        // commitFrame() must not promote this frame's motion to "previous" before the GPU has
+        // actually consumed it.
+        (*device)->waitIdle();
+        activeScene->commitFrame();
     }
-    const render::Camera camera = cameraFromScene(activeScene->initialCamera);
-
-    rhi::CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
-    (*device)->endFrame(nullptr);
-
-    // readback() has no synchronization; wait until the GPU releases the shared target.
-    (*device)->waitIdle();
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());

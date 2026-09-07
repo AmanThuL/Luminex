@@ -12,6 +12,7 @@
 #include "App/Panels/ViewportPanel.h"
 #include "Core/Assert.h"
 #include "Core/Log.h"
+#include "Engine/SceneAnimation.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 
 #include <SDL3/SDL.h>
@@ -260,6 +261,11 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
+    // The startup scene is a selection like any other (spec 9): the generation counter bumps from
+    // its 0-as-unset start, motion has nothing to report yet, and TemporalLab's once-only defaults
+    // fire here exactly as they would on a later switch into it.
+    self->m_activeScene->resetMotion();
+    onSceneSelected(self->m_temporalState, self->m_settings, initialScene);
 
     ExposureResetContext initial = self->m_exposureContext;
     initial.sceneId = initialScene;
@@ -544,7 +550,8 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                                  .scene = *m_activeScene,
                                                  .settings = m_settings,
                                                  .exposureContext = m_exposureContext,
-                                                 .exposureResetPending = m_exposureResetPending});
+                                                 .exposureResetPending = m_exposureResetPending,
+                                                 .temporalState = m_temporalState});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
@@ -591,6 +598,14 @@ render::SceneView EditorShell::sceneView() {
     view.bloomEnabled = m_settings.bloomEnabled;
     view.bloomThreshold = m_settings.bloomThreshold;
     view.bloomIntensity = m_settings.bloomIntensity;
+    view.temporal.enabled = m_settings.temporalEnabled;
+    view.temporal.jitterEnabled = m_settings.jitterEnabled;
+    view.temporal.debugView = m_settings.temporalDebugView;
+    view.temporal.sceneGeneration = m_temporalState.sceneGeneration;
+    // Consumed here rather than left for main.cpp: a cut is a one-shot camera event, not a render
+    // setting, so its latch belongs next to the generation counter it is unrelated to but shares a
+    // lifetime with (both are TemporalEditorState.h).
+    view.temporal.cameraCut = consumeCameraCut(m_temporalState);
     return view;
 }
 
@@ -599,6 +614,37 @@ bool EditorShell::consumeExposureReset() {
     const bool pending = m_exposureResetPending;
     m_exposureResetPending = false;
     return pending;
+}
+
+//======================================================================================================================
+void EditorShell::advanceFrameAnimation() {
+    // A baked key lands on every played time exactly at this step.
+    constexpr double kFixedStep = 1.0 / engine::kAnimationBakeRate;
+
+    engine::Scene& scene = *m_activeScene;
+    const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
+    const bool hasAnyTrack = !scene.animation.tracks.empty() || hasCameraTrack;
+
+    if (m_settings.animationPlaying && hasAnyTrack) {
+        scene.advanceAnimation(kFixedStep);
+        scene.animate(scene.animationTime);
+    }
+
+    // The fly-camera latch (m_looking, true while RMB is held) always wins: a user actively flying
+    // the camera must not have it snapped back to the track underneath them.
+    if (m_settings.followCameraTrack && hasCameraTrack && !m_looking) {
+        const engine::CameraKey pose =
+            engine::sampleCameraTrack(scene.animation.cameraTrack, scene.animationTime);
+        m_camera.position = pose.position;
+        m_camera.yaw = pose.yaw;
+        m_camera.pitch = pose.pitch;
+        // fovY/nearZ/farZ are lens state the track carries no opinion on; left untouched.
+    }
+}
+
+//======================================================================================================================
+void EditorShell::commitFrame() {
+    m_activeScene->commitFrame();
 }
 
 //======================================================================================================================
@@ -619,6 +665,11 @@ bool EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_activeScene = *scene;
     // Camera pose is scene-local; render settings remain editor-local.
     m_camera = cameraFromScene(m_activeScene->initialCamera);
+    // The new scene has no motion to report yet, and its generation differs from whatever the
+    // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
+    // rather than reproject the previous scene's pixels onto this one's geometry.
+    m_activeScene->resetMotion();
+    onSceneSelected(m_temporalState, m_settings, id);
     // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
     // about the new one's content.
     ExposureResetContext candidate = m_exposureContext;

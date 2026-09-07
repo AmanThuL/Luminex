@@ -59,9 +59,14 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
   selected by default (catalog selector in the Scene panel); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
-  <sponza|damaged-helmet|material-lab> --screenshot <out.bmp>`. Running the binary directly
-  requires CWD = its build dir (shaders resolve relative to CWD). Sponza's first load decodes its
-  referenced textures — expect several seconds in a debug build.
+  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab> --screenshot <out.bmp>`. `--frames N`
+  (default 1) renders N frames before writing the last, advancing the scene's animation by 1/60 s
+  and following its camera track (if any) between them; `--temporal` enables the temporal path for
+  the capture and `--temporal-view off|motion|reprojection` selects a diagnostic overlay (and
+  implies `--temporal`) — e.g. `xmake run App --scene temporal-lab --frames 4 --temporal-view
+  motion --screenshot out.bmp`. Running the binary directly requires CWD = its build dir (shaders
+  resolve relative to CWD). Sponza's first load decodes its referenced textures — expect several
+  seconds in a debug build.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
   Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
