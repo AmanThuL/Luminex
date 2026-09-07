@@ -39,7 +39,8 @@ constexpr float kDepthLaneX = 28.0f;
 constexpr float kCameraDistance = 12.0f;
 constexpr std::string_view kStudioEnvironmentPath =
     "Assets/Fetched/MaterialLab/studio_small_09_1k.hdr";
-constexpr uint32_t kStudioEnvironmentFaceSize = 32;
+constexpr uint32_t kStudioEnvironmentFaceSize = 128;
+constexpr uint32_t kStudioDiffuseFaceSize = 32;
 constexpr float kStudioEnvironmentYaw = 0.0f;
 constexpr float kStudioEnvironmentScale = 0.25f;
 
@@ -73,6 +74,7 @@ AssetResult<void> attachStudioEnvironment(rhi::Device& device, Scene& scene,
     // exact same linear-light cubemap. The fallback is an authored neutral mid-gray bright enough
     // to keep the roughness sweep readable without the studio asset.
     ibl::CpuCubemap environment = ibl::makeConstantCubemap(srgbToLinear(glm::vec3(0.65f)), 1);
+    std::optional<ibl::CpuCubemap> diffuseEnvironment;
     bool usingStudioEnvironment = false;
     if (const auto path = findRepoAsset(kStudioEnvironmentPath)) {
         auto decoded = loadRadianceHdr(path->string());
@@ -81,7 +83,16 @@ AssetResult<void> attachStudioEnvironment(rhi::Device& device, Scene& scene,
                 equirectangularToCubemap(*decoded, kStudioEnvironmentFaceSize,
                                          kStudioEnvironmentYaw, kStudioEnvironmentScale);
             if (converted) {
+                // Diffuse convolution integrates every source texel. Keep its established small
+                // radiance copy while the sky and glossy reflections retain the studio detail.
+                auto diffuse =
+                    equirectangularToCubemap(*decoded, kStudioDiffuseFaceSize,
+                                             kStudioEnvironmentYaw, kStudioEnvironmentScale);
+                if (!diffuse) {
+                    return std::unexpected(std::move(diffuse.error()));
+                }
                 environment = std::move(*converted);
+                diffuseEnvironment = std::move(*diffuse);
                 usingStudioEnvironment = true;
             } else {
                 LMX_LOG_WARN("{}; using MaterialLab's neutral fallback environment",
@@ -104,8 +115,13 @@ AssetResult<void> attachStudioEnvironment(rhi::Device& device, Scene& scene,
 
     // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep the
     // asset-free fallback useful instead of double-lighting the fetched environment.
+    ibl::GenerationOptions options;
+    if (usingStudioEnvironment) {
+        options.specularBaseFaceSize = kStudioEnvironmentFaceSize;
+        options.irradianceSource = &*diffuseEnvironment;
+    }
     return attachEnvironment(device, scene, std::move(*cubemap), environment,
-                             !usingStudioEnvironment, label);
+                             !usingStudioEnvironment, label, options);
 }
 
 //======================================================================================================================

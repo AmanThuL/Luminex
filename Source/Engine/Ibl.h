@@ -32,7 +32,7 @@ inline constexpr uint32_t kCubeFaceCount = 6; ///< Number of slices in an RHI cu
 /// Output extents. Diffuse irradiance is a very low-frequency signal, so 16x16 faces carry it
 /// without visible error; the specular chain trades face size for roughness across five mips.
 inline constexpr uint32_t kIrradianceFaceSize = 16;   ///< Shipped diffuse cube face extent.
-inline constexpr uint32_t kSpecularBaseFaceSize = 64; ///< Shipped specular base face extent.
+inline constexpr uint32_t kSpecularBaseFaceSize = 64; ///< Default specular base face extent.
 inline constexpr uint32_t kSpecularMipCount = 5;      ///< Shipped specular roughness levels.
 inline constexpr uint32_t kDfgLutSize = 64;           ///< Shipped DFG table extent.
 
@@ -83,13 +83,16 @@ CpuCubemap makeConstantCubemap(const glm::vec3& radiance, uint32_t faceSize);
 CpuCubemap computeIrradiance(const CpuCubemap& env, uint32_t outFaceSize);
 
 /// GGX-prefiltered radiance chain, one CpuCubemap per mip, face size halving per level with a floor
-/// of 1. The caller chooses how many levels the chain carries (the shipped 64px, five-level chain
+/// of 1. The caller chooses how many levels the chain carries (the default 64px, five-level chain
 /// ends at 4px). Mip m covers perceptual roughness m / (mipCount - 1) with alpha = roughness^2, so
 /// mip 0 is a mirror resample of `env` and the last mip is roughness 1. Karis's split-sum
 /// prefilter: the normal, view and reflection vectors are all assumed equal to the texel direction,
 /// GGX importance sampling draws kSpecularSampleCount half-vectors from the Hammersley sequence,
 /// and the samples are averaged with N.L weights. The weights normalize, so a constant environment
-/// prefilters to itself at every roughness.
+/// prefilters to itself at every roughness. Radiance uses bilinear reconstruction with taps
+/// crossing cube-face edges, including the mirror level where no convolution hides point samples.
+/// Rough samples use trilinear source mips selected from the GGX PDF's solid-angle footprint;
+/// the source pyramid uses solid-angle-weighted radiance reduction to limit HDR sampling variance.
 std::vector<CpuCubemap> prefilterSpecular(const CpuCubemap& env, uint32_t baseFaceSize,
                                           uint32_t mipCount);
 
@@ -119,10 +122,19 @@ struct IblTextures {
 rhi::Result<std::unique_ptr<rhi::Texture>> uploadCubemap(rhi::Device& device, const CpuCubemap& env,
                                                          std::string_view label);
 
+/// Generation quality may vary with the source without changing the shader's roughness levels.
+struct GenerationOptions {
+    /// Base extent must fit kSpecularMipCount mip levels (at least 16 texels for five levels).
+    uint32_t specularBaseFaceSize = kSpecularBaseFaceSize;
+    /// Optional lower-resolution copy of the same radiance for the exact diffuse convolution.
+    /// Borrowed only for generate(); null uses the main environment for both integrals.
+    const CpuCubemap* irradianceSource = nullptr;
+};
+
 /// Generates all three assets from `env` and uploads them. `label` is the scene name; the textures
 /// are labelled "<label>.irradiance", "<label>.prefilteredEnv" and "<label>.dfgLut", alongside the
 /// scene's "<label>.sky".
 rhi::Result<IblTextures> generate(rhi::Device& device, const CpuCubemap& env,
-                                  std::string_view label);
+                                  std::string_view label, GenerationOptions options = {});
 
 } // namespace lmx::engine::ibl

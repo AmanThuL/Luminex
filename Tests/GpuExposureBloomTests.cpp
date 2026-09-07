@@ -9,6 +9,8 @@
 // -- rather than through Renderer::declarePasses(), so a failure here points at one kernel's math
 // instead of the whole frame's wiring (spec 9/10).
 
+#include "DisplayTransformOracle.h"
+
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -19,6 +21,7 @@
 #include "Render/Renderer.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/packing.hpp>
 
 #include <algorithm>
 #include <array>
@@ -138,7 +141,7 @@ glm::vec3 cpuThreshold(glm::vec3 color, float threshold) {
     return color * contribution;
 }
 
-// A tiny CPU grid with BloomDownsample.slang/BloomUpsample.slang's clamped-coordinate box filters,
+// A tiny CPU grid with BloomDownsample.slang/BloomUpsample.slang's clamped-coordinate filters,
 // used to build the full-chain reference the bloom energy oracle compares the GPU chain against.
 struct Grid {
     uint32_t width = 0;
@@ -180,9 +183,18 @@ Grid cpuUpsampleAccumulate(const Grid& base, const Grid& small) {
     Grid dst(base.width, base.height);
     for (uint32_t y = 0; y < base.height; ++y) {
         for (uint32_t x = 0; x < base.width; ++x) {
-            const uint32_t sx = std::min(x / 2, small.width - 1);
-            const uint32_t sy = std::min(y / 2, small.height - 1);
-            dst.at(x, y) = base.load(x, y) + small.load(sx, sy);
+            const float sx =
+                std::clamp((static_cast<float>(x) + 0.5f) * small.width / base.width - 0.5f, 0.0f,
+                           static_cast<float>(small.width - 1));
+            const float sy =
+                std::clamp((static_cast<float>(y) + 0.5f) * small.height / base.height - 0.5f, 0.0f,
+                           static_cast<float>(small.height - 1));
+            const auto x0 = static_cast<uint32_t>(sx);
+            const auto y0 = static_cast<uint32_t>(sy);
+            const glm::vec3 top = glm::mix(small.load(x0, y0), small.load(x0 + 1, y0), sx - x0);
+            const glm::vec3 bottom =
+                glm::mix(small.load(x0, y0 + 1), small.load(x0 + 1, y0 + 1), sx - x0);
+            dst.at(x, y) = base.load(x, y) + glm::mix(top, bottom, sy - y0);
         }
     }
     return dst;
@@ -989,7 +1001,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
     commands.bindTexture(0, **sceneColor);
     commands.bindStorageTexture(1, **bloomChain, mipView(0), StorageAccess::Write);
     commands.bindFrameData(0, thresholdParams);
-    commands.dispatch(1, 1, 1);
+    commands.dispatch((kMip0Size + 7) / 8, (kMip0Size + 7) / 8, 1);
     commands.endComputePass();
 
     // Downsample chain: mip (L - 1) -> mip L, one pass per level.
@@ -1004,7 +1016,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         commands.bindStorageTexture(0, **bloomChain, mipView(level - 1), StorageAccess::Read);
         commands.bindStorageTexture(1, **bloomChain, mipView(level), StorageAccess::Write);
         commands.bindFrameData(0, params);
-        commands.dispatch(1, 1, 1);
+        commands.dispatch((params.dstWidth + 7) / 8, (params.dstHeight + 7) / 8, 1);
         commands.endComputePass();
     }
 
@@ -1029,7 +1041,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
         }
         commands.bindStorageTexture(2, **bloomBlur, mipView(level), StorageAccess::Write);
         commands.bindFrameData(0, params);
-        commands.dispatch(1, 1, 1);
+        commands.dispatch((params.dstWidth + 7) / 8, (params.dstHeight + 7) / 8, 1);
         commands.endComputePass();
         if (level > 0) {
             commands.textureBarrier(**bloomBlur, TextureUse::StorageWrite, TextureUse::StorageRead);
@@ -1041,8 +1053,7 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
     std::vector<uint16_t> blurHalf(size_t{kMip0Size} * kMip0Size * 4);
     (*bloomBlur)->readback(blurHalf.data(), blurHalf.size() * sizeof(uint16_t));
 
-    // Half -> float via the standard library's own round trip: only values this test produces (0,
-    // sums of powers of two) are read back, all exactly representable.
+    // Decode every FP16 channel, including the small filtered values away from the probe.
     const auto toFloat = [](uint16_t half) {
         const uint32_t sign = (half >> 15) & 1u;
         const uint32_t exponent = (half >> 10) & 0x1Fu;
@@ -1098,6 +1109,12 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
     for (uint32_t y = 0; y < kMip0Size; ++y) {
         for (uint32_t x = 0; x < kMip0Size; ++x) {
             const glm::vec3 expected = expectedBlur.load(x, y);
+            const glm::vec3 actual = texelAt(x, y);
+            INFO("full-chain texel (" << x << "," << y << ")");
+            for (int channel = 0; channel < 3; ++channel) {
+                REQUIRE(actual[channel] ==
+                        Catch::Approx(expected[channel]).epsilon(0.01).margin(1e-6));
+            }
             if (expected.r != 0.0f || expected.g != 0.0f || expected.b != 0.0f) {
                 continue;
             }
@@ -1109,9 +1126,8 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
             REQUIRE(gpu.b == 0.0f);
         }
     }
-    // The probe's footprint doubles each upsample level (2^kLevels texels wide out of kMip0Size),
-    // so most of a 32-wide mip 0 is still background; this is the oracle's own sanity that the
-    // zero check above actually exercised something.
+    // The filtered corner probe still leaves zero-valued texels at the opposite edges, so the
+    // exact-zero check must exercise some pixels as well as the positive full-chain comparisons.
     REQUIRE(sawAZeroTexel);
 
     // The probe: GPU result within 1% of the CPU chain's own prediction.
@@ -1120,4 +1136,209 @@ TEST_CASE("bloom threshold and the full four-level chain match a CPU reference",
     INFO("expected " << expectedProbe.r << ", got " << gpuProbe.r);
     REQUIRE(expectedProbe.r > 0.0f); // the oracle itself has to be measuring something
     REQUIRE(gpuProbe.r == Catch::Approx(expectedProbe.r).epsilon(0.01));
+}
+
+//======================================================================================================================
+// A separable colour ramp has hand-derived filtered values: 2 -> 4 maps to {0, 1/4, 3/4, 1},
+// while 2 -> 5 maps to {0, 1/10, 1/2, 9/10, 1}. Nearest-neighbour reconstruction cannot pass
+// the interior probes; the constant base also proves accumulation retains the larger mip.
+TEST_CASE("bloom upsample reconstructs ramps across even odd and single-axis extents", "[gpu]") {
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+    auto library = (*device)->loadShaderLibrary("Shaders/BloomUpsample");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline = (*device)->createComputePipeline({.library = library->get(),
+                                                      .computeEntry = "computeBloomUpsample",
+                                                      .threadsPerThreadgroup = {8, 8, 1},
+                                                      .label = "lmx.test.filteredBloomPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    struct Probe {
+        uint32_t smallWidth, smallHeight, dstWidth, dstHeight;
+        std::array<float, 5> x, y;
+    };
+    const std::array<Probe, 3> probes{{
+        {2, 2, 4, 4, {0.0f, 0.25f, 0.75f, 1.0f}, {0.0f, 0.25f, 0.75f, 1.0f}},
+        {2, 2, 5, 3, {0.0f, 0.1f, 0.5f, 0.9f, 1.0f}, {0.0f, 0.5f, 1.0f}},
+        {1, 2, 3, 5, {0.0f, 0.0f, 0.0f}, {0.0f, 0.1f, 0.5f, 0.9f, 1.0f}},
+    }};
+    for (const Probe& probe : probes) {
+        DYNAMIC_SECTION(probe.smallWidth << "x" << probe.smallHeight << " -> " << probe.dstWidth
+                                         << "x" << probe.dstHeight) {
+            std::vector<uint16_t> smallPixels(size_t{probe.smallWidth} * probe.smallHeight * 4);
+            for (uint32_t y = 0; y < probe.smallHeight; ++y) {
+                for (uint32_t x = 0; x < probe.smallWidth; ++x) {
+                    const size_t offset = (size_t{y} * probe.smallWidth + x) * 4;
+                    smallPixels[offset] = x == 0 ? 0 : halfPow2(-2);
+                    smallPixels[offset + 1] = y == 0 ? 0 : halfPow2(-1);
+                    smallPixels[offset + 2] = halfPow2(-2);
+                    smallPixels[offset + 3] = halfPow2(0);
+                }
+            }
+            const TextureMip smallMip{.data = smallPixels.data(),
+                                      .bytesPerRow = uint64_t{probe.smallWidth} * 8};
+            auto small = (*device)->createTexture({.width = probe.smallWidth,
+                                                   .height = probe.smallHeight,
+                                                   .format = Format::RGBA16Float,
+                                                   .storageRead = true,
+                                                   .label = "lmx.test.filteredBloomSmall"},
+                                                  std::span{&smallMip, 1});
+            INFO(errorOf(small));
+            REQUIRE(small.has_value());
+            std::vector<uint16_t> basePixels(size_t{probe.dstWidth} * probe.dstHeight * 4,
+                                             halfPow2(-3));
+            const TextureMip baseMip{.data = basePixels.data(),
+                                     .bytesPerRow = uint64_t{probe.dstWidth} * 8};
+            auto base = (*device)->createTexture({.width = probe.dstWidth,
+                                                  .height = probe.dstHeight,
+                                                  .format = Format::RGBA16Float,
+                                                  .storageRead = true,
+                                                  .label = "lmx.test.filteredBloomBase"},
+                                                 std::span{&baseMip, 1});
+            INFO(errorOf(base));
+            REQUIRE(base.has_value());
+            auto dst = (*device)->createTexture({.width = probe.dstWidth,
+                                                 .height = probe.dstHeight,
+                                                 .format = Format::RGBA16Float,
+                                                 .storageWrite = true,
+                                                 .cpuReadback = true,
+                                                 .label = "lmx.test.filteredBloomDst"});
+            INFO(errorOf(dst));
+            REQUIRE(dst.has_value());
+            const std::array<uint32_t, 4> params{probe.smallWidth, probe.smallHeight,
+                                                 probe.dstWidth, probe.dstHeight};
+            CommandList& commands = (*device)->beginFrame();
+            commands.beginComputePass("lmx.test.filteredBloomUpsample");
+            commands.bindComputePipeline(**pipeline);
+            commands.bindStorageTexture(0, **base, {}, StorageAccess::Read);
+            commands.bindStorageTexture(1, **small, {}, StorageAccess::Read);
+            commands.bindStorageTexture(2, **dst, {}, StorageAccess::Write);
+            commands.bindFrameData(0, params);
+            commands.dispatch(1, 1, 1);
+            commands.endComputePass();
+            (*device)->endFrame(nullptr);
+            (*device)->waitIdle();
+            std::vector<uint16_t> result(basePixels.size());
+            (*dst)->readback(result.data(), result.size() * sizeof(uint16_t));
+            for (uint32_t y = 0; y < probe.dstHeight; ++y) {
+                for (uint32_t x = 0; x < probe.dstWidth; ++x) {
+                    INFO("texel " << x << "," << y);
+                    const size_t offset = (size_t{y} * probe.dstWidth + x) * 4;
+                    REQUIRE(glm::unpackHalf1x16(result[offset]) ==
+                            Catch::Approx(0.125f + 0.25f * probe.x[x]).margin(0.0005));
+                    REQUIRE(glm::unpackHalf1x16(result[offset + 1]) ==
+                            Catch::Approx(0.125f + 0.5f * probe.y[y]).margin(0.0005));
+                    REQUIRE(glm::unpackHalf1x16(result[offset + 2]) == 0.375f);
+                }
+            }
+        }
+    }
+}
+
+//======================================================================================================================
+// Isolate the final half-resolution bloom reconstruction from its compute chain. A checkerboard
+// in the full-resolution scene blue channel must remain sharp; bloom's red/green ramps must
+// interpolate before the display transform. The disabled case binds the actual 1x1 fallback shape.
+TEST_CASE("display composition filters bloom while preserving exact scene texels", "[gpu]") {
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+    auto library = (*device)->loadShaderLibrary("Shaders/DisplayTransform");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+    auto pipeline =
+        (*device)->createGraphicsPipeline({.library = library->get(),
+                                           .vertexEntry = "vertexMain",
+                                           .fragmentEntry = "fragmentMain",
+                                           .colorFormat = Format::BGRA8Unorm,
+                                           .label = "lmx.test.filteredDisplayPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+    const std::array<uint16_t, 16> bloomPixels{0,
+                                               0,
+                                               0,
+                                               halfPow2(0),
+                                               halfPow2(-2),
+                                               0,
+                                               0,
+                                               halfPow2(0),
+                                               0,
+                                               halfPow2(-1),
+                                               0,
+                                               halfPow2(0),
+                                               halfPow2(-2),
+                                               halfPow2(-1),
+                                               0,
+                                               halfPow2(0)};
+    auto bloom = makeSceneColorTexture(**device, 2, 2, bloomPixels, "lmx.test.displayBloomRamp");
+    INFO(errorOf(bloom));
+    REQUIRE(bloom.has_value());
+    const std::array<uint16_t, 4> black{};
+    auto fallback = makeSceneColorTexture(**device, 1, 1, black, "lmx.test.displayBloomFallback");
+    INFO(errorOf(fallback));
+    REQUIRE(fallback.has_value());
+
+    struct Probe {
+        uint32_t width, height;
+        std::array<float, 5> x, y;
+    };
+    const std::array<Probe, 2> probes{{
+        {4, 4, {0.0f, 0.25f, 0.75f, 1.0f}, {0.0f, 0.25f, 0.75f, 1.0f}},
+        {5, 3, {0.0f, 0.1f, 0.5f, 0.9f, 1.0f}, {0.0f, 0.5f, 1.0f}},
+    }};
+    for (const Probe& probe : probes) {
+        std::vector<uint16_t> scenePixels(size_t{probe.width} * probe.height * 4, 0);
+        for (uint32_t y = 0; y < probe.height; ++y) {
+            for (uint32_t x = 0; x < probe.width; ++x) {
+                scenePixels[(size_t{y} * probe.width + x) * 4 + 2] =
+                    (x + y) % 2 == 0 ? halfPow2(-3) : halfPow2(-1);
+            }
+        }
+        auto scene = makeSceneColorTexture(**device, probe.width, probe.height, scenePixels,
+                                           "lmx.test.displayExactScene");
+        INFO(errorOf(scene));
+        REQUIRE(scene.has_value());
+        auto dst = (*device)->createTexture({.width = probe.width,
+                                             .height = probe.height,
+                                             .format = Format::BGRA8Unorm,
+                                             .renderTarget = true,
+                                             .cpuReadback = true,
+                                             .label = "lmx.test.filteredDisplayDst"});
+        INFO(errorOf(dst));
+        REQUIRE(dst.has_value());
+        for (const bool enabled : {false, true}) {
+            const float intensity = enabled ? 1.0f : 0.0f;
+            CommandList& commands = (*device)->beginFrame();
+            commands.beginRenderPass(
+                {.colorTarget = dst->get(), .clear = true, .label = "lmx.test.filteredDisplay"});
+            commands.bindPipeline(**pipeline);
+            commands.bindTexture(0, **scene);
+            commands.bindTexture(1, enabled ? **bloom : **fallback);
+            commands.bindFrameData(0, intensity);
+            commands.draw(3);
+            commands.endRenderPass();
+            (*device)->endFrame(nullptr);
+            (*device)->waitIdle();
+            std::vector<uint8_t> result(size_t{probe.width} * probe.height * 4);
+            (*dst)->readback(result.data(), result.size());
+            for (uint32_t y = 0; y < probe.height; ++y) {
+                for (uint32_t x = 0; x < probe.width; ++x) {
+                    INFO(probe.width << "x" << probe.height << " bloom=" << enabled << " texel "
+                                     << x << "," << y);
+                    const auto expected = lmx::test::displayBytes(
+                        {0.25f * probe.x[x] * intensity, 0.5f * probe.y[y] * intensity,
+                         (x + y) % 2 == 0 ? 0.125f : 0.5f});
+                    const size_t offset = (size_t{y} * probe.width + x) * 4;
+                    for (size_t channel = 0; channel < 3; ++channel) {
+                        REQUIRE(std::abs(int{result[offset + 2 - channel]} - expected[channel]) <=
+                                1);
+                    }
+                    REQUIRE(result[offset + 3] == 255);
+                }
+            }
+        }
+    }
 }

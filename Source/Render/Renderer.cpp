@@ -1536,9 +1536,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // header carries the same reasoning. Declared every frame; only the display pass's read of
     // bloomBlur is conditional, so dead-pass culling drops threshold/downsample/upsample together
     // when bloom is off.
-    // DisplayTransform maps a scene texel to bloom with coordinate / 2. Ceil division keeps the
-    // final column and row addressable for odd scene extents; floor division would both drop those
-    // source texels from the threshold pass and make the display pass read past mip 0.
+    // Ceil division includes the final source column and row in the threshold pass for odd scene
+    // extents. Upsample and display reconstruction map pixel centres using the actual extents,
+    // with bilinear filtering and clamped edge samples.
     const uint32_t bloomWidth = divRoundUp(sceneWidth, 2u);
     const uint32_t bloomHeight = divRoundUp(sceneHeight, 2u);
 

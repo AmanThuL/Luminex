@@ -178,6 +178,157 @@ TEST_CASE("a constant environment prefilters to a constant chain", "[engine][ibl
 }
 
 //======================================================================================================================
+// The mirror level has no convolution to mask a point resample. A linear face ramp must remain
+// continuous between source texel centers instead of expanding each source texel into a block.
+TEST_CASE("mirror prefilter reconstructs a linear face ramp", "[engine][ibl]") {
+    constexpr uint32_t kSourceSize = 8;
+    constexpr uint32_t kOutputSize = 64;
+    CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSourceSize);
+    for (auto& face : env.faces) {
+        for (uint32_t y = 0; y < kSourceSize; ++y) {
+            for (uint32_t x = 0; x < kSourceSize; ++x) {
+                face[size_t{y} * kSourceSize + x] = {(static_cast<float>(x) + 0.5f) / kSourceSize,
+                                                     (static_cast<float>(y) + 0.5f) / kSourceSize,
+                                                     0.5f, 1.0f};
+            }
+        }
+    }
+    const auto chain = prefilterSpecular(env, kOutputSize, 1);
+    for (uint32_t face = 0; face < kCubeFaceCount; ++face) {
+        for (uint32_t y = 4; y < kOutputSize - 4; ++y) {
+            for (uint32_t x = 4; x < kOutputSize - 4; ++x) {
+                const glm::vec3 expected{(static_cast<float>(x) + 0.5f) / kOutputSize,
+                                         (static_cast<float>(y) + 0.5f) / kOutputSize, 0.5f};
+                REQUIRE(nearVec3(glm::vec3(chain[0].faces[face][size_t{y} * kOutputSize + x]),
+                                 expected, 1e-6f));
+            }
+        }
+    }
+}
+
+//======================================================================================================================
+// A direction-valued environment is continuous across all twelve edges and eight corners. Its
+// analytic value checks face orientation and neighboring-face reconstruction independently of
+// the resampler; unlike a constant furnace it exposes clamped or wrongly mapped seam taps.
+TEST_CASE("mirror prefilter reconstructs continuous radiance across cube edges and corners",
+          "[engine][ibl]") {
+    constexpr uint32_t kSourceSize = 16;
+    constexpr uint32_t kOutputSize = 128;
+    CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSourceSize);
+    for (uint32_t face = 0; face < kCubeFaceCount; ++face) {
+        for (uint32_t y = 0; y < kSourceSize; ++y) {
+            for (uint32_t x = 0; x < kSourceSize; ++x) {
+                env.faces[face][size_t{y} * kSourceSize + x] =
+                    glm::vec4(0.5f * (faceDirection(face, x, y, kSourceSize) + 1.0f), 1.0f);
+            }
+        }
+    }
+    const auto chain = prefilterSpecular(env, kOutputSize, 1);
+    for (uint32_t face = 0; face < kCubeFaceCount; ++face) {
+        for (uint32_t y = 0; y < kOutputSize; ++y) {
+            for (uint32_t x = 0; x < kOutputSize; ++x) {
+                if (x != 0 && y != 0 && x != kOutputSize - 1 && y != kOutputSize - 1) {
+                    continue;
+                }
+                INFO("face " << face << " x " << x << " y " << y);
+                const glm::vec3 expected = 0.5f * (faceDirection(face, x, y, kOutputSize) + 1.0f);
+                REQUIRE(nearVec3(glm::vec3(chain[0].faces[face][size_t{y} * kOutputSize + x]),
+                                 expected, 0.006f));
+            }
+        }
+    }
+    // Filtering a nonconstant source must retain the generator's reproducibility contract.
+    const auto repeatA = prefilterSpecular(env, 8, 3);
+    const auto repeatB = prefilterSpecular(env, 8, 3);
+    for (size_t mip = 0; mip < repeatA.size(); ++mip) {
+        REQUIRE(cubeBytes(repeatA[mip]) == cubeBytes(repeatB[mip]));
+    }
+}
+
+//======================================================================================================================
+// The +X face's right edge neighbors -Z. A deliberately discontinuous face color makes the
+// contribution from the neighbor measurable, so merely clamping the sample cannot pass.
+TEST_CASE("mirror prefilter blends a neighboring cube face at the seam", "[engine][ibl]") {
+    CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), 8);
+    env.faces[5].assign(64, glm::vec4(1.0f));
+    const auto chain = prefilterSpecular(env, 64, 1);
+    const glm::vec3 edge(chain[0].faces[0][size_t{32} * 64 + 63]);
+    REQUIRE(nearVec3(edge, glm::vec3(0.4375f), 1e-6f));
+}
+
+//======================================================================================================================
+// An HDR checker has a constant mean radiance but detail far below a rough reflection's sample
+// footprint. Reading source mip zero at every GGX sample creates deterministic mottling. The
+// footprint-filtered result must recover the mean without clipping away its above-one energy.
+TEST_CASE("rough prefilter integrates fine HDR radiance without sampling mottling",
+          "[engine][ibl]") {
+    constexpr uint32_t kSize = 128;
+    const glm::vec3 meanRadiance{4.0f, 16.0f, 32.0f};
+    CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSize);
+    for (auto& face : env.faces) {
+        for (uint32_t y = 0; y < kSize; ++y) {
+            for (uint32_t x = 0; x < kSize; ++x) {
+                face[size_t{y} * kSize + x] =
+                    glm::vec4(((x + y) % 2 == 0) ? 2.0f * meanRadiance : glm::vec3(0.0f), 1.0f);
+            }
+        }
+    }
+    const auto chain = prefilterSpecular(env, 16, 3);
+    glm::vec3 sum(0.0f);
+    for (const auto& face : chain.back().faces) {
+        for (const glm::vec4& texel : face) {
+            REQUIRE(nearVec3(glm::vec3(texel), meanRadiance, 0.02f));
+            sum += glm::vec3(texel);
+        }
+    }
+    const float texelCount =
+        static_cast<float>(kCubeFaceCount * chain.back().faceSize * chain.back().faceSize);
+    REQUIRE(nearVec3(sum / texelCount, meanRadiance, 0.005f));
+}
+
+//======================================================================================================================
+// Odd extents split source texels between mip cells. Constants must retain their radiance, and
+// an environment lit only along its last row/column must retain that energy instead of losing
+// the unmatched texels. At roughness one, V=N makes the specular integral cosine weighted, so
+// the independent diffuse quadrature provides a bounded check of its mean (not bitwise parity).
+TEST_CASE("rough prefilter retains odd-sized source radiance including border texels",
+          "[engine][ibl]") {
+    constexpr uint32_t kSize = 63;
+    const auto constant = prefilterSpecular(makeConstantCubemap(kTestRadiance, kSize), 8, 3);
+    for (const auto& level : constant) {
+        for (const auto& face : level.faces) {
+            for (const auto& texel : face) {
+                REQUIRE(nearVec3(glm::vec3(texel), kTestRadiance, 1e-5f));
+            }
+        }
+    }
+    CpuCubemap border = makeConstantCubemap(glm::vec3(0.0f), kSize);
+    for (auto& face : border.faces) {
+        for (uint32_t i = 0; i < kSize; ++i) {
+            face[size_t{kSize - 1} * kSize + i] = glm::vec4(16.0f, 16.0f, 16.0f, 1.0f);
+            face[size_t{i} * kSize + kSize - 1] = glm::vec4(16.0f, 16.0f, 16.0f, 1.0f);
+        }
+    }
+    const auto filtered = prefilterSpecular(border, 8, 2);
+    const CpuCubemap reference = computeIrradiance(border, filtered.back().faceSize);
+    float actualMean = 0.0f;
+    float referenceMean = 0.0f;
+    for (uint32_t face = 0; face < kCubeFaceCount; ++face) {
+        for (size_t texel = 0; texel < reference.faces[face].size(); ++texel) {
+            actualMean += filtered.back().faces[face][texel].x;
+            referenceMean += reference.faces[face][texel].x;
+        }
+    }
+    const float count =
+        static_cast<float>(kCubeFaceCount * reference.faceSize * reference.faceSize);
+    actualMean /= count;
+    referenceMean /= count;
+    INFO("rough mean " << actualMean << ", independent diffuse mean " << referenceMean);
+    REQUIRE(referenceMean > 0.1f);
+    REQUIRE(std::abs(actualMean - referenceMean) < 0.03f);
+}
+
+//======================================================================================================================
 // At normal incidence and mirror roughness the whole integral collapses: the half vector is the
 // normal, Schlick's (1 - V.H)^5 vanishes, and the split sum degenerates to F0 * 1 + 0.
 TEST_CASE("the DFG LUT reduces to F0 at normal incidence and mirror roughness", "[engine][ibl]") {
@@ -301,8 +452,11 @@ TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     REQUIRE((*scene)->irradianceMap->height() == kIrradianceFaceSize);
 
     REQUIRE((*scene)->prefilteredEnvMap != nullptr);
-    REQUIRE((*scene)->prefilteredEnvMap->width() == kSpecularBaseFaceSize);
-    REQUIRE((*scene)->prefilteredEnvMap->height() == kSpecularBaseFaceSize);
+    REQUIRE((*scene)->skyCubemap != nullptr);
+    const uint32_t reflectionSize =
+        (*scene)->skyCubemap->width() == 1 ? kSpecularBaseFaceSize : 128;
+    REQUIRE((*scene)->prefilteredEnvMap->width() == reflectionSize);
+    REQUIRE((*scene)->prefilteredEnvMap->height() == reflectionSize);
 
     REQUIRE((*scene)->dfgLut != nullptr);
     REQUIRE((*scene)->dfgLut->width() == kDfgLutSize);

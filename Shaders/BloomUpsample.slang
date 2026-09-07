@@ -1,4 +1,4 @@
-// The bloom upsample-accumulate step (spec 10): a nearest 2x upsample of the smaller downsample-
+// The bloom upsample-accumulate step (spec 10): a bilinear upsample of the smaller downsample-
 // chain mip, added onto the larger mip's own base content. `gBase` always comes from the downsample
 // chain; `gSmall` comes from that chain for the first step and from the previous accumulation output
 // thereafter. The sum lands in a *different* graph texture (`gDst`) rather than back into the
@@ -39,10 +39,19 @@ void computeBloomUpsample(uint3 tid: SV_DispatchThreadID)
         return;
     }
 
+    // Map pixel centres using the actual extents, including odd mip sizes. Clamp before taking
+    // the fractional part so the outermost samples extend the edge texel without extrapolation.
     uint2 smallExtent = uint2(gParams.smallWidth, gParams.smallHeight);
-    uint2 smallCoord = min(tid.xy / 2u, smallExtent - uint2(1, 1));
+    float2 smallPosition = (float2(tid.xy) + 0.5) * float2(smallExtent) /
+                           float2(gParams.dstWidth, gParams.dstHeight) - 0.5;
+    smallPosition = clamp(smallPosition, 0.0, float2(smallExtent - uint2(1, 1)));
+    uint2 lo = uint2(smallPosition);
+    uint2 hi = min(lo + uint2(1, 1), smallExtent - uint2(1, 1));
+    float2 weight = frac(smallPosition);
 
     float4 base = gBase[tid.xy];
-    float4 upsampled = gSmall[smallCoord];
+    float4 top = lerp(gSmall[lo], gSmall[uint2(hi.x, lo.y)], weight.x);
+    float4 bottom = lerp(gSmall[uint2(lo.x, hi.y)], gSmall[hi], weight.x);
+    float4 upsampled = lerp(top, bottom, weight.y);
     gDst[tid.xy] = base + upsampled;
 }
