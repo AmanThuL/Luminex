@@ -22,7 +22,9 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 - M5.6 closed as reliability failure / DEFER, with no accepted performance conclusion (ADR 0012).
   Evidence and experiment source are frozen at `m5.6-gpu-submission-evidence`; see
-  `docs/milestones/m5.6.md`. At that closure the rendering baseline remained M5.5; M6 was unblocked.
+  `docs/milestones/m5.6.md`. Raw bundles are backed up as GitHub Release attachments; location and
+  restore commands: `docs/guides/gpu-submission-archive.md`. The original local bundles were deleted
+  after verification. At that closure the rendering baseline remained M5.5; M6 was unblocked.
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
