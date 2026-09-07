@@ -358,3 +358,34 @@ TEST_CASE("a multi-attachment frame's dump matches its golden file", "[render][g
     REQUIRE(record.has_value());
     requireMatchesGolden(dumpCompiledFrame(*record), "frame-mrt.txt");
 }
+
+//======================================================================================================================
+// A pass with three colour attachments, which is the shape the temporal frame's scene pass declares
+// once motion and the reactive weight join the picture. Each extra has to be numbered by its own
+// attachment index rather than collapsed with the one before it.
+TEST_CASE("a third colour attachment is numbered in the dump", "[render][graph]") {
+    FakeTexture sceneColor{64};
+    FakeTexture motionVectors{64};
+    FakeTexture reactive{64};
+    RenderGraph graph;
+    const GraphTexture color =
+        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+    const GraphTexture motion =
+        graph.importTexture(motionVectors, rhi::Format::RG16Float, "lmx.render.motion");
+    const GraphTexture weight =
+        graph.importTexture(reactive, rhi::Format::R8Unorm, "lmx.render.reactive");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = color};
+    scene.extraColor.push_back(ColorAttachment{.handle = motion});
+    scene.extraColor.push_back(ColorAttachment{.handle = weight});
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(weight));
+
+    const auto record = graph.compileFrame(4);
+    REQUIRE(record.has_value());
+    const std::string dump = dumpCompiledFrame(*record);
+    INFO(dump);
+    REQUIRE(dump.find("color attachment[1] r1 v0") != std::string::npos);
+    REQUIRE(dump.find("color attachment[2] r2 v0") != std::string::npos);
+}

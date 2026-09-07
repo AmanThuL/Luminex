@@ -431,6 +431,10 @@ void Scene::animate(double seconds) {
         object.eulerDegrees = decomposed->eulerDegrees;
         object.scale = decomposed->scale;
     }
+    for (const EmissiveTrack& track : animation.emissiveTracks) {
+        LMX_ASSERT(track.objectIndex < objects.size(), "EmissiveTrack.objectIndex out of range");
+        objects[track.objectIndex].emissiveStrength = sampleEmissiveTrack(track, seconds);
+    }
 }
 
 //======================================================================================================================
@@ -442,9 +446,11 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
         LMX_ASSERT(object.meshIndex < meshes.size(), "SceneObject.meshIndex out of range");
         LMX_ASSERT(object.materialIndex < materials.size(),
                    "SceneObject.materialIndex out of range");
+        render::Material material = materials[object.materialIndex];
+        material.emissive *= object.emissiveStrength;
         items.push_back({.mesh = &meshes[object.meshIndex],
                          .model = object.modelMatrix(),
-                         .material = materials[object.materialIndex],
+                         .material = material,
                          .previousModel = object.previousModel,
                          .motionClass = object.motionClass});
     }

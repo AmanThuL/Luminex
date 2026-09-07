@@ -115,6 +115,9 @@ struct SkyMotionFSOutput
 {
     float4 color : SV_Target0;
     float2 motion : SV_Target1;
+    // The sky never accumulates less readily than the geometry in front of it: it emits no
+    // radiance of its own that can switch on, so its reactive weight is the constant 0.
+    float reactive : SV_Target2;
 };
 
 [shader("vertex")]
@@ -134,5 +137,6 @@ SkyMotionFSOutput fragmentMainMotion(SkyMotionVSOutput input)
     SkyMotionFSOutput o;
     o.color = float4(skyRadiance(input.base), 1.0);
     o.motion = motionFromClip(input.clipCurrent, input.clipPrevious);
+    o.reactive = 0.0;
     return o;
 }

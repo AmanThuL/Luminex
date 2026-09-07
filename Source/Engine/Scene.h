@@ -36,6 +36,10 @@ struct SceneObject {
     /// How this object's motion is produced. `Invalid` marks a draw whose history must not be
     /// reprojected.
     render::MotionClass motionClass = render::MotionClass::Rigid;
+    /// Multiplier `Scene::view()` applies to the material's authored emissive colour, written by
+    /// `Scene::animate()` from an `EmissiveTrack`. Objects with no track keep the default of 1, so
+    /// the authored colour passes through unchanged.
+    float emissiveStrength = 1.0f;
 
     /// Builds the object's model matrix from its authored transform fields.
     glm::mat4 modelMatrix() const;
@@ -98,8 +102,9 @@ public:
     void advanceAnimation(double dt);
 
     /// Samples every rigid track at `seconds` and writes the result into its object's transform
-    /// fields. Track object indices and sampled poses are validated where tracks are built, so a
-    /// pose that cannot be decomposed here is a contract violation.
+    /// fields, and every emissive track into its object's `emissiveStrength`. Track object indices
+    /// and sampled poses are validated where tracks are built, so a pose that cannot be decomposed
+    /// here is a contract violation.
     void animate(double seconds);
 
     /// Fills `items` (cleared first, one DrawItem per object, in object order) and returns the

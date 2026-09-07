@@ -104,8 +104,21 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
     ImGui::BeginDisabled(!settings.temporalEnabled);
     ImGui::Checkbox("Jitter", &settings.jitterEnabled);
 
+    int reconstructionIndex = static_cast<int>(settings.reconstruction);
+    constexpr const char* kReconstructionNames[] = {"Raw", "Native TAA"};
+    if (ImGui::Combo("Reconstruction", &reconstructionIndex, kReconstructionNames,
+                     static_cast<int>(std::size(kReconstructionNames)))) {
+        settings.reconstruction = static_cast<render::ReconstructionMode>(reconstructionIndex);
+    }
+
     int debugViewIndex = static_cast<int>(settings.temporalDebugView);
-    constexpr const char* kDebugViewNames[] = {"Off", "Motion vectors", "Reprojection error"};
+    constexpr const char* kDebugViewNames[] = {"Off",
+                                               "Motion vectors",
+                                               "Reprojection error",
+                                               "Reprojected history",
+                                               "Rejection mask",
+                                               "Blend weight",
+                                               "History age"};
     if (ImGui::Combo("Debug view", &debugViewIndex, kDebugViewNames,
                      static_cast<int>(std::size(kDebugViewNames)))) {
         settings.temporalDebugView = static_cast<render::TemporalDebugView>(debugViewIndex);
@@ -155,6 +168,10 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
     ImGui::Text("Jitter index: %u", status.jitterIndex);
     ImGui::Text("History: %s, %llu bytes", status.historyValid ? "valid" : "invalid",
                 static_cast<unsigned long long>(status.historyBytes));
+    ImGui::Text("History age: %u", status.historyAge);
+    ImGui::Text("Warmup: %s", status.warmupComplete ? "complete" : "in progress");
+    ImGui::Text("Depth history: %llu bytes",
+                static_cast<unsigned long long>(status.depthHistoryBytes));
     ImGui::TextWrapped("Motion = uvCurrent - uvPrevious, UV of the render extent, +y down, "
                        "unjittered; +inf = invalid.");
 }
@@ -195,6 +212,10 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
                            "%.2f", ImGuiSliderFlags_AlwaysClamp);
         ImGui::SliderFloat("Exposure compensation", &settings.exposureCompensationEv, -6.0f, 6.0f,
                            "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat("Adapt up (stops/s)", &settings.exposureAdaptUpStopsPerSecond, 0.0f,
+                           16.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
+        ImGui::SliderFloat("Adapt down (stops/s)", &settings.exposureAdaptDownStopsPerSecond, 0.0f,
+                           16.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     }
     ImGui::Checkbox("Bloom", &settings.bloomEnabled);
     if (settings.bloomEnabled) {

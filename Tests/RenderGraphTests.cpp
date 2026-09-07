@@ -3319,6 +3319,24 @@ TEST_CASE("RG16Float is accepted as a color attachment", "[render][graph]") {
 }
 
 //======================================================================================================================
+// The single-channel mask format, for the same reason: the graph's predicate and the RHI's have to
+// answer alike, or a target the device accepts is refused a pass.
+TEST_CASE("R8Unorm is accepted as a color attachment", "[render][graph]") {
+    FakeTexture reactive{64, 64, "reactive"};
+    RenderGraph graph;
+    const GraphTexture mask = graph.importTexture(reactive, rhi::Format::R8Unorm, "reactive");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = mask};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+    graph.exportTexture(nextVersion(mask));
+
+    const auto schedule = graph.compile();
+    INFO(errorOf(schedule));
+    REQUIRE(schedule.has_value());
+}
+
+//======================================================================================================================
 // The transient rule reaches every attachment: an extra that loads consumes contents the frame
 // never produced just as the primary would.
 TEST_CASE("a transient loaded as an extra color attachment fails to compile", "[render][graph]") {

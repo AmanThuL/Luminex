@@ -1,7 +1,9 @@
 // The frame's one scene-linear -> display step, run as a fullscreen pass over the HDR scene
-// colour: bloom composition, a neutral tone map into [0, 1], then the sRGB encode. No other shader
-// in the project encodes, so this file is the whole of the image's display side and can be
-// replaced on its own. Slots: texture 0 scene color, 1 bloom result; buffer 0 params.
+// colour: bloom composition, a neutral tone map into [0, 1], then the sRGB encode. Nothing upstream
+// of this pass encodes, so this file is the whole of the image's display side and can be replaced
+// on its own; the one thing downstream that encodes is the temporal debug view drawn over the
+// finished image, which imports the same Tonemap and Encode modules so the two agree.
+// Slots: texture 0 scene color, 1 bloom result; buffer 0 params.
 //
 // Bloom composites here, in scene-linear space before the tone map (spec 10): `gBloom` holds the
 // upsample-accumulate chain's result at half the scene's resolution, sampled by halving the
@@ -10,6 +12,7 @@
 // color, so they stay byte-identical to a frame with no bloom pass at all. Renderer.cpp still binds
 // a black 1x1 fallback because the argument-table slot must contain a valid resource.
 import Encode;
+import Tonemap;
 
 [[vk::binding(0, 0)]]
 Texture2D<float4> gSceneColor : register(t0); // → MSL [[texture(0)]]
@@ -38,33 +41,6 @@ VSOutput vertexMain(uint vid: SV_VertexID)
     VSOutput o;
     o.position = float4(uv * 2.0 - 1.0, 0.0, 1.0);
     return o;
-}
-
-// Khronos PBR Neutral: a display-referred tone map that leaves in-gamut colour alone and rolls
-// only what exceeds the display into range. Below the compression start it is the identity minus
-// a small black offset, so mid-tones keep the value the shading produced; past it the peak channel
-// is compressed and the colour desaturates toward that peak instead of clipping a channel.
-static const float kStartCompression = 0.8 - 0.04;
-static const float kDesaturation = 0.15;
-
-float3 pbrNeutralToneMap(float3 color)
-{
-    float x = min(color.r, min(color.g, color.b));
-    float offset = (x < 0.08) ? (x - 6.25 * x * x) : 0.04;
-    color -= offset;
-
-    float peak = max(color.r, max(color.g, color.b));
-    if (peak < kStartCompression)
-    {
-        return color;
-    }
-
-    const float d = 1.0 - kStartCompression;
-    float newPeak = 1.0 - d * d / (peak + d - kStartCompression);
-    color *= newPeak / peak;
-
-    float g = 1.0 - 1.0 / (kDesaturation * (peak - newPeak) + 1.0);
-    return lerp(color, newPeak.xxx, g);
 }
 
 [shader("fragment")]

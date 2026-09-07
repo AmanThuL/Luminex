@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/AppOptions.h"
 #include "Engine/SceneLibrary.h"
 #include "Render/Renderer.h"
 
@@ -20,7 +21,10 @@ namespace lmx::app {
 /// `frames == 1` behaves exactly as before: no clock advance, no commit beyond the one frame. The
 /// scene generation this run declares is 0 and its camera cut is always false -- a one-shot process
 /// has no prior generation to differ from and never teleports its own camera.
+///
+/// `temporal` maps `Off` to `render::TemporalSettings::enabled = false`, and `Raw`/`Taa` to
+/// enabled with the corresponding `render::ReconstructionMode` and jitter on.
 int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
-                  bool temporal, render::TemporalDebugView temporalView);
+                  TemporalMode temporal, render::TemporalDebugView temporalView);
 
 } // namespace lmx::app

@@ -31,16 +31,26 @@ struct EditorRenderSettings {
     float exposureEvMin = -8.0f;          ///< Lower clamp on the resolved automatic exposure.
     float exposureEvMax = 8.0f;           ///< Upper clamp on the resolved automatic exposure.
     float exposureCompensationEv = 0.0f;  ///< Bias applied to the resolved automatic exposure.
+    /// How fast auto exposure may brighten, in stops per second; meaningless while
+    /// autoExposureEnabled is false.
+    float exposureAdaptUpStopsPerSecond = 3.0f;
+    /// How fast auto exposure may darken, in stops per second; meaningless while
+    /// autoExposureEnabled is false. Slower than brightening by default.
+    float exposureAdaptDownStopsPerSecond = 1.5f;
 
     bool bloomEnabled = true;    ///< Whether the bloom passes contribute to the display transform.
     float bloomThreshold = 1.0f; ///< Scene-linear luminance above which bloom is gathered.
     float bloomIntensity = 0.2f; ///< Weight of the bloom contribution.
 
-    /// Opt-in temporal path (motion, history, reprojection); off keeps the pre-temporal frame.
-    bool temporalEnabled = false;
+    /// Temporal path (motion, history, reprojection); on by default (ADR 0013's forward note --
+    /// the default flips in the App, not in the Renderer). False keeps the pre-temporal frame.
+    bool temporalEnabled = true;
     /// Offsets rasterisation by the frame's Halton sample; meaningless while temporalEnabled is
-    /// false. TemporalLab's once-only defaults never turn this on -- see TemporalEditorState.h.
-    bool jitterEnabled = false;
+    /// false. On by default alongside temporalEnabled.
+    bool jitterEnabled = true;
+    /// Which reconstruction the temporal path runs; meaningless while temporalEnabled is false.
+    /// Native TAA by default -- the resolve pass runs and its output becomes the colour history.
+    render::ReconstructionMode reconstruction = render::ReconstructionMode::NativeTaa;
     /// Diagnostic drawn over the display transform's own output.
     render::TemporalDebugView temporalDebugView = render::TemporalDebugView::Off;
     /// Whether the scene clock advances each frame. True by default so a scene with tracks plays

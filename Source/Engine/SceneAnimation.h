@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file SceneAnimation.h
-/// @brief Declares rigid and camera animation tracks and their samplers.
+/// @brief Declares rigid, camera, and emissive animation tracks and their samplers.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -46,13 +46,30 @@ struct CameraKey {
 /// exactly.
 constexpr double kAnimationBakeRate = 60.0;
 
+/// One held emissive-strength value in an `EmissiveTrack`.
+struct EmissiveKey {
+    double time = 0.0;     ///< Seconds from the clip start; keys are sorted.
+    float strength = 1.0f; ///< Multiplier applied to the object's authored emissive colour.
+};
+
+/// A time-sorted, step-held emissive-strength sequence driving one `Scene::objects` entry.
+struct EmissiveTrack {
+    uint32_t objectIndex = 0;      ///< Index into `Scene::objects`.
+    std::vector<EmissiveKey> keys; ///< Time-sorted keys; sampling requires at least one.
+};
+
 /// Every track a scene plays, with the clip length the scene clock wraps against.
 struct SceneAnimation {
     std::vector<RigidTrack> tracks;     ///< One track per animated object; unlisted objects rest.
     std::vector<CameraKey> cameraTrack; ///< Optional camera path; empty means the scene has none.
-    double duration = 0.0;              ///< Clip length in seconds; 0 means nothing to play.
-    bool loop = true;                   ///< Whether the clock wraps at `duration`.
+    std::vector<EmissiveTrack>
+        emissiveTracks;    ///< One track per object with animated emissive strength.
+    double duration = 0.0; ///< Clip length in seconds; 0 means nothing to play.
+    bool loop = true;      ///< Whether the clock wraps at `duration`.
 };
+
+/// Whether the clip has any rigid, camera, or emissive tracks for playback to advance.
+bool hasAnimationTracks(const SceneAnimation& animation);
 
 /// Returns `track`'s world matrix at `time` seconds, as translate * rotate * scale. Translation
 /// and scale interpolate linearly and rotation slerps between the bracketing keys; a `step` track
@@ -64,5 +81,10 @@ glm::mat4 sampleRigidTrack(const RigidTrack& track, double time);
 /// between the bracketing keys and clamp outside the key range. The returned key's `time` is the
 /// requested `time`. `keys` must not be empty.
 CameraKey sampleCameraTrack(std::span<const CameraKey> keys, double time);
+
+/// Returns `track`'s emissive strength at `time` seconds: the last key with `time <= t`, held
+/// (step) until the next key, and clamped to the first or last key outside the range.
+/// `track.keys` must not be empty.
+float sampleEmissiveTrack(const EmissiveTrack& track, double time);
 
 } // namespace lmx::engine
