@@ -132,7 +132,7 @@ into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecor
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
 as deterministic text; `Renderer` — declares shadow, scene+sky, histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
-the next frame), bloom (threshold/downsample/upsample), display-transform, and, opt-in via
+the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
 (reproject diagnostic, the `TemporalResolve` stage's native TAA resolve or raw history commit, debug
 view) into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions;
@@ -141,7 +141,7 @@ derivation (ADR 0013); `TemporalResolve.h` holds the reconstruction contract, pi
 ownership and frozen constants (ADRs 0014–0015)) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
-generation (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
+generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
 baking (`TextureBake.h`), rigid animation (`SceneAnimation`, glTF-baked `RigidTrack`s, camera
 tracks) and object previous-transform tracking (`SceneObject::previousModel`/`motionClass`,
 `Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`)) →

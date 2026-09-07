@@ -38,7 +38,7 @@ static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
 AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
                                     std::unique_ptr<rhi::Texture> skyCubemap,
                                     const ibl::CpuCubemap& environment, bool analyticLights,
-                                    std::string_view label) {
+                                    std::string_view label, ibl::GenerationOptions options) {
     // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
     auto sphere = render::createMesh(device, render::fromGeo(makeSphere(0.5f, 20, 20)),
                                      std::string(label) + ".skySphere");
@@ -49,7 +49,7 @@ AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
     scene.skySphere = std::move(*sphere);
     scene.skyCubemap = std::move(skyCubemap);
 
-    auto generated = ibl::generate(device, environment, label);
+    auto generated = ibl::generate(device, environment, label, options);
     if (!generated) {
         return std::unexpected(
             AssetError{AssetErrorCode::UploadFailed, std::move(generated.error().message)});

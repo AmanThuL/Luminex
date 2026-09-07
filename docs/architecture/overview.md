@@ -58,7 +58,9 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   first enable.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
-  (`HdrEnvironment.h`, `Ibl.h`), and deterministic offline texture mip baking (`TextureBake.h`).
+  (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
+  MaterialLab studio reflection source with a separate bounded diffuse source, and deterministic
+  offline texture mip baking (`TextureBake.h`).
   It also owns object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`) and rigid animation (`SceneAnimation`, glTF-baked
   `RigidTrack`s, the shared `SceneEnvironment.h` sky/light rig, and the `temporal-lab`/`milk-truck`

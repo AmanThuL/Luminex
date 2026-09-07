@@ -88,13 +88,13 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       2×2-box downsample; N = kMaxBloomDownsampleLevels (4), clamped so no mip collapses to 1×1
 │       early — a 32-wide bloom base (the common viewport size) reaches the full depth
 ├─ 9. lmx.pass.bloom.upsampleN-1..0   compute, one pass per level, walks back to mip 0
-│       → bloomBlur (a second graph-created texture, one fewer mip than bloomChain): nearest 2×
-│       upsample + add. A second texture rather than in-place accumulation, since one compute pass
+│       → bloomBlur (a second graph-created texture, one fewer mip than bloomChain): pixel-center
+│       bilinear upsample + add. A second texture rather than in-place accumulation, since one pass
 │       may read and write one texture only through disjoint ranges (spec 6)
 │
 ├─ 10. lmx.pass.display     fullscreen triangle: Load the resolved colour (Raw reads raw scene
-│       colour instead) + bloomBlur mip 0 × bloomIntensity (bloom-off binds an exact-zero fallback,
-│       bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Tonemap.slang, shared with the
+│       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
+│       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Tonemap.slang, shared with the
 │       debug view) → sRGB encode → display color (BGRA8Unorm) — the only pass that encodes sRGB
 │
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
@@ -200,8 +200,12 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
   material-referenced images; decoded CPU image data is dropped before the builder returns.
 - **IBL assets are per-scene and generated at build time** (`Source/Engine/Ibl.h`): a cosine-convolved
-  irradiance cube (16² faces), a GGX-prefiltered specular chain (64² base, 5 mips), and a split-sum DFG
-  lookup table (64², `RG16Float`), all uploaded `RGBA16Float`/`RG16Float` so radiance above 1.0 survives.
+  irradiance cube (16² faces), a GGX-prefiltered specular chain (64² base by default, 128² for
+  MaterialLab's studio, 5 mips), and a split-sum DFG lookup table (64², `RG16Float`). CPU specular
+  samples interpolate across cube-face boundaries and choose source mips from their GGX PDF
+  footprint to suppress bright-source noise at high roughness; the mirror level uses source mip 0.
+  MaterialLab uses a 128² source for sky/specular and a matching 32² source for diffuse to bound
+  its exact convolution cost. The assets are uploaded `RGBA16Float`/`RG16Float` so radiance above 1.0 survives.
   A `SceneView` that carries none substitutes black-cube and zero-DFG fallbacks rather than reading an
   unbound slot.
 - **Base-color and normal images bake offline when `xmake setup` runs**: `Tools/TextureBake` (wrapping
@@ -266,29 +270,26 @@ Crytek OBJ+PNG archive), **Damaged Helmet** (`damaged-helmet`, glTF, generated t
 (`material-lab`, always available — a code-generated roughness×metallic sphere grid plus
 horizontally arranged color, texture, normal, and depth diagnostics), and **TemporalLab**
 (`temporal-lab`, always available — a deterministic checkerboard floor, rigid and orbiting motion,
-and one `Invalid`-flagged object for verifying the M6.1 motion contract). MaterialLab and
-TemporalLab use the pinned CC0 Studio Small 09 HDRI for their visible sky and generated IBL when
-setup has fetched it, and log before falling back to a deterministic neutral environment otherwise.
+an emissive sign and one `Invalid`-flagged object for verifying motion and reconstruction).
+MaterialLab uses the pinned CC0 Studio Small 09 HDRI for its visible sky and generated IBL when
+setup has fetched it, and logs before falling back to a deterministic neutral environment otherwise.
 The other scenes retain the shared code-generated neutral cubemap and IBL set. Missing required
 glTF assets disable their dropdown entries with setup guidance; an unavailable explicit CLI scene
 exits with an error instead of falling back.
 
 ## Known gaps / candidate techniques for the next milestone
 
-1. **Bloom's upsample is nearest-neighbour** — a deterministic, testable choice (spec 10), but it
-   produces a visibly blocky halo around small bright highlights at the current chain depth;
-   bilinear or a wider filter kernel is a candidate improvement, not a correctness fix.
-2. **PCSS parameterization** — the migrated blocker search mixes a view-space near-plane constant
+1. **PCSS parameterization** — the migrated blocker search mixes a view-space near-plane constant
    with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
-3. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load, and
+2. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load, and
    direct lighting stays single-scatter (only the image-based term compensates); caching becomes
    worthwhile as more authored environments or faster scene switching arrive.
-4. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
+3. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
    glTF file that reused one image in both a color and a data role would need the offline bake to
    distinguish them, which it does not yet do.
-5. **Sponza startup is still synchronous** — decode and upload still block the window before it
+4. **Sponza startup is still synchronous** — decode and upload still block the window before it
    becomes responsive; asynchronous staging remains future work.
-6. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
+5. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
    conventions above are what a future D3D12 backend has to reproduce.
 
 Cross-references: `docs/specs/2026-08-11-m5-execution-substrate-design.md` (sections 6/7/9/10 —
