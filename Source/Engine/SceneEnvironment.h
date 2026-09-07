@@ -25,13 +25,15 @@ namespace lmx::engine {
 /// generator always needs the CPU copy. Passing radiance that disagrees between them lights the
 /// scene from a sky it does not show; keeping them equal is the caller's contract.
 ///
+/// `options` selects the reflection extent and optionally a lower-resolution copy of the same
+/// environment for diffuse convolution; its borrowed source only needs to survive this call.
 /// `analyticLights` false zeroes the rig's strengths, for a scene whose environment already
 /// contains its key lights and would otherwise be lit twice. Ownership of `skyCubemap` moves into
 /// `scene`. Returns `AssetErrorCode::UploadFailed` if any GPU resource cannot be created.
 AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
                                     std::unique_ptr<rhi::Texture> skyCubemap,
                                     const ibl::CpuCubemap& environment, bool analyticLights,
-                                    std::string_view label);
+                                    std::string_view label, ibl::GenerationOptions options = {});
 
 /// Calls attachEnvironment with the authored neutral sky every scene without its own environment
 /// shares: one sRGB texel of light overcast sky, decoded once so the sky pass and the generated

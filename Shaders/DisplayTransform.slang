@@ -6,8 +6,8 @@
 // Slots: texture 0 scene color, 1 bloom result; buffer 0 params.
 //
 // Bloom composites here, in scene-linear space before the tone map (spec 10): `gBloom` holds the
-// upsample-accumulate chain's result at half the scene's resolution, sampled by halving the
-// display-target texel coordinate, and `bloomIntensity` is zero whenever Renderer.cpp's bloom
+// upsample-accumulate chain's result at half the scene's resolution, reconstructed with bilinear
+// filtering at display pixel centres, and `bloomIntensity` is zero whenever Renderer.cpp's bloom
 // toggle is off -- disabled frames skip the texture load and add exactly x + 0 to their scene
 // color, so they stay byte-identical to a frame with no bloom pass at all. Renderer.cpp still binds
 // a black 1x1 fallback because the argument-table slot must contain a valid resource.
@@ -56,7 +56,21 @@ float4 fragmentMain(VSOutput input): SV_Target
     float3 bloom = 0.0;
     if (gParams.bloomIntensity != 0.0)
     {
-        bloom = gBloom.Load(int3(int2(input.position.xy) >> 1, 0)).rgb;
+        uint sceneWidth, sceneHeight, bloomWidth, bloomHeight;
+        gSceneColor.GetDimensions(sceneWidth, sceneHeight);
+        gBloom.GetDimensions(bloomWidth, bloomHeight);
+        uint2 bloomExtent = uint2(bloomWidth, bloomHeight);
+        float2 bloomPosition = input.position.xy * float2(bloomExtent) /
+                               float2(sceneWidth, sceneHeight) - 0.5;
+        bloomPosition = clamp(bloomPosition, 0.0, float2(bloomExtent - uint2(1, 1)));
+        uint2 lo = uint2(bloomPosition);
+        uint2 hi = min(lo + uint2(1, 1), bloomExtent - uint2(1, 1));
+        float2 weight = frac(bloomPosition);
+        float3 top = lerp(gBloom.Load(int3(int2(lo), 0)).rgb,
+                          gBloom.Load(int3(int2(hi.x, lo.y), 0)).rgb, weight.x);
+        float3 bottom = lerp(gBloom.Load(int3(int2(lo.x, hi.y), 0)).rgb,
+                             gBloom.Load(int3(int2(hi), 0)).rgb, weight.x);
+        bloom = lerp(top, bottom, weight.y);
     }
     float3 composed = sceneColor + bloom * gParams.bloomIntensity;
     // The display target is opaque -- the scene's alpha is material coverage, not an output.
