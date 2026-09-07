@@ -112,11 +112,17 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"shadowTransform\"") != std::string::npos);
     REQUIRE(json.find("\"preExposure\"") != std::string::npos);
     // PassUniforms lost the ambient float4 when image-based lighting replaced the flat ambient
-    // term, and the 16 bytes it occupied went with it: 288 bytes to 272.
-    REQUIRE(json.find("\"sizeBytes\": 272") != std::string::npos);
+    // term, and the 16 bytes it occupied went with it: 288 bytes to 272. The motion pair appended
+    // for the temporal path took it to 400.
+    REQUIRE(json.find("\"sizeBytes\": 400") != std::string::npos);
+    REQUIRE(json.find("\"viewProjUnjittered\"") != std::string::npos);
+    REQUIRE(json.find("\"previousViewProjUnjittered\"") != std::string::npos);
     REQUIRE(json.find("\"ambient\"") == std::string::npos);
-    // SkyUniforms carries preExposure and grew for it: 80 bytes to 96.
-    REQUIRE(json.find("\"sizeBytes\": 96") != std::string::npos);
+    // SkyUniforms carries preExposure and grew for it: 80 bytes to 96, then to 176 for the sky's
+    // own motion pair and the jitter its vertex stage applies.
+    REQUIRE(json.find("\"sizeBytes\": 176") != std::string::npos);
+    REQUIRE(json.find("\"previousViewProj\"") != std::string::npos);
+    REQUIRE(json.find("\"previousEyePos\"") != std::string::npos);
     // ObjectUniforms traded fresnelR0 (16 bytes, now derived in-shader from albedo and metallic)
     // for a 64-byte inverse-transpose normal matrix: 256 bytes to 304.
     REQUIRE(json.find("\"metallic\"") != std::string::npos);
@@ -124,5 +130,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"emissive\"") != std::string::npos);
     REQUIRE(json.find("\"normalMatrix\"") != std::string::npos);
     REQUIRE(json.find("\"fresnelR0\"") == std::string::npos);
-    REQUIRE(json.find("\"sizeBytes\": 304") != std::string::npos);
+    // The previous frame's transform, appended for motion, took it from 304 to 368.
+    REQUIRE(json.find("\"previousModel\"") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 368") != std::string::npos);
 }

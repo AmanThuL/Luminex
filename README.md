@@ -25,9 +25,10 @@ inspectable codebase.
 | Materials | Full glTF metallic-roughness inputs (base color, metallic-roughness, occlusion, emissive, normal) shaded with a GGX BRDF and diffuse/specular image-based lighting |
 | Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
-| Content | Deterministically converted Crytek Sponza and Khronos Damaged Helmet through a focused glTF loader, plus deterministic offline mip baking |
+| Content | Deterministically converted Crytek Sponza, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
+| Motion | Camera and rigid-object motion vectors with an explicit invalid-motion sentinel, and a persistent, reset-aware temporal history feeding diagnostic reprojection views |
 | Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, stable rolling per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
-| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
+| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, a deterministic motion lab exercising rigid, orbiting and invalid-flagged motion, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
 <p align="center">
   <img src="docs/media/damaged-helmet.png" alt="Khronos Damaged Helmet rendered by Luminex" width="760">

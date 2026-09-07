@@ -3,6 +3,8 @@
 #include "App/FrameRecordRing.h"
 #include "Render/RenderGraph.h"
 
+#include <cstring>
+
 namespace {
 
 // Mirrors BufferHazardSmoke.slang's HazardParams.
@@ -305,4 +307,94 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
     REQUIRE(newest->timings.size() == 1);
     REQUIRE(newest->timings[0].label == scheduled.label);
     REQUIRE(newest->timings[0].gpuMilliseconds >= 0.0);
+}
+
+//======================================================================================================================
+// The declaration path proved end to end: the graph is the only thing that fills the pass
+// descriptor, so a readback of the second attachment showing MrtSmoke's own values is what says the
+// extra reached the hardware as attachment one rather than being dropped or aliased onto the
+// primary.
+TEST_CASE("a graph-declared pass writes an extra color attachment", "[gpu]") {
+    using namespace lmx::rhi;
+    using namespace lmx::render;
+
+    // The two halves MrtSmoke.slang writes: 0.25 is 2^-2 and -0.5 is 2^-1, both exact in half
+    // precision, so the readback is compared bit for bit.
+    constexpr uint16_t kWrittenMotionX = 0x3400;
+    constexpr uint16_t kWrittenMotionY = 0xB800;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto color = makeProbeTarget(**device, "lmx.test.graph.mrtColor");
+    INFO(errorOf(color));
+    REQUIRE(color.has_value());
+
+    auto motion = (*device)->createTexture({.width = kSize,
+                                            .height = kSize,
+                                            .format = Format::RG16Float,
+                                            .renderTarget = true,
+                                            .cpuReadback = true,
+                                            .label = "lmx.test.graph.mrtMotion"});
+    INFO(errorOf(motion));
+    REQUIRE(motion.has_value());
+
+    auto library = (*device)->loadShaderLibrary("Shaders/MrtSmoke");
+    INFO(errorOf(library));
+    REQUIRE(library.has_value());
+
+    auto pipeline = (*device)->createGraphicsPipeline(
+        {.library = library->get(),
+         .vertexEntry = "vertexMain",
+         .fragmentEntry = "fragmentMain",
+         .colorFormat = Format::BGRA8Unorm,
+         .extraColorFormats = {Format::RG16Float, Format::Unknown, Format::Unknown},
+         .extraColorCount = 1,
+         .label = "lmx.test.graph.mrtPipeline"});
+    INFO(errorOf(pipeline));
+    REQUIRE(pipeline.has_value());
+
+    CommandList& commands = (*device)->beginFrame();
+
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(**color, Format::BGRA8Unorm, "lmx.test.graph.mrtColor");
+    const GraphTexture motionVectors =
+        graph.importTexture(**motion, Format::RG16Float, "lmx.test.graph.mrtMotion");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor, .clearColor = {0.0f, 1.0f, 0.0f, 1.0f}};
+    scene.extraColor.push_back(ColorAttachment{.handle = motionVectors});
+    graph.addPass("lmx.test.graph.mrt", scene, [&](const PassResources&) {
+        commands.bindPipeline(**pipeline);
+        commands.draw(3);
+    });
+
+    // The extra's version is the only sink, so it is also what keeps the pass out of the cull.
+    graph.readbackTexture(nextVersion(motionVectors));
+
+    graph.execute(commands, (*device)->frameNumber());
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+
+    std::vector<uint8_t> colorPixels(size_t{kSize} * kSize * 4);
+    (*color)->readback(colorPixels.data(), colorPixels.size());
+    std::vector<uint8_t> motionPixels(size_t{kSize} * kSize * 2 * sizeof(uint16_t));
+    (*motion)->readback(motionPixels.data(), motionPixels.size());
+
+    const Pixel pixel = pixelAt(colorPixels, kSize / 2, kSize / 2);
+    INFO(describe("color", kSize / 2, kSize / 2, pixel));
+    REQUIRE(pixel.r == 255);
+    REQUIRE(pixel.g == 0);
+    REQUIRE(pixel.b == 0);
+
+    uint16_t motionX = 0;
+    uint16_t motionY = 0;
+    const size_t offset = (size_t{kSize / 2} * kSize + kSize / 2) * 2 * sizeof(uint16_t);
+    std::memcpy(&motionX, motionPixels.data() + offset, sizeof(uint16_t));
+    std::memcpy(&motionY, motionPixels.data() + offset + sizeof(uint16_t), sizeof(uint16_t));
+    INFO("motion R=" + std::to_string(motionX) + " G=" + std::to_string(motionY));
+    REQUIRE(motionX == kWrittenMotionX);
+    REQUIRE(motionY == kWrittenMotionY);
 }

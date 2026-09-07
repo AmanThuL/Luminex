@@ -104,8 +104,18 @@ void appendPass(std::string& out, const CompiledFrameDebug& debug, uint32_t inde
         out += std::format(" {}", cullReasonName(*pass.cullReason));
     }
     out += '\n';
+    // Colour attachments are numbered from the second one on: the primary keeps the unadorned name
+    // it has always printed, and each extra says which attachment index it binds to.
+    uint32_t colorAttachments = 0;
     for (const DebugUse& use : pass.uses) {
-        out += std::format("    {} r{} v{}", roleName(use.role), use.resource, use.version);
+        std::string role{roleName(use.role)};
+        if (use.role == UseRole::ColorAttachment) {
+            if (colorAttachments > 0) {
+                role += std::format("[{}]", colorAttachments);
+            }
+            ++colorAttachments;
+        }
+        out += std::format("    {} r{} v{}", role, use.resource, use.version);
         if (debug.resources[use.resource].kind == GraphResourceKind::Texture) {
             out += std::format(" {}", describeRange(use.range));
         }

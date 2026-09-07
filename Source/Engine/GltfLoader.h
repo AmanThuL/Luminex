@@ -7,6 +7,7 @@
 
 #include "Engine/Asset.h"
 #include "Engine/GeometryGenerator.h"
+#include "Engine/SceneAnimation.h"
 
 #include <glm/glm.hpp>
 
@@ -39,13 +40,23 @@ struct GltfImage {
     std::vector<std::byte> rgba8;   ///< Tightly packed RGBA8 texels.
 };
 
-/// One draw: a mesh (GltfScene::meshes index), the material it draws with, and its node's
-/// world transform (glTF's full T*R*S chain composed through every ancestor -- no animation,
-/// so this is a static snapshot of the file's authored pose).
+/// One draw: a mesh (GltfScene::meshes index), the material it draws with, and its node's world
+/// transform (glTF's full T*R*S chain composed through every ancestor). This is the file's
+/// authored rest pose; an animated instance's motion lives in `GltfScene::tracks`, whose first key
+/// need not equal this transform.
 struct GltfInstance {
     uint32_t meshIndex = 0;     ///< Index into `GltfScene::meshes`.
     uint32_t materialIndex = 0; ///< Index into `GltfScene::materials`.
     glm::mat4 world{1.f};       ///< Flattened object-to-world transform.
+};
+
+/// One instance's animation, resampled from the glTF clip into world-space poses. The clip's node
+/// hierarchy is evaluated at bake time, so a key needs no parent chain to reconstruct. A STEP clip
+/// is resampled into plain keys like a LINEAR one: at kAnimationBakeRate, every one of the clip's
+/// held values lands on a key, and the scene clock only ever samples at those key times.
+struct GltfAnimationTrack {
+    uint32_t instanceIndex = 0; ///< Index into `GltfScene::instances`.
+    std::vector<RigidKey> keys; ///< World-space poses sampled at a fixed rate, time-sorted.
 };
 
 /// Decoded active scene with flattened mesh, material, image, and instance arrays.
@@ -53,7 +64,11 @@ struct GltfScene {
     std::vector<GeoData> meshes; ///< one per active-scene primitive, tangents authored-or-generated
     std::vector<GltfMaterial> materials; ///< Decoded materials referenced by active instances.
     std::vector<GltfImage> images;       ///< indexed like glTF; unreferenced entries stay empty
-    std::vector<GltfInstance> instances; ///< node transforms flattened (no animation)
+    std::vector<GltfInstance> instances; ///< node transforms flattened at the clip's rest pose
+    /// One entry per instance the first animation moves, in instance order. Empty when the file
+    /// has no animation or none of its channels reach an active instance.
+    std::vector<GltfAnimationTrack> tracks;
+    double animationDuration = 0.0; ///< Baked clip length in seconds; 0 when there are no tracks.
 };
 
 /// Loads a .glb (embedded buffers/images) or .gltf (+ external .bin and image files, resolved
@@ -63,8 +78,16 @@ struct GltfScene {
 /// primitives without a TANGENT attribute get one generated (per-triangle from UV deltas,
 /// accumulated per-vertex, Gram-Schmidt orthogonalized against the normal, w from the bitangent
 /// cross sign; degenerate/absent UVs fall back to cross(up, normal)). Node transforms are
-/// flattened after an active-scene traversal via cgltf's ancestor-chain composition; animation is
-/// not evaluated.
+/// flattened after an active-scene traversal via cgltf's ancestor-chain composition, at the file's
+/// authored rest pose.
+///
+/// The file's *first* animation, if it has one, is baked into `tracks`: every LINEAR or STEP
+/// translation, rotation and scale channel is evaluated at kAnimationBakeRate over the clip, the
+/// affected nodes' world transforms are recomposed through the hierarchy, and each animated
+/// instance's world pose becomes a track of world-space keys. Later animations are ignored.
+/// CUBICSPLINE samplers, morph-target channels or geometry, skins, an animated node carrying a
+/// matrix transform, and a baked pose that does not decompose into translation, rotation and scale
+/// all fail with AssetErrorCode::Unsupported.
 AssetResult<GltfScene> loadGltf(std::string_view path);
 
 } // namespace lmx::engine

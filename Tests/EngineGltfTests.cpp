@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Engine/GltfLoader.h"
+#include "Engine/SceneAnimation.h"
 #include "EngineTestSupport.h"
 
 #include <cmath>
@@ -14,10 +15,12 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace lmx::engine;
 using lmx::test::near3;
+using lmx::test::writeAnimatedQuadGltf;
 
 namespace {
 constexpr float kEps = 1e-4f;
@@ -217,6 +220,75 @@ std::filesystem::path writeBadIndexAccessorFixture(const std::filesystem::path& 
     {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
     {"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2"},
     {"componentType": 5123, "count": 6, "type": "SCALAR"}
+  ]
+})";
+    const std::filesystem::path gltfPath = dir / "quad.gltf";
+    writeFile(gltfPath, json);
+    return gltfPath;
+}
+
+//======================================================================================================================
+// A quad whose file declares the deformation named by `extra`: "skin" adds a skins array, "morph"
+// gives the primitive a morph target. Both are geometry this loader must refuse rather than draw
+// in its rest pose.
+std::filesystem::path writeDeformedQuadFixture(const std::filesystem::path& dir,
+                                               std::string_view extra) {
+    std::filesystem::create_directories(dir);
+
+    // clang-format off
+    const float positions[4][3] = {{-1.f, 0.f, 1.f}, {1.f, 0.f, 1.f},
+                                    {-1.f, 0.f, -1.f}, {1.f, 0.f, -1.f}};
+    const float normals[4][3] = {{0.f, 1.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 1.f, 0.f}};
+    const float uvs[4][2] = {{0.f, 0.f}, {1.f, 0.f}, {0.f, 1.f}, {1.f, 1.f}};
+    const uint16_t indices[6] = {0, 1, 2, 2, 1, 3};
+    // clang-format on
+
+    std::vector<uint8_t> bin;
+    for (const auto& p : positions)
+        appendBytes(bin, p, sizeof(p));
+    for (const auto& n : normals)
+        appendBytes(bin, n, sizeof(n));
+    for (const auto& uv : uvs)
+        appendBytes(bin, uv, sizeof(uv));
+    appendBytes(bin, indices, sizeof(indices));
+    REQUIRE(bin.size() == 140u);
+
+    const std::filesystem::path binPath = dir / "quad.bin";
+    std::ofstream binOut(binPath, std::ios::binary | std::ios::trunc);
+    binOut.write(reinterpret_cast<const char*>(bin.data()),
+                 static_cast<std::streamsize>(bin.size()));
+    binOut.close();
+
+    const bool morph = extra == "morph";
+    const std::string json = std::string(R"({
+  "asset": {"version": "2.0"},
+  "scene": 0,
+  "scenes": [{"nodes": [0]}],
+  "nodes": [{"mesh": 0}],
+  )") + (morph ? "" : R"("skins": [{"joints": [0]}],
+  )") + R"("meshes": [{"primitives": [{
+    "attributes": {"POSITION": 0, "NORMAL": 1, "TEXCOORD_0": 2},
+    "indices": 3,
+    "material": 0)" +
+                             (morph ? R"(,
+    "targets": [{"POSITION": 0}])"
+                                    : "") +
+                             R"(
+  }]}],
+  "materials": [{"pbrMetallicRoughness": {"baseColorFactor": [1.0, 1.0, 1.0, 1.0]}}],
+  "buffers": [{"uri": "quad.bin", "byteLength": 140}],
+  "bufferViews": [
+    {"buffer": 0, "byteOffset": 0, "byteLength": 48, "target": 34962},
+    {"buffer": 0, "byteOffset": 48, "byteLength": 48, "target": 34962},
+    {"buffer": 0, "byteOffset": 96, "byteLength": 32, "target": 34962},
+    {"buffer": 0, "byteOffset": 128, "byteLength": 12, "target": 34963}
+  ],
+  "accessors": [
+    {"bufferView": 0, "componentType": 5126, "count": 4, "type": "VEC3",
+     "min": [-1.0, 0.0, -1.0], "max": [1.0, 0.0, 1.0]},
+    {"bufferView": 1, "componentType": 5126, "count": 4, "type": "VEC3"},
+    {"bufferView": 2, "componentType": 5126, "count": 4, "type": "VEC2"},
+    {"bufferView": 3, "componentType": 5123, "count": 6, "type": "SCALAR"}
   ]
 })";
     const std::filesystem::path gltfPath = dir / "quad.gltf";
@@ -709,4 +781,128 @@ TEST_CASE("loadGltf(Sponza.gltf): converted images decode and tangents generate"
     REQUIRE(maximumLengthError < 1e-2f);
     REQUIRE(maximumOrthogonalityError < 1e-3f);
     REQUIRE(invalidHandedness == 0);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf leaves an unanimated file's tracks empty", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-no-animation-test";
+    const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
+
+    const auto scene = loadGltf(gltfPath.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->tracks.empty());
+    REQUIRE(scene->animationDuration == 0.0);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf bakes a LINEAR translation channel into world-space keys at the bake rate",
+          "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-linear-animation-test";
+    const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "LINEAR");
+
+    const auto scene = loadGltf(gltfPath.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->tracks.size() == 1);
+    REQUIRE(scene->tracks[0].instanceIndex == 0);
+    REQUIRE(scene->animationDuration == Catch::Approx(1.0));
+    // One key per 1/60 s over [0, 1] inclusive.
+    REQUIRE(scene->tracks[0].keys.size() == 61);
+
+    // The channel replaces the node's authored translation, so the baked pose is the channel value
+    // itself rather than an offset from (10, 0, 0).
+    const std::vector<RigidKey>& keys = scene->tracks[0].keys;
+    REQUIRE(near3(keys.front().translation, glm::vec3(0.0f)));
+    REQUIRE(near3(keys[30].translation, glm::vec3(1.0f, 2.0f, -3.0f)));
+    REQUIRE(near3(keys.back().translation, glm::vec3(2.0f, 4.0f, -6.0f)));
+    REQUIRE(keys[30].time == Catch::Approx(0.5));
+    REQUIRE(near3(keys[30].scale, glm::vec3(1.0f)));
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf rejects a CUBICSPLINE animation sampler", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-cubic-animation-test";
+    const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "CUBICSPLINE");
+
+    const auto scene = loadGltf(gltfPath.string());
+    REQUIRE_FALSE(scene.has_value());
+    REQUIRE(scene.error().code == AssetErrorCode::Unsupported);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf rejects skins and morph targets", "[engine]") {
+    const std::filesystem::path skinDir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-skin-test";
+    const auto skinned = loadGltf(writeDeformedQuadFixture(skinDir, "skin").string());
+    REQUIRE_FALSE(skinned.has_value());
+    REQUIRE(skinned.error().code == AssetErrorCode::Unsupported);
+
+    const std::filesystem::path morphDir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-morph-test";
+    const auto morphed = loadGltf(writeDeformedQuadFixture(morphDir, "morph").string());
+    REQUIRE_FALSE(morphed.has_value());
+    REQUIRE(morphed.error().code == AssetErrorCode::Unsupported);
+}
+
+//======================================================================================================================
+// InterpolationTest's first animation is its STEP scale clip on the first cube: five keys half a
+// second apart alternating unit and zero scale. Baked at 60 Hz that must hold each key's value
+// right up to the next key's sample and jump there, and the zero-scale keys must survive the
+// world-transform round trip rather than failing to decompose.
+TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyframes", "[engine]") {
+    const std::filesystem::path asset =
+        findRepoPath("Assets/Fetched/InterpolationTest/InterpolationTest.glb");
+    if (!std::filesystem::exists(asset)) {
+        SKIP("Assets/Fetched/InterpolationTest/InterpolationTest.glb not present (xmake setup "
+             "fetches it) -- skipping the asset-gated pin");
+    }
+
+    const auto scene = loadGltf(asset.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->animationDuration == Catch::Approx(2.0));
+    REQUIRE(scene->tracks.size() == 1);
+    REQUIRE(scene->tracks[0].instanceIndex == 0);
+    const std::vector<RigidKey>& keys = scene->tracks[0].keys;
+    REQUIRE(keys.size() == 121);
+
+    // Authored keys land on samples 0, 30, 60, 90 and 120.
+    REQUIRE(near3(keys[0].scale, glm::vec3(1.0f)));
+    REQUIRE(near3(keys[29].scale, glm::vec3(1.0f)));
+    REQUIRE(near3(keys[30].scale, glm::vec3(0.0f)));
+    REQUIRE(near3(keys[59].scale, glm::vec3(0.0f)));
+    REQUIRE(near3(keys[60].scale, glm::vec3(1.0f)));
+    REQUIRE(near3(keys[90].scale, glm::vec3(0.0f)));
+    REQUIRE(near3(keys[120].scale, glm::vec3(1.0f)));
+    REQUIRE(keys[120].time == Catch::Approx(2.0));
+    // The animated cube sits at the origin, so only its scale moves.
+    REQUIRE(near3(keys[30].translation, glm::vec3(0.0f)));
+}
+
+//======================================================================================================================
+// The channel drives a parent node; the mesh hangs off a static child. The baked key must be the
+// composed world pose, since a RigidTrack carries no parent chain to re-evaluate later.
+TEST_CASE("loadGltf bakes an animated parent's world transform onto its static child", "[engine]") {
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path() / "lmx-gltf-hierarchy-animation-test";
+    const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "LINEAR", true);
+
+    const auto scene = loadGltf(gltfPath.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->instances.size() == 1);
+    REQUIRE(scene->tracks.size() == 1);
+    REQUIRE(scene->tracks[0].instanceIndex == 0);
+
+    // The child's own (0, 1, 2) rides on the parent's animated translation at every key.
+    const std::vector<RigidKey>& keys = scene->tracks[0].keys;
+    const glm::vec3 childLocal{0.0f, 1.0f, 2.0f};
+    REQUIRE(near3(keys.front().translation, childLocal));
+    REQUIRE(near3(keys[30].translation, glm::vec3(1.0f, 2.0f, -3.0f) + childLocal));
+    REQUIRE(near3(keys.back().translation, glm::vec3(2.0f, 4.0f, -6.0f) + childLocal));
+
+    // The instance itself keeps the file's rest pose, which the clip's t = 0 pose differs from --
+    // which is why a scene built from this file has to be posed at t = 0 before it is displayed.
+    REQUIRE(near3(glm::vec3(scene->instances[0].world[3]), glm::vec3(10.0f, 1.0f, 2.0f)));
+    REQUIRE_FALSE(near3(glm::vec3(scene->instances[0].world[3]), keys.front().translation));
 }

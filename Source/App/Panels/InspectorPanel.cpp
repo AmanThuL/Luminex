@@ -7,6 +7,8 @@
 
 #include "App/DirectionalLightRole.h"
 #include "App/EditorShell.h"
+#include "Engine/SceneAnimation.h"
+#include "Render/TemporalHistory.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>
@@ -14,6 +16,7 @@
 #include <cstddef>
 #include <iterator>
 #include <limits>
+#include <string_view>
 
 namespace lmx::app {
 
@@ -91,8 +94,75 @@ void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
 }
 
 //======================================================================================================================
+// Spec section 9's Temporal block: the toggles, the debug-view combo, playback transport, the
+// camera-cut button, and read-only status pulled from the last declared frame. `scene` is the
+// active scene (for the animation clock and whether a camera track exists to follow), not the
+// renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
+void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
+                         engine::Scene& scene, TemporalEditorState& temporalState) {
+    ImGui::Checkbox("Temporal inputs", &settings.temporalEnabled);
+    ImGui::BeginDisabled(!settings.temporalEnabled);
+    ImGui::Checkbox("Jitter", &settings.jitterEnabled);
+
+    int debugViewIndex = static_cast<int>(settings.temporalDebugView);
+    constexpr const char* kDebugViewNames[] = {"Off", "Motion vectors", "Reprojection error"};
+    if (ImGui::Combo("Debug view", &debugViewIndex, kDebugViewNames,
+                     static_cast<int>(std::size(kDebugViewNames)))) {
+        settings.temporalDebugView = static_cast<render::TemporalDebugView>(debugViewIndex);
+    }
+    ImGui::EndDisabled();
+
+    if (ImGui::Button(settings.animationPlaying ? "Pause" : "Play")) {
+        settings.animationPlaying = !settings.animationPlaying;
+    }
+    ImGui::SameLine();
+    ImGui::BeginDisabled(settings.animationPlaying);
+    if (ImGui::Button("Step")) {
+        // Matches EditorShell's own per-frame step -- a manual step while paused advances by the
+        // same fixed amount play would have.
+        scene.advanceAnimation(1.0 / engine::kAnimationBakeRate);
+        scene.animate(scene.animationTime);
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Reset time")) {
+        scene.animationTime = 0.0;
+        scene.animate(0.0);
+        // Rewinding the clock is a discontinuity exactly like a scene switch: the object poses
+        // this frame have nothing to do with what history recorded, so motion must not report a
+        // jump and the renderer must not reproject across it. requestCameraCut() forces
+        // HistoryResetReason::CameraCut on the next declared frame even when the camera itself did
+        // not move -- resetMotion() alone would leave the reset reason at None, and reprojecting
+        // history from before the rewind onto geometry now back at t = 0 is exactly the artifact
+        // this guards against.
+        scene.resetMotion();
+        requestCameraCut(temporalState);
+    }
+
+    const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
+    ImGui::BeginDisabled(!hasCameraTrack);
+    ImGui::Checkbox("Follow camera track", &settings.followCameraTrack);
+    ImGui::EndDisabled();
+
+    if (ImGui::Button("Camera cut")) {
+        requestCameraCut(temporalState);
+    }
+
+    const render::TemporalStatus status = renderer.temporalStatus();
+    const std::string_view resetReason = render::historyResetReasonName(status.lastReset);
+    ImGui::Text("Last reset: %.*s (frame %llu)", static_cast<int>(resetReason.size()),
+                resetReason.data(), static_cast<unsigned long long>(status.lastResetFrame));
+    ImGui::Text("Jitter index: %u", status.jitterIndex);
+    ImGui::Text("History: %s, %llu bytes", status.historyValid ? "valid" : "invalid",
+                static_cast<unsigned long long>(status.historyBytes));
+    ImGui::TextWrapped("Motion = uvCurrent - uvPrevious, UV of the render extent, +y down, "
+                       "unjittered; +inf = invalid.");
+}
+
+//======================================================================================================================
 void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                          ExposureResetContext& exposureContext, bool& exposureResetPending) {
+                          ExposureResetContext& exposureContext, bool& exposureResetPending,
+                          engine::Scene& scene, TemporalEditorState& temporalState) {
     // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
     // boundary. Relocated from the Camera section verbatim -- clear color is not a camera field.
     ImGui::ColorEdit4("Clear color", renderer.clearColor);
@@ -142,6 +212,9 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
                      static_cast<int>(std::size(kFilterNames)))) {
         settings.shadowFilter = static_cast<render::ShadowFilter>(filterIndex);
     }
+
+    ImGui::SeparatorText("Temporal");
+    drawTemporalSection(renderer, settings, scene, temporalState);
 }
 
 //======================================================================================================================
@@ -217,7 +290,8 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             ImGui::SeparatorText("Rendering");
             ImGui::TextUnformatted("Rendering");
             drawRenderingSection(context.renderer, context.settings, context.exposureContext,
-                                 context.exposureResetPending);
+                                 context.exposureResetPending, context.scene,
+                                 context.temporalState);
             break;
         case EditorSubject::DirectionalLight:
             ImGui::SeparatorText("Directional Light");

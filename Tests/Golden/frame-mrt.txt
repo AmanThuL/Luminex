@@ -1,0 +1,24 @@
+render-graph frame 3
+resources
+  r0 texture "lmx.render.sceneColorHdr" RGBA16Float
+  r1 texture "lmx.render.motionVectors" RG16Float
+  r2 texture "lmx.render.sceneDepth" D32Float
+  r3 texture "lmx.render.displayColor" BGRA8Unorm
+sinks
+  present r3 v1
+passes
+  p0 raster "lmx.pass.scene"
+    color attachment r0 v0 mips[0..] layers[0..]
+    color attachment[1] r1 v0 mips[0..] layers[0..]
+    depth attachment r2 v0 mips[0..] layers[0..]
+  p1 raster "lmx.pass.display"
+    read r0 v1 mips[0..] layers[0..]
+    read r1 v1 mips[0..] layers[0..]
+    color attachment r3 v0 mips[0..] layers[0..]
+culled
+transitions
+  before p1 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
+  before p1 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
+transients
+memory
+  pooling on requested 0 high-water 0 saved 0

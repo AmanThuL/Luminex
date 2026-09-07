@@ -6,7 +6,9 @@
 #pragma once
 
 #include "Engine/SceneLibrary.h"
+#include "Render/Renderer.h"
 
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <span>
@@ -29,6 +31,17 @@ struct AppOptions {
     /// The interactive window opens maximized to the display's usable bounds; `--windowed` keeps
     /// the fixed default size instead. Irrelevant, but accepted, in screenshot mode.
     bool maximized = true;
+    /// Screenshot-mode-only: how many frames to render before writing the last one, advancing the
+    /// animation by 1/60 s and following the camera track (if any) between them -- the roadmap's
+    /// declared warmup and intermediate temporal captures. At least 1; irrelevant, but accepted,
+    /// in windowed mode.
+    uint32_t frames = 1;
+    /// Screenshot-mode-only: whether the rendered frame(s) run with the temporal path enabled. Set
+    /// by `--temporal`, and also by `--temporal-view` at any value (including `off`), since naming
+    /// a view is itself an opt-in. Irrelevant, but accepted, in windowed mode.
+    bool temporal = false;
+    /// Screenshot-mode-only: which temporal diagnostic, if any, to draw over the display transform.
+    render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
 };
 
 /// Reports an invalid command-line option with user-facing context.

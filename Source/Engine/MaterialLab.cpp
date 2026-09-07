@@ -10,6 +10,7 @@
 #include "Engine/GeometryGenerator.h"
 #include "Engine/HdrEnvironment.h"
 #include "Engine/Ibl.h"
+#include "Engine/SceneEnvironment.h"
 #include "Engine/TextureBake.h"
 
 #include <glm/glm.hpp>
@@ -29,18 +30,6 @@
 namespace lmx::engine {
 
 namespace {
-
-// Same neutral sky + three-light rig every catalog scene uses (Scene.cpp's attachSkyAndLights);
-// duplicated here because that helper is file-local to Scene.cpp.
-constexpr glm::vec3 kLightDirections[3] = {
-    {0.577f, -0.577f, 0.577f},
-    {-0.577f, -0.577f, 0.577f},
-    {0.0f, -0.707f, -0.707f},
-};
-
-constexpr float kLightStrengths[3] = {0.7f, 0.2f, 0.2f};
-static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
-              "kLightStrengths and kLightDirections must have the same length");
 
 // Stable lane centres make the scene readable as a horizontal strip: open on the material model,
 // then pan right without rotating to inspect authored-colour/texture and depth diagnostics.
@@ -77,14 +66,8 @@ AssetError uploadFailure(rhi::Error error) {
 }
 
 //======================================================================================================================
-AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::string_view label) {
-    auto sphere = render::createMesh(device, render::fromGeo(makeSphere(0.5f, 20, 20)),
-                                     std::string(label) + ".skySphere");
-    if (!sphere) {
-        return std::unexpected(uploadFailure(std::move(sphere.error())));
-    }
-    scene.skySphere = std::move(*sphere);
-
+AssetResult<void> attachStudioEnvironment(rhi::Device& device, Scene& scene,
+                                          std::string_view label) {
     // The fetched studio is deliberately optional: a fresh checkout and hosted CI still get a
     // deterministic scene, while `xmake setup` upgrades both the visible sky and its IBL from the
     // exact same linear-light cubemap. The fallback is an authored neutral mid-gray bright enough
@@ -118,24 +101,11 @@ AssetResult<void> attachSkyAndLights(rhi::Device& device, Scene& scene, std::str
     if (!cubemap) {
         return std::unexpected(uploadFailure(std::move(cubemap.error())));
     }
-    scene.skyCubemap = std::move(*cubemap);
 
-    auto generated = ibl::generate(device, environment, label);
-    if (!generated) {
-        return std::unexpected(uploadFailure(std::move(generated.error())));
-    }
-    scene.irradianceMap = std::move(generated->irradiance);
-    scene.prefilteredEnvMap = std::move(generated->prefilteredEnv);
-    scene.dfgLut = std::move(generated->dfgLut);
-
-    for (size_t i = 0; i < std::size(kLightDirections); ++i) {
-        scene.lights[i].direction = kLightDirections[i];
-        // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep
-        // the asset-free fallback useful instead of double-lighting the fetched environment.
-        scene.lights[i].strength =
-            usingStudioEnvironment ? glm::vec3(0.0f) : glm::vec3(srgbToLinear(kLightStrengths[i]));
-    }
-    return {};
+    // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep the
+    // asset-free fallback useful instead of double-lighting the fetched environment.
+    return attachEnvironment(device, scene, std::move(*cubemap), environment,
+                             !usingStudioEnvironment, label);
 }
 
 //======================================================================================================================
@@ -504,7 +474,7 @@ AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
     const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
     scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
 
-    if (auto sky = attachSkyAndLights(device, *scene, "MaterialLab"); !sky) {
+    if (auto sky = attachStudioEnvironment(device, *scene, "MaterialLab"); !sky) {
         return std::unexpected(sky.error());
     }
 

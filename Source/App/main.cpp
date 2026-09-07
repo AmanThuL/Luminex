@@ -261,6 +261,11 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         transientPool.beginFrame();
         (*renderer)->timeSeconds = timeSeconds;
 
+        // This frame will be declared (the drawable was acquired above), so the scene's animation
+        // clock and camera-track follow advance now, before the SceneView below captures whatever
+        // pose and object transforms result.
+        shell->advanceFrameAnimation();
+
         // Named rather than passed inline: the pass bodies borrow this view and run when the
         // graph executes, which is past the end of the statement that would hold a temporary.
         lmx::render::SceneView view = shell->sceneView();
@@ -303,6 +308,10 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         // already been submitted: the timings of a frame are readable only once it retires, several
         // frames after the declarations that explain them are gone.
         frameRecords.retain(graph.execute(commands, (*device)->frameNumber()));
+        // The frame's declarations are committed now that execute() has accepted them: the next
+        // frame's motion is measured from here. A frame skipped for a missing drawable reaches
+        // neither this nor advanceFrameAnimation() above.
+        shell->commitFrame();
         // Published by this frame's beginFrame() and naming a frame that has already retired, which
         // is why the join is by number rather than by position.
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
@@ -408,7 +417,8 @@ int main(int argc, char** argv) {
 
     // Offscreen capture does not initialize SDL or create a window.
     if (options->mode == lmx::app::RunMode::Screenshot) {
-        return lmx::app::runScreenshot(options->screenshotPath, options->initialScene);
+        return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
+                                       options->frames, options->temporal, options->temporalView);
     }
     return runWindowed(*options);
 }

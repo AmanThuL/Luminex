@@ -165,7 +165,7 @@ target("Tests")
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
               "Source/App/GraphLayout.cpp", "Source/App/GraphNodeModel.cpp",
               "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
-              "Source/App/WorkspaceModel.cpp")
+              "Source/App/TemporalEditorState.cpp", "Source/App/WorkspaceModel.cpp")
     add_deps("Core", "RHI", "Render", "Engine")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
@@ -217,6 +217,17 @@ local helmet_pin = "2bac6f8c57bf471df0d2a1e8a8ec023c7801dddf" -- KhronosGroup/gl
 local helmet_sha256 = "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
 local helmet_license_sha256 = "424cf69d2b709c8cd1316c72671e9f8370a15e10fee03734c2a95072152f2f5d"
 local helmet_metadata_sha256 = "3ad51b9684cf1e8d13e2909e179d4c5e2e3ff17b5c38ce044d1697ea6a6aefbd"
+-- CesiumMilkTruck (CC BY 4.0) and InterpolationTest (CC0) come from the same pinned Khronos
+-- commit. The truck is the fetched rigid-animation scene; InterpolationTest is a sampler
+-- conformance fixture for the loader tests and is never a catalog scene.
+local milk_truck_sha256 = "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49"
+local milk_truck_license_sha256 = "2706e1f1df6be804a83ac7a108d2bf1b11d4fcdc5ec1c821ba725a659ccdebbd"
+local milk_truck_metadata_sha256 = "a15b14d573d0115c40f4b6218e2f926aa311e0f214b5c8d7bf9b6801bb8fee0a"
+local interpolation_test_sha256 = "a86eb331b4a083715e75fe19a1f747eac5692d5b9ff120f1eaa457c23ba72bca"
+local interpolation_test_license_sha256 =
+    "3a3762ba63cc52e52bbaa65f8f187e02cf05d7256e750ede4c40db611169e7e7"
+local interpolation_test_metadata_sha256 =
+    "726d8fad65a13382a398316600855716f780a6c15e3184ece243051da02370c5"
 local sponza_url = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/sponza.zip"
 local sponza_info_url = "https://casual-effects.com/g3d/data10/common/model/crytek_sponza/info.js"
 local sponza_archive_sha256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
@@ -335,21 +346,29 @@ task("setup")
         local node_editor_patch = path.join(os.projectdir(),
                                             "Tools/Patches/imgui-node-editor-imgui-1.93.patch")
         apply_maintained_patch("ThirdParty/imgui-node-editor", node_editor_patch)
-        os.mkdir("Assets/Fetched/DamagedHelmet")
-        local helmet_files = {
-            {name = "DamagedHelmet.glb", source = "glTF-Binary/DamagedHelmet.glb"},
-            {name = "LICENSE.md", source = "LICENSE.md"},
-            {name = "metadata.json", source = "metadata.json"}
-        }
-        for _, file in ipairs(helmet_files) do
-            local destination = path.join("Assets/Fetched/DamagedHelmet", file.name)
-            if not os.isfile(destination) then
-                -- Publish each fetched file only after curl has completed it successfully.
-                local part = destination .. ".part"
-                os.execv("curl", {"-L", "--fail", "--max-time", "600", "-o", part,
-                    format("https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/%s/Models/DamagedHelmet/%s",
-                           helmet_pin, file.source)})
-                os.mv(part, destination)
+        -- Every Khronos sample ships the same three files under Models/<name>: the binary glTF,
+        -- its license and its provenance metadata. All three are fetched so the checkout carries
+        -- the attribution each asset's license requires.
+        local khronos_models = {"DamagedHelmet", "CesiumMilkTruck", "InterpolationTest"}
+        for _, model in ipairs(khronos_models) do
+            local directory = path.join("Assets/Fetched", model)
+            os.mkdir(directory)
+            local sources = {
+                {name = model .. ".glb", source = "glTF-Binary/" .. model .. ".glb"},
+                {name = "LICENSE.md", source = "LICENSE.md"},
+                {name = "metadata.json", source = "metadata.json"}
+            }
+            for _, file in ipairs(sources) do
+                local destination = path.join(directory, file.name)
+                if not os.isfile(destination) then
+                    -- Publish each fetched file only after curl has completed it successfully.
+                    local part = destination .. ".part"
+                    os.tryrm(part)
+                    os.execv("curl", {"-L", "--fail", "--max-time", "600", "-o", part,
+                        format("https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/%s/Models/%s/%s",
+                               helmet_pin, model, file.source)})
+                    os.mv(part, destination)
+                end
             end
         end
         local material_lab_dir = "Assets/Fetched/MaterialLab"
@@ -432,21 +451,30 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
             os.tryrm(source)
             os.tryrm(archive)
         end
-        local helmet_hash = os.iorunv("shasum", {"-a", "256",
-                                                  "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb"})
-                                    :match("^(%x+)")
-        assert(helmet_hash == helmet_sha256,
-               format("Damaged Helmet checksum mismatch; expected %s", helmet_sha256))
-        local helmet_license_hash = os.iorunv("shasum", {"-a", "256",
-            "Assets/Fetched/DamagedHelmet/LICENSE.md"}):match("^(%x+)")
-        assert(helmet_license_hash == helmet_license_sha256,
-               format("Damaged Helmet license checksum mismatch; expected %s",
-                      helmet_license_sha256))
-        local helmet_metadata_hash = os.iorunv("shasum", {"-a", "256",
-            "Assets/Fetched/DamagedHelmet/metadata.json"}):match("^(%x+)")
-        assert(helmet_metadata_hash == helmet_metadata_sha256,
-               format("Damaged Helmet metadata checksum mismatch; expected %s",
-                      helmet_metadata_sha256))
+        local khronos_hashes = {
+            {model = "DamagedHelmet", label = "Damaged Helmet", asset = helmet_sha256,
+             license = helmet_license_sha256, metadata = helmet_metadata_sha256},
+            {model = "CesiumMilkTruck", label = "Cesium Milk Truck", asset = milk_truck_sha256,
+             license = milk_truck_license_sha256, metadata = milk_truck_metadata_sha256},
+            {model = "InterpolationTest", label = "InterpolationTest",
+             asset = interpolation_test_sha256, license = interpolation_test_license_sha256,
+             metadata = interpolation_test_metadata_sha256}
+        }
+        for _, entry in ipairs(khronos_hashes) do
+            local directory = path.join("Assets/Fetched", entry.model)
+            local files = {
+                {name = entry.model .. ".glb", expected = entry.asset, what = ""},
+                {name = "LICENSE.md", expected = entry.license, what = " license"},
+                {name = "metadata.json", expected = entry.metadata, what = " metadata"}
+            }
+            for _, file in ipairs(files) do
+                local hash = os.iorunv("shasum", {"-a", "256",
+                    path.join(directory, file.name)}):match("^(%x+)")
+                assert(hash == file.expected,
+                       format("%s%s checksum mismatch; expected %s", entry.label, file.what,
+                              file.expected))
+            end
+        end
         local sponza_hash = os.iorunv("python3", {"Tools/tree_digest.py",
                                                   "Assets/Fetched/Sponza"}):trim()
         assert(sponza_hash == sponza_sha256,
@@ -469,10 +497,12 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
                              texturebake_bin})
         os.execv("python3", {"Tools/bake_gltf_textures.py",
                              "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", texturebake_bin})
+        os.execv("python3", {"Tools/bake_gltf_textures.py",
+                             "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb", texturebake_bin})
 
         print("setup done: metal-cpp %s, slang %s, imgui %s, imgui-node-editor %s, " ..
-              "Sponza archive %s, helmet %s, MaterialLab environment %s", metalcpp_pin, slang_pin,
-              imgui_pin, node_editor_pin, sponza_archive_sha256, helmet_pin,
+              "Sponza archive %s, Khronos samples %s, MaterialLab environment %s", metalcpp_pin,
+              slang_pin, imgui_pin, node_editor_pin, sponza_archive_sha256, helmet_pin,
               material_lab_environment_sha256)
     end)
 
