@@ -657,6 +657,8 @@ void RenderGraph::addPass(std::string_view label, PassDesc desc, ExecuteFn execu
                         .color = desc.color,
                         .extraColor = std::move(desc.extraColor),
                         .depth = desc.depth,
+                        .renderAreaWidth = desc.renderAreaWidth,
+                        .renderAreaHeight = desc.renderAreaHeight,
                         .execute = std::move(execute),
                         .declarations = std::move(declarations)});
 }
@@ -823,6 +825,53 @@ GraphResult<void> RenderGraph::validateExtraColorAttachments(const Pass& pass) c
 }
 
 //======================================================================================================================
+GraphResult<void> RenderGraph::validateRenderArea(const Pass& pass) const {
+    const uint32_t width = pass.renderAreaWidth;
+    const uint32_t height = pass.renderAreaHeight;
+    // Zero is the whole attachment, which is what every pass that never asked for a sub-region
+    // carries.
+    if (width == 0 && height == 0) {
+        return {};
+    }
+    // A half-set pair reaches the backend as a viewport one of whose sides is zero, rasterising
+    // nothing at all rather than the sub-rectangle the pass meant.
+    if (width == 0 || height == 0) {
+        return fail(std::format("pass '{}' declares render area {}x{}: both sides are zero -- the "
+                                "whole attachment -- or both are non-zero",
+                                pass.label, width, height));
+    }
+    // Every attachment is rasterised by the same fragments, so the area has to fit inside all of
+    // them; the extras and the depth target are checked beside the primary rather than through it
+    // so the message names the attachment that is actually too small.
+    const auto fits = [&](const Resource& attachment) -> GraphResult<void> {
+        if (width > attachment.width || height > attachment.height) {
+            return fail(std::format("pass '{}' render area {}x{} exceeds attachment '{}' {}x{}",
+                                    pass.label, width, height, attachment.name, attachment.width,
+                                    attachment.height));
+        }
+        return {};
+    };
+    if (pass.color) {
+        if (const GraphResult<void> primary = fits(m_resources[pass.color->handle.index]);
+            !primary) {
+            return primary;
+        }
+    }
+    for (const ColorAttachment& extra : pass.extraColor) {
+        if (const GraphResult<void> fitsExtra = fits(m_resources[extra.handle.index]); !fitsExtra) {
+            return fitsExtra;
+        }
+    }
+    if (pass.depth) {
+        if (const GraphResult<void> fitsDepth = fits(m_resources[pass.depth->handle.index]);
+            !fitsDepth) {
+            return fitsDepth;
+        }
+    }
+    return {};
+}
+
+//======================================================================================================================
 GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) const {
     // Attachment roles and extents. These depend on one pass alone, so they are answered before any
     // cross-pass structure is built and cannot be masked by an ordering failure.
@@ -855,6 +904,9 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
         }
         if (const GraphResult<void> extras = validateExtraColorAttachments(pass); !extras) {
             return std::unexpected(extras.error());
+        }
+        if (const GraphResult<void> area = validateRenderArea(pass); !area) {
+            return std::unexpected(area.error());
         }
     }
 
@@ -1129,7 +1181,12 @@ GraphResult<CompiledFrameRecord> RenderGraph::compileFrame(uint64_t frameId) con
     record.debug.passes.reserve(m_passes.size());
     for (uint32_t index = 0; index < m_passes.size(); ++index) {
         const Pass& pass = m_passes[index];
-        DebugPass entry{.label = pass.label, .kind = pass.kind, .uses = {}, .cullReason = {}};
+        DebugPass entry{.label = pass.label,
+                        .kind = pass.kind,
+                        .uses = {},
+                        .cullReason = {},
+                        .renderAreaWidth = pass.renderAreaWidth,
+                        .renderAreaHeight = pass.renderAreaHeight};
         entry.uses.reserve(pass.declarations.size());
         bool writes = false;
         for (const Declaration& declaration : pass.declarations) {
@@ -1782,6 +1839,8 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
                                 desc.extraColor[index].clearColor);
             }
             desc.extraColorCount = static_cast<uint32_t>(pass.extraColor.size());
+            desc.renderAreaWidth = pass.renderAreaWidth;
+            desc.renderAreaHeight = pass.renderAreaHeight;
             if (pass.depth) {
                 const DepthAttachment& depth = *pass.depth;
                 LMX_ASSERT(

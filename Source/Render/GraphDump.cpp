@@ -121,6 +121,11 @@ void appendPass(std::string& out, const CompiledFrameDebug& debug, uint32_t inde
         }
         out += '\n';
     }
+    // Only a pass that asked for a sub-rectangle says anything: a pass rendering the whole
+    // attachment prints exactly the lines it always has.
+    if (pass.renderAreaWidth != 0 || pass.renderAreaHeight != 0) {
+        out += std::format("    render area {}x{}\n", pass.renderAreaWidth, pass.renderAreaHeight);
+    }
 }
 
 } // namespace
