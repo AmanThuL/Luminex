@@ -99,7 +99,8 @@ constexpr float kReactiveEmissiveScale = 4.0f;
 /// Storage format of `lmx.render.reactive`: one byte of "do not accumulate me" per pixel.
 constexpr rhi::Format kReactiveFormat = rhi::Format::R8Unorm;
 
-/// Why a pixel could not reuse its history, in the order Shaders/TemporalResolve.slang tests them:
+/// Why a pixel could not reuse its history, in the order Shaders/TemporalResolve.slang and
+/// Shaders/TemporalUpscale.slang test them:
 /// the first that applies wins. The rejection transient stores `code / 255` in its red channel,
 /// with kRejectionClippedBit set alongside when the neighbourhood clip moved the history.
 constexpr uint32_t kRejectionReasonNone = 0;        ///< The history was reprojected and blended.
@@ -156,6 +157,14 @@ public:
     /// Raw -- then the debug view over `displayResult`. Upscaling is a property of
     /// `TemporalInputs::extents`, not of the mode: both modes keep their meaning at every scale.
     ///
+    /// The native `lmx.pass.temporal.resolve` runs only where `extents.render == extents.output`
+    /// and either the frame resets or `previousExtents` matches `extents`. The native kernel reads
+    /// the previous depth slot at *this* frame's extent, so a scale-1 frame whose predecessor
+    /// rasterised at another size would test disocclusion against a slot addressed at the wrong
+    /// extent; that one frame takes `lmx.pass.temporal.upscale` instead, which carries the previous
+    /// render extent explicitly. A steady scale-1 frame therefore declares exactly what M6.2
+    /// declared.
+    ///
     /// `displayResult` names the display version the debug view draws over on entry -- the version
     /// the display pass produces, which the caller may not have declared yet -- and is replaced by
     /// the version the debug view produced. The graph's schedule is topological, so declaring the
@@ -210,11 +219,10 @@ private:
     GraphTexture declareSpatialCommit(RenderGraph& graph, rhi::CommandList& commands,
                                       const TemporalInputs& inputs);
 
-    // The NativeTaa mode's upscaled accumulation: the resolve's declaration over the output extent.
-    // The reconstruction kernel it is meant to bind is not written yet, so it binds the spatial
-    // pipeline instead and produces an upscaled but unaccumulated picture -- every commit renders
-    // at every scale -- while the declaration, the diagnostics and the bookkeeping are already the
-    // accumulating pass's.
+    // The NativeTaa mode's upscaling accumulation: Shaders/TemporalUpscale.slang over the output
+    // extent, reading the render extent's active rectangle. Same declaration, diagnostics and
+    // export as declareResolve(); it also serves the one scale-1 frame whose predecessor ran at
+    // another render extent, which is why it carries the previous render extent in its block.
     void declareUpscale(RenderGraph& graph, rhi::CommandList& commands,
                         const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
                         TemporalResolveOutputs& outputs);
@@ -233,9 +241,11 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_resolveLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_debugViewLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_spatialUpscaleLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_temporalUpscaleLibrary;
     std::unique_ptr<rhi::ComputePipeline> m_reprojectPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_resolvePipeline;
     std::unique_ptr<rhi::ComputePipeline> m_spatialUpscalePipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_temporalUpscalePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_debugViewPipeline;
     // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
     // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold

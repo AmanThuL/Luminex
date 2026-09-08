@@ -145,8 +145,10 @@ struct TemporalStatus {
     /// Whether the last declared frame's render extent differed from its output extent, so the
     /// reconstruction upscaled rather than resolving at one to one.
     bool upscaled = false;
-    /// Count of declared frames when the render extent last changed without a history reset, 0
-    /// until it has. It is what shows that the history survived a scale change.
+    /// Count of declared frames when the render extent last changed on a temporal frame without a
+    /// history reset, 0 until it has. It is what shows that the history survived a scale change,
+    /// so a frame with temporal off -- which has no history and rasterises at the output extent
+    /// whatever the scale field says -- never advances it.
     uint64_t lastRenderExtentChangeFrame = 0;
 };
 

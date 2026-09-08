@@ -1798,9 +1798,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     m_temporalStatus.renderScale = renderScale;
     m_temporalStatus.upscaled = upscaled;
     // A render-extent change under a reset reason says nothing: the history is being thrown away
-    // anyway. Under None it is the whole point -- the history survived a change of the extent the
-    // scene rasterised at -- so that is the only frame the count records.
-    if (resetReason == HistoryResetReason::None && m_previousSignature &&
+    // anyway, and a frame with temporal off has no history to have survived anything -- it also
+    // rasterises at the output extent whatever the scale field says, so a scale change straddling
+    // it would otherwise be recorded twice. Under None with temporal on it is the whole point --
+    // the history survived a change of the extent the scene rasterised at -- so that is the only
+    // frame the count records.
+    if (temporalEnabled && resetReason == HistoryResetReason::None && m_previousSignature &&
         (m_previousSignature->extents.renderWidth != extents.renderWidth ||
          m_previousSignature->extents.renderHeight != extents.renderHeight)) {
         m_temporalStatus.lastRenderExtentChangeFrame = m_declaredFrames;
