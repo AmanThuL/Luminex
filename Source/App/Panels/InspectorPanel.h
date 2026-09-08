@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/DynamicResolution.h"
 #include "App/EditorRenderSettings.h"
 #include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
@@ -37,6 +38,10 @@ struct InspectorPanelContext {
     /// The scene generation counter, camera-cut latch, and TemporalLab defaults the shell keeps
     /// (TemporalEditorState.h). The Temporal block's "Camera cut" button raises the latch here.
     TemporalEditorState& temporalState;
+    /// The dynamic-resolution controller's last-observed frame GPU time (DynamicResolution.h),
+    /// for the Temporal block's "Frame GPU time" status row. Read-only here -- the shell's
+    /// applyDynamicResolution() is what advances it, once per buildUI.
+    const DynamicResolutionState& dynamicResolutionState;
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

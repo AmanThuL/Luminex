@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/AppOptions.h"
+#include "Render/Temporal.h"
 
 #include <charconv>
 #include <cstddef>
@@ -73,6 +74,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
+    float renderScale = 1.0f;
 
     for (size_t i = 0; i < arguments.size(); ++i) {
         const std::string_view argument = arguments[i];
@@ -147,12 +149,27 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                             "off|motion|reprojection|reprojected|rejection|weight|age, got '" +
                             std::string(value) + "'");
             }
+        } else if (argument == "--render-scale") {
+            if (++i >= arguments.size()) {
+                return fail("--render-scale needs a value: App --render-scale <0.5..1.0>");
+            }
+            const std::string_view raw = arguments[i];
+            float parsedScale = 0.0f;
+            const auto [end, ec] =
+                std::from_chars(raw.data(), raw.data() + raw.size(), parsedScale);
+            if (ec != std::errc{} || end != raw.data() + raw.size() ||
+                parsedScale < render::kMinRenderScale || parsedScale > render::kMaxRenderScale) {
+                return fail("--render-scale needs a value in [0.5, 1.0], got '" + std::string(raw) +
+                            "'");
+            }
+            renderScale = parsedScale;
         } else {
             return fail(
                 "unknown argument '" + std::string(argument) +
                 "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
                 ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
+                "[--render-scale <0.5..1.0>] "
                 "(--frames N renders N frames and captures the last, including temporal warmup)");
         }
     }
@@ -162,6 +179,12 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         return fail("--temporal off conflicts with --temporal-view " +
                     std::string(temporalViewName(temporalView)) +
                     ": the temporal path must run to draw a diagnostic view");
+    }
+    // --temporal off runs no reconstruction, so a render scale below the output extent has nothing
+    // to upscale it back with.
+    if (temporal == TemporalMode::Off && renderScale != 1.0f) {
+        return fail("--temporal off conflicts with --render-scale: the temporal path must run to "
+                    "reconstruct a render scale below 1.0");
     }
 
     const std::optional<engine::SceneId> sceneId = engine::parseSceneId(sceneName);
@@ -176,6 +199,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.frames = frames;
     options.temporal = temporal;
     options.temporalView = temporalView;
+    options.renderScale = renderScale;
     if (!screenshotPath.empty()) {
         options.mode = RunMode::Screenshot;
         options.screenshotPath = screenshotPath;

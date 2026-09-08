@@ -23,8 +23,9 @@ namespace lmx::app {
 /// has no prior generation to differ from and never teleports its own camera.
 ///
 /// `temporal` maps `Off` to `render::TemporalSettings::enabled = false`, and `Raw`/`Taa` to
-/// enabled with the corresponding `render::ReconstructionMode` and jitter on.
+/// enabled with the corresponding `render::ReconstructionMode` and jitter on. `renderScale` is
+/// copied verbatim onto `render::SceneView::temporal.renderScale`.
 int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView);
+                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale);
 
 } // namespace lmx::app

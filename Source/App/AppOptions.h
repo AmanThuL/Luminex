@@ -51,6 +51,10 @@ struct AppOptions {
     TemporalMode temporal = TemporalMode::Taa;
     /// Screenshot-mode-only: which temporal diagnostic, if any, to draw over the display transform.
     render::TemporalDebugView temporalView = render::TemporalDebugView::Off;
+    /// Screenshot-mode-only: fraction of the output extent to rasterise at, within [0.5, 1.0]. Set
+    /// by `--render-scale <value>`; conflicts with `--temporal off` like a debug view, since a
+    /// scale below 1 has nothing to reconstruct without the temporal path running.
+    float renderScale = 1.0f;
 };
 
 /// Reports an invalid command-line option with user-facing context.

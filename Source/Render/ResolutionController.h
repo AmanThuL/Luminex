@@ -5,19 +5,21 @@
 
 #pragma once
 
+#include "Render/Temporal.h"
+
 #include <array>
 #include <cstdint>
 
 namespace lmx::render {
 
-/// Tuning for `ResolutionController`. `minScale`/`maxScale` mirror `Temporal.h`'s
-/// `kMinRenderScale`/`kMaxRenderScale` as literals, so this header stays free of that dependency.
+/// Tuning for `ResolutionController`. `minScale`/`maxScale` default to `Temporal.h`'s
+/// `kMinRenderScale`/`kMaxRenderScale`, the same range the reconstruction accepts.
 struct ResolutionControllerSettings {
     float budgetMilliseconds = 16.0f; ///< Measured GPU time a frame must not exceed.
     float headroom = 0.15f; ///< target = budget * (1 - headroom); the deadband is [target, budget].
-    float minScale = 0.5f;  ///< Mirrors `Temporal.h`'s `kMinRenderScale`.
-    float maxScale = 1.0f;  ///< Mirrors `Temporal.h`'s `kMaxRenderScale`.
-    float maxStep = 0.05f;  ///< The largest change of scale one decision makes.
+    float minScale = kMinRenderScale; ///< Defaults to `Temporal.h`'s `kMinRenderScale`.
+    float maxScale = kMaxRenderScale; ///< Defaults to `Temporal.h`'s `kMaxRenderScale`.
+    float maxStep = 0.05f;            ///< The largest change of scale one decision makes.
     uint32_t settleFrames = 6; ///< Declared frames after a change whose samples are not judged.
     uint32_t overBudgetSamples = 2;   ///< Consecutive over-budget samples before stepping down.
     uint32_t underTargetSamples = 12; ///< Consecutive under-target samples before stepping up.

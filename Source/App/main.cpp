@@ -256,6 +256,9 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        // The dynamic-resolution controller's attribution is by frame number, so this frame's
+        // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
+        shell->controllerDeclared((*device)->frameNumber());
         // Immediately after beginFrame, which is where the frame slot this pool rotates on has
         // just been proved retired.
         transientPool.beginFrame();
@@ -418,7 +421,8 @@ int main(int argc, char** argv) {
     // Offscreen capture does not initialize SDL or create a window.
     if (options->mode == lmx::app::RunMode::Screenshot) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
-                                       options->frames, options->temporal, options->temporalView);
+                                       options->frames, options->temporal, options->temporalView,
+                                       options->renderScale);
     }
     return runWindowed(*options);
 }
