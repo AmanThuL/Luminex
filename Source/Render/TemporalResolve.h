@@ -60,7 +60,10 @@ struct TemporalInputs {
     GraphBuffer exposure;
     CameraFrameState camera; ///< This frame's camera, unjittered where the resolve reads it.
     CameraFrameState previousCamera; ///< The previous declared temporal frame's camera.
-    FrameExtents extents;            ///< Render extent equals output extent in M6.2.
+    FrameExtents extents;            ///< This frame's render and output extents.
+    /// The previous declared temporal frame's extents, equal to `extents` on a reset frame,
+    /// because the previous depth slot is addressed at the extent it was rendered at.
+    FrameExtents previousExtents;
     HistoryResetReason resetReason = HistoryResetReason::None; ///< Why history may not be reused.
     ReconstructionMode mode = ReconstructionMode::Raw;         ///< Which path this frame takes.
 };
@@ -85,6 +88,12 @@ constexpr float kMotionAlphaPixels = 8.0f;
 constexpr float kClipGamma = 1.0f;
 /// Relative view-distance disagreement at which a history fetch counts as a disocclusion.
 constexpr float kDisocclusionTolerance = 0.05f;
+/// Distance in render texels, from an output pixel's centre to this frame's jittered sample, at
+/// which the sample-proximity term reaches its floor.
+constexpr float kUpscaleSampleRadius = 1.0f;
+/// Share of the motion-derived blend weight a pixel keeps at kUpscaleSampleRadius: a pixel that
+/// fell between samples trusts this frame less rather than not at all.
+constexpr float kUpscaleMinWeight = 0.25f;
 /// Pre-exposed emissive luminance the scene pass maps to a fully reactive pixel.
 constexpr float kReactiveEmissiveScale = 4.0f;
 /// Storage format of `lmx.render.reactive`: one byte of "do not accumulate me" per pixel.

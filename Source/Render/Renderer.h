@@ -105,6 +105,9 @@ struct TemporalSettings {
     /// Which reconstruction the frame runs. Both modes declare the same inputs and both leave a
     /// real frame in the colour slot, so switching between them is not a history reset.
     ReconstructionMode reconstruction = ReconstructionMode::Raw;
+    /// Fraction of the output extent the scene rasterises at, within [kMinRenderScale,
+    /// kMaxRenderScale]. 1 renders at the output extent, and anything below it upscales.
+    float renderScale = 1.0f;
 };
 
 /// What the last declared frame decided about its history, for the editor to display and a test to
@@ -135,6 +138,16 @@ struct TemporalStatus {
     uint32_t historyAge = 0;
     /// Whether historyAge has reached kTemporalWarmupFrames, so the accumulation is converged.
     bool warmupComplete = false;
+    FrameExtents extents; ///< Render and output extents the last declared frame ran at.
+    /// Render scale the last declared frame resolved, which the render extent's rounding may
+    /// differ from by less than a pixel.
+    float renderScale = 1.0f;
+    /// Whether the last declared frame's render extent differed from its output extent, so the
+    /// reconstruction upscaled rather than resolving at one to one.
+    bool upscaled = false;
+    /// Count of declared frames when the render extent last changed without a history reset, 0
+    /// until it has. It is what shows that the history survived a scale change.
+    uint64_t lastRenderExtentChangeFrame = 0;
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
