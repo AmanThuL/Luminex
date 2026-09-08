@@ -2849,7 +2849,11 @@ TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]"
     const std::vector<float> taauY = luminances(taau[kFrames - 1].history);
     const float trail = meanAbsDiff(taauY, spatialY, vacatedRecently);
     INFO("mean |Y(TAAU) - Y(spatial raw)| in the vacated region " << trail);
-    REQUIRE(trail <= 0.1f * contrast);
+    // The upscaled tolerance of the 2026-09-09 amendment to M6.3 spec 10, not the native 0.1:
+    // dilating motion and depth over 3x3 render texels spans two output pixels at half scale, so
+    // the vacated band's two trailing columns blend rather than reject. The native case above
+    // keeps 0.1.
+    REQUIRE(trail <= 0.125f * contrast);
 
     // Disoccluded is drawn flat red, with the clipped flag adding green; the mask is written into
     // the display target unencoded, so the channel test is on the code the shader chose.
@@ -3063,6 +3067,10 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
         INFO("frame " << frame << " scale " << taau[frame - 1].status.renderScale << " trail "
                       << trail << ", contrast " << contrast);
         REQUIRE(contrast > 0.05f);
-        REQUIRE(trail <= 0.1f * contrast);
+        // The oscillation clause's own bound in the 2026-09-09 amendment to M6.3 spec 10, wider
+        // than the moving-quad case's 0.125 and for a different reason: the alternation's scale-1
+        // frames run the upscaling kernel against a history accumulated at half scale. Asserted on
+        // every measured frame, so a ghost outliving its transition still fails.
+        REQUIRE(trail <= 0.15f * contrast);
     }
 }
