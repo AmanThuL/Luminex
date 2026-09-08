@@ -151,8 +151,10 @@ public:
     GraphTexture importColor(RenderGraph& graph, uint32_t slot);
 
     /// Declares the reprojection diagnostic (when history is valid; culled unless the
-    /// ReprojectionError view sinks it), then the resolve under NativeTaa or the raw history commit
-    /// under Raw, then the debug view over `displayResult`.
+    /// ReprojectionError view sinks it), then the reconstruction the frame's mode and extents
+    /// select -- the resolve or the upscale under NativeTaa, the copy or the spatial commit under
+    /// Raw -- then the debug view over `displayResult`. Upscaling is a property of
+    /// `TemporalInputs::extents`, not of the mode: both modes keep their meaning at every scale.
     ///
     /// `displayResult` names the display version the debug view draws over on entry -- the version
     /// the display pass produces, which the caller may not have declared yet -- and is replaced by
@@ -164,9 +166,11 @@ public:
 
     /// Records what the frame just declared left in each colour slot, so the next frame's imports
     /// state the use its barriers must be derived against. `historyValid` is what decides whether
-    /// the reprojection diagnostic survived culling, and so whether the other slot was read at all.
+    /// the reprojection diagnostic survived culling, and so whether the other slot was read at all;
+    /// `upscaled` is what turns a Raw frame's copy into the spatial pass whose output bloom and the
+    /// display transform then sample, so the slot ends the frame read rather than written.
     void recordFrame(uint32_t slot, ReconstructionMode mode, TemporalDebugView debugView,
-                     bool historyValid);
+                     bool historyValid, bool upscaled);
 
     /// Bytes both colour history slots hold; the allocation is permanent for the stage's life.
     uint64_t colorBytes() const;
@@ -193,9 +197,27 @@ private:
 
     // M6.1's copy, now mode-gated: under Raw this frame's raw scene colour becomes the colour slot,
     // which keeps "every temporal frame's colour slot holds that frame's output" true in both
-    // modes. Its consumer is the next frame, so the version it produces is exported.
+    // modes. Its consumer is the next frame, so the version it produces is exported. Declared only
+    // when the render extent is the output one; otherwise the spatial pass below stands in for it,
+    // because a copy of a smaller rectangle would leave the rest of the slot stale.
     GraphTexture declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
                                       const TemporalInputs& inputs);
+
+    // The Raw mode's upscaled commit: Shaders/SpatialUpscale.slang resamples the active rectangle
+    // of this frame's scene colour into the whole colour slot. Same invariant as the copy it
+    // replaces -- this frame's colour slot holds this frame's output -- and the same export, since
+    // the consumer is the next frame.
+    GraphTexture declareSpatialCommit(RenderGraph& graph, rhi::CommandList& commands,
+                                      const TemporalInputs& inputs);
+
+    // The NativeTaa mode's upscaled accumulation: the resolve's declaration over the output extent.
+    // The reconstruction kernel it is meant to bind is not written yet, so it binds the spatial
+    // pipeline instead and produces an upscaled but unaccumulated picture -- every commit renders
+    // at every scale -- while the declaration, the diagnostics and the bookkeeping are already the
+    // accumulating pass's.
+    void declareUpscale(RenderGraph& graph, rhi::CommandList& commands,
+                        const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
+                        TemporalResolveOutputs& outputs);
 
     // A raster pass rather than a compute one: the display target is BGRA8Unorm, which carries no
     // storage-write usage in this RHI, and a fullscreen triangle overwrites every texel of it just
@@ -210,8 +232,10 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_reprojectLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_resolveLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_debugViewLibrary;
+    std::unique_ptr<rhi::ShaderLibrary> m_spatialUpscaleLibrary;
     std::unique_ptr<rhi::ComputePipeline> m_reprojectPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_resolvePipeline;
+    std::unique_ptr<rhi::ComputePipeline> m_spatialUpscalePipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_debugViewPipeline;
     // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
     // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold

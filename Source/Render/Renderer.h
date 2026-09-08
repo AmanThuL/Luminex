@@ -329,6 +329,11 @@ public:
     /// The scene-linear, pre-exposed image the display transform consumed, in kSceneColorFormat.
     /// Exposed for tests that need to read radiance rather than the picture made of it; the frame
     /// itself never touches it from outside declarePasses.
+    ///
+    /// Always allocated at the output extent, and rasterised into an origin-anchored rectangle of
+    /// TemporalStatus::extents' render extent, which a frame below scale 1 leaves smaller than the
+    /// allocation. The texels outside that rectangle are whatever an earlier frame left there, so a
+    /// reader at a render scale below 1 has to crop to the active rectangle.
     rhi::Texture& hdrColorTarget();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
@@ -338,7 +343,9 @@ public:
     /// render() declares no read of it, so the graph has emitted no transition.
     ///
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
-    /// declared rendered into; a frame with temporal off renders into slot 0.
+    /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
+    /// colour, it is allocated at the output extent and written only inside the origin-anchored
+    /// rectangle of TemporalStatus::extents' render extent.
     rhi::Texture& depthTarget();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it

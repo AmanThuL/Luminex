@@ -94,9 +94,12 @@ std::vector<uint8_t> readMotion(Renderer& renderer) {
 // The world point the ray through pixel (x, y)'s centre meets a fronto-parallel plane at world
 // `planeZ` on, for a camera at the origin looking down -Z. It is what turns a probe texel into the
 // surface point the motion oracle needs, without inverting a projection matrix in the test.
-glm::vec4 planePointAtPixel(const Camera& camera, uint32_t x, uint32_t y, float planeZ) {
-    const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(kSize);
-    const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(kSize);
+// `extent` is the square extent the pixel indexes into: the output one by default, and the render
+// one for a probe read out of a target rasterised at a smaller active rectangle.
+glm::vec4 planePointAtPixel(const Camera& camera, uint32_t x, uint32_t y, float planeZ,
+                            uint32_t extent = kSize) {
+    const float u = (static_cast<float>(x) + 0.5f) / static_cast<float>(extent);
+    const float v = (static_cast<float>(y) + 0.5f) / static_cast<float>(extent);
     const float ndcX = u * 2.0f - 1.0f;
     const float ndcY = 1.0f - v * 2.0f;
     const float tangent = std::tan(camera.fovY * 0.5f);
@@ -311,6 +314,321 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
 
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
+}
+
+//======================================================================================================================
+// The same raw frame rasterising into half of each axis. The declaration differs in exactly three
+// places: the scene pass carries a render area of the active rectangle, the one-to-one copy is
+// replaced by the spatial commit that resamples that rectangle into the whole colour slot, and
+// bloom and display read the slot the commit wrote rather than the scene colour behind it. Every
+// target keeps its output-extent allocation, so no descriptor and no transient footprint moves.
+TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
+    SceneView view = temporalSceneView(items);
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = true;
+    view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
+    view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
+    view.temporal.renderScale = 0.5f;
+
+    renderFrame(**device, **renderer, temporalCamera(), view);
+    const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
+    CHECK(status.upscaled);
+    CHECK(status.extents.renderWidth == kSize / 2);
+    CHECK(status.extents.renderHeight == kSize / 2);
+    CHECK(status.extents.outputWidth == kSize);
+    CHECK(status.extents.outputHeight == kSize);
+    CHECK(status.renderScale == 0.5f);
+
+    lmx::render::TransientPool transients(**device);
+    CommandList& commands = (*device)->beginFrame();
+    transients.beginFrame();
+    lmx::render::RenderGraph graph(transients);
+    const lmx::render::GraphTexture display =
+        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    graph.presentTexture(display);
+
+    const auto record = graph.compileFrame(2);
+    INFO((record.has_value() ? std::string{} : record.error().message));
+    REQUIRE(record.has_value());
+    const std::string dump = lmx::render::dumpCompiledFrame(*record);
+    requireMatchesGolden(dump, "frame-temporal-raw-upscaled.txt");
+    // Said twice on purpose: the golden pins the whole record, and these two say which part of it
+    // the case exists for, so a re-baselined golden cannot quietly drop either.
+    CHECK(dump.find("render area 32x32") != std::string::npos);
+    CHECK(dump.find("lmx.pass.temporal.commitHistory") == std::string::npos);
+
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+// The scale-1 frame declares the copy and never the spatial pass, whichever mode it runs: the
+// upscaling kernels are selected by the extents, so a frame whose render extent is its output
+// extent must not reach them at all.
+TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    SceneView view = temporalSceneView({});
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = true;
+    view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
+    view.temporal.renderScale = 1.0f;
+    renderFrame(**device, **renderer, temporalCamera(), view);
+    CHECK_FALSE((*renderer)->temporalStatus().upscaled);
+
+    lmx::render::TransientPool transients(**device);
+    CommandList& commands = (*device)->beginFrame();
+    transients.beginFrame();
+    lmx::render::RenderGraph graph(transients);
+    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(), view));
+    const auto record = graph.compileFrame(2);
+    REQUIRE(record.has_value());
+    const std::string dump = lmx::render::dumpCompiledFrame(*record);
+    CHECK(dump.find("lmx.pass.temporal.commitHistory") != std::string::npos);
+    CHECK(dump.find("lmx.pass.temporal.commitUpscaled") == std::string::npos);
+    CHECK(dump.find("lmx.pass.temporal.upscale") == std::string::npos);
+    CHECK(dump.find("render area") == std::string::npos);
+
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+// The picture an upscaled frame presents covers the whole output extent. The scene fills the view,
+// so a display target holding the clear colour anywhere would mean the frame reached only the
+// rectangle it rasterised into -- a margin the upscale failed to write -- and the colour slot the
+// commit wrote is still the full output-extent allocation it always was.
+TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    // What an empty frame's background reaches the display as, derived rather than hard-coded:
+    // it is the renderer's own clear colour through the same display transform.
+    auto empty = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(empty));
+    REQUIRE(empty.has_value());
+    renderFrame(**device, **empty, temporalCamera(), temporalSceneView({}));
+    std::vector<uint8_t> background(size_t{kSize} * kSize * 4);
+    (*empty)->colorTarget().readback(background.data(), background.size());
+    const Pixel clearPixel = pixelAt(background, 0, 0);
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const glm::mat4 model = facingPlaneModel(-2.0f);
+    const std::array<DrawItem, 1> items = {
+        DrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
+    SceneView view = temporalSceneView(items);
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = true;
+    view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
+    view.temporal.renderScale = 0.5f;
+
+    const Camera camera;
+    for (uint32_t frame = 0; frame < 4; ++frame) {
+        renderFrame(**device, **renderer, camera, view);
+    }
+    const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
+    REQUIRE(status.upscaled);
+    REQUIRE(status.extents.renderWidth == kSize / 2);
+    // The colour slots never shrank with the render extent: both are still the output extent.
+    REQUIRE(status.historyBytes == 2 * uint64_t{kSize} * kSize * 8);
+
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+    uint32_t clearPixels = 0;
+    for (uint32_t y = 0; y < kSize; ++y) {
+        for (uint32_t x = 0; x < kSize; ++x) {
+            const Pixel pixel = pixelAt(pixels, x, y);
+            if (pixel.r == clearPixel.r && pixel.g == clearPixel.g && pixel.b == clearPixel.b) {
+                INFO(describe("clear-coloured display pixel", x, y, pixel));
+                ++clearPixels;
+            }
+        }
+    }
+    CHECK(clearPixels == 0);
+
+    // The colour slot the commit wrote is readable over the whole output extent, which is the
+    // allocation the spec's table states for it whatever the frame rasterised at.
+    lmx::rhi::Texture* history = (*renderer)->historyTarget();
+    REQUIRE(history != nullptr);
+    std::vector<uint8_t> slot(size_t{kSize} * kSize * 8);
+    history->readback(slot.data(), slot.size());
+    // Alpha is the accumulation age, and the spatial commit writes 1 for every output texel, so
+    // the whole allocation carrying it is what says the pass covered the output extent.
+    for (size_t texel = 0; texel < size_t{kSize} * kSize; ++texel) {
+        uint16_t alpha = 0;
+        std::memcpy(&alpha, slot.data() + texel * 8 + 6, sizeof(alpha));
+        REQUIRE(halfToFloat(alpha) == 1.0f);
+    }
+}
+
+//======================================================================================================================
+// The upscale's kernel preserves a constant field. The five-tap Catmull-Rom drops the four corner
+// taps, so a fetch that did not renormalise the five it keeps would scale every texel of a flat
+// emissive surface by the missing weight -- a whole-image brightness shift no probe of a shaded
+// scene would separate from its shading.
+TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const glm::mat4 model = facingPlaneModel(-2.0f);
+    const std::array<DrawItem, 1> items = {
+        DrawItem{.mesh = &*plane,
+                 .model = model,
+                 .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}},
+                 .previousModel = model}};
+    SceneView view = temporalSceneView(items);
+    for (auto& light : view.lights) {
+        light.strength = {};
+    }
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = false;
+    view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
+    view.temporal.renderScale = 0.5f;
+
+    const Camera camera;
+    renderFrame(**device, **renderer, camera, view);
+    renderFrame(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().upscaled);
+
+    // The value the plane shaded to, read out of the active rectangle the frame rasterised into.
+    std::vector<uint8_t> scene(size_t{kSize} * kSize * 8);
+    (*renderer)->hdrColorTarget().readback(scene.data(), scene.size());
+    const auto texelAt = [](const std::vector<uint8_t>& bytes, uint32_t x, uint32_t y) {
+        uint16_t halves[4] = {0, 0, 0, 0};
+        std::memcpy(halves, bytes.data() + (size_t{y} * kSize + x) * 8, sizeof(halves));
+        return glm::vec4{halfToFloat(halves[0]), halfToFloat(halves[1]), halfToFloat(halves[2]),
+                         halfToFloat(halves[3])};
+    };
+    const glm::vec4 rendered = texelAt(scene, kSize / 4, kSize / 4);
+    REQUIRE(rendered.r > 0.0f);
+
+    lmx::rhi::Texture* history = (*renderer)->historyTarget();
+    REQUIRE(history != nullptr);
+    std::vector<uint8_t> committed(scene.size());
+    history->readback(committed.data(), committed.size());
+    for (const std::pair<uint32_t, uint32_t> probe : {std::pair<uint32_t, uint32_t>{1, 1},
+                                                      {kSize / 2, kSize / 2},
+                                                      {kSize - 2, kSize - 2}}) {
+        const glm::vec4 upscaled = texelAt(committed, probe.first, probe.second);
+        INFO("probe (" + std::to_string(probe.first) + "," + std::to_string(probe.second) +
+             ") rendered " + std::to_string(rendered.r) + " upscaled " +
+             std::to_string(upscaled.r));
+        REQUIRE(upscaled.r == Catch::Approx(rendered.r).epsilon(1e-2));
+        REQUIRE(upscaled.g == Catch::Approx(rendered.g).epsilon(1e-2));
+        REQUIRE(upscaled.b == Catch::Approx(rendered.b).epsilon(1e-2));
+    }
+}
+
+//======================================================================================================================
+// Motion at a render scale below 1 is still the UV delta of the render extent it was rasterised
+// into: the probe reads the active rectangle of a target allocated at the output extent, and the
+// oracle indexes its pixels over the render extent.
+TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    constexpr uint32_t kRender = kSize / 2;
+    constexpr float kPlaneZ = -2.0f;
+    const glm::vec3 delta{0.2f, 0.1f, 0.0f};
+    const glm::mat4 model = facingPlaneModel(kPlaneZ);
+    const glm::mat4 previousModel = glm::translate(glm::mat4{1.0f}, delta) * model;
+
+    const Camera camera;
+    const std::array<DrawItem, 1> first = {
+        DrawItem{.mesh = &*plane, .model = previousModel, .previousModel = previousModel}};
+    const std::array<DrawItem, 1> second = {
+        DrawItem{.mesh = &*plane, .model = model, .previousModel = previousModel}};
+
+    SceneView view = temporalSceneView(first);
+    view.temporal.enabled = true;
+    view.temporal.renderScale = 0.5f;
+    renderFrame(**device, **renderer, camera, view);
+    view.items = second;
+    renderFrame(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().extents.renderWidth == kRender);
+
+    // The projection's aspect comes from the output extent, so a square frame's matrices are the
+    // ones the full-extent oracle uses; only the pixel-to-ray mapping is at the render extent.
+    const lmx::render::FrameExtents extents{.renderWidth = kRender,
+                                            .renderHeight = kRender,
+                                            .outputWidth = kSize,
+                                            .outputHeight = kSize};
+    const lmx::render::CameraFrameState state =
+        lmx::render::buildCameraFrameState(camera, extents, {});
+
+    const std::vector<uint8_t> pixels = readMotion(**renderer);
+    for (const std::pair<uint32_t, uint32_t> probe :
+         {std::pair<uint32_t, uint32_t>{8, 8}, {16, 16}, {24, 20}}) {
+        const glm::vec4 point =
+            planePointAtPixel(camera, probe.first, probe.second, kPlaneZ, kRender);
+        const glm::vec4 before = point + glm::vec4(delta, 0.0f);
+        const glm::vec2 expected =
+            lmx::render::motionBetween(state.viewProjection * point, state.viewProjection * before);
+        const glm::vec2 actual = motionAt(pixels, probe.first, probe.second);
+        INFO("probe (" + std::to_string(probe.first) + "," + std::to_string(probe.second) +
+             ") expected " + std::to_string(expected.x) + "," + std::to_string(expected.y) +
+             " actual " + std::to_string(actual.x) + "," + std::to_string(actual.y));
+        REQUIRE(actual.x == Catch::Approx(expected.x).margin(2e-3));
+        REQUIRE(actual.y == Catch::Approx(expected.y).margin(2e-3));
+    }
 }
 
 //======================================================================================================================
@@ -748,6 +1066,29 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
     renderFrame(**device, **renderer, camera, view);
     REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::CameraCut);
     REQUIRE_FALSE((*renderer)->temporalStatus().historyValid);
+
+    // A render-scale change is not an extent change: the history lives at the output extent and is
+    // reprojected in UV, so it survives and the frame reports the change instead of resetting.
+    view.temporal.cameraCut = false;
+    renderFrame(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
+    const uint64_t beforeChange = (*renderer)->temporalStatus().lastRenderExtentChangeFrame;
+
+    view.temporal.renderScale = 0.5f;
+    renderFrame(**device, **renderer, camera, view);
+    const lmx::render::TemporalStatus scaled = (*renderer)->temporalStatus();
+    REQUIRE(scaled.lastReset == HistoryResetReason::None);
+    REQUIRE(scaled.historyValid);
+    REQUIRE(scaled.upscaled);
+    REQUIRE(scaled.extents.renderWidth == scaled.extents.outputWidth / 2);
+    REQUIRE(scaled.lastRenderExtentChangeFrame > beforeChange);
+    // Nothing was reallocated: the output extent is what the targets are sized by.
+    REQUIRE(scaled.historyBytes == historyBytes / 4);
+
+    // Holding the scale leaves the count where the change put it.
+    renderFrame(**device, **renderer, camera, view);
+    REQUIRE((*renderer)->temporalStatus().lastRenderExtentChangeFrame ==
+            scaled.lastRenderExtentChangeFrame);
 }
 
 //======================================================================================================================
@@ -1150,6 +1491,19 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
     }
     REQUIRE((*renderer)->temporalStatus().reconstruction ==
             lmx::render::ReconstructionMode::NativeTaa);
+
+    // Five more, still undrained, alternating the render scale with the debug view: an upscaled
+    // frame declares a different reconstruction pass and a different terminal use for the scene
+    // colour than the frame before and after it, so the imports have to name what each of those
+    // frames actually left rather than what one scale alone would have.
+    for (uint32_t frame = 0; frame < 5; ++frame) {
+        view.temporal.renderScale = frame % 2 == 0 ? 0.5f : 1.0f;
+        view.temporal.debugView =
+            frame % 2 == 0 ? TemporalDebugView::MotionVectors : TemporalDebugView::Off;
+        renderFrameInFlight(**device, **renderer, camera, view);
+        REQUIRE((*renderer)->temporalStatus().lastReset == HistoryResetReason::None);
+    }
+    REQUIRE((*renderer)->temporalStatus().upscaled);
 
     // The one drain, after every submission: the targets were never reallocated, so the run's own
     // completion is the assertion the overlap makes.

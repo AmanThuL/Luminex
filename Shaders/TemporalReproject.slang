@@ -3,14 +3,27 @@
 // and the history, and nothing downstream of it shades from the result -- accumulation is a later
 // slice's work.
 //
+// It runs at the output extent, because that is what the history and the diagnostic are: the
+// history is compared against the current colour resampled out of the render extent at the
+// position that output pixel was sampled at, so a render extent below the output one measures the
+// same thing the display sees rather than a rectangle of it.
+//
 // Slots: textures 0 history, 1 scene colour, 2 motion; storage texture 3 diagnostic; sampler 0
 // linear; buffer 0 params.
 import Motion;
 
 struct TemporalReprojectParams
 {
-    uint width;  // Render extent, which every one of the three inputs shares.
+    // The output extent: the dispatch bound, and what the history and the diagnostic are.
+    uint width;
     uint height;
+    uint renderWidth;  // Active rectangle of the scene colour and the motion target.
+    uint renderHeight;
+    uint allocatedWidth;  // Allocation of those two, which every UV over them is taken over.
+    uint allocatedHeight;
+    // Where the jittered raster placed the scene, in render texels of texture space: the CPU-side
+    // jitterTexelOffset(jitter) of Source/Render/Temporal.h.
+    float2 jitterOffset;
 };
 
 [[vk::binding(0, 0)]]
@@ -44,16 +57,21 @@ void computeTemporalReproject(uint3 tid: SV_DispatchThreadID)
         return;
     }
 
-    int3 coord = int3(int2(tid.xy), 0);
-    float2 motion = gMotion.Load(coord).xy;
+    float2 render = float2(float(gParams.renderWidth), float(gParams.renderHeight));
+    float2 output = float2(float(gParams.width), float(gParams.height));
+    float2 ratio = render / output;
+
+    // Motion is a render-extent signal: this output pixel takes the motion of the render texel it
+    // falls in, clamped so the last row and column of a rounded render extent stay addressable.
+    int2 motionCoord = clamp(int2(float2(tid.xy) * ratio), int2(0, 0), int2(render) - 1);
+    float2 motion = gMotion.Load(int3(motionCoord, 0)).xy;
     if (isinf(motion.x) || isinf(motion.y))
     {
         gDiagnostic[tid.xy] = kNoComparison;
         return;
     }
 
-    float2 extent = float2(float(gParams.width), float(gParams.height));
-    float2 uv = (float2(tid.xy) + 0.5) / extent;
+    float2 uv = (float2(tid.xy) + 0.5) / output;
     // Motion is a UV delta from the previous frame to this one, so history sits at uv - motion.
     float2 historyUv = uv - motion;
     if (any(historyUv < 0.0) || any(historyUv > 1.0))
@@ -63,6 +81,11 @@ void computeTemporalReproject(uint3 tid: SV_DispatchThreadID)
     }
 
     float3 history = gHistory.SampleLevel(gLinearSampler, historyUv, 0.0).rgb;
-    float3 current = gSceneColor.Load(coord).rgb;
+    // Source/Render/Temporal.h's renderSamplePosition, clamped into the active rectangle and taken
+    // as a UV over the allocation, so no filter weight reaches the region outside the rectangle.
+    float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + gParams.jitterOffset;
+    float2 allocated = float2(float(gParams.allocatedWidth), float(gParams.allocatedHeight));
+    float2 sampleUv = clamp(samplePosition, float2(0.5, 0.5), render - 0.5) / allocated;
+    float3 current = gSceneColor.SampleLevel(gLinearSampler, sampleUv, 0.0).rgb;
     gDiagnostic[tid.xy] = float4(abs(history - current), 1.0);
 }

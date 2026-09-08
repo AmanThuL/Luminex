@@ -1024,11 +1024,17 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     }
 
     const bool temporalEnabled = view.temporal.enabled;
+    // The render scale is meaningful only with temporal on, the way jitterEnabled already is: a
+    // frame with temporal off rasterises at the output extent whatever the field says.
+    LMX_ASSERT(!temporalEnabled || (view.temporal.renderScale >= kMinRenderScale &&
+                                    view.temporal.renderScale <= kMaxRenderScale),
+               "SceneView temporal renderScale must lie within [kMinRenderScale, kMaxRenderScale]");
+    const float renderScale = temporalEnabled ? view.temporal.renderScale : 1.0f;
 
-    const FrameExtents extents{.renderWidth = m_width,
-                               .renderHeight = m_height,
-                               .outputWidth = m_width,
-                               .outputHeight = m_height};
+    // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
+    // is used through an origin-anchored active rectangle, so a scale change allocates nothing.
+    const FrameExtents extents = renderExtentsForScale(m_width, m_height, renderScale);
+    const bool upscaled = extents.renderWidth != m_width || extents.renderHeight != m_height;
     const FrameSignature signature{.sceneGeneration = view.temporal.sceneGeneration,
                                    .extents = extents,
                                    .fovY = camera.fovY,
@@ -1037,6 +1043,13 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const HistoryResetReason resetReason =
         deriveHistoryReset(m_previousSignature, signature, view.temporal.cameraCut);
     const bool historyValid = temporalEnabled && resetReason == HistoryResetReason::None;
+    // The extents the previous declared frame ran at, which is what addresses the previous depth
+    // slot. A reset frame reads no history at all, so it stands in its own extents rather than a
+    // predecessor's that describes another image.
+    const FrameExtents previousExtents =
+        resetReason == HistoryResetReason::None && m_previousSignature
+            ? m_previousSignature->extents
+            : extents;
     // Ping-pong by declared temporal frame parity: this frame renders depth into `slot` and writes
     // its colour there, and reads the other slot as the previous frame's depth and history. A
     // frame with temporal off renders depth into slot 0 and touches no colour history at all.
@@ -1255,10 +1268,17 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                                        .store = StoreOp::Store,
                                                        .clearColor = {0.0f, 0.0f, 0.0f, 0.0f}});
     }
+    // The active rectangle, declared only when it is not the whole attachment: at scale 1 the pass
+    // states exactly what it always did, which is what keeps the frame's declaration -- and every
+    // golden over it -- byte for byte the one M6.2 made.
+    if (upscaled) {
+        sceneDesc.renderAreaWidth = extents.renderWidth;
+        sceneDesc.renderAreaHeight = extents.renderHeight;
+    }
     // The sky's own jitter, in NDC: its motion pair has to stay unjittered, so its vertex entry
     // point offsets the rasterised position instead of carrying the jitter in its matrix.
-    const glm::vec2 jitterNdc{2.0f * jitterPixels.x / static_cast<float>(m_width),
-                              2.0f * jitterPixels.y / static_cast<float>(m_height)};
+    const glm::vec2 jitterNdc{2.0f * jitterPixels.x / static_cast<float>(extents.renderWidth),
+                              2.0f * jitterPixels.y / static_cast<float>(extents.renderHeight)};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
         [this, &commands, view, passUniforms, viewProj, shadowRead, exposureCurrent,
@@ -1421,16 +1441,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         temporalInputs.camera = cameraState;
         temporalInputs.previousCamera = previousCamera;
         temporalInputs.extents = extents;
+        temporalInputs.previousExtents = previousExtents;
         temporalInputs.resetReason = resetReason;
         temporalInputs.mode = reconstruction;
         temporalOutputs =
             m_temporalResolve->declare(graph, commands, temporalInputs, debugView, displayResult);
     }
 
-    // What bloom and the display transform read: the accumulated picture under NativeTaa, the raw
-    // jittered frame otherwise. The histogram deliberately keeps metering the raw scene colour, so
-    // metering stays independent of the accumulation it corrects.
-    const GraphTexture displayInput = nativeTaa ? temporalOutputs.resolved : sceneColorRead;
+    // What bloom and the display transform read: the colour slot whenever the frame accumulated or
+    // upscaled into it -- both leave the finished output-extent picture there -- and the raw
+    // jittered frame otherwise. Only a Raw frame that rasterised at the output extent still reads
+    // scene colour. The histogram deliberately keeps metering the raw scene colour, so metering
+    // stays independent of the accumulation it corrects.
+    const GraphTexture displayInput =
+        nativeTaa || upscaled ? temporalOutputs.resolved : sceneColorRead;
 
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
@@ -1455,14 +1479,19 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                       });
     const GraphBuffer histogramCleared = nextVersion(histogramImport);
 
+    // Metering reads the raw scene colour, which is a render-extent signal: the pass dispatches
+    // over the active rectangle and states it, so no invocation reads the stale region outside it.
+    // Metering is per texel, so the exposure it derives is the same at every scale.
+    const uint32_t meterWidth = extents.renderWidth;
+    const uint32_t meterHeight = extents.renderHeight;
     ComputePassDesc histogramDesc;
     histogramDesc.shaderTextureReads.push_back(sceneColorRead);
     histogramDesc.shaderBufferReads.push_back(exposureCurrent);
     histogramDesc.bufferWrites.push_back(histogramCleared);
     graph.addComputePass(
         "lmx.pass.exposure.histogram", std::move(histogramDesc),
-        [this, &commands, sceneColorRead, histogramCleared, exposureCurrent, sceneWidth,
-         sceneHeight](const PassResources& resources) {
+        [this, &commands, sceneColorRead, histogramCleared, exposureCurrent, meterWidth,
+         meterHeight](const PassResources& resources) {
             const GraphResult<rhi::Texture*> scene = resources.texture(sceneColorRead);
             LMX_ASSERT(scene.has_value(), scene.error().message);
             const GraphResult<rhi::Buffer*> histogram = resources.buffer(histogramCleared);
@@ -1472,16 +1501,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
             const HistogramParams params{.logLuminanceMin = kExposureLogLuminanceMin,
                                          .logLuminanceMax = kExposureLogLuminanceMax,
-                                         .width = sceneWidth,
-                                         .height = sceneHeight};
+                                         .width = meterWidth,
+                                         .height = meterHeight};
             commands.bindComputePipeline(*m_histogramPipeline);
             commands.bindTexture(kHistogramSceneColorSlot, **scene);
             commands.bindStorageBuffer(kHistogramBufferSlot, **histogram,
                                        rhi::StorageAccess::ReadWrite);
             commands.bindBuffer(kHistogramExposureSlot, **exposure);
             commands.bindFrameData(kHistogramParamsSlot, params);
-            commands.dispatch(divRoundUp(sceneWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(sceneHeight, kComputeThreadsPerGroup2D), 1);
+            commands.dispatch(divRoundUp(meterWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(meterHeight, kComputeThreadsPerGroup2D), 1);
         });
     const GraphBuffer histogramFinal = nextVersion(histogramCleared);
 
@@ -1765,6 +1794,17 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         m_temporalStatus.historyAge = std::min<uint32_t>(m_temporalStatus.historyAge + 1, 65535);
     }
     m_temporalStatus.warmupComplete = m_temporalStatus.historyAge >= kTemporalWarmupFrames;
+    m_temporalStatus.extents = extents;
+    m_temporalStatus.renderScale = renderScale;
+    m_temporalStatus.upscaled = upscaled;
+    // A render-extent change under a reset reason says nothing: the history is being thrown away
+    // anyway. Under None it is the whole point -- the history survived a change of the extent the
+    // scene rasterised at -- so that is the only frame the count records.
+    if (resetReason == HistoryResetReason::None && m_previousSignature &&
+        (m_previousSignature->extents.renderWidth != extents.renderWidth ||
+         m_previousSignature->extents.renderHeight != extents.renderHeight)) {
+        m_temporalStatus.lastRenderExtentChangeFrame = m_declaredFrames;
+    }
     m_previousSignature = signature;
     m_previousCamera = cameraState;
     // What this frame's last access to each persistent target was, for the next frame's imports to
@@ -1781,13 +1821,15 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
         m_previousReactiveUse =
             nativeTaa ? rhi::TextureUse::ShaderRead : rhi::TextureUse::RenderTarget;
-        m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid);
+        m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid, upscaled);
     }
-    // The scene colour is written and read by every frame. Under Raw the commit copy is the last
-    // thing to touch it; under NativeTaa and with temporal off, bloom, the histogram and the
-    // display transform all read it and none copies out of it.
-    m_previousSceneColorUse =
-        temporalEnabled && !nativeTaa ? rhi::TextureUse::CopySource : rhi::TextureUse::ShaderRead;
+    // The scene colour is written and read by every frame. Under Raw at the output extent the
+    // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
+    // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
+    // and the display transform all read it and none copies out of it.
+    m_previousSceneColorUse = temporalEnabled && !nativeTaa && !upscaled
+                                  ? rhi::TextureUse::CopySource
+                                  : rhi::TextureUse::ShaderRead;
     if (temporalEnabled) {
         ++m_temporalFrame;
     }
