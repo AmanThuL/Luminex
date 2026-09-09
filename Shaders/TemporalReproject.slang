@@ -61,9 +61,14 @@ void computeTemporalReproject(uint3 tid: SV_DispatchThreadID)
     float2 output = float2(float(gParams.width), float(gParams.height));
     float2 ratio = render / output;
 
-    // Motion is a render-extent signal: this output pixel takes the motion of the render texel it
-    // falls in, clamped so the last row and column of a rounded render extent stay addressable.
-    int2 motionCoord = clamp(int2(float2(tid.xy) * ratio), int2(0, 0), int2(render) - 1);
+    // Source/Render/Temporal.h's renderSamplePosition: where in the jittered render image this
+    // output pixel reads its current colour.
+    float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + gParams.jitterOffset;
+    // Motion is a render-extent signal, and the texel to take it from is the one that sample falls
+    // in -- Shaders/TemporalUpscale.slang's nearest texel, so the diagnostic measures the motion of
+    // the surface it compares. Clamped so the last row and column of a rounded render extent stay
+    // addressable.
+    int2 motionCoord = clamp(int2(floor(samplePosition)), int2(0, 0), int2(render) - 1);
     float2 motion = gMotion.Load(int3(motionCoord, 0)).xy;
     if (isinf(motion.x) || isinf(motion.y))
     {
@@ -81,9 +86,8 @@ void computeTemporalReproject(uint3 tid: SV_DispatchThreadID)
     }
 
     float3 history = gHistory.SampleLevel(gLinearSampler, historyUv, 0.0).rgb;
-    // Source/Render/Temporal.h's renderSamplePosition, clamped into the active rectangle and taken
-    // as a UV over the allocation, so no filter weight reaches the region outside the rectangle.
-    float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + gParams.jitterOffset;
+    // The sample position clamped into the active rectangle and taken as a UV over the allocation,
+    // so no filter weight reaches the region outside the rectangle.
     float2 allocated = float2(float(gParams.allocatedWidth), float(gParams.allocatedHeight));
     float2 sampleUv = clamp(samplePosition, float2(0.5, 0.5), render - 0.5) / allocated;
     float3 current = gSceneColor.SampleLevel(gLinearSampler, sampleUv, 0.0).rgb;

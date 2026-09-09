@@ -70,13 +70,16 @@ Texture2D<float4> gResolved : register(t4); // → MSL [[texture(4)]]
 [[vk::binding(0, 0)]]
 ConstantBuffer<TemporalDebugViewParams> gParams : register(b0); // → MSL [[buffer(0)]]
 
-// The render texel an output pixel falls in, clamped so the last row and column of a rounded
-// render extent stay addressable. At the output extent it is the pixel itself.
+// The render texel a display pixel's *centre* maps to, clamped so the last row and column of a
+// rounded render extent stay addressable. At the output extent it is the pixel itself. No jitter:
+// this view has none to apply and motion is an unjittered signal. The reprojection diagnostic and
+// the upscale kernel map the same centre and then add the frame's jitter offset, because what they
+// address is the jittered render image rather than the motion of a display pixel.
 int3 motionCoordFor(float2 pixel)
 {
     float2 render = float2(float(gParams.renderWidth), float(gParams.renderHeight));
     float2 output = float2(float(gParams.outputWidth), float(gParams.outputHeight));
-    return int3(clamp(int2(pixel * render / output), int2(0, 0), int2(render) - 1), 0);
+    return int3(clamp(int2((pixel + 0.5) * render / output), int2(0, 0), int2(render) - 1), 0);
 }
 
 struct VSOutput

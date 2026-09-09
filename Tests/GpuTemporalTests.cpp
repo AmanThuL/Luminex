@@ -1209,6 +1209,137 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
 }
 
 //======================================================================================================================
+// The diagnostic's motion texel is the one its current-colour sample falls in, which below scale 1
+// is not the texel the output pixel's own corner maps to. A vertical split between a surface whose
+// motion is the invalid sentinel and a static one puts the two mappings on opposite sides of the
+// seam for a whole column of output pixels: taking motion from the corner reports "nothing to
+// compare" for pixels that sample the static surface, and compares pixels that sample the invalid
+// one. The expected texel is computed on the CPU with Source/Render/Temporal.h's
+// renderSamplePosition, so what the case pins is the mapping and not a hand-picked pixel.
+TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto plane =
+        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+    INFO(errorOf(plane));
+    REQUIRE(plane.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    constexpr float kScale = 0.75f;
+    const lmx::render::FrameExtents extents =
+        lmx::render::renderExtentsForScale(kSize, kSize, kScale);
+    REQUIRE(extents.renderWidth == 48);
+    REQUIRE(extents.renderHeight == 48);
+
+    // The seam sits on the boundary between render texels 21 and 22, a column where the corner
+    // mapping and the sample mapping disagree: output pixel 29 samples at 22.125, inside the
+    // static surface, while its corner maps to 21.75, inside the invalid one.
+    constexpr uint32_t kSeamTexel = 22;
+    constexpr float kPlaneZ = -2.0f;
+    constexpr float kHalfExtent = 10.0f;
+    const Camera camera;
+    const float ndcX =
+        2.0f * static_cast<float>(kSeamTexel) / static_cast<float>(extents.renderWidth) - 1.0f;
+    const float seamX = ndcX * std::tan(camera.fovY * 0.5f) * -kPlaneZ;
+
+    const glm::mat4 invalid =
+        glm::translate(glm::mat4{1.0f}, glm::vec3{seamX - kHalfExtent, 0.0f, 0.0f}) *
+        facingPlaneModel(kPlaneZ);
+    const glm::mat4 stat =
+        glm::translate(glm::mat4{1.0f}, glm::vec3{seamX + kHalfExtent, 0.0f, 0.0f}) *
+        facingPlaneModel(kPlaneZ);
+    const std::array<DrawItem, 2> items = {
+        DrawItem{.mesh = &*plane,
+                 .model = invalid,
+                 .previousModel = invalid,
+                 .motionClass = lmx::render::MotionClass::Invalid},
+        DrawItem{.mesh = &*plane, .model = stat, .previousModel = stat},
+    };
+    SceneView view = temporalSceneView(items);
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = false; // The mapping under test, without a sub-pixel offset.
+    view.temporal.renderScale = kScale;
+    view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
+
+    renderFrame(**device, **renderer, camera, view);
+    renderFrame(**device, **renderer, camera, view);
+    renderFrame(**device, **renderer, camera, view);
+    const lmx::render::TemporalStatus status = (*renderer)->temporalStatus();
+    REQUIRE(status.lastReset == lmx::render::HistoryResetReason::None);
+    REQUIRE(status.historyValid);
+    REQUIRE(status.extents.renderWidth == extents.renderWidth);
+
+    const std::vector<uint8_t> motion = readMotion(**renderer);
+    std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
+    (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+
+    // The view paints "nothing to compare" -- the diagnostic's alpha 0 -- flat blue, and every
+    // comparable pixel a grey.
+    const auto sentinelAt = [&motion](glm::ivec2 texel) {
+        const glm::vec2 value =
+            motionAt(motion, static_cast<uint32_t>(texel.x), static_cast<uint32_t>(texel.y));
+        return std::isinf(value.x) || std::isinf(value.y);
+    };
+    const auto texelFor = [&extents](uint32_t x, uint32_t y) {
+        const glm::vec2 position =
+            lmx::render::renderSamplePosition({x, y}, extents, glm::vec2{0.0f});
+        return glm::ivec2{glm::clamp(static_cast<int>(std::floor(position.x)), 0,
+                                     static_cast<int>(extents.renderWidth) - 1),
+                          glm::clamp(static_cast<int>(std::floor(position.y)), 0,
+                                     static_cast<int>(extents.renderHeight) - 1)};
+    };
+
+    uint32_t comparable = 0;
+    uint32_t rejected = 0;
+    uint32_t distinguishing = 0;
+    uint32_t mismatched = 0;
+    for (uint32_t y = 0; y < kSize; ++y) {
+        for (uint32_t x = 0; x < kSize; ++x) {
+            const glm::ivec2 texel = texelFor(x, y);
+            const bool expectSentinel = sentinelAt(texel);
+            const Pixel pixel = pixelAt(pixels, x, y);
+            const bool sawSentinel = pixel.r == 0 && pixel.g == 0 && pixel.b == 255;
+            // The corner mapping this case exists to reject, and whether it would answer
+            // differently here.
+            const glm::ivec2 corner{
+                glm::clamp(static_cast<int>(static_cast<float>(x) * static_cast<float>(kScale)), 0,
+                           static_cast<int>(extents.renderWidth) - 1),
+                glm::clamp(static_cast<int>(static_cast<float>(y) * static_cast<float>(kScale)), 0,
+                           static_cast<int>(extents.renderHeight) - 1)};
+            if (sentinelAt(corner) != expectSentinel) {
+                ++distinguishing;
+            }
+            if (expectSentinel) {
+                ++rejected;
+            } else {
+                ++comparable;
+            }
+            if (sawSentinel != expectSentinel) {
+                ++mismatched;
+                INFO(describe("reprojection error", x, y, pixel));
+                INFO("sample texel (" + std::to_string(texel.x) + "," + std::to_string(texel.y) +
+                     ") sentinel " + (expectSentinel ? "yes" : "no"));
+                CHECK(sawSentinel == expectSentinel);
+            }
+        }
+    }
+    INFO("comparable " + std::to_string(comparable) + " rejected " + std::to_string(rejected) +
+         " distinguishing " + std::to_string(distinguishing));
+    REQUIRE(comparable > 0);
+    REQUIRE(rejected > 0);
+    // Without these the case would pass under either mapping and prove nothing.
+    REQUIRE(distinguishing > 0);
+    REQUIRE(mismatched == 0);
+}
+
+//======================================================================================================================
 // The age's own bookkeeping across the two events that are not resets and the one that is. A frame
 // with temporal off does not merely fail to advance the count -- it starts it over, because the
 // history the next temporal frame finds is not the one the count described; a change of
