@@ -81,8 +81,10 @@ retired frame's summed GPU pass time against a budget and headroom, and proposes
 over-budget or under-target samples before stepping) — nothing about it reads a device, a graph, or
 an App type. `EditorShell` owns one controller instance, feeds it `frameGpuMilliseconds()` from the
 retained frame ring, and writes its `scale()` back onto `EditorRenderSettings::renderScale` every
-frame dynamic resolution is enabled; turning it off freezes `renderScale` at the controller's last
-value rather than jumping back to a manual setting the user did not choose. `--render-scale` and
+frame the controller is active -- dynamic resolution and the temporal path both on, since a frame
+with temporal off rasterises at scale 1 and measures no scale of the controller's. Leaving that
+state freezes `renderScale` at the controller's last value rather than jumping back to a manual
+setting the user did not choose. `--render-scale` and
 `LMX_DYNAMIC_RESOLUTION_BUDGET_MS` are the two ways to drive this outside the Inspector: the flag
 sets a fixed manual scale for one screenshot/scripted run, the env var seeds dynamic resolution on
 before the loop starts, for a run long enough to show the controller settle.

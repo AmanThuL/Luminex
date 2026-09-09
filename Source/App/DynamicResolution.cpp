@@ -8,6 +8,11 @@
 namespace lmx::app {
 
 //======================================================================================================================
+bool dynamicResolutionActive(const EditorRenderSettings& settings) {
+    return settings.dynamicResolutionEnabled && settings.temporalEnabled;
+}
+
+//======================================================================================================================
 double frameGpuMilliseconds(std::span<const rhi::PassTiming> timings) {
     double total = 0.0;
     for (const rhi::PassTiming& timing : timings) {
@@ -19,7 +24,8 @@ double frameGpuMilliseconds(std::span<const rhi::PassTiming> timings) {
 //======================================================================================================================
 void applyDynamicResolution(DynamicResolutionState& state, render::ResolutionController& controller,
                             EditorRenderSettings& settings, const RetainedFrame* newestTimed) {
-    if (settings.dynamicResolutionEnabled) {
+    const bool active = dynamicResolutionActive(settings);
+    if (active) {
         if (!state.wasEnabled) {
             // Off->on: seed the controller from the manual slider so the picture does not jump.
             controller.reset(settings.renderScale);
@@ -35,10 +41,15 @@ void applyDynamicResolution(DynamicResolutionState& state, render::ResolutionCon
             state.lastObservedFrame = newestTimed->record.frameId;
         }
         settings.renderScale = controller.scale();
+    } else if (newestTimed != nullptr) {
+        // Idle: the frame ran at whatever scale the renderer chose without the controller, so its
+        // timing is not a measurement of the controller's scale. Its number is still carried
+        // forward, so becoming active again does not consume a frame from the idle period.
+        state.lastObservedFrame = newestTimed->record.frameId;
     }
-    // Disabled: settings.renderScale is left at the controller's last value -- editing it there is
-    // the manual slider's job, which the Inspector disables while dynamic resolution is on.
-    state.wasEnabled = settings.dynamicResolutionEnabled;
+    // Idle: settings.renderScale is left at the controller's last value -- editing it there is the
+    // manual slider's job, which the Inspector disables while dynamic resolution is on.
+    state.wasEnabled = active;
 }
 
 } // namespace lmx::app

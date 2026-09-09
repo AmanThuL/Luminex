@@ -392,7 +392,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     const float renderScaleBeforeDynamicResolution = m_settings.renderScale;
     applyDynamicResolution(m_dynamicResolutionState, m_resolutionController, m_settings,
                            newestTimed);
-    if (m_settings.dynamicResolutionEnabled &&
+    if (dynamicResolutionActive(m_settings) &&
         m_settings.renderScale != renderScaleBeforeDynamicResolution) {
         LMX_LOG_INFO("render scale {:.2f} -> {:.2f} after {:.2f} ms",
                      renderScaleBeforeDynamicResolution, m_settings.renderScale,
@@ -631,7 +631,7 @@ bool EditorShell::consumeExposureReset() {
 
 //======================================================================================================================
 void EditorShell::controllerDeclared(uint64_t frame) {
-    if (m_settings.dynamicResolutionEnabled) {
+    if (dynamicResolutionActive(m_settings)) {
         m_resolutionController.declared(frame);
     }
 }

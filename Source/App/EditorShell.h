@@ -144,10 +144,10 @@ public:
     void commitFrame();
 
     /// Records that `frame` is being declared at the dynamic-resolution controller's current
-    /// scale, while dynamic resolution is on -- meaningless, and skipped, while it is off, since
-    /// the controller is not driving `renderScale` for a frame that never declares at its
-    /// attribution. Call once per frame, after `device.beginFrame()`, with the device's own frame
-    /// number.
+    /// scale, while the controller is active -- dynamic resolution and the temporal path both on.
+    /// Skipped otherwise: with either off the frame does not run at a scale the controller chose,
+    /// so attributing it to one would judge the controller by a picture it never asked for. Call
+    /// once per frame, after `device.beginFrame()`, with the device's own frame number.
     void controllerDeclared(uint64_t frame);
 
     /// Returns the camera currently controlled by the editor viewport.

@@ -144,3 +144,86 @@ TEST_CASE("editing the GPU budget updates the controller's settings", "[app]") {
 
     REQUIRE(controller.settings().budgetMilliseconds == 20.0f);
 }
+
+//======================================================================================================================
+TEST_CASE("dynamic resolution is active only while temporal is on as well", "[app]") {
+    EditorRenderSettings settings;
+
+    settings.dynamicResolutionEnabled = true;
+    settings.temporalEnabled = true;
+    CHECK(dynamicResolutionActive(settings));
+
+    settings.temporalEnabled = false;
+    CHECK_FALSE(dynamicResolutionActive(settings));
+
+    settings.dynamicResolutionEnabled = false;
+    settings.temporalEnabled = true;
+    CHECK_FALSE(dynamicResolutionActive(settings));
+}
+
+//======================================================================================================================
+// The renderer rasterises at scale 1 whenever temporal is off, so a frame timed in that period says
+// nothing about the controller's own scale. Judging one would drive the greyed-out slider from
+// measurements of a picture the controller never asked for.
+TEST_CASE("over-budget frames are not judged while temporal is off", "[app]") {
+    render::ResolutionControllerSettings controllerSettings;
+    controllerSettings.overBudgetSamples = 1;
+    controllerSettings.settleFrames = 0;
+    render::ResolutionController controller(controllerSettings);
+    controller.reset(0.8f);
+
+    DynamicResolutionState state;
+    state.wasEnabled = true; // Was active before temporal was switched off.
+    EditorRenderSettings settings;
+    settings.dynamicResolutionEnabled = true;
+    settings.temporalEnabled = false;
+    settings.renderScale = 0.8f;
+
+    const std::vector<rhi::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    for (uint64_t frameId = 1; frameId <= 8; ++frameId) {
+        controller.declared(frameId);
+        const RetainedFrame frame = timedFrame(frameId, overBudget);
+        applyDynamicResolution(state, controller, settings, &frame);
+    }
+
+    CHECK(settings.renderScale == 0.8f);
+    CHECK(controller.scale() == 0.8f);
+    CHECK_FALSE(state.wasEnabled);
+}
+
+//======================================================================================================================
+// Switching temporal back on is the off->on edge of the *active* state: the controller reseeds from
+// the retained slider value, and a frame that retired while it was idle is not consumed afterwards.
+TEST_CASE("re-enabling temporal reseeds from the retained scale and drops the idle period's frame",
+          "[app]") {
+    render::ResolutionControllerSettings controllerSettings;
+    controllerSettings.overBudgetSamples = 1; // One judged sample would be enough to step.
+    controllerSettings.settleFrames = 0;
+    render::ResolutionController controller(controllerSettings);
+    controller.reset(1.0f);
+
+    DynamicResolutionState state;
+    state.wasEnabled = true;
+    EditorRenderSettings settings;
+    settings.dynamicResolutionEnabled = true;
+    settings.temporalEnabled = false;
+    settings.renderScale = 0.8f; // The value retained from when the controller last ran.
+
+    const std::vector<rhi::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const RetainedFrame idleFrame = timedFrame(7, overBudget);
+    controller.declared(7);
+    applyDynamicResolution(state, controller, settings, &idleFrame);
+    CHECK(controller.scale() == 1.0f); // Untouched: nothing was judged.
+
+    settings.temporalEnabled = true;
+    applyDynamicResolution(state, controller, settings, &idleFrame);
+    CHECK(controller.scale() == 0.8f); // Reseeded from the retained slider value.
+    CHECK(settings.renderScale == 0.8f);
+    CHECK(state.wasEnabled);
+
+    // Frame 7 belongs to the idle period. Even declared again at the reseeded scale, its timing
+    // must not be observed now -- it was already accounted for while the controller was idle.
+    controller.declared(7);
+    applyDynamicResolution(state, controller, settings, &idleFrame);
+    CHECK(controller.scale() == 0.8f);
+}
