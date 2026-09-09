@@ -389,8 +389,15 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
         };
     }
     m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
+    const float renderScaleBeforeDynamicResolution = m_settings.renderScale;
     applyDynamicResolution(m_dynamicResolutionState, m_resolutionController, m_settings,
                            newestTimed);
+    if (m_settings.dynamicResolutionEnabled &&
+        m_settings.renderScale != renderScaleBeforeDynamicResolution) {
+        LMX_LOG_INFO("render scale {:.2f} -> {:.2f} after {:.2f} ms",
+                     renderScaleBeforeDynamicResolution, m_settings.renderScale,
+                     m_dynamicResolutionState.lastObservedMilliseconds);
+    }
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.

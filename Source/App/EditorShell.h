@@ -173,6 +173,14 @@ public:
         return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
     }
 
+    /// Seeds dynamic resolution ahead of the frame loop, for automation that needs it on without
+    /// an Inspector toggle (`LMX_DYNAMIC_RESOLUTION_BUDGET_MS`). Only meaningful before the first
+    /// `buildUI()` call -- afterward the Inspector checkbox and slider own both fields.
+    void primeDynamicResolution(bool enabled, float gpuBudgetMilliseconds) {
+        m_settings.dynamicResolutionEnabled = enabled;
+        m_settings.gpuBudgetMilliseconds = gpuBudgetMilliseconds;
+    }
+
 private:
     EditorShell(SDL_Window* window, engine::SceneLibrary& library);
 
