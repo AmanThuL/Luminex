@@ -77,7 +77,8 @@ blitting it, and nothing else copies out of scene colour that frame.
 
 **The controller is a pure, App-driven contract.** `Source/Render/ResolutionController` observes a
 retired frame's summed GPU pass time against a budget and headroom, and proposes the next
-`renderScale` with hysteresis (a settle window after any change, and a run of consecutive
+`renderScale` with hysteresis (a settle window of frames declared after any change, counted from the declaration the
+change was made at rather than from the retired sample that caused it, and a run of consecutive
 over-budget or under-target samples before stepping) — nothing about it reads a device, a graph, or
 an App type. `EditorShell` owns one controller instance, feeds it `frameGpuMilliseconds()` from the
 retained frame ring, and writes its `scale()` back onto `EditorRenderSettings::renderScale` every

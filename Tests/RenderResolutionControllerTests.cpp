@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 using namespace lmx::render;
 using Catch::Approx;
@@ -16,6 +17,21 @@ namespace {
 bool declareAndObserve(ResolutionController& controller, uint64_t frame, double gpuMilliseconds) {
     controller.declared(frame);
     return controller.observe(frame, gpuMilliseconds);
+}
+
+// The App's own per-frame order, with the real pipeline's latency: the frame that retired
+// kPipelineLatency frames ago is observed first, then this frame is declared.
+constexpr uint64_t kPipelineLatency = 4;
+
+//======================================================================================================================
+// Runs one such frame; answers whether that observation changed the scale.
+bool pumpFrame(ResolutionController& controller, uint64_t frame, double gpuMilliseconds) {
+    bool changed = false;
+    if (frame >= kPipelineLatency) {
+        changed = controller.observe(frame - kPipelineLatency, gpuMilliseconds);
+    }
+    controller.declared(frame);
+    return changed;
 }
 
 } // namespace
@@ -176,4 +192,48 @@ TEST_CASE("a negative sample leaves the scale finite and unchanged", "[render][r
     CHECK_FALSE(changed);
     CHECK(std::isfinite(controller.scale()));
     CHECK(controller.scale() == 0.8f);
+}
+
+//======================================================================================================================
+// The settle window counts frames declared after the change, not after the sample that caused it.
+// Under the App's real latency the two differ: the frames already in flight when a late-arriving
+// sample steps the scale would otherwise eat the window and let the next decision start early.
+TEST_CASE("the settle window is anchored to the declaration count at the change",
+          "[render][resolution]") {
+    ResolutionController controller;
+    std::vector<uint64_t> steppedOn;
+
+    // Frames 0..4 are declared at scale 1.0; the observation of frame 1, taken just before frame 5
+    // is declared, is the second over-budget sample and steps to 0.95.
+    for (uint64_t frame = 0; frame <= 5; ++frame) {
+        if (pumpFrame(controller, frame, 20.0)) {
+            steppedOn.push_back(frame - kPipelineLatency);
+        }
+    }
+    REQUIRE(steppedOn == std::vector<uint64_t>{1});
+    REQUIRE(controller.scale() == Approx(0.95f));
+
+    // Frame 4 was declared at the old scale and is still rejected on its own merits.
+    CHECK_FALSE(controller.observe(4, 20.0));
+    CHECK(controller.scale() == Approx(0.95f));
+
+    // Frames 5..10 are the six newly declared frames the settle window covers: every one of them
+    // measures over budget, and none of them may count towards the next decision. Frame 11 is the
+    // first judged sample and frame 12 the second, so the next step lands on frame 12's
+    // observation -- the frame after which the declaration count, not frame 1's sequence, put the
+    // window's end.
+    for (uint64_t frame = 6; frame <= 16; ++frame) {
+        const bool changed = pumpFrame(controller, frame, 20.0);
+        if (changed) {
+            steppedOn.push_back(frame - kPipelineLatency);
+        }
+        const uint64_t observed = frame - kPipelineLatency;
+        if (observed <= 10) {
+            INFO("observation of frame " << observed);
+            CHECK_FALSE(changed);
+            CHECK(controller.scale() == Approx(0.95f));
+        }
+    }
+    CHECK(steppedOn == std::vector<uint64_t>{1, 12});
+    CHECK(controller.scale() == Approx(0.90f));
 }

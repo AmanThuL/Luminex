@@ -20,7 +20,9 @@ struct ResolutionControllerSettings {
     float minScale = kMinRenderScale; ///< Defaults to `Temporal.h`'s `kMinRenderScale`.
     float maxScale = kMaxRenderScale; ///< Defaults to `Temporal.h`'s `kMaxRenderScale`.
     float maxStep = 0.05f;            ///< The largest change of scale one decision makes.
-    uint32_t settleFrames = 6; ///< Declared frames after a change whose samples are not judged.
+    /// Frames declared after a change -- counted from the declaration the change was made at,
+    /// not from the retired sample that caused it -- whose samples are not judged.
+    uint32_t settleFrames = 6;
     uint32_t overBudgetSamples = 2;   ///< Consecutive over-budget samples before stepping down.
     uint32_t underTargetSamples = 12; ///< Consecutive under-target samples before stepping up.
 };
@@ -55,7 +57,8 @@ public:
 
     /// Reports `frame`'s measured GPU time -- the sum of its retired pass timings, not wall time.
     /// The sample is judged only when `frame` was named by `declared()`, it ran at the current
-    /// `scale()`, and it was declared after the settle window opened by the last change; an
+    /// `scale()`, and it was declared after the settle window the last change opened at that
+    /// change's declaration count; an
     /// unjudged sample leaves every counter untouched. A negative `gpuMilliseconds` is treated as
     /// zero. Answers whether `scale()` changed.
     bool observe(uint64_t frame, double gpuMilliseconds);

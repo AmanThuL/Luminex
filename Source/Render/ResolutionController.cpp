@@ -12,7 +12,9 @@ namespace lmx::render {
 namespace {
 
 // A settle window is open whenever a judged entry's sequence is at most `changedAtSequence +
-// settleFrames`. Before any change has happened, that window must never trigger regardless of
+// settleFrames`, where `changedAtSequence` is the declaration count at the moment of the change,
+// so the window covers exactly `settleFrames` frames declared after it. Before any change has
+// happened, that window must never trigger regardless of
 // `settleFrames`, so the starting and post-reset value of `changedAtSequence` is pinned far below
 // any sequence number a ring entry can carry.
 constexpr int64_t kNoChangeSequence = INT64_MIN / 2;
@@ -117,7 +119,10 @@ bool ResolutionController::observe(uint64_t frame, double gpuMilliseconds) {
         m_scale = nextScale;
         m_overBudgetCount = 0;
         m_underTargetCount = 0;
-        m_changedAtSequence = entry->sequence;
+        // The declaration count now, not the retired sample's sequence: the window is the frames
+        // declared after the change, and the frames already in flight when a late sample lands
+        // ran at the scale this decision just replaced.
+        m_changedAtSequence = m_sequence;
     }
     return changed;
 }
