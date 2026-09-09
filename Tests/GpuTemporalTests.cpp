@@ -476,6 +476,65 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
 }
 
 //======================================================================================================================
+// ADR 0016's kernel-selection rule, stated directly rather than inferred from an upscaled frame:
+// the native kernel addresses every input at one extent, the previous depth slot included, so the
+// one scale-1 frame that follows a differently sized render extent runs the upscaling kernel --
+// which carries the previous render extent explicitly -- and the frame after it is native again.
+TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once",
+          "[gpu][temporal]") {
+    using namespace lmx::rhi;
+
+    auto device = createDevice();
+    INFO(errorOf(device));
+    REQUIRE(device.has_value());
+
+    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    INFO(errorOf(cube));
+    REQUIRE(cube.has_value());
+
+    auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
+    INFO(errorOf(renderer));
+    REQUIRE(renderer.has_value());
+
+    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
+    SceneView view = temporalSceneView(items);
+    view.temporal.enabled = true;
+    view.temporal.jitterEnabled = true;
+    view.temporal.reconstruction = lmx::render::ReconstructionMode::NativeTaa;
+
+    // The predecessor: a whole frame at half scale, so the history the following frames read was
+    // accumulated with a 32x32 depth slot behind it.
+    view.temporal.renderScale = 0.5f;
+    renderFrame(**device, **renderer, temporalCamera(), view);
+
+    lmx::render::TransientPool transients(**device);
+    // Declares one frame at `scale` and answers its compiled record's dump. Every call is a
+    // declared temporal frame, so the order of the calls is the order of the frames.
+    const auto declareDump = [&](float scale) {
+        view.temporal.renderScale = scale;
+        CommandList& commands = (*device)->beginFrame();
+        transients.beginFrame();
+        lmx::render::RenderGraph graph(transients);
+        graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(), view));
+        const auto record = graph.compileFrame(2);
+        INFO((record.has_value() ? std::string{} : record.error().message));
+        REQUIRE(record.has_value());
+        std::string dump = lmx::render::dumpCompiledFrame(*record);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+        return dump;
+    };
+
+    const std::string afterChange = declareDump(1.0f);
+    CHECK(afterChange.find("lmx.pass.temporal.upscale") != std::string::npos);
+    CHECK(afterChange.find("lmx.pass.temporal.resolve") == std::string::npos);
+
+    const std::string steady = declareDump(1.0f);
+    CHECK(steady.find("lmx.pass.temporal.resolve") != std::string::npos);
+    CHECK(steady.find("lmx.pass.temporal.upscale") == std::string::npos);
+}
+
+//======================================================================================================================
 // The picture an upscaled frame presents covers the whole output extent. The scene fills the view,
 // so a display target holding the clear colour anywhere would mean the frame reached only the
 // rectangle it rasterised into -- a margin the upscale failed to write -- and the colour slot the

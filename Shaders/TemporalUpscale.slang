@@ -27,7 +27,7 @@ struct TemporalUpscaleParams
     // the two kernels' blocks stay comparable and the CPU mirror grows by appending only.
     uint width;  // Active render extent, which every render-extent input is read within.
     uint height;
-    uint historyValid;      // 0 on a reset frame: steps 1-5, 7 and 8 are skipped and no history is read.
+    uint historyValid;      // 0 on a reset frame: steps 2-5, 7 and 8 are skipped and no history is read.
     uint writeDiagnostics;  // Bit 0 writes rejection; bit 1 writes reprojected history.
     // Unjittered, so a reconstructed world position does not carry the frame's sub-pixel offset.
     float4x4 inverseViewProjection;

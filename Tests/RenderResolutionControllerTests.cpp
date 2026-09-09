@@ -162,3 +162,18 @@ TEST_CASE("a frame never declared is ignored", "[render][resolution]") {
     CHECK_FALSE(changed);
     CHECK(controller.scale() == 1.0f);
 }
+
+//======================================================================================================================
+// A timestamp pair can retire out of order and report a negative duration. The sample is treated as
+// zero rather than fed to a square root, which would return NaN and leave the scale NaN forever --
+// a single such sample is well under target, so it counts as one under-target sample and moves
+// nothing on its own.
+TEST_CASE("a negative sample leaves the scale finite and unchanged", "[render][resolution]") {
+    ResolutionController controller;
+    controller.reset(0.8f);
+
+    const bool changed = declareAndObserve(controller, 0, -5.0);
+    CHECK_FALSE(changed);
+    CHECK(std::isfinite(controller.scale()));
+    CHECK(controller.scale() == 0.8f);
+}

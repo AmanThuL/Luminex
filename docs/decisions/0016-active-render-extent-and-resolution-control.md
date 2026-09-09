@@ -51,9 +51,11 @@ resets history, matching ADR 0013's original resize-driven intent.
 (the M6.2 native kernel, untouched) runs only when render extent equals output extent **and** either
 this frame resets history or the previous frame's extents equal this frame's. Every other `NativeTaa`
 frame — any upscale, and the one scale-1 frame immediately following a different render extent —
-runs `lmx.pass.temporal.upscale` instead, which samples the same history at the general
-`renderSamplePosition` mapping and carries the previous frame's render extent explicitly so its
-disocclusion test addresses the right history rectangle. This keeps every scale-1 declaration and
+runs `lmx.pass.temporal.upscale` instead. That kernel fetches the history exactly as the native
+one does — at `historyUv = uv − motion`, over the output extent — while resampling this frame's
+colour in the render image at the general `renderSamplePosition` mapping and carrying the previous
+frame's render extent explicitly, so the previous depth slot its disocclusion test reads is
+addressed at the extent that slot was rendered at. This keeps every scale-1 declaration and
 the native kernel's compiled output byte-identical to M6.2 (verified: the shared-module extraction
 into `Shaders/TemporalCommon.slang` produced identical MSL for `TemporalResolve.slang`, and the
 scale-1 static-stability golden hash was unchanged before and after), while still reconstructing
@@ -116,9 +118,8 @@ candidate follow-up; it changes the kernel, so it is not taken here.
   native, single-extent kernel is safe to run.
 - The widened ghosting tolerances apply only to the upscaled and oscillating rows named above; the
   native scale-1 tolerance (0.1) is unchanged and remains binding.
-- `ResolutionController` has no assert on a negative `gpuMilliseconds` sample, and
-  `--render-scale nan` currently passes the CLI's range check (`nan` compares false against both
-  bounds); both are recorded as known limits in the milestone rather than fixed here.
+- `--render-scale nan` currently passes the CLI's range check (`nan` compares false against both
+  bounds); it is recorded as a known limit in the milestone rather than fixed here.
 
 ## Alternatives considered
 

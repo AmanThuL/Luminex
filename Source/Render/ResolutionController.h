@@ -56,7 +56,8 @@ public:
     /// Reports `frame`'s measured GPU time -- the sum of its retired pass timings, not wall time.
     /// The sample is judged only when `frame` was named by `declared()`, it ran at the current
     /// `scale()`, and it was declared after the settle window opened by the last change; an
-    /// unjudged sample leaves every counter untouched. Answers whether `scale()` changed.
+    /// unjudged sample leaves every counter untouched. A negative `gpuMilliseconds` is treated as
+    /// zero. Answers whether `scale()` changed.
     bool observe(uint64_t frame, double gpuMilliseconds);
 
 private:

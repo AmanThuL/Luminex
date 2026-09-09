@@ -88,8 +88,8 @@ constexpr float kMotionAlphaPixels = 8.0f;
 constexpr float kClipGamma = 1.0f;
 /// Relative view-distance disagreement at which a history fetch counts as a disocclusion.
 constexpr float kDisocclusionTolerance = 0.05f;
-/// Distance in render texels, from an output pixel's centre to this frame's jittered sample, at
-/// which the sample-proximity term reaches its floor.
+/// Distance in render texels, from this frame's jittered sample position to the centre of the
+/// nearest render texel, at which the sample-proximity term reaches its floor.
 constexpr float kUpscaleSampleRadius = 1.0f;
 /// Share of the motion-derived blend weight a pixel keeps at kUpscaleSampleRadius: a pixel that
 /// fell between samples trusts this frame less rather than not at all.

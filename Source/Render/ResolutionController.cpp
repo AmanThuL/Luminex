@@ -82,9 +82,12 @@ bool ResolutionController::observe(uint64_t frame, double gpuMilliseconds) {
     }
 
     const float target = m_settings.budgetMilliseconds * (1.0f - m_settings.headroom);
-    const float measured = static_cast<float>(gpuMilliseconds);
+    // A timestamp pair can come back out of order and report a negative duration; taking the square
+    // root of a negative ratio below would poison the scale with a NaN it never recovers from.
+    const double sample = std::max(gpuMilliseconds, 0.0);
+    const float measured = static_cast<float>(sample);
 
-    if (gpuMilliseconds <= m_settings.budgetMilliseconds && measured >= target) {
+    if (sample <= m_settings.budgetMilliseconds && measured >= target) {
         m_overBudgetCount = 0;
         m_underTargetCount = 0;
         return false;
@@ -94,7 +97,7 @@ bool ResolutionController::observe(uint64_t frame, double gpuMilliseconds) {
     float nextScale = m_scale;
     bool changed = false;
 
-    if (gpuMilliseconds > m_settings.budgetMilliseconds) {
+    if (sample > m_settings.budgetMilliseconds) {
         m_underTargetCount = 0;
         ++m_overBudgetCount;
         if (m_overBudgetCount >= m_settings.overBudgetSamples) {

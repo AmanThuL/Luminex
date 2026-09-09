@@ -15,9 +15,10 @@
 namespace lmx::app {
 
 /// What the dynamic-resolution policy needs to remember across frames, kept by EditorShell
-/// alongside its `render::ResolutionController`. Neither field is meaningful on its own; both
+/// alongside its `render::ResolutionController`. No field is meaningful on its own: the first two
 /// exist only so `applyDynamicResolution` can tell "just turned on" and "already observed this
-/// frame" apart from one call to the next.
+/// frame" apart from one call to the next, and the third carries the judged GPU time forward for
+/// the Inspector's status row.
 struct DynamicResolutionState {
     /// Whether dynamic resolution was on as of the last call, so the off->on edge can be told apart
     /// from "still on" and the controller is seeded exactly once per enable.
