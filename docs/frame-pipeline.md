@@ -1,4 +1,4 @@
-# Luminex — one frame, as of the M6.2 native TAA and exposure stability path (2026-09-08)
+# Luminex — one frame, as of the M6.3 upscaling and dynamic resolution path (2026-09-09)
 
 What the renderer does between `beginFrame` and `endFrame`, written for planning what to build
 next. Updated at milestone boundaries.
@@ -13,10 +13,10 @@ dead-pass culling) before any of it reaches the GPU. `execute()` then runs that 
 the RAW, WAR, and WAW barriers each declared cross-pass access conflict justifies.
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
-(`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2).
-Auto-exposure, bloom, and temporal are all ordinary declared passes either way; toggling one off
-removes only the declaration reaching a sink, and dead-pass culling drops the rest
-(`docs/guides/gpu-debugging.md`'s dump shows exactly this for a toggled-off frame).
+(`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
+`renderScale == 1.0`, byte-identical to M6.2's declaration (below 1.0 the scene pass's render area
+shrinks; see Resources and lifetime for capacity). Auto-exposure, bloom, and temporal are ordinary
+declared passes either way; toggling one off removes only the declaration reaching a sink.
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
@@ -60,30 +60,30 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │            cull none, GreaterEqual, t2 cubemap, the same preExposure, motion from the previous
 │            eye's rotation alone, reactive 0
 │
-├─ [reset reason None] 2b. lmx.pass.temporal.reproject   compute, diagnostic only, reads the
-│       previous colour slot + scene colour + motion → temporalDiagnostic; culled unless
-│       ReprojectionError sinks it
+├─ [reset reason None] 2b. lmx.pass.temporal.reproject   compute, diagnostic only, over the output
+│       extent, reads the previous colour slot + scene colour + motion → temporalDiagnostic; culled
+│       unless ReprojectionError sinks it
 │
-├─ 3. NativeTaa: lmx.pass.temporal.resolve   compute, 8×8, reads scene colour, both depth slots,
-│       motion, reactive, the previous colour slot, the exposure pair → this frame's colour slot
-│       directly (no copy: this frame's output *is* the next frame's history) and, only when sunk,
-│       the rejection/reprojected transients. Dilated motion/disocclusion, history exposure
-│       correction, YCoCg clipping, an inverse-luminance blend saturating to 1 on rejection or full
-│       reactive weight (`Shaders/TemporalResolve.slang`, ADR 0014). Raw: lmx.pass.temporal.
-│       commitHistory (copy, M6.1's pass) writes the raw scene colour into this frame's colour slot
-│       instead, right here — not under NativeTaa, whose resolve already wrote it
+├─ 3. NativeTaa at render == output: lmx.pass.temporal.resolve   compute, 8×8, reads scene colour,
+│       both depth slots, motion, reactive, the previous colour slot, the exposure pair → this
+│       frame's colour slot directly (no copy) and, only when sunk, the rejection/reprojected
+│       transients. Dilated motion/disocclusion, history exposure correction, YCoCg clipping, an
+│       inverse-luminance blend saturating to 1 on rejection or full reactive weight
+│       (`Shaders/TemporalResolve.slang`, ADR 0014); any other frame runs lmx.pass.temporal.upscale
+│       instead (`Shaders/TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled
+│       writes this frame's colour slot instead, right here
 │
 ├─ 4. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
-├─ 5. lmx.pass.exposure.histogram        compute, reads *raw* scene color + the exposure pair →
-│       histogram buffer; metering the unaccumulated colour keeps it independent of what it corrects
+├─ 5. lmx.pass.exposure.histogram        compute, over the render extent, reads *raw* scene color +
+│       the exposure pair → histogram buffer (unaccumulated colour, independent of what it corrects)
 ├─ 6. lmx.pass.exposure.resolve          compute, 1 thread, reads histogram buffer + the pair
 │       → exposure buffer; percentile-trimmed weighted average becomes the metered target, then a
 │       bounded step (`adaptUpStopsPerSecond`/`adaptDownStopsPerSecond` × dt) moves `applied` toward
 │       it and shifts the old `applied` into `previous` — rate 0 reproduces M6.1's instantaneous
 │       result exactly. The resolved pair is what the *next* frame reads — the one-frame lag holds
 │
-├─ 7. lmx.pass.bloom.threshold        compute, reads the resolved (NativeTaa) or raw (Raw) colour
-│       → bloomChain mip 0: 2×2-box prefilter + soft threshold on pre-exposed luminance
+├─ 7. lmx.pass.bloom.threshold        compute, over the output extent, reads the resolved (NativeTaa)
+│       or raw (Raw) colour → bloomChain mip 0: 2×2-box prefilter + soft threshold
 ├─ 8. lmx.pass.bloom.downsample0..N-1  compute, one pass per level, mip L-1 → mip L of bloomChain
 │       2×2-box downsample; N = kMaxBloomDownsampleLevels (4), clamped so no mip collapses to 1×1
 │       early — a 32-wide bloom base (the common viewport size) reaches the full depth
@@ -195,7 +195,8 @@ optional `RHIMetal4ImGui` target, so it does not make ImGui part of the core RHI
   cost is permanent and reported by `TemporalStatus::historyBytes`/`depthHistoryBytes`. The
   histogram buffer and the two-float exposure buffer (`{applied, previous}`) are fixed-size and
   persistent — a resize is one of spec 9's reset triggers, since the histogram's binning covered a
-  differently-sized image the frame before.
+  differently-sized image the frame before; every temporal target allocates at the output extent
+  regardless of render scale (ADR 0016), so a scale change reallocates nothing.
 - **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, textures,
   and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
   material-referenced images; decoded CPU image data is dropped before the builder returns.
@@ -282,11 +283,10 @@ exits with an error instead of falling back.
 1. **PCSS parameterization** — the migrated blocker search mixes a view-space near-plane constant
    with NDC-space receiver depth, a preserved unit bug; fixing it is cheap and deferred.
 2. **IBL regeneration cost** — each scene's irradiance/prefiltered/DFG set regenerates on load, and
-   direct lighting stays single-scatter (only the image-based term compensates); caching becomes
-   worthwhile as more authored environments or faster scene switching arrive.
+   direct lighting stays single-scatter; caching becomes worthwhile as authored environments grow.
 3. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
-   glTF file that reused one image in both a color and a data role would need the offline bake to
-   distinguish them, which it does not yet do.
+   glTF file reusing one image in both a color and a data role would need the bake to tell them
+   apart, which it does not yet do.
 4. **Sponza startup is still synchronous** — decode and upload still block the window before it
    becomes responsive; asynchronous staging remains future work.
 5. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier

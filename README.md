@@ -28,6 +28,7 @@ inspectable codebase.
 | Content | Deterministically converted Crytek Sponza, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
 | Motion | Camera and rigid-object motion vectors with an explicit invalid-motion sentinel, and a persistent, reset-aware temporal history feeding diagnostic reprojection views |
 | Temporal stability | Native-resolution temporal anti-aliasing with disocclusion rejection and neighbourhood clipping, plus adaptive exposure that corrects its own history for the brightness it was recorded at |
+| Upscaling | Temporal upscaling that reconstructs a full-resolution image from a smaller, jittered render, with an automatic GPU-time-driven dynamic resolution controller |
 | Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, stable rolling per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
 | Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, a deterministic motion lab exercising rigid, orbiting and invalid-flagged motion, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
 
@@ -145,7 +146,6 @@ command recording, synchronization, residency and swapchain contracts; rendering
 
 ## What's next
 
-- Temporal upscaling and dynamic resolution over the native TAA path
 - Cascaded shadows, atmosphere and transparent surfaces on the shared lighting model
 - GPU scene data, visibility culling and indirect submission after the frame contract is stable
 - A second RHI backend once the render graph's semantics are frozen for portability
