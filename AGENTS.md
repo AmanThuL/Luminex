@@ -14,7 +14,8 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
-- Current baseline: `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
+- Current baseline: `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
+  `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
   `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
   `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
   `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
@@ -70,13 +71,18 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   reconstruction, and `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
   selects a diagnostic overlay (naming a view still implies temporal on; `--temporal off` with a
   non-`off` view is an error) — e.g. `xmake run App --scene temporal-lab --frames 32 --temporal-view
-  rejection --screenshot out.bmp`. Running the binary directly requires CWD = its build dir (shaders
-  resolve relative to CWD). Sponza's first load decodes its referenced textures — expect several
-  seconds in a debug build.
+  rejection --screenshot out.bmp`. `--render-scale <0.5..1.0>` (default 1.0) sets the render scale
+  the temporal path reconstructs from (conflicts with `--temporal off` below 1.0, since the temporal
+  path is what reconstructs a sub-output render). Running the binary directly requires CWD = its
+  build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
+  expect several seconds in a debug build.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
   Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
-  exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress. The Performance panel
+  exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress;
+  `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` starts the editor with dynamic resolution on and that GPU
+  budget before the frame loop begins, and logs every controller scale change at INFO — the
+  automation hook a long scripted run uses to show the controller settle. The Performance panel
   shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
   pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel opens
   in its own real OS window (Dear ImGui platform viewports; a macOS title bar with close/minimise/
@@ -125,7 +131,8 @@ texture and buffer barriers, copy passes with general copies and fills (the path
 but level zero), indirect draws and dispatches over RHI-owned argument layouts, untracked
 placement heaps whose resources are created at explicit offsets, and up to `kMaxExtraColorTargets`
 (3) additional colour attachments per render pass/pipeline beyond the primary, with `RG16Float` and
-`R8Unorm` colour-renderable and CPU-readable;
+`R8Unorm` colour-renderable and CPU-readable, and an origin-anchored render area confining a pass to
+a sub-rectangle of its attachments;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
 validating `RenderGraph` — raster/compute/copy passes with per-subresource uses (including extra
 colour attachments) over imported resources and over one-frame transients the graph creates,
@@ -138,9 +145,11 @@ the next frame), bloom (threshold/downsample/bilinear upsample), display-transfo
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
 (reproject diagnostic, the `TemporalResolve` stage's native TAA resolve or raw history commit, debug
 view) into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions;
-`Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, and reset-reason
-derivation (ADR 0013); `TemporalResolve.h` holds the reconstruction contract, ping-pong slot
-ownership and frozen constants (ADRs 0014–0015)) →
+`Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
+and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve.h` holds the
+reconstruction contract, ping-pong slot ownership, the native/upscale kernel-selection rule and
+frozen constants (ADRs 0014–0016); `ResolutionController` is a pure, App-driven policy that proposes
+a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
@@ -154,8 +163,12 @@ Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a mai
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
 subject-scoped editing (camera, rendering — including a Temporal block of toggles, a Reconstruction
-combo (Raw/Native TAA), the seven-item debug-view combo, animation transport, a camera-cut button,
-and Exposure adapt-up/adapt-down sliders — one of three directional lights, or one object); the
+combo (Raw/Native TAA), the seven-item debug-view combo, a render-scale slider, a dynamic-resolution
+checkbox and GPU-budget slider with status rows for render extent/scale, frame GPU time and the last
+render-extent-change frame, animation transport, a camera-cut button, and Exposure adapt-up/
+adapt-down sliders — one of three directional lights, or one object); `DynamicResolution.h` is the
+pure per-frame policy (`applyDynamicResolution`) `EditorShell` drives its owned
+`render::ResolutionController` with; the
 Render Graph panel shapes the retained compiled frame into the ImGui-free
 `GraphNodeModel`, groups it into a `GraphLayout` of layers, ranks, rows and columns (collapsible
 stage groups, compact pins, an optional columns-per-row wrap, no pixels), and draws it on a
@@ -164,11 +177,11 @@ selection-scoped details pane, deterministic layout stable across unchanged fram
 session-only dragged positions; frame loop advances animation and commits scene motion around
 `declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
 `--screenshot` path).
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap (shared modules), ScenePass/
-ScenePassAuto, ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureSeed, ExposureResolve,
-BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject, TemporalResolve,
-TemporalDebugView (+ Triangle/SamplerSmoke/CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke as test
-oracles).
+Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
+modules), ScenePass/ScenePassAuto, ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
+ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject,
+TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView (+ Triangle/SamplerSmoke/
+CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke/RenderAreaSmoke as test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 
 ## Hard rules

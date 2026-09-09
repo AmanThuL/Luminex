@@ -60,6 +60,17 @@ struct EditorRenderSettings {
     /// effect while the right mouse button is held (the fly-camera latch takes over) or while the
     /// active scene has no camera track.
     bool followCameraTrack = true;
+
+    /// Fraction of the output extent the scene rasterises at, within [kMinRenderScale, 1]. Edited
+    /// directly by the manual slider while dynamic resolution is off; while it is on, the shell's
+    /// `render::ResolutionController` writes this instead and the slider only displays it.
+    float renderScale = 1.0f;
+    /// Opt-in dynamic resolution, driving `renderScale` from measured GPU time against
+    /// `gpuBudgetMilliseconds` (spec section 8); off by default, like auto exposure.
+    bool dynamicResolutionEnabled = false;
+    /// GPU time budget the dynamic-resolution controller steps `renderScale` against; meaningless
+    /// while dynamicResolutionEnabled is false.
+    float gpuBudgetMilliseconds = 16.0f;
 };
 
 } // namespace lmx::app

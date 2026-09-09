@@ -130,20 +130,130 @@ TEST_CASE("zero jitter leaves the projection bit-identical", "[render][temporal]
 }
 
 //======================================================================================================================
+TEST_CASE("renderExtentsForScale rounds each axis and keeps the output", "[render][temporal]") {
+    const FrameExtents full = renderExtentsForScale(kWidth, kHeight, 1.0f);
+    CHECK(full.renderWidth == kWidth);
+    CHECK(full.renderHeight == kHeight);
+    CHECK(full.outputWidth == kWidth);
+    CHECK(full.outputHeight == kHeight);
+
+    const FrameExtents half = renderExtentsForScale(kWidth, kHeight, 0.5f);
+    CHECK(half.renderWidth == 640);
+    CHECK(half.renderHeight == 360);
+    CHECK(half.outputWidth == kWidth);
+    CHECK(half.outputHeight == kHeight);
+
+    // 1280 * 0.71 is 908.8 and 720 * 0.71 is 511.2: each axis rounds on its own.
+    const FrameExtents odd = renderExtentsForScale(kWidth, kHeight, 0.71f);
+    CHECK(odd.renderWidth == 909);
+    CHECK(odd.renderHeight == 511);
+}
+
+//======================================================================================================================
+TEST_CASE("renderExtentsForScale never falls below one pixel", "[render][temporal]") {
+    const FrameExtents tiny = renderExtentsForScale(1, 1, 0.5f);
+    CHECK(tiny.renderWidth == 1);
+    CHECK(tiny.renderHeight == 1);
+    CHECK(tiny.outputWidth == 1);
+    CHECK(tiny.outputHeight == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("jitterTexelOffset flips y into texture space", "[render][temporal]") {
+    const glm::vec2 offset = jitterTexelOffset({0.25f, -0.125f});
+    CHECK(offset.x == Approx(0.25f));
+    CHECK(offset.y == Approx(0.125f));
+}
+
+//======================================================================================================================
+TEST_CASE("the jitter texel offset is the shift the jittered matrix applies",
+          "[render][temporal]") {
+    Camera camera;
+    camera.position = {2.0f, 1.0f, -4.0f};
+    camera.yaw = 0.7f;
+    camera.pitch = -0.15f;
+
+    const FrameExtents extents{640, 360, kWidth, kHeight};
+    const glm::vec2 jitter{0.3f, -0.2f};
+    const CameraFrameState state = buildCameraFrameState(camera, extents, jitter);
+
+    const glm::vec4 world{-1.5f, 0.75f, -3.0f, 1.0f};
+    const glm::vec2 texel = clipToMotionUv(state.viewProjection * world) *
+                            glm::vec2{static_cast<float>(extents.renderWidth),
+                                      static_cast<float>(extents.renderHeight)};
+    const glm::vec2 jitteredTexel = clipToMotionUv(state.viewProjectionJittered * world) *
+                                    glm::vec2{static_cast<float>(extents.renderWidth),
+                                              static_cast<float>(extents.renderHeight)};
+
+    const glm::vec2 offset = jitterTexelOffset(jitter);
+    CHECK(jitteredTexel.x - texel.x == Approx(offset.x).margin(1e-4f));
+    CHECK(jitteredTexel.y - texel.y == Approx(offset.y).margin(1e-4f));
+}
+
+//======================================================================================================================
+TEST_CASE("renderSamplePosition maps an output pixel into the render image", "[render][temporal]") {
+    const glm::vec2 jitter{0.3f, -0.2f};
+    const glm::vec2 offset = jitterTexelOffset(jitter);
+
+    const FrameExtents half{640, 360, kWidth, kHeight};
+    const glm::vec2 scaled = renderSamplePosition({3, 2}, half, jitter);
+    CHECK(scaled.x == Approx(1.75f + offset.x));
+    CHECK(scaled.y == Approx(1.25f + offset.y));
+
+    const FrameExtents full{kWidth, kHeight, kWidth, kHeight};
+    const glm::vec2 native = renderSamplePosition({3, 2}, full, jitter);
+    CHECK(native.x == Approx(3.5f + offset.x));
+    CHECK(native.y == Approx(2.5f + offset.y));
+}
+
+//======================================================================================================================
+TEST_CASE("the projection follows the output extent and the jitter the render extent",
+          "[render][temporal]") {
+    Camera camera;
+    camera.position = {0.5f, 2.5f, -1.0f};
+    camera.yaw = 1.1f;
+    camera.pitch = 0.2f;
+
+    const glm::vec2 jitter{0.3f, -0.2f};
+    const CameraFrameState native =
+        buildCameraFrameState(camera, FrameExtents{kWidth, kHeight, kWidth, kHeight}, jitter);
+    const CameraFrameState upscaled =
+        buildCameraFrameState(camera, FrameExtents{640, 360, kWidth, kHeight}, jitter);
+
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 4; ++row) {
+            CHECK(upscaled.projection[column][row] == native.projection[column][row]);
+        }
+    }
+
+    // Only the jitter differs, and it differs by exactly the render extent's NDC scale.
+    const glm::vec4 viewPoint = native.view * glm::vec4{-2.0f, 0.5f, -6.0f, 1.0f};
+    const glm::vec4 clip = native.projection * viewPoint;
+
+    const glm::vec4 upscaledClip = upscaled.projectionJittered * viewPoint;
+    CHECK(upscaledClip.x == Approx(clip.x + 2.0f * jitter.x / 640.0f * clip.w));
+    CHECK(upscaledClip.y == Approx(clip.y + 2.0f * jitter.y / 360.0f * clip.w));
+
+    const glm::vec4 nativeClip = native.projectionJittered * viewPoint;
+    CHECK(nativeClip.x == Approx(clip.x + 2.0f * jitter.x / static_cast<float>(kWidth) * clip.w));
+    CHECK(nativeClip.y == Approx(clip.y + 2.0f * jitter.y / static_cast<float>(kHeight) * clip.w));
+}
+
+//======================================================================================================================
 TEST_CASE("the frame state carries the camera's own parameters", "[render][temporal]") {
     Camera camera;
     camera.position = {4.0f, -1.0f, 0.5f};
     camera.fovY = glm::radians(75.0f);
     camera.nearZ = 0.25f;
 
-    // The output extent is deliberately a different aspect ratio (4:1) from the render extent
-    // (2:1), so the assertion below distinguishes which one the projection reads.
+    // The render extent is deliberately a different aspect ratio (2:1) from the output extent
+    // (4:1), so the assertion below distinguishes which one the projection reads.
     const CameraFrameState state =
         buildCameraFrameState(camera, FrameExtents{800, 400, 1600, 400}, {0.1f, 0.1f});
     CHECK(state.position == camera.position);
     CHECK(state.fovY == camera.fovY);
     CHECK(state.nearZ == camera.nearZ);
-    CHECK(state.projection[0][0] == Approx(1.0f / (2.0f * std::tan(camera.fovY * 0.5f))));
+    CHECK(state.projection[0][0] == Approx(1.0f / (4.0f * std::tan(camera.fovY * 0.5f))));
 }
 
 //======================================================================================================================
@@ -280,15 +390,28 @@ TEST_CASE("a new scene generation resets the history", "[render][temporal]") {
 }
 
 //======================================================================================================================
-TEST_CASE("any extent field change resets the history", "[render][temporal]") {
-    for (int field = 0; field < 4; ++field) {
-        FrameSignature current = baseSignature();
-        uint32_t* fields[4] = {&current.extents.renderWidth, &current.extents.renderHeight,
-                               &current.extents.outputWidth, &current.extents.outputHeight};
-        *fields[field] += 1;
-        CHECK(deriveHistoryReset(baseSignature(), current, false) ==
-              HistoryResetReason::ExtentChanged);
-    }
+TEST_CASE("an output extent change resets the history", "[render][temporal]") {
+    FrameSignature widerOutput = baseSignature();
+    widerOutput.extents.outputWidth += 1;
+    CHECK(deriveHistoryReset(baseSignature(), widerOutput, false) ==
+          HistoryResetReason::ExtentChanged);
+
+    FrameSignature tallerOutput = baseSignature();
+    tallerOutput.extents.outputHeight += 1;
+    CHECK(deriveHistoryReset(baseSignature(), tallerOutput, false) ==
+          HistoryResetReason::ExtentChanged);
+}
+
+//======================================================================================================================
+TEST_CASE("a render extent change alone keeps the history", "[render][temporal]") {
+    FrameSignature scaled = baseSignature();
+    scaled.extents.renderWidth = 640;
+    scaled.extents.renderHeight = 360;
+    CHECK(deriveHistoryReset(baseSignature(), scaled, false) == HistoryResetReason::None);
+
+    // And back again: the history survives the return to the output extent just as it did the
+    // departure from it.
+    CHECK(deriveHistoryReset(scaled, baseSignature(), false) == HistoryResetReason::None);
 }
 
 //======================================================================================================================
@@ -318,6 +441,7 @@ TEST_CASE("the reset derivation reports the earliest reason in its order", "[ren
     FrameSignature everything = baseSignature();
     everything.sceneGeneration = 99;
     everything.extents.renderWidth = 640;
+    everything.extents.outputWidth = 640;
     everything.fovY = glm::radians(90.0f);
     everything.nearZ = 0.5f;
 
@@ -327,6 +451,7 @@ TEST_CASE("the reset derivation reports the earliest reason in its order", "[ren
     FrameSignature generationAndExtent = baseSignature();
     generationAndExtent.sceneGeneration = 99;
     generationAndExtent.extents.renderHeight = 480;
+    generationAndExtent.extents.outputHeight = 480;
     CHECK(deriveHistoryReset(baseSignature(), generationAndExtent, true) ==
           HistoryResetReason::SceneChanged);
 

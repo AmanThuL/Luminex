@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/DynamicResolution.h"
 #include "App/EditorActions.h"
 #include "App/EditorRenderSettings.h"
 #include "App/EditorSelection.h"
@@ -16,6 +17,7 @@
 #include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
+#include "Render/ResolutionController.h"
 
 #include <cstdint>
 #include <memory>
@@ -141,6 +143,13 @@ public:
     /// successfully; a skipped frame calls neither this nor advanceFrameAnimation().
     void commitFrame();
 
+    /// Records that `frame` is being declared at the dynamic-resolution controller's current
+    /// scale, while the controller is active -- dynamic resolution and the temporal path both on.
+    /// Skipped otherwise: with either off the frame does not run at a scale the controller chose,
+    /// so attributing it to one would judge the controller by a picture it never asked for. Call
+    /// once per frame, after `device.beginFrame()`, with the device's own frame number.
+    void controllerDeclared(uint64_t frame);
+
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_camera; }
 
@@ -162,6 +171,14 @@ public:
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
         return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
+    }
+
+    /// Seeds dynamic resolution ahead of the frame loop, for automation that needs it on without
+    /// an Inspector toggle (`LMX_DYNAMIC_RESOLUTION_BUDGET_MS`). Only meaningful before the first
+    /// `buildUI()` call -- afterward the Inspector checkbox and slider own both fields.
+    void primeDynamicResolution(bool enabled, float gpuBudgetMilliseconds) {
+        m_settings.dynamicResolutionEnabled = enabled;
+        m_settings.gpuBudgetMilliseconds = gpuBudgetMilliseconds;
     }
 
 private:
@@ -228,6 +245,12 @@ private:
     // by selectScene() (every later switch), so the very first frame already reports a real
     // generation rather than 0-as-unset.
     TemporalEditorState m_temporalState;
+
+    // The dynamic-resolution controller (render::ResolutionController.h) and the shell-local state
+    // applyDynamicResolution() needs to tell an off->on edge and an already-observed frame apart
+    // from one buildUI() to the next (Source/App/DynamicResolution.h).
+    render::ResolutionController m_resolutionController;
+    DynamicResolutionState m_dynamicResolutionState;
 
     // Viewport panel size in *pixels*. ImGui works in points; the scene target has to be sized in
     // the backing store's units or the image is upscaled on a Retina display, exactly as an

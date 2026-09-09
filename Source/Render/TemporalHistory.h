@@ -16,11 +16,13 @@ namespace lmx::render {
 /// Why a frame cannot reproject the previous frame's history. Ordered by precedence: the
 /// derivation reports the first reason that applies.
 enum class HistoryResetReason : uint8_t {
-    None,              ///< History is valid and may be reprojected.
-    FirstFrame,        ///< No previous frame was recorded.
-    TemporalEnabled,   ///< The previous frame ran with temporal off and this one has it on.
-    SceneChanged,      ///< The scene generation differs, so history describes other geometry.
-    ExtentChanged,     ///< A render or output extent differs, so history has the wrong footprint.
+    None,            ///< History is valid and may be reprojected.
+    FirstFrame,      ///< No previous frame was recorded.
+    TemporalEnabled, ///< The previous frame ran with temporal off and this one has it on.
+    SceneChanged,    ///< The scene generation differs, so history describes other geometry.
+    /// The output extent differs, so the history has the wrong footprint. A render extent change
+    /// alone is not a reset: the history lives at the output extent and is reprojected in UV.
+    ExtentChanged,
     ProjectionChanged, ///< fovY or nearZ differs, so history reprojects to the wrong pixels.
     CameraCut          ///< The caller raised an explicit cut for this frame.
 };
@@ -37,8 +39,8 @@ struct FrameSignature {
 };
 
 /// Derives whether `current` may reuse the history left by `previous`. Pure and ordered: absent
-/// previous, then enabling, scene generation, extents, projection, then the explicit `cameraCut`.
-/// fovY and nearZ are compared exactly -- any authored change is a change.
+/// previous, then enabling, scene generation, the output extent, projection, then the explicit
+/// `cameraCut`. fovY and nearZ are compared exactly -- any authored change is a change.
 HistoryResetReason deriveHistoryReset(const std::optional<FrameSignature>& previous,
                                       const FrameSignature& current, bool cameraCut);
 

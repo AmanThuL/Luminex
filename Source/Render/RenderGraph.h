@@ -221,6 +221,12 @@ struct PassDesc {
     /// Writes that are not attachments. Each names the version it consumes and produces the next.
     std::vector<TextureUseDesc> textureWrites; ///< Non-attachment texture writes.
     std::vector<GraphBuffer> bufferWrites;     ///< Non-attachment buffer writes.
+    /// Origin-anchored sub-rectangle the pass rasterises into; 0/0 means the whole attachment.
+    /// Both zero or both non-zero, and neither side larger than any of the pass's attachments.
+    /// The clear still covers the whole attachment, so texels outside the area hold the clear
+    /// value rather than whatever the pass would have drawn there.
+    uint32_t renderAreaWidth = 0;
+    uint32_t renderAreaHeight = 0; ///< Height of the origin-anchored render area; see the width.
 };
 
 /// Everything one compute pass touches, on PassDesc's terms minus the attachments a compute pass
@@ -334,6 +340,9 @@ struct DebugPass {
     PassKind kind = PassKind::Raster;     ///< Which declaration path declared it.
     std::vector<DebugUse> uses;           ///< Every resource version it named.
     std::optional<CullReason> cullReason; ///< Why it was culled, or empty if it is scheduled.
+    /// The render area the pass declared, 0/0 when it renders the whole attachment.
+    uint32_t renderAreaWidth = 0;
+    uint32_t renderAreaHeight = 0; ///< Height of the declared render area; see the width.
 };
 
 /// One declared sink, in declaration order. Sinks are the only culling roots: a version no sink
@@ -710,6 +719,8 @@ private:
         std::optional<ColorAttachment> color;
         std::vector<ColorAttachment> extraColor;
         std::optional<DepthAttachment> depth;
+        uint32_t renderAreaWidth = 0;
+        uint32_t renderAreaHeight = 0;
         ExecuteFn execute;
         std::vector<Declaration> declarations;
     };
@@ -728,6 +739,10 @@ private:
     // binds past attachment zero, that attachment zero is there at all, and that each extra is a
     // renderable target of the primary's extent named once across the pass's attachments.
     GraphResult<void> validateExtraColorAttachments(const Pass& pass) const;
+
+    // The rules a pass's render area answers to on its own: a pair that is whole or set on both
+    // sides, and one that fits inside every attachment the pass rasterises into.
+    GraphResult<void> validateRenderArea(const Pass& pass) const;
 
     // The colour attachment a ColorAttachment declaration was flattened from. One pass names a
     // resource at most once across its colour attachments -- compilation refuses a frame that does

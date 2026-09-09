@@ -9,9 +9,8 @@ namespace lmx::render {
 namespace {
 
 //======================================================================================================================
-bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
-    return a.renderWidth == b.renderWidth && a.renderHeight == b.renderHeight &&
-           a.outputWidth == b.outputWidth && a.outputHeight == b.outputHeight;
+bool sameOutputExtent(const FrameExtents& a, const FrameExtents& b) {
+    return a.outputWidth == b.outputWidth && a.outputHeight == b.outputHeight;
 }
 
 } // namespace
@@ -28,7 +27,9 @@ HistoryResetReason deriveHistoryReset(const std::optional<FrameSignature>& previ
     if (previous->sceneGeneration != current.sceneGeneration) {
         return HistoryResetReason::SceneChanged;
     }
-    if (!sameExtents(previous->extents, current.extents)) {
+    // The render extent is deliberately not compared: the history is kept at the output extent
+    // and reprojected in normalised UV, so a scale change reuses it rather than resetting it.
+    if (!sameOutputExtent(previous->extents, current.extents)) {
         return HistoryResetReason::ExtentChanged;
     }
     if (previous->fovY != current.fovY || previous->nearZ != current.nearZ) {

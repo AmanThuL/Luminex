@@ -18,15 +18,37 @@
 
 namespace lmx::render {
 
-/// The two pixel extents a frame renders at. They are equal today and declared separately so a
-/// later upscaling stage can diverge them without changing consumers. Motion vectors, jitter and
-/// the projection's aspect ratio are all relative to the *render* extent.
+/// The two pixel extents a frame renders at. The scene rasterises into the render extent and the
+/// frame is presented at the output extent; the render extent never exceeds the output on either
+/// axis, and the two are equal when nothing is upscaling. Motion vectors and jitter are relative
+/// to the *render* extent, and the projection's aspect ratio to the *output* extent, so the image
+/// a scale change produces frames the same world.
 struct FrameExtents {
     uint32_t renderWidth = 0;  ///< Width in pixels of the target the scene rasterises into.
     uint32_t renderHeight = 0; ///< Height in pixels of the target the scene rasterises into.
     uint32_t outputWidth = 0;  ///< Width in pixels of the presented image.
     uint32_t outputHeight = 0; ///< Height in pixels of the presented image.
 };
+
+/// Smallest fraction of the output extent a frame may rasterise at on either axis.
+constexpr float kMinRenderScale = 0.5f;
+/// Largest fraction of the output extent a frame may rasterise at: the output extent itself.
+constexpr float kMaxRenderScale = 1.0f;
+
+/// The active render extent for `scale`: each axis rounds output * scale to the nearest pixel,
+/// never below 1 and never above the output. Scale 1 answers the output extent exactly. Both
+/// output extents must be non-zero.
+FrameExtents renderExtentsForScale(uint32_t outputWidth, uint32_t outputHeight, float scale);
+
+/// Where the jittered raster placed the scene relative to the unjittered one, in render texels of
+/// texture space (+y down): (+jx, -jy). Texel centre c of the jittered image holds the scene at
+/// unjittered position c - offset, and an unjittered position q is found at q + offset.
+glm::vec2 jitterTexelOffset(glm::vec2 jitterPixels);
+
+/// The position in the jittered render image at which output pixel `outputPixel` reads its
+/// current-frame colour: (outputPixel + 0.5) * render / output + jitterTexelOffset(jitter).
+glm::vec2 renderSamplePosition(glm::uvec2 outputPixel, const FrameExtents& extents,
+                               glm::vec2 jitterPixels);
 
 /// Number of jitter samples before the sequence repeats.
 constexpr uint32_t kJitterSequenceLength = 16;
@@ -53,8 +75,10 @@ struct CameraFrameState {
     float nearZ = 0.0f;                     ///< Positive near-plane distance in world units.
 };
 
-/// Builds the frame's camera state. The aspect ratio comes from the render extent, whose height
-/// must be non-zero. A jitter of (0, 0) leaves the jittered matrices identical to the plain ones.
+/// Builds the frame's camera state. The aspect ratio comes from the output extent and the jitter's
+/// NDC scale from the render extent, so lowering the render scale reframes nothing; both extents
+/// must be non-empty and the render extent must not exceed the output on either axis. A jitter of
+/// (0, 0) leaves the jittered matrices identical to the plain ones.
 CameraFrameState buildCameraFrameState(const Camera& camera, const FrameExtents& extents,
                                        glm::vec2 jitterPixels);
 

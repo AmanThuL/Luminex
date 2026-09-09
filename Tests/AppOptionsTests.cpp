@@ -20,6 +20,7 @@ TEST_CASE("app options default to a windowed Sponza scene", "[app][options]") {
     REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath.empty());
     REQUIRE(result->maximized);
+    REQUIRE(result->renderScale == 1.0f);
 }
 
 //======================================================================================================================
@@ -118,6 +119,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab>] [--windowed] "
             "[--frames <N>] [--temporal <off|raw|taa>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
+            "[--render-scale <0.5..1.0>] "
             "(--frames N renders N frames and captures the last, including temporal warmup)");
 }
 
@@ -320,6 +322,66 @@ TEST_CASE("repeated --temporal and --temporal-view keep the last value", "[app][
     REQUIRE(result);
     REQUIRE(result->temporal == TemporalMode::Taa);
     REQUIRE(result->temporalView == render::TemporalDebugView::HistoryAge);
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale accepts the boundary value 0.5", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--render-scale"}, std::string_view{"0.5"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE(result);
+    REQUIRE(result->renderScale == 0.5f);
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale rejects a value below the accepted range", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--render-scale"}, std::string_view{"0.4"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message == "--render-scale needs a value in [0.5, 1.0], got '0.4'");
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale rejects a value above the accepted range", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--render-scale"}, std::string_view{"1.5"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message == "--render-scale needs a value in [0.5, 1.0], got '1.5'");
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale needs a value", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--render-scale"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message ==
+            "--render-scale needs a value: App --render-scale <0.5..1.0>");
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale below 1.0 conflicts with --temporal off", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--temporal"}, std::string_view{"off"},
+                                      std::string_view{"--render-scale"}, std::string_view{"0.75"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message ==
+            "--temporal off conflicts with --render-scale: the temporal path must run to "
+            "reconstruct a render scale below 1.0");
+}
+
+//======================================================================================================================
+TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[app][options]") {
+    constexpr std::array arguments = {std::string_view{"--temporal"}, std::string_view{"off"},
+                                      std::string_view{"--render-scale"}, std::string_view{"1.0"}};
+    const AppOptionsResult result = parseAppOptions(arguments);
+
+    REQUIRE(result);
+    REQUIRE(result->temporal == TemporalMode::Off);
+    REQUIRE(result->renderScale == 1.0f);
 }
 
 //======================================================================================================================

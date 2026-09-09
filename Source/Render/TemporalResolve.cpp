@@ -17,11 +17,29 @@ namespace {
 
 // Mirrors Shaders/TemporalReproject.slang's TemporalReprojectParams.
 struct TemporalReprojectParams {
-    uint32_t width = 0;
+    uint32_t width = 0; // The output extent: the pass's dispatch bound.
     uint32_t height = 0;
+    uint32_t renderWidth = 0; // The active rectangle of the scene colour and the motion target.
+    uint32_t renderHeight = 0;
+    uint32_t allocatedWidth = 0; // The allocation of those two, which their UVs are taken over.
+    uint32_t allocatedHeight = 0;
+    glm::vec2 jitterOffset{0.0f};
 };
-static_assert(sizeof(TemporalReprojectParams) == 8,
+static_assert(sizeof(TemporalReprojectParams) == 32,
               "must match TemporalReproject.slang's TemporalReprojectParams");
+
+// Mirrors Shaders/SpatialUpscale.slang's SpatialUpscaleParams.
+struct SpatialUpscaleParams {
+    uint32_t renderWidth = 0;
+    uint32_t renderHeight = 0;
+    uint32_t outputWidth = 0;
+    uint32_t outputHeight = 0;
+    uint32_t allocatedWidth = 0;
+    uint32_t allocatedHeight = 0;
+    glm::vec2 jitterOffset{0.0f};
+};
+static_assert(sizeof(SpatialUpscaleParams) == 32,
+              "must match SpatialUpscale.slang's SpatialUpscaleParams");
 
 // Mirrors Shaders/TemporalResolve.slang's TemporalResolveParams.
 struct TemporalResolveParams {
@@ -37,11 +55,38 @@ struct TemporalResolveParams {
 static_assert(sizeof(TemporalResolveParams) == 160,
               "must match TemporalResolve.slang's TemporalResolveParams");
 
+// Mirrors Shaders/TemporalUpscale.slang's TemporalUpscaleParams: TemporalResolveParams' fields, in
+// its order and with its trailing pad, then the four the upscaling kernel appends. Appending is
+// what keeps the two blocks comparable field for field.
+struct TemporalUpscaleParams {
+    uint32_t width = 0; // The active render extent, which the render-extent inputs are read within.
+    uint32_t height = 0;
+    uint32_t historyValid = 0;
+    uint32_t writeDiagnostics = 0; // Bit 0: rejection; bit 1: reprojected history.
+    glm::mat4 inverseViewProjection{1.0f};
+    glm::mat4 previousViewProjection{1.0f};
+    float previousNearZ = 0.0f;
+    float pad[3] = {0.0f, 0.0f, 0.0f};
+    uint32_t outputWidth = 0; // The dispatch bound: one invocation per output pixel.
+    uint32_t outputHeight = 0;
+    uint32_t allocatedWidth = 0; // The allocation every render-extent UV is taken over.
+    uint32_t allocatedHeight = 0;
+    uint32_t previousRenderWidth = 0; // The extent the previous depth slot was rendered at.
+    uint32_t previousRenderHeight = 0;
+    glm::vec2 jitterOffset{0.0f};
+};
+static_assert(sizeof(TemporalUpscaleParams) == 192,
+              "must match TemporalUpscale.slang's TemporalUpscaleParams");
+
 // Mirrors Shaders/TemporalDebugView.slang's TemporalDebugViewParams.
 struct TemporalDebugViewParams {
     uint32_t view = 0;
+    uint32_t renderWidth = 0; // The motion target's active rectangle; every other input is output.
+    uint32_t renderHeight = 0;
+    uint32_t outputWidth = 0;
+    uint32_t outputHeight = 0;
 };
-static_assert(sizeof(TemporalDebugViewParams) == 4,
+static_assert(sizeof(TemporalDebugViewParams) == 20,
               "must match TemporalDebugView.slang's TemporalDebugViewParams");
 
 // TemporalReproject.slang's slot map.
@@ -65,6 +110,15 @@ constexpr uint32_t kResolveReprojectedSlot = 8;   // storage texture
 constexpr uint32_t kResolveSamplerSlot = 0;       // sampler
 constexpr uint32_t kResolveExposureSlot = 0;      // buffer
 constexpr uint32_t kResolveParamsSlot = 1;        // buffer
+
+// Shaders/TemporalUpscale.slang's slot map is the resolve's above, kResolve* for kResolve*, which
+// is what lets one declaration serve both kernels.
+
+// SpatialUpscale.slang's slot map.
+constexpr uint32_t kUpscaleSceneColorSlot = 0; // texture
+constexpr uint32_t kUpscaleOutputSlot = 1;     // storage texture
+constexpr uint32_t kUpscaleSamplerSlot = 0;    // sampler
+constexpr uint32_t kUpscaleParamsSlot = 0;     // buffer
 
 // TemporalDebugView.slang's slot map, plus the view selectors its fragment branches on.
 constexpr uint32_t kDebugViewMotionSlot = 0;      // texture
@@ -105,6 +159,73 @@ bool viewReadsReprojected(TemporalDebugView view) {
     return view == TemporalDebugView::ReprojectedHistory;
 }
 
+//======================================================================================================================
+// Whether the frame rasterised into a rectangle smaller than the image it presents. Upscaling is a
+// property of the extents rather than of the mode, which is what lets both modes keep their meaning
+// at every scale.
+bool isUpscaled(const FrameExtents& extents) {
+    return extents.renderWidth != extents.outputWidth ||
+           extents.renderHeight != extents.outputHeight;
+}
+
+//======================================================================================================================
+// Whether two frames rasterised and presented at the same pair of extents.
+bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
+    return a.renderWidth == b.renderWidth && a.renderHeight == b.renderHeight &&
+           a.outputWidth == b.outputWidth && a.outputHeight == b.outputHeight;
+}
+
+//======================================================================================================================
+// Shaders/SpatialUpscale.slang's block. The allocated extent is the output one: every render-extent
+// target is allocated at capacity and used through an origin-anchored active rectangle, so a UV
+// over one of them is taken over the output extent whatever the frame rasterised at.
+SpatialUpscaleParams spatialUpscaleParams(const TemporalInputs& inputs) {
+    return SpatialUpscaleParams{.renderWidth = inputs.extents.renderWidth,
+                                .renderHeight = inputs.extents.renderHeight,
+                                .outputWidth = inputs.extents.outputWidth,
+                                .outputHeight = inputs.extents.outputHeight,
+                                .allocatedWidth = inputs.extents.outputWidth,
+                                .allocatedHeight = inputs.extents.outputHeight,
+                                .jitterOffset = jitterTexelOffset(inputs.camera.jitterPixels)};
+}
+
+//======================================================================================================================
+// Shaders/TemporalUpscale.slang's block. The render extent is what the kernel reads its inputs
+// within, the output extent what it dispatches over, and the allocated extent the output one on
+// spatialUpscaleParams()' terms. The previous render extent is carried separately because the
+// previous depth slot is addressed at the extent it was rendered at, which a scale change moves.
+TemporalUpscaleParams temporalUpscaleParams(const TemporalInputs& inputs, bool historyValid,
+                                            uint32_t writeDiagnostics) {
+    return TemporalUpscaleParams{.width = inputs.extents.renderWidth,
+                                 .height = inputs.extents.renderHeight,
+                                 .historyValid = historyValid ? 1u : 0u,
+                                 .writeDiagnostics = writeDiagnostics,
+                                 .inverseViewProjection = inputs.camera.inverseViewProjection,
+                                 .previousViewProjection = inputs.previousCamera.viewProjection,
+                                 .previousNearZ = inputs.previousCamera.nearZ,
+                                 .outputWidth = inputs.extents.outputWidth,
+                                 .outputHeight = inputs.extents.outputHeight,
+                                 .allocatedWidth = inputs.extents.outputWidth,
+                                 .allocatedHeight = inputs.extents.outputHeight,
+                                 .previousRenderWidth = inputs.previousExtents.renderWidth,
+                                 .previousRenderHeight = inputs.previousExtents.renderHeight,
+                                 .jitterOffset = jitterTexelOffset(inputs.camera.jitterPixels)};
+}
+
+//======================================================================================================================
+// Shaders/TemporalReproject.slang's block: the pass runs over the output extent and resamples the
+// render extent's active rectangle to meet it, on spatialUpscaleParams()' terms.
+TemporalReprojectParams reprojectParams(const TemporalInputs& inputs) {
+    const SpatialUpscaleParams resampling = spatialUpscaleParams(inputs);
+    return TemporalReprojectParams{.width = resampling.outputWidth,
+                                   .height = resampling.outputHeight,
+                                   .renderWidth = resampling.renderWidth,
+                                   .renderHeight = resampling.renderHeight,
+                                   .allocatedWidth = resampling.allocatedWidth,
+                                   .allocatedHeight = resampling.allocatedHeight,
+                                   .jitterOffset = resampling.jitterOffset};
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -127,6 +248,16 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
     } else {
         return std::unexpected(library.error());
     }
+    if (auto library = device.loadShaderLibrary("Shaders/SpatialUpscale"); library) {
+        self->m_spatialUpscaleLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
+    if (auto library = device.loadShaderLibrary("Shaders/TemporalUpscale"); library) {
+        self->m_temporalUpscaleLibrary = std::move(*library);
+    } else {
+        return std::unexpected(library.error());
+    }
 
     if (auto pipeline = device.createComputePipeline(
             {.library = self->m_reprojectLibrary.get(),
@@ -145,6 +276,26 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
              .label = "lmx.render.temporalResolvePipeline"});
         pipeline) {
         self->m_resolvePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_spatialUpscaleLibrary.get(),
+             .computeEntry = "computeSpatialUpscale",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.spatialUpscalePipeline"});
+        pipeline) {
+        self->m_spatialUpscalePipeline = std::move(*pipeline);
+    } else {
+        return std::unexpected(pipeline.error());
+    }
+    if (auto pipeline = device.createComputePipeline(
+            {.library = self->m_temporalUpscaleLibrary.get(),
+             .computeEntry = "computeTemporalUpscale",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.render.temporalUpscalePipeline"});
+        pipeline) {
+        self->m_temporalUpscalePipeline = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
@@ -289,12 +440,26 @@ TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rhi::Command
         diagnostic = declareReprojection(graph, commands, inputs);
     }
 
+    const bool upscaled = isUpscaled(inputs.extents);
+    // The native kernel addresses every one of its inputs at one extent, the previous depth slot
+    // included, so it is correct only where this frame's render extent is its output extent *and*
+    // the slot it tests disocclusion against was rendered at that same extent. A reset frame has
+    // no previous slot to disagree with; any other frame following a differently sized one takes
+    // the upscaling kernel for that one frame, which carries the previous render extent explicitly.
+    const bool nativeKernel =
+        !upscaled && (!historyValid || sameExtents(inputs.previousExtents, inputs.extents));
     TemporalResolveOutputs outputs;
     if (inputs.mode == ReconstructionMode::NativeTaa) {
-        declareResolve(graph, commands, inputs, viewReadsRejection(debugView),
-                       viewReadsReprojected(debugView), outputs);
+        if (nativeKernel) {
+            declareResolve(graph, commands, inputs, viewReadsRejection(debugView),
+                           viewReadsReprojected(debugView), outputs);
+        } else {
+            declareUpscale(graph, commands, inputs, viewReadsRejection(debugView),
+                           viewReadsReprojected(debugView), outputs);
+        }
     } else {
-        outputs.resolved = declareHistoryCommit(graph, commands, inputs);
+        outputs.resolved = upscaled ? declareSpatialCommit(graph, commands, inputs)
+                                    : declareHistoryCommit(graph, commands, inputs);
     }
 
     if (debugView != TemporalDebugView::Off) {
@@ -308,14 +473,17 @@ TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rhi::Command
 
 //======================================================================================================================
 void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
-                                  TemporalDebugView debugView, bool historyValid) {
+                                  TemporalDebugView debugView, bool historyValid, bool upscaled) {
     LMX_ASSERT(slot < 2, "TemporalResolve::recordFrame: slot must be 0 or 1");
     const uint32_t other = 1 - slot;
     // Under NativeTaa the resolve writes the slot and bloom and display then sample it, so the
-    // frame's last access to it is a shader read. Under Raw only the HistoryAge view samples the
-    // committed slot; otherwise the commit copy is its last use, since display reads scene colour.
-    const bool readCurrent =
-        mode == ReconstructionMode::NativeTaa || debugView == TemporalDebugView::HistoryAge;
+    // frame's last access to it is a shader read. An upscaled Raw frame ends the same way: the
+    // spatial commit is what produced the picture, so bloom and display sample the slot rather than
+    // the smaller rectangle of scene colour behind it. Otherwise only the HistoryAge view samples
+    // the committed slot; without it the commit copy is its last use, since display reads scene
+    // colour.
+    const bool readCurrent = mode == ReconstructionMode::NativeTaa || upscaled ||
+                             debugView == TemporalDebugView::HistoryAge;
     m_colorUse[slot] = readCurrent ? rhi::TextureUse::ShaderRead : rhi::TextureUse::CopyDestination;
     // The other slot is read by the resolve on every NativeTaa frame, and by the reprojection
     // diagnostic on a Raw frame only where that pass survived culling. A frame that read it
@@ -340,8 +508,12 @@ uint64_t TemporalResolve::depthBytes() const {
 //======================================================================================================================
 GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
                                                   const TemporalInputs& inputs) {
-    const uint32_t width = inputs.extents.renderWidth;
-    const uint32_t height = inputs.extents.renderHeight;
+    // The output extent, at every scale: the history and the display the view draws over are both
+    // that size, and the current colour is resampled out of the active rectangle to meet them. It
+    // also keeps the transient's descriptor independent of the render scale, so the transient pool
+    // sees one footprint across every scale.
+    const uint32_t width = inputs.extents.outputWidth;
+    const uint32_t height = inputs.extents.outputHeight;
     const GraphTexture diagnostic = graph.createTexture({.width = width,
                                                          .height = height,
                                                          .format = rhi::Format::RGBA16Float,
@@ -356,7 +528,8 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
     reprojectDesc.textureWrites.push_back(diagnostic);
     graph.addComputePass(
         "lmx.pass.temporal.reproject", std::move(reprojectDesc),
-        [this, &commands, inputs, diagnostic, width, height](const PassResources& resources) {
+        [this, &commands, inputs, diagnostic,
+         params = reprojectParams(inputs)](const PassResources& resources) {
             const GraphResult<rhi::Texture*> historyTexture = resources.texture(inputs.history);
             LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
             const GraphResult<rhi::Texture*> sceneTexture = resources.texture(inputs.sceneColor);
@@ -366,7 +539,6 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
             const GraphResult<rhi::Texture*> target = resources.texture(diagnostic);
             LMX_ASSERT(target.has_value(), target.error().message);
 
-            const TemporalReprojectParams params{.width = width, .height = height};
             commands.bindComputePipeline(*m_reprojectPipeline);
             commands.bindTexture(kReprojectHistorySlot, **historyTexture);
             commands.bindTexture(kReprojectSceneColorSlot, **sceneTexture);
@@ -375,8 +547,8 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
                                         rhi::StorageAccess::Write);
             commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
             commands.bindFrameData(kReprojectParamsSlot, params);
-            commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
-                              divRoundUp(height, kComputeThreadsPerGroup2D), 1);
+            commands.dispatch(divRoundUp(params.width, kComputeThreadsPerGroup2D),
+                              divRoundUp(params.height, kComputeThreadsPerGroup2D), 1);
         });
     return nextVersion(diagnostic);
 }
@@ -385,8 +557,11 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
 void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& commands,
                                      const TemporalInputs& inputs, bool rejectionWanted,
                                      bool reprojectedWanted, TemporalResolveOutputs& outputs) {
-    const uint32_t width = inputs.extents.renderWidth;
-    const uint32_t height = inputs.extents.renderHeight;
+    // Only a frame whose render extent is its output extent reaches here, so the two are the same
+    // number; naming the output one is what states which of them the pass and its diagnostics are
+    // sized by.
+    const uint32_t width = inputs.extents.outputWidth;
+    const uint32_t height = inputs.extents.outputHeight;
     if (rejectionWanted) {
         outputs.rejection = graph.createTexture({.width = width,
                                                  .height = height,
@@ -502,6 +677,8 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
 //======================================================================================================================
 GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
                                                    const TemporalInputs& inputs) {
+    // Declared only where the two extents agree, so the copy covers the whole slot; the caller
+    // routes an upscaled frame to declareSpatialCommit() instead.
     const uint32_t width = inputs.extents.renderWidth;
     const uint32_t height = inputs.extents.renderHeight;
 
@@ -526,6 +703,160 @@ GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rhi::Comm
     const GraphTexture committed = nextVersion(history);
     graph.exportTexture(committed);
     return committed;
+}
+
+//======================================================================================================================
+GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph, rhi::CommandList& commands,
+                                                   const TemporalInputs& inputs) {
+    const SpatialUpscaleParams params = spatialUpscaleParams(inputs);
+
+    ComputePassDesc commitDesc;
+    commitDesc.shaderTextureReads.push_back(inputs.sceneColor);
+    commitDesc.textureWrites.push_back(inputs.colorSlot);
+    const GraphTexture sceneColor = inputs.sceneColor;
+    const GraphTexture history = inputs.colorSlot;
+    graph.addComputePass(
+        "lmx.pass.temporal.commitUpscaled", std::move(commitDesc),
+        [this, &commands, sceneColor, history, params](const PassResources& resources) {
+            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
+            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
+            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
+            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
+
+            commands.bindComputePipeline(*m_spatialUpscalePipeline);
+            commands.bindTexture(kUpscaleSceneColorSlot, **sceneTexture);
+            commands.bindStorageTexture(kUpscaleOutputSlot, **historyTexture, {},
+                                        rhi::StorageAccess::Write);
+            // The clamped sampler: a tap of the Catmull-Rom fetch that reaches the edge of the
+            // active rectangle must answer with that edge rather than with the opposite one.
+            commands.bindSampler(kUpscaleSamplerSlot, *m_sampler);
+            commands.bindFrameData(kUpscaleParamsSlot, params);
+            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    // On declareHistoryCommit()'s terms: the consumer is the next frame, so the export is what
+    // keeps the pass alive through culling.
+    const GraphTexture committed = nextVersion(history);
+    graph.exportTexture(committed);
+    return committed;
+}
+
+//======================================================================================================================
+void TemporalResolve::declareUpscale(RenderGraph& graph, rhi::CommandList& commands,
+                                     const TemporalInputs& inputs, bool rejectionWanted,
+                                     bool reprojectedWanted, TemporalResolveOutputs& outputs) {
+    // The output extent, at every scale: the history the kernel accumulates over and the picture
+    // it produces are both that size, so the diagnostics beside them are too -- which also keeps
+    // their descriptors independent of the render scale.
+    const uint32_t width = inputs.extents.outputWidth;
+    const uint32_t height = inputs.extents.outputHeight;
+    if (rejectionWanted) {
+        outputs.rejection = graph.createTexture({.width = width,
+                                                 .height = height,
+                                                 .format = rhi::Format::RGBA8Unorm,
+                                                 .sampled = true,
+                                                 .storageWrite = true},
+                                                "lmx.render.temporalRejection");
+    }
+    if (reprojectedWanted) {
+        outputs.reprojected = graph.createTexture({.width = width,
+                                                   .height = height,
+                                                   .format = rhi::Format::RGBA16Float,
+                                                   .sampled = true,
+                                                   .storageWrite = true},
+                                                  "lmx.render.temporalReprojected");
+    }
+
+    // The resolve's declaration exactly: the accumulating kernel reads all six inputs and writes
+    // the same three outputs, so one pass shape serves both extents.
+    ComputePassDesc upscaleDesc;
+    upscaleDesc.shaderTextureReads.push_back(inputs.sceneColor);
+    upscaleDesc.shaderTextureReads.push_back(inputs.depth);
+    upscaleDesc.shaderTextureReads.push_back(inputs.previousDepth);
+    upscaleDesc.shaderTextureReads.push_back(inputs.motion);
+    upscaleDesc.shaderTextureReads.push_back(inputs.reactive);
+    // Declared on a reset frame too, on declareResolve()'s terms: the kernel is told through
+    // `historyValid` not to read it.
+    upscaleDesc.shaderTextureReads.push_back(inputs.history);
+    upscaleDesc.bufferReads.push_back(inputs.exposure);
+    upscaleDesc.textureWrites.push_back(inputs.colorSlot);
+    if (rejectionWanted) {
+        upscaleDesc.textureWrites.push_back(outputs.rejection);
+    }
+    if (reprojectedWanted) {
+        upscaleDesc.textureWrites.push_back(outputs.reprojected);
+    }
+
+    const bool historyValid = inputs.resetReason == HistoryResetReason::None;
+    const TemporalUpscaleParams params = temporalUpscaleParams(
+        inputs, historyValid, (rejectionWanted ? 1u : 0u) | (reprojectedWanted ? 2u : 0u));
+
+    const GraphTexture output = inputs.colorSlot;
+    const GraphTexture rejection = outputs.rejection;
+    const GraphTexture reprojected = outputs.reprojected;
+    graph.addComputePass(
+        "lmx.pass.temporal.upscale", std::move(upscaleDesc),
+        [this, &commands, inputs, output, rejection, reprojected, rejectionWanted,
+         reprojectedWanted, params](const PassResources& resources) {
+            const auto bindRead = [&](uint32_t slot, GraphTexture handle) {
+                const GraphResult<rhi::Texture*> texture = resources.texture(handle);
+                LMX_ASSERT(texture.has_value(), texture.error().message);
+                commands.bindTexture(slot, **texture);
+            };
+            bindRead(kResolveSceneColorSlot, inputs.sceneColor);
+            bindRead(kResolveDepthSlot, inputs.depth);
+            bindRead(kResolvePreviousDepthSlot, inputs.previousDepth);
+            bindRead(kResolveMotionSlot, inputs.motion);
+            bindRead(kResolveReactiveSlot, inputs.reactive);
+            bindRead(kResolveHistorySlot, inputs.history);
+
+            const GraphResult<rhi::Texture*> target = resources.texture(output);
+            LMX_ASSERT(target.has_value(), target.error().message);
+            const GraphResult<rhi::Buffer*> exposure = resources.buffer(inputs.exposure);
+            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+
+            commands.bindComputePipeline(*m_temporalUpscalePipeline);
+            commands.bindStorageTexture(kResolveOutputSlot, **target, {},
+                                        rhi::StorageAccess::Write);
+            // declareResolve()'s rule: the argument table entry has to hold a writable texture even
+            // where the kernel's corresponding writeDiagnostics bit makes it write nothing.
+            if (rejectionWanted) {
+                const GraphResult<rhi::Texture*> texture = resources.texture(rejection);
+                LMX_ASSERT(texture.has_value(), texture.error().message);
+                commands.bindStorageTexture(kResolveRejectionSlot, **texture, {},
+                                            rhi::StorageAccess::Write);
+            } else {
+                commands.bindStorageTexture(kResolveRejectionSlot, *m_diagnosticFallback, {},
+                                            rhi::StorageAccess::Write);
+            }
+            if (reprojectedWanted) {
+                const GraphResult<rhi::Texture*> texture = resources.texture(reprojected);
+                LMX_ASSERT(texture.has_value(), texture.error().message);
+                commands.bindStorageTexture(kResolveReprojectedSlot, **texture, {},
+                                            rhi::StorageAccess::Write);
+            } else {
+                commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
+                                            rhi::StorageAccess::Write);
+            }
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Read);
+            // The clamped sampler: a tap of either Catmull-Rom fetch that reaches the edge of the
+            // active rectangle must answer with that edge rather than with the opposite one.
+            commands.bindSampler(kResolveSamplerSlot, *m_sampler);
+            commands.bindFrameData(kResolveParamsSlot, params);
+            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+        });
+
+    if (rejectionWanted) {
+        outputs.rejection = nextVersion(outputs.rejection);
+    }
+    if (reprojectedWanted) {
+        outputs.reprojected = nextVersion(outputs.reprojected);
+    }
+    // declareResolve()'s export, for its reason: the accumulation's real consumer is the next
+    // frame, so nothing in this frame keeps the slot alive on its own account.
+    outputs.resolved = nextVersion(inputs.colorSlot);
+    graph.exportTexture(outputs.resolved);
 }
 
 //======================================================================================================================
@@ -562,10 +893,11 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandL
     const GraphTexture reprojected = outputs.reprojected;
     const GraphTexture resolved = outputs.resolved;
     const GraphTexture motion = inputs.motion;
+    const FrameExtents extents = inputs.extents;
     graph.addPass("lmx.pass.temporal.debugView", std::move(debugDesc),
                   [this, &commands, motion, diagnostic, rejection, reprojected, resolved,
-                   readsDiagnostic, readsRejection, readsReprojected, readsResolved,
-                   debugView](const PassResources& resources) {
+                   readsDiagnostic, readsRejection, readsReprojected, readsResolved, debugView,
+                   extents](const PassResources& resources) {
                       const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
                       LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
 
@@ -589,7 +921,11 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandL
                       bindOptional(kDebugViewReprojectedSlot, readsReprojected, reprojected);
                       bindOptional(kDebugViewResolvedSlot, readsResolved, resolved);
 
-                      const TemporalDebugViewParams params{.view = debugViewSelector(debugView)};
+                      const TemporalDebugViewParams params{.view = debugViewSelector(debugView),
+                                                           .renderWidth = extents.renderWidth,
+                                                           .renderHeight = extents.renderHeight,
+                                                           .outputWidth = extents.outputWidth,
+                                                           .outputHeight = extents.outputHeight};
                       commands.bindFrameData(kDebugViewParamsSlot, params);
                       commands.draw(3);
                   });
