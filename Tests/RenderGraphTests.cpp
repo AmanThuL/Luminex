@@ -3361,3 +3361,134 @@ TEST_CASE("a transient loaded as an extra color attachment fails to compile", "[
             "extra color attachment 0, whose contents no pass produced: a transient holds nothing "
             "until a pass writes it");
 }
+
+//======================================================================================================================
+// A render area with one side set would reach the RHI as a viewport of zero area, rasterising
+// nothing at all rather than the sub-rectangle the pass meant to draw into.
+TEST_CASE("a half-set render area is rejected", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    scene.renderAreaWidth = 32;
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message.contains("lmx.pass.scene"));
+    REQUIRE(schedule.error().message.contains("render area"));
+    REQUIRE(schedule.error().message.contains("32x0"));
+}
+
+//======================================================================================================================
+// The area is a sub-rectangle of what the pass renders into, so one larger than an attachment is a
+// pass asking to rasterise texels that attachment does not have.
+TEST_CASE("a render area larger than an attachment is rejected", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture depth{64, 64, "sceneDepth"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    scene.depth = DepthAttachment{.handle = sceneDepth};
+    scene.renderAreaWidth = 32;
+    scene.renderAreaHeight = 96;
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+
+    const auto schedule = graph.compile();
+    REQUIRE_FALSE(schedule.has_value());
+    REQUIRE(schedule.error().message ==
+            "pass 'lmx.pass.scene' render area 32x96 exceeds attachment 'sceneColor' 64x64");
+}
+
+//======================================================================================================================
+// The record is what a reader of a compiled frame has, so an area a pass declared has to be in it;
+// a pass that declared none carries the zero pair that means the whole attachment.
+TEST_CASE("a compiled record carries the render area a pass declared", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    FakeTexture display{64, 64, "displayColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::RGBA16Float, "sceneColor");
+    const GraphTexture displayColor =
+        graph.importTexture(display, rhi::Format::BGRA8Unorm, "displayColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    scene.renderAreaWidth = 32;
+    scene.renderAreaHeight = 16;
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(nextVersion(sceneColor));
+    displayPass.color = ColorAttachment{.handle = displayColor};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+
+    graph.presentTexture(nextVersion(displayColor));
+
+    const auto record = graph.compileFrame(1);
+    INFO(errorOf(record));
+    REQUIRE(record.has_value());
+    REQUIRE(record->debug.passes.size() == 2);
+    REQUIRE(record->debug.passes[0].renderAreaWidth == 32);
+    REQUIRE(record->debug.passes[0].renderAreaHeight == 16);
+    REQUIRE(record->debug.passes[1].renderAreaWidth == 0);
+    REQUIRE(record->debug.passes[1].renderAreaHeight == 0);
+}
+
+//======================================================================================================================
+// The declaration only means anything if the pass the backend begins carries it, so execution has
+// to hand the pair to the RHI descriptor unchanged.
+TEST_CASE("execute fills the RHI descriptor's render area", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    RecordingCommandList commands;
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    scene.renderAreaWidth = 32;
+    scene.renderAreaHeight = 16;
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.passes.size() == 1);
+    REQUIRE(commands.passes[0].renderAreaWidth == 32);
+    REQUIRE(commands.passes[0].renderAreaHeight == 16);
+}
+
+//======================================================================================================================
+// A pass that declares no area renders the whole attachment, which the RHI spells as the zero pair.
+TEST_CASE("execute leaves an undeclared render area zero", "[render][graph]") {
+    FakeTexture color{64, 64, "sceneColor"};
+    RenderGraph graph;
+    const GraphTexture sceneColor =
+        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+
+    RecordingCommandList commands;
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = sceneColor};
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    graph.exportTexture(nextVersion(sceneColor));
+    graph.execute(commands, 1);
+
+    REQUIRE(commands.passes.size() == 1);
+    REQUIRE(commands.passes[0].renderAreaWidth == 0);
+    REQUIRE(commands.passes[0].renderAreaHeight == 0);
+}

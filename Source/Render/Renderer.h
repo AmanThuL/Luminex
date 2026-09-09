@@ -105,6 +105,9 @@ struct TemporalSettings {
     /// Which reconstruction the frame runs. Both modes declare the same inputs and both leave a
     /// real frame in the colour slot, so switching between them is not a history reset.
     ReconstructionMode reconstruction = ReconstructionMode::Raw;
+    /// Fraction of the output extent the scene rasterises at, within [kMinRenderScale,
+    /// kMaxRenderScale]. 1 renders at the output extent, and anything below it upscales.
+    float renderScale = 1.0f;
 };
 
 /// What the last declared frame decided about its history, for the editor to display and a test to
@@ -135,6 +138,18 @@ struct TemporalStatus {
     uint32_t historyAge = 0;
     /// Whether historyAge has reached kTemporalWarmupFrames, so the accumulation is converged.
     bool warmupComplete = false;
+    FrameExtents extents; ///< Render and output extents the last declared frame ran at.
+    /// Render scale the last declared frame resolved, which the render extent's rounding may
+    /// differ from by less than a pixel.
+    float renderScale = 1.0f;
+    /// Whether the last declared frame's render extent differed from its output extent, so the
+    /// reconstruction upscaled rather than resolving at one to one.
+    bool upscaled = false;
+    /// Count of declared frames when the render extent last changed on a temporal frame without a
+    /// history reset, 0 until it has. It is what shows that the history survived a scale change,
+    /// so a frame with temporal off -- which has no history and rasterises at the output extent
+    /// whatever the scale field says -- never advances it.
+    uint64_t lastRenderExtentChangeFrame = 0;
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
@@ -316,6 +331,11 @@ public:
     /// The scene-linear, pre-exposed image the display transform consumed, in kSceneColorFormat.
     /// Exposed for tests that need to read radiance rather than the picture made of it; the frame
     /// itself never touches it from outside declarePasses.
+    ///
+    /// Always allocated at the output extent, and rasterised into an origin-anchored rectangle of
+    /// TemporalStatus::extents' render extent, which a frame below scale 1 leaves smaller than the
+    /// allocation. The texels outside that rectangle are whatever an earlier frame left there, so a
+    /// reader at a render scale below 1 has to crop to the active rectangle.
     rhi::Texture& hdrColorTarget();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
@@ -325,7 +345,9 @@ public:
     /// render() declares no read of it, so the graph has emitted no transition.
     ///
     /// Depth ping-pongs by declared temporal frame parity, so this is the slot the frame just
-    /// declared rendered into; a frame with temporal off renders into slot 0.
+    /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
+    /// colour, it is allocated at the output extent and written only inside the origin-anchored
+    /// rectangle of TemporalStatus::extents' render extent.
     rhi::Texture& depthTarget();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it

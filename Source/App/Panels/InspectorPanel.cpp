@@ -8,6 +8,7 @@
 #include "App/DirectionalLightRole.h"
 #include "App/EditorShell.h"
 #include "Engine/SceneAnimation.h"
+#include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
 #include <glm/glm.hpp>
@@ -99,7 +100,8 @@ void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
 // active scene (for the animation clock and whether a camera track exists to follow), not the
 // renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
 void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                         engine::Scene& scene, TemporalEditorState& temporalState) {
+                         engine::Scene& scene, TemporalEditorState& temporalState,
+                         const DynamicResolutionState& dynamicResolutionState) {
     ImGui::Checkbox("Temporal inputs", &settings.temporalEnabled);
     ImGui::BeginDisabled(!settings.temporalEnabled);
     ImGui::Checkbox("Jitter", &settings.jitterEnabled);
@@ -123,6 +125,18 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
                      static_cast<int>(std::size(kDebugViewNames)))) {
         settings.temporalDebugView = static_cast<render::TemporalDebugView>(debugViewIndex);
     }
+    ImGui::EndDisabled();
+
+    // Disabled while dynamic resolution drives renderScale itself -- the slider still shows the
+    // controller's value, it just cannot be dragged out from under it.
+    ImGui::BeginDisabled(settings.dynamicResolutionEnabled);
+    ImGui::SliderFloat("Render scale", &settings.renderScale, render::kMinRenderScale, 1.0f, "%.2f",
+                       ImGuiSliderFlags_AlwaysClamp);
+    ImGui::EndDisabled();
+    ImGui::Checkbox("Dynamic resolution", &settings.dynamicResolutionEnabled);
+    ImGui::BeginDisabled(!settings.dynamicResolutionEnabled);
+    ImGui::SliderFloat("GPU budget (ms)", &settings.gpuBudgetMilliseconds, 2.0f, 33.0f, "%.2f",
+                       ImGuiSliderFlags_AlwaysClamp);
     ImGui::EndDisabled();
 
     if (ImGui::Button(settings.animationPlaying ? "Pause" : "Play")) {
@@ -174,12 +188,23 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
                 static_cast<unsigned long long>(status.depthHistoryBytes));
     ImGui::TextWrapped("Motion = uvCurrent - uvPrevious, UV of the render extent, +y down, "
                        "unjittered; +inf = invalid.");
+
+    ImGui::Text("Render extent: %ux%u (scale %.2f)", status.extents.renderWidth,
+                status.extents.renderHeight, static_cast<double>(status.renderScale));
+    ImGui::Text("Frame GPU time: %.2f ms",
+                static_cast<double>(dynamicResolutionState.lastObservedMilliseconds));
+    // TemporalStatus carries the declared-frame count the render extent last changed at, not how
+    // many frames ago that was (it keeps no running declared-frame count of its own to subtract
+    // from), so this reports the same raw form lastResetFrame does above.
+    ImGui::Text("Render extent changed: at frame %llu",
+                static_cast<unsigned long long>(status.lastRenderExtentChangeFrame));
 }
 
 //======================================================================================================================
 void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
                           ExposureResetContext& exposureContext, bool& exposureResetPending,
-                          engine::Scene& scene, TemporalEditorState& temporalState) {
+                          engine::Scene& scene, TemporalEditorState& temporalState,
+                          const DynamicResolutionState& dynamicResolutionState) {
     // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
     // boundary. Relocated from the Camera section verbatim -- clear color is not a camera field.
     ImGui::ColorEdit4("Clear color", renderer.clearColor);
@@ -235,7 +260,7 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
     }
 
     ImGui::SeparatorText("Temporal");
-    drawTemporalSection(renderer, settings, scene, temporalState);
+    drawTemporalSection(renderer, settings, scene, temporalState, dynamicResolutionState);
 }
 
 //======================================================================================================================
@@ -311,8 +336,8 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             ImGui::SeparatorText("Rendering");
             ImGui::TextUnformatted("Rendering");
             drawRenderingSection(context.renderer, context.settings, context.exposureContext,
-                                 context.exposureResetPending, context.scene,
-                                 context.temporalState);
+                                 context.exposureResetPending, context.scene, context.temporalState,
+                                 context.dynamicResolutionState);
             break;
         case EditorSubject::DirectionalLight:
             ImGui::SeparatorText("Directional Light");

@@ -112,7 +112,8 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 
 //======================================================================================================================
 int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView) {
+                  TemporalMode temporal, render::TemporalDebugView temporalView,
+                  float renderScale) {
     auto device = rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -187,6 +188,7 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
                                            ? render::ReconstructionMode::Raw
                                            : render::ReconstructionMode::NativeTaa;
         view.temporal.debugView = temporalView;
+        view.temporal.renderScale = renderScale;
 
         rhi::CommandList& commands = (*device)->beginFrame();
         (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);

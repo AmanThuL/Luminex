@@ -23,7 +23,9 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
   beyond the primary (`ExtraColorTarget`/`extraColorFormats`), validated for colour-renderable
   formats and matching extent; `RG16Float` and `R8Unorm` are colour-renderable and CPU-readable,
-  which is what motion-vector and reactive-weight targets need.
+  which is what motion-vector and reactive-weight targets need. `RenderPassDesc` also carries an
+  origin-anchored `renderAreaWidth`/`Height` (default 0/0, the whole attachment), validated against
+  every attachment and encoded as an explicit Metal 4 viewport/scissor when non-zero.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables, a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
@@ -54,8 +56,19 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   otherwise `CopyDestination` for a Raw commit; the previous slot changes only when read
   ([ADR 0015](../decisions/0015-temporal-slot-terminal-access.md)). These targets are
   allocated with the scene targets and recreated by `resize()` alongside them, so the allocation is
-  permanent rather than made on
-  first enable.
+  permanent rather than made on first enable. Since M6.3 (ADR 0016), every one of these targets
+  allocates at the *output* extent regardless of `SceneView::temporal.renderScale`; `Temporal.h`'s
+  `renderExtentsForScale`/`jitterTexelOffset`/`renderSamplePosition` derive the active *render*
+  rectangle a scale below 1.0 confines the scene pass and reconstruction to, and `TemporalHistory`'s
+  `ExtentChanged` now fires on an output-extent change alone (superseding ADR 0013's clause), so a
+  render-scale change alone derives `None` and reuses history. `TemporalResolve` selects between the
+  native `NativeTaa` kernel (`Shaders/TemporalResolve.slang`, unchanged since M6.2) and the upscale
+  kernel (`Shaders/TemporalUpscale.slang`) by whether render equals output extent and history was
+  not just accumulated at another one; `Raw` gets the matching split against
+  `Shaders/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
+  `Shaders/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
+  class with no device, graph or App dependency that proposes the next render scale from a retired
+  frame's summed GPU pass time against a budget, with hysteresis.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
@@ -94,7 +107,11 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   animation play, camera-track follow); the pure `TemporalEditorState` tracks the scene-generation
   counter and camera-cut latch, and the frame loop calls `advanceFrameAnimation()`/`commitFrame()`
   around `declarePasses` so a declared frame — and only a declared frame — advances Engine's
-  animation clock and Render's history.
+  animation clock and Render's history. `EditorRenderSettings` also carries `renderScale`,
+  `dynamicResolutionEnabled` and `gpuBudgetMilliseconds`; `Source/App/DynamicResolution.h` is a pure
+  per-frame policy (`applyDynamicResolution`) that seeds `EditorShell`'s owned
+  `render::ResolutionController` on the off-to-on edge, feeds it each retired frame's summed GPU
+  pass time, and writes its proposed scale back onto the settings while dynamic resolution is on.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and

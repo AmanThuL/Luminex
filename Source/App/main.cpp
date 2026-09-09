@@ -65,6 +65,24 @@ uint64_t frameNumberFromEnv(const char* name) {
 }
 
 //======================================================================================================================
+// Non-positive, missing, or unparseable leaves dynamic resolution at its Inspector default (off).
+float dynamicResolutionBudgetFromEnv() {
+    const char* raw = std::getenv("LMX_DYNAMIC_RESOLUTION_BUDGET_MS");
+    if (raw == nullptr) {
+        return 0.0f;
+    }
+    const std::string_view text(raw);
+    float budget = 0.0f;
+    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), budget);
+    if (ec != std::errc{} || end != text.data() + text.size() || !(budget > 0.0f)) {
+        LMX_LOG_WARN("LMX_DYNAMIC_RESOLUTION_BUDGET_MS='{}' is not a positive number; ignoring it",
+                     text);
+        return 0.0f;
+    }
+    return budget;
+}
+
+//======================================================================================================================
 // RHI and ImGui objects are scoped inside the lifetime of the SDL-owned Metal layer. Declaration
 // order keeps the device alive until every dependent object has been released.
 int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene) {
@@ -118,6 +136,13 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
     auto shell = lmx::app::EditorShell::create(window, **device, sceneLibrary, initialScene);
     if (!shell) {
         return 1;
+    }
+
+    const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
+    if (dynamicResolutionBudget > 0.0f) {
+        shell->primeDynamicResolution(true, dynamicResolutionBudget);
+        LMX_LOG_INFO("LMX_DYNAMIC_RESOLUTION_BUDGET_MS={}: dynamic resolution starts on",
+                     dynamicResolutionBudget);
     }
 
     const uint64_t maxFrames = frameNumberFromEnv("LMX_MAX_FRAMES");
@@ -256,6 +281,9 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        // The dynamic-resolution controller's attribution is by frame number, so this frame's
+        // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
+        shell->controllerDeclared((*device)->frameNumber());
         // Immediately after beginFrame, which is where the frame slot this pool rotates on has
         // just been proved retired.
         transientPool.beginFrame();
@@ -418,7 +446,8 @@ int main(int argc, char** argv) {
     // Offscreen capture does not initialize SDL or create a window.
     if (options->mode == lmx::app::RunMode::Screenshot) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
-                                       options->frames, options->temporal, options->temporalView);
+                                       options->frames, options->temporal, options->temporalView,
+                                       options->renderScale);
     }
     return runWindowed(*options);
 }

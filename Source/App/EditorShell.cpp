@@ -389,6 +389,15 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
         };
     }
     m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
+    const float renderScaleBeforeDynamicResolution = m_settings.renderScale;
+    applyDynamicResolution(m_dynamicResolutionState, m_resolutionController, m_settings,
+                           newestTimed);
+    if (dynamicResolutionActive(m_settings) &&
+        m_settings.renderScale != renderScaleBeforeDynamicResolution) {
+        LMX_LOG_INFO("render scale {:.2f} -> {:.2f} after {:.2f} ms",
+                     renderScaleBeforeDynamicResolution, m_settings.renderScale,
+                     m_dynamicResolutionState.lastObservedMilliseconds);
+    }
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
@@ -542,15 +551,16 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         // Healed here, immediately before the draw that reads it, so a stale scene id or
         // out-of-range index from any source never reaches the panel (spec section 5).
         m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
-        drawInspectorPanel(open,
-                           InspectorPanelContext{.selection = m_selection,
-                                                 .camera = m_camera,
-                                                 .renderer = renderer,
-                                                 .scene = *m_activeScene,
-                                                 .settings = m_settings,
-                                                 .exposureContext = m_exposureContext,
-                                                 .exposureResetPending = m_exposureResetPending,
-                                                 .temporalState = m_temporalState});
+        drawInspectorPanel(
+            open, InspectorPanelContext{.selection = m_selection,
+                                        .camera = m_camera,
+                                        .renderer = renderer,
+                                        .scene = *m_activeScene,
+                                        .settings = m_settings,
+                                        .exposureContext = m_exposureContext,
+                                        .exposureResetPending = m_exposureResetPending,
+                                        .temporalState = m_temporalState,
+                                        .dynamicResolutionState = m_dynamicResolutionState});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
@@ -603,6 +613,7 @@ render::SceneView EditorShell::sceneView() {
     view.temporal.jitterEnabled = m_settings.jitterEnabled;
     view.temporal.reconstruction = m_settings.reconstruction;
     view.temporal.debugView = m_settings.temporalDebugView;
+    view.temporal.renderScale = m_settings.renderScale;
     view.temporal.sceneGeneration = m_temporalState.sceneGeneration;
     // Consumed here rather than left for main.cpp: a cut is a one-shot camera event, not a render
     // setting, so its latch belongs next to the generation counter it is unrelated to but shares a
@@ -616,6 +627,13 @@ bool EditorShell::consumeExposureReset() {
     const bool pending = m_exposureResetPending;
     m_exposureResetPending = false;
     return pending;
+}
+
+//======================================================================================================================
+void EditorShell::controllerDeclared(uint64_t frame) {
+    if (dynamicResolutionActive(m_settings)) {
+        m_resolutionController.declared(frame);
+    }
 }
 
 //======================================================================================================================

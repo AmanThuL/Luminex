@@ -40,8 +40,12 @@ python3 Tools/GpuDebug/gputrace_dump.py \
   --out /tmp/luminex-frame-dump
 ```
 
-`LMX_CAPTURE_PATH` must be absolute. The capture covers one frame. Inspect the generated manifest
-first, then decoded uniforms and resource images. The capture's schema sidecar records one
+`LMX_CAPTURE_PATH` must be absolute. The capture covers one frame. To reproduce an upscaled frame,
+add `--render-scale <0.5..1.0>` (offscreen) or `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` (a windowed
+run, letting the controller pick the scale the captured frame lands at); the manifest and dumped
+images then show `lmx.pass.temporal.upscale`'s inputs and the scene pass's render area/scissor
+instead of the native resolve's. Inspect the generated manifest first, then decoded uniforms and
+resource images. The capture's schema sidecar records one
 `frameDataUploads` entry per `bindFrameData` call in the captured frame — page label, slot, offset,
 size, alignment, and GPU address — which is what to check when tracing an upload to its page; the
 dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page

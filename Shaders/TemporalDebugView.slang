@@ -14,6 +14,12 @@ import Tonemap;
 struct TemporalDebugViewParams
 {
     uint view; // One of the kView* selectors below.
+    // The motion target is a render-extent signal while every other input and the display target
+    // are at the output extent, so the view needs both to read motion at the right texel.
+    uint renderWidth;
+    uint renderHeight;
+    uint outputWidth;
+    uint outputHeight;
 };
 
 // Mirrors Source/Render/TemporalResolve.h's TemporalDebugView, whose Off never reaches this shader
@@ -64,6 +70,18 @@ Texture2D<float4> gResolved : register(t4); // → MSL [[texture(4)]]
 [[vk::binding(0, 0)]]
 ConstantBuffer<TemporalDebugViewParams> gParams : register(b0); // → MSL [[buffer(0)]]
 
+// The render texel a display pixel's *centre* maps to, clamped so the last row and column of a
+// rounded render extent stay addressable. At the output extent it is the pixel itself. No jitter:
+// this view has none to apply and motion is an unjittered signal. The reprojection diagnostic and
+// the upscale kernel map the same centre and then add the frame's jitter offset, because what they
+// address is the jittered render image rather than the motion of a display pixel.
+int3 motionCoordFor(float2 pixel)
+{
+    float2 render = float2(float(gParams.renderWidth), float(gParams.renderHeight));
+    float2 output = float2(float(gParams.outputWidth), float(gParams.outputHeight));
+    return int3(clamp(int2((pixel + 0.5) * render / output), int2(0, 0), int2(render) - 1), 0);
+}
+
 struct VSOutput
 {
     float4 position : SV_Position;
@@ -108,7 +126,7 @@ float4 fragmentMain(VSOutput input): SV_Target
     int3 coord = int3(int2(input.position.xy), 0);
     if (gParams.view == kViewMotionVectors)
     {
-        float2 motion = gMotion.Load(coord).xy;
+        float2 motion = gMotion.Load(motionCoordFor(float2(coord.xy))).xy;
         if (isinf(motion.x) || isinf(motion.y))
         {
             return float4(1.0, 0.0, 1.0, 1.0);

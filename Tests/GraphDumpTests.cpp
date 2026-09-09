@@ -389,3 +389,38 @@ TEST_CASE("a third colour attachment is numbered in the dump", "[render][graph]"
     REQUIRE(dump.find("color attachment[1] r1 v0") != std::string::npos);
     REQUIRE(dump.find("color attachment[2] r2 v0") != std::string::npos);
 }
+
+//======================================================================================================================
+// A frame that renders part of its attachments: the pass that declared a sub-rectangle says so, and
+// the one that renders the whole target still prints exactly what it always has, so a dump reader
+// can tell a scaled frame from a full-resolution one.
+TEST_CASE("a render area appears in the dump", "[render][graph]") {
+    FakeTexture sceneColor{64};
+    FakeTexture sceneDepth{64};
+    FakeTexture displayColor{64};
+    RenderGraph graph;
+    const GraphTexture color =
+        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+    const GraphTexture depth =
+        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+    const GraphTexture display =
+        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+
+    PassDesc scene;
+    scene.color = ColorAttachment{.handle = color};
+    scene.depth = DepthAttachment{.handle = depth};
+    scene.renderAreaWidth = 32;
+    scene.renderAreaHeight = 16;
+    graph.addPass("lmx.pass.scene", scene, kNoWork);
+
+    PassDesc displayPass;
+    displayPass.textureReads.push_back(nextVersion(color));
+    displayPass.color = ColorAttachment{.handle = display};
+    graph.addPass("lmx.pass.display", displayPass, kNoWork);
+
+    graph.presentTexture(nextVersion(display));
+
+    const auto record = graph.compileFrame(5);
+    REQUIRE(record.has_value());
+    requireMatchesGolden(dumpCompiledFrame(*record), "frame-render-area.txt");
+}
