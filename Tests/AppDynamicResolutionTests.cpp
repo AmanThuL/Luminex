@@ -115,7 +115,10 @@ TEST_CASE("applyDynamicResolution writes settings.renderScale from the controlle
 TEST_CASE("disabling dynamic resolution leaves renderScale at the controller's last value",
           "[app]") {
     render::ResolutionController controller;
-    controller.reset(0.65f);
+    // Deliberately different from settings.renderScale below: if the disabled branch wrongly
+    // wrote settings.renderScale = controller.scale() (as the enabled branch does), this would
+    // overwrite 0.65f with 0.5f and the assertion below would catch it.
+    controller.reset(0.5f);
     DynamicResolutionState state;
     state.wasEnabled = true;
     EditorRenderSettings settings;
