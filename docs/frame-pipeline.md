@@ -64,14 +64,15 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       extent, reads the previous colour slot + scene colour + motion → temporalDiagnostic; culled
 │       unless ReprojectionError sinks it
 │
-├─ 3. NativeTaa at render == output: lmx.pass.temporal.resolve   compute, 8×8, reads scene colour,
-│       both depth slots, motion, reactive, the previous colour slot, the exposure pair → this
-│       frame's colour slot directly (no copy) and, only when sunk, the rejection/reprojected
-│       transients. Dilated motion/disocclusion, history exposure correction, YCoCg clipping, an
-│       inverse-luminance blend saturating to 1 on rejection or full reactive weight
-│       (`Shaders/TemporalResolve.slang`, ADR 0014); any other frame runs lmx.pass.temporal.upscale
-│       instead (`Shaders/TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled
-│       writes this frame's colour slot instead, right here
+├─ 3. NativeTaa when render == output and (this frame resets or previous extents match):
+│       lmx.pass.temporal.resolve   compute, 8×8, reads scene colour, both depth slots, motion,
+│       reactive, the previous colour slot, the exposure pair → this frame's colour slot directly
+│       (no copy) and, only when sunk, the rejection/reprojected transients. Dilated motion/
+│       disocclusion, history exposure correction, YCoCg clipping, an inverse-luminance blend
+│       saturating to 1 on rejection or full reactive weight (`Shaders/TemporalResolve.slang`,
+│       ADR 0014); any other frame runs lmx.pass.temporal.upscale instead (`Shaders/
+│       TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled writes this frame's
+│       colour slot instead, right here
 │
 ├─ 4. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
 ├─ 5. lmx.pass.exposure.histogram        compute, over the render extent, reads *raw* scene color +
@@ -287,8 +288,7 @@ exits with an error instead of falling back.
 3. **Baked-DDS selection keys on image index alone**, not on how a material uses that image; a
    glTF file reusing one image in both a color and a data role would need the bake to tell them
    apart, which it does not yet do.
-4. **Sponza startup is still synchronous** — decode and upload still block the window before it
-   becomes responsive; asynchronous staging remains future work.
+4. **Sponza startup is still synchronous**; asynchronous staging remains future work.
 5. **Portability** — Metal remains the only backend; the reversed-Z, HDR, graph, and barrier
    conventions above are what a future D3D12 backend has to reproduce.
 

@@ -61,13 +61,17 @@ correctly on the one frame whose history was accumulated at another extent. `Raw
 split between a plain commit copy and a spatial-only commit (`SpatialUpscale.slang`) that shares its
 five-tap fetch with the temporal kernel.
 
-**Terminal use — extends ADR 0015's table.** An upscaled `Raw` frame records `ShaderRead` for the
-current colour slot (the spatial-upscale compute pass reads render-extent scene colour and writes
-the output-extent slot, so the write itself is a `StorageWrite`, and the row this extends is the
-mode's read of the *other* slot and of scene colour) rather than `CopyDestination`: unlike M6.2's
-plain copy, the upscale kernel samples scene colour rather than blitting it, so scene colour's
-recorded terminal use for that frame is `ShaderRead`, not `CopyDestination`. Every other row of ADR
-0015's table is unchanged.
+**Terminal use — extends ADR 0015's current-slot row.** An upscaled `Raw` frame's current colour
+slot is recorded `ShaderRead`, not `CopyDestination`: `lmx.pass.temporal.commitUpscaled` writes it
+(a `StorageWrite`), but bloom and display then sample it directly — unlike M6.2's plain copy, an
+upscaled `Raw` frame has no separate consumer reading a distinct raw-colour source, so the slot's
+own final access is a shader read, the same rule ADR 0015 already applies to every other consumed
+colour slot. Every other row of ADR 0015's table is unchanged. Scene colour's terminal use has no
+row in that table — it is a separate record the Renderer keeps for itself
+(`m_previousSceneColorUse`), not part of `TemporalResolve::recordFrame`'s slot bookkeeping. An
+upscaled `Raw` frame sets that record to `ShaderRead` rather than `CopyDestination`, because
+`lmx.pass.temporal.commitUpscaled` samples scene colour (the spatial-upscale fetch) instead of
+blitting it, and nothing else copies out of scene colour that frame.
 
 **The controller is a pure, App-driven contract.** `Source/Render/ResolutionController` observes a
 retired frame's summed GPU pass time against a budget and headroom, and proposes the next
