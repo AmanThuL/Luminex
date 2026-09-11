@@ -25,7 +25,7 @@ inspectable codebase.
 | Materials | Full glTF metallic-roughness inputs (base color, metallic-roughness, occlusion, emissive, normal) shaded with a GGX BRDF and diffuse/specular image-based lighting |
 | Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
 | Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
-| Content | Deterministically converted Crytek Sponza, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
+| Content | Deterministically converted Crytek Sponza, optional San Miguel with masked foliage, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
 | Motion | Camera and rigid-object motion vectors with an explicit invalid-motion sentinel, and a persistent, reset-aware temporal history feeding diagnostic reprojection views |
 | Temporal stability | Native-resolution temporal anti-aliasing with disocclusion rejection and neighbourhood clipping, plus adaptive exposure that corrects its own history for the brightness it was recorded at |
 | Upscaling | Temporal upscaling that reconstructs a full-resolution image from a smaller, jittered render, with an automatic GPU-time-driven dynamic resolution controller |
@@ -89,7 +89,7 @@ at runtime; and bakes every base-color and normal image into a deterministic off
 Generated content remains under the gitignored `Assets/Fetched/` directory.
 
 The editor opens on Sponza. Hold right mouse in the viewport and use WASD + Q/E to fly. Select
-Damaged Helmet or the diagnostic material lab scene from the Inspector, or render any scene
+Damaged Helmet or the diagnostic material lab scene from the Scene panel, or render any scene
 without a window:
 
 ```bash
@@ -98,6 +98,10 @@ xmake run App --scene damaged-helmet --screenshot helmet.bmp
 
 Use `--temporal metalfx` to select MetalFX in the editor or an offscreen run; add
 `--render-scale 0.5` to reconstruct from half-resolution inputs. Native TAA stays the default.
+For a detailed courtyard comparison, install the optional San Miguel archive with
+`xmake setup --san-miguel`, then launch `xmake run App --scene san-miguel`. The
+[temporal comparison guide](docs/guides/temporal-comparison.md) covers its repeatable camera rail,
+synchronized three-mode reports and optional CPU FLIP difference maps.
 
 <details>
 <summary><strong>Testing, validation and GPU capture</strong></summary>

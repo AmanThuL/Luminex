@@ -452,5 +452,8 @@ int main(int argc, char** argv) {
                                        options->frames, options->temporal, options->temporalView,
                                        options->renderScale);
     }
+    if (options->mode == lmx::app::RunMode::CaptureSequence) {
+        return lmx::app::runCaptureSequence(*options);
+    }
     return runWindowed(*options);
 }

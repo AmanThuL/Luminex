@@ -89,6 +89,12 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   only for that selected view, while rejection, blend-weight and per-pixel age remain native-only.
   Vendor colour imports retain conservative `ExternalWrite`; current depth and scene colour record
   `ExternalRead`. Native terminal-use rows remain unchanged.
+  `AlphaMode::Mask` selects dedicated `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask`
+  pipelines ([ADR 0018](../decisions/0018-masked-material-coverage.md)). Shared `AlphaMask.slang`
+  discards when base-color texture alpha times factor alpha is below the material cutoff; color,
+  depth, motion and reactive coverage share one scene invocation. Masked shadows use the same UV
+  transform and cutoff. One- or two-sided variants support foliage and reverse back-face shading
+  normals; the cutoff has its own frame-data block. Opaque shaders and uniform layouts stay separate.
 - **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
@@ -97,7 +103,11 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   It also owns object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`) and rigid animation (`SceneAnimation`, glTF-baked
   `RigidTrack`s, the shared `SceneEnvironment.h` sky/light rig, and the `temporal-lab`/`milk-truck`
-  catalog entries).
+  catalog entries). The six-scene catalog also includes optional `san-miguel`, imported at authored
+  metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
+  pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
+  preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
+  The glTF loader carries MASK cutoff/double-sided fields and rejects referenced BLEND materials.
 - **App** owns SDL3, the editor shell, and the frame loop. `Source/App/Panels/` holds the five
   panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and
@@ -135,6 +145,11 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   Reconstruction offers Raw, Native TAA and the capability's algorithm name, with effective-mode,
   fallback and vendor-reset status. Native TAA remains the default; `--temporal metalfx` requests
   the vendor path. Native-only diagnostic entries are disabled while the effective mode is vendor.
+  `--capture-sequence <directory> --frames N --warmup W` writes N numbered BMPs after W unsaved
+  frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
+  Vendor fallback fails a sequence. The offline [comparison workflow](../guides/temporal-comparison.md)
+  synchronizes Raw/Native/MetalFX reports and optional CPU LDR-FLIP on final sRGB images; Native TAA
+  is the comparison baseline, not ground truth. Neither FLIP nor its Python dependencies enter App.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and

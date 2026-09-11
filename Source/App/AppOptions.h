@@ -19,8 +19,9 @@ namespace lmx::app {
 
 /// Selects the application's interactive or offscreen execution path.
 enum class RunMode {
-    Windowed,   ///< Interactive editor window.
-    Screenshot, ///< Offscreen render written to disk.
+    Windowed,        ///< Interactive editor window.
+    Screenshot,      ///< Offscreen render written to disk.
+    CaptureSequence, ///< Every post-warmup offscreen frame and its metadata written to a directory.
 };
 
 /// Startup reconstruction selected by `--temporal <off|raw|taa|metalfx>` in both run modes.
@@ -38,14 +39,16 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode);
 struct AppOptions {
     RunMode mode = RunMode::Windowed; ///< Execution path selected by command-line options.
     engine::SceneId initialScene = engine::defaultSceneId(); ///< Scene selected at startup.
-    std::filesystem::path screenshotPath; ///< Destination used in screenshot mode.
+    std::filesystem::path screenshotPath;      ///< Destination used in screenshot mode.
+    std::filesystem::path captureSequencePath; ///< New or empty directory for a frame sequence.
+    /// Unsaved frames before the sequence; valid only with captureSequencePath.
+    uint32_t warmup = 0;
     /// The interactive window opens maximized to the display's usable bounds; `--windowed` keeps
     /// the fixed default size instead. Irrelevant, but accepted, in screenshot mode.
     bool maximized = true;
-    /// Screenshot-mode-only: how many frames to render before writing the last one, advancing the
-    /// animation by 1/60 s and following the camera track (if any) between them -- the roadmap's
-    /// declared warmup and intermediate temporal captures. At least 1; irrelevant, but accepted,
-    /// in windowed mode.
+    /// Screenshot: total frames before saving the last. Sequence: number of saved frames after
+    /// warmup. Both advance animation at 60 Hz and follow the scene camera track, if any.
+    /// At least 1; irrelevant, but accepted, in windowed mode.
     uint32_t frames = 1;
     /// Initial reconstruction in either run mode; defaults to Native TAA.
     TemporalMode temporal = TemporalMode::Taa;

@@ -9,8 +9,10 @@
 #include "Render/VendorTemporalScaler.h"
 
 #include <charconv>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -85,6 +87,9 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode) {
 //======================================================================================================================
 AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view screenshotPath;
+    std::string_view captureSequencePath;
+    uint32_t warmup = 0;
+    bool warmupSpecified = false;
     std::string_view sceneName = engine::sceneIdString(engine::defaultSceneId());
     bool maximized = true;
     uint32_t frames = 1;
@@ -102,6 +107,21 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--screenshot needs an output path: App --screenshot <out.bmp>");
             }
             screenshotPath = arguments[i];
+        } else if (argument == "--capture-sequence") {
+            if (++i >= arguments.size() || arguments[i].empty() || !looksLikeValue(arguments[i])) {
+                return fail("--capture-sequence needs a non-empty output directory");
+            }
+            captureSequencePath = arguments[i];
+        } else if (argument == "--warmup") {
+            if (++i >= arguments.size()) {
+                return fail("--warmup needs a non-negative frame count");
+            }
+            const auto raw = arguments[i];
+            const auto [end, ec] = std::from_chars(raw.data(), raw.data() + raw.size(), warmup);
+            if (ec != std::errc{} || end != raw.data() + raw.size()) {
+                return fail("--warmup needs a non-negative frame count");
+            }
+            warmupSpecified = true;
         } else if (argument == "--scene") {
             if (++i >= arguments.size()) {
                 return fail("--scene needs an ID: App --scene <" + sceneIdList("|") + ">");
@@ -176,7 +196,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             const auto [end, ec] =
                 std::from_chars(raw.data(), raw.data() + raw.size(), parsedScale);
             if (ec != std::errc{} || end != raw.data() + raw.size() ||
-                parsedScale < render::kMinRenderScale || parsedScale > render::kMaxRenderScale) {
+                !std::isfinite(parsedScale) || parsedScale < render::kMinRenderScale ||
+                parsedScale > render::kMaxRenderScale) {
                 return fail("--render-scale needs a value in [0.5, 1.0], got '" + std::string(raw) +
                             "'");
             }
@@ -187,9 +208,20 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
                 ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
-                "[--render-scale <0.5..1.0>] "
-                "(--frames N renders N frames and captures the last, including temporal warmup)");
+                "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N>] "
+                "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
+                "after W unsaved warmup frames)");
         }
+    }
+
+    if (!captureSequencePath.empty() && !screenshotPath.empty()) {
+        return fail("--capture-sequence conflicts with --screenshot");
+    }
+    if (warmupSpecified && captureSequencePath.empty()) {
+        return fail("--warmup requires --capture-sequence");
+    }
+    if (uint64_t{warmup} + frames > std::numeric_limits<uint32_t>::max()) {
+        return fail("--warmup plus --frames exceeds the supported frame count");
     }
 
     if (temporal == TemporalMode::Vendor && render::nativeOnlyTemporalView(temporalView)) {
@@ -221,12 +253,17 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.initialScene = *sceneId;
     options.maximized = maximized;
     options.frames = frames;
+    options.warmup = warmup;
+    options.captureSequencePath = captureSequencePath;
     options.temporal = temporal;
     options.temporalView = temporalView;
     options.renderScale = renderScale;
     if (!screenshotPath.empty()) {
         options.mode = RunMode::Screenshot;
         options.screenshotPath = screenshotPath;
+    }
+    if (!captureSequencePath.empty()) {
+        options.mode = RunMode::CaptureSequence;
     }
     return options;
 }

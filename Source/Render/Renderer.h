@@ -5,6 +5,7 @@
 
 #pragma once
 #include "RHI/RHI.h"
+#include "Render/AlphaMode.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
@@ -14,6 +15,7 @@
 
 #include <glm/glm.hpp>
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -54,6 +56,9 @@ struct Material {
     float occlusionStrength = 1.0f;
     glm::vec3 emissive{0.0f};    ///< linear radiance the surface emits, added after all lighting
     glm::mat4 uvTransform{1.0f}; ///< Material UV transform applied before texture sampling.
+    AlphaMode alphaMode = AlphaMode::Opaque; ///< Opaque or alpha-tested coverage.
+    float alphaCutoff = 0.5f; ///< Nonnegative MASK threshold for texture alpha times albedo alpha.
+    bool doubleSided = false; ///< MASK surfaces render both faces and reverse back-face normals.
 };
 
 /// One object to draw this frame. Non-owning: `mesh` and the material's textures must outlive the
@@ -419,6 +424,10 @@ private:
     // ScenePassAuto.slang's header for the full reasoning.
     std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
+    std::array<std::unique_ptr<rhi::ShaderLibrary>, 2> m_maskSceneLibraries;
+    std::unique_ptr<rhi::ShaderLibrary> m_maskShadowLibrary;
+    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 16> m_maskScenePipelines;
+    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 2> m_maskShadowPipelines;
     std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_skyAutoLibrary; // SkyAuto.slang; same reasoning as above
     std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;

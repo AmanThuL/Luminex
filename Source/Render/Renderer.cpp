@@ -51,6 +51,21 @@ struct ShadowObjectUniforms {
 };
 static_assert(sizeof(ShadowObjectUniforms) == 64, "must match ShadowPass.slang's ObjectUniforms");
 
+struct ShadowMaskObjectUniforms {
+    glm::mat4 mvp;
+    glm::mat4 uvTransform;
+    float albedoAlpha;
+    float padding[3]{};
+};
+static_assert(sizeof(ShadowMaskObjectUniforms) == 144);
+static_assert(offsetof(ShadowMaskObjectUniforms, albedoAlpha) == 128);
+
+struct AlphaMaskParams {
+    float cutoff;
+};
+static_assert(sizeof(AlphaMaskParams) == 4);
+constexpr uint32_t kAlphaMaskParamsSlot = 4;
+
 // Mirrors Shaders/Lighting.slang's DirLight.
 struct DirLightUniform {
     glm::vec3 strength;     // 0
@@ -361,6 +376,18 @@ void registerUniformLayoutsForCapture() {
          .slot = kObjectUniformsSlot,
          .sizeBytes = sizeof(ShadowObjectUniforms),
          .fields = {{"mvp", offsetof(ShadowObjectUniforms, mvp), "float4x4"}}});
+
+    schema.registerUniformStruct(
+        {.name = "ShadowMaskObjectUniforms",
+         .slot = kObjectUniformsSlot,
+         .sizeBytes = sizeof(ShadowMaskObjectUniforms),
+         .fields = {{"mvp", offsetof(ShadowMaskObjectUniforms, mvp), "float4x4"},
+                    {"uvTransform", offsetof(ShadowMaskObjectUniforms, uvTransform), "float4x4"},
+                    {"albedoAlpha", offsetof(ShadowMaskObjectUniforms, albedoAlpha), "float"}}});
+    schema.registerUniformStruct({.name = "AlphaMaskParams",
+                                  .slot = kAlphaMaskParamsSlot,
+                                  .sizeBytes = sizeof(AlphaMaskParams),
+                                  .fields = {{"cutoff", 0, "float"}}});
 
     // Derive array offsets from the element stride to avoid duplicated layout literals.
     constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
@@ -914,6 +941,67 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(stage.error());
     }
 
+    for (uint32_t automatic = 0; automatic < 2; ++automatic) {
+        auto library = device.loadShaderLibrary(automatic ? "Shaders/ScenePassAutoMask"
+                                                          : "Shaders/ScenePassMask");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
+        self->m_maskSceneLibraries[automatic] = std::move(*library);
+        for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
+            for (uint32_t motion = 0; motion < 2; ++motion) {
+                for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
+                    const uint32_t index = doubleSided * 8 + automatic * 4 + motion * 2 + wireframe;
+                    const auto label = std::format("lmx.render.maskScenePipeline.{}", index);
+                    auto pipeline = device.createGraphicsPipeline(
+                        {.library = self->m_maskSceneLibraries[automatic].get(),
+                         .vertexEntry = motion ? "vertexMainMotion" : "vertexMain",
+                         .fragmentEntry = motion ? "fragmentMainMotion" : "fragmentMain",
+                         .colorFormat = kSceneColorFormat,
+                         .extraColorFormats = {motion ? kMotionFormat : rhi::Format::Unknown,
+                                               motion ? kReactiveFormat : rhi::Format::Unknown,
+                                               rhi::Format::Unknown},
+                         .extraColorCount = motion ? 2u : 0u,
+                         .depthFormat = rhi::Format::D32Float,
+                         .depthTestEnable = true,
+                         .depthWriteEnable = true,
+                         .fillMode = wireframe ? rhi::FillMode::Wireframe : rhi::FillMode::Solid,
+                         .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
+                         .depthCompare = rhi::DepthCompare::Greater,
+                         .label = label});
+                    if (!pipeline) {
+                        return std::unexpected(pipeline.error());
+                    }
+                    self->m_maskScenePipelines[index] = std::move(*pipeline);
+                }
+            }
+        }
+    }
+    auto shadowMaskLibrary = device.loadShaderLibrary("Shaders/ShadowPassMask");
+    if (!shadowMaskLibrary) {
+        return std::unexpected(shadowMaskLibrary.error());
+    }
+    self->m_maskShadowLibrary = std::move(*shadowMaskLibrary);
+    for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
+        auto pipeline = device.createGraphicsPipeline(
+            {.library = self->m_maskShadowLibrary.get(),
+             .vertexEntry = "vertexMain",
+             .fragmentEntry = "fragmentMain",
+             .colorFormat = rhi::Format::Unknown,
+             .depthFormat = rhi::Format::D32Float,
+             .depthTestEnable = true,
+             .depthWriteEnable = true,
+             .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
+             .depthCompare = rhi::DepthCompare::Greater,
+             .depthBias = kShadowDepthBias,
+             .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
+                                  : "lmx.render.maskShadowPipeline"});
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
+        self->m_maskShadowPipelines[doubleSided] = std::move(*pipeline);
+    }
+
     if (auto targets = self->resize(width, height); !targets) {
         return std::unexpected(targets.error());
     }
@@ -1191,17 +1279,40 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // Greater test passes against a cleared texel.
     shadowDesc.depth = DepthAttachment{
         .handle = shadowMap, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
-    graph.addPass("lmx.pass.shadow", std::move(shadowDesc),
-                  [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
-                      commands.bindPipeline(*m_shadowPipeline);
-                      for (const DrawItem& item : view.items) {
-                          LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
-                          const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
-                          commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-                          commands.bindFrameData(kObjectUniformsSlot, uniforms);
-                          commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
-                      }
-                  });
+    graph.addPass(
+        "lmx.pass.shadow", std::move(shadowDesc),
+        [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
+            rhi::GraphicsPipeline* bound = nullptr;
+            for (const DrawItem& item : view.items) {
+                LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
+                const bool masked = item.material.alphaMode == AlphaMode::Mask;
+                auto* pipeline =
+                    masked ? m_maskShadowPipelines[item.material.doubleSided ? 1 : 0].get()
+                           : m_shadowPipeline.get();
+                if (pipeline != bound) {
+                    commands.bindPipeline(*pipeline);
+                    bound = pipeline;
+                }
+                commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+                if (masked) {
+                    const ShadowMaskObjectUniforms uniforms{.mvp = lightViewProj * item.model,
+                                                            .uvTransform =
+                                                                item.material.uvTransform,
+                                                            .albedoAlpha = item.material.albedo.a};
+                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
+                    commands.bindFrameData(kAlphaMaskParamsSlot,
+                                           AlphaMaskParams{item.material.alphaCutoff});
+                    commands.bindTexture(kDiffuseTextureSlot, item.material.diffuse
+                                                                  ? *item.material.diffuse
+                                                                  : *m_whiteTexture);
+                    commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
+                } else {
+                    const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
+                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
+                }
+                commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+            }
+        });
 
     // Rasterisation takes the jitter; motion never does. With temporal off the two are the same
     // matrix, derived exactly as this frame's projection * view was before jitter existed.
@@ -1306,22 +1417,22 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
             // branch in one, is what keeps the manual pipeline's compiled output identical to
             // pre-M5 -- see ScenePassAuto.slang's header.
+            rhi::GraphicsPipeline* opaquePipeline = nullptr;
             if (temporalEnabled) {
-                // The motion twins of the four pipelines below: same shading, one more attachment.
-                if (view.autoExposureEnabled) {
-                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAutoMotion
-                                                         : *m_scenePipelineAutoMotion);
-                } else {
-                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineMotion
-                                                         : *m_scenePipelineMotion);
-                }
-            } else if (view.autoExposureEnabled) {
-                commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAuto
-                                                     : *m_scenePipelineAuto);
+                opaquePipeline = view.autoExposureEnabled
+                                     ? (view.wireframe ? m_sceneWireframePipelineAutoMotion.get()
+                                                       : m_scenePipelineAutoMotion.get())
+                                     : (view.wireframe ? m_sceneWireframePipelineMotion.get()
+                                                       : m_scenePipelineMotion.get());
             } else {
-                commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline
-                                                     : *m_scenePipeline);
+                opaquePipeline =
+                    view.autoExposureEnabled
+                        ? (view.wireframe ? m_sceneWireframePipelineAuto.get()
+                                          : m_scenePipelineAuto.get())
+                        : (view.wireframe ? m_sceneWireframePipeline.get() : m_scenePipeline.get());
             }
+            commands.bindPipeline(*opaquePipeline);
+            rhi::GraphicsPipeline* boundScenePipeline = opaquePipeline;
             commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
             commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
             commands.bindSampler(kIblSamplerSlot, *m_iblSampler);
@@ -1348,6 +1459,21 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
             for (const DrawItem& item : view.items) {
                 const Material& material = item.material;
+                const bool masked = material.alphaMode == AlphaMode::Mask;
+                const uint32_t maskIndex = (material.doubleSided ? 8u : 0u) +
+                                           (view.autoExposureEnabled ? 4u : 0u) +
+                                           (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
+                auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
+                if (pipeline != boundScenePipeline) {
+                    commands.bindPipeline(*pipeline);
+                    boundScenePipeline = pipeline;
+                }
+                if (masked) {
+                    LMX_ASSERT(std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f,
+                               "MASK cutoff must be finite and nonnegative");
+                    commands.bindFrameData(kAlphaMaskParamsSlot,
+                                           AlphaMaskParams{material.alphaCutoff});
+                }
                 ObjectUniforms uniforms{};
                 uniforms.mvp = viewProj * item.model;
                 uniforms.model = item.model;

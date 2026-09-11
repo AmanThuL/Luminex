@@ -7,7 +7,8 @@ This roadmap owns current milestone identifiers, boundaries, dependencies, outco
 ## Current baseline
 
 M6.4's optional vendor temporal adapter is implemented on its feature branch with automated
-validation complete; [its evidence record](milestones/m6.4.md) retains the owner visual QA and
+adapter validation and the owner-approved real-scene comparison implementation complete.
+[Its evidence record](milestones/m6.4.md) retains the owner visual QA and
 opaque-capture inspection still required before acceptance. The shipped baseline remains M6.3.
 
 The shipped baseline is [M6.3](milestones/m6.3.md) over [M6.2](milestones/m6.2.md) over [M6.1](milestones/m6.1.md): a scene pass that rasterises into a render rectangle smaller than the output extent, temporal upscaling that reconstructs the output-extent image from jittered lower-resolution samples, and a pure GPU-time-driven controller that proposes the render scale, with every temporal target still allocating at the output extent so a scale change reallocates nothing (ADR 0016), layered over M6.2's native-resolution TAA that reprojects, rejects, clips and accumulates over engine-owned rigid-object motion, a per-pixel reactive weight, and exposure that adapts at a bounded rate and corrects history for the brightness it was recorded at (ADR 0014), over M6.1's opt-in engine-owned rigid-object motion with Renderer-owned camera history, a declared motion-vector convention, and one Renderer-owned, reset-aware history texture (ADR 0013), over M5.5's scene-linear PBR/HDR, M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing, M5.2's ADR 0010 frame-data path, and the M5.3–M5.5 selection workspace and detached graph view. At render scale 1.0 the frame declaration and native kernel are unchanged from M6.2; with temporal inputs off, the frame declaration and fixed-camera output are unchanged from M5.5. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
@@ -211,6 +212,10 @@ and a universal GPU score. Experiment-local instance tables do not define persis
 **Outcome:** MetalFX is a replaceable reconstruction implementation over the same engine-owned temporal contract.
 
 **Deliver:** A capability-selected adapter consuming the same engine-owned color, depth, motion, jitter, exposure, extent and reset semantics; vendor packing remains inside the adapter.
+
+The owner-approved visual extension adds optional San Miguel, binary masked foliage and a fixed
+camera rail, plus synchronized captures and optional offline FLIP differences against Native TAA.
+This completes the deferred real-scene comparison; blended transparency remains in M8.
 
 **Exit gate:** Native and MetalFX replay matching input sequences with separate valid histories; switching is correct; native fallback and labeled resources are validation-clean; captures identify algorithms and frame inputs.
 

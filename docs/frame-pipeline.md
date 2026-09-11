@@ -32,14 +32,14 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       frame. Auto mode: only on a reset trigger
 │
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
-│       every opaque DrawItem, depth bias {-4.0, -32.0} (negated for reversed-Z), light 0 only
+│       opaque and masked DrawItems, depth bias {-4.0, -32.0} (reversed-Z), light 0 only
 │       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
 │
 ├─ 2. lmx.pass.scene       → scene color (RGBA16Float), lmx.render.motion (RG16Float, extra 0),
 │    │  lmx.render.reactive (R8Unorm, extra 1, cleared to 0) + this frame's depth slot, viewport-sized
 │       │  per-pass uniforms (b2): viewProj, shadowTransform, eye, time, preExposure,
 │       │  3 directional lights, shadow filter
-│       ├─ opaque DrawItems: GGX metallic-roughness BRDF (direct lights) + diffuse/specular IBL
+│       ├─ opaque/masked DrawItems: GGX metallic-roughness BRDF (direct lights) + diffuse/specular IBL
 │       │    (split-sum reconstruction with Fdez-Agüera multi-scatter compensation) + shadow
 │       │    factor (25-tap Poisson PCF or PCSS) + normal mapping (TBN) + occlusion (image-based
 │       │    terms only) + emissive, summed and pre-exposed; nothing here encodes sRGB. Per-draw
@@ -144,6 +144,11 @@ unless an engine diagnostic samples it. Native terminal-use rows remain unchange
 
 Vertex data is bindless vertex-pulling everywhere: a `StructuredBuffer<VertexPNTU>` at slot b0
 (48-byte pos/normal/tangent₄/uv), indices as plain uint32 buffers consumed per draw.
+
+Masked materials select `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask` (ADR 0018).
+Shared `AlphaMask` discards texture alpha × factor alpha below cutoff, using the same UV transform;
+scene color/depth/motion/reactive share coverage. Two-sided variants reverse back-face shading
+normals. Opaque shaders and uniforms stay separate; ordinary alpha mips can thin distant foliage.
 
 ## The render graph
 
@@ -266,16 +271,21 @@ submission does not make ImGui a core RHI dependency.
 
 ## Scenes
 
-The Scene panel and `--scene` share five catalog IDs: **Sponza** (`sponza`, default, converted
+The Scene panel and `--scene` share six catalog IDs: **Sponza** (`sponza`, default, converted
 Crytek OBJ), **Damaged Helmet** (`damaged-helmet`, glTF), **CesiumMilkTruck** (`milk-truck`, rigid
-animation), **MaterialLab** (`material-lab`, procedural materials and image diagnostics), and
+animation), **MaterialLab** (`material-lab`, procedural materials and image diagnostics),
 **TemporalLab** (`temporal-lab`, checker floor, rigid/orbiting motion, emissive and invalid-motion
-objects). The two procedural labs are always available.
+objects), and **San Miguel** (`san-miguel`, masked courtyard, authored metre scale and a 12-second
+camera rail). San Miguel requires `xmake setup --san-miguel`; the two procedural labs are always available.
 MaterialLab uses the pinned CC0 Studio Small 09 HDRI for its visible sky and generated IBL when
 setup has fetched it, and logs before falling back to a deterministic neutral environment otherwise.
 The other scenes retain the shared code-generated neutral cubemap and IBL set. Missing required
 glTF assets disable their dropdown entries with setup guidance; an unavailable explicit CLI scene
 exits with an error instead of falling back.
+
+`--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
+60 Hz, with camera/settings/status metadata. The [offline comparison guide](guides/temporal-comparison.md)
+covers synchronized reports and optional LDR-FLIP differences against Native TAA, not ground truth.
 
 ## Known limits
 
