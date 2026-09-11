@@ -42,6 +42,8 @@ struct InspectorPanelContext {
     /// for the Temporal block's "Frame GPU time" status row. Read-only here -- the shell's
     /// applyDynamicResolution() is what advances it, once per buildUI.
     const DynamicResolutionState& dynamicResolutionState;
+    const rhi::TemporalScalerSupport&
+        temporalSupport; ///< Fixed device capability and display name.
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

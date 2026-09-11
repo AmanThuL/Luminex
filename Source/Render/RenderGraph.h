@@ -99,13 +99,14 @@ struct TransientBufferDesc {
 };
 
 /// What kind of work a declared pass encodes, and therefore which RHI pass scope execute() opens
-/// for it. The kind is fixed by the declaration path -- addPass, addComputePass, addCopyPass -- so
+/// for it, if any. Each declaration path fixes the kind, so
 /// a pass cannot carry a kind its declaration does not fit: attachments exist only on the raster
 /// path, and copy source/destination uses only on the copy one.
 enum class PassKind {
     Raster,  ///< Encoded as a render pass over its attachments.
     Compute, ///< Encoded as a compute pass.
-    Copy     ///< Encoded as a copy pass.
+    Copy,    ///< Encoded as a copy pass.
+    External ///< Encoded by an RHI-owned object, outside any graph-opened RHI pass scope.
 };
 
 /// What a pass does with one declared resource version. It is what the graph's validation messages
@@ -253,6 +254,15 @@ struct CopyPassDesc {
     std::vector<GraphBuffer> bufferSources;          ///< Buffers the copies read from.
     std::vector<TextureUseDesc> textureDestinations; ///< Textures the copies write into.
     std::vector<GraphBuffer> bufferDestinations;     ///< Buffers the copies write into or fill.
+};
+
+/// Textures an RHI-owned operation reads and writes. Versioning and subresource validation follow
+/// ComputePassDesc; barriers use ExternalRead and ExternalWrite. The callback runs between RHI
+/// passes and owns the operation's encoding and timing through its RHI command.
+struct ExternalPassDesc {
+    std::vector<TextureUseDesc> textureReads; ///< Textures the external operation consumes.
+    std::vector<TextureUseDesc>
+        textureWrites; ///< Textures it overwrites, producing the next version.
 };
 
 /// What a pass may touch while it runs.
@@ -516,7 +526,7 @@ public:
 
     /// Declares a raster pass. `label` names it in validation messages and is copied; `execute`
     /// must be non-empty. Declaration order is the pass index space Schedule reports, and is the
-    /// tie-break compile() uses between passes that do not depend on each other -- the three
+    /// tie-break compile() uses between passes that do not depend on each other -- all
     /// declaration paths share one index space, in the order they were called.
     ///
     /// Nothing is validated here beyond handle sanity, because a pass may legitimately name a
@@ -530,6 +540,10 @@ public:
     /// Declares a copy pass, on addPass's terms. execute() opens an RHI copy pass around the body,
     /// so the body records copies and fills and binds nothing.
     void addCopyPass(std::string_view label, CopyPassDesc desc, ExecuteFn execute);
+
+    /// Declares an external operation, on addPass's terms. The callback runs without an RHI pass
+    /// scope and must encode the operation through an RHI-owned object, which supplies its timing.
+    void addExternalPass(std::string_view label, ExternalPassDesc desc, ExecuteFn execute);
 
     /// Roots a result so it survives the frame, for the caller to read through the texture it
     /// imported. The version must be one a pass produced: exporting an imported texture that no

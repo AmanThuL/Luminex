@@ -26,6 +26,14 @@ struct TemporalEditorState {
     bool cameraCutPending = false;
 };
 
+/// Names a reconstruction option using the device capability's human-readable vendor name.
+std::string_view reconstructionName(render::ReconstructionMode mode,
+                                    const rhi::TemporalScalerSupport& support);
+
+/// Restricts native accumulation diagnostics only when the effective reconstruction is vendor.
+render::TemporalDebugView clampTemporalDebugView(render::TemporalDebugView view,
+                                                 render::ReconstructionMode effectiveMode);
+
 /// Marks that the camera teleported this frame (the Inspector's "Camera cut" button). One-shot:
 /// `consumeCameraCut` reports it exactly once.
 void requestCameraCut(TemporalEditorState& state);

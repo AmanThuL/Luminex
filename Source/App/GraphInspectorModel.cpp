@@ -33,6 +33,10 @@ std::string_view textureUseName(rhi::TextureUse use) {
         return "CopySource";
     case rhi::TextureUse::CopyDestination:
         return "CopyDestination";
+    case rhi::TextureUse::ExternalRead:
+        return "ExternalRead";
+    case rhi::TextureUse::ExternalWrite:
+        return "ExternalWrite";
     }
     return "ShaderRead";
 }

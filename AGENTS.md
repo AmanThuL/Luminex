@@ -14,7 +14,9 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
-- Current baseline: `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
+- Current implementation: `docs/milestones/m6.4.md` (opt-in vendor temporal reconstruction, ADR 0017;
+  evidence and remaining owner QA are recorded there) over
+  `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
   `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
   `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
   `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
@@ -66,14 +68,18 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab> --screenshot <out.bmp>`. `--frames N`
   (default 1) renders N frames before writing the last — the temporal warmup control — advancing
-  the scene's animation by 1/60 s and following its camera track (if any) between them;
-  `--temporal <off|raw|taa>` (default `taa`; a bare `--temporal` also means `taa`) selects the
-  reconstruction, and `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
+  the scene's animation by 1/60 s and following its camera track (if any) between them.
+  In both windowed and screenshot runs, `--temporal <off|raw|taa|metalfx>` (default `taa`; a bare
+  `--temporal` also means `taa`) selects the reconstruction, and
+  `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
   selects a diagnostic overlay (naming a view still implies temporal on; `--temporal off` with a
   non-`off` view is an error) — e.g. `xmake run App --scene temporal-lab --frames 32 --temporal-view
   rejection --screenshot out.bmp`. `--render-scale <0.5..1.0>` (default 1.0) sets the render scale
   the temporal path reconstructs from (conflicts with `--temporal off` below 1.0, since the temporal
-  path is what reconstructs a sub-output render). Running the binary directly requires CWD = its
+  path is what reconstructs a sub-output render). `metalfx` requests the device temporal scaler,
+  with Native TAA fallback when unsupported or creation fails; `rejection`, `weight`, and `age`
+  conflict with `--temporal metalfx`. Vendor scale is clamped to the supported range, and Native TAA
+  stays the default and reference. Running the binary directly requires CWD = its
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
@@ -132,10 +138,13 @@ but level zero), indirect draws and dispatches over RHI-owned argument layouts, 
 placement heaps whose resources are created at explicit offsets, and up to `kMaxExtraColorTargets`
 (3) additional colour attachments per render pass/pipeline beyond the primary, with `RG16Float` and
 `R8Unorm` colour-renderable and CPU-readable, and an origin-anchored render area confining a pass to
-a sub-rectangle of its attachments;
+a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral temporal-scaler
+capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
+between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
+output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph` — raster/compute/copy passes with per-subresource uses (including extra
-colour attachments) over imported resources and over one-frame transients the graph creates,
+validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
+extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
@@ -143,12 +152,18 @@ as deterministic text; `Renderer` — declares shadow, scene+sky, histogram expo
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
-(reproject diagnostic, the `TemporalResolve` stage's native TAA resolve or raw history commit, debug
-view) into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions;
+(reproject diagnostic, the `TemporalResolve` stage's native TAA/TAAU, raw history commit, or vendor
+packing plus external reconstruction, debug view) into a graph consuming a plain `SceneView`;
+`fitShadowOrtho` and friends are free functions;
 `Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
 and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve.h` holds the
 reconstruction contract, ping-pong slot ownership, the native/upscale kernel-selection rule and
-frozen constants (ADRs 0014–0016); `ResolutionController` is a pure, App-driven policy that proposes
+frozen constants (ADRs 0014–0016); its composed `VendorTemporalScaler` translates invalid motion to
+zero motion/reactive one, writes reciprocal applied exposure into one `R16Float` texel, and maps
+motion/jitter/content extents. The scaler resets on engine reset, vendor re-entry or recreation;
+engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
+`lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
+`ResolutionController` is a pure, App-driven policy that proposes
 a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
@@ -163,7 +178,9 @@ Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a mai
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
 subject-scoped editing (camera, rendering — including a Temporal block of toggles, a Reconstruction
-combo (Raw/Native TAA), the seven-item debug-view combo, a render-scale slider, a dynamic-resolution
+combo (Raw/Native TAA/device algorithm name), effective mode/fallback, vendor reset/generation,
+and the seven-item debug-view combo (rejection/weight/age disabled under effective vendor mode;
+motion/reprojection/reprojected-history remain available), a render-scale slider, a dynamic-resolution
 checkbox and GPU-budget slider with status rows for render extent/scale, frame GPU time and the last
 render-extent-change frame, animation transport, a camera-cut button, and Exposure adapt-up/
 adapt-down sliders — one of three directional lights, or one object); `DynamicResolution.h` is the
@@ -180,7 +197,7 @@ session-only dragged positions; frame loop advances animation and commits scene 
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
 modules), ScenePass/ScenePassAuto, ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
 ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject,
-TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView (+ Triangle/SamplerSmoke/
+TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (+ Triangle/SamplerSmoke/
 CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke/RenderAreaSmoke as test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 

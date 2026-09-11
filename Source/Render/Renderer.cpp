@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer.h"
+#include "Render/VendorTemporalScaler.h"
 
 #include "Core/Assert.h"
 #include "RHI/CaptureSchema.h"
@@ -1029,7 +1030,19 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     LMX_ASSERT(!temporalEnabled || (view.temporal.renderScale >= kMinRenderScale &&
                                     view.temporal.renderScale <= kMaxRenderScale),
                "SceneView temporal renderScale must lie within [kMinRenderScale, kMaxRenderScale]");
-    const float renderScale = temporalEnabled ? view.temporal.renderScale : 1.0f;
+    const ReconstructionSelection selection =
+        temporalEnabled
+            ? m_temporalResolve->prepare(view.temporal.reconstruction, m_width, m_height)
+            : ReconstructionSelection{view.temporal.reconstruction, VendorFallback::None};
+    const ReconstructionMode reconstruction = selection.mode;
+    const bool vendorTemporal =
+        temporalEnabled && reconstruction == ReconstructionMode::VendorTemporal;
+    const float renderScale =
+        temporalEnabled
+            ? (vendorTemporal ? vendorRenderScale(view.temporal.renderScale,
+                                                  m_device.capabilities().temporalScaler)
+                              : view.temporal.renderScale)
+            : 1.0f;
 
     // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
     // is used through an origin-anchored active rectangle, so a scale change allocates nothing.
@@ -1056,9 +1069,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const uint32_t slot = temporalEnabled ? m_temporalFrame % 2 : 0;
     const uint32_t previousSlot = 1 - slot;
     m_currentSlot = slot;
-    const ReconstructionMode reconstruction = view.temporal.reconstruction;
     const bool nativeTaa = temporalEnabled && reconstruction == ReconstructionMode::NativeTaa;
-    const TemporalDebugView debugView = view.temporal.debugView;
+    const TemporalDebugView debugView =
+        vendorTemporal && nativeOnlyTemporalView(view.temporal.debugView) ? TemporalDebugView::Off
+                                                                          : view.temporal.debugView;
 
     const glm::vec2 jitterPixels = temporalEnabled && view.temporal.jitterEnabled
                                        ? haltonJitterPixels(m_temporalFrame)
@@ -1092,7 +1106,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         temporalEnabled
             ? m_temporalResolve->importDepth(graph, slot)
             : graph.importTexture(m_temporalResolve->depthSlot(0), rhi::Format::D32Float,
-                                  "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
+                                  "lmx.render.sceneDepth", m_temporalResolve->depthUse(0));
 
     // The temporal pair, imported only by a frame that declares the temporal path. Motion's
     // terminal use is its attachment write on a frame that shows no debug view and the view's own
@@ -1454,7 +1468,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // scene colour. The histogram deliberately keeps metering the raw scene colour, so metering
     // stays independent of the accumulation it corrects.
     const GraphTexture displayInput =
-        nativeTaa || upscaled ? temporalOutputs.resolved : sceneColorRead;
+        nativeTaa || vendorTemporal || upscaled ? temporalOutputs.resolved : sceneColorRead;
 
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
@@ -1782,11 +1796,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     m_temporalStatus.historyBytes = m_temporalResolve->colorBytes();
     m_temporalStatus.depthHistoryBytes = m_temporalResolve->depthBytes();
     m_temporalStatus.reconstruction = reconstruction;
+    m_temporalStatus.vendorFallback = selection.fallback;
+    m_temporalStatus.vendorName = m_device.capabilities().temporalScaler.name;
+    m_temporalStatus.vendorReset = vendorTemporal && m_temporalResolve->vendorReset();
+    m_temporalStatus.vendorScalerGeneration = m_temporalResolve->vendorScalerGeneration();
     // The age counts declared temporal frames since the last non-None reason, whatever the mode:
     // both modes leave a real frame in the colour slot, so the count survives a mode switch. A
     // frame with temporal off starts it over, because the history the next temporal frame finds is
     // not the one this count would have described.
     if (!temporalEnabled) {
+        m_temporalResolve->recordDisabledFrame();
         m_temporalStatus.historyAge = 0;
     } else if (resetReason != HistoryResetReason::None) {
         m_temporalStatus.historyAge = 1;
@@ -1818,19 +1837,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     if (temporalEnabled) {
         // The resolve reads motion on every NativeTaa frame, and the debug view reads it whenever
         // one is shown.
-        m_previousMotionUse = nativeTaa || debugView != TemporalDebugView::Off
+        m_previousMotionUse = nativeTaa || vendorTemporal || debugView != TemporalDebugView::Off
                                   ? rhi::TextureUse::ShaderRead
                                   : rhi::TextureUse::RenderTarget;
         // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
-        m_previousReactiveUse =
-            nativeTaa ? rhi::TextureUse::ShaderRead : rhi::TextureUse::RenderTarget;
+        m_previousReactiveUse = nativeTaa || vendorTemporal ? rhi::TextureUse::ShaderRead
+                                                            : rhi::TextureUse::RenderTarget;
         m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid, upscaled);
     }
     // The scene colour is written and read by every frame. Under Raw at the output extent the
     // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
     // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
     // and the display transform all read it and none copies out of it.
-    m_previousSceneColorUse = temporalEnabled && !nativeTaa && !upscaled
+    m_previousSceneColorUse = vendorTemporal ? rhi::TextureUse::ExternalRead
+                              : temporalEnabled && !nativeTaa && !upscaled
                                   ? rhi::TextureUse::CopySource
                                   : rhi::TextureUse::ShaderRead;
     if (temporalEnabled) {

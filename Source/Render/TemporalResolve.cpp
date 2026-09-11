@@ -6,6 +6,7 @@
 #include "Render/TemporalResolve.h"
 
 #include "Core/Assert.h"
+#include "Render/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -229,6 +230,36 @@ TemporalReprojectParams reprojectParams(const TemporalInputs& inputs) {
 } // namespace
 
 //======================================================================================================================
+TemporalResolve::TemporalResolve(rhi::Device& device, bool cpuReadback)
+    : m_device(device), m_vendor(std::make_unique<VendorTemporalScaler>(device)),
+      m_cpuReadback(cpuReadback) {}
+
+//======================================================================================================================
+TemporalResolve::~TemporalResolve() = default;
+
+//======================================================================================================================
+ReconstructionSelection TemporalResolve::prepare(ReconstructionMode requested, uint32_t width,
+                                                 uint32_t height) {
+    return m_vendor->prepare(requested, width, height);
+}
+
+//======================================================================================================================
+void TemporalResolve::recordDisabledFrame() {
+    m_vendor->recordMode(ReconstructionMode::Raw);
+    m_depthUse[0] = rhi::TextureUse::ShaderRead;
+}
+
+//======================================================================================================================
+bool TemporalResolve::vendorReset() const {
+    return m_vendor->reset();
+}
+
+//======================================================================================================================
+uint32_t TemporalResolve::vendorScalerGeneration() const {
+    return m_vendor->generation();
+}
+
+//======================================================================================================================
 rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Device& device,
                                                                       bool cpuReadback) {
     auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
@@ -374,6 +405,7 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         auto colorTexture = m_device.createTexture({.width = width,
                                                     .height = height,
                                                     .format = rhi::Format::RGBA16Float,
+                                                    .renderTarget = true,
                                                     .sampled = true,
                                                     .storageWrite = true,
                                                     .cpuReadback = m_cpuReadback,
@@ -391,7 +423,9 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         m_color[slot] = std::move(color[slot]);
         // The contents went with the old textures, and the extent change is a history reset anyway.
         m_colorUse[slot] = rhi::TextureUse::CopyDestination;
+        m_depthUse[slot] = rhi::TextureUse::ShaderRead;
     }
+    m_vendor->invalidateOutput();
     m_width = width;
     m_height = height;
     return {};
@@ -415,7 +449,13 @@ rhi::Texture& TemporalResolve::colorSlot(uint32_t slot) {
 GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.sceneDepth0", "lmx.render.sceneDepth1"};
     return graph.importTexture(depthSlot(slot), rhi::Format::D32Float, kNames[slot],
-                               rhi::TextureUse::ShaderRead);
+                               m_depthUse[slot]);
+}
+
+//======================================================================================================================
+rhi::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
+    LMX_ASSERT(slot < 2, "depthUse requires a valid history slot");
+    return m_depthUse[slot];
 }
 
 //======================================================================================================================
@@ -457,6 +497,12 @@ TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rhi::Command
             declareUpscale(graph, commands, inputs, viewReadsRejection(debugView),
                            viewReadsReprojected(debugView), outputs);
         }
+    } else if (inputs.mode == ReconstructionMode::VendorTemporal) {
+        LMX_ASSERT(!nativeOnlyTemporalView(debugView), "vendor mode cannot show native internals");
+        if (debugView == TemporalDebugView::ReprojectedHistory) {
+            outputs.reprojected = declareVendorHistory(graph, commands, inputs);
+        }
+        outputs.resolved = m_vendor->declare(graph, commands, inputs);
     } else {
         outputs.resolved = upscaled ? declareSpatialCommit(graph, commands, inputs)
                                     : declareHistoryCommit(graph, commands, inputs);
@@ -476,6 +522,14 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
                                   TemporalDebugView debugView, bool historyValid, bool upscaled) {
     LMX_ASSERT(slot < 2, "TemporalResolve::recordFrame: slot must be 0 or 1");
     const uint32_t other = 1 - slot;
+    m_vendor->recordMode(mode);
+    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal ? rhi::TextureUse::ExternalRead
+                                                                  : rhi::TextureUse::ShaderRead;
+    if (mode == ReconstructionMode::NativeTaa ||
+        (mode == ReconstructionMode::VendorTemporal &&
+         debugView == TemporalDebugView::ReprojectedHistory)) {
+        m_depthUse[other] = rhi::TextureUse::ShaderRead;
+    }
     // Under NativeTaa the resolve writes the slot and bloom and display then sample it, so the
     // frame's last access to it is a shader read. An upscaled Raw frame ends the same way: the
     // spatial commit is what produced the picture, so bloom and display sample the slot rather than
@@ -485,11 +539,17 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     const bool readCurrent = mode == ReconstructionMode::NativeTaa || upscaled ||
                              debugView == TemporalDebugView::HistoryAge;
     m_colorUse[slot] = readCurrent ? rhi::TextureUse::ShaderRead : rhi::TextureUse::CopyDestination;
+    if (mode == ReconstructionMode::VendorTemporal) {
+        // Retain the opaque producer stage set across frames even though display samples it.
+        m_colorUse[slot] = rhi::TextureUse::ExternalWrite;
+    }
     // The other slot is read by the resolve on every NativeTaa frame, and by the reprojection
     // diagnostic on a Raw frame only where that pass survived culling. A frame that read it
     // neither way leaves its record where the frame that wrote it put it.
     const bool readOther = mode == ReconstructionMode::NativeTaa ||
-                           (historyValid && debugView == TemporalDebugView::ReprojectionError);
+                           (historyValid && debugView == TemporalDebugView::ReprojectionError) ||
+                           (mode == ReconstructionMode::VendorTemporal &&
+                            debugView == TemporalDebugView::ReprojectedHistory);
     if (readOther) {
         m_colorUse[other] = rhi::TextureUse::ShaderRead;
     }
@@ -860,6 +920,47 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rhi::CommandList& comma
 }
 
 //======================================================================================================================
+GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rhi::CommandList& commands,
+                                                   const TemporalInputs& inputs) {
+    const auto target = graph.createTexture({.width = inputs.extents.outputWidth,
+                                             .height = inputs.extents.outputHeight,
+                                             .format = rhi::Format::RGBA16Float,
+                                             .sampled = true,
+                                             .storageWrite = true},
+                                            "lmx.render.temporalReprojected");
+    ComputePassDesc desc;
+    desc.shaderTextureReads = {inputs.depth, inputs.previousDepth, inputs.motion, inputs.history};
+    desc.bufferReads = {inputs.exposure};
+    desc.textureWrites = {target};
+    const auto params =
+        temporalUpscaleParams(inputs, inputs.resetReason == HistoryResetReason::None, 2);
+    graph.addComputePass(
+        "lmx.pass.temporal.reprojectedHistory", std::move(desc),
+        [this, &commands, inputs, target, params](const PassResources& resources) {
+            const auto texture = [&](GraphTexture handle) {
+                auto result = resources.texture(handle);
+                LMX_ASSERT(result.has_value(), result.error().message);
+                return *result;
+            };
+            auto exposure = resources.buffer(inputs.exposure);
+            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+            commands.bindComputePipeline(m_vendor->historyPipeline());
+            commands.bindTexture(kResolveDepthSlot, *texture(inputs.depth));
+            commands.bindTexture(kResolvePreviousDepthSlot, *texture(inputs.previousDepth));
+            commands.bindTexture(kResolveMotionSlot, *texture(inputs.motion));
+            commands.bindTexture(kResolveHistorySlot, *texture(inputs.history));
+            commands.bindStorageTexture(kResolveReprojectedSlot, *texture(target), {},
+                                        rhi::StorageAccess::Write);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Read);
+            commands.bindSampler(kResolveSamplerSlot, *m_sampler);
+            commands.bindFrameData(kResolveParamsSlot, params);
+            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
+                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+        });
+    return nextVersion(target);
+}
+
+//======================================================================================================================
 GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandList& commands,
                                                TemporalDebugView debugView,
                                                const TemporalInputs& inputs,
@@ -868,7 +969,8 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandL
                                                GraphTexture displayResult) {
     const bool nativeTaa = inputs.mode == ReconstructionMode::NativeTaa;
     const bool readsRejection = nativeTaa && viewReadsRejection(debugView);
-    const bool readsReprojected = nativeTaa && viewReadsReprojected(debugView);
+    const bool readsReprojected =
+        inputs.mode != ReconstructionMode::Raw && viewReadsReprojected(debugView);
     // The age lives in the resolved colour's alpha, which under Raw is a copy of the frame's own
     // coverage rather than a count -- the view still reads it, and shows what the mode produced.
     const bool readsResolved = debugView == TemporalDebugView::HistoryAge;

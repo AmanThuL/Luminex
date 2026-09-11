@@ -150,6 +150,10 @@ struct TemporalStatus {
     /// so a frame with temporal off -- which has no history and rasterises at the output extent
     /// whatever the scale field says -- never advances it.
     uint64_t lastRenderExtentChangeFrame = 0;
+    VendorFallback vendorFallback = VendorFallback::None; ///< Why a vendor request fell back.
+    std::string_view vendorName; ///< Capability's algorithm name; empty when unavailable.
+    bool vendorReset = false;    ///< Whether the last vendor frame discarded its private history.
+    uint32_t vendorScalerGeneration = 0; ///< Successful scaler creations across output resizes.
 };
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.

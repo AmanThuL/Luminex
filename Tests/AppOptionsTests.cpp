@@ -117,7 +117,7 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.bmp>] [--scene "
             "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab>] [--windowed] "
-            "[--frames <N>] [--temporal <off|raw|taa>] "
+            "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
             "[--render-scale <0.5..1.0>] "
             "(--frames N renders N frames and captures the last, including temporal warmup)");
@@ -219,7 +219,8 @@ TEST_CASE("--temporal rejects an unknown value, naming the accepted ones", "[app
     const AppOptionsResult result = parseAppOptions(arguments);
 
     REQUIRE_FALSE(result);
-    REQUIRE(result.error().message == "--temporal needs one of off|raw|taa, got 'sideways'");
+    REQUIRE(result.error().message ==
+            "--temporal needs one of off|raw|taa|metalfx, got 'sideways'");
 }
 
 //======================================================================================================================
@@ -418,4 +419,51 @@ TEST_CASE("app options keep the last repeated values and ignore a bare separator
     REQUIRE(result->mode == RunMode::Screenshot);
     REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
     REQUIRE(result->screenshotPath == "last.bmp");
+}
+
+//======================================================================================================================
+TEST_CASE("--temporal metalfx selects vendor reconstruction in either run mode", "[app][options]") {
+    const std::array arguments = {std::string_view{"--temporal"}, std::string_view{"metalfx"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE(result);
+    REQUIRE(result->mode == RunMode::Windowed);
+    REQUIRE(result->temporal == TemporalMode::Vendor);
+    REQUIRE(temporalReconstructionMode(result->temporal) ==
+            render::ReconstructionMode::VendorTemporal);
+    REQUIRE(temporalReconstructionMode(TemporalMode::Taa) == render::ReconstructionMode::NativeTaa);
+    REQUIRE(temporalReconstructionMode(TemporalMode::Raw) == render::ReconstructionMode::Raw);
+
+    const std::array screenshot = {
+        std::string_view{"--temporal"},     std::string_view{"metalfx"},
+        std::string_view{"--screenshot"},   std::string_view{"vendor.bmp"},
+        std::string_view{"--render-scale"}, std::string_view{"0.5"}};
+    const auto offscreen = parseAppOptions(screenshot);
+    REQUIRE(offscreen);
+    REQUIRE(offscreen->temporal == TemporalMode::Vendor);
+    REQUIRE(offscreen->renderScale == 0.5f);
+}
+
+//======================================================================================================================
+TEST_CASE("vendor command-line diagnostics accept engine views and reject native internals",
+          "[app][options]") {
+    for (std::string_view view : {"off", "motion", "reprojection", "reprojected"}) {
+        const std::array arguments = {std::string_view{"--temporal"}, std::string_view{"metalfx"},
+                                      std::string_view{"--temporal-view"}, view};
+        CAPTURE(view);
+        REQUIRE(parseAppOptions(arguments));
+    }
+    for (std::string_view view : {"rejection", "weight", "age"}) {
+        for (bool modeFirst : {true, false}) {
+            const std::array modeThenView = {std::string_view{"--temporal"},
+                                             std::string_view{"metalfx"},
+                                             std::string_view{"--temporal-view"}, view};
+            const std::array viewThenMode = {std::string_view{"--temporal-view"}, view,
+                                             std::string_view{"--temporal"},
+                                             std::string_view{"metalfx"}};
+            const auto result = parseAppOptions(modeFirst ? modeThenView : viewThenMode);
+            CAPTURE(view, modeFirst);
+            REQUIRE_FALSE(result);
+            REQUIRE(result.error().message.contains("native reconstruction"));
+        }
+    }
 }

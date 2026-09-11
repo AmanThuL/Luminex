@@ -184,9 +184,7 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
         // camera, so both stay at SceneView's defaults (0, false).
         view.temporal.enabled = temporal != TemporalMode::Off;
         view.temporal.jitterEnabled = temporal != TemporalMode::Off;
-        view.temporal.reconstruction = temporal == TemporalMode::Raw
-                                           ? render::ReconstructionMode::Raw
-                                           : render::ReconstructionMode::NativeTaa;
+        view.temporal.reconstruction = temporalReconstructionMode(temporal);
         view.temporal.debugView = temporalView;
         view.temporal.renderScale = renderScale;
 
