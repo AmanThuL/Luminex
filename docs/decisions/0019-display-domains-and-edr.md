@@ -69,18 +69,17 @@ The experiment leaves scene/exposure/temporal code unchanged; this is a display-
 Both experiment intermediates are float, including the SDR reference. Ten per-pass timing samples
 per mode describe that experiment and do not establish production SDR overhead or a speedup.
 
-The owner observed clearly brighter EDR highlights and distinguishable 1/2/4 patches. UI-white
-matching is inconclusive: the owner qualified the earlier impression of brighter EDR text,
-noting that the two text whites may be equally bright and the adjacent EDR patches may affect
-the judgment. The earlier categorical failure is withdrawn; neither a match nor a mismatch is
-established. The surrounding-highlight explanation is a hypothesis, not a measured cause.
+The owner observed clearly brighter EDR highlights and distinguishable 1/2/4 patches. On
+2026-09-13 the owner explicitly confirmed that the two windows' white UI text appears equally
+bright at the same system brightness. This final subjective match supersedes the earlier
+brighter-text impression and subsequent uncertainty; the bounded visual UI-white check passes.
 
-The comparison did not isolate UI white against identical neutral surroundings. Linear versus
-encoded alpha composition, presentation and physical luminance remain unmeasured. Float display
-readbacks exclude UI and cannot establish UI-white parity. Any future adoption must check the
-same text and background with surrounding highlights controlled, and distinguish composited UI
-values from physical display luminance. No additional informal user comparison is required for
-this bounded defer evaluation.
+This observation is not a photometric measurement. Identical neutral surroundings were not
+controlled, and the comparison does not quantify physical luminance or linear-versus-encoded
+alpha-composition differences. Float display readbacks exclude UI and cannot independently
+establish UI-white parity. Future production validation must preserve the observed white match
+and distinguish composited UI values from physical display luminance. No further informal
+comparison is required for this bounded defer evaluation.
 
 No per-preset value table, calibrated measurement or photograph is claimed. The probe's
 forced-headroom control tests range fallback, not operating-system drawable refusal. Its display
@@ -108,14 +107,14 @@ view and the layer remains float. The control does not establish production SDR 
 
 Keep production SDR-only. Physical highlight extension works on this display, but the specified
 curve materially darkens midtones and the probe does not establish a production SDR cost baseline
-or full presentation fallback. UI-white matching remains unverified, not a demonstrated defect.
-Defer until a separately scoped display view demonstrates matching UI white and the intended
-midtone appearance, with a measured production SDR comparison and complete
-layer/fallback/capture behavior. Do not silently change this formula or upstream exposure to hide
-the observed deficiencies. Retain the inconclusive UI-white result as an evidence limit;
-milestone closure remains pending the separate strict historical-hash gate disposition;
-any adoption is a separate later slice and supplies its own presentation interface/capability
-contract and full fallback/capture validation. No experimental source merges into production.
+or full presentation fallback. The owner-confirmed subjective UI-white match is positive evidence;
+it does not resolve those independent curve, fallback and cost limitations. Defer until a
+separately scoped display view preserves that match and demonstrates the intended midtone
+appearance, with a measured production SDR comparison and complete layer/fallback/capture
+behavior. Do not silently change this formula or upstream exposure to hide the observed
+deficiencies. Milestone closure remains pending the separate strict historical-hash gate
+disposition. Any adoption is a separate later slice and supplies its own presentation
+interface/capability contract and full fallback/capture validation. No experimental source merges into production.
 
 Experiment source is preserved by immutable tag `m6.5-edr-evidence`; the independent source
 archive SHA-256 is `d44224edeb81b380c84349105b652d33ee5a7375dac94fb86cab61ac82ad830d`.
