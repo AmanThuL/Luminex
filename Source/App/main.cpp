@@ -85,7 +85,7 @@ float dynamicResolutionBudgetFromEnv() {
 //======================================================================================================================
 // RHI and ImGui objects are scoped inside the lifetime of the SDL-owned Metal layer. Declaration
 // order keeps the device alive until every dependent object has been released.
-int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene) {
+int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& options) {
     auto device = lmx::rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -133,10 +133,13 @@ int run(SDL_Window* window, void* metalLayer, lmx::engine::SceneId initialScene)
     (*renderer)->clearColor[3] = 1.0f;
 
     // EditorShell must release ImGui resources before the renderer and device.
-    auto shell = lmx::app::EditorShell::create(window, **device, sceneLibrary, initialScene);
+    auto shell =
+        lmx::app::EditorShell::create(window, **device, sceneLibrary, options.initialScene);
     if (!shell) {
         return 1;
     }
+
+    shell->primeTemporal(options);
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
     if (dynamicResolutionBudget > 0.0f) {
@@ -417,7 +420,7 @@ int runWindowed(const lmx::app::AppOptions& options) {
         return 1;
     }
 
-    const int exitCode = run(window, SDL_Metal_GetLayer(view), options.initialScene);
+    const int exitCode = run(window, SDL_Metal_GetLayer(view), options);
 
     SDL_Metal_DestroyView(view);
     SDL_DestroyWindow(window);
@@ -448,6 +451,9 @@ int main(int argc, char** argv) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
                                        options->frames, options->temporal, options->temporalView,
                                        options->renderScale);
+    }
+    if (options->mode == lmx::app::RunMode::CaptureSequence) {
+        return lmx::app::runCaptureSequence(*options);
     }
     return runWindowed(*options);
 }

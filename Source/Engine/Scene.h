@@ -147,4 +147,8 @@ AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rhi::Device& device);
 /// `render::MotionClass::Invalid`, all driven by looping tracks alongside a looping camera track.
 AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device);
 
+/// San Miguel's pinned realtime variant with masked foliage and a looping camera rail. Optional
+/// assets are fetched by `xmake setup --san-miguel`; missing assets return NotFound with that hint.
+AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& device);
+
 } // namespace lmx::engine

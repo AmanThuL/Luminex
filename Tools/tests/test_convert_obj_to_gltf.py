@@ -8,6 +8,7 @@ from pathlib import Path
 
 from Tools.convert_obj_to_gltf import convert
 from Tools.tree_digest import tree_digest
+from Tools.tests.test_png_alpha import png_bytes
 
 
 _MTL = """\
@@ -69,6 +70,43 @@ class ObjToGltfTests(unittest.TestCase):
         first = self.convert_to("first")
         second = self.convert_to("second")
         self.assertEqual(tree_digest(first), tree_digest(second))
+
+    def test_alpha_conversion_is_opt_in_and_names_its_output(self) -> None:
+        texture = self.root / "textures" / "stone.png"
+        texture.write_bytes(png_bytes([bytes([100, 110, 120, 0])], 1, 0))
+        legacy = self.convert_to("legacy")
+        self.assertNotIn("alphaMode", json.loads((legacy / "Sponza.gltf").read_text())["materials"][0])
+        output = self.root / "masked"
+        convert(self.root / "scene.obj", self.root / "scene.mtl", output, 1.0,
+                name="SanMiguel", alpha_mask=True)
+        gltf = json.loads((output / "SanMiguel.gltf").read_text())
+        self.assertEqual(gltf["buffers"][0]["uri"], "SanMiguel.bin")
+        self.assertEqual(gltf["materials"][0]["alphaMode"], "MASK")
+        self.assertEqual(gltf["materials"][0]["alphaCutoff"], 0.5)
+        self.assertTrue(gltf["materials"][0]["doubleSided"])
+        self.assertEqual((output / "textures" / "stone.png").read_bytes(), texture.read_bytes())
+
+    def test_opaque_rgba_stays_opaque_with_alpha_conversion_enabled(self) -> None:
+        (self.root / "textures" / "stone.png").write_bytes(
+            png_bytes([bytes([10, 20, 30, 255])], 1, 0))
+        output = self.root / "opaque"
+        convert(self.root / "scene.obj", self.root / "scene.mtl", output, 1.0,
+                name="SanMiguel", alpha_mask=True)
+        material = json.loads((output / "SanMiguel.gltf").read_text())["materials"][0]
+        self.assertNotIn("alphaMode", material)
+        self.assertFalse(material["doubleSided"])
+
+    def test_normal_maps_and_phong_roughness_require_explicit_selection(self) -> None:
+        (self.root / "scene.mtl").write_text(_MTL + "map_Bump textures/N_stone.png\n")
+        (self.root / "textures/N_stone.png").write_bytes(b"normal fixture")
+        old = self.convert_to("old")
+        self.assertNotIn("normalTexture", json.loads((old / "Sponza.gltf").read_text())["materials"][0])
+        output = self.root / "normal"
+        convert(self.root / "scene.obj", self.root / "scene.mtl", output, 1.0,
+                normal_map_prefix="N_", phong_roughness=True)
+        material = json.loads((output / "Sponza.gltf").read_text())["materials"][0]
+        self.assertEqual(material["normalTexture"], {"index": 1})
+        self.assertAlmostEqual(material["pbrMetallicRoughness"]["roughnessFactor"], (2 / 66) ** 0.5)
 
     def test_rejects_texture_outside_source_tree(self) -> None:
         (self.root / "scene.mtl").write_text(

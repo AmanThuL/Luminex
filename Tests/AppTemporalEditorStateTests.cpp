@@ -70,3 +70,34 @@ TEST_CASE("a camera cut is reported exactly once", "[app]") {
     REQUIRE(consumeCameraCut(state));
     REQUIRE_FALSE(consumeCameraCut(state));
 }
+
+//======================================================================================================================
+TEST_CASE("reconstruction names follow the capability without changing native labels", "[app]") {
+    const rhi::TemporalScalerSupport available{
+        .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Test Temporal"};
+    REQUIRE(reconstructionName(render::ReconstructionMode::Raw, available) == "Raw");
+    REQUIRE(reconstructionName(render::ReconstructionMode::NativeTaa, {}) == "Native TAA");
+    REQUIRE(reconstructionName(render::ReconstructionMode::VendorTemporal, available) ==
+            "Test Temporal");
+    REQUIRE(reconstructionName(render::ReconstructionMode::VendorTemporal, {}) ==
+            "Vendor temporal (unavailable)");
+}
+
+//======================================================================================================================
+TEST_CASE(
+    "native-only diagnostics clamp under effective vendor mode and remain available in fallback",
+    "[app]") {
+    for (auto view :
+         {render::TemporalDebugView::RejectionMask, render::TemporalDebugView::BlendWeight,
+          render::TemporalDebugView::HistoryAge}) {
+        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::VendorTemporal) ==
+                render::TemporalDebugView::Off);
+        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::NativeTaa) == view);
+        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::Raw) == view);
+    }
+    for (auto view : {render::TemporalDebugView::Off, render::TemporalDebugView::MotionVectors,
+                      render::TemporalDebugView::ReprojectionError,
+                      render::TemporalDebugView::ReprojectedHistory}) {
+        REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::VendorTemporal) == view);
+    }
+}

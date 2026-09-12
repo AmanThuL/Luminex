@@ -64,6 +64,54 @@ Escalate in this order:
 Keep captures and dump directories outside the repository. A postmortem records only the durable
 symptom, evidence, root cause, correction, and prevention.
 
+## Inspect vendor temporal reconstruction
+
+`--temporal metalfx` opts into the capability-selected scaler; check effective mode and fallback
+in the Inspector before interpreting a capture. Native TAA remains the default. For a windowed
+TemporalLab capture with dynamic resolution:
+
+```bash
+MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1 \
+LMX_CAPTURE_AT_FRAME=30 LMX_MAX_FRAMES=40 \
+LMX_DYNAMIC_RESOLUTION_BUDGET_MS=8 \
+LMX_GRAPH_DUMP=/tmp/luminex-vendor-frame.txt \
+LMX_CAPTURE_PATH=/tmp/luminex-vendor.gputrace \
+xmake run App --scene temporal-lab --temporal metalfx
+
+python3 Tools/GpuDebug/gputrace_dump.py \
+  /tmp/luminex-vendor.gputrace --out /tmp/luminex-vendor-dump
+```
+
+The graph contains `lmx.pass.temporal.vendor.pack` (compute) followed by
+`lmx.pass.temporal.vendor` (external), with no native resolve, upscale or commit. The first-frame
+graph dump can have a different content extent from the later capture if the controller moved it.
+Find `lmx.render.vendorMotion`, `lmx.render.vendorReactive` and `lmx.render.vendorExposure` beside
+scene colour, current depth and the output colour-history slot. The exposure texel is **reciprocal
+applied exposure**; zero packed motion with reactive 1 represents the invalid-motion sentinel.
+
+The vendor pass's command-buffer groups name the pass and `lmx.temporal.vendor.scaler MetalFX
+Temporal`; its owned fence has a `.handoff` suffix. These labels identify the opaque algorithm;
+the current automated dump does not recover MetalFX's private encoder names. There is no public
+scaler label property. CPU-readable outputs additionally show `.privateOutput`
+and `.outputCopy`; that copy belongs to the external pass's GPU timing. Graph dumps describe the
+declared external operation, not the vendor's private encoders. Use Xcode to inspect opaque
+encoder ordering or fence state when the decoded manifest cannot establish them.
+
+The dump tool currently cannot decode the HDR, motion or reactive formats or recover packed
+transients from placement-heap contents. Its legacy expected scene-colour label and shadow-depth
+recompute may also report errors on this renderer. Preserve these findings with the capture;
+they are distinct from runtime Metal validation and do not establish a reconstruction failure.
+
+Motion, reprojection error and reprojected history are engine diagnostics. The latter adds
+`lmx.pass.temporal.reprojectedHistory` under vendor mode; rejection, blend weight and per-pixel
+history age are native-only. CLI combinations of those views with `--temporal metalfx` are usage
+errors. `--temporal-view reprojected` is valid; its output is a corrected engine-history diagnostic,
+not a view into MetalFX's private history.
+
+Run the frozen vendor scenarios with `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` as part of GPU
+validation, or build Tests and run `./Tests "[gpu][temporal][vendor]"` from its build directory.
+Record the printed static, motion and exposure metrics separately from native parity evidence.
+
 ## Collect encoder timings
 
 ```bash

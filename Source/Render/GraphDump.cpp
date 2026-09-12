@@ -25,6 +25,8 @@ std::string_view passKindName(PassKind kind) {
         return "compute";
     case PassKind::Copy:
         return "copy";
+    case PassKind::External:
+        return "external";
     }
     return "raster";
 }
@@ -70,6 +72,10 @@ std::string_view textureUseName(rhi::TextureUse use) {
         return "CopySource";
     case rhi::TextureUse::CopyDestination:
         return "CopyDestination";
+    case rhi::TextureUse::ExternalRead:
+        return "ExternalRead";
+    case rhi::TextureUse::ExternalWrite:
+        return "ExternalWrite";
     }
     return "ShaderRead";
 }

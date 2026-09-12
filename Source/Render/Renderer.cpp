@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Renderer.h"
+#include "Render/VendorTemporalScaler.h"
 
 #include "Core/Assert.h"
 #include "RHI/CaptureSchema.h"
@@ -49,6 +50,21 @@ struct ShadowObjectUniforms {
     glm::mat4 mvp;
 };
 static_assert(sizeof(ShadowObjectUniforms) == 64, "must match ShadowPass.slang's ObjectUniforms");
+
+struct ShadowMaskObjectUniforms {
+    glm::mat4 mvp;
+    glm::mat4 uvTransform;
+    float albedoAlpha;
+    float padding[3]{};
+};
+static_assert(sizeof(ShadowMaskObjectUniforms) == 144);
+static_assert(offsetof(ShadowMaskObjectUniforms, albedoAlpha) == 128);
+
+struct AlphaMaskParams {
+    float cutoff;
+};
+static_assert(sizeof(AlphaMaskParams) == 4);
+constexpr uint32_t kAlphaMaskParamsSlot = 4;
 
 // Mirrors Shaders/Lighting.slang's DirLight.
 struct DirLightUniform {
@@ -360,6 +376,18 @@ void registerUniformLayoutsForCapture() {
          .slot = kObjectUniformsSlot,
          .sizeBytes = sizeof(ShadowObjectUniforms),
          .fields = {{"mvp", offsetof(ShadowObjectUniforms, mvp), "float4x4"}}});
+
+    schema.registerUniformStruct(
+        {.name = "ShadowMaskObjectUniforms",
+         .slot = kObjectUniformsSlot,
+         .sizeBytes = sizeof(ShadowMaskObjectUniforms),
+         .fields = {{"mvp", offsetof(ShadowMaskObjectUniforms, mvp), "float4x4"},
+                    {"uvTransform", offsetof(ShadowMaskObjectUniforms, uvTransform), "float4x4"},
+                    {"albedoAlpha", offsetof(ShadowMaskObjectUniforms, albedoAlpha), "float"}}});
+    schema.registerUniformStruct({.name = "AlphaMaskParams",
+                                  .slot = kAlphaMaskParamsSlot,
+                                  .sizeBytes = sizeof(AlphaMaskParams),
+                                  .fields = {{"cutoff", 0, "float"}}});
 
     // Derive array offsets from the element stride to avoid duplicated layout literals.
     constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
@@ -913,6 +941,67 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(stage.error());
     }
 
+    for (uint32_t automatic = 0; automatic < 2; ++automatic) {
+        auto library = device.loadShaderLibrary(automatic ? "Shaders/ScenePassAutoMask"
+                                                          : "Shaders/ScenePassMask");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
+        self->m_maskSceneLibraries[automatic] = std::move(*library);
+        for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
+            for (uint32_t motion = 0; motion < 2; ++motion) {
+                for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
+                    const uint32_t index = doubleSided * 8 + automatic * 4 + motion * 2 + wireframe;
+                    const auto label = std::format("lmx.render.maskScenePipeline.{}", index);
+                    auto pipeline = device.createGraphicsPipeline(
+                        {.library = self->m_maskSceneLibraries[automatic].get(),
+                         .vertexEntry = motion ? "vertexMainMotion" : "vertexMain",
+                         .fragmentEntry = motion ? "fragmentMainMotion" : "fragmentMain",
+                         .colorFormat = kSceneColorFormat,
+                         .extraColorFormats = {motion ? kMotionFormat : rhi::Format::Unknown,
+                                               motion ? kReactiveFormat : rhi::Format::Unknown,
+                                               rhi::Format::Unknown},
+                         .extraColorCount = motion ? 2u : 0u,
+                         .depthFormat = rhi::Format::D32Float,
+                         .depthTestEnable = true,
+                         .depthWriteEnable = true,
+                         .fillMode = wireframe ? rhi::FillMode::Wireframe : rhi::FillMode::Solid,
+                         .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
+                         .depthCompare = rhi::DepthCompare::Greater,
+                         .label = label});
+                    if (!pipeline) {
+                        return std::unexpected(pipeline.error());
+                    }
+                    self->m_maskScenePipelines[index] = std::move(*pipeline);
+                }
+            }
+        }
+    }
+    auto shadowMaskLibrary = device.loadShaderLibrary("Shaders/ShadowPassMask");
+    if (!shadowMaskLibrary) {
+        return std::unexpected(shadowMaskLibrary.error());
+    }
+    self->m_maskShadowLibrary = std::move(*shadowMaskLibrary);
+    for (uint32_t doubleSided = 0; doubleSided < 2; ++doubleSided) {
+        auto pipeline = device.createGraphicsPipeline(
+            {.library = self->m_maskShadowLibrary.get(),
+             .vertexEntry = "vertexMain",
+             .fragmentEntry = "fragmentMain",
+             .colorFormat = rhi::Format::Unknown,
+             .depthFormat = rhi::Format::D32Float,
+             .depthTestEnable = true,
+             .depthWriteEnable = true,
+             .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
+             .depthCompare = rhi::DepthCompare::Greater,
+             .depthBias = kShadowDepthBias,
+             .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
+                                  : "lmx.render.maskShadowPipeline"});
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
+        self->m_maskShadowPipelines[doubleSided] = std::move(*pipeline);
+    }
+
     if (auto targets = self->resize(width, height); !targets) {
         return std::unexpected(targets.error());
     }
@@ -1029,7 +1118,19 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     LMX_ASSERT(!temporalEnabled || (view.temporal.renderScale >= kMinRenderScale &&
                                     view.temporal.renderScale <= kMaxRenderScale),
                "SceneView temporal renderScale must lie within [kMinRenderScale, kMaxRenderScale]");
-    const float renderScale = temporalEnabled ? view.temporal.renderScale : 1.0f;
+    const ReconstructionSelection selection =
+        temporalEnabled
+            ? m_temporalResolve->prepare(view.temporal.reconstruction, m_width, m_height)
+            : ReconstructionSelection{view.temporal.reconstruction, VendorFallback::None};
+    const ReconstructionMode reconstruction = selection.mode;
+    const bool vendorTemporal =
+        temporalEnabled && reconstruction == ReconstructionMode::VendorTemporal;
+    const float renderScale =
+        temporalEnabled
+            ? (vendorTemporal ? vendorRenderScale(view.temporal.renderScale,
+                                                  m_device.capabilities().temporalScaler)
+                              : view.temporal.renderScale)
+            : 1.0f;
 
     // Both extents of the frame. Every render-extent target keeps its output-extent allocation and
     // is used through an origin-anchored active rectangle, so a scale change allocates nothing.
@@ -1056,9 +1157,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const uint32_t slot = temporalEnabled ? m_temporalFrame % 2 : 0;
     const uint32_t previousSlot = 1 - slot;
     m_currentSlot = slot;
-    const ReconstructionMode reconstruction = view.temporal.reconstruction;
     const bool nativeTaa = temporalEnabled && reconstruction == ReconstructionMode::NativeTaa;
-    const TemporalDebugView debugView = view.temporal.debugView;
+    const TemporalDebugView debugView =
+        vendorTemporal && nativeOnlyTemporalView(view.temporal.debugView) ? TemporalDebugView::Off
+                                                                          : view.temporal.debugView;
 
     const glm::vec2 jitterPixels = temporalEnabled && view.temporal.jitterEnabled
                                        ? haltonJitterPixels(m_temporalFrame)
@@ -1092,7 +1194,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         temporalEnabled
             ? m_temporalResolve->importDepth(graph, slot)
             : graph.importTexture(m_temporalResolve->depthSlot(0), rhi::Format::D32Float,
-                                  "lmx.render.sceneDepth", rhi::TextureUse::ShaderRead);
+                                  "lmx.render.sceneDepth", m_temporalResolve->depthUse(0));
 
     // The temporal pair, imported only by a frame that declares the temporal path. Motion's
     // terminal use is its attachment write on a frame that shows no debug view and the view's own
@@ -1177,17 +1279,40 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // Greater test passes against a cleared texel.
     shadowDesc.depth = DepthAttachment{
         .handle = shadowMap, .load = LoadOp::Clear, .store = StoreOp::Store, .clearDepth = 0.0f};
-    graph.addPass("lmx.pass.shadow", std::move(shadowDesc),
-                  [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
-                      commands.bindPipeline(*m_shadowPipeline);
-                      for (const DrawItem& item : view.items) {
-                          LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
-                          const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
-                          commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-                          commands.bindFrameData(kObjectUniformsSlot, uniforms);
-                          commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
-                      }
-                  });
+    graph.addPass(
+        "lmx.pass.shadow", std::move(shadowDesc),
+        [this, &commands, view, lightViewProj = shadow.viewProj](const PassResources&) {
+            rhi::GraphicsPipeline* bound = nullptr;
+            for (const DrawItem& item : view.items) {
+                LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
+                const bool masked = item.material.alphaMode == AlphaMode::Mask;
+                auto* pipeline =
+                    masked ? m_maskShadowPipelines[item.material.doubleSided ? 1 : 0].get()
+                           : m_shadowPipeline.get();
+                if (pipeline != bound) {
+                    commands.bindPipeline(*pipeline);
+                    bound = pipeline;
+                }
+                commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+                if (masked) {
+                    const ShadowMaskObjectUniforms uniforms{.mvp = lightViewProj * item.model,
+                                                            .uvTransform =
+                                                                item.material.uvTransform,
+                                                            .albedoAlpha = item.material.albedo.a};
+                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
+                    commands.bindFrameData(kAlphaMaskParamsSlot,
+                                           AlphaMaskParams{item.material.alphaCutoff});
+                    commands.bindTexture(kDiffuseTextureSlot, item.material.diffuse
+                                                                  ? *item.material.diffuse
+                                                                  : *m_whiteTexture);
+                    commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
+                } else {
+                    const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
+                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
+                }
+                commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+            }
+        });
 
     // Rasterisation takes the jitter; motion never does. With temporal off the two are the same
     // matrix, derived exactly as this frame's projection * view was before jitter existed.
@@ -1292,22 +1417,22 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
             // branch in one, is what keeps the manual pipeline's compiled output identical to
             // pre-M5 -- see ScenePassAuto.slang's header.
+            rhi::GraphicsPipeline* opaquePipeline = nullptr;
             if (temporalEnabled) {
-                // The motion twins of the four pipelines below: same shading, one more attachment.
-                if (view.autoExposureEnabled) {
-                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAutoMotion
-                                                         : *m_scenePipelineAutoMotion);
-                } else {
-                    commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineMotion
-                                                         : *m_scenePipelineMotion);
-                }
-            } else if (view.autoExposureEnabled) {
-                commands.bindPipeline(view.wireframe ? *m_sceneWireframePipelineAuto
-                                                     : *m_scenePipelineAuto);
+                opaquePipeline = view.autoExposureEnabled
+                                     ? (view.wireframe ? m_sceneWireframePipelineAutoMotion.get()
+                                                       : m_scenePipelineAutoMotion.get())
+                                     : (view.wireframe ? m_sceneWireframePipelineMotion.get()
+                                                       : m_scenePipelineMotion.get());
             } else {
-                commands.bindPipeline(view.wireframe ? *m_sceneWireframePipeline
-                                                     : *m_scenePipeline);
+                opaquePipeline =
+                    view.autoExposureEnabled
+                        ? (view.wireframe ? m_sceneWireframePipelineAuto.get()
+                                          : m_scenePipelineAuto.get())
+                        : (view.wireframe ? m_sceneWireframePipeline.get() : m_scenePipeline.get());
             }
+            commands.bindPipeline(*opaquePipeline);
+            rhi::GraphicsPipeline* boundScenePipeline = opaquePipeline;
             commands.bindSampler(kLinearSamplerSlot, *m_linearSampler);
             commands.bindSampler(kShadowSamplerSlot, *m_shadowSampler);
             commands.bindSampler(kIblSamplerSlot, *m_iblSampler);
@@ -1334,6 +1459,21 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
             for (const DrawItem& item : view.items) {
                 const Material& material = item.material;
+                const bool masked = material.alphaMode == AlphaMode::Mask;
+                const uint32_t maskIndex = (material.doubleSided ? 8u : 0u) +
+                                           (view.autoExposureEnabled ? 4u : 0u) +
+                                           (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
+                auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
+                if (pipeline != boundScenePipeline) {
+                    commands.bindPipeline(*pipeline);
+                    boundScenePipeline = pipeline;
+                }
+                if (masked) {
+                    LMX_ASSERT(std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f,
+                               "MASK cutoff must be finite and nonnegative");
+                    commands.bindFrameData(kAlphaMaskParamsSlot,
+                                           AlphaMaskParams{material.alphaCutoff});
+                }
                 ObjectUniforms uniforms{};
                 uniforms.mvp = viewProj * item.model;
                 uniforms.model = item.model;
@@ -1454,7 +1594,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // scene colour. The histogram deliberately keeps metering the raw scene colour, so metering
     // stays independent of the accumulation it corrects.
     const GraphTexture displayInput =
-        nativeTaa || upscaled ? temporalOutputs.resolved : sceneColorRead;
+        nativeTaa || vendorTemporal || upscaled ? temporalOutputs.resolved : sceneColorRead;
 
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
@@ -1782,11 +1922,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     m_temporalStatus.historyBytes = m_temporalResolve->colorBytes();
     m_temporalStatus.depthHistoryBytes = m_temporalResolve->depthBytes();
     m_temporalStatus.reconstruction = reconstruction;
+    m_temporalStatus.vendorFallback = selection.fallback;
+    m_temporalStatus.vendorName = m_device.capabilities().temporalScaler.name;
+    m_temporalStatus.vendorReset = vendorTemporal && m_temporalResolve->vendorReset();
+    m_temporalStatus.vendorScalerGeneration = m_temporalResolve->vendorScalerGeneration();
     // The age counts declared temporal frames since the last non-None reason, whatever the mode:
     // both modes leave a real frame in the colour slot, so the count survives a mode switch. A
     // frame with temporal off starts it over, because the history the next temporal frame finds is
     // not the one this count would have described.
     if (!temporalEnabled) {
+        m_temporalResolve->recordDisabledFrame();
         m_temporalStatus.historyAge = 0;
     } else if (resetReason != HistoryResetReason::None) {
         m_temporalStatus.historyAge = 1;
@@ -1818,19 +1963,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     if (temporalEnabled) {
         // The resolve reads motion on every NativeTaa frame, and the debug view reads it whenever
         // one is shown.
-        m_previousMotionUse = nativeTaa || debugView != TemporalDebugView::Off
+        m_previousMotionUse = nativeTaa || vendorTemporal || debugView != TemporalDebugView::Off
                                   ? rhi::TextureUse::ShaderRead
                                   : rhi::TextureUse::RenderTarget;
         // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
-        m_previousReactiveUse =
-            nativeTaa ? rhi::TextureUse::ShaderRead : rhi::TextureUse::RenderTarget;
+        m_previousReactiveUse = nativeTaa || vendorTemporal ? rhi::TextureUse::ShaderRead
+                                                            : rhi::TextureUse::RenderTarget;
         m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid, upscaled);
     }
     // The scene colour is written and read by every frame. Under Raw at the output extent the
     // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
     // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
     // and the display transform all read it and none copies out of it.
-    m_previousSceneColorUse = temporalEnabled && !nativeTaa && !upscaled
+    m_previousSceneColorUse = vendorTemporal ? rhi::TextureUse::ExternalRead
+                              : temporalEnabled && !nativeTaa && !upscaled
                                   ? rhi::TextureUse::CopySource
                                   : rhi::TextureUse::ShaderRead;
     if (temporalEnabled) {

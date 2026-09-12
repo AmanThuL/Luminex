@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/AppOptions.h"
 #include "App/DynamicResolution.h"
 #include "App/EditorActions.h"
 #include "App/EditorRenderSettings.h"
@@ -112,6 +113,9 @@ public:
     /// what the Inspector sees this frame.
     void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
+
+    /// Seeds both interactive and scripted runs from the parsed startup temporal options.
+    void primeTemporal(const AppOptions& options);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this

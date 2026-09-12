@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert the McGuire Crytek Sponza OBJ package to extension-free glTF 2.0."""
+"""Convert a McGuire OBJ package to core glTF, preserving the legacy Sponza defaults."""
 
 from __future__ import annotations
 
@@ -19,6 +19,7 @@ class Material:
     diffuse: tuple[float, float, float] = (1.0, 1.0, 1.0)
     shininess: float = 0.0
     diffuse_map: str | None = None
+    bump_map: str | None = None
 
 
 @dataclass
@@ -58,6 +59,8 @@ def parse_mtl(path: Path) -> OrderedDict[str, Material]:
             current.shininess = float(value)
         elif current is not None and keyword == "map_Kd":
             current.diffuse_map = value.replace("\\", "/")
+        elif current is not None and keyword.lower() in ("map_bump", "bump"):
+            current.bump_map = value.replace("\\", "/")
     if not materials:
         raise ValueError(f"{path}: no materials")
     return materials
@@ -185,16 +188,21 @@ def pack_floats(values: list[tuple[float, ...]]) -> bytes:
 
 
 def make_materials(
-    source_root: Path, output_root: Path, materials: list[Material], gltf: dict
+    source_root: Path, output_root: Path, materials: list[Material], gltf: dict,
+    alpha_mask: bool = False,
+    normal_map_prefix: str = "", phong_roughness: bool = False,
 ) -> dict[str, int]:
     texture_indices: dict[str, int] = {}
     material_indices: dict[str, int] = {}
+    transparency: dict[str, bool] = {}
     for material in materials:
         pbr = {
             "baseColorFactor": [*material.diffuse, 1.0],
             "metallicFactor": 0.0,
             "roughnessFactor": 1.0 - min(max(material.shininess, 0.0), 256.0) / 256.0,
         }
+        if phong_roughness:
+            pbr["roughnessFactor"] = max(0.04, math.sqrt(2.0 / (max(0.0, material.shininess) + 2.0)))
         if material.diffuse_map is not None:
             relative = Path(material.diffuse_map)
             source = (source_root / relative).resolve()
@@ -211,16 +219,44 @@ def make_materials(
                 texture_index = len(gltf["textures"]) - 1
                 texture_indices[uri] = texture_index
             pbr["baseColorTexture"] = {"index": texture_index}
-        gltf["materials"].append(
-            {"name": material.name, "pbrMetallicRoughness": pbr, "doubleSided": False}
-        )
+        output_material = {"name": material.name, "pbrMetallicRoughness": pbr, "doubleSided": False}
+        if alpha_mask and material.diffuse_map is not None:
+            try:
+                from .png_alpha import has_transparency
+            except ImportError:
+                from png_alpha import has_transparency
+            if uri not in transparency:
+                transparency[uri] = has_transparency(source)
+            if transparency[uri]:
+                output_material.update(alphaMode="MASK", alphaCutoff=0.5, doubleSided=True)
+        # Only an explicitly selected archive naming convention promotes a bump entry to a
+        # tangent-space normal map. Legacy Sponza height maps remain deliberately unconverted.
+        if normal_map_prefix and material.bump_map and Path(material.bump_map).name.startswith(normal_map_prefix):
+            relative = Path(material.bump_map)
+            source = (source_root / relative).resolve()
+            if source_root.resolve() not in source.parents or not source.is_file():
+                raise ValueError(f"material {material.name}: missing normal texture {relative}")
+            uri = relative.as_posix()
+            if uri not in texture_indices:
+                destination = output_root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, destination)
+                gltf["images"].append({"uri": uri})
+                gltf["textures"].append({"source": len(gltf["images"]) - 1})
+                texture_indices[uri] = len(gltf["textures"]) - 1
+            output_material["normalTexture"] = {"index": texture_indices[uri]}
+        gltf["materials"].append(output_material)
         material_indices[material.name] = len(gltf["materials"]) - 1
     return material_indices
 
 
-def convert(obj: Path, mtl: Path, output_root: Path, scale: float) -> None:
+def convert(obj: Path, mtl: Path, output_root: Path, scale: float,
+            name: str = "Sponza", alpha_mask: bool = False,
+            normal_map_prefix: str = "", phong_roughness: bool = False) -> None:
     if not math.isfinite(scale) or scale <= 0.0:
         raise ValueError("scale must be finite and greater than zero")
+    if not name or Path(name).name != name or name in (".", ".."):
+        raise ValueError("name must be a nonempty filename stem")
     materials = parse_mtl(mtl)
     positions, texcoords, normals, primitives = parse_obj(obj, materials)
     output_root.mkdir(parents=True, exist_ok=True)
@@ -229,8 +265,8 @@ def convert(obj: Path, mtl: Path, output_root: Path, scale: float) -> None:
         "asset": {"version": "2.0", "generator": "Luminex convert_obj_to_gltf.py"},
         "scene": 0,
         "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": "Crytek Sponza", "mesh": 0}],
-        "meshes": [{"name": "Crytek Sponza", "primitives": []}],
+        "nodes": [{"name": "Crytek Sponza" if name == "Sponza" else name, "mesh": 0}],
+        "meshes": [{"name": "Crytek Sponza" if name == "Sponza" else name, "primitives": []}],
         "materials": [],
         "textures": [],
         "images": [],
@@ -239,7 +275,8 @@ def convert(obj: Path, mtl: Path, output_root: Path, scale: float) -> None:
         "accessors": [],
     }
     used_materials = [primitive.material for primitive in primitives]
-    material_indices = make_materials(obj.parent, output_root, used_materials, gltf)
+    material_indices = make_materials(obj.parent, output_root, used_materials, gltf, alpha_mask,
+                                     normal_map_prefix, phong_roughness)
     binary = bytearray()
 
     for primitive in primitives:
@@ -279,10 +316,10 @@ def convert(obj: Path, mtl: Path, output_root: Path, scale: float) -> None:
             }
         )
 
-    binary_name = "Sponza.bin"
+    binary_name = name + ".bin"
     gltf["buffers"].append({"uri": binary_name, "byteLength": len(binary)})
     (output_root / binary_name).write_bytes(binary)
-    (output_root / "Sponza.gltf").write_text(
+    (output_root / (name + ".gltf")).write_text(
         json.dumps(gltf, indent=2, ensure_ascii=True) + "\n", encoding="utf-8"
     )
 
@@ -293,8 +330,16 @@ def main() -> int:
     parser.add_argument("mtl", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--scale", type=float, default=0.01)
+    parser.add_argument("--name", default="Sponza")
+    parser.add_argument("--alpha-mask", action="store_true",
+                        help="preserve diffuse PNG transparency as two-sided MASK materials")
+    parser.add_argument("--normal-map-prefix", default="",
+                        help="explicit archive filename prefix identifying tangent-space maps")
+    parser.add_argument("--phong-roughness", action="store_true",
+                        help="approximate Phong exponent with sqrt(2/(Ns+2)), floored at 0.04")
     args = parser.parse_args()
-    convert(args.obj, args.mtl, args.output, args.scale)
+    convert(args.obj, args.mtl, args.output, args.scale, args.name, args.alpha_mask,
+            args.normal_map_prefix, args.phong_roughness)
     return 0
 
 

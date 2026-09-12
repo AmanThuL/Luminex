@@ -24,8 +24,29 @@ enum class ReconstructionMode : uint8_t {
     Raw,
     /// The resolve accumulates this frame over the reprojected history and writes the colour slot
     /// directly, so this frame's output is the next frame's history and there is no copy.
-    NativeTaa
+    NativeTaa,
+    VendorTemporal ///< Device-capability-selected reconstruction with native fallback.
 };
+
+/// Why a requested vendor reconstruction ran the native kernels instead.
+enum class VendorFallback : uint8_t {
+    None,          ///< The requested mode is available.
+    Unsupported,   ///< The device offers no compatible temporal scaler.
+    CreationFailed ///< Scaler initialization failed for this output extent.
+};
+
+/// Effective reconstruction and the reason a vendor request fell back.
+struct ReconstructionSelection {
+    ReconstructionMode mode = ReconstructionMode::Raw; ///< Mode the frame will run.
+    VendorFallback fallback = VendorFallback::None;    ///< Capability or creation failure.
+};
+
+/// Resolves a request without allocating resources; native modes never consult vendor support.
+ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
+                                              const rhi::TemporalScalerSupport& support,
+                                              bool creationFailed = false);
+
+class VendorTemporalScaler;
 
 /// What the temporal passes draw into the display target instead of the frame's own picture. Off
 /// is the shipped image; every other view overwrites it with a diagnostic and is meant to be read
@@ -119,6 +140,21 @@ constexpr uint32_t kRejectionClippedBit = 0x80;     ///< Flag: the neighbourhood
 /// the same inputs.
 class TemporalResolve {
 public:
+    /// Releases histories and the vendor adapter; encoded scaler work retains backend ownership.
+    ~TemporalResolve();
+
+    /// Lazily prepares the selected kernel at the output extent, remembering vendor failures until
+    /// that extent changes. Native requests allocate no vendor resources.
+    ReconstructionSelection prepare(ReconstructionMode requested, uint32_t width, uint32_t height);
+
+    /// Marks a temporal-off frame so the vendor's next frame resets its private history.
+    void recordDisabledFrame();
+
+    /// Whether the last declared vendor frame reset its private history.
+    bool vendorReset() const;
+
+    /// Number of successful vendor scaler creations, across output resizes.
+    uint32_t vendorScalerGeneration() const;
     /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
@@ -145,6 +181,9 @@ public:
     /// was: the depth is public through Renderer::depthTarget() and a caller may sample it after
     /// this graph, and that stage set also covers the attachment work the scene pass does with it.
     GraphTexture importDepth(RenderGraph& graph, uint32_t slot);
+
+    /// Last access recorded for a depth slot, including opaque vendor reads across temporal off.
+    rhi::TextureUse depthUse(uint32_t slot) const;
 
     /// Imports the colour history of `slot` with the terminal use recordFrame() last recorded for
     /// it, so a mode switch between two frames imports the slot with the use the other mode
@@ -188,14 +227,15 @@ public:
     uint64_t depthBytes() const;
 
 private:
-    explicit TemporalResolve(rhi::Device& device, bool cpuReadback)
-        : m_device(device), m_cpuReadback(cpuReadback) {}
+    explicit TemporalResolve(rhi::Device& device, bool cpuReadback);
 
     // The reprojection diagnostic (ADR 0013), unchanged from M6.1 but now reading the previous
     // colour slot: it measures the motion vectors and the history, and nothing downstream shades
     // from it, so it is culled unless the ReprojectionError view keeps it alive.
     GraphTexture declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
                                      const TemporalInputs& inputs);
+    GraphTexture declareVendorHistory(RenderGraph& graph, rhi::CommandList& commands,
+                                      const TemporalInputs& inputs);
 
     // The accumulation itself. The two diagnostic transients are created and written only when
     // `rejectionWanted`/`reprojectedWanted` say a debug view sinks them, which is what keeps a
@@ -237,6 +277,7 @@ private:
                                   bool readsDiagnostic, GraphTexture displayResult);
 
     rhi::Device& m_device;
+    std::unique_ptr<VendorTemporalScaler> m_vendor;
     std::unique_ptr<rhi::ShaderLibrary> m_reprojectLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_resolveLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_debugViewLibrary;
@@ -268,6 +309,7 @@ private:
     // commit left, and what an untouched slot is imported as before any frame has written it.
     rhi::TextureUse m_colorUse[2] = {rhi::TextureUse::CopyDestination,
                                      rhi::TextureUse::CopyDestination};
+    rhi::TextureUse m_depthUse[2] = {rhi::TextureUse::ShaderRead, rhi::TextureUse::ShaderRead};
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

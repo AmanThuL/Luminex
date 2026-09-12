@@ -41,3 +41,21 @@ Archive record and download: <https://casual-effects.com/data>
 
 Suggested archive citation: Morgan McGuire, *Computer Graphics Archive*, July 2017,
 <https://casual-effects.com/data>.
+
+## San Miguel (optional)
+
+- Source: Morgan McGuire's Computer Graphics Archive, `San_Miguel/San_Miguel.zip`
+- Chosen input: `san-miguel-low-poly.obj`, its material file and referenced PNGs
+- Author: Guillermo M. Leal Llaguno; improvements credited to Morgan McGuire, Guedis Cardenas,
+  Michael Mara and Nicholas Hull
+- Archive `info.js`: San Miguel 2.0, CC BY 3.0
+- Enclosed `license.txt`: San Miguel 2.1, with research/educational use and attribution wording
+
+`xmake setup --san-miguel` preserves both upstream records verbatim as `ARCHIVE_INFO.js` and
+`LICENSE.txt`; `PROVENANCE.json` records source URLs, hashes, the chosen variant and adaptations.
+The metadata/version discrepancy is preserved, not resolved by the local conversion. Retain both
+records and credits with the fetched asset and derived comparisons. The conversion imports metre
+geometry, approximates Phong materials, uses diffuse alpha for cutouts and selected tangent-space
+normal maps; Luminex's lighting, camera and rendering further change derived images.
+
+Archive record: <https://casual-effects.com/data>.

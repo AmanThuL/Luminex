@@ -730,6 +730,19 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
         }
         const cgltf_material& mat = data->materials[i];
         GltfMaterial out;
+        if (mat.alpha_mode == cgltf_alpha_mode_blend) {
+            return std::unexpected(
+                makeError(path, "BLEND materials are not supported; use OPAQUE or MASK",
+                          AssetErrorCode::Unsupported));
+        }
+        out.alphaMode = mat.alpha_mode == cgltf_alpha_mode_mask ? render::AlphaMode::Mask
+                                                                : render::AlphaMode::Opaque;
+        out.alphaCutoff = mat.alpha_cutoff;
+        out.doubleSided = mat.double_sided;
+        if (!std::isfinite(out.alphaCutoff) || out.alphaCutoff < 0.0f) {
+            return std::unexpected(makeError(path, "alphaCutoff must be finite and nonnegative",
+                                             AssetErrorCode::Malformed));
+        }
         if (mat.has_pbr_metallic_roughness) {
             const cgltf_pbr_metallic_roughness& pbr = mat.pbr_metallic_roughness;
             out.baseColorFactor = glm::vec4(pbr.base_color_factor[0], pbr.base_color_factor[1],

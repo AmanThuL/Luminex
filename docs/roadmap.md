@@ -6,13 +6,19 @@ This roadmap owns current milestone identifiers, boundaries, dependencies, outco
 
 ## Current baseline
 
-The shipped baseline is [M6.3](milestones/m6.3.md) over [M6.2](milestones/m6.2.md) over [M6.1](milestones/m6.1.md): a scene pass that rasterises into a render rectangle smaller than the output extent, temporal upscaling that reconstructs the output-extent image from jittered lower-resolution samples, and a pure GPU-time-driven controller that proposes the render scale, with every temporal target still allocating at the output extent so a scale change reallocates nothing (ADR 0016), layered over M6.2's native-resolution TAA that reprojects, rejects, clips and accumulates over engine-owned rigid-object motion, a per-pixel reactive weight, and exposure that adapts at a bounded rate and corrects history for the brightness it was recorded at (ADR 0014), over M6.1's opt-in engine-owned rigid-object motion with Renderer-owned camera history, a declared motion-vector convention, and one Renderer-owned, reset-aware history texture (ADR 0013), over M5.5's scene-linear PBR/HDR, M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing, M5.2's ADR 0010 frame-data path, and the M5.3–M5.5 selection workspace and detached graph view. At render scale 1.0 the frame declaration and native kernel are unchanged from M6.2; with temporal inputs off, the frame declaration and fixed-camera output are unchanged from M5.5. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
+The shipped baseline is [M6.4](milestones/m6.4.md): optional MetalFX temporal reconstruction over
+the engine-owned contract, native fallback, masked San Miguel content and synchronized offline
+comparisons. The owner authorized integration on 2026-09-12 with the recorded evidence limits;
+manual Sponza switching review and Xcode opaque-encoder inspection remain explicit follow-ups,
+not completed checks or blockers to this accepted integration. No executor plan is active.
+
+Its underlying baseline is [M6.3](milestones/m6.3.md) over [M6.2](milestones/m6.2.md) over [M6.1](milestones/m6.1.md): a scene pass that rasterises into a render rectangle smaller than the output extent, temporal upscaling that reconstructs the output-extent image from jittered lower-resolution samples, and a pure GPU-time-driven controller that proposes the render scale, with every temporal target still allocating at the output extent so a scale change reallocates nothing (ADR 0016), layered over M6.2's native-resolution TAA that reprojects, rejects, clips and accumulates over engine-owned rigid-object motion, a per-pixel reactive weight, and exposure that adapts at a bounded rate and corrects history for the brightness it was recorded at (ADR 0014), over M6.1's opt-in engine-owned rigid-object motion with Renderer-owned camera history, a declared motion-vector convention, and one Renderer-owned, reset-aware history texture (ADR 0013), over M5.5's scene-linear PBR/HDR, M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing, M5.2's ADR 0010 frame-data path, and the M5.3–M5.5 selection workspace and detached graph view. At render scale 1.0 the frame declaration and native kernel are unchanged from M6.2; with temporal inputs off, the frame declaration and fixed-camera output are unchanged from M5.5. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
 
 ## Project direction and delivery
 
 Luminex is a Metal 4-first modern rendering playground and portfolio: visible image quality and verifiable graphics engineering are both outcomes. The [foundation goals](specs/2026-08-07-luminex-upgrade-design.md) and [research synthesis](research/2026-08-09-rendering-pipeline-synthesis.md) motivate a graph-scheduled, GPU-driven hybrid renderer whose raster, screen-space, ray, reconstruction and cache paths share scene, material, light and temporal semantics. Grow the thin RHI through actual consumers. ADR 0007 governs production backends: D3D12 second when a validated host exists; Vulkan is research only. A benchmark adapter is not a production backend, and additional hardware is not a renderer gate.
 
-The next visible outcome is a replaceable MetalFX temporal adapter, then the bounded display-path evaluation. GPU visibility and bounded local lighting follow the temporal slices. M5.6 closed as reliability failure / DEFER with no accepted performance conclusion (ADR 0012); it does not block M6 or preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
+The next planned slice is M6.5, the bounded display-path evaluation. GPU visibility and bounded local lighting follow the temporal slices. M5.6 closed as reliability failure / DEFER with no accepted performance conclusion (ADR 0012); it does not block M6 or preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
 
 Each milestone has one recognizable completion outcome. Use a few independently accepted slices; implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs. M6's five slices and M7's four are fixed below; M8–M11 retain bounded work areas until planned. Identifiers organize work; the stated prerequisites, rather than numerical order, determine entry. Only one implementation plan is active at a time; independent entry does not start another plan.
 
@@ -208,7 +214,15 @@ and a universal GPU score. Experiment-local instance tables do not define persis
 
 **Deliver:** A capability-selected adapter consuming the same engine-owned color, depth, motion, jitter, exposure, extent and reset semantics; vendor packing remains inside the adapter.
 
+The owner-approved visual extension adds optional San Miguel, binary masked foliage and a fixed
+camera rail, plus synchronized captures and optional offline FLIP differences against Native TAA.
+This completes the deferred real-scene comparison; blended transparency remains in M8.
+
 **Exit gate:** Native and MetalFX replay matching input sequences with separate valid histories; switching is correct; native fallback and labeled resources are validation-clean; captures identify algorithms and frame inputs.
+
+**Acceptance:** Integrated by owner authorization on 2026-09-12 with automated and real-scene
+comparison evidence. Manual Sponza switching and Xcode inspection of opaque work remain follow-ups;
+the [milestone record](milestones/m6.4.md) preserves the unproven screenshot drift and capture limits.
 
 **Defer:** Display/EDR evaluation to M6.5; other vendor adapters and frame generation to independent research.
 

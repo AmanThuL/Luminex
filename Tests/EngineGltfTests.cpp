@@ -906,3 +906,47 @@ TEST_CASE("loadGltf bakes an animated parent's world transform onto its static c
     REQUIRE(near3(glm::vec3(scene->instances[0].world[3]), glm::vec3(10.0f, 1.0f, 2.0f)));
     REQUIRE_FALSE(near3(glm::vec3(scene->instances[0].world[3]), keys.front().translation));
 }
+
+//======================================================================================================================
+TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[engine][alpha-mask]") {
+    const auto directory = std::filesystem::temp_directory_path() / "lmx-gltf-alpha-mask";
+    const auto path = writeQuadGltfFixture(directory);
+    std::ifstream input(path);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    auto opaque = loadGltf(path.string());
+    REQUIRE(opaque);
+    REQUIRE(opaque->materials[0].alphaMode == lmx::render::AlphaMode::Opaque);
+    REQUIRE(opaque->materials[0].alphaCutoff == Catch::Approx(0.5f));
+    const std::string marker = "\"materials\": [{";
+    const auto index = json.find(marker);
+    REQUIRE(index != std::string::npos);
+    SECTION("MASK defaults") {
+        json.insert(index + marker.size(), R"("alphaMode":"MASK", "doubleSided":true,)");
+        writeFile(path, json);
+        auto scene = loadGltf(path.string());
+        REQUIRE(scene);
+        REQUIRE(scene->materials[0].alphaMode == lmx::render::AlphaMode::Mask);
+        REQUIRE(scene->materials[0].alphaCutoff == Catch::Approx(0.5f));
+        REQUIRE(scene->materials[0].doubleSided);
+    }
+    SECTION("MASK authored cutoff and base factor") {
+        json.insert(index + marker.size(), R"("alphaMode":"MASK", "alphaCutoff":0.3,)");
+        const std::string factor = "[1.0, 0.0, 0.0, 1.0]";
+        json.replace(json.find(factor), factor.size(), "[1.0, 0.0, 0.0, 0.5]");
+        writeFile(path, json);
+        auto scene = loadGltf(path.string());
+        REQUIRE(scene);
+        REQUIRE(scene->materials[0].alphaCutoff == Catch::Approx(0.3f));
+        REQUIRE(scene->materials[0].baseColorFactor.a == Catch::Approx(0.5f));
+    }
+    SECTION("BLEND rejection") {
+        json.insert(index + marker.size(), R"("alphaMode":"BLEND",)");
+        writeFile(path, json);
+        auto scene = loadGltf(path.string());
+        REQUIRE_FALSE(scene);
+        REQUIRE(scene.error().code == AssetErrorCode::Unsupported);
+        REQUIRE(scene.error().message.contains("BLEND"));
+    }
+    std::filesystem::remove_all(directory);
+}

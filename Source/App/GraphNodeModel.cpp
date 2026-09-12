@@ -31,6 +31,8 @@ std::string_view passKindName(render::PassKind kind) {
         return "compute";
     case render::PassKind::Copy:
         return "copy";
+    case render::PassKind::External:
+        return "external";
     }
     return "raster";
 }

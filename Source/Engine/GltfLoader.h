@@ -8,6 +8,7 @@
 #include "Engine/Asset.h"
 #include "Engine/GeometryGenerator.h"
 #include "Engine/SceneAnimation.h"
+#include "Render/AlphaMode.h"
 
 #include <glm/glm.hpp>
 
@@ -29,7 +30,10 @@ struct GltfMaterial {
     int occlusionImage = -1;
     float occlusionStrength = 1.0f; ///< Strength applied to the occlusion texture.
     int emissiveImage = -1;         ///< Emissive source-image index, or -1 when absent.
-    glm::vec3 emissiveFactor{0.f};  ///< linear, per the glTF spec -- not an sRGB-authored constant
+    render::AlphaMode alphaMode = render::AlphaMode::Opaque; ///< Opaque or alpha-tested coverage.
+    float alphaCutoff = 0.5f; ///< glTF MASK cutoff for base-color texture alpha times factor alpha.
+    bool doubleSided = false; ///< Authored back-face visibility, honored by MASK materials.
+    glm::vec3 emissiveFactor{0.f}; ///< linear, per the glTF spec -- not an sRGB-authored constant
 };
 
 /// stb-decoded, always tightly packed RGBA8 (4 bytes/pixel, no row padding). Entries not referenced
@@ -80,6 +84,9 @@ struct GltfScene {
 /// cross sign; degenerate/absent UVs fall back to cross(up, normal)). Node transforms are
 /// flattened after an active-scene traversal via cgltf's ancestor-chain composition, at the file's
 /// authored rest pose.
+///
+/// Materials preserve OPAQUE/MASK coverage, the MASK cutoff and authored double-sided flag.
+/// Referenced BLEND materials fail with AssetErrorCode::Unsupported.
 ///
 /// The file's *first* animation, if it has one, is baked into `tracks`: every LINEAR or STEP
 /// translation, rotation and scale channel is evaluated at kAnimationBakeRate over the clip, the

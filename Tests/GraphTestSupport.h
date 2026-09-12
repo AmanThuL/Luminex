@@ -3,29 +3,135 @@
 #include "RHI/RHI.h"
 
 #include <cstdlib>
+#include <deque>
 #include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
-// A device that creates nothing and answers only the two queries a render graph plans a heap
-// layout from.
-//
-// The numbers are fixed and stated here rather than taken from a backend, because a compiled plan
-// is deterministic *under a documented alignment policy* -- so a golden file can hold one only if
-// the policy it was produced under is written down. A texture costs four bytes a texel over its
-// whole chain, rounded up to a 16 KiB alignment; a buffer is rounded up to 256. Both are shaped
-// like a real allocator's answers without being any particular one's.
-//
-// Everything else aborts: a unit test that reaches for a pipeline or a frame has left the layer
-// these fakes stand in for, and answering it with a null would hide that.
+using namespace lmx::rhi;
+
+struct FakeCommandList final : lmx::rhi::CommandList {
+    struct Request {
+        uint32_t slot = 0;
+        const void* data = nullptr;
+        uint64_t size = 0;
+        uint64_t alignment = 0;
+    };
+    std::vector<Request> requests;
+    uint64_t nextAddress = 4096;
+    std::vector<TemporalScaleParams> temporalScales;
+    std::deque<std::string> temporalLabels;
+
+    //==================================================================================================================
+    GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
+                             uint64_t alignment) override {
+        requests.push_back({slot, data, size, alignment});
+        nextAddress += alignment;
+        return GpuAddress{nextAddress};
+    }
+    using CommandList::bindFrameData;
+
+    //==================================================================================================================
+    void temporalScale(TemporalScaler&, const TemporalScaleParams& params) override {
+        temporalLabels.emplace_back(params.label);
+        temporalScales.push_back(params);
+        temporalScales.back().label = temporalLabels.back();
+    }
+
+    //==================================================================================================================
+    void beginRenderPass(const RenderPassDesc&) override {}
+
+    //==================================================================================================================
+    void endRenderPass() override {}
+
+    //==================================================================================================================
+    void beginComputePass(std::string_view) override {}
+
+    //==================================================================================================================
+    void endComputePass() override {}
+
+    //==================================================================================================================
+    void bindComputePipeline(ComputePipeline&) override {}
+
+    //==================================================================================================================
+    void bindStorageBuffer(uint32_t, Buffer&, StorageAccess) override {}
+
+    //==================================================================================================================
+    void bindStorageTexture(uint32_t, Texture&, const TextureViewDesc&, StorageAccess) override {}
+
+    //==================================================================================================================
+    void dispatch(uint32_t, uint32_t, uint32_t) override {}
+
+    //==================================================================================================================
+    void dispatchIndirect(Buffer&, uint64_t) override {}
+
+    //==================================================================================================================
+    void beginCopyPass(std::string_view) override {}
+
+    //==================================================================================================================
+    void endCopyPass() override {}
+
+    //==================================================================================================================
+    void copyBuffer(Buffer&, uint64_t, Buffer&, uint64_t, uint64_t) override {}
+
+    //==================================================================================================================
+    void copyBufferToTexture(Buffer&, const BufferTextureLayout&, Texture&,
+                             const TextureCopyRegion&) override {}
+
+    //==================================================================================================================
+    void copyTextureToBuffer(Texture&, const TextureCopyRegion&, Buffer&,
+                             const BufferTextureLayout&) override {}
+
+    //==================================================================================================================
+    void copyTexture(Texture&, const TextureCopyRegion&, Texture&,
+                     const TextureCopyRegion&) override {}
+
+    //==================================================================================================================
+    void fillBuffer(Buffer&, uint64_t, uint64_t, uint8_t) override {}
+
+    //==================================================================================================================
+    void bindPipeline(GraphicsPipeline&) override {}
+
+    //==================================================================================================================
+    void bindBuffer(uint32_t, Buffer&) override {}
+
+    //==================================================================================================================
+    void bindTexture(uint32_t, Texture&, const TextureViewDesc&) override {}
+
+    //==================================================================================================================
+    void bindSampler(uint32_t, Sampler&) override {}
+
+    //==================================================================================================================
+    void draw(uint32_t, uint32_t) override {}
+
+    //==================================================================================================================
+    void drawIndexed(Buffer&, uint32_t, uint32_t) override {}
+
+    //==================================================================================================================
+    void drawIndirect(Buffer&, uint64_t) override {}
+
+    //==================================================================================================================
+    void drawIndexedIndirect(Buffer&, Buffer&, uint64_t) override {}
+
+    //==================================================================================================================
+    void textureBarrier(Texture&, const TextureSubresourceRange&, TextureUse, TextureUse,
+                        BarrierOptions) override {}
+
+    //==================================================================================================================
+    void bufferBarrier(Buffer&, const BufferRange&, BufferUse, BufferUse, BarrierOptions) override {
+    }
+};
+
+// Deterministic allocation policy and no-op GPU objects for graph declarations.
 struct FakeDevice final : lmx::rhi::Device {
     static constexpr uint64_t kTextureAlignment = 16384;
     static constexpr uint64_t kBufferAlignment = 256;
     static constexpr uint64_t kBytesPerTexel = 4;
 
-    // A heap that owns no memory. The pool's generation bookkeeping reads nothing but the size it
-    // was asked for, and nothing is ever placed in one here, so there is nothing else to fake.
+    // The heap retains its requested size; placed objects own descriptors and no GPU storage.
     struct FakeHeap final : lmx::rhi::Heap {
 
         //==============================================================================================================
@@ -38,9 +144,72 @@ struct FakeDevice final : lmx::rhi::Device {
         uint64_t m_size = 0;
     };
 
-    // The frame the pool sees, advanced by the test rather than by a frame loop: what a pool keys
-    // its slot rotation on is the number, not the work behind it.
+    // Tests may advance this directly or use endFrame to rotate the pool's frame slots.
     uint64_t frame = 0;
+    FakeCommandList commands;
+    struct TextureObject final : lmx::rhi::Texture {
+        lmx::rhi::TextureDesc desc;
+        std::string label;
+
+        //==============================================================================================================
+        explicit TextureObject(const lmx::rhi::TextureDesc& value)
+            : desc(value), label(value.label) {
+            desc.label = label;
+        }
+
+        //==============================================================================================================
+        uint32_t width() const override { return desc.width; }
+
+        //==============================================================================================================
+        uint32_t height() const override { return desc.height; }
+
+        //==============================================================================================================
+        lmx::rhi::Format format() const override { return desc.format; }
+
+        //==============================================================================================================
+        uint32_t mipLevels() const override { return desc.mipLevels; }
+
+        //==============================================================================================================
+        uint32_t arrayLayers() const override {
+            return desc.kind == lmx::rhi::TextureKind::Cube ? 6 : 1;
+        }
+
+        //==============================================================================================================
+        void readback(void*, uint64_t) override { std::abort(); }
+    };
+    struct BufferObject final : lmx::rhi::Buffer {
+        uint64_t bytes;
+
+        //==============================================================================================================
+        explicit BufferObject(uint64_t size) : bytes(size) {}
+
+        //==============================================================================================================
+        uint64_t size() const override { return bytes; }
+
+        //==============================================================================================================
+        void readback(void*, uint64_t) override { std::abort(); }
+    };
+    lmx::rhi::DeviceCapabilities deviceCaps;
+    bool failTemporalScalerCreation = false;
+    std::vector<lmx::rhi::TemporalScalerDesc> temporalScalerCreations;
+    std::deque<std::string> temporalScalerLabels;
+    struct FakeTemporalScaler final : lmx::rhi::TemporalScaler {};
+
+    //==================================================================================================================
+    const lmx::rhi::DeviceCapabilities& capabilities() const override { return deviceCaps; }
+
+    //==================================================================================================================
+    lmx::rhi::Result<std::unique_ptr<lmx::rhi::TemporalScaler>>
+    createTemporalScaler(const lmx::rhi::TemporalScalerDesc& desc) override {
+        temporalScalerLabels.emplace_back(desc.label);
+        temporalScalerCreations.push_back(desc);
+        temporalScalerCreations.back().label = temporalScalerLabels.back();
+        if (!deviceCaps.temporalScaler.available || failTemporalScalerCreation) {
+            return std::unexpected(lmx::rhi::Error{lmx::rhi::ErrorCode::ResourceCreationFailed,
+                                                   "fake temporal scaler unavailable"});
+        }
+        return std::make_unique<FakeTemporalScaler>();
+    }
 
     //==================================================================================================================
     static uint64_t alignUp(uint64_t value, uint64_t alignment) {
@@ -72,15 +241,16 @@ struct FakeDevice final : lmx::rhi::Device {
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>> createBuffer(const lmx::rhi::BufferDesc&,
-                                                                     const void*) override {
-        std::abort();
+    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>>
+    createBuffer(const lmx::rhi::BufferDesc& desc, const void*) override {
+        return std::make_unique<BufferObject>(desc.size);
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::Texture>>
-    createTexture(const lmx::rhi::TextureDesc&, std::span<const lmx::rhi::TextureMip>) override {
-        std::abort();
+    createTexture(const lmx::rhi::TextureDesc& desc,
+                  std::span<const lmx::rhi::TextureMip>) override {
+        return std::make_unique<TextureObject>(desc);
     }
 
     //==================================================================================================================
@@ -91,48 +261,48 @@ struct FakeDevice final : lmx::rhi::Device {
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::Texture>>
-    createPlacedTexture(lmx::rhi::Heap&, uint64_t, const lmx::rhi::TextureDesc&) override {
-        std::abort();
+    createPlacedTexture(lmx::rhi::Heap&, uint64_t, const lmx::rhi::TextureDesc& desc) override {
+        return std::make_unique<TextureObject>(desc);
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>>
-    createPlacedBuffer(lmx::rhi::Heap&, uint64_t, const lmx::rhi::BufferDesc&) override {
-        std::abort();
+    createPlacedBuffer(lmx::rhi::Heap&, uint64_t, const lmx::rhi::BufferDesc& desc) override {
+        return std::make_unique<BufferObject>(desc.size);
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::Sampler>>
     createSampler(const lmx::rhi::SamplerDesc&) override {
-        std::abort();
+        return std::make_unique<lmx::rhi::Sampler>();
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::ShaderLibrary>>
     loadShaderLibrary(std::string_view) override {
-        std::abort();
+        return std::make_unique<lmx::rhi::ShaderLibrary>();
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::GraphicsPipeline>>
     createGraphicsPipeline(const lmx::rhi::GraphicsPipelineDesc&) override {
-        std::abort();
+        return std::make_unique<lmx::rhi::GraphicsPipeline>();
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::ComputePipeline>>
     createComputePipeline(const lmx::rhi::ComputePipelineDesc&) override {
-        std::abort();
+        return std::make_unique<lmx::rhi::ComputePipeline>();
     }
 
     //==================================================================================================================
-    lmx::rhi::CommandList& beginFrame() override { std::abort(); }
+    lmx::rhi::CommandList& beginFrame() override { return commands; }
 
     //==================================================================================================================
-    void endFrame(lmx::rhi::Swapchain*) override { std::abort(); }
+    void endFrame(lmx::rhi::Swapchain*) override { ++frame; }
 
     //==================================================================================================================
-    void waitIdle() override { std::abort(); }
+    void waitIdle() override {}
 
     //==================================================================================================================
     std::span<const lmx::rhi::PassTiming> passTimings() const override { return {}; }
