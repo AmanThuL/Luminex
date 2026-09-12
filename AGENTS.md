@@ -15,8 +15,8 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
-- Current implementation: `docs/milestones/m6.4.md` (opt-in vendor temporal reconstruction, ADR 0017;
-  evidence and remaining owner QA are recorded there) over
+- Current baseline: `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
+  offline comparison; ADRs 0017–0018, evidence limits and follow-up QA recorded there) over
   `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
   `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
   `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
