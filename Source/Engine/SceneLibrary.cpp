@@ -42,6 +42,9 @@ constexpr std::array kSceneDescriptors{
                     &loadMaterialLabScene},
     SceneDescriptor{"temporal-lab", "TemporalLab", SceneRole::Diagnostic, "", "", false,
                     &loadTemporalLabScene},
+    SceneDescriptor{"san-miguel", "San Miguel", SceneRole::Showcase,
+                    "Optional San Miguel realtime archive",
+                    "Assets/Fetched/SanMiguel/SanMiguel.gltf", false, &loadSanMiguelScene},
 };
 
 static_assert([] {
@@ -128,7 +131,10 @@ SceneLibrary::SceneLibrary(rhi::Device& device) : m_device(device) {
                              .role = descriptor.role,
                              .assetRequirement = descriptor.assetRequirement,
                              .available = available,
-                             .hint = available ? "" : "run `xmake setup`"});
+                             .hint = available ? ""
+                                     : descriptor.stableId == "san-miguel"
+                                         ? "run `xmake setup --san-miguel`"
+                                         : "run `xmake setup`"});
     }
 }
 

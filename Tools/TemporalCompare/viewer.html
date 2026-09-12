@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Temporal reconstruction comparison</title>
+<style>
+:root{color-scheme:dark;font:14px system-ui,sans-serif;background:#101418;color:#e5eaf0}body{margin:0;padding:24px}h1{font-size:25px;margin:0 0 8px}p{color:#aab9c8;line-height:1.5}.controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px;background:#19212a;border:1px solid #31404d;border-radius:10px;position:sticky;top:0;z-index:3}button,select,input{accent-color:#71c5d9;font:inherit}button,select{color:#e5eaf0;background:#25323e;border:1px solid #567080;border-radius:5px;padding:6px 10px}input[type=number]{width:72px;background:#19212a;color:#e5eaf0;border:1px solid #567080;padding:5px}#frame{flex:1;min-width:180px}.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin:20px 0}.panel{background:#19212a;border:1px solid #31404d;border-radius:10px;overflow:hidden}h2{font-size:16px;padding:14px;margin:0;border-bottom:1px solid #31404d}.overview{width:100%;display:block;cursor:crosshair}.crop{width:100%;height:280px;display:block;image-rendering:pixelated;background:#080b0d}.caption,.stats{padding:10px 14px;color:#aab9c8;min-height:20px}.diff{width:100%;display:block}.stats{font-variant-numeric:tabular-nums}details{background:#19212a;border-radius:8px;padding:14px}pre{overflow:auto;font-size:12px}a{color:#8fd5e3}.notice{color:#e6c491}#status{font-variant-numeric:tabular-nums}label{white-space:nowrap}body.loading #status{color:#e6c491}
+</style>
+<h1>Temporal reconstruction · matched frames</h1>
+<p id="summary"></p>
+<div class="controls">
+<button id="play">Play</button><button id="previous" aria-label="Previous frame">←</button><button id="next" aria-label="Next frame">→</button>
+<input id="frame" type="range" min="0" value="0"><span id="status"></span>
+<label>Playback <select id="fps"><option>15</option><option>30</option><option selected>60</option></select> fps</label>
+<label>Crop x <input id="x" type="number" min="0"></label><label>y <input id="y" type="number" min="0"></label>
+<label>Zoom <select id="zoom"><option value="1">1:1</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></label>
+</div>
+<p>Click any overview to move the common crop. All three crops use the same source coordinates and pixel magnification. At 1:1, one source pixel occupies one CSS pixel. Playback waits for the matched images and never skips a frame. This short captured segment repeats: the jump from its end back to its start is a playback boundary, not a reconstruction history error.</p>
+<div class="grid" id="panels"></div>
+<p class="notice">Native TAA is an algorithm baseline, not ground truth. Differences do not establish accuracy or a quality ranking. Inspect moving edges, newly visible surfaces and thin details over time.</p>
+<p id="credits" hidden>San Miguel model © Guillermo M. Leal Llaguno. 2017 archive improvements: Morgan McGuire, Guedis Cardenas, Michael Mara and Nicholas Hull. This capture uses a converted low-polygon variant. <a href="run.json">Archive credits, both license records, conversion changes and provenance</a>.</p>
+<details id="metrics"><summary>LDR-FLIP difference maps and definitions</summary><p id="metricInfo"></p><div class="grid" id="differences"></div></details>
+<details><summary>Capture settings and provenance</summary><pre id="settings"></pre><p><a href="comparison.json">Comparison manifest and image hashes</a> · <a href="run.json">Capture commands and executable hash</a> · <a href="raw/manifest.json">Raw frames</a> · <a href="taa/manifest.json">Native frames</a> · <a href="metalfx/manifest.json">MetalFX frames</a></p></details>
+<script>
+'use strict';
+const data=/* CAPTURE_DATA */;
+const modes=['raw','taa','metalfx'], el=id=>document.getElementById(id), state={frame:0,playing:false,token:0,images:[],timer:null}, cache=new Map();
+el('summary').textContent=`${data.settings.scene} · ${data.settings.width} × ${data.settings.height} · render scale ${data.settings.renderScale} · ${data.settings.frameCount} captured frames after ${data.settings.warmup} warmup frames · simulation ${data.settings.fps} Hz`;
+el('settings').textContent=JSON.stringify({settings:data.settings,packages:data.packages,meaning:data.comparisonMeaning},null,2);
+el('credits').hidden=data.settings.scene!=='san-miguel';
+el('frame').max=data.frames.length-1;el('x').value=Math.floor(data.settings.width/2);el('y').value=Math.floor(data.settings.height/2);el('x').max=data.settings.width-1;el('y').max=data.settings.height-1;
+for(const mode of modes){const p=document.createElement('section');p.className='panel';p.innerHTML=`<h2></h2><img class="overview" alt=""><div class="caption">Common crop · nearest-neighbour magnification</div><canvas class="crop"></canvas>`;p.querySelector('h2').textContent=data.labels[mode];p.querySelector('img').alt=data.labels[mode]+' overview';p.dataset.mode=mode;el('panels').appendChild(p);p.querySelector('img').onclick=e=>{const r=e.target.getBoundingClientRect();el('x').value=Math.round((e.clientX-r.left)/r.width*(data.settings.width-1));el('y').value=Math.round((e.clientY-r.top)/r.height*(data.settings.height-1));drawCrops();};}
+const panels=[...el('panels').children];
+if(data.flip){el('metricInfo').textContent=`LDR-FLIP ${data.flip.version}, sRGB inputs, ${data.flip.ppd} pixels per degree. ${data.flip.baseline}. ${data.flip.map}. Mean: ${data.flip.mean}. p95: ${data.flip.p95}. Metrics cover the whole image; changing the crop does not change them.`;for(const mode of ['raw','metalfx']){const p=document.createElement('section');p.className='panel';p.dataset.mode=mode;p.innerHTML='<h2></h2><img class="diff" alt="FLIP difference map"><div class="stats"></div>';p.querySelector('h2').textContent=data.labels[mode]+' versus Native TAA';el('differences').appendChild(p);}}else{el('metricInfo').textContent='Optional FLIP metrics were not generated for this run. The three images and common crop remain available.';}
+function loadImage(src){if(cache.has(src))return cache.get(src);const promise=new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Cannot load '+src));img.src=src;});cache.set(src,promise);while(cache.size>18)cache.delete(cache.keys().next().value);return promise;}
+function drawCrops(){const zoom=+el('zoom').value,cx=Math.max(0,Math.min(data.settings.width-1,+el('x').value)),cy=Math.max(0,Math.min(data.settings.height-1,+el('y').value));for(let i=0;i<panels.length;i++){if(!state.images[i])continue;const canvas=panels[i].querySelector('canvas'),w=canvas.clientWidth,h=canvas.clientHeight,dpr=window.devicePixelRatio||1;canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);const ctx=canvas.getContext('2d');ctx.scale(dpr,dpr);ctx.imageSmoothingEnabled=false;ctx.fillStyle='#080b0d';ctx.fillRect(0,0,w,h);ctx.drawImage(state.images[i],w/2-cx*zoom,h/2-cy*zoom,data.settings.width*zoom,data.settings.height*zoom);}}
+async function showFrame(index){
+  const token=++state.token;
+  state.frame=Math.max(0,Math.min(data.frames.length-1,index));
+  el('frame').value=state.frame;
+  document.body.classList.add('loading');
+  const f=data.frames[state.frame], differencePanels=[...el('differences').children];
+  try{
+    const images=await Promise.all([
+      ...modes.map(mode=>loadImage(f.images[mode])),
+      ...differencePanels.map(panel=>loadImage(f.differences[panel.dataset.mode].map))
+    ]);
+    if(token!==state.token)return;
+    state.images=images.slice(0,modes.length);
+    panels.forEach((p,i)=>p.querySelector('img').src=state.images[i].src);
+    drawCrops();
+    el('status').textContent=`${state.frame+1} / ${data.frames.length} · t ${f.time.toFixed(3)} s · sim ${f.simulationFrame}`;
+    differencePanels.forEach((panel,i)=>{
+      const d=f.differences[panel.dataset.mode];
+      panel.querySelector('img').src=images[modes.length+i].src;
+      panel.querySelector('.stats').textContent=`mean ${d.mean.toFixed(6)} · p95 ${d.p95.toFixed(6)}`;
+    });
+  }catch(error){pause();el('status').textContent=error.message;}
+  finally{if(token===state.token)document.body.classList.remove('loading');}
+}
+function pause(){state.playing=false;clearTimeout(state.timer);el('play').textContent='Play';}
+async function tick(){if(!state.playing)return;const start=performance.now();await showFrame((state.frame+1)%data.frames.length);if(state.playing)state.timer=setTimeout(tick,Math.max(0,1000/+el('fps').value-(performance.now()-start)));}
+el('play').onclick=()=>{if(state.playing)pause();else{state.playing=true;el('play').textContent='Pause';tick();}};
+el('frame').oninput=()=>{pause();showFrame(+el('frame').value);};el('previous').onclick=()=>{pause();showFrame(state.frame-1);};el('next').onclick=()=>{pause();showFrame(state.frame+1);};for(const id of ['x','y','zoom'])el(id).oninput=drawCrops;window.onresize=drawCrops;document.onkeydown=e=>{if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;if(e.code==='Space'){e.preventDefault();el('play').click();}else if(e.code==='ArrowLeft')el('previous').click();else if(e.code==='ArrowRight')el('next').click();};showFrame(0);
+</script></html>

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <span>
 #include <string_view>
+#include <vector>
 
 using namespace lmx;
 using namespace lmx::app;
@@ -88,7 +89,7 @@ TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet, milk-truck, "
-            "material-lab, temporal-lab");
+            "material-lab, temporal-lab, san-miguel");
 }
 
 //======================================================================================================================
@@ -105,7 +106,7 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
     REQUIRE_FALSE(sceneResult);
     REQUIRE(sceneResult.error().message ==
             "--scene needs an ID: App --scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab>");
+            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel>");
 }
 
 //======================================================================================================================
@@ -116,11 +117,12 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.bmp>] [--scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab>] [--windowed] "
-            "[--frames <N>] [--temporal <off|raw|taa>] "
+            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel>] [--windowed] "
+            "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
-            "[--render-scale <0.5..1.0>] "
-            "(--frames N renders N frames and captures the last, including temporal warmup)");
+            "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N>] "
+            "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
+            "after W unsaved warmup frames)");
 }
 
 //======================================================================================================================
@@ -219,7 +221,8 @@ TEST_CASE("--temporal rejects an unknown value, naming the accepted ones", "[app
     const AppOptionsResult result = parseAppOptions(arguments);
 
     REQUIRE_FALSE(result);
-    REQUIRE(result.error().message == "--temporal needs one of off|raw|taa, got 'sideways'");
+    REQUIRE(result.error().message ==
+            "--temporal needs one of off|raw|taa|metalfx, got 'sideways'");
 }
 
 //======================================================================================================================
@@ -388,8 +391,8 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 // The CLI text is generated from the catalog (Source/App/AppOptions.cpp's sceneIdList), not a
 // second hardcoded list -- this pins the catalog's own order/content so the two cannot drift.
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
-    const std::array<std::string_view, 5> expected = {"sponza", "damaged-helmet", "milk-truck",
-                                                      "material-lab", "temporal-lab"};
+    const std::array<std::string_view, 6> expected = {
+        "sponza", "damaged-helmet", "milk-truck", "material-lab", "temporal-lab", "san-miguel"};
     const std::span<const std::string_view> ids = lmx::engine::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());
@@ -418,4 +421,91 @@ TEST_CASE("app options keep the last repeated values and ignore a bare separator
     REQUIRE(result->mode == RunMode::Screenshot);
     REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
     REQUIRE(result->screenshotPath == "last.bmp");
+}
+
+//======================================================================================================================
+TEST_CASE("--temporal metalfx selects vendor reconstruction in either run mode", "[app][options]") {
+    const std::array arguments = {std::string_view{"--temporal"}, std::string_view{"metalfx"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE(result);
+    REQUIRE(result->mode == RunMode::Windowed);
+    REQUIRE(result->temporal == TemporalMode::Vendor);
+    REQUIRE(temporalReconstructionMode(result->temporal) ==
+            render::ReconstructionMode::VendorTemporal);
+    REQUIRE(temporalReconstructionMode(TemporalMode::Taa) == render::ReconstructionMode::NativeTaa);
+    REQUIRE(temporalReconstructionMode(TemporalMode::Raw) == render::ReconstructionMode::Raw);
+
+    const std::array screenshot = {
+        std::string_view{"--temporal"},     std::string_view{"metalfx"},
+        std::string_view{"--screenshot"},   std::string_view{"vendor.bmp"},
+        std::string_view{"--render-scale"}, std::string_view{"0.5"}};
+    const auto offscreen = parseAppOptions(screenshot);
+    REQUIRE(offscreen);
+    REQUIRE(offscreen->temporal == TemporalMode::Vendor);
+    REQUIRE(offscreen->renderScale == 0.5f);
+}
+
+//======================================================================================================================
+TEST_CASE("vendor command-line diagnostics accept engine views and reject native internals",
+          "[app][options]") {
+    for (std::string_view view : {"off", "motion", "reprojection", "reprojected"}) {
+        const std::array arguments = {std::string_view{"--temporal"}, std::string_view{"metalfx"},
+                                      std::string_view{"--temporal-view"}, view};
+        CAPTURE(view);
+        REQUIRE(parseAppOptions(arguments));
+    }
+    for (std::string_view view : {"rejection", "weight", "age"}) {
+        for (bool modeFirst : {true, false}) {
+            const std::array modeThenView = {std::string_view{"--temporal"},
+                                             std::string_view{"metalfx"},
+                                             std::string_view{"--temporal-view"}, view};
+            const std::array viewThenMode = {std::string_view{"--temporal-view"}, view,
+                                             std::string_view{"--temporal"},
+                                             std::string_view{"metalfx"}};
+            const auto result = parseAppOptions(modeFirst ? modeThenView : viewThenMode);
+            CAPTURE(view, modeFirst);
+            REQUIRE_FALSE(result);
+            REQUIRE(result.error().message.contains("native reconstruction"));
+        }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("capture sequences separate saved frames from warmup", "[app][options]") {
+    const std::array arguments = {
+        std::string_view{"--capture-sequence"}, std::string_view{"sequence"},
+        std::string_view{"--frames"},           std::string_view{"120"},
+        std::string_view{"--warmup"},           std::string_view{"32"},
+        std::string_view{"--temporal"},         std::string_view{"metalfx"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE(result);
+    REQUIRE(result->mode == RunMode::CaptureSequence);
+    REQUIRE(result->captureSequencePath == "sequence");
+    REQUIRE(result->frames == 120);
+    REQUIRE(result->warmup == 32);
+    REQUIRE(result->temporal == TemporalMode::Vendor);
+}
+
+//======================================================================================================================
+TEST_CASE("capture options reject conflicting output and invalid warmup", "[app][options]") {
+    const std::vector<std::vector<std::string_view>> invalid = {
+        {"--capture-sequence"},
+        {"--capture-sequence", ""},
+        {"--capture-sequence", "--frames"},
+        {"--capture-sequence", "seq", "--screenshot", "out.bmp"},
+        {"--warmup", "32"},
+        {"--capture-sequence", "seq", "--warmup", "-1"},
+        {"--capture-sequence", "seq", "--warmup", "1.5"},
+        {"--capture-sequence", "seq", "--render-scale", "nan"},
+        {"--capture-sequence", "seq", "--render-scale", "inf"},
+        {"--capture-sequence", "seq", "--warmup", "4294967295", "--frames", "1"}};
+    for (const auto& arguments : invalid) {
+        REQUIRE_FALSE(parseAppOptions(arguments));
+    }
+    const std::array valid = {std::string_view{"--capture-sequence"}, std::string_view{"seq"},
+                              std::string_view{"--warmup"}, std::string_view{"0"}};
+    const auto result = parseAppOptions(valid);
+    REQUIRE(result);
+    REQUIRE(result->warmup == 0);
+    REQUIRE(result->frames == 1);
 }

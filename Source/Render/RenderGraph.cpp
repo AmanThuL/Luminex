@@ -46,6 +46,7 @@ bool isColorRenderableFormat(rhi::Format format) {
     case rhi::Format::RG16Float:
     case rhi::Format::R8Unorm:
         return true;
+    case rhi::Format::R16Float:
     case rhi::Format::Unknown:
     case rhi::Format::BC1Unorm:
     case rhi::Format::BC1Unorm_sRGB:
@@ -77,6 +78,9 @@ bool isWriteRole(UseRole role) {
 // almost alone; only a plain read has to ask the pass kind, because a compute pass reads through a
 // storage binding where a raster pass reads through a sampled one.
 rhi::TextureUse textureUseOf(PassKind kind, UseRole role) {
+    if (kind == PassKind::External) {
+        return isWriteRole(role) ? rhi::TextureUse::ExternalWrite : rhi::TextureUse::ExternalRead;
+    }
     switch (role) {
     case UseRole::Read:
         return kind == PassKind::Compute ? rhi::TextureUse::StorageRead
@@ -400,6 +404,8 @@ std::string_view formatName(rhi::Format format) {
         return "RGBA8Unorm_sRGB";
     case rhi::Format::RGBA16Float:
         return "RGBA16Float";
+    case rhi::Format::R16Float:
+        return "R16Float";
     case rhi::Format::RG16Float:
         return "RG16Float";
     case rhi::Format::R8Unorm:
@@ -694,6 +700,21 @@ void RenderGraph::addCopyPass(std::string_view label, CopyPassDesc desc, Execute
 
     m_passes.push_back({.label = std::string(label),
                         .kind = PassKind::Copy,
+                        .execute = std::move(execute),
+                        .declarations = std::move(declarations)});
+}
+
+//======================================================================================================================
+void RenderGraph::addExternalPass(std::string_view label, ExternalPassDesc desc,
+                                  ExecuteFn execute) {
+    LMX_ASSERT(static_cast<bool>(execute), "a declared pass must carry a body");
+
+    std::vector<Declaration> declarations;
+    flattenTextures(declarations, desc.textureReads, UseRole::Read);
+    flattenTextures(declarations, desc.textureWrites, UseRole::Write);
+
+    m_passes.push_back({.label = std::string(label),
+                        .kind = PassKind::External,
                         .execute = std::move(execute),
                         .declarations = std::move(declarations)});
 }
@@ -1343,9 +1364,9 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // the passes it sits between, so a reader of mip 1 is not ordered by a barrier that named mip 0
     // for an earlier reader; and a barrier consumed by a compute pass is scoped to that pass's
     // stages, so it orders nothing for a later raster reader of the same subresources. A pass's
-    // kind is its stage class here: raster, compute, and copy passes are exactly the three kinds of
-    // encoder a barrier can be consumed by, and passes of one kind are ordered among themselves, so
-    // one barrier serves every later reader of that kind. Two kinds whose stages happen to overlap
+    // kind is its stage class here, including opaque external operations. Passes of one kind are
+    // ordered among themselves, so one barrier serves every later reader of that kind. Two kinds
+    // whose stages happen to overlap
     // in a backend are still treated as distinct, which costs a redundant barrier rather than a
     // missed one. Whole-resource declarations -- what every raster pass here makes -- produce one
     // whole-resource range that encloses every later whole-resource reader of the same kind, so one
@@ -1370,7 +1391,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
 
     const auto textureUseWrites = [](rhi::TextureUse use) {
         return use == rhi::TextureUse::RenderTarget || use == rhi::TextureUse::StorageWrite ||
-               use == rhi::TextureUse::CopyDestination;
+               use == rhi::TextureUse::CopyDestination || use == rhi::TextureUse::ExternalWrite;
     };
     const auto bufferUseWrites = [](rhi::BufferUse use) {
         return use == rhi::BufferUse::StorageWrite || use == rhi::BufferUse::CopyDestination;
@@ -1872,6 +1893,9 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
             commands.beginComputePass(pass.label);
             pass.execute(passResources(passIndex));
             commands.endComputePass();
+            break;
+        case PassKind::External:
+            pass.execute(passResources(passIndex));
             break;
         case PassKind::Copy:
             commands.beginCopyPass(pass.label);

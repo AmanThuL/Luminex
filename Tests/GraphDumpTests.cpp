@@ -424,3 +424,26 @@ TEST_CASE("a render area appears in the dump", "[render][graph]") {
     REQUIRE(record.has_value());
     requireMatchesGolden(dumpCompiledFrame(*record), "frame-render-area.txt");
 }
+
+//======================================================================================================================
+TEST_CASE("external graph dumps name the operation and both external uses",
+          "[render][graph][external]") {
+    FakeTexture input{64};
+    FakeTexture output{64};
+    RenderGraph graph;
+    const auto source = graph.importTexture(input, rhi::Format::R16Float, "exposure",
+                                            rhi::TextureUse::StorageWrite);
+    const auto target = graph.importTexture(output, rhi::Format::RGBA16Float, "history");
+    graph.addExternalPass("vendor", {.textureReads = {source}, .textureWrites = {target}}, kNoWork);
+    graph.addComputePass("consume",
+                         {.shaderTextureReads = {nextVersion(target)}, .textureWrites = {source}},
+                         kNoWork);
+    graph.exportTexture(nextVersion(source));
+    const auto record = graph.compileFrame(1);
+    REQUIRE(record.has_value());
+    const std::string dump = dumpCompiledFrame(*record);
+    REQUIRE(dump.contains("external \"vendor\""));
+    REQUIRE(dump.contains("R16Float"));
+    REQUIRE(dump.contains("StorageWrite -> ExternalRead"));
+    REQUIRE(dump.contains("ExternalWrite -> ShaderRead"));
+}

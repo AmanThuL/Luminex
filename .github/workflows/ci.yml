@@ -34,6 +34,16 @@ jobs:
       - name: Policy checker tests
         run: python3 -m unittest discover -s Tools/tests -v
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install temporal comparison dependencies
+        run: python3 -m pip install -r Tools/TemporalCompare/requirements.txt
+
+      - name: Temporal comparison report tests
+        run: python3 -m unittest discover -s Tools/TemporalCompare -v
+
   build-test:
     runs-on: macos-26
     steps:

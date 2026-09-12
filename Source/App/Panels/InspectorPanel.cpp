@@ -14,9 +14,11 @@
 #include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <array>
 #include <cstddef>
 #include <iterator>
 #include <limits>
+#include <string>
 #include <string_view>
 
 namespace lmx::app {
@@ -101,19 +103,36 @@ void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
 // renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
 void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
                          engine::Scene& scene, TemporalEditorState& temporalState,
-                         const DynamicResolutionState& dynamicResolutionState) {
+                         const DynamicResolutionState& dynamicResolutionState,
+                         const rhi::TemporalScalerSupport& temporalSupport) {
+    const render::TemporalStatus status = renderer.temporalStatus();
     ImGui::Checkbox("Temporal inputs", &settings.temporalEnabled);
     ImGui::BeginDisabled(!settings.temporalEnabled);
     ImGui::Checkbox("Jitter", &settings.jitterEnabled);
 
-    int reconstructionIndex = static_cast<int>(settings.reconstruction);
-    constexpr const char* kReconstructionNames[] = {"Raw", "Native TAA"};
-    if (ImGui::Combo("Reconstruction", &reconstructionIndex, kReconstructionNames,
-                     static_cast<int>(std::size(kReconstructionNames)))) {
-        settings.reconstruction = static_cast<render::ReconstructionMode>(reconstructionIndex);
+    const std::array<std::string, 3> reconstructionNames = {
+        std::string(reconstructionName(render::ReconstructionMode::Raw, temporalSupport)),
+        std::string(reconstructionName(render::ReconstructionMode::NativeTaa, temporalSupport)),
+        std::string(
+            reconstructionName(render::ReconstructionMode::VendorTemporal, temporalSupport))};
+    if (ImGui::BeginCombo(
+            "Reconstruction",
+            reconstructionNames[static_cast<size_t>(settings.reconstruction)].c_str())) {
+        for (size_t index = 0; index < reconstructionNames.size(); ++index) {
+            const auto mode = static_cast<render::ReconstructionMode>(index);
+            if (ImGui::Selectable(reconstructionNames[index].c_str(),
+                                  settings.reconstruction == mode)) {
+                settings.reconstruction = mode;
+            }
+        }
+        ImGui::EndCombo();
     }
 
-    int debugViewIndex = static_cast<int>(settings.temporalDebugView);
+    const auto effectiveMode = render::resolveReconstruction(
+                                   settings.reconstruction, temporalSupport,
+                                   status.vendorFallback == render::VendorFallback::CreationFailed)
+                                   .mode;
+    settings.temporalDebugView = clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
     constexpr const char* kDebugViewNames[] = {"Off",
                                                "Motion vectors",
                                                "Reprojection error",
@@ -121,9 +140,19 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
                                                "Rejection mask",
                                                "Blend weight",
                                                "History age"};
-    if (ImGui::Combo("Debug view", &debugViewIndex, kDebugViewNames,
-                     static_cast<int>(std::size(kDebugViewNames)))) {
-        settings.temporalDebugView = static_cast<render::TemporalDebugView>(debugViewIndex);
+    if (ImGui::BeginCombo("Debug view",
+                          kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
+        for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
+            const auto debugView = static_cast<render::TemporalDebugView>(index);
+            const bool disabled = clampTemporalDebugView(debugView, effectiveMode) != debugView;
+            ImGui::BeginDisabled(disabled);
+            if (ImGui::Selectable(kDebugViewNames[index],
+                                  settings.temporalDebugView == debugView)) {
+                settings.temporalDebugView = debugView;
+            }
+            ImGui::EndDisabled();
+        }
+        ImGui::EndCombo();
     }
     ImGui::EndDisabled();
 
@@ -175,7 +204,26 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
         requestCameraCut(temporalState);
     }
 
-    const render::TemporalStatus status = renderer.temporalStatus();
+    const std::string_view effectiveName =
+        reconstructionName(status.reconstruction, temporalSupport);
+    ImGui::Text("Effective reconstruction: %.*s", static_cast<int>(effectiveName.size()),
+                effectiveName.data());
+    switch (status.vendorFallback) {
+    case render::VendorFallback::None:
+        break;
+    case render::VendorFallback::Unsupported:
+        ImGui::TextWrapped("Native fallback: vendor reconstruction unavailable on this device");
+        break;
+    case render::VendorFallback::CreationFailed:
+        ImGui::TextWrapped("Native fallback: vendor scaler creation failed");
+        break;
+    }
+    if (!status.vendorName.empty()) {
+        ImGui::Text("Vendor: %.*s", static_cast<int>(status.vendorName.size()),
+                    status.vendorName.data());
+        ImGui::Text("Vendor history reset: %s", status.vendorReset ? "yes" : "no");
+        ImGui::Text("Scaler generation: %u", status.vendorScalerGeneration);
+    }
     const std::string_view resetReason = render::historyResetReasonName(status.lastReset);
     ImGui::Text("Last reset: %.*s (frame %llu)", static_cast<int>(resetReason.size()),
                 resetReason.data(), static_cast<unsigned long long>(status.lastResetFrame));
@@ -204,7 +252,8 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
 void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
                           ExposureResetContext& exposureContext, bool& exposureResetPending,
                           engine::Scene& scene, TemporalEditorState& temporalState,
-                          const DynamicResolutionState& dynamicResolutionState) {
+                          const DynamicResolutionState& dynamicResolutionState,
+                          const rhi::TemporalScalerSupport& temporalSupport) {
     // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
     // boundary. Relocated from the Camera section verbatim -- clear color is not a camera field.
     ImGui::ColorEdit4("Clear color", renderer.clearColor);
@@ -260,7 +309,8 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
     }
 
     ImGui::SeparatorText("Temporal");
-    drawTemporalSection(renderer, settings, scene, temporalState, dynamicResolutionState);
+    drawTemporalSection(renderer, settings, scene, temporalState, dynamicResolutionState,
+                        temporalSupport);
 }
 
 //======================================================================================================================
@@ -337,7 +387,7 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             ImGui::TextUnformatted("Rendering");
             drawRenderingSection(context.renderer, context.settings, context.exposureContext,
                                  context.exposureResetPending, context.scene, context.temporalState,
-                                 context.dynamicResolutionState);
+                                 context.dynamicResolutionState, context.temporalSupport);
             break;
         case EditorSubject::DirectionalLight:
             ImGui::SeparatorText("Directional Light");

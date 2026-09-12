@@ -234,6 +234,14 @@ local sponza_info_url = "https://casual-effects.com/g3d/data10/common/model/cryt
 local sponza_archive_sha256 = "da005cbee0be2df2abc8513f3ceb61bcb6f69aac112babcd9c00169a27c2770c"
 local sponza_info_sha256 = "c584c17ae5514e6218c2f19127f06106d81f472320a8f9a17a94cedfd119a16e"
 local sponza_sha256 = "9f1960875b3a4781a012f9745a88576aaf596acccff4d48d6947674618f9a4a0"
+local san_miguel_url =
+    "https://casual-effects.com/g3d/data10/research/model/San_Miguel/San_Miguel.zip"
+local san_miguel_info_url =
+    "https://casual-effects.com/g3d/data10/research/model/San_Miguel/info.js"
+local san_miguel_archive_size = 535519642
+local san_miguel_archive_sha256 = "85874077735808150e679b3c71d70a37a270cb8833f4911325aa1099da3f7d4a"
+local san_miguel_info_sha256 = "e0af84b294006670817994017793b4d3c91e502f39b7d73279f10ea96fb24506"
+local san_miguel_sha256 = "db20256cfd5d7ba44761ccf7b9edfec10fc5f3cbc4974003b6d79ee0fb44e717"
 local material_lab_environment_url =
     "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr"
 local material_lab_environment_sha256 =
@@ -242,9 +250,10 @@ local material_lab_environment_sha256 =
 task("setup")
     -- An explicit (even empty) options table is required for -P to work with this task: a
     -- set_menu with no "options" key rejects -P as an unrecognized option outright.
-    set_menu {usage = "xmake setup", description = "fetch pinned dependencies and scene assets",
-              options = {}}
+    set_menu {usage = "xmake setup [--san-miguel]", description = "fetch pinned dependencies and scene assets",
+              options = {{nil, "san-miguel", "k", nil, "also fetch the optional San Miguel realtime scene"}}}
     on_run(function ()
+        import("core.base.option")
         -- Applies a maintained ThirdParty patch and leaves the tree holding exactly it, whatever
         -- state the checkout was already in: pristine, already carrying this patch, or carrying an
         -- older revision of it. That last state is the one that used to fail setup outright -- the
@@ -481,6 +490,17 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
         assert(sponza_hash == sponza_sha256,
                format("Sponza tree checksum mismatch; expected %s", sponza_sha256))
 
+        local has_san_miguel = option.get("san-miguel")
+                              or os.isfile("Assets/Fetched/SanMiguel/SanMiguel.gltf")
+        if has_san_miguel then
+            os.execv("python3", {"Tools/setup_san_miguel.py", "--url", san_miguel_url,
+                                  "--info-url", san_miguel_info_url,
+                                  "--size", tostring(san_miguel_archive_size),
+                                  "--archive-sha256", san_miguel_archive_sha256,
+                                  "--info-sha256", san_miguel_info_sha256,
+                                  "--tree-sha256", san_miguel_sha256})
+        end
+
         -- Deterministic offline mip bake (Source/Engine/TextureBake.h): every base-color and
         -- normal image the two glTF/GLB files reference gets a sibling Baked/image<N>.dds that
         -- Engine/Scene.cpp's ensureUploaded prefers over the runtime fallback path. Re-running
@@ -500,6 +520,10 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
                              "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb", texturebake_bin})
         os.execv("python3", {"Tools/bake_gltf_textures.py",
                              "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb", texturebake_bin})
+        if has_san_miguel then
+            os.execv("python3", {"Tools/bake_gltf_textures.py",
+                                 "Assets/Fetched/SanMiguel/SanMiguel.gltf", texturebake_bin})
+        end
 
         print("setup done: metal-cpp %s, slang %s, imgui %s, imgui-node-editor %s, " ..
               "Sponza archive %s, Khronos samples %s, MaterialLab environment %s", metalcpp_pin,

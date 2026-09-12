@@ -151,6 +151,7 @@ const std::array<ImVec4, 8> kLinkPalette = {
 const ImVec4 kRasterTitleColor{0.16f, 0.30f, 0.48f, 1.0f};
 const ImVec4 kComputeTitleColor{0.29f, 0.21f, 0.45f, 1.0f};
 const ImVec4 kCopyTitleColor{0.13f, 0.36f, 0.30f, 1.0f};
+const ImVec4 kExternalTitleColor{0.42f, 0.26f, 0.12f, 1.0f};
 const ImVec4 kGroupTitleColor{0.36f, 0.28f, 0.14f, 1.0f};
 const ImVec4 kSinkTitleColor{0.45f, 0.33f, 0.11f, 1.0f};
 const ImVec4 kCulledTitleColor{0.26f, 0.26f, 0.28f, 1.0f};
@@ -194,6 +195,8 @@ std::string_view passKindLabel(render::PassKind kind) {
         return "compute";
     case render::PassKind::Copy:
         return "copy";
+    case render::PassKind::External:
+        return "external";
     }
     return "raster";
 }
@@ -270,6 +273,8 @@ ImVec4 nodeTitleColor(const GraphNode& node) {
         return kComputeTitleColor;
     case render::PassKind::Copy:
         return kCopyTitleColor;
+    case render::PassKind::External:
+        return kExternalTitleColor;
     }
     return kRasterTitleColor;
 }
@@ -289,6 +294,8 @@ ImVec4 nodeAccentColor(const GraphNode& node) {
         return ImVec4(0.80f, 0.66f, 1.00f, 1.0f);
     case render::PassKind::Copy:
         return ImVec4(0.55f, 0.94f, 0.80f, 1.0f);
+    case render::PassKind::External:
+        return ImVec4(1.00f, 0.75f, 0.48f, 1.0f);
     }
     return ImVec4(0.58f, 0.76f, 1.00f, 1.0f);
 }

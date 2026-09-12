@@ -560,7 +560,8 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .exposureContext = m_exposureContext,
                                         .exposureResetPending = m_exposureResetPending,
                                         .temporalState = m_temporalState,
-                                        .dynamicResolutionState = m_dynamicResolutionState});
+                                        .dynamicResolutionState = m_dynamicResolutionState,
+                                        .temporalSupport = device.capabilities().temporalScaler});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
@@ -586,6 +587,15 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
     // Nothing moved a window, so ImGui has no reason of its own to rewrite the ini; without this
     // the new visibility would be lost on exit.
     ImGui::MarkIniSettingsDirty();
+}
+
+//======================================================================================================================
+void EditorShell::primeTemporal(const AppOptions& options) {
+    m_settings.temporalEnabled = options.temporal != TemporalMode::Off;
+    m_settings.jitterEnabled = options.temporal != TemporalMode::Off;
+    m_settings.reconstruction = temporalReconstructionMode(options.temporal);
+    m_settings.temporalDebugView = options.temporalView;
+    m_settings.renderScale = options.renderScale;
 }
 
 //======================================================================================================================

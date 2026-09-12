@@ -10,11 +10,14 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
+- Temporal sequences and offline FLIP: `docs/guides/temporal-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
-- Current baseline: `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
+- Current baseline: `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
+  offline comparison; ADRs 0017–0018, evidence limits and follow-up QA recorded there) over
+  `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
   `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
   `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
   `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
@@ -40,6 +43,10 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   revision of it is restored to the pin before the patch is applied. Optional:
   `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
   fallback works without it).
+- Optional courtyard: `xmake setup --san-miguel` downloads the official ~511 MiB archive, converts
+  its realtime OBJ at authored metre scale with diffuse alpha cutouts and `N_` tangent normals,
+  and bakes referenced textures. `Assets/Fetched/SanMiguel/` preserves source metadata, license and
+  conversion provenance; archive and converted-tree hashes are pinned in `xmake.lua`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
@@ -64,18 +71,27 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
   selected by default (catalog selector in the Scene panel); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
-  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab> --screenshot <out.bmp>`. `--frames N`
+  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel> --screenshot <out.bmp>`. `--frames N`
   (default 1) renders N frames before writing the last — the temporal warmup control — advancing
-  the scene's animation by 1/60 s and following its camera track (if any) between them;
-  `--temporal <off|raw|taa>` (default `taa`; a bare `--temporal` also means `taa`) selects the
-  reconstruction, and `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
+  the scene's animation by 1/60 s and following its camera track (if any) between them.
+  In both windowed and screenshot runs, `--temporal <off|raw|taa|metalfx>` (default `taa`; a bare
+  `--temporal` also means `taa`) selects the reconstruction, and
+  `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
   selects a diagnostic overlay (naming a view still implies temporal on; `--temporal off` with a
   non-`off` view is an error) — e.g. `xmake run App --scene temporal-lab --frames 32 --temporal-view
   rejection --screenshot out.bmp`. `--render-scale <0.5..1.0>` (default 1.0) sets the render scale
   the temporal path reconstructs from (conflicts with `--temporal off` below 1.0, since the temporal
-  path is what reconstructs a sub-output render). Running the binary directly requires CWD = its
+  path is what reconstructs a sub-output render). `metalfx` requests the device temporal scaler,
+  with Native TAA fallback when unsupported or creation fails; `rejection`, `weight`, and `age`
+  conflict with `--temporal metalfx`. Vendor scale is clamped to the supported range, and Native TAA
+  stays the default and reference. Running the binary directly requires CWD = its
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
+- Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered BMPs after W
+  unsaved frames at 60 Hz, plus a camera/settings/status manifest, into a new or empty directory.
+  It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
+  builds synchronized Raw/Native/MetalFX reports and optional CPU LDR-FLIP maps of final sRGB output;
+  these measure differences against Native TAA, not ground-truth accuracy or realtime performance.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
   Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
   `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
@@ -132,10 +148,13 @@ but level zero), indirect draws and dispatches over RHI-owned argument layouts, 
 placement heaps whose resources are created at explicit offsets, and up to `kMaxExtraColorTargets`
 (3) additional colour attachments per render pass/pipeline beyond the primary, with `RG16Float` and
 `R8Unorm` colour-renderable and CPU-readable, and an origin-anchored render area confining a pass to
-a sub-rectangle of its attachments;
+a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral temporal-scaler
+capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
+between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
+output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels;
 `RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
-validating `RenderGraph` — raster/compute/copy passes with per-subresource uses (including extra
-colour attachments) over imported resources and over one-frame transients the graph creates,
+validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
+extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
@@ -143,19 +162,29 @@ as deterministic text; `Renderer` — declares shadow, scene+sky, histogram expo
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
-(reproject diagnostic, the `TemporalResolve` stage's native TAA resolve or raw history commit, debug
-view) into a graph consuming a plain `SceneView`; `fitShadowOrtho` and friends are free functions;
+(reproject diagnostic, the `TemporalResolve` stage's native TAA/TAAU, raw history commit, or vendor
+packing plus external reconstruction, debug view) into a graph consuming a plain `SceneView`;
+`AlphaMode::Mask` uses dedicated scene/auto-exposure/shadow pipelines sharing texture-alpha × factor
+alpha cutoff coverage, with optional two-sided shading; color/depth/motion/reactive are discarded
+together. Opaque shaders and uniforms stay separate; glTF BLEND is unsupported (ADR 0018).
+`fitShadowOrtho` and friends are free functions;
 `Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
 and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve.h` holds the
 reconstruction contract, ping-pong slot ownership, the native/upscale kernel-selection rule and
-frozen constants (ADRs 0014–0016); `ResolutionController` is a pure, App-driven policy that proposes
+frozen constants (ADRs 0014–0016); its composed `VendorTemporalScaler` translates invalid motion to
+zero motion/reactive one, writes reciprocal applied exposure into one `R16Float` texel, and maps
+motion/jitter/content extents. The scaler resets on engine reset, vendor re-entry or recreation;
+engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
+`lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
+`ResolutionController` is a pure, App-driven policy that proposes
 a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
 baking (`TextureBake.h`), rigid animation (`SceneAnimation`, glTF-baked `RigidTrack`s, camera
 tracks) and object previous-transform tracking (`SceneObject::previousModel`/`motionClass`,
-`Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`)) →
+`Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`); six catalog scenes include optional
+San Miguel with a deterministic 12-second camera rail) →
 `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
@@ -163,7 +192,9 @@ Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a mai
 persistence with legacy migration and Reset Default Layout, and a single selection resolved
 against the Scene panel's filterable, grouped subject list that drives the Inspector's
 subject-scoped editing (camera, rendering — including a Temporal block of toggles, a Reconstruction
-combo (Raw/Native TAA), the seven-item debug-view combo, a render-scale slider, a dynamic-resolution
+combo (Raw/Native TAA/device algorithm name), effective mode/fallback, vendor reset/generation,
+and the seven-item debug-view combo (rejection/weight/age disabled under effective vendor mode;
+motion/reprojection/reprojected-history remain available), a render-scale slider, a dynamic-resolution
 checkbox and GPU-budget slider with status rows for render extent/scale, frame GPU time and the last
 render-extent-change frame, animation transport, a camera-cut button, and Exposure adapt-up/
 adapt-down sliders — one of three directional lights, or one object); `DynamicResolution.h` is the
@@ -176,11 +207,12 @@ vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measu
 selection-scoped details pane, deterministic layout stable across unchanged frames, and
 session-only dragged positions; frame loop advances animation and commits scene motion around
 `declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
-`--screenshot` path).
+`--screenshot` and deterministic `--capture-sequence` paths).
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
-modules), ScenePass/ScenePassAuto, ShadowPass, Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
+modules), ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, AlphaMask, ShadowPass/ShadowPassMask,
+Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
 ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject,
-TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView (+ Triangle/SamplerSmoke/
+TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (+ Triangle/SamplerSmoke/
 CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke/RenderAreaSmoke as test oracles).
 One frame end-to-end: `docs/frame-pipeline.md`.
 

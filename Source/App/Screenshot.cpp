@@ -16,8 +16,12 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <format>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <string>
 #include <vector>
 
 namespace lmx::app {
@@ -108,12 +112,115 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
     return true;
 }
 
-} // namespace
+//======================================================================================================================
+std::string jsonString(std::string_view value) {
+    std::string result = "\"";
+    for (const unsigned char c : value) {
+        if (c == '"' || c == '\\') {
+            result += '\\';
+            result += static_cast<char>(c);
+        } else if (c < 32) {
+            result += std::format("\\u{:04x}", c);
+        } else {
+            result += static_cast<char>(c);
+        }
+    }
+    return result + "\"";
+}
 
 //======================================================================================================================
-int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView,
-                  float renderScale) {
+std::string_view captureModeName(TemporalMode mode) {
+    switch (mode) {
+    case TemporalMode::Off:
+        return "off";
+    case TemporalMode::Raw:
+        return "raw";
+    case TemporalMode::Taa:
+        return "taa";
+    case TemporalMode::Vendor:
+        return "metalfx";
+    }
+    return "unknown";
+}
+
+//======================================================================================================================
+bool writeManifest(const AppOptions& options, std::string_view device, bool cameraTrack,
+                   const std::vector<std::string>& records, bool complete,
+                   std::string_view failure = {}) {
+    std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
+    if (!file)
+        return false;
+    file << std::setprecision(17)
+         << "{\n\"schemaVersion\":1,\"complete\":" << (complete ? "true" : "false")
+         << ",\"scene\":" << jsonString(engine::sceneIdString(options.initialScene))
+         << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
+         << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
+         << ",\"width\":" << kScreenshotWidth << ",\"height\":" << kScreenshotHeight
+         << ",\"fps\":60,\"warmup\":" << options.warmup << ",\"frameCount\":" << options.frames
+         << ",\"renderScale\":" << options.renderScale
+         << ",\"debugView\":" << static_cast<int>(options.temporalView)
+         << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
+         << ",\"colorSpace\":\"sRGB LDR\",\"dynamicResolution\":false,\"frames\":[\n";
+    for (size_t i = 0; i < records.size(); ++i) {
+        if (i != 0)
+            file << ",\n";
+        file << records[i];
+    }
+    file << "\n]}\n";
+    file.close();
+    return static_cast<bool>(file);
+}
+
+//======================================================================================================================
+std::string captureRecord(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
+                          const render::SceneView& view, const render::TemporalStatus& status,
+                          std::string_view filename, TemporalMode requested) {
+    std::ostringstream out;
+    out << std::setprecision(17) << "{\"ordinal\":" << ordinal << ",\"simulationFrame\":" << frame
+        << ",\"timeSeconds\":" << static_cast<double>(frame) / engine::kAnimationBakeRate
+        << ",\"file\":" << jsonString(filename) << ",\"camera\":{\"position\":["
+        << camera.position.x << ',' << camera.position.y << ',' << camera.position.z
+        << "],\"yaw\":" << camera.yaw << ",\"pitch\":" << camera.pitch
+        << ",\"fovY\":" << camera.fovY << ",\"nearZ\":" << camera.nearZ
+        << ",\"farZ\":" << camera.farZ << "}"
+        << ",\"effectiveMode\":"
+        << jsonString(requested == TemporalMode::Off ? "off"
+                      : status.reconstruction == render::ReconstructionMode::VendorTemporal
+                          ? "metalfx"
+                      : status.reconstruction == render::ReconstructionMode::NativeTaa ? "taa"
+                                                                                       : "raw")
+        << ",\"fallback\":" << static_cast<int>(status.vendorFallback)
+        << ",\"vendorName\":" << jsonString(status.vendorName)
+        << ",\"renderWidth\":" << status.extents.renderWidth
+        << ",\"renderHeight\":" << status.extents.renderHeight
+        << ",\"effectiveScale\":" << status.renderScale << ",\"jitterIndex\":" << status.jitterIndex
+        << ",\"jitterEnabled\":" << (view.temporal.jitterEnabled ? "true" : "false")
+        << ",\"historyAge\":" << status.historyAge
+        << ",\"lastResetReason\":" << jsonString(render::historyResetReasonName(status.lastReset))
+        << ",\"lastResetFrame\":" << status.lastResetFrame
+        << ",\"vendorReset\":" << (status.vendorReset ? "true" : "false")
+        << ",\"exposureEv\":" << view.exposureEv
+        << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")
+        << ",\"bloom\":" << (view.bloomEnabled ? "true" : "false")
+        << ",\"bloomThreshold\":" << view.bloomThreshold
+        << ",\"bloomIntensity\":" << view.bloomIntensity << ",\"shadowFilter\":\"pcf\"}";
+    return out.str();
+}
+
+//======================================================================================================================
+int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+                 TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
+                 const AppOptions* sequence) {
+    std::vector<std::string> records;
+    if (sequence) {
+        std::error_code error;
+        std::filesystem::create_directories(sequence->captureSequencePath, error);
+        if (error || !std::filesystem::is_empty(sequence->captureSequencePath, error) || error) {
+            LMX_LOG_ERROR("capture directory must be new or empty: {}",
+                          sequence->captureSequencePath.string());
+            return 1;
+        }
+    }
     auto device = rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -124,7 +231,7 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
     engine::SceneLibrary library(**device);
     const engine::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
-        std::cerr << "Error: " << entry.stableId << " assets missing; run xmake setup\n";
+        std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
         return 1;
     }
     auto scene = library.get(sceneId);
@@ -152,10 +259,18 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
     const bool hasAnyTrack = engine::hasAnimationTracks(activeScene->animation);
 
-    for (uint32_t frame = 0; frame < frames; ++frame) {
+    if (sequence &&
+        !writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records, false)) {
+        return 1;
+    }
+    const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
+    for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         // The first frame renders at the scene's authored t = 0; later frames advance by the same
         // fixed step the editor's frame loop uses, so a warmup run matches what playback produces.
-        if (frame > 0 && hasAnyTrack) {
+        if (sequence) {
+            activeScene->animationTime = static_cast<double>(frame) / engine::kAnimationBakeRate;
+            activeScene->animate(activeScene->animationTime);
+        } else if (frame > 0 && hasAnyTrack) {
             activeScene->advanceAnimation(1.0 / engine::kAnimationBakeRate);
             activeScene->animate(activeScene->animationTime);
         }
@@ -184,9 +299,7 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
         // camera, so both stay at SceneView's defaults (0, false).
         view.temporal.enabled = temporal != TemporalMode::Off;
         view.temporal.jitterEnabled = temporal != TemporalMode::Off;
-        view.temporal.reconstruction = temporal == TemporalMode::Raw
-                                           ? render::ReconstructionMode::Raw
-                                           : render::ReconstructionMode::NativeTaa;
+        view.temporal.reconstruction = temporalReconstructionMode(temporal);
         view.temporal.debugView = temporalView;
         view.temporal.renderScale = renderScale;
 
@@ -199,6 +312,47 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
         // actually consumed it.
         (*device)->waitIdle();
         activeScene->commitFrame();
+        if (sequence) {
+            const auto status = (*renderer)->temporalStatus();
+            if (temporal == TemporalMode::Vendor &&
+                status.vendorFallback != render::VendorFallback::None) {
+                const std::string failure =
+                    std::format("frame {}: requested metalfx, effective taa, fallback {}", frame,
+                                status.vendorFallback == render::VendorFallback::Unsupported
+                                    ? "unsupported"
+                                    : "creation-failed");
+                if (!writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records,
+                                   false, failure)) {
+                    LMX_LOG_ERROR("capture could not write fallback metadata");
+                }
+                LMX_LOG_ERROR("capture sequence refused vendor fallback: {}", failure);
+                return 1;
+            }
+            if (frame >= sequence->warmup) {
+                const uint32_t ordinal = frame - sequence->warmup;
+                const std::string filename = std::format("frame-{:06}.bmp", ordinal);
+                std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
+                (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
+                if (!writeBmp(sequence->captureSequencePath / filename, pixels, kScreenshotWidth,
+                              kScreenshotHeight)) {
+                    return 1;
+                }
+                records.push_back(
+                    captureRecord(ordinal, frame, camera, view, status, filename, temporal));
+                if (!writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records,
+                                   false)) {
+                    return 1;
+                }
+                if (isFlatImage(pixels)) {
+                    LMX_LOG_ERROR("capture frame {} is flat; manifest remains incomplete", ordinal);
+                    return 1;
+                }
+            }
+        }
+    }
+    if (sequence) {
+        return writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records, true) ? 0
+                                                                                                : 1;
     }
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
@@ -220,6 +374,21 @@ int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId,
     }
 
     return 0;
+}
+
+} // namespace
+
+//======================================================================================================================
+int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+                  TemporalMode temporal, render::TemporalDebugView temporalView,
+                  float renderScale) {
+    return runOffscreen(outPath, sceneId, frames, temporal, temporalView, renderScale, nullptr);
+}
+
+//======================================================================================================================
+int runCaptureSequence(const AppOptions& options) {
+    return runOffscreen({}, options.initialScene, options.frames, options.temporal,
+                        options.temporalView, options.renderScale, &options);
 }
 
 } // namespace lmx::app

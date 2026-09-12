@@ -198,6 +198,9 @@ AssetResult<std::unique_ptr<Scene>> loadGltfScene(rhi::Device& device, std::stri
         render::Material material;
         // glTF factors are linear; texture color-space conversion happens in the texture view.
         material.albedo = src.baseColorFactor;
+        material.alphaMode = src.alphaMode;
+        material.alphaCutoff = src.alphaCutoff;
+        material.doubleSided = src.doubleSided;
         material.roughness = src.roughness;
         material.metallic = src.metallic;
         material.occlusionStrength = src.occlusionStrength;

@@ -1199,12 +1199,12 @@ TEST_CASE("scene IDs are stable and reject unknown input", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("SceneLibrary lists the five scenes in a fixed order", "[gpu]") {
+TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 5);
+    REQUIRE(library.entries().size() == 6);
     REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
@@ -1222,6 +1222,8 @@ TEST_CASE("SceneLibrary lists the five scenes in a fixed order", "[gpu]") {
     REQUIRE(library.entries()[4].stableId == "temporal-lab");
     REQUIRE(library.entries()[4].displayName == "TemporalLab");
     REQUIRE(library.entries()[4].role == SceneRole::Diagnostic);
+    REQUIRE(library.entries()[5].stableId == "san-miguel");
+    REQUIRE(library.entries()[5].role == SceneRole::Showcase);
 }
 
 //======================================================================================================================
