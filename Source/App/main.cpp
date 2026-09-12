@@ -5,6 +5,7 @@
 
 #include "App/AppOptions.h"
 #include "App/EditorShell.h"
+#include "App/EdrProbe.h"
 #include "App/FrameRecordRing.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
@@ -13,6 +14,7 @@
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 #include "RHI/RHI.h"
+#include "Render/ColorTransfer.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
 
@@ -20,15 +22,23 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 
+#include <algorithm>
 #include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
+
+namespace lmx::experimental::edr {
+bool requested = false;
+bool calibration = false;
+} // namespace lmx::experimental::edr
 
 namespace {
 
@@ -103,10 +113,31 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
 
+    bool edr =
+        lmx::experimental::edr::requested && lmx::experimental::edr::configure(metalLayer, true);
+    if (!edr)
+        lmx::experimental::edr::configure(metalLayer, false);
+    auto drawableFormat = edr ? lmx::rhi::Format::RGBA16Float : lmx::rhi::Format::BGRA8Unorm;
+    if (edr)
+        setenv("LMX_EDR_PROBE", "1", 1);
+    else
+        unsetenv("LMX_EDR_PROBE");
     auto swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
                                                  .width = static_cast<uint32_t>(pixelWidth),
                                                  .height = static_cast<uint32_t>(pixelHeight),
-                                                 .format = lmx::rhi::Format::BGRA8Unorm});
+                                                 .format = drawableFormat});
+    if (!swapchain && edr) {
+        LMX_LOG_WARN("EDR_PROBE float drawable refused: {}; falling back to SDR",
+                     swapchain.error().message);
+        edr = false;
+        drawableFormat = lmx::rhi::Format::BGRA8Unorm;
+        unsetenv("LMX_EDR_PROBE");
+        lmx::experimental::edr::configure(metalLayer, false);
+        swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
+                                                .width = static_cast<uint32_t>(pixelWidth),
+                                                .height = static_cast<uint32_t>(pixelHeight),
+                                                .format = drawableFormat});
+    }
     if (!swapchain) {
         LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
         return 1;
@@ -117,12 +148,12 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     int pointWidth = 0;
     int pointHeight = 0;
     SDL_GetWindowSize(window, &pointWidth, &pointHeight);
-    LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels BGRA8Unorm", pointWidth,
-                 pointHeight, pixelWidth, pixelHeight);
+    LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels (probe format logged below)",
+                 pointWidth, pointHeight, pixelWidth, pixelHeight);
 
     // The viewport adopts its panel size after the first UI layout.
     auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
-                                                  static_cast<uint32_t>(pixelHeight));
+                                                  static_cast<uint32_t>(pixelHeight), true);
     if (!renderer) {
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
         return 1;
@@ -140,6 +171,17 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
 
     shell->primeTemporal(options);
+    (*renderer)->experimentalDisplayLinear = edr;
+    (*renderer)->experimentalCalibration = lmx::experimental::edr::calibration;
+    float smoothedPeak = 1.0f;
+    float previousHeadroom = -1.0f;
+    bool forceSdr = false;
+    uint32_t timingSamples = 0;
+    uint64_t previousTimingFrame = UINT64_MAX;
+    bool readbackRequested = false;
+    LMX_LOG_INFO("EDR_PROBE domain={} drawable_bytes_per_pixel={} display_storage=RGBA16Float "
+                 "UI_white=1 cap=4",
+                 edr ? "extended-linear-srgb" : "srgb", edr ? 8 : 4);
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
     if (dynamicResolutionBudget > 0.0f) {
@@ -183,6 +225,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             // ImGui must observe every event before input ownership is queried.
             ImGui_ImplSDL3_ProcessEvent(&event);
             switch (event.type) {
+            case SDL_EVENT_WINDOW_HDR_STATE_CHANGED:
+                LMX_LOG_INFO("EDR_PROBE HDR_STATE_CHANGED ticks={} window={}", SDL_GetTicks(),
+                             event.window.windowID);
+                break;
             case SDL_EVENT_QUIT:
                 running = false;
                 break;
@@ -281,6 +327,37 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
+        const auto headroom = lmx::experimental::edr::observe(window);
+        const float currentPeak =
+            edr && !forceSdr ? std::clamp(headroom.nativeCurrent, 1.0f, 4.0f) : 1.0f;
+        smoothedPeak += (currentPeak - smoothedPeak) * (1.0f - std::exp(-deltaSeconds / 0.5f));
+        smoothedPeak = std::min(smoothedPeak, currentPeak);
+        (*renderer)->experimentalDisplayPeak = smoothedPeak;
+        if (frameIndex % 120 == 0 || headroom.current != previousHeadroom) {
+            LMX_LOG_INFO("EDR_PROBE ticks={} frame={} hdr={} white={} sdl={} native={} "
+                         "potential={} reference={} peak={} force_sdr={}",
+                         SDL_GetTicks(), frameIndex, headroom.enabled, headroom.white,
+                         headroom.current, headroom.nativeCurrent, headroom.potential,
+                         headroom.reference, smoothedPeak, forceSdr);
+            previousHeadroom = headroom.current;
+        }
+        const ImVec2 mainOrigin = ImGui::GetMainViewport()->Pos;
+        ImGui::SetNextWindowPos(ImVec2(mainOrigin.x + 16, mainOrigin.y + 48),
+                                ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(470, 220), ImGuiCond_FirstUseEver);
+        ImGui::Begin(edr ? "EDR probe — linear" : "SDR reference");
+        ImGui::Text("SDR white 1.0 | SDL %.3f | NSScreen %.3f", headroom.current,
+                    headroom.nativeCurrent);
+        ImGui::Text("Potential %.3f | reference %.3f | peak %.3f", headroom.potential,
+                    headroom.reference, smoothedPeak);
+        ImGui::Checkbox("Calibration patches", &(*renderer)->experimentalCalibration);
+        ImGui::Checkbox("Force headroom 1 (fallback exercise)", &forceSdr);
+        ImGui::TextUnformatted("Top: 0.25 | 0.5 | 1 | 2 | 4 | current peak");
+        ImGui::TextUnformatted("Middle: linear 0..4 | Bottom: tone mapped 0..4");
+        ImGui::TextColored(ImVec4(1, 1, 1, 1), "UI WHITE — always SDR reference white 1.0");
+        if (ImGui::Button("Save display float readback"))
+            readbackRequested = true;
+        ImGui::End();
         ImGui::Render();
 
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
@@ -313,7 +390,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         const lmx::render::GraphTexture displayColor =
             (*renderer)->declarePasses(graph, commands, shell->camera(), view);
         const lmx::render::GraphTexture drawable =
-            graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
+            graph.importTexture(**target, drawableFormat, "lmx.app.drawable");
 
         lmx::render::PassDesc ui;
         // Declaring the read is the whole ordering statement: it puts this pass after the display
@@ -322,7 +399,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // This attachment layout must match the pipeline configured by imguiInit().
         ui.color = lmx::render::ColorAttachment{
             .handle = drawable,
-            .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]}};
+            .clearColor = {edr ? lmx::render::srgbToLinear(kUiClearColor[0]) : kUiClearColor[0],
+                           edr ? lmx::render::srgbToLinear(kUiClearColor[1]) : kUiClearColor[1],
+                           edr ? lmx::render::srgbToLinear(kUiClearColor[2]) : kUiClearColor[2],
+                           1.0f}};
         // ImGui owns encoder state once it starts, so no engine draw follows it in this pass.
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
             lmx::rhi::metal4::imguiRender(commands);
@@ -346,7 +426,48 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // Published by this frame's beginFrame() and naming a frame that has already retired, which
         // is why the join is by number rather than by position.
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+        if (frameIndex > 32 && timingSamples < 10 &&
+            (*device)->passTimingsFrame() != previousTimingFrame) {
+            previousTimingFrame = (*device)->passTimingsFrame();
+            for (const auto& timing : (*device)->passTimings()) {
+                if (timing.label == "lmx.pass.display" || timing.label == "lmx.pass.ui")
+                    LMX_LOG_INFO("EDR_PROBE timing domain={} sample={} retired_frame={} pass={} "
+                                 "milliseconds={}",
+                                 edr ? "edr" : "sdr", timingSamples, previousTimingFrame,
+                                 timing.label, timing.gpuMilliseconds);
+            }
+            ++timingSamples;
+        }
         (*device)->endFrame(swapchain->get());
+        if (readbackRequested || frameIndex == 64) {
+            readbackRequested = false;
+            (*device)->waitIdle();
+            auto& image = (*renderer)->colorTarget();
+            std::vector<uint8_t> bytes(static_cast<size_t>(image.width()) * image.height() * 8);
+            image.readback(bytes.data(), bytes.size());
+            const std::string name = std::string(edr ? "edr-display-" : "sdr-display-") +
+                                     std::to_string(frameIndex) + ".rgba16f";
+            const char* captureRoot = std::getenv("LMX_EDR_CAPTURE_DIR");
+            const std::filesystem::path capturePath =
+                captureRoot ? std::filesystem::path(captureRoot) / name
+                            : std::filesystem::path(name);
+            std::ofstream stream(capturePath, std::ios::binary);
+            stream.write(reinterpret_cast<const char*>(bytes.data()),
+                         static_cast<std::streamsize>(bytes.size()));
+            std::ofstream metadata(capturePath.string() + ".json");
+            metadata << "{\"view\":\"" << (edr ? "edr" : "sdr") << "\",\"transfer\":\""
+                     << (edr ? "linear" : "srgb")
+                     << "\",\"primaries\":\"bt709\",\"storage\":\"little-endian "
+                        "RGBA16Float\",\"uiComposited\":false,\"width\":"
+                     << image.width() << ",\"height\":" << image.height()
+                     << ",\"peakWhite\":" << smoothedPeak
+                     << ",\"referenceWhite\":1,\"frame\":" << frameIndex << "}\n";
+            LMX_LOG_INFO("EDR_PROBE readback={} width={} height={} bytes={} peak={} calibration={} "
+                         "domain={} ui=false",
+                         name, image.width(), image.height(), bytes.size(), smoothedPeak,
+                         (*renderer)->experimentalCalibration,
+                         edr ? "extended-linear-srgb" : "srgb");
+        }
         ++presentedFrames;
 
         // Platform viewports follow the present because the ImGui backend renders each extra window
@@ -404,11 +525,24 @@ int runWindowed(const lmx::app::AppOptions& options) {
     if (options.maximized) {
         windowFlags |= SDL_WINDOW_MAXIMIZED;
     }
-    SDL_Window* window = SDL_CreateWindow("Luminex", kWindowWidth, kWindowHeight, windowFlags);
+    SDL_Window* window = SDL_CreateWindow(
+        lmx::experimental::edr::requested ? "Luminex — EDR probe" : "Luminex — SDR reference",
+        kWindowWidth, kWindowHeight, windowFlags);
     if (window == nullptr) {
         LMX_LOG_ERROR("SDL_CreateWindow failed: {}", SDL_GetError());
         SDL_Quit();
         return 1;
+    }
+
+    if (std::getenv("LMX_EDR_PROBE_SIDE") != nullptr) {
+        SDL_Rect bounds;
+        if (SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &bounds)) {
+            SDL_RestoreWindow(window);
+            SDL_SetWindowSize(window, bounds.w / 2, bounds.h - 48);
+            SDL_SetWindowPosition(window,
+                                  bounds.x + (lmx::experimental::edr::requested ? bounds.w / 2 : 0),
+                                  bounds.y + 24);
+        }
     }
 
     // SDL_MetalView owns the layer and outlives all RHI objects created by run().
@@ -437,6 +571,15 @@ int main(int argc, char** argv) {
     std::vector<std::string_view> arguments;
     arguments.reserve(static_cast<size_t>(argc > 0 ? argc - 1 : 0));
     for (int i = 1; i < argc; ++i) {
+        const std::string_view argument(argv[i]);
+        if (argument == "--edr") {
+            lmx::experimental::edr::requested = true;
+            continue;
+        }
+        if (argument == "--calibration") {
+            lmx::experimental::edr::calibration = true;
+            continue;
+        }
         arguments.emplace_back(argv[i]);
     }
 

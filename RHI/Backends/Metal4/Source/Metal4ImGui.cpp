@@ -41,7 +41,8 @@ bool imguiInit(Device& device, Format colorFormat) {
 
     LMX_ASSERT(g_device == nullptr, "imguiInit: already initialised -- call imguiShutdown first");
     // Reject unsupported formats before Metal's texture-descriptor validator aborts.
-    LMX_ASSERT(colorFormat == Format::BGRA8Unorm || colorFormat == Format::RGBA8Unorm,
+    LMX_ASSERT(colorFormat == Format::RGBA16Float || colorFormat == Format::BGRA8Unorm ||
+                   colorFormat == Format::RGBA8Unorm,
                "imguiInit: colorFormat must be a color-renderable format (BGRA8Unorm or "
                "RGBA8Unorm)");
 

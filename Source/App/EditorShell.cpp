@@ -232,7 +232,9 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
-    if (!rhi::metal4::imguiInit(device, rhi::Format::BGRA8Unorm)) {
+    if (!rhi::metal4::imguiInit(device, std::getenv("LMX_EDR_PROBE") != nullptr
+                                            ? rhi::Format::RGBA16Float
+                                            : rhi::Format::BGRA8Unorm)) {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
         return nullptr;

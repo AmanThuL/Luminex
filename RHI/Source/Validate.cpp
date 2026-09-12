@@ -33,8 +33,8 @@ bool isColorRenderableFormat(Format format) {
 // swapchain does not configure CAMetalLayer for an extended-range presentation mode, so accepting
 // it here would advertise a presentation capability the backend has never established or tested.
 bool isSwapchainFormat(Format format) {
-    return format == Format::BGRA8Unorm || format == Format::RGBA8Unorm ||
-           format == Format::RGBA8Unorm_sRGB;
+    return format == Format::RGBA16Float || format == Format::BGRA8Unorm ||
+           format == Format::RGBA8Unorm || format == Format::RGBA8Unorm_sRGB;
 }
 
 //======================================================================================================================

@@ -23,6 +23,9 @@ Texture2D<float4> gBloom : register(t1); // → MSL [[texture(1)]]
 struct DisplayParams
 {
     float bloomIntensity;
+    float peak;
+    uint linear;
+    uint calibration;
 };
 
 [[vk::binding(0, 0)]]
@@ -74,5 +77,22 @@ float4 fragmentMain(VSOutput input): SV_Target
     }
     float3 composed = sceneColor + bloom * gParams.bloomIntensity;
     // The display target is opaque -- the scene's alpha is material coverage, not an output.
-    return float4(linearToSrgb(pbrNeutralToneMap(composed)), 1.0);
+    float3 output = gParams.peak * pbrNeutralToneMap(composed / gParams.peak);
+    if (gParams.calibration != 0)
+    {
+        uint width, height;
+        gSceneColor.GetDimensions(width, height);
+        float2 uv = input.position.xy / float2(width, height);
+        if (uv.y < 0.45)
+        {
+            uint patch = min(uint(uv.x * 6), 5u);
+            float values[6] = {0.25, 0.5, 1.0, 2.0, 4.0, gParams.peak};
+            output = min(values[patch], gParams.peak).xxx;
+        }
+        else if (uv.y < 0.70)
+            output = min(uv.x * 4, gParams.peak).xxx;
+        else
+            output = gParams.peak * pbrNeutralToneMap((uv.x * 4).xxx / gParams.peak);
+    }
+    return float4(gParams.linear != 0 ? output : linearToSrgb(output), 1.0);
 }

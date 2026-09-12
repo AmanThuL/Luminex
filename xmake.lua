@@ -147,7 +147,8 @@ target("TextureBake")
 
 target("App")
     set_kind("binary")
-    add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
+    add_files("Source/App/*.cpp", "Source/App/*.mm", "Source/App/Panels/*.cpp")
+    add_frameworks("Metal", "QuartzCore", "Cocoa")
     add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui", "ImGuiNodeEditor")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.

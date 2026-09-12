@@ -182,8 +182,11 @@ static_assert(sizeof(BloomUpsampleParams) == 16,
 // Mirrors Shaders/DisplayTransform.slang's DisplayParams.
 struct DisplayParams {
     float bloomIntensity;
+    float peak;
+    uint32_t linear;
+    uint32_t calibration;
 };
-static_assert(sizeof(DisplayParams) == 4, "must match DisplayTransform.slang's DisplayParams");
+static_assert(sizeof(DisplayParams) == 16, "must match DisplayTransform.slang's DisplayParams");
 
 // ScenePass.slang's kFlagHasNormalMap and kFlagMotionInvalid.
 constexpr uint32_t kFlagHasNormalMap = 1u;
@@ -1905,7 +1908,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
             } else {
                 commands.bindTexture(kDisplayBloomTextureSlot, *m_blackBloomFallback);
             }
-            const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f};
+            const DisplayParams params{.bloomIntensity = bloomEnabled ? bloomIntensity : 0.0f,
+                                       .peak = experimentalDisplayPeak,
+                                       .linear = experimentalDisplayLinear ? 1u : 0u,
+                                       .calibration = experimentalCalibration ? 1u : 0u};
             commands.bindFrameData(kDisplayParamsSlot, params);
             commands.draw(3);
         });

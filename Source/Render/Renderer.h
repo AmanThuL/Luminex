@@ -285,7 +285,7 @@ void registerUniformLayoutsForCapture();
 /// The scene renders in half float because that is what holds radiance above 1.0; the display
 /// target is the 8-bit surface the viewport, the swapchain, and the screenshot all expect.
 constexpr rhi::Format kSceneColorFormat = rhi::Format::RGBA16Float;
-constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm; ///< Display-encoded target format.
+constexpr rhi::Format kDisplayFormat = rhi::Format::RGBA16Float; ///< Display-encoded target format.
 
 /// Floats in the persistent exposure buffer: `{ applied, previous }`. `applied` is what the scene
 /// pass multiplies by this frame; `previous` is what it multiplied by on the previous declared
@@ -299,6 +299,10 @@ constexpr uint32_t kExposureBufferFloats = 2;
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
 class Renderer {
 public:
+    float experimentalDisplayPeak = 1.0f;   ///< Display-only headroom in reference whites.
+    bool experimentalDisplayLinear = false; ///< Extended-linear presentation output.
+    bool experimentalCalibration = false;   ///< Display-only synthetic probe patches.
+
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
     static rhi::Result<std::unique_ptr<Renderer>> create(rhi::Device& device, uint32_t width,
