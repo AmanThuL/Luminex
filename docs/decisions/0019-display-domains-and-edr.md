@@ -69,14 +69,18 @@ The experiment leaves scene/exposure/temporal code unchanged; this is a display-
 Both experiment intermediates are float, including the SDR reference. Ten per-pass timing samples
 per mode describe that experiment and do not establish production SDR overhead or a speedup.
 
-The owner observed the paired windows and reported clearly brighter EDR highlights and similar
-white UI text brightness on both sides. After the requested brightness/preset exercise, the
-owner reported that the patches remained distinguishable and UI became brighter; whether this
-meant both windows followed system brightness or EDR alone boosted UI white awaits clarification.
+The owner observed clearly brighter EDR highlights and distinguishable 1/2/4 patches. After
+initially describing the UI whites as similar, the owner explicitly clarified that, at the same
+system brightness, the right-hand EDR window's white UI text is brighter than the left-hand SDR
+reference. The clarification supersedes the preliminary white-match observation: the intended
+UI SDR-white appearance check fails. It does not establish a numeric UI value above one or its
+cause; linear versus encoded alpha composition, presentation and physical luminance have not been
+isolated. Float display readbacks exclude UI and cannot establish a passing UI-white result.
+
 No per-preset value table, calibrated measurement or photograph is claimed. The probe's
 forced-headroom control tests range fallback, not operating-system drawable refusal. Its display
-ramps are synthetic probe patterns, distinct from the production golden fixtures. Raw float
-readbacks exclude UI. No second display is required or presumed tested.
+ramps are synthetic probe patterns, distinct from the production golden fixtures. No second
+display is required or presumed tested.
 
 The final smoke retained ten samples per pass and mode (milliseconds, median [minimum, maximum]):
 
@@ -97,12 +101,14 @@ view and the layer remains float. The control does not establish production SDR 
 
 ## Proposed decision: defer adoption
 
-Keep production SDR-only. Physical highlight extension works on this display, while final UI-white clarification remains
-pending. In addition, the specified curve materially darkens midtones and the probe does not establish a production
-SDR cost baseline or full presentation fallback. Defer until a separately scoped display curve
-preserves the intended midtone appearance, with a measured production SDR comparison and complete
+Keep production SDR-only. Physical highlight extension works on this display, but the owner
+observes brighter EDR UI white at the same system brightness, the specified curve materially
+darkens midtones, and the probe does not establish a production SDR cost baseline or full
+presentation fallback. Defer until a separately scoped display view demonstrates matching UI
+white and the intended midtone appearance, with a measured production SDR comparison and complete
 layer/fallback/capture behavior. Do not silently change this formula or upstream exposure to hide
-the observed deficiency. Record the final decision after bounded observation;
+the observed deficiencies. The human UI-white clarification is complete; milestone closure
+remains pending the separate strict historical-hash gate disposition;
 any adoption is a separate later slice and supplies its own presentation interface/capability
 contract and full fallback/capture validation. No experimental source merges into production.
 
