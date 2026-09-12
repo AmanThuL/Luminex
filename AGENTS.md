@@ -74,6 +74,7 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel> --screenshot <out.bmp>`. `--frames N`
   (default 1) renders N frames before writing the last — the temporal warmup control — advancing
   the scene's animation by 1/60 s and following its camera track (if any) between them.
+  `.png` uses tagged PNG with display/frame metadata; `.bmp` preserves the historical bytes.
   In both windowed and screenshot runs, `--temporal <off|raw|taa|metalfx>` (default `taa`; a bare
   `--temporal` also means `taa`) selects the reconstruction, and
   `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
@@ -87,8 +88,8 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   stays the default and reference. Running the binary directly requires CWD = its
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
-- Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered BMPs after W
-  unsaved frames at 60 Hz, plus a camera/settings/status manifest, into a new or empty directory.
+- Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered PNGs (or `--capture-format bmp`) after W
+  unsaved frames at 60 Hz, plus a v2 camera/settings/status/display/container/UI manifest, into a new or empty directory.
   It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
   builds synchronized Raw/Native/MetalFX reports and optional CPU LDR-FLIP maps of final sRGB output;
   these measure differences against Native TAA, not ground-truth accuracy or realtime performance.
@@ -207,7 +208,10 @@ vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measu
 selection-scoped details pane, deterministic layout stable across unchanged frames, and
 session-only dragged positions; frame loop advances animation and commits scene motion around
 `declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
-`--screenshot` and deterministic `--capture-sequence` paths).
+`--screenshot` and deterministic `--capture-sequence` paths). `Render/DisplayDomain.h` names
+the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
+the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
+Engine `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
 modules), ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, AlphaMask, ShadowPass/ShadowPassMask,
 Sky/SkyAuto, HistogramAccumulate, ExposureSeed,

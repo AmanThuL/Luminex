@@ -160,7 +160,8 @@ target("Tests")
     -- Keep test shader outputs separate from App; both targets may compile in parallel.
     -- Use singular "test" because the default macOS filesystem aliases it with the Tests binary.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
-    add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/DynamicResolution.cpp",
+    add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/CaptureMetadata.cpp",
+              "Source/App/DynamicResolution.cpp",
               "Source/App/EditorActions.cpp",
               "Source/App/EditorSelection.cpp", "Source/App/ExposureReset.cpp",
               "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",

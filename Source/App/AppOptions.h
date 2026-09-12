@@ -32,6 +32,15 @@ enum class TemporalMode : uint8_t {
     Vendor, ///< Temporal on, the capability-selected vendor scaler with native fallback.
 };
 
+/// Selects the file container for each captured sequence frame.
+enum class CaptureFormat : uint8_t {
+    Png, ///< Lossless RGBA with SDR domain and frame metadata.
+    Bmp, ///< Legacy top-down BGRA bitmap with unchanged bytes.
+};
+
+/// Returns the lowercase filename extension without a dot.
+std::string_view captureFormatName(CaptureFormat format);
+
 /// Maps a startup mode to reconstruction; Off disables temporal inputs separately.
 render::ReconstructionMode temporalReconstructionMode(TemporalMode mode);
 
@@ -43,6 +52,7 @@ struct AppOptions {
     std::filesystem::path captureSequencePath; ///< New or empty directory for a frame sequence.
     /// Unsaved frames before the sequence; valid only with captureSequencePath.
     uint32_t warmup = 0;
+    CaptureFormat captureFormat = CaptureFormat::Png; ///< Sequence container; PNG by default.
     /// The interactive window opens maximized to the display's usable bounds; `--windowed` keeps
     /// the fixed default size instead. Irrelevant, but accepted, in screenshot mode.
     bool maximized = true;

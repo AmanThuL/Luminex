@@ -561,7 +561,10 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .exposureResetPending = m_exposureResetPending,
                                         .temporalState = m_temporalState,
                                         .dynamicResolutionState = m_dynamicResolutionState,
-                                        .temporalSupport = device.capabilities().temporalScaler});
+                                        .temporalSupport = device.capabilities().temporalScaler,
+                                        .viewportWidth = m_viewportWidth,
+                                        .viewportHeight = m_viewportHeight,
+                                        .viewportVisible = viewportUsable});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 

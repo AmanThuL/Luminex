@@ -36,7 +36,10 @@ namespace {
 constexpr int kWindowWidth = 1280;
 constexpr int kWindowHeight = 720;
 
-// This color fills dockspace gaps; Renderer::clearColor belongs to the scene viewport.
+// UI colors are display-referred sRGB, straight-alpha blended in encoded space on BGRA8Unorm.
+// Encoded 1.0 is SDR white; the UI never boosts it. This clear is written verbatim into dock gaps.
+// Layout uses points and the per-window framebuffer scale controls font rasterization.
+// Detached ImGui platform windows own separate BGRA8Unorm layers and remain SDR.
 constexpr float kUiClearColor[4] = {0.06f, 0.06f, 0.07f, 1.0f};
 
 // Capture paths are relative to the process working directory unless overridden.
@@ -127,6 +130,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         LMX_LOG_ERROR("Renderer::create failed: {}", renderer.error().message);
         return 1;
     }
+    LMX_LOG_INFO("display: {}", lmx::render::describe((*renderer)->displayDomain()));
     (*renderer)->clearColor[0] = lmx::app::kSceneClearGray;
     (*renderer)->clearColor[1] = lmx::app::kSceneClearGray;
     (*renderer)->clearColor[2] = lmx::app::kSceneClearGray;
