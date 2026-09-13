@@ -272,6 +272,55 @@ class MainTests(unittest.TestCase):
             )
             self.assertEqual(code, 1)
 
+    def test_link_flag_with_no_target_file_is_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(
+                root,
+                ["Source/Core/Log.cpp", "Source/App/Options.h", "Source/App/Options.cpp", "Source/App/Shell.cpp"],
+            )
+            contract_dict = json.loads(json.dumps(CONTRACT))
+            contract_dict["targets"]["App"]["frameworks"] = []
+            contract = write_contract(root, contract_dict)
+            allowlist = root / "allowlist.json"
+            allowlist.write_text(json.dumps({"schemaVersion": 1, "entries": []}), encoding="utf-8")
+            dump = {
+                "Core": {"kind": "static", "files": ["Source/Core/Log.cpp"], "deps": {}, "packages": {}, "frameworks": {}},
+                "App": {
+                    "kind": "binary",
+                    "files": ["Source/App/Options.cpp", "Source/App/Shell.cpp"],
+                    "deps": "Core",
+                    "packages": {},
+                    "frameworks": {},
+                    "targetfile": "",
+                },
+            }
+            targets = root / "targets.json"
+            targets.write_text(json.dumps(dump), encoding="utf-8")
+            (root / "compile_commands.json").write_text("[]", encoding="utf-8")
+            code = run_main(
+                [
+                    "--root", str(root),
+                    "--contract", str(contract),
+                    "--allowlist", str(allowlist),
+                    "--targets", str(targets),
+                    "--link",
+                ]
+            )
+            self.assertEqual(code, 2)
+
+    def test_link_flag_is_skipped_without_the_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract, allowlist, targets = self.build_tree(root)
+            contract_dict = json.loads(contract.read_text(encoding="utf-8"))
+            contract_dict["targets"]["App"]["frameworks"] = []
+            contract.write_text(json.dumps(contract_dict), encoding="utf-8")
+            code = run_main(
+                ["--root", str(root), "--contract", str(contract), "--allowlist", str(allowlist), "--targets", str(targets)]
+            )
+            self.assertEqual(code, 0)
+
     def test_missing_target_dump_returns_two(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -309,13 +358,14 @@ INCLUDE_CONTRACT = {
         },
     },
     "targets": {"Core": {"deps": []}, "RHI": {"deps": ["Core"]}, "Engine": {"deps": ["Core"]}},
+    "thirdPartyPrefixes": {"SDL3/": "libsdl3"},
 }
 
 PACKAGE_STEM = ".xmake/packages/s/spdlog/v1.17.0/f028856e7c66484a8fbaa9d2364f2244/include"
 
 INCLUDE_TREE = {
     "Source/Core/Log.h": "#include <spdlog/spdlog.h>\n",
-    "RHI/Include/RHI/Format.h": "",
+    "RHI/Include/RHI/Format.h": '#include "Device.h"\n',
     "RHI/Include/RHI/Device.h": "",
     "RHI/Backends/Metal4/Source/Metal4Common.h": "",
     "RHI/Backends/Metal4/Source/Metal4Device.cpp": '#include "Metal4Common.h"\n#include <Metal/Metal.hpp>\n',
@@ -325,7 +375,10 @@ INCLUDE_TREE = {
     "Source/Engine/Mid.h": '#include "Engine/Bad.h"\n',
     "Source/Engine/Uses.h": '#include "Core/Log.h"\n',
     "Source/Engine/Widget.h": "#include <imgui_impl_sdl3.h>\n",
+    "Source/Engine/DoubleWidget.h": "#include <imgui_impl_sdl3.h>\n#include <imgui_impl_sdl3.h>\n",
     "Source/Engine/Absent.h": "#include <nowhere/absent.h>\n",
+    "Source/Engine/Cyc1.h": '#include "Engine/Cyc2.h"\n',
+    "Source/Engine/Cyc2.h": '#include "Engine/Cyc1.h"\n#include "RHI/Device.h"\n',
     "ThirdParty/imgui/backends/imgui_impl_sdl3.h": "",
     "ThirdParty/metal-cpp/Metal/Metal.hpp": "",
     f"{PACKAGE_STEM}/spdlog/spdlog.h": "",
@@ -423,6 +476,17 @@ class IncludeResolutionTests(unittest.TestCase):
             resolved = modules.resolve_include(Path("Source/Engine/Absent.h"), "vector", False, dirs, root, contract)
             self.assertEqual(resolved, modules.Resolved("system", None, None, None))
 
+    def test_unresolvable_angle_include_with_a_third_party_prefix_is_charged_to_that_package(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            write_include_tree(root)
+            contract = modules.load_contract(write_contract(root, INCLUDE_CONTRACT), root)
+            dirs = modules.include_dirs(include_entry(root, "x.cpp"))
+            resolved = modules.resolve_include(
+                Path("Source/Engine/Absent.h"), "SDL3/SDL.h", False, dirs, root, contract
+            )
+            self.assertEqual((resolved.kind, resolved.name), ("third-party", "libsdl3"))
+
     def test_parse_includes_reads_quoted_and_angle_specs_in_order(self) -> None:
         text = '#pragma once\n#include "Engine/Asset.h"\n#  include <vector>\nint x; // #include "no.h"\n'
         self.assertEqual(modules.parse_includes(text), [("Engine/Asset.h", True), ("vector", False)])
@@ -461,9 +525,25 @@ class IncludeCheckTests(unittest.TestCase):
             ],
         )
 
-    def test_header_allowance_admits_the_named_header_but_not_its_neighbour(self) -> None:
-        self.assertEqual(self.check(self.root, ["Source/Engine/Allowed.h"]), [])
+    def test_header_allowance_admits_the_named_header_but_not_its_transitive_include(self) -> None:
+        self.assertEqual(
+            self.check(self.root, ["Source/Engine/Allowed.h"]),
+            [
+                "Source/Engine/Allowed.h: asset reaches rhi-public via "
+                "Source/Engine/Allowed.h -> RHI/Include/RHI/Format.h -> RHI/Include/RHI/Device.h"
+            ],
+        )
         self.assertEqual(len(self.check(self.root, ["Source/Engine/Bad.h"])), 1)
+
+    def test_header_cycle_terminates_and_reports_the_reaching_chain(self) -> None:
+        errors = self.check(self.root, ["Source/Engine/Cyc1.h"])
+        self.assertEqual(
+            errors,
+            [
+                "Source/Engine/Cyc1.h: asset reaches rhi-public via "
+                "Source/Engine/Cyc1.h -> Source/Engine/Cyc2.h -> RHI/Include/RHI/Device.h"
+            ],
+        )
 
     def test_third_party_reached_through_a_project_header_is_not_a_direct_include(self) -> None:
         self.assertEqual(self.check(self.root, ["Source/Engine/Uses.h"]), [])
@@ -472,6 +552,12 @@ class IncludeCheckTests(unittest.TestCase):
         self.assertEqual(
             self.check(self.root, ["Source/Engine/Widget.h"]),
             ["Source/Engine/Widget.h: asset includes imgui directly"],
+        )
+
+    def test_direct_third_party_violation_is_reported_once_per_file(self) -> None:
+        self.assertEqual(
+            self.check(self.root, ["Source/Engine/DoubleWidget.h"]),
+            ["Source/Engine/DoubleWidget.h: asset includes imgui directly"],
         )
 
     def test_allowlist_entry_suppresses_exactly_one_violation(self) -> None:
@@ -538,6 +624,214 @@ class HardeningTests(unittest.TestCase):
         contract = {"units": {"app-shell": {"paths": ["Source/App"]}}}
         self.assertIsNone(modules.owner_of(Path("Source/AppX/x.cpp"), contract))
 
+
+class TargetClosureTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.contract = {"targets": {"TextureBake": {"deps": ["Core", "Asset"]}, "Core": {"deps": []}}}
+        self.targets = {
+            "Core": {"deps": []},
+            "RHI": {"deps": ["Core"]},
+            "Render": {"deps": ["Core", "RHI"]},
+            "Engine": {"deps": ["Core", "RHI", "Render"]},
+            "TextureBake": {"deps": ["Core", "Engine"]},
+        }
+
+    def test_closure_is_transitive(self) -> None:
+        self.assertEqual(
+            modules.dependency_closure("TextureBake", self.targets), {"Core", "Engine", "RHI", "Render"}
+        )
+
+    def test_closure_dep_outside_the_allowed_set_is_an_error(self) -> None:
+        errors: list[str] = []
+        modules.check_target_closure(self.targets, self.contract, [], errors)
+        self.assertEqual(
+            sorted(errors),
+            [
+                "TextureBake: depends on Engine outside its allowed set",
+                "TextureBake: depends on RHI outside its allowed set",
+                "TextureBake: depends on Render outside its allowed set",
+            ],
+        )
+
+    def test_allowed_name_that_is_not_a_target_is_tolerated(self) -> None:
+        targets = {"Core": {"deps": []}, "TextureBake": {"deps": ["Core"]}}
+        errors: list[str] = []
+        modules.check_target_closure(targets, self.contract, [], errors)
+        self.assertEqual(errors, [])
+
+    def test_target_dep_allowlist_entry_suppresses_one_dependency(self) -> None:
+        allowlist = [
+            {"kind": "target-dep", "target": "TextureBake", "dep": "Render", "reason": "r", "until": "R1.2"}
+        ]
+        errors: list[str] = []
+        modules.check_target_closure(self.targets, self.contract, allowlist, errors)
+        self.assertEqual(
+            sorted(errors),
+            [
+                "TextureBake: depends on Engine outside its allowed set",
+                "TextureBake: depends on RHI outside its allowed set",
+            ],
+        )
+        self.assertTrue(allowlist[0]["used"])
+
+
+class FakeCompleted:
+    """A canned `subprocess.run` result, injected so tests never shell out."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+class LinkedFrameworksAndSymbolsTests(unittest.TestCase):
+    def test_linked_frameworks_reads_otool_output(self) -> None:
+        stdout = (
+            "build/TextureBake:\n"
+            "\t/usr/lib/libz.1.dylib (compatibility version 1.0.0, current version 1.2.12)\n"
+            "\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 1.0.0)\n"
+            "\t/System/Library/Frameworks/MetalFX.framework/Versions/A/MetalFX (compatibility version 1.0.0, current version 1.0.0)\n"
+        )
+
+        def run(args, **kwargs):
+            self.assertEqual(args[0], "otool")
+            return FakeCompleted(stdout=stdout)
+
+        self.assertEqual(modules.linked_frameworks(Path("build/TextureBake"), run=run), ["Metal", "MetalFX"])
+
+    def test_linked_frameworks_failure_is_a_could_not_run_error(self) -> None:
+        def run(args, **kwargs):
+            return FakeCompleted(returncode=1, stderr="no such file")
+
+        with self.assertRaises(modules.ModuleContractError):
+            modules.linked_frameworks(Path("build/Missing"), run=run)
+
+    def test_undefined_symbols_demangles_through_cxxfilt(self) -> None:
+        calls: list[list[str]] = []
+
+        def run(args, **kwargs):
+            calls.append(args)
+            if args[0] == "nm":
+                return FakeCompleted(stdout="libEngine.a(Foo.cpp.o):\n__ZN3lmx3rhi6DeviceD1Ev\n__Znwm\n")
+            self.assertEqual(args[0], "c++filt")
+            self.assertEqual(kwargs.get("input"), "__ZN3lmx3rhi6DeviceD1Ev\n__Znwm")
+            return FakeCompleted(stdout="lmx::rhi::Device::~Device()\n__Znwm\n")
+
+        symbols = modules.undefined_symbols(Path("libEngine.a"), run=run)
+        self.assertEqual(symbols, ["lmx::rhi::Device::~Device()", "__Znwm"])
+        self.assertEqual([call[0] for call in calls], ["nm", "c++filt"])
+
+    def test_undefined_symbols_with_no_symbols_skips_cxxfilt(self) -> None:
+        def run(args, **kwargs):
+            self.assertEqual(args[0], "nm")
+            return FakeCompleted(stdout="libEngine.a(Foo.cpp.o):\n")
+
+        self.assertEqual(modules.undefined_symbols(Path("libEngine.a"), run=run), [])
+
+
+class CheckLinkTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.contract = {
+            "targets": {
+                "TextureBake": {"deps": ["Core", "Asset"], "frameworks": []},
+                "Asset": {"deps": ["Core"], "forbidUndefined": "lmx::rhi::"},
+            }
+        }
+
+    def make_targets(self, root: Path) -> dict[str, dict]:
+        texture_bake = root / "TextureBake"
+        texture_bake.write_text("", encoding="utf-8")
+        asset = root / "libAsset.a"
+        asset.write_text("", encoding="utf-8")
+        return {
+            "TextureBake": {"deps": [], "packages": [], "frameworks": [], "targetfile": str(texture_bake)},
+            "Asset": {"deps": [], "packages": [], "frameworks": [], "targetfile": str(asset)},
+        }
+
+    def test_framework_outside_the_allowed_set_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+
+            def run(args, **kwargs):
+                if args[0] == "otool":
+                    return FakeCompleted(
+                        stdout="\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
+                    )
+                return FakeCompleted(stdout="")
+
+            errors: list[str] = []
+            modules.check_link(targets, self.contract, [], errors, run=run)
+            self.assertIn("TextureBake: links Metal outside its allowed set", errors)
+
+    def test_framework_allowlist_entry_suppresses_one_framework(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+            allowlist = [
+                {"kind": "framework", "target": "TextureBake", "framework": "Metal", "reason": "r", "until": "R1.2"}
+            ]
+
+            def run(args, **kwargs):
+                if args[0] == "otool":
+                    return FakeCompleted(
+                        stdout="\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
+                    )
+                return FakeCompleted(stdout="")
+
+            errors: list[str] = []
+            modules.check_link(targets, self.contract, allowlist, errors, run=run)
+            self.assertEqual(errors, [])
+            self.assertTrue(allowlist[0]["used"])
+
+    def test_forbidden_undefined_symbol_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+
+            def run(args, **kwargs):
+                if args[0] == "otool":
+                    return FakeCompleted(stdout="")
+                if args[0] == "nm":
+                    return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__ZN3lmx3rhi6DeviceD1Ev\n")
+                self.assertEqual(args[0], "c++filt")
+                return FakeCompleted(stdout="lmx::rhi::Device::~Device()\n")
+
+            errors: list[str] = []
+            modules.check_link(targets, self.contract, [], errors, run=run)
+            self.assertEqual(
+                errors, ["Asset: undefined symbol lmx::rhi::Device::~Device() references lmx::rhi::"]
+            )
+
+    def test_missing_target_file_is_a_could_not_run_error(self) -> None:
+        targets = {"TextureBake": {"deps": [], "packages": [], "frameworks": [], "targetfile": ""}}
+        contract = {"targets": {"TextureBake": {"deps": [], "frameworks": []}}}
+        with self.assertRaisesRegex(modules.ModuleContractError, "xmake build"):
+            modules.check_link(targets, contract, [], [], run=lambda *a, **k: FakeCompleted())
+
+    def test_target_with_no_link_contract_is_skipped(self) -> None:
+        contract = {"targets": {"Core": {"deps": []}}}
+        targets = {"Core": {"deps": [], "packages": [], "frameworks": [], "targetfile": ""}}
+        errors: list[str] = []
+        modules.check_link(targets, contract, [], errors, run=lambda *a, **k: FakeCompleted())
+        self.assertEqual(errors, [])
+
+
+class BudgetTests(unittest.TestCase):
+    def test_file_over_its_root_budget_is_a_review_candidate(self) -> None:
+        contract = {"budgets": {"production": 2, "tests": 5}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Big.cpp", "Tests/Big.cpp"])
+            (root / "Source/Big.cpp").write_text("a\nb\nc\n", encoding="utf-8")
+            (root / "Tests/Big.cpp").write_text("a\nb\nc\n", encoding="utf-8")
+            lines = modules.report_budgets([Path("Source/Big.cpp"), Path("Tests/Big.cpp")], contract, root)
+            self.assertEqual(lines, ["review candidate: Source/Big.cpp (3 > 2 lines)"])
+
+    def test_file_within_budget_is_not_reported(self) -> None:
+        contract = {"budgets": {"production": 1000}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Small.cpp"])
+            (root / "Source/Small.cpp").write_text("a\n", encoding="utf-8")
+            self.assertEqual(modules.report_budgets([Path("Source/Small.cpp")], contract, root), [])
 
 
 if __name__ == "__main__":

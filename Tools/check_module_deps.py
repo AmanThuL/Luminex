@@ -34,6 +34,7 @@ ALLOWLIST_FIELDS = {
     "framework": ("target", "framework"),
     "header": ("file",),
 }
+LINKED_FRAMEWORK_PATTERN = re.compile(r"/([^/]+)\.framework/")
 
 
 class ModuleContractError(RuntimeError):
@@ -122,6 +123,11 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
             if field in target and not isinstance(target[field], list):
                 raise ModuleContractError(f"target {name} field {field} must hold a list")
     contract.setdefault("thirdPartyTargets", [])
+    prefixes = contract.setdefault("thirdPartyPrefixes", {})
+    if not isinstance(prefixes, dict) or not all(
+        isinstance(key, str) and isinstance(value, str) for key, value in prefixes.items()
+    ):
+        raise ModuleContractError(f"{path} thirdPartyPrefixes must map a prefix to a package name")
     return contract
 
 
@@ -389,6 +395,10 @@ def resolve_include(
         if name is not None:
             return Resolved("third-party", None, name, None)
         return Resolved("system", None, None, None)
+    if not quoted:
+        for prefix, name in contract.get("thirdPartyPrefixes", {}).items():
+            if spec.startswith(prefix):
+                return Resolved("third-party", None, name, None)
     return Resolved("system", None, None, None)
 
 
@@ -426,7 +436,7 @@ def check_includes(
         text = path.as_posix()
         if text in resolved:
             return resolved[text]
-        resolved[text] = []  # A cycle between two headers must not recurse forever.
+        resolved[text] = []  # Memoized before the body is read; cycles are broken by the BFS visited set below.
         unit = owner_of(path, contract)
         if unit is None:
             return resolved[text]
@@ -451,11 +461,15 @@ def check_includes(
             continue
         text = path.as_posix()
         row = contract["units"][unit]
+        reported_packages: set[str] = set()
         for include in includes_of(path):
             if include.kind != "third-party" or include.name in row["thirdParty"]:
                 continue
-            if not include_allowed(text, include.name or "", allowlist):
-                errors.append(f"{text}: {unit} includes {include.name} directly")
+            name = include.name or ""
+            if include_allowed(text, name, allowlist) or name in reported_packages:
+                continue
+            reported_packages.add(name)
+            errors.append(f"{text}: {unit} includes {name} directly")
         reported: set[str] = set()
         chains: dict[str, list[str]] = {text: [text]}
         queue = [path]
@@ -480,6 +494,130 @@ def check_includes(
                 errors.append(f"{text}: {unit} reaches {include.unit} via {' -> '.join(chains[reached])}")
 
 
+def dependency_closure(name: str, targets: dict[str, dict]) -> set[str]:
+    """Every target reachable from `name` through the dump's direct deps, `name` itself excluded."""
+    seen: set[str] = set()
+    queue = list(targets.get(name, {}).get("deps", []))
+    while queue:
+        dep = queue.pop(0)
+        if dep in seen:
+            continue
+        seen.add(dep)
+        queue.extend(targets.get(dep, {}).get("deps", []))
+    return seen
+
+
+def target_dep_allowed(target: str, dep: str, allowlist: list[dict]) -> bool:
+    return any(
+        entry["kind"] == "target-dep" and entry["target"] == target and entry["dep"] == dep and allow(entry)
+        for entry in allowlist
+    )
+
+
+def framework_allowed(target: str, framework: str, allowlist: list[dict]) -> bool:
+    return any(
+        entry["kind"] == "framework" and entry["target"] == target and entry["framework"] == framework and allow(entry)
+        for entry in allowlist
+    )
+
+
+def check_target_closure(
+    targets: dict[str, dict], contract: dict, allowlist: list[dict], errors: list[str]
+) -> None:
+    """A target's transitive dependency closure minus its allowed deps; unknown allowed names are tolerated."""
+    for name, entry in contract["targets"].items():
+        if name not in targets:
+            continue
+        allowed = set(entry.get("deps", []))
+        for dep in sorted(dependency_closure(name, targets)):
+            if dep in allowed or dep not in targets:
+                continue
+            if target_dep_allowed(name, dep, allowlist):
+                continue
+            errors.append(f"{name}: depends on {dep} outside its allowed set")
+
+
+def linked_frameworks(targetfile: Path, run=subprocess.run) -> list[str]:
+    """The frameworks a linked binary or archive names, in `otool -L` order, by their basename."""
+    completed = run(["otool", "-L", str(targetfile)], capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise ModuleContractError(f"otool -L {targetfile} failed: {completed.stderr.strip()}")
+    names: list[str] = []
+    for line in completed.stdout.splitlines():
+        match = LINKED_FRAMEWORK_PATTERN.search(line)
+        if match and match.group(1) not in names:
+            names.append(match.group(1))
+    return names
+
+
+def undefined_symbols(archive: Path, run=subprocess.run) -> list[str]:
+    """Every undefined symbol `nm -u` reports, demangled through `c++filt`, in the same order."""
+    completed = run(["nm", "-u", str(archive)], capture_output=True, text=True, check=False)
+    if completed.returncode != 0:
+        raise ModuleContractError(f"nm -u {archive} failed: {completed.stderr.strip()}")
+    mangled: list[str] = []
+    for line in completed.stdout.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.endswith(":"):
+            continue
+        mangled.append(stripped.split()[-1])
+    if not mangled:
+        return []
+    demangled = run(["c++filt"], input="\n".join(mangled), capture_output=True, text=True, check=False)
+    if demangled.returncode != 0:
+        raise ModuleContractError(f"c++filt failed: {demangled.stderr.strip()}")
+    return demangled.stdout.splitlines()
+
+
+def check_link(
+    targets: dict[str, dict], contract: dict, allowlist: list[dict], errors: list[str], run=subprocess.run
+) -> None:
+    """Check each target's linked frameworks and undefined symbols against its contract entry."""
+    for name, entry in contract["targets"].items():
+        if "frameworks" not in entry and not entry.get("forbidUndefined"):
+            continue
+        if name not in targets:
+            continue
+        targetfile = targets[name].get("targetfile") or ""
+        path = Path(targetfile) if targetfile else None
+        if path is None or not path.is_file():
+            raise ModuleContractError(f"{name} has no built target file; run xmake build {name}")
+
+        if "frameworks" in entry:
+            allowed_frameworks = set(entry["frameworks"])
+            for framework in linked_frameworks(path, run=run):
+                if framework in allowed_frameworks:
+                    continue
+                if framework_allowed(name, framework, allowlist):
+                    continue
+                errors.append(f"{name}: links {framework} outside its allowed set")
+
+        prefix = entry.get("forbidUndefined")
+        if prefix:
+            for symbol in undefined_symbols(path, run=run):
+                if symbol.startswith(prefix):
+                    errors.append(f"{name}: undefined symbol {symbol} references {prefix}")
+
+
+def report_budgets(files: list[Path], contract: dict, root: Path) -> list[str]:
+    """Line-count review candidates: informational, never errors. Tests root uses the tests budget."""
+    budgets = contract.get("budgets", {})
+    lines: list[str] = []
+    for path in files:
+        category = "tests" if path.parts[:1] == ("Tests",) else "production"
+        budget = budgets.get(category)
+        if budget is None:
+            continue
+        try:
+            with (root / path).open("r", encoding="utf-8", errors="replace") as handle:
+                count = sum(1 for _ in handle)
+        except OSError as exc:
+            raise ModuleContractError(f"cannot read {path.as_posix()}: {exc}") from exc
+        if count > budget:
+            lines.append(f"review candidate: {path.as_posix()} ({count} > {budget} lines)")
+    return lines
+
+
 def display_path(path: Path, root: Path) -> Path:
     """Report a path inside the repository relative to it, so messages do not carry a home directory."""
     try:
@@ -498,6 +636,9 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--compile-commands", type=Path, default=None, help="compilation database for include context"
+    )
+    parser.add_argument(
+        "--link", action="store_true", help="also check linked frameworks and undefined symbols"
     )
     return parser.parse_args(argv)
 
@@ -522,10 +663,17 @@ def main(argv: list[str] | None = None) -> int:
         files = project_files(root, contract)
         check_ownership(files, targets, contract, allowlist, errors)
         check_includes(files, targets, compile_db, contract, allowlist, errors, root)
+        check_target_closure(targets, contract, allowlist, errors)
+        if args.link:
+            check_link(targets, contract, allowlist, errors)
         check_allowlist_use(display_path(allowlist_path, root), allowlist, errors)
+        budget_lines = report_budgets(files, contract, root)
     except ModuleContractError as exc:
         print(f"module policy could not run: {exc}", file=sys.stderr)
         return 2
+
+    for line in budget_lines:
+        print(line)
 
     if errors:
         for error in errors:

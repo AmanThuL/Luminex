@@ -7,6 +7,9 @@
     "Tools/TextureBake",
     "Benchmarks"
   ],
+  "thirdPartyPrefixes": {
+    "SDL3/": "libsdl3"
+  },
   "thirdPartyTargets": [
     "ImGui",
     "ImGuiNodeEditor"
@@ -288,6 +291,7 @@
       ]
     }
   },
+  "targetsNote": "TextureBake is the only target-state entry that reflects an enforced boundary; the remaining entries record each target's accepted current dependencies until R1.2 and R1.3 rewrite them.",
   "targets": {
     "Core": {
       "deps": []

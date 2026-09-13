@@ -1,6 +1,7 @@
 -- Prints one JSON object describing every xmake target: kind, source files, dependencies,
 -- packages, frameworks and target file, all repository-relative. Single-valued xmake fields
 -- arrive as bare strings and are normalised to lists.
+import("core.project.config")
 import("core.project.project")
 import("core.base.json")
 
@@ -14,6 +15,7 @@ function _list(value)
 end
 
 function main()
+    config.load()
     local out = {}
     for name, target in pairs(project.targets()) do
         local files = {}
