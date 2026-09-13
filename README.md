@@ -1,195 +1,62 @@
 # Luminex
 
-[![Platform](https://img.shields.io/badge/platform-macOS_26+-black)](#requirements)
-[![GPU API](https://img.shields.io/badge/GPU_API-Metal_4-555555)](#architecture)
-[![Language](https://img.shields.io/badge/C%2B%2B-23-00599C)](#build-and-run)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![Build](https://img.shields.io/github/actions/workflow/status/AmanThuL/Luminex/ci.yml?branch=main&label=build)](https://github.com/AmanThuL/Luminex/actions/workflows/ci.yml) [![Platform](https://img.shields.io/badge/platform-macOS_26+-black)](#quick-start) [![GPU API](https://img.shields.io/badge/GPU_API-Metal_4-555555)](docs/architecture/overview.md) [![Language](https://img.shields.io/badge/C%2B%2B-23-00599C)](#quick-start) [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-A compact C++23 renderer built directly on Metal 4. Luminex combines an explicit RHI, a validating
-render graph, Slang shaders, real glTF content, GPU validation tests, and a docked editor in one
-inspectable codebase.
+Physically based rendering on Apple Silicon, built directly on Metal 4.
+Explore detailed scenes, temporal reconstruction and the frame behind each image in an interactive editor.
 
-[Rendering today](#rendering-today) · [Frame flow](#frame-flow) · [Build and run](#build-and-run) ·
-[Architecture](#architecture) · [What's next](#whats-next)
+[Quick start](#quick-start) · [Architecture](docs/architecture/overview.md) · [GPU debugging](docs/guides/gpu-debugging.md)
 
-![Crytek Sponza atrium rendered by Luminex](docs/media/sponza.png)
+![Crytek Sponza in the Luminex editor, with scene controls and frame diagnostics](docs/media/editor-sponza.png)
 
-<p align="center"><sub>Crytek Sponza · physically based materials, image-based lighting, scene-linear HDR · captured by the offscreen renderer</sub></p>
+<p align="center"><sub>Crytek Sponza in the Luminex editor · native TAA, automatic exposure and bloom</sub></p>
 
-## Rendering today
+## Highlights
 
-| Area | Current implementation |
-|---|---|
-| GPU backend | Native Metal 4 through metal-cpp; three frames in flight, argument tables, explicit residency, shared-event pacing, and per-pass GPU timing |
-| Frame | A validating render graph schedules raster, compute, copy and external passes — depth-only shadow → scene and sky → temporal resolve → bloom → a neutral display transform → docked ImGui viewport — with exposure metered from raw scene color, deriving its own barriers from declared resource uses, culling passes no result depends on, and pooling transient targets across non-overlapping lifetimes |
-| Materials | Full glTF metallic-roughness inputs (base color, metallic-roughness, occlusion, emissive, normal) shaded with a GGX BRDF and diffuse/specular image-based lighting |
-| Image formation | Scene-linear FP16 color with a deterministic manual exposure default and opt-in GPU histogram auto-exposure, bloom, a Khronos PBR Neutral display transform, and reversed infinite-far depth |
-| Shadows | 2048² directional shadow map with selectable 25-tap Poisson PCF or PCSS |
-| Content | Deterministically converted Crytek Sponza, optional San Miguel with masked foliage, Khronos Damaged Helmet, and a rigid-animated CesiumMilkTruck sample through a focused glTF loader, plus deterministic offline mip baking |
-| Motion | Camera and rigid-object motion vectors with an explicit invalid-motion sentinel, and a persistent, reset-aware temporal history feeding diagnostic reprojection views |
-| Temporal stability | Native-resolution temporal anti-aliasing with disocclusion rejection and neighbourhood clipping, plus adaptive exposure that corrects its own history for the brightness it was recorded at |
-| Upscaling | Temporal upscaling that reconstructs a full-resolution image from a smaller, jittered render, with an automatic GPU-time-driven dynamic resolution controller |
-| Reconstruction choice | Opt-in MetalFX temporal reconstruction over the same motion, jitter, depth and exposure inputs; native TAA/upscaling remains the default and reference, with native fallback when the vendor scaler is unavailable |
-| Editor | Scene selection, fly camera, light and object transforms, exposure, bloom, wireframe and shadow-filter controls, stable rolling per-pass GPU timings, and a render graph inspector listing each frame's passes, resources, barriers and transient placements |
-| Diagnostics | A neutral studio-lit material lab with a complete roughness/metallic grid and horizontal test lanes, a deterministic motion lab exercising rigid, orbiting and invalid-flagged motion, object/pass labels, a deterministic text dump of any compiled frame, Metal validation, deterministic GPU smoke tests, capture sidecars and profiling tools |
+- **Lighting and materials.** Metallic-roughness PBR, image-based lighting, directional shadows,
+  masked foliage, HDR exposure and bloom.
+- **Temporal reconstruction.** Native TAA and temporal upscaling, dynamic resolution, and optional
+  MetalFX reconstruction with native fallback.
+- **An inspectable frame.** Scene controls, per-pass GPU timings, motion diagnostics
+  and a visual render graph inspector.
+- **Built close to the GPU.** C++23, Slang shaders and a thin RHI, with explicit resource
+  dependencies, transient pooling and Metal validation tests.
 
 <p align="center">
-  <img src="docs/media/damaged-helmet.png" alt="Khronos Damaged Helmet rendered by Luminex" width="760">
+  <img src="docs/media/damaged-helmet.png" alt="Damaged Helmet rendered with physically based materials and image-based lighting" width="640">
   <br>
-  <sub>Damaged Helmet · full metallic-roughness material, image-based lighting, tangent-space normal mapping</sub>
+  <sub>Damaged Helmet · metallic-roughness materials and image-based lighting</sub>
 </p>
 
-## Frame flow
+## Quick start
 
-```mermaid
-flowchart TB
-    subgraph Scene["Scene preparation"]
-        direction LR
-        Assets["glTF + procedural geometry"] --> GPUScene["GPU scene + IBL uploads"] --> View["SceneView"]
-    end
-    subgraph Frame["Render graph, declared and validated per frame"]
-        direction LR
-        Shadow["Shadow pass"] -->|shadow map| Scene2["Scene + sky pass"] -->|HDR color + motion + depth| Temporal["Native or MetalFX temporal reconstruction"] --> Bloom["Bloom"] --> Display["Display transform"]
-        Scene2 -->|raw HDR color| Exposure["Exposure feedback"]
-        Temporal --> Display
-    end
-    subgraph Presentation
-        direction LR
-        UI["ImGui viewport"] --> Present["Metal swapchain"]
-    end
-    View --> Shadow
-    View --> Scene2
-    Display --> UI
-```
-
-The renderer keeps scene ownership above the rendering layer: Scene produces a plain per-frame
-`SceneView`, Render declares the frame's passes into a `RenderGraph` that validates every
-declared read and write before compiling a schedule, and the RHI records the Metal 4 work without
-leaking Metal types through public interfaces. The complete resource and synchronization
-walkthrough is in [docs/frame-pipeline.md](docs/frame-pipeline.md).
-
-## Build and run
-
-### Requirements
-
-- Apple Silicon running macOS 26 or newer
-- Xcode 26
-- [Homebrew](https://brew.sh) and [xmake](https://xmake.io) 3.x
+Requires **Apple Silicon, macOS 26+, Xcode 26 and Homebrew**.
 
 ```bash
 brew install xmake
+git clone https://github.com/AmanThuL/Luminex.git
+cd Luminex
 xmake setup
 xmake
 xmake run App
 ```
 
-`xmake setup` fetches pinned dependencies, sample assets, and the CC0 Studio Small 09 HDRI; verifies
-their hashes; converts the official Crytek Sponza OBJ distribution into the core glTF subset used
-at runtime; and bakes every base-color and normal image into a deterministic offline mip chain.
-Generated content remains under the gitignored `Assets/Fetched/` directory.
+Setup downloads pinned dependencies and sample assets. The editor opens on Sponza;
+hold the right mouse button in the viewport and use WASD + Q/E to fly.
 
-The editor opens on Sponza. Hold right mouse in the viewport and use WASD + Q/E to fly. Select
-Damaged Helmet or the diagnostic material lab scene from the Scene panel, or render any scene
-without a window:
+## Explore the project
 
-```bash
-xmake run App --scene damaged-helmet --screenshot helmet.png
-```
+[Architecture](docs/architecture/overview.md) ·
+[Frame walkthrough](docs/frame-pipeline.md) ·
+[GPU debugging](docs/guides/gpu-debugging.md) ·
+[Temporal comparisons](docs/guides/temporal-comparison.md) ·
+[Roadmap](docs/roadmap.md)
 
-Use `--temporal metalfx` to select MetalFX in the editor or an offscreen run; add
-`--render-scale 0.5` to reconstruct from half-resolution inputs. Native TAA stays the default.
-For a detailed courtyard comparison, install the optional San Miguel archive with
-`xmake setup --san-miguel`, then launch `xmake run App --scene san-miguel`. The
-[temporal comparison guide](docs/guides/temporal-comparison.md) covers its repeatable camera rail,
-synchronized three-mode reports and optional CPU FLIP difference maps.
+CI checks the build, CPU tests and repository policy. Metal 4 GPU tests run on supported hardware.
 
-<details>
-<summary><strong>Testing, validation and GPU capture</strong></summary>
+## License and credits
 
-```bash
-xmake test Tests/unit
-MTL_DEBUG_LAYER=1 xmake test Tests/gpu
-xmake format --check
-xmake policy
-```
-
-Press `c` in a windowed run launched with `MTL_CAPTURE_ENABLED=1` to write a `.gputrace` for Xcode.
-Automated capture and profiling workflows are documented in
-[docs/guides/gpu-debugging.md](docs/guides/gpu-debugging.md).
-
-GitHub-hosted macOS runners compile and inventory the GPU suite but cannot execute Metal 4 on their
-paravirtual GPU. Renderer changes therefore require the local Metal-validation command above.
-
-</details>
-
-## Architecture
-
-```mermaid
-flowchart TB
-    subgraph Layers["Renderer layers"]
-        direction LR
-        App["App<br/>SDL3 + ImGui"] --> AppModel["AppModel<br/>editor logic + scene session"] --> Scene["Scene<br/>GPU scenes + uploads"] --> Render["Render<br/>camera + render graph"]
-        Scene --> Asset["Asset<br/>CPU decoding + baking"]
-    end
-    subgraph GPU["GPU interface"]
-        direction LR
-        RHI["RHI<br/>API-neutral contracts"] --> Metal["Metal 4<br/>backend"]
-        Shaders["Slang shaders"] --> Metal
-    end
-    Render --> RHI
-```
-
-The RHI is intentionally thin and currently has one backend: Metal 4. It owns resource creation,
-command recording, synchronization, residency and swapchain contracts; rendering policy stays in
-`Source/Render`, while `Source/Scene` owns GPU scene state and `Source/Asset` owns CPU content.
-
-| Path | Responsibility |
-|---|---|
-| `RHI/Include/RHI` | Backend-neutral interfaces and validation contracts |
-| `RHI/Backends/Metal4` | Metal objects, frame lifetime, command encoding and optional ImGui integration |
-| `Source/Core` | Shared math, file reading, JSON escaping and numeric parsing |
-| `Source/Render` | Camera, meshes, validating render graph and compiled records, shared frame declaration, composed draw, exposure, bloom and display stages |
-| `Source/Asset` | CPU glTF/DDS/HDR/image decoding, geometry, clip sampling, IBL generation and mip baking |
-| `Source/Scene` | Scene catalog, GPU uploads, environments and playback |
-| `Source/App/Model` | Shared editor logic, scene sessions and capture metadata |
-| `Source/App` | SDL3 window, editor shell, CLI and offscreen screenshots |
-| `Shaders` | Render entry points, shared `Modules/` and test oracles under `Tests/` |
-| `xmake` | Dependency setup, shader compilation rules and maintenance tasks |
-| `Tools/GpuDebug` | Capture inspection, schema validation and profiling |
-
-## What's next
-
-- Cascaded shadows, atmosphere and transparent surfaces on the shared lighting model
-- GPU scene data, visibility culling and indirect submission after the frame contract is stable
-- A second RHI backend once the render graph's semantics are frozen for portability
-
-The dependency order and exit gates live in the [engineering roadmap](docs/roadmap.md).
-
-## Current boundaries
-
-- Metal 4 on Apple Silicon is the only runtime backend.
-- The render graph executes one serial queue: passes are scheduled in a single order, and neither
-  async compute nor multi-queue submission is modelled.
-- Auto-exposure is an opt-in; the default image formation path is deterministic manual exposure.
-- Large sample scenes load synchronously and require `xmake setup` before first use.
-- Sample assets and derived gallery images keep their upstream licenses; see
-  [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Documentation
-
-- [Architecture overview](docs/architecture/overview.md)
-- [One frame end to end](docs/frame-pipeline.md)
-- [GPU debugging guide](docs/guides/gpu-debugging.md)
-- [Engineering roadmap](docs/roadmap.md)
-- [Engineering conventions](docs/conventions/engineering.md)
-
-## Credits and license
-
-Crytek Sponza is © 2010 Frank Meinl/Crytek and distributed under CC BY 3.0 through Morgan
-McGuire's [Computer Graphics Archive](https://casual-effects.com/data). Luminex also builds on
-Apple's Metal 4 documentation and samples, [metal-cpp](https://github.com/apple/metal-cpp),
-[Slang](https://shader-slang.org), and the open-source graphics community.
-
-Luminex source code is licensed under the [Apache License 2.0](LICENSE). Fetched sample assets are
-not covered by the source license; their attribution and terms are recorded in
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Source: [Apache 2.0](LICENSE).
+Crytek Sponza © 2010 Frank Meinl/Crytek, CC BY 3.0. Images are rendered with Luminex.
+Model credits and separate asset licenses are recorded in
+[third-party notices](THIRD_PARTY_NOTICES.md).
