@@ -17,21 +17,30 @@ below define their membership until the move that creates the directory.
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
 | `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer functions; later, helpers that reach two consumers with one contract | — | spdlog, glm |
-| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi` | API-neutral GPU contracts, compiled standalone | — | — |
-| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
-| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi` | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
-| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
+| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
+| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
+| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
+| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
 | `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and passes, plus the frame input contract in its own leaf header | `core`, `rhi-public` | glm |
 | `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
 | `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
-| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for every unit below the shell | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core`, `rhi-public` | glm |
 
 `app-shell` reaches the backend and the adapter because it creates the device and the editor's
-ImGui bridge; no other unit above `rhi-public` may name a backend or adapter header.
+ImGui bridge; no other unit above `rhi-public` may name a backend or adapter header, where "backend
+header" means any header under `RHI/Backends`. The Metal 4 extension headers
+`RHI/Include/RHI/Metal4/Metal4Capture.h` and `RHI/Include/RHI/Metal4/Metal4FrameData.h` are
+`rhi-public`, not backend headers: they live under the public include directory and pass the
+dependency-free standalone header check like every other public header.
+
+`tests` reaches the GPU through `rhi-public` alone — `createDevice` in `RHI/Include/RHI/Device.h`
+hands back the interface, and no test names a backend, adapter or `RHI/Source` header. That the
+Tests target links the `RHI` target is the link-level view, a target's dependency closure, which the
+link checks own; it is not an include edge and does not widen this row.
 
 ### Transitional file lists
 
@@ -91,11 +100,16 @@ The rules above are checked as include edges:
 - A quoted include resolves relative to the including file first, then against the owning target's
   include directories. It is a project edge from the includer's unit to the unit that owns the
   resolved file.
-- An angle include resolves against the package and `ThirdParty` roots. It is a third-party edge
-  named by the package or vendored directory: spdlog, glm, cgltf, stb, catch2, libsdl3, imgui,
-  imgui-node-editor, metal-cpp. Metal, MetalFX, QuartzCore and Foundation headers come from
-  metal-cpp and count as that package. A quoted include that resolves to no project file is
-  resolved the same way.
+- An angle include resolves against the package and `ThirdParty` roots and is a third-party edge.
+  Its name comes from where it resolved: a header under an xrepo package directory takes that
+  package's name — spdlog, glm, cgltf, stb, catch2, libsdl3 — and a header under `ThirdParty/<dir>`
+  takes the directory name — imgui, imgui-node-editor, metal-cpp. The rule covers subdirectories, so
+  `imgui/backends` headers such as `imgui_impl_sdl3.h` and `imgui_impl_metal4.h` are imgui, and the
+  Metal, MetalFX, QuartzCore and Foundation headers, which resolve under `ThirdParty/metal-cpp`, are
+  metal-cpp. A quoted include that resolves to no project file is resolved the same way.
+- The vendored `ImGui` and `ImGuiNodeEditor` xmake targets build third-party packages, not units.
+  Ownership reconciliation skips them, and a unit that links one still needs the package in its
+  third-party set.
 - Project reach is transitive. A unit reaches every unit its includes reach, at any depth, so an
   `app-model` header cannot borrow ImGui by including a shell header that includes it.
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
@@ -134,9 +148,13 @@ responsibility named for each part, is not an improvement.
 The current tree does not satisfy the contract yet, so the checker reads an allowlist from one
 checked-in file. The allowlist is a record of debt, not a configuration surface:
 
-- Each entry names the including file, the forbidden edge and the reason it exists, and is scoped
-  to that one edge — never a whole unit, directory or package.
-- The allowlist only shrinks. A slice that would add an entry either fixes the edge instead or
-  states in its plan why the edge is temporary and which slice removes it.
+- Each entry names the file or target it applies to, the forbidden edge, a reason, and an `until`
+  field naming the slice that removes it. All four are required, and the entry is scoped to that one
+  edge — never a whole unit, directory or package.
+- An entry that matches no current violation fails the check. A stale allowance is an error, not a
+  harmless leftover, so fixing an edge forces the entry out in the same change.
+- The allowlist shrinks by default and grows only with a plan-stated `until`: a slice that would add
+  an entry either fixes the edge instead, or records in its plan why the edge is temporary and which
+  slice removes it, and writes that slice into `until`.
 - An empty allowlist for a unit is that unit's exit gate. Widening the allowlist is not how a
   crossing gets approved; a rule that no longer fits opens the next refactoring milestone.
