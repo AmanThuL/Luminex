@@ -31,6 +31,7 @@
 #include "Runner.h"
 #include "Workload.h"
 
+#include "Core/Json.h"
 #include "RHI/Metal4/Metal4FrameData.h"
 
 #include <cstdio>
@@ -113,27 +114,6 @@ std::optional<CliOptions> parseArgs(const std::vector<std::string_view>& args, s
 }
 
 //======================================================================================================================
-// Matches Tools/TextureBake's hand-rolled JSON precedent: escapes the two characters JSON requires
-// plus control characters, with no third-party dependency.
-std::string jsonEscape(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const char c : text) {
-        if (c == '"' || c == '\\') {
-            out += '\\';
-            out += c;
-        } else if (static_cast<unsigned char>(c) < 0x20) {
-            char buffer[7];
-            std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
-            out += buffer;
-        } else {
-            out += c;
-        }
-    }
-    return out;
-}
-
-//======================================================================================================================
 // Serializes one FrameDataCounters snapshot (candidate-only counter evidence) as a JSON
 // object literal, or writes `null` when the run never took this snapshot (RunResult's
 // std::optional is unset -- see Runner.h). The baseline binary this JSON schema also serves is
@@ -173,7 +153,7 @@ bool writeResultJson(const std::filesystem::path& path, const CliOptions& option
         return false;
     }
     file << "{\n";
-    file << "  \"case\": \"" << jsonEscape(options.caseName) << "\",\n";
+    file << "  \"case\": \"" << lmx::jsonEscape(options.caseName) << "\",\n";
     file << "  \"warmupFrames\": " << options.warmupFrames << ",\n";
     file << "  \"measuredFrames\": " << options.measuredFrames << ",\n";
     file << "  \"perFrameTimedRegionNs\": [";

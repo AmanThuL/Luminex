@@ -7,6 +7,7 @@
 
 #include "Core/Assert.h"
 #include "Core/Color.h"
+#include "Core/Json.h"
 
 #include <glm/glm.hpp>
 
@@ -169,34 +170,6 @@ std::vector<uint8_t> downsampleNormal(std::span<const uint8_t> src, uint32_t src
 uint32_t mipExtent(uint32_t base, uint32_t level) {
     const uint32_t extent = base >> level;
     return extent > 0 ? extent : 1;
-}
-
-//======================================================================================================================
-// Escapes the two characters JSON requires ("\ and control chars); manifest sources are always
-// repo-relative POSIX paths or basenames, so this only ever has to handle the quote and backslash
-// in practice, but a stray control byte is escaped too rather than emitting invalid JSON.
-std::string jsonEscape(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const char c : text) {
-        switch (c) {
-        case '"':
-            out += "\\\"";
-            break;
-        case '\\':
-            out += "\\\\";
-            break;
-        default:
-            if (static_cast<unsigned char>(c) < 0x20) {
-                char buffer[7];
-                std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
-                out += buffer;
-            } else {
-                out += c;
-            }
-        }
-    }
-    return out;
 }
 
 // Minimal self-contained SHA-256 (FIPS 180-4), processed in fixed 512-bit chunks with no data-

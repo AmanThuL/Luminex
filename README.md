@@ -147,12 +147,14 @@ command recording, synchronization, residency and swapchain contracts; rendering
 |---|---|
 | `RHI/Include/RHI` | Backend-neutral interfaces and validation contracts |
 | `RHI/Backends/Metal4` | Metal objects, frame lifetime, command encoding and optional ImGui integration |
-| `Source/Render` | Camera, meshes, validating render graph and compiled records, shared frame declaration, composed shadow/scene stages and display passes |
+| `Source/Core` | Shared math, file reading, JSON escaping and numeric parsing |
+| `Source/Render` | Camera, meshes, validating render graph and compiled records, shared frame declaration, composed draw, exposure, bloom and display stages |
 | `Source/Asset` | CPU glTF/DDS/HDR/image decoding, geometry, clip sampling, IBL generation and mip baking |
 | `Source/Scene` | Scene catalog, GPU uploads, environments and playback |
-| `Source/App/Model` | Shared editor logic, scene sessions, frame declaration and capture metadata |
+| `Source/App/Model` | Shared editor logic, scene sessions and capture metadata |
 | `Source/App` | SDL3 window, editor shell, CLI and offscreen screenshots |
-| `Shaders` | Slang modules and render/test entry points |
+| `Shaders` | Render entry points, shared `Modules/` and test oracles under `Tests/` |
+| `xmake` | Dependency setup, shader compilation rules and maintenance tasks |
 | `Tools/GpuDebug` | Capture inspection, schema validation and profiling |
 
 ## What's next

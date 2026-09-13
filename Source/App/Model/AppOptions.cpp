@@ -5,9 +5,9 @@
 
 #include "App/Model/AppOptions.h"
 
+#include "Core/Parse.h"
 #include "Render/Temporal.h"
 
-#include <charconv>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -143,8 +143,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--warmup needs a non-negative frame count");
             }
             const auto raw = arguments[i];
-            const auto [end, ec] = std::from_chars(raw.data(), raw.data() + raw.size(), warmup);
-            if (ec != std::errc{} || end != raw.data() + raw.size()) {
+            if (!parseNumber(raw, warmup)) {
                 return fail("--warmup needs a non-negative frame count");
             }
             warmupSpecified = true;
@@ -161,9 +160,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             }
             const std::string_view raw = arguments[i];
             uint32_t parsedFrames = 0;
-            const auto [end, ec] =
-                std::from_chars(raw.data(), raw.data() + raw.size(), parsedFrames);
-            if (ec != std::errc{} || end != raw.data() + raw.size() || parsedFrames < 1) {
+            if (!parseNumber(raw, parsedFrames) || parsedFrames < 1) {
                 return fail("--frames needs a positive integer: App --frames <N> (N >= 1)");
             }
             frames = parsedFrames;
@@ -219,11 +216,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
             }
             const std::string_view raw = arguments[i];
             float parsedScale = 0.0f;
-            const auto [end, ec] =
-                std::from_chars(raw.data(), raw.data() + raw.size(), parsedScale);
-            if (ec != std::errc{} || end != raw.data() + raw.size() ||
-                !std::isfinite(parsedScale) || parsedScale < render::kMinRenderScale ||
-                parsedScale > render::kMaxRenderScale) {
+            if (!parseNumber(raw, parsedScale) || !std::isfinite(parsedScale) ||
+                parsedScale < render::kMinRenderScale || parsedScale > render::kMaxRenderScale) {
                 return fail("--render-scale needs a value in [0.5, 1.0], got '" + std::string(raw) +
                             "'");
             }

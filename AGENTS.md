@@ -44,7 +44,7 @@ linked parts under `docs/roadmap/`.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
   and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
   (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
-  pins and hashes are in `xmake.lua`. Setup re-applies the maintained ThirdParty patches
+  pins and hashes are in `xmake/setup.lua`. Setup re-applies the maintained ThirdParty patches
   idempotently: a tree already carrying the current patch is left alone, and one carrying an older
   revision of it is restored to the pin before the patch is applied. Optional:
   `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
@@ -52,7 +52,7 @@ linked parts under `docs/roadmap/`.
 - Optional courtyard: `xmake setup --san-miguel` downloads the official ~511 MiB archive, converts
   its realtime OBJ at authored metre scale with diffuse alpha cutouts and `N_` tangent normals,
   and bakes referenced textures. `Assets/Fetched/SanMiguel/` preserves source metadata, license and
-  conversion provenance; archive and converted-tree hashes are pinned in `xmake.lua`.
+  conversion provenance; archive and converted-tree hashes are pinned in `xmake/setup.lua`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
@@ -146,7 +146,7 @@ linked parts under `docs/roadmap/`.
   and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
 
 ## Architecture
-`Source/Core` (lmx:: log/assert, alignment and shared colour transfer; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
+`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
@@ -167,8 +167,8 @@ extra colour attachments) over imported resources and over one-frame transients 
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
-as deterministic text; `CompiledFrameRecord.h` owns the observer contract; `FrameDeclaration` shares graph execution;
-`SceneView.h` owns frame inputs; `Renderer` composes `ShadowStage`/`SceneStage` (pipelines, masked variants, bindings, draws) and declares histogram exposure
+as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
+`SceneView.h` owns frame inputs; `Renderer` composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -179,7 +179,7 @@ alpha cutoff coverage, with optional two-sided shading; color/depth/motion/react
 together. Opaque shaders and uniforms stay separate; glTF BLEND is unsupported (ADR 0018).
 `fitShadowOrtho` and friends are free functions;
 `Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
-and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve.h` holds the
+and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve` has native/upscale/vendor/diagnostic declaration units sharing the
 reconstruction contract, ping-pong slot ownership, the native/upscale kernel-selection rule and
 frozen constants (ADRs 0014–0016); its composed `VendorTemporalScaler` translates invalid motion to
 zero motion/reactive one, writes reciprocal applied exposure into one `R16Float` texel, and maps
@@ -220,21 +220,21 @@ frame declaration/record retention, keeping their own waits, UI sink and present
 `Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
-modules), ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, AlphaMask, ShadowPass/ShadowPassMask,
-Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
-ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject,
-TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (+ Triangle/SamplerSmoke/
-CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke/RenderAreaSmoke as test oracles).
-One frame end-to-end: `docs/frame-pipeline.md`.
+Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
+Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon and AlphaMask. `Shaders/*.slang` entries:
+ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
+HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
+DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack.
+`Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
+MRT/render-area/compute/image/buffer-hazard/indirect oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.
 - xrepo deps only as needed (current: libsdl3, glm, spdlog, catch2, cgltf, stb). ThirdParty/ and
-  Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
+  Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake/setup.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
-  relevant tests, and passes `xmake policy`.
+  relevant tests and `xmake policy` (including private-header visibility and shader import checks).
 - Experimental source does not live on `main`. Preserve accepted evidence with an immutable tag
   and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
   adopted production code return to `main`.

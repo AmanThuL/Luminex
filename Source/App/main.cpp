@@ -9,6 +9,7 @@
 #include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
+#include "Core/Parse.h"
 #include "RHI/CaptureSchema.h"
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/Metal4/Metal4ImGui.h"
@@ -22,13 +23,11 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 
-#include <charconv>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -61,8 +60,7 @@ uint64_t frameNumberFromEnv(const char* name) {
     }
     const std::string_view text(raw);
     uint64_t frames = 0;
-    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), frames);
-    if (ec != std::errc{} || end != text.data() + text.size()) {
+    if (!lmx::parseNumber(text, frames)) {
         LMX_LOG_WARN("{}='{}' is not a number; ignoring it", name, text);
         return 0;
     }
@@ -78,8 +76,7 @@ float dynamicResolutionBudgetFromEnv() {
     }
     const std::string_view text(raw);
     float budget = 0.0f;
-    const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), budget);
-    if (ec != std::errc{} || end != text.data() + text.size() || !(budget > 0.0f)) {
+    if (!lmx::parseNumber(text, budget) || !(budget > 0.0f)) {
         LMX_LOG_WARN("LMX_DYNAMIC_RESOLUTION_BUDGET_MS='{}' is not a positive number; ignoring it",
                      text);
         return 0.0f;

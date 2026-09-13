@@ -22,7 +22,7 @@ TARGET_DUMP_SCRIPT = "Tools/xmake_targets.lua"
 SCHEMA_VERSION = 1
 SOURCE_SUFFIXES = (".h", ".cpp", ".mm")
 COMPILED_SUFFIXES = (".cpp", ".mm")
-UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "forbidHeaders", "thirdParty")
+UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "forbidHeaders", "privateHeaders", "thirdParty")
 INCLUDE_FLAGS = ("-I", "-isystem", "-iframework")
 INCLUDE_PATTERN = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:"([^"]+)"|<([^>]+)>)', re.MULTILINE)
 THIRD_PARTY_DIR = "ThirdParty"
@@ -75,6 +75,21 @@ def read_json(path: Path) -> Any:
         raise ModuleContractError(f"cannot read {path}: {exc}") from exc
 
 
+def canonical_private_header(root: Path, relative: Path) -> bool:
+    """Private inventory entries name real directory entries, never case or symlink aliases."""
+    current = root
+    try:
+        for part in relative.parts:
+            if part not in {entry.name for entry in current.iterdir()}:
+                return False
+            current /= part
+            if current.is_symlink():
+                return False
+    except OSError:
+        return False
+    return True
+
+
 def load_contract(path: Path, root: Path | None = None) -> dict:
     """Load and validate the contract: schema, unit references, target section, existing paths."""
     root = root or path.resolve().parents[1]
@@ -102,12 +117,12 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
         for reference in unit["units"]:
             if reference not in units:
                 raise ModuleContractError(f"unit {name} depends on unknown unit {reference}")
-        for header in unit["forbidHeaders"]:
+        for header in unit["forbidHeaders"] + unit["privateHeaders"]:
             relative = Path(header)
             if (relative.is_absolute() or ".." in relative.parts or relative.as_posix() != header
                     or relative.suffix != ".h" or not (root / relative).is_file()):
                 raise ModuleContractError(
-                    f"unit {name} forbids {header}, which must name an existing repository header "
+                    f"unit {name} lists {header}, which must name an existing repository header "
                     "using a canonical relative path"
                 )
         for entry in unit["paths"]:
@@ -116,6 +131,18 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
             owner = claimed.setdefault(entry, name)
             if owner != name:
                 raise ModuleContractError(f"{entry} is owned by both {owner} and {name}")
+
+    for name, unit in units.items():
+        if len(unit["privateHeaders"]) != len(set(unit["privateHeaders"])):
+            raise ModuleContractError(f"unit {name} lists duplicate private headers")
+        for header in unit["privateHeaders"]:
+            if not canonical_private_header(root, Path(header)):
+                raise ModuleContractError(
+                    f"unit {name} lists private header {header} through a case or symlink alias; "
+                    "use its canonical repository path"
+                )
+            if owner_of(Path(header), contract) != name:
+                raise ModuleContractError(f"unit {name} does not own private header {header}")
 
     roots = contract.setdefault("roots", [])
     if not isinstance(roots, list) or not roots:
@@ -415,8 +442,38 @@ def check_ownership(
             errors.append(f"{text}: unit {unit} builds as {expected}, but target {names[0]} compiles it")
 
 
+def project_file_identities(root: Path, contract: dict) -> dict[tuple[int, int], Resolved]:
+    """Canonicalise project include identities so aliases cannot hide transitive private reach.
+
+    A private inventory path takes precedence over every alias of the same file. Otherwise prefer
+    the real repository entry over a symlink, retaining deterministic order for hard-linked peers.
+    External package and system resolution is unchanged.
+    """
+    private = {header for unit in contract["units"].values()
+               for header in unit.get("privateHeaders", [])}
+    canonical_root = root.resolve()
+    files = project_files(root, contract)
+    files.sort(key=lambda path: (
+        path.as_posix() not in private,
+        (canonical_root / path).resolve() != canonical_root / path,
+        path.as_posix(),
+    ))
+    identities: dict[tuple[int, int], Resolved] = {}
+    for path in files:
+        unit = owner_of(path, contract)
+        if unit is None:
+            continue
+        try:
+            status = (root / path).stat()
+        except OSError as exc:
+            raise ModuleContractError(f"cannot inspect {path.as_posix()}: {exc}") from exc
+        identities.setdefault((status.st_dev, status.st_ino), Resolved("project", unit, None, path))
+    return identities
+
+
 def resolve_include(
-    includer: Path, spec: str, quoted: bool, dirs: list[Path], root: Path, contract: dict
+    includer: Path, spec: str, quoted: bool, dirs: list[Path], root: Path, contract: dict,
+    identities: dict[tuple[int, int], Resolved] | None = None,
 ) -> Resolved:
     """Resolve one directive: next to the includer for a quoted spec, then the include directories."""
     candidates = [root / includer.parent / spec] if quoted else []
@@ -425,6 +482,10 @@ def resolve_include(
         path = Path(os.path.normpath(candidate))
         if not path.is_file():
             continue
+        if identities is not None:
+            status = path.stat()
+            if canonical := identities.get((status.st_dev, status.st_ino)):
+                return canonical
         try:
             relative = Path(os.path.relpath(path, root))
         except ValueError:
@@ -476,6 +537,7 @@ def check_includes(
     """Charge every direct package include and every transitively reached unit against the unit table."""
     contexts: dict[str, list[Path]] = {}
     resolved: dict[str, list[Resolved]] = {}
+    identities = project_file_identities(root, contract)
 
     def includes_of(path: Path) -> list[Resolved]:
         text = path.as_posix()
@@ -495,7 +557,8 @@ def check_includes(
         except OSError as exc:
             raise ModuleContractError(f"cannot read {path.as_posix()}: {exc}") from exc
         resolved[text] = [
-            resolve_include(path, spec, quoted, dirs, root, contract) for spec, quoted in parse_includes(body)
+            resolve_include(path, spec, quoted, dirs, root, contract, identities)
+            for spec, quoted in parse_includes(body)
         ]
         return resolved[text]
 
@@ -505,6 +568,15 @@ def check_includes(
             continue
         text = path.as_posix()
         row = contract["units"][unit]
+        status = (root / path).stat()
+        canonical = identities.get((status.st_dev, status.st_ino))
+        if canonical is not None and canonical.unit != unit and canonical.path is not None:
+            private = contract["units"][canonical.unit].get("privateHeaders", [])
+            if canonical.path.as_posix() in private:
+                errors.append(
+                    f"{text}: {unit} aliases private header {canonical.path.as_posix()} "
+                    f"owned by {canonical.unit}"
+                )
         reported_packages: set[str] = set()
         for include in includes_of(path):
             if include.kind != "third-party" or include.name in row["thirdParty"]:
@@ -530,6 +602,12 @@ def check_includes(
                 if reached in row.get("forbidHeaders", []):
                     errors.append(
                         f"{text}: {unit} reaches forbidden header {reached} via "
+                        f"{' -> '.join(chains[reached])}"
+                    )
+                owner_row = contract["units"].get(include.unit, {})
+                if include.unit != unit and reached in owner_row.get("privateHeaders", []):
+                    errors.append(
+                        f"{text}: {unit} reaches private header {reached} owned by {include.unit} via "
                         f"{' -> '.join(chains[reached])}"
                     )
                 if include.unit == unit or include.unit in row["units"] or include.unit in reported:

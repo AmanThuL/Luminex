@@ -14,7 +14,7 @@ struct AlphaMaskParams {
     float cutoff; ///< Texture alpha times factor alpha must meet this threshold.
 };
 static_assert(sizeof(AlphaMaskParams) == 4);
-/// Frame-data binding used by Shaders/AlphaMask.slang.
+/// Frame-data binding used by Shaders/Modules/AlphaMask.slang.
 constexpr uint32_t kAlphaMaskParamsSlot = 4;
 
 } // namespace lmx::render

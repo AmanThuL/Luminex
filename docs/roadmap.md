@@ -45,10 +45,13 @@ accepted it into local main on 2026-09-13 with an explicit
 [six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity). That comparison
 remains failed and unexplained; R1.3 is not an integration blocker, and the exception relaxes no
 later slice's validation. [R1.4](milestones/r1.4.md) separates the shadow/scene draw stages and
-compiled record; its strict parent/candidate matrix passes without exception. R1.1–R1.4's
-structural prerequisite is complete; interface gate B still needs its own review and approval,
-and M7.1 follows that review. No GPU-scene or GPU-visibility
-path is adopted yet.
+compiled record; its strict parent/candidate matrix passes without exception.
+[R1.5](milestones/r1.5.md) completes all five consolidation, decomposition, header-visibility and
+build/shader groups. The owner accepted its
+[two-hash image parity exception](milestones/r1.5.md#integration) on 2026-09-13; that comparison
+remains failed and unexplained, with no outstanding integration blocker or relaxation of later
+validation. R1.1–R1.4's structural prerequisite and R1.5 are complete; interface gate B still needs
+its own review and approval, and M7.1 follows that review. No GPU-scene or GPU-visibility path is adopted yet.
 
 ## Project direction and delivery
 

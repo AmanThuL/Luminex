@@ -5,8 +5,10 @@
 
 #include "Asset/DdsLoader.h"
 
+#include "Core/File.h"
+#include "Core/Math.h"
+
 #include <cstring>
-#include <fstream>
 #include <string>
 #include <vector>
 
@@ -68,18 +70,13 @@ std::string toHex(uint32_t value) {
 }
 
 //======================================================================================================================
-uint32_t ceilDiv4(uint32_t x) {
-    return (x + 3) / 4;
-}
-
-//======================================================================================================================
 uint32_t bc1BytesPerRow(uint32_t width) {
-    return ceilDiv4(width) * 8;
+    return divRoundUp(width, 4) * 8;
 }
 
 //======================================================================================================================
 uint64_t bc1LevelBytes(uint32_t width, uint32_t height) {
-    return static_cast<uint64_t>(ceilDiv4(width)) * ceilDiv4(height) * 8;
+    return static_cast<uint64_t>(divRoundUp(width, 4)) * divRoundUp(height, 4) * 8;
 }
 
 //======================================================================================================================
@@ -93,22 +90,18 @@ uint32_t mipExtent(uint32_t base, uint32_t level) {
 
 //======================================================================================================================
 AssetResult<DdsImage> loadDds(std::string_view path) {
-    std::ifstream fin{std::string(path), std::ios::binary};
-    if (!fin) {
-        return fail(path, "failed to open file", AssetErrorCode::NotFound);
+    auto file = readWholeFile(std::string(path));
+    if (!file) {
+        switch (file.error()) {
+        case FileReadError::Open:
+            return fail(path, "failed to open file", AssetErrorCode::NotFound);
+        case FileReadError::Size:
+            return fail(path, "failed to determine file size", AssetErrorCode::Io);
+        case FileReadError::Read:
+            return fail(path, "failed to read file contents", AssetErrorCode::Io);
+        }
     }
-    std::vector<std::byte> bytes;
-    fin.seekg(0, std::ios::end);
-    const auto size = fin.tellg();
-    if (size < 0) {
-        return fail(path, "failed to determine file size", AssetErrorCode::Io);
-    }
-    bytes.resize(static_cast<size_t>(size));
-    fin.seekg(0, std::ios::beg);
-    fin.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
-    if (!fin) {
-        return fail(path, "failed to read file contents", AssetErrorCode::Io);
-    }
+    const auto& bytes = *file;
 
     if (bytes.size() < kHeaderSize) {
         return fail(path, "file too small for a DDS header (need " + std::to_string(kHeaderSize) +

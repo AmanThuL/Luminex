@@ -41,7 +41,7 @@ struct ObjectUniforms {
 };
 static_assert(sizeof(ObjectUniforms) == 368, "must match ScenePass.slang's ObjectUniforms");
 
-// Mirrors Shaders/Lighting.slang's DirLight.
+// Mirrors Shaders/Modules/Lighting.slang's DirLight.
 struct DirLightUniform {
     glm::vec3 strength;     // 0
     float strengthPadding;  // 12
@@ -90,7 +90,7 @@ static_assert(sizeof(SkyUniforms) == 176, "must match Sky.slang's SkyUniforms");
 constexpr uint32_t kFlagHasNormalMap = 1u;
 constexpr uint32_t kFlagMotionInvalid = 2u;
 
-// Shaders/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
+// Shaders/Modules/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
 constexpr int32_t kShadowFilterPcf = 0;
 constexpr int32_t kShadowFilterPcss = 1;
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,6 +73,28 @@ class CppCommentTests(unittest.TestCase):
                     "Source/App/Public.h",
                 ],
             )
+
+    def test_private_source_headers_keep_envelopes_but_are_not_exported_api(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("Source/Core/Public.h", "Source/Core/Private.h"):
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
+            contract_path = root / "Tools/module_contract.json"
+            contract_path.parent.mkdir()
+            contract = {"schemaVersion": 1, "roots": ["Source"], "units": {
+                "core": {"paths": ["Source/Core"], "privateHeaders": ["Source/Core/Private.h"]}
+            }}
+            contract_path.write_text(json.dumps(contract))
+            self.assertEqual([p.name for p in comments.public_header_files(root)], ["Public.h"])
+            self.assertEqual([p.name for p in comments.project_cpp_files(root)], ["Private.h", "Public.h"])
+            (root / "Source/Core/Alias.h").symlink_to("Private.h")
+            self.assertEqual([p.name for p in comments.public_header_files(root)], ["Public.h"])
+            contract["units"]["core"]["privateHeaders"] = ["Source/Core/Missing.h"]
+            contract_path.write_text(json.dumps(contract))
+            with self.assertRaises(RuntimeError):
+                comments.public_header_files(root)
 
     def test_ast_gate_observes_access_and_documentation(self) -> None:
         text = source("Example.h") + "class Example {};\n"

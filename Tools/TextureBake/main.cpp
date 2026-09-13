@@ -11,11 +11,11 @@
 //                 for an embedded glTF image baked from a temp extraction file, the caller passes
 //                 a human-meaningful identifier instead of the throwaway temp path.
 #include "Asset/TextureBake.h"
+#include "Core/File.h"
 
 #include <stb/stb_image.h>
 
 #include <cstdio>
-#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,26 +23,6 @@
 namespace {
 
 constexpr std::string_view kToolVersion = "1";
-
-//======================================================================================================================
-std::optional<std::vector<std::byte>> readFile(const std::string& path) {
-    std::ifstream in{path, std::ios::binary};
-    if (!in) {
-        return std::nullopt;
-    }
-    in.seekg(0, std::ios::end);
-    const std::streamoff size = in.tellg();
-    if (size < 0) {
-        return std::nullopt;
-    }
-    std::vector<std::byte> bytes(static_cast<size_t>(size));
-    in.seekg(0, std::ios::beg);
-    in.read(reinterpret_cast<char*>(bytes.data()), size);
-    if (!in) {
-        return std::nullopt;
-    }
-    return bytes;
-}
 
 } // namespace
 
@@ -80,7 +60,7 @@ int main(int argc, char** argv) {
         return 2;
     }
 
-    const std::optional<std::vector<std::byte>> sourceBytes = readFile(inPath);
+    const auto sourceBytes = lmx::readWholeFile(inPath);
     if (!sourceBytes) {
         std::fprintf(stderr, "TextureBake: failed to read '%s'\n", inPath.c_str());
         return 1;

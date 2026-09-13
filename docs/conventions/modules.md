@@ -15,7 +15,7 @@ and AppModel static target.
 
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
-| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer functions; later, helpers that reach two consumers with one contract | — | spdlog, glm |
+| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing and dispatch division | — | spdlog, glm |
 | `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
 | `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
 | `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
@@ -111,6 +111,11 @@ The rules above are checked as include edges:
   third-party set.
 - `forbidHeaders` names exact repository-relative headers a unit must never reach, including
   through an otherwise allowed unit. The checker reports the include chain and rejects stale paths.
+- `privateHeaders` enumerates canonical repository-relative headers owned by each unit. Foreign
+  direct or transitive inclusion fails even through an allowed public header; allowances cannot
+  widen private visibility. Missing, duplicate, malformed or foreign-owned entries fail. Empty
+  lists explicitly mean no private headers. Public API documentation excludes these headers, but
+  standalone compilation and file-envelope checks still cover them.
 - Project reach is transitive. A unit reaches every unit its includes reach, at any depth, so an
   `app-model` header cannot borrow ImGui by including a shell header that includes it.
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
@@ -120,6 +125,22 @@ The rules above are checked as include edges:
   TextureBake reaches these through Asset's public mip-chain structure; it still links Core and
   Asset only. An allowance grants those headers only — not the target, not the umbrella
   `RHI/RHI.h`, and not any other header the allowed header happens to include.
+
+## Private implementation boundaries
+
+The exact inventory is `Tools/module_contract.json`. Render's exposure/bloom/display owners,
+range/temporal implementation declarations and alpha-mask uniform layout are private. Scene's
+environment assembly is private; uploads used by tests remain public. Every shell/panel header
+is private to App, while AppModel's shared model headers remain public. Test and benchmark
+fixtures are private to their units. Metal's device-private helpers and temporal scaler are
+private; the command-list/resources/common/frame-arena headers needed by the separate ImGui
+adapter remain shared with that permitted consumer. Core, Asset and RHI's exported headers have
+no private entries. Public Renderer uses incomplete stage owners with out-of-line destruction.
+
+Root `xmake.lua` includes unit-local target definitions; reusable shader rules, dependency setup
+and maintenance tasks live under `xmake/`. Slang entry points stay at `Shaders/`, reusable modules
+at `Shaders/Modules/` and oracles at `Shaders/Tests/`; `check_shader_imports.py` enforces their
+import boundary and basename uniqueness. These paths do not change runtime shader basenames.
 
 ## Asset independence
 

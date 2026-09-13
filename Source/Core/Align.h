@@ -19,4 +19,10 @@ constexpr uint64_t alignUp(uint64_t value, uint64_t alignment) {
     return (value + alignment - 1) & ~(alignment - 1);
 }
 
+/// Rounds up to any positive multiple, or returns value unchanged when alignment is zero.
+/// For non-zero alignment, value + alignment - 1 must fit uint64_t.
+constexpr uint64_t alignUpMultiple(uint64_t value, uint64_t alignment) {
+    return alignment == 0 ? value : (value + alignment - 1) / alignment * alignment;
+}
+
 } // namespace lmx

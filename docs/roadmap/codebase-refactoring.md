@@ -21,7 +21,7 @@ both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, a
 at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
 added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
 shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
-accepted into local main with the exception recorded below. [R1.4](../milestones/r1.4.md) completes the structural prerequisite with strict parity passed; gate B still needs its own review.
+accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed. R1.5 is complete as recorded below; gate B needs its own review.
 
 ## Target module contract
 
@@ -30,7 +30,7 @@ explicit dependency set; anything not listed is forbidden and the policy checker
 
 | Unit | Namespace | Owns | May depend on |
 |---|---|---|---|
-| `Source/Core` | `lmx` | Logging, assertions, alignment, colour transfer functions; later, helpers that reach two consumers with one contract | spdlog, glm |
+| `Source/Core` | `lmx` | Logging, assertions, alignment, colour transfer, file reads, JSON escaping, numeric parsing and dispatch division | spdlog, glm |
 | `RHI/Include` | `lmx::rhi` | Unchanged API-neutral contracts; `RHI/Source` shared implementation, the Metal 4 backend and the ImGui adapter are separate units with their own allowed sets | Public headers depend on nothing; implementation units on Core |
 | `Source/Asset` | `lmx::asset` | CPU decoding (glTF, DDS, Radiance HDR, PNG, BMP), texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | Core; `RHI/Format.h` and the texture descriptor header R1.2 extracts; never a `Device`, `Texture` or `Buffer` |
 | `Source/Render` | `lmx::render` | Unchanged responsibilities, plus the frame input contract (`Material`, `AlphaMode`, `DrawItem`, `DirectionalLight`, `SceneView`) in its own leaf header | Core, RHI |
@@ -68,12 +68,12 @@ Placement rules the convention states and the checker approximates:
 **Outcome:** the module contract above is written, enforced and true for the units M7 touches:
 Asset and Scene replace Engine, the frame input contract is a leaf header, App's pure logic is a
 library, the renderer's draw stages are separable, and no rendered output, RHI contract or shipped
-behaviour changed. R1.1–R1.4 are the gate B prerequisite; R1.5 collects optional consolidation and
-decomposition accepted on their own and never required by gate B.
+behaviour changed. R1.1–R1.4 are the gate B prerequisite; R1.5 executes all consolidation and decomposition groups in one accepted slice;
+it remains independent of gate B.
 
 **Deliver:** contract, ADR and checkers (R1.1); the Asset/Scene split with `Core/Color.h`, the RHI
 descriptor header and the frame input header (R1.2); the App model library and shared scene session
-(R1.3); the renderer's draw-stage seams and compiled-record header (R1.4); optional items (R1.5).
+(R1.3); the renderer's draw-stage seams and compiled-record header (R1.4); consolidation, decomposition, visibility and build/shader structure (R1.5).
 
 **Comparison protocol:** every R1 change is a pure refactor, proved by comparing each commit with
 its parent, both built in one session on one device, with both builds' binary and shader hashes
@@ -99,16 +99,16 @@ and every output kept in the slice's evidence bundle outside the source tree.
   `SceneView` field changes. An RHI public header changes only by moving existing declarations
   into a new leaf header the existing header includes, with no signature, semantic or umbrella
   change, and the RHI header check and checkpoint A green.
-- One move per commit, renames separate from edits; the namespace rename is one mechanical commit
+- Unless the owner explicitly requests one integrated commit, one move per commit, renames separate from edits; the namespace rename is one mechanical commit
   reproducible from a recorded substitution; formatting and policy green at every commit.
   Performance is not a claim of R1.
 
-**Recorded exception:** on 2026-09-13 the owner accepted R1.3 into local main with an explicit
-exception for its [six unresolved hashes at the eight-round cap](../milestones/r1.3.md#unresolved-image-parity).
-R1.3's image parity remains failed and unexplained; R1.3 is not an outstanding integration blocker.
-The exception relaxes nothing for later slices: each meets the full protocol above.
+**Recorded exceptions:** on 2026-09-13 the owner explicitly accepted local main integration for
+R1.3's [six unresolved hashes](../milestones/r1.3.md#unresolved-image-parity) and R1.5's [two unresolved hashes](../milestones/r1.5.md#integration), each at its eight-round cap.
+Both image comparisons remain failed and unexplained; neither slice remains an integration blocker.
+These exceptions relax nothing for later slices: each meets the full protocol above.
 
-**Sequence:** R1.1 → R1.2 → R1.3 → R1.4; each R1.5 item may follow R1.1. Each slice has a plan; only one is active.
+**Sequence:** R1.1 → R1.2 → R1.3 → R1.4 → R1.5. Each slice has a plan; only one is active.
 
 **Exit gate:** R1.1–R1.4 accepted: the checker's allowlist is empty for Asset, Scene, Render and
 `App/Model`; every project header compiles standalone; Tests link the model library and list no
@@ -245,9 +245,10 @@ checkpoint A is unchanged; the App model library no longer includes `RenderGraph
 **Defer:** exposure, bloom and display stage extraction and graph implementation splits (R1.5);
 any change to pass order or content; any shader change, which waits for the candidate below.
 
-## R1.5 — Optional consolidation and decomposition
+## R1.5 — Consolidation and decomposition
 
-Not a gate B prerequisite; each item is accepted on its own plan under the protocol.
+All five groups are implemented in one commit, with the owner's [two-hash exception](../milestones/r1.5.md#integration).
+This is not a gate B prerequisite; later slices still meet the full comparison protocol.
 
 - Core helpers with two or more consumers of one contract: whole-file read; JSON string escaping
   replacing the three escapers, without object or array framing; whole-string numeric parsing
@@ -274,8 +275,7 @@ Not a gate B prerequisite; each item is accepted on its own plan under the proto
   variant files carry in comments today: which files are twins, the one difference each pair keeps,
   and that every other edit is mirrored. This item moves and documents; it deduplicates nothing.
 
-Build and shader items need their own evidence: a clean build; each shader's generated MSL
-identical to the parent commit's once `#line` directives are dropped, since those carry the paths
+Build/shader evidence: a clean build; each shader's generated MSL identical to the parent commit's once `#line` directives are dropped, since those carry the paths
 a move changes; the metallib inventory unchanged; an incremental rebuild after editing an imported
 shader module rebuilds every importer; runtime shader output paths unchanged; the runtime-MSL
 fallback still loads with metallibs absent; App model sources compile once; Tests relink after a

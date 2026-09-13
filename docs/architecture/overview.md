@@ -6,10 +6,11 @@ Luminex is a Metal 4-first rendering playground organized as a one-way dependenc
 is a repository-root component; the other runtime layers remain under `Source/`:
 
 `Core → Asset` and `Core → RHI → Render`, joined by `Scene → AppModel → App`. Asset uses only
-RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer;
+RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer and contract-preserving primitives;
 `Render/SceneView.h` holds the borrowed frame input independently of the renderer.
 
-- **Core** owns logging, assertions, alignment and shared colour transfer; spdlog and glm are
+- **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
+  JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are
   public packages.
 - **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
   `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
@@ -54,14 +55,19 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
   record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract,
-  independently of the builder. `Renderer` composes `ShadowStage` and `SceneStage`, which own
+  independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
+  validation have separate implementation units with private shared range helpers. `Renderer`
+  composes `ShadowStage` and `SceneStage`, which own
   opaque/masked pipelines, per-object bindings and draw encoding; SceneStage draws sky last in
-  the same scene pass. `Render/FrameDeclaration` shares graph construction and execution across
+  the same scene pass. Private `ExposureStage`, `BloomStage` and `DisplayStage` owners hold
+  their pipelines/resources and declare their passes; Renderer keeps frame ordering and targets.
+  `Render/FrameDeclaration` shares graph construction and execution across
   application loops and returns the accepted record for App-side retention. Render also owns
-  camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
+  camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Modules/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
   when `SceneView::temporal.enabled` is set. The `TemporalResolve` reconstruction stage (ADR 0014)
+  keeps native, upscale, vendor and diagnostic declaration units behind one history owner. It
   owns two ping-ponged colour/depth slot pairs (`lmx.render.historyColor0/1`,
   `lmx.render.sceneDepth0/1`) and the pipelines that reproject, reject, clip and blend a native
   `NativeTaa` frame or commit a raw copy under `Raw`; every temporal frame's colour slot holds that
@@ -80,7 +86,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   kernel (`Shaders/TemporalUpscale.slang`) by whether render equals output extent and history was
   not just accumulated at another one; `Raw` gets the matching split against
   `Shaders/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
-  `Shaders/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
+  `Shaders/Modules/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
   class with no device, graph or App dependency that proposes the next render scale from a retired
   frame's summed GPU pass time against a budget, with hysteresis.
   `VendorTemporal` selects a composed `VendorTemporalScaler` inside the existing resolve stage
@@ -140,8 +146,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   collapsing a shared-label-prefix set of at least two same-culled-status passes into one group
   node, deduplicating the edges and pins that cross a collapsed boundary, and wrapping long chains
   into rows under a caller-chosen column count) are ImGui/SDL/Metal-backend-free models that
-  belong to AppModel alongside the rest of App's plain logic. The Render Graph panel
-  draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas (ADR 0011) with compact pins (full
+  belong to AppModel alongside the rest of App's plain logic. The Render Graph panel coordinates its detached window, with separate canvas ownership,
+  selection details and dump implementation units. Its canvas draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas (ADR 0011) with compact pins (full
   label on hover or selection), a selection-scoped details pane, and a `columns` control; dragged
   node positions are session state, and a changed layout signature (shape, expanded-group set, or
   column count) reapplies the deterministic positions. A registered ImGui settings handler persists
@@ -173,8 +179,10 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   is the comparison baseline, not ground truth. Neither FLIP nor its Python dependencies enter App.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
-toolchain is present. The runtime MSL path remains a supported fallback. The live frame sequence and
-resource transitions are documented in `docs/frame-pipeline.md`.
+toolchain is present. Shared modules live in `Shaders/Modules/`, test oracles in `Shaders/Tests/`;
+entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
+Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback
+and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
 
 The root component is a physical and build boundary, not yet a separately published library: it
 still participates in this repository's Core contracts and validation. The RHI grows only when a

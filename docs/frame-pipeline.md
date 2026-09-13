@@ -1,22 +1,20 @@
 # Luminex — one frame with native or vendor reconstruction (2026-09-13)
 
-What the renderer does between `beginFrame` and `endFrame`. Native TAA is the default; vendor
-reconstruction is selected explicitly and shares the engine-owned temporal inputs.
+Native TAA is the default; explicit vendor reconstruction shares the engine-owned temporal inputs.
 
 ## The frame at a glance
 
-A `RenderGraph` is declared fresh every frame: it imports the renderer's own targets, the
-persistent histogram and exposure buffers, and the swapchain drawable; the shadow, scene+sky,
-exposure-feedback, temporal, bloom, and display passes declare their reads, attachments, and writes
-over them; `compile()` proves the declarations form a DAG and answers a serial schedule (with
-dead-pass culling) before any of it reaches the GPU. `execute()` then runs that schedule, deriving
-the RAW, WAR, and WAW barriers each declared cross-pass access conflict justifies.
+A fresh `RenderGraph` imports targets, persistent histogram/exposure buffers and the drawable.
+Renderer composes ShadowStage, SceneStage, ExposureStage, TemporalResolve, BloomStage and
+DisplayStage while retaining the pass order below. Graph declaration, compile/lifetime assignment,
+transition derivation and validation live in separate units;
+`compile()` proves a DAG and culls dead passes, then `execute()` runs the serial schedule with
+RAW, WAR and WAW barriers. TemporalResolve's native/upscale/vendor units share one history owner.
 
-`App/Model/SceneSession` shares activation, camera, playback, borrowed views and motion between
-the editor and capture loops. `Render/FrameDeclaration` rotates their pool after device slot retirement,
-declares renderer passes and returns the accepted record for App's FrameRecordRing to retain. The editor appends UI/present, joins
-retired timings and renders platform windows after present; headless exports the display output
-and waits each frame. Screenshots start at authored time zero; sequences sample frame/60, including
+`App/Model/SceneSession` shares activation, camera, playback, views and motion. `Render/FrameDeclaration`
+rotates the retired slot's pool, declares passes and returns a record for App's FrameRecordRing.
+The editor appends UI/present, joins timings and draws platform windows after present; headless
+exports display and waits per frame. Screenshots start at zero; sequences sample frame/60 with
 warmup; editor playback advances one fixed step only after drawable acquisition.
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
@@ -91,7 +89,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       may read and write one texture only through disjoint ranges (spec 6)
 ├─ 10. lmx.pass.display     fullscreen triangle: Load the resolved colour (Raw reads raw scene
 │       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
-│       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Tonemap.slang, shared with the
+│       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Modules/Tonemap.slang, shared with the
 │       debug view) → sRGB encode → display color (BGRA8Unorm), described by
 │       Render/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
@@ -232,7 +230,7 @@ submission does not make ImGui a core RHI dependency.
 
 ## The math
 
-- **GGX metallic-roughness BRDF** (`Shaders/Lighting.slang`): Trowbridge-Reitz D,
+- **GGX metallic-roughness BRDF** (`Shaders/Modules/Lighting.slang`): Trowbridge-Reitz D,
   height-correlated Smith visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and
   energy-conserving Lambert diffuse. Perceptual roughness floors at 0.045 before squaring.
 - **Image-based lighting**: the split-sum reconstruction (Karis 2013) plus Fdez-Agüera's
@@ -252,7 +250,7 @@ submission does not make ImGui a core RHI dependency.
   fetched history by `exposure[0] / exposure[1]` before clipping and blending it, so a manual EV
   edit or an adaptation step never blends two frames recorded at different brightness uncorrected.
   `Shaders/DisplayTransform.slang` is the frame's one display boundary: bloom composites in first
-  (pre-exposed luminance), then Khronos PBR Neutral (`Shaders/Tonemap.slang`, shared with the
+  (pre-exposed luminance), then Khronos PBR Neutral (`Shaders/Modules/Tonemap.slang`, shared with the
   temporal debug view), then the sRGB encode. The editor's clear color is authored in display space
   and decoded-then-pre-exposed once, at pass declaration, always at the *manual* exposure value even
   in auto mode, since auto's value lives only in the GPU-side buffer and every scene with a sky
@@ -274,17 +272,15 @@ submission does not make ImGui a core RHI dependency.
 
 ## Scenes
 
-The Scene panel and `--scene` share six catalog IDs: **Sponza** (`sponza`, default, converted
-Crytek OBJ), **Damaged Helmet** (`damaged-helmet`, glTF), **CesiumMilkTruck** (`milk-truck`, rigid
-animation), **MaterialLab** (`material-lab`, procedural materials and image diagnostics),
+The Scene panel and `--scene` share six IDs: **Sponza** (`sponza`, default, converted Crytek OBJ),
+**Damaged Helmet** (`damaged-helmet`, glTF), **CesiumMilkTruck** (`milk-truck`, rigid animation),
+**MaterialLab** (`material-lab`, procedural materials and image diagnostics),
 **TemporalLab** (`temporal-lab`, checker floor, rigid/orbiting motion, emissive and invalid-motion
-objects), and **San Miguel** (`san-miguel`, masked courtyard, authored metre scale and a 12-second
-camera rail). San Miguel requires `xmake setup --san-miguel`; the two procedural labs are always available.
-MaterialLab uses the pinned CC0 Studio Small 09 HDRI for its visible sky and generated IBL when
-setup has fetched it, and logs before falling back to a deterministic neutral environment otherwise.
-The other scenes retain the shared code-generated neutral cubemap and IBL set. Missing required
-glTF assets disable their dropdown entries with setup guidance; an unavailable explicit CLI scene
-exits with an error instead of falling back.
+objects), and **San Miguel** (`san-miguel`, metre-scale masked courtyard with a 12-second rail).
+San Miguel requires `xmake setup --san-miguel`; the procedural labs are always available.
+MaterialLab uses the fetched CC0 Studio Small 09 HDRI for sky/IBL, logging a neutral fallback
+otherwise. Other scenes retain the shared neutral cubemap/IBL. Missing glTF assets disable catalog
+entries with setup guidance; unavailable explicit CLI scenes fail rather than falling back.
 
 `--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
 60 Hz as PNG by default (`--capture-format bmp` preserves BMP), with camera/settings/status
@@ -294,13 +290,11 @@ covers synchronized reports and optional LDR-FLIP differences against Native TAA
 
 ## Known limits
 
-PCSS retains its view/NDC blocker-search mismatch. IBL rebuilds on scene load; direct lighting
-remains single-scatter. Baked-DDS selection keys on image index rather than colour/data role.
-Sponza startup is synchronous, and Metal is the only backend. UI blends straight alpha in encoded
-sRGB at SDR white; the Viewport maps to backing pixels 1:1 after resize debounce, stretching the
-previous target during debounce. Detached windows remain SDR. Extended-range presentation is
-under isolated evaluation and is not a production capability. Future scope belongs to the roadmap.
+PCSS retains its view/NDC blocker-search mismatch; IBL rebuilds on load; direct lighting is single-scatter. Baked DDS keys on image index, not colour/data role.
+Sponza startup is synchronous; Metal is the only backend. UI blends straight alpha in encoded SDR
+sRGB. The Viewport maps pixels 1:1 after resize debounce and stretches the old target during it.
+Detached windows remain SDR. EDR is deferred; future scope belongs to the roadmap.
 
 Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
-[vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md), and `Shaders/` for
-scene shading, exposure, temporal reconstruction, bloom and the display boundary.
+[vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/` holds entries,
+`Shaders/Modules/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.

@@ -6,8 +6,7 @@
 #include "App/Model/WorkspaceModel.h"
 
 #include "Core/Assert.h"
-
-#include <charconv>
+#include "Core/Parse.h"
 
 namespace lmx::app {
 
@@ -107,8 +106,7 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
 
         if (key == kSchemaKey) {
             uint32_t version = 0;
-            const auto result = std::from_chars(value.data(), value.data() + value.size(), version);
-            if (result.ec == std::errc{} && result.ptr == value.data() + value.size()) {
+            if (parseNumber(value, version)) {
                 parsed.schemaState = WorkspaceSchemaState::Present;
                 parsed.schemaVersion = version;
             } else {

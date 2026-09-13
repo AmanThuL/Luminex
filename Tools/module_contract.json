@@ -30,7 +30,8 @@
       "thirdParty": [
         "spdlog",
         "glm"
-      ]
+      ],
+      "privateHeaders": []
     },
     "rhi-public": {
       "paths": [
@@ -40,7 +41,8 @@
         "RHI"
       ],
       "units": [],
-      "thirdParty": []
+      "thirdParty": [],
+      "privateHeaders": []
     },
     "rhi-impl": {
       "paths": [
@@ -53,7 +55,8 @@
         "core",
         "rhi-public"
       ],
-      "thirdParty": []
+      "thirdParty": [],
+      "privateHeaders": []
     },
     "metal4-backend": {
       "paths": [
@@ -68,6 +71,10 @@
       ],
       "thirdParty": [
         "metal-cpp"
+      ],
+      "privateHeaders": [
+        "RHI/Backends/Metal4/Source/Metal4DevicePrivate.h",
+        "RHI/Backends/Metal4/Source/Metal4TemporalScaler.h"
       ]
     },
     "imgui-adapter": {
@@ -85,7 +92,8 @@
       "thirdParty": [
         "metal-cpp",
         "imgui"
-      ]
+      ],
+      "privateHeaders": []
     },
     "asset": {
       "paths": [
@@ -105,7 +113,8 @@
         "glm",
         "cgltf",
         "stb"
-      ]
+      ],
+      "privateHeaders": []
     },
     "render": {
       "paths": [
@@ -120,6 +129,14 @@
       ],
       "thirdParty": [
         "glm"
+      ],
+      "privateHeaders": [
+        "Source/Render/AlphaMaskParams.h",
+        "Source/Render/ExposureStage.h",
+        "Source/Render/BloomStage.h",
+        "Source/Render/DisplayStage.h",
+        "Source/Render/RenderGraphInternal.h",
+        "Source/Render/TemporalResolveInternal.h"
       ]
     },
     "scene": {
@@ -137,6 +154,9 @@
       ],
       "thirdParty": [
         "glm"
+      ],
+      "privateHeaders": [
+        "Source/Scene/SceneEnvironment.h"
       ]
     },
     "app-model": {
@@ -158,7 +178,8 @@
       ],
       "forbidHeaders": [
         "Source/Render/RenderGraph.h"
-      ]
+      ],
+      "privateHeaders": []
     },
     "app-shell": {
       "paths": [
@@ -183,6 +204,16 @@
         "imgui",
         "imgui-node-editor",
         "libsdl3"
+      ],
+      "privateHeaders": [
+        "Source/App/EditorShell.h",
+        "Source/App/Panels/InspectorPanel.h",
+        "Source/App/Panels/PerformancePanel.h",
+        "Source/App/Panels/RenderGraphPanel.h",
+        "Source/App/Panels/RenderGraphPanelInternal.h",
+        "Source/App/Panels/ScenePanel.h",
+        "Source/App/Panels/ViewportPanel.h",
+        "Source/App/Screenshot.h"
       ]
     },
     "tests": {
@@ -203,6 +234,18 @@
       "thirdParty": [
         "glm",
         "catch2"
+      ],
+      "privateHeaders": [
+        "Tests/BrdfOracle.h",
+        "Tests/DisplayTransformOracle.h",
+        "Tests/EngineSceneTestSupport.h",
+        "Tests/EngineTestSupport.h",
+        "Tests/GpuRendererTestSupport.h",
+        "Tests/GpuTemporalTestSupport.h",
+        "Tests/GpuTestSupport.h",
+        "Tests/GraphTestSupport.h",
+        "Tests/RHIValidateTestSupport.h",
+        "Tests/RenderGraphTestSupport.h"
       ]
     },
     "texture-bake": {
@@ -223,7 +266,8 @@
       "headers": [
         "RHI/Format.h",
         "RHI/TextureDesc.h"
-      ]
+      ],
+      "privateHeaders": []
     },
     "benchmarks": {
       "paths": [
@@ -238,6 +282,12 @@
       ],
       "thirdParty": [
         "glm"
+      ],
+      "privateHeaders": [
+        "Benchmarks/FrameData/DeliverPerDrawData.h",
+        "Benchmarks/FrameData/Digest.h",
+        "Benchmarks/FrameData/Runner.h",
+        "Benchmarks/FrameData/Workload.h"
       ]
     }
   },

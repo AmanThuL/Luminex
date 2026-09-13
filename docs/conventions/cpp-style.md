@@ -93,7 +93,8 @@ and orphan separators. It must not use a regular expression to guess C++ functio
   `TODO(<issue-id>): <action and reason>` and must describe real remaining work.
 
 `Tools/check_cpp_comments.py` enforces file envelopes and uses the compilation database plus Clang's
-parsed comments and AST to reject undocumented API in `Source` headers, the exported `RHI/Include`
+parsed comments and AST to reject undocumented API in public `Source` headers (excluding the
+module contract's checked `privateHeaders`), the exported `RHI/Include`
 tree, and experimental public headers under `Experiments/*/Include`. RHI backend and implementation
 headers are not public API. The same compilation pass enables `-Wdocumentation` as an error so
 malformed tags and parameter names fail policy too.

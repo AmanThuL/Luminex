@@ -6,6 +6,7 @@
 
 #include "Core/Assert.h"
 #include "Core/Log.h"
+#include "Core/Math.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -217,7 +218,7 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
             commands.bindStorageBuffer(0, **exposure, rhi::StorageAccess::Read);
             const VendorPackParams params{inputs.extents.renderWidth, inputs.extents.renderHeight};
             commands.bindFrameData(1, params);
-            commands.dispatch((params.width + 7) / 8, (params.height + 7) / 8, 1);
+            commands.dispatch(divRoundUp(params.width, 8), divRoundUp(params.height, 8), 1);
         });
     return {nextVersion(packed.motion), nextVersion(packed.reactive), nextVersion(packed.exposure)};
 }

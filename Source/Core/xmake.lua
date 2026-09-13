@@ -1,0 +1,5 @@
+target("Core")
+    set_kind("static")
+    add_files("*.cpp")
+    add_includedirs("..", {public = true})
+    add_packages("spdlog", "glm", {public = true})

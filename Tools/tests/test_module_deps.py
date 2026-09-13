@@ -88,6 +88,41 @@ class ContractLoadingTests(unittest.TestCase):
                     with self.assertRaisesRegex(modules.ModuleContractError, "must name an existing repository header"):
                         modules.load_contract(write_contract(root, contract), root)
 
+    def test_private_headers_require_canonical_existing_owned_unique_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            invalid = ["Source/Core/Missing.h", str(root / "Source/Core/Log.h"),
+                       "Source/Core/./Log.h", "Source//Core/Log.h", "Source/App/Options.cpp"]
+            for headers in ([name] for name in invalid):
+                with self.subTest(headers=headers):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["units"]["core"]["privateHeaders"] = headers
+                    with self.assertRaises(modules.ModuleContractError):
+                        modules.load_contract(write_contract(root, contract), root)
+            for headers in (["Source/App/Options.h"], ["Source/Core/Log.h"] * 2, "Source/Core/Log.h"):
+                with self.subTest(headers=headers):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["units"]["core"]["privateHeaders"] = headers
+                    with self.assertRaises(modules.ModuleContractError):
+                        modules.load_contract(write_contract(root, contract), root)
+
+    def test_private_inventory_rejects_symlink_and_case_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            (root / "Source/Core/Alias.h").symlink_to("Log.h")
+            (root / "Source/AliasCore").symlink_to("Core", target_is_directory=True)
+            aliases = ["Source/Core/Alias.h", "Source/AliasCore/Log.h"]
+            if (root / "Source/Core/log.h").is_file():
+                aliases += ["Source/Core/log.h", "source/Core/Log.h"]
+            for alias in aliases:
+                with self.subTest(alias=alias):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["units"]["core"]["privateHeaders"] = [alias]
+                    with self.assertRaisesRegex(modules.ModuleContractError, "case or symlink alias"):
+                        modules.load_contract(write_contract(root, contract), root)
+
     def test_unknown_unit_reference_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -628,6 +663,81 @@ class IncludeCheckTests(unittest.TestCase):
         self.addCleanup(self.directory.cleanup)
         self.root = Path(self.directory.name).resolve()
         write_include_tree(self.root)
+
+    def test_private_header_visibility_rejects_foreign_direct_and_transitive_reach(self) -> None:
+        contract = json.loads(json.dumps(INCLUDE_CONTRACT))
+        contract["units"]["core"]["privateHeaders"] = ["Source/Core/Log.h"]
+        (self.root / "Source/Core/Public.h").write_text('#include "Core/Log.h"\n')
+        (self.root / "Source/Engine/Uses.h").write_text('#include <Core/Public.h>\n')
+        loaded = modules.load_contract(write_contract(self.root, contract), self.root)
+        for name, chain in [
+            ("Source/Engine/Uses.h", "Source/Engine/Uses.h -> Source/Core/Public.h -> Source/Core/Log.h"),
+            ("Source/Core/Public.h", ""),
+        ]:
+            errors = []
+            modules.check_includes([Path(name)], {}, include_db(self.root), loaded, [], errors, self.root)
+            if chain:
+                self.assertEqual(errors, [f"{name}: asset reaches private header Source/Core/Log.h owned by core via {chain}"])
+            else:
+                self.assertEqual(errors, [])
+        (self.root / "Source/Engine/Uses.h").write_text('#include "Core/Log.h"\n')
+        errors = []
+        allowance = [{"kind": "include", "file": "Source/Engine/Uses.h", "reaches": "core",
+                      "reason": "cannot override private visibility", "until": "test"}]
+        modules.check_includes([Path("Source/Engine/Uses.h")], {}, include_db(self.root), loaded,
+                               allowance, errors, self.root)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("reaches private header", errors[0])
+
+    def test_private_visibility_tracks_direct_and_public_wrapper_symlinks(self) -> None:
+        contract = json.loads(json.dumps(INCLUDE_CONTRACT))
+        contract["units"]["core"]["privateHeaders"] = ["Source/Core/Log.h"]
+        (self.root / "Source/Core/Log.h").write_text("")
+        (self.root / "Source/Core/Public.h").write_text('#include "Core/Log.h"\n')
+        (self.root / "Source/Core/Alias.h").symlink_to("Log.h")
+        (self.root / "Source/Engine/PrivateAlias.h").symlink_to("../Core/Log.h")
+        (self.root / "Source/Engine/PublicAlias.h").symlink_to("../Core/Public.h")
+        loaded = modules.load_contract(write_contract(self.root, contract), self.root)
+        for spec in ("Core/Alias.h", "Engine/PrivateAlias.h", "Engine/PublicAlias.h"):
+            with self.subTest(spec=spec):
+                (self.root / "Source/Engine/Uses.h").write_text(f'#include "{spec}"\n')
+                errors = []
+                modules.check_includes([Path("Source/Engine/Uses.h")], {}, include_db(self.root),
+                                       loaded, [], errors, self.root)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("reaches private header Source/Core/Log.h owned by core", errors[0])
+        errors = []
+        modules.check_includes([Path("Source/Engine/PrivateAlias.h")], {}, include_db(self.root),
+                               loaded, [], errors, self.root)
+        self.assertEqual(errors, [
+            "Source/Engine/PrivateAlias.h: asset aliases private header Source/Core/Log.h owned by core"
+        ])
+        (self.root / "Source/Core/Public.h").write_text('#include "Core/Alias.h"\n')
+        errors = []
+        modules.check_includes([Path("Source/Core/Public.h"), Path("Source/Core/Alias.h")], {},
+                               include_db(self.root), loaded, [], errors, self.root)
+        self.assertEqual(errors, [])
+
+    def test_private_visibility_tracks_case_aliases_on_insensitive_filesystems(self) -> None:
+        if not (self.root / "Source/Core/log.h").is_file():
+            self.skipTest("case aliases require a case-insensitive filesystem")
+        contract = json.loads(json.dumps(INCLUDE_CONTRACT))
+        contract["units"]["core"]["privateHeaders"] = ["Source/Core/Log.h"]
+        (self.root / "Source/Core/Public.h").write_text('#include "Core/Log.h"\n')
+        loaded = modules.load_contract(write_contract(self.root, contract), self.root)
+        for spec in ("Core/log.h", "core/Log.h", "core/public.h"):
+            with self.subTest(spec=spec):
+                (self.root / "Source/Engine/Uses.h").write_text(f'#include "{spec}"\n')
+                errors = []
+                modules.check_includes([Path("Source/Engine/Uses.h")], {}, include_db(self.root),
+                                       loaded, [], errors, self.root)
+                self.assertEqual(len(errors), 1)
+                self.assertIn("reaches private header Source/Core/Log.h owned by core", errors[0])
+        (self.root / "Source/Core/Public.h").write_text('#include "core/log.h"\n')
+        errors = []
+        modules.check_includes([Path("Source/Core/Public.h")], {}, include_db(self.root), loaded,
+                               [], errors, self.root)
+        self.assertEqual(errors, [])
 
     def test_reach_through_two_project_headers_reports_the_chain(self) -> None:
         errors = self.check(self.root, ["Source/Engine/Mid.h"])

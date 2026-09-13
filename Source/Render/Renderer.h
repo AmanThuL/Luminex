@@ -25,6 +25,13 @@
 
 namespace lmx::render {
 
+/// Owns the renderer's persistent exposure feedback and metering passes.
+class ExposureStage;
+/// Owns the renderer's bloom pipelines and transient pass declarations.
+class BloomStage;
+/// Owns the renderer's display transform and disabled-bloom fallback.
+class DisplayStage;
+
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, slot, size, every field's offset and type) to
 /// rhi::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds instead
@@ -60,6 +67,9 @@ constexpr uint32_t kExposureBufferFloats = 2;
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.
 class Renderer {
 public:
+    /// Releases the frame-owned stages after the caller has completed GPU work.
+    ~Renderer();
+
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
     static rhi::Result<std::unique_ptr<Renderer>> create(rhi::Device& device, uint32_t width,
@@ -142,7 +152,7 @@ public:
     /// the renderer and never replaced, so it is never null. Readable from the CPU only when
     /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
     /// reads it back, which is the whole point of keeping the feedback GPU-resident.
-    rhi::Buffer& exposureBuffer() { return *m_exposureBuffer; }
+    rhi::Buffer& exposureBuffer();
 
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
@@ -161,8 +171,7 @@ public:
     float timeSeconds = 0.0f;
 
 private:
-    Renderer(rhi::Device& device, bool cpuReadback)
-        : m_device(device), m_transientPool(device), m_cpuReadback(cpuReadback) {}
+    Renderer(rhi::Device& device, bool cpuReadback);
 
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
@@ -181,20 +190,10 @@ private:
     TransientPool m_transientPool;
     std::unique_ptr<ShadowStage> m_shadowStage;
     std::unique_ptr<SceneStage> m_sceneStage;
-    std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_histogramLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_exposureResolveLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_exposureSeedLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_bloomThresholdPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_bloomDownsamplePipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_bloomUpsamplePipeline;
+    // Stage owners retain callback inputs and persistent feedback through graph execution.
+    std::unique_ptr<ExposureStage> m_exposureStage;
+    std::unique_ptr<BloomStage> m_bloomStage;
+    std::unique_ptr<DisplayStage> m_displayStage;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().
     std::unique_ptr<rhi::Texture> m_hdrColor;
@@ -220,17 +219,6 @@ private:
     std::unique_ptr<rhi::Texture> m_flatNormalTexture;
     std::unique_ptr<rhi::Texture> m_blackCubeTexture;
     std::unique_ptr<rhi::Texture> m_zeroDfgTexture;
-    // 1x1 RGBA16Float zero, bound to keep the display pass's bloom slot valid when bloom is
-    // disabled; the zero intensity makes the shader skip reading it.
-    std::unique_ptr<rhi::Texture> m_blackBloomFallback;
-    // Persistent, imported every frame rather than pooled: a 256-bin uint histogram, cleared and
-    // refilled every frame, and a one-float exposure result that survives across frames (spec 9's
-    // feedback buffer). Neither is a graph transient because both must outlive the frame that
-    // wrote them -- the histogram to be read by the same frame's resolve pass, the exposure result
-    // to be read directly, GPU-side, by the *next* frame's scene and sky passes (never a CPU
-    // readback -- that would stall the three-frames-in-flight pipeline every auto-exposure frame).
-    std::unique_ptr<rhi::Buffer> m_histogramBuffer;
-    std::unique_ptr<rhi::Buffer> m_exposureBuffer;
     std::unique_ptr<rhi::Sampler> m_linearSampler;
     std::unique_ptr<rhi::Sampler> m_shadowSampler;
     std::unique_ptr<rhi::Sampler> m_iblSampler;

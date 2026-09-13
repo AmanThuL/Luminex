@@ -561,6 +561,8 @@ private:
     // The rules a pass's extra colour attachments answer to on their own: how many the hardware
     // binds past attachment zero, that attachment zero is there at all, and that each extra is a
     // renderable target of the primary's extent named once across the pass's attachments.
+    // Validates pass-local declarations before building cross-pass dependencies.
+    GraphResult<void> validateDeclarations() const;
     GraphResult<void> validateExtraColorAttachments(const Pass& pass) const;
 
     // The rules a pass's render area answers to on its own: a pair that is whole or set on both
