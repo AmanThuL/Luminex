@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/EditorRenderSettings.h"
-#include "App/ExposureReset.h"
+#include "App/Model/EditorRenderSettings.h"
+#include "App/Model/ExposureReset.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"

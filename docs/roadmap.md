@@ -40,9 +40,11 @@ belongs to the [architecture](architecture/overview.md) and [frame walkthrough](
 [R1.1](milestones/r1.1.md) adds the module contract, dependency checks and standalone Source header
 checks, with an explicit migration allowlist.
 [R1.2](milestones/r1.2.md) separates CPU Asset from GPU Scene and clears their migration
-allowances. The next planned work is [R1.3](roadmap/codebase-refactoring.md#r13--app-model-library-and-shared-scene-session),
-within R1 before the gate B review; R1 approves nothing that review owns, and M7.1 follows the review. No
-GPU-scene or GPU-visibility path is adopted yet.
+allowances. [R1.3](milestones/r1.3.md) adds AppModel and shared scene/frame preparation; the owner
+accepted it on 2026-09-13 with a [six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity).
+The strict comparison remains failed and its cause unresolved. R1.4 is next within R1 before the
+gate B review; R1 approves nothing that review owns, and M7.1 follows the review. No GPU-scene or
+GPU-visibility path is adopted yet.
 
 ## Project direction and delivery
 

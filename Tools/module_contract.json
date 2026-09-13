@@ -141,39 +141,10 @@
     },
     "app-model": {
       "paths": [
-        "Source/App/AppOptions.cpp",
-        "Source/App/AppOptions.h",
-        "Source/App/CaptureMetadata.cpp",
-        "Source/App/CaptureMetadata.h",
-        "Source/App/DirectionalLightRole.h",
-        "Source/App/DynamicResolution.cpp",
-        "Source/App/DynamicResolution.h",
-        "Source/App/EditorActions.cpp",
-        "Source/App/EditorActions.h",
-        "Source/App/EditorRenderSettings.h",
-        "Source/App/EditorSelection.cpp",
-        "Source/App/EditorSelection.h",
-        "Source/App/ExposureReset.cpp",
-        "Source/App/ExposureReset.h",
-        "Source/App/FrameRecordRing.cpp",
-        "Source/App/FrameRecordRing.h",
-        "Source/App/GraphInspectorModel.cpp",
-        "Source/App/GraphInspectorModel.h",
-        "Source/App/GraphLayout.cpp",
-        "Source/App/GraphLayout.h",
-        "Source/App/GraphNodeModel.cpp",
-        "Source/App/GraphNodeModel.h",
-        "Source/App/PassTimingHistory.cpp",
-        "Source/App/PassTimingHistory.h",
-        "Source/App/PerformanceModel.cpp",
-        "Source/App/PerformanceModel.h",
-        "Source/App/TemporalEditorState.cpp",
-        "Source/App/TemporalEditorState.h",
-        "Source/App/WorkspaceModel.cpp",
-        "Source/App/WorkspaceModel.h"
+        "Source/App/Model"
       ],
       "targets": [
-        "App"
+        "AppModel"
       ],
       "units": [
         "core",
@@ -184,8 +155,7 @@
       ],
       "thirdParty": [
         "glm"
-      ],
-      "note": "R1.3 moves these files to Source/App/Model and the AppModel target"
+      ]
     },
     "app-shell": {
       "paths": [
@@ -268,7 +238,6 @@
       ]
     }
   },
-  "targetsNote": "TextureBake is the only target-state entry that reflects an enforced boundary; the remaining entries record each target's accepted current dependencies until R1.2 and R1.3 rewrite them.",
   "targets": {
     "Core": {
       "deps": []
@@ -300,7 +269,8 @@
         "ImGui",
         "ImGuiNodeEditor",
         "Asset",
-        "Scene"
+        "Scene",
+        "AppModel"
       ]
     },
     "Tests": {
@@ -309,7 +279,8 @@
         "RHI",
         "Render",
         "Asset",
-        "Scene"
+        "Scene",
+        "AppModel"
       ]
     },
     "TextureBake": {
@@ -337,6 +308,15 @@
         "RHI",
         "Asset",
         "Render"
+      ]
+    },
+    "AppModel": {
+      "deps": [
+        "Core",
+        "RHI",
+        "Render",
+        "Asset",
+        "Scene"
       ]
     }
   }

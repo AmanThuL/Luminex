@@ -84,7 +84,7 @@ public:
     void resetMotion();
 
     /// Promotes every object's current model matrix to its previous one. The App calls this after
-    /// a frame is declared, so a frame skipped before declaration never becomes "previous".
+    /// graph execution accepts the frame, so a skipped frame never becomes "previous".
     void commitFrame();
 
     /// Advances `animationTime` by `dt` seconds, wrapping at `animation.duration` when the clip
@@ -103,8 +103,8 @@ public:
 
     /// Fills `items` (cleared first, one DrawItem per object, in object order) and returns the
     /// SceneView Render consumes this frame. `items` is caller-owned rather than a Scene member so
-    /// it can live on the App's per-frame stack -- render::Renderer::render() only needs the span
-    /// to outlive the one render() call that reads it.
+    /// it can live on the App's per-frame stack. The returned view, items and scene resources must
+    /// remain alive through pass declaration and graph execution.
     render::SceneView view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
                            bool wireframe) const;
 };

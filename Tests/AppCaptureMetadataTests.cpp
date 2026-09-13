@@ -1,4 +1,4 @@
-#include "App/CaptureMetadata.h"
+#include "App/Model/CaptureMetadata.h"
 
 #include <catch2/catch_test_macros.hpp>
 

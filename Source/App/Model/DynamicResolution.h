@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/EditorRenderSettings.h"
-#include "App/FrameRecordRing.h"
+#include "App/Model/EditorRenderSettings.h"
+#include "App/Model/FrameRecordRing.h"
 #include "RHI/RHI.h"
 #include "Render/ResolutionController.h"
 

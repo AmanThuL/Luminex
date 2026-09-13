@@ -4,11 +4,12 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/DynamicResolution.h"
-#include "App/EditorRenderSettings.h"
-#include "App/EditorSelection.h"
-#include "App/ExposureReset.h"
-#include "App/TemporalEditorState.h"
+#include "App/Model/DynamicResolution.h"
+#include "App/Model/EditorRenderSettings.h"
+#include "App/Model/EditorSelection.h"
+#include "App/Model/ExposureReset.h"
+#include "App/Model/SceneSession.h"
+#include "App/Model/TemporalEditorState.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
@@ -24,13 +25,12 @@ inline constexpr const char* kInspectorPanelWindowName = "Inspector";
 /// Every reference names storage the shell owns, so the panel edits the shell's values in place and
 /// holds nothing past the call that resolved them. `selection` is the one exception: it is a value
 /// the shell already resolved this frame (spec section 5), not a reference, so the Inspector never
-/// caches a pointer into `scene` that a scene switch or vector mutation could dangle.
+/// caches a pointer into the active scene that a scene switch or vector mutation could dangle.
 struct InspectorPanelContext {
-    EditorSelection selection;  ///< The resolved subject to draw; `None` shows the empty state.
-    render::Camera& camera;     ///< The fly camera; angles are presented in degrees.
-    render::Renderer& renderer; ///< Borrowed for clear color and read-only display status.
-    scene::Scene& scene;        ///< The active scene, whose lights and objects are edited in place.
-    EditorRenderSettings& settings;        ///< Editor-owned render knobs.
+    EditorSelection selection;      ///< The resolved subject to draw; `None` shows the empty state.
+    SceneSession& session;          ///< Borrowed active scene, camera, and playback operations.
+    render::Renderer& renderer;     ///< Borrowed for clear color and read-only display status.
+    EditorRenderSettings& settings; ///< Editor-owned render knobs.
     ExposureResetContext& exposureContext; ///< What `shouldResetExposure` last compared against.
     /// Raised when an edit here is one of the exposure reset triggers, and consumed by the frame
     /// loop rather than by this panel.

@@ -3,7 +3,7 @@
 /// @brief Implements the node, edge, and layout shaping behind the Render Graph canvas.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/GraphNodeModel.h"
+#include "App/Model/GraphNodeModel.h"
 
 #include "Core/Assert.h"
 

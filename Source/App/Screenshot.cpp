@@ -5,11 +5,12 @@
 
 #include "App/Screenshot.h"
 
-#include "App/CaptureMetadata.h"
-#include "App/EditorShell.h"
+#include "App/Model/CaptureMetadata.h"
+#include "App/Model/FrameDeclaration.h"
+#include "App/Model/SceneDefaults.h"
+#include "App/Model/SceneSession.h"
 #include "Asset/BmpImage.h"
 #include "Asset/PngImage.h"
-#include "Asset/SceneAnimation.h"
 #include "Core/Log.h"
 #include "RHI/RHI.h"
 #include "Render/Renderer.h"
@@ -124,6 +125,9 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     scene::Scene* activeScene = *scene;
     LMX_LOG_INFO("scene: {} ({} objects)", activeScene->name, activeScene->objects.size());
 
+    // The renderer dies before its frame transients and their pool, while the device is alive.
+    render::TransientPool transientPool(**device);
+
     // Shared storage permits direct CPU readback after GPU completion.
     auto renderer = render::Renderer::create(**device, kScreenshotWidth, kScreenshotHeight,
                                              /*cpuReadback=*/true);
@@ -136,9 +140,11 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     (*renderer)->clearColor[2] = kSceneClearGray;
     (*renderer)->clearColor[3] = 1.0f;
 
-    render::Camera camera = scene::cameraFromScene(activeScene->initialCamera);
+    SceneSession session;
+    session.activate(*activeScene, SceneActivationMotion::PreserveLoadedMotion);
+    const render::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
-    const bool hasAnyTrack = asset::hasAnimationTracks(activeScene->animation);
+    FrameRecordRing frameRecords;
 
     if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
                                    hasCameraTrack, records, false)) {
@@ -146,25 +152,15 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
-        // The first frame renders at the scene's authored t = 0; later frames advance by the same
-        // fixed step the editor's frame loop uses, so a warmup run matches what playback produces.
         if (sequence) {
-            activeScene->animationTime = static_cast<double>(frame) / asset::kAnimationBakeRate;
-            activeScene->animate(activeScene->animationTime);
-        } else if (frame > 0 && hasAnyTrack) {
-            activeScene->advanceAnimation(1.0 / asset::kAnimationBakeRate);
-            activeScene->animate(activeScene->animationTime);
-        }
-        if (hasCameraTrack) {
-            // On frame 0 this re-derives the pose `initialCamera` already holds (the track's first
-            // key), which is redundant and deliberately harmless -- one unconditional sample is
-            // clearer than a special case that must stay in step with the authored first key.
-            activeScene->followCameraTrack(camera);
+            session.prepareSequenceFrame(frame);
+        } else {
+            session.prepareScreenshotFrame(frame);
         }
 
         std::vector<render::DrawItem> items;
         render::SceneView view =
-            activeScene->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+            session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
         // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
         // (spec 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom
         // output -- "with auto exposure off and bloom off, a frame is byte-identical to the
@@ -181,14 +177,17 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         view.temporal.renderScale = renderScale;
 
         rhi::CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
+                                  /*poolingEnabled=*/true);
+        declared.graph().exportTexture(declared.displayColor());
+        declared.execute(frameRecords);
         (*device)->endFrame(nullptr);
 
         // readback() has no synchronization; wait until the GPU releases the shared target, and
         // commitFrame() must not promote this frame's motion to "previous" before the GPU has
         // actually consumed it.
         (*device)->waitIdle();
-        activeScene->commitFrame();
+        session.commitFrame();
         if (sequence) {
             const auto status = (*renderer)->temporalStatus();
             if (temporal == TemporalMode::Vendor &&

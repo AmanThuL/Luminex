@@ -4,17 +4,18 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/AppOptions.h"
-#include "App/DynamicResolution.h"
-#include "App/EditorActions.h"
-#include "App/EditorRenderSettings.h"
-#include "App/EditorSelection.h"
-#include "App/ExposureReset.h"
-#include "App/FrameRecordRing.h"
+#include "App/Model/AppOptions.h"
+#include "App/Model/DynamicResolution.h"
+#include "App/Model/EditorActions.h"
+#include "App/Model/EditorRenderSettings.h"
+#include "App/Model/EditorSelection.h"
+#include "App/Model/ExposureReset.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/PerformanceModel.h"
+#include "App/Model/SceneSession.h"
+#include "App/Model/TemporalEditorState.h"
+#include "App/Model/WorkspaceModel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "App/PerformanceModel.h"
-#include "App/TemporalEditorState.h"
-#include "App/WorkspaceModel.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
@@ -26,15 +27,10 @@
 #include <string_view>
 #include <vector>
 
-/// SDL is an implementation detail of the shell's input handling and of nothing else here, so the
-/// header takes the window as an opaque handle and every consumer that only wants the scene
-/// (Screenshot.cpp) stays free of SDL.
+/// SDL is an implementation detail of shell input; this header uses an opaque window handle.
 struct SDL_Window;
 
 namespace lmx::app {
-
-/// Display-space neutral clear value used by the editor scene target.
-constexpr float kSceneClearGray = 0.7f;
 
 /// Luminex's own section of `imgui.ini`, as the registered Dear ImGui settings handler sees it.
 ///
@@ -148,7 +144,7 @@ public:
     void controllerDeclared(uint64_t frame);
 
     /// Returns the camera currently controlled by the editor viewport.
-    const render::Camera& camera() const { return m_camera; }
+    const render::Camera& camera() const { return m_session.camera(); }
 
     /// Whether the frame's render graph may let transients whose lifetimes do not overlap share
     /// memory. Edited by the Render Settings checkbox; the picture is the same either way, so what
@@ -167,7 +163,7 @@ public:
 
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
-        return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
+        return m_session.activeScene() != nullptr ? m_session.scene().name : std::string_view{};
     }
 
     /// Seeds dynamic resolution ahead of the frame loop, for automation that needs it on without
@@ -208,9 +204,8 @@ private:
     SDL_Window* m_window = nullptr;
     scene::SceneLibrary& m_library;
     scene::SceneId m_activeSceneId = scene::defaultSceneId();
-    // Non-owning: the library owns every Scene it has built, for the device's lifetime, which
-    // outlives this shell. Never null once create() has returned successfully.
-    scene::Scene* m_activeScene = nullptr;
+    // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
+    SceneSession m_session;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at
@@ -220,7 +215,6 @@ private:
     EditorSelection m_selection;
     std::string m_sceneFilter;
 
-    render::Camera m_camera;
     std::vector<render::DrawItem> m_drawItems;
     // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
     // switching scenes does not reset any of them.
@@ -245,7 +239,7 @@ private:
 
     // The dynamic-resolution controller (render::ResolutionController.h) and the shell-local state
     // applyDynamicResolution() needs to tell an off->on edge and an already-observed frame apart
-    // from one buildUI() to the next (Source/App/DynamicResolution.h).
+    // from one buildUI() to the next (Source/App/Model/DynamicResolution.h).
     render::ResolutionController m_resolutionController;
     DynamicResolutionState m_dynamicResolutionState;
 

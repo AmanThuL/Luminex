@@ -147,10 +147,16 @@ target("TextureBake")
     add_deps("Core", "Asset")
     add_packages("stb")
 
+-- Shared App policies and scene-session logic have no UI or backend includes.
+target("AppModel")
+    set_kind("static")
+    add_files("Source/App/Model/*.cpp")
+    add_deps("Core", "RHI", "Render", "Asset", "Scene")
+
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
-    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Asset", "Scene", "ImGui", "ImGuiNodeEditor")
+    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Asset", "Scene", "AppModel", "ImGui", "ImGuiNodeEditor")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
     add_rules("slang2metallib")
@@ -162,15 +168,8 @@ target("Tests")
     -- Keep test shader outputs separate from App; both targets may compile in parallel.
     -- Use singular "test" because the default macOS filesystem aliases it with the Tests binary.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
-    add_files("Tests/*.cpp", "Source/App/AppOptions.cpp", "Source/App/CaptureMetadata.cpp",
-              "Source/App/DynamicResolution.cpp",
-              "Source/App/EditorActions.cpp",
-              "Source/App/EditorSelection.cpp", "Source/App/ExposureReset.cpp",
-              "Source/App/FrameRecordRing.cpp", "Source/App/GraphInspectorModel.cpp",
-              "Source/App/GraphLayout.cpp", "Source/App/GraphNodeModel.cpp",
-              "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
-              "Source/App/TemporalEditorState.cpp", "Source/App/WorkspaceModel.cpp")
-    add_deps("Core", "RHI", "Render", "Asset", "Scene")
+    add_files("Tests/*.cpp")
+    add_deps("Core", "RHI", "Render", "Asset", "Scene", "AppModel")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
     add_defines('LMX_REPO_ROOT="$(projectdir)"')

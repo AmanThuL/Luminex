@@ -3,9 +3,11 @@
 /// @brief Runs the windowed editor or offscreen screenshot application.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/AppOptions.h"
 #include "App/EditorShell.h"
-#include "App/FrameRecordRing.h"
+#include "App/Model/AppOptions.h"
+#include "App/Model/FrameDeclaration.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "RHI/CaptureSchema.h"
@@ -123,6 +125,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     LMX_LOG_INFO("window: {}x{} points, swapchain: {}x{} pixels BGRA8Unorm", pointWidth,
                  pointHeight, pixelWidth, pixelHeight);
 
+    // Per-frame graphs die before the pool; the renderer and shell unwind before its resources.
+    lmx::render::TransientPool transientPool(**device);
+
     // The viewport adopts its panel size after the first UI layout.
     auto renderer = lmx::render::Renderer::create(**device, static_cast<uint32_t>(pixelWidth),
                                                   static_cast<uint32_t>(pixelHeight));
@@ -172,9 +177,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     // The frames an observer can still ask about: the three that can be in flight, plus the one
     // whose timings the next beginFrame() publishes.
     lmx::app::FrameRecordRing frameRecords;
-    // Outlives every per-frame graph, because a frame's transients stay placed in it until the
-    // slot they were placed in comes round again.
-    lmx::render::TransientPool transientPool(**device);
     uint64_t skippedFrames = 0;
     bool running = true;
     uint64_t previousTicksNs = SDL_GetTicksNS();
@@ -291,9 +293,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // The dynamic-resolution controller's attribution is by frame number, so this frame's
         // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
         shell->controllerDeclared((*device)->frameNumber());
-        // Immediately after beginFrame, which is where the frame slot this pool rotates on has
-        // just been proved retired.
-        transientPool.beginFrame();
         (*renderer)->timeSeconds = timeSeconds;
 
         // This frame will be declared (the drawable was acquired above), so the scene's animation
@@ -310,12 +309,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // loop lives entirely on the GPU timeline.
         view.exposureReset = shell->consumeExposureReset();
 
-        lmx::render::RenderGraph graph(transientPool);
-        graph.setPoolingEnabled(shell->poolingEnabled());
-        // The renderer's last pass is the display transform, so this is the finished image the
-        // viewport samples -- not the scene-linear buffer behind it.
-        const lmx::render::GraphTexture displayColor =
-            (*renderer)->declarePasses(graph, commands, shell->camera(), view);
+        lmx::app::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(), view,
+                                         shell->poolingEnabled());
+        lmx::render::RenderGraph& graph = frame.graph();
+        const lmx::render::GraphTexture displayColor = frame.displayColor();
         const lmx::render::GraphTexture drawable =
             graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
 
@@ -342,7 +339,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // Retaining the record it answers with is what lets an observer describe a frame that has
         // already been submitted: the timings of a frame are readable only once it retires, several
         // frames after the declarations that explain them are gone.
-        frameRecords.retain(graph.execute(commands, (*device)->frameNumber()));
+        frame.execute(frameRecords);
         // The frame's declarations are committed now that execute() has accepted them: the next
         // frame's motion is measured from here. A frame skipped for a missing drawable reaches
         // neither this nor advanceFrameAnimation() above.

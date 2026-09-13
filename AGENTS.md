@@ -192,6 +192,8 @@ repository asset discovery, transform decomposition, clip data and sampling; dep
 RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
 DDS/cubemap/IBL uploads, environment rig, labs, initial camera, playback and previous transforms;
 six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
+`Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
+shared SceneSession and FrameDeclaration; Tests compiles only its own C++ sources; no SDL/ImGui/Metal) →
 `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
@@ -212,9 +214,9 @@ Render Graph panel shapes the retained compiled frame into the ImGui-free
 stage groups, compact pins, an optional columns-per-row wrap, no pixels), and draws it on a
 vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measured sizes, with a
 selection-scoped details pane, deterministic layout stable across unchanged frames, and
-session-only dragged positions; frame loop advances animation and commits scene motion around
-`declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
-`--screenshot` and deterministic `--capture-sequence` paths). `Render/DisplayDomain.h` names
+session-only dragged positions; editor and capture loops share session playback/views/motion and
+frame declaration/record retention, keeping their own waits, UI sink and presentation scheduling).
+`Render/DisplayDomain.h` names
 the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.

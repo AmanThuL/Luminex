@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/GraphInspectorModel.h"
+#include "App/Model/GraphInspectorModel.h"
 #include "GraphTestSupport.h"
 #include "Render/RenderGraph.h"
 #include "Render/TransientPool.h"

@@ -3,7 +3,7 @@
 /// @brief Implements the coherent performance snapshot behind the Performance panel.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/PerformanceModel.h"
+#include "App/Model/PerformanceModel.h"
 
 #include <numeric>
 #include <utility>

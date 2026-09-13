@@ -10,7 +10,6 @@
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/Panels/ScenePanel.h"
 #include "App/Panels/ViewportPanel.h"
-#include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
 #include "Core/Log.h"
 #include "RHI/Metal4/Metal4ImGui.h"
@@ -245,13 +244,11 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
         return nullptr;
     }
     self->m_activeSceneId = initialScene;
-    self->m_activeScene = *scene;
-    self->m_camera = scene::cameraFromScene(self->m_activeScene->initialCamera);
+    self->m_session.activate(**scene, SceneActivationMotion::Reset);
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
     // The startup scene is a selection like any other (spec 9): the generation counter bumps from
     // its 0-as-unset start, motion has nothing to report yet.
-    self->m_activeScene->resetMotion();
     onSceneSelected(self->m_temporalState, self->m_settings, initialScene);
 
     ExposureResetContext initial = self->m_exposureContext;
@@ -288,7 +285,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
                  self->m_buildDefaultLayout
                      ? "no matching workspace schema -- the default layout will be built"
                      : "workspace schema matches -- restoring the docked layout from imgui.ini",
-                 self->m_activeScene->name, self->m_activeScene->objects.size());
+                 self->m_session.scene().name, self->m_session.scene().objects.size());
     return self;
 }
 
@@ -363,7 +360,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
         sample = PerformanceFrameSample{
             .frameId = newestTimed->record.frameId,
             .timings = newestTimed->timings,
-            .objectCount = static_cast<uint32_t>(m_activeScene->objects.size()),
+            .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
             .drawCount = static_cast<uint32_t>(m_drawItems.size()),
             .viewportLogicalWidth =
                 static_cast<uint32_t>(static_cast<float>(m_viewportWidth) / scaleX),
@@ -389,7 +386,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
-    m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
+    m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
 
     // The application window losing OS focus must end a look in progress (spec section 8): the
     // relative-mode cursor and whatever keys are still latched down are no longer this app's to
@@ -475,7 +472,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         const std::optional<scene::SceneId> chosen =
             drawScenePanel(open, ScenePanelContext{.library = m_library,
                                                    .activeSceneId = m_activeSceneId,
-                                                   .activeScene = *m_activeScene,
+                                                   .activeScene = m_session.scene(),
                                                    .selection = m_selection,
                                                    .filter = m_sceneFilter});
         setPanelVisible(EditorPanel::Scene, open);
@@ -501,9 +498,9 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         bool open = true;
         const ViewportPanelResult result = drawViewportPanel(
             open, ViewportPanelContext{.renderer = renderer,
-                                       .activeSceneName = m_activeScene->name,
-                                       .camera = m_camera,
-                                       .scene = *m_activeScene,
+                                       .activeSceneName = m_session.scene().name,
+                                       .camera = m_session.camera(),
+                                       .scene = m_session.scene(),
                                        .settings = m_settings,
                                        .exposureContext = m_exposureContext,
                                        .exposureResetPending = m_exposureResetPending});
@@ -538,12 +535,11 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         bool open = true;
         // Healed here, immediately before the draw that reads it, so a stale scene id or
         // out-of-range index from any source never reaches the panel (spec section 5).
-        m_selection = resolveSelection(m_selection, m_activeSceneId, *m_activeScene);
+        m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
         drawInspectorPanel(
             open, InspectorPanelContext{.selection = m_selection,
-                                        .camera = m_camera,
+                                        .session = m_session,
                                         .renderer = renderer,
-                                        .scene = *m_activeScene,
                                         .settings = m_settings,
                                         .exposureContext = m_exposureContext,
                                         .exposureResetPending = m_exposureResetPending,
@@ -592,7 +588,7 @@ void EditorShell::primeTemporal(const AppOptions& options) {
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
     render::SceneView view =
-        m_activeScene->view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
+        m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
     view.exposureEv = m_settings.exposureEv;
@@ -639,28 +635,13 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
-    // A baked key lands on every played time exactly at this step.
-    constexpr double kFixedStep = 1.0 / asset::kAnimationBakeRate;
-
-    scene::Scene& scene = *m_activeScene;
-    const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
-    const bool hasAnyTrack = asset::hasAnimationTracks(scene.animation);
-
-    if (m_settings.animationPlaying && hasAnyTrack) {
-        scene.advanceAnimation(kFixedStep);
-        scene.animate(scene.animationTime);
-    }
-
-    // The fly-camera latch (m_looking, true while RMB is held) always wins: a user actively flying
-    // the camera must not have it snapped back to the track underneath them.
-    if (m_settings.followCameraTrack && hasCameraTrack && !m_looking) {
-        scene.followCameraTrack(m_camera);
-    }
+    m_session.advanceEditorFrame(m_settings.animationPlaying, m_settings.followCameraTrack,
+                                 m_looking);
 }
 
 //======================================================================================================================
 void EditorShell::commitFrame() {
-    m_activeScene->commitFrame();
+    m_session.commitFrame();
 }
 
 //======================================================================================================================
@@ -678,13 +659,10 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         return false;
     }
     m_activeSceneId = id;
-    m_activeScene = *scene;
-    // Camera pose is scene-local; render settings remain editor-local.
-    m_camera = scene::cameraFromScene(m_activeScene->initialCamera);
+    m_session.activate(**scene, SceneActivationMotion::Reset);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
     // rather than reproject the previous scene's pixels onto this one's geometry.
-    m_activeScene->resetMotion();
     onSceneSelected(m_temporalState, m_settings, id);
     // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
     // about the new one's content.
@@ -694,8 +672,8 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         m_exposureResetPending = true;
     }
     m_exposureContext = candidate;
-    LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_activeScene->name,
-                 m_activeScene->objects.size());
+    LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
+                 m_session.scene().objects.size());
     return true;
 }
 
@@ -720,7 +698,7 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
     }
 
     // Screen Y grows downward while camera pitch grows upward.
-    m_camera.look(relativeX * kLookRadiansPerPixel, -relativeY * kLookRadiansPerPixel);
+    m_session.camera().look(relativeX * kLookRadiansPerPixel, -relativeY * kLookRadiansPerPixel);
 
     const bool* keys = SDL_GetKeyboardState(nullptr);
     glm::vec3 move{0.0f};
@@ -732,7 +710,8 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
     move.y -= keys[SDL_SCANCODE_Q] ? 1.0f : 0.0f;
     if (move != glm::vec3{0.0f}) {
         // Normalize diagonal movement to preserve speed.
-        m_camera.move(glm::normalize(move) * (m_camera.moveSpeed * deltaSeconds));
+        m_session.camera().move(glm::normalize(move) *
+                                (m_session.camera().moveSpeed * deltaSeconds));
     }
 }
 

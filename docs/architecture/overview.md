@@ -5,7 +5,7 @@
 Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI
 is a repository-root component; the other runtime layers remain under `Source/`:
 
-`Core → Asset` and `Core → RHI → Render`, joined by `Scene → App`. Asset uses only
+`Core → Asset` and `Core → RHI → Render`, joined by `Scene → AppModel → App`. Asset uses only
 RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer;
 `Render/SceneView.h` holds the borrowed frame input independently of the renderer.
 
@@ -112,7 +112,16 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
   pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
-- **App** owns SDL3, the editor shell, and the frame loop. `Source/App/Panels/` holds the five
+- **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
+  options, capture metadata, selection, workspace schema, actions, performance/graph models,
+  timing history, frame-record retention, dynamic-resolution policy and temporal/exposure state.
+  The module checker keeps it free of ImGui, SDL and Metal headers. Tests compiles its own C++
+  sources only. The shared scene session borrows an active scene, owns its camera, prepares
+  playback and borrowed views, and resets/commits motion. Activation resets editor motion but
+  preserves headless loader state, matching each path's first-frame contract. Shared frame declaration begins the
+  transient pool after device slot retirement, declares renderer passes and retains the accepted
+  graph record. Each caller appends its own output sink and owns scheduling and GPU waits.
+- **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the five
   panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and
   Performance dock together as in M5.3; Render Graph is submitted with its own `ImGuiWindowClass`
@@ -126,7 +135,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   collapsing a shared-label-prefix set of at least two same-culled-status passes into one group
   node, deduplicating the edges and pins that cross a collapsed boundary, and wrapping long chains
   into rows under a caller-chosen column count) are ImGui/SDL/Metal-backend-free models that
-  compile into the Tests target alongside the rest of App's plain logic. The Render Graph panel
+  belong to AppModel alongside the rest of App's plain logic. The Render Graph panel
   draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas (ADR 0011) with compact pins (full
   label on hover or selection), a selection-scoped details pane, and a `columns` control; dragged
   node positions are session state, and a changed layout signature (shape, expanded-group set, or
@@ -140,9 +149,9 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
   animation play, camera-track follow); the pure `TemporalEditorState` tracks the scene-generation
   counter and camera-cut latch, and the frame loop calls `advanceFrameAnimation()`/`commitFrame()`
-  around `declarePasses` so a declared frame — and only a declared frame — advances Scene's
+  through the shared session around frame declaration so an accepted frame advances Scene's
   animation clock and Render's history. `EditorRenderSettings` also carries `renderScale`,
-  `dynamicResolutionEnabled` and `gpuBudgetMilliseconds`; `Source/App/DynamicResolution.h` is a pure
+  `dynamicResolutionEnabled` and `gpuBudgetMilliseconds`; `Source/App/Model/DynamicResolution.h` is a pure
   per-frame policy (`applyDynamicResolution`) that seeds `EditorShell`'s owned
   `render::ResolutionController` on the off-to-on edge, feeds it each retired frame's summed GPU
   pass time, and writes its proposed scale back onto the settings while dynamic resolution is on.

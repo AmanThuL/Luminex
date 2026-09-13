@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/EditorSelection.h"
+#include "App/Model/EditorSelection.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 

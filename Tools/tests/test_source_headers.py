@@ -24,22 +24,31 @@ CONTRACT = {
             "thirdParty": ["imgui"],
         },
         "app-model": {
-            "paths": ["Source/App/GraphLayout.h", "Source/App/GraphLayout.cpp"],
-            "targets": ["App"],
+            "paths": ["Source/App/Model"],
+            "targets": ["AppModel"],
             "units": ["core"],
             "thirdParty": [],
         },
     },
-    "targets": {"Core": {"deps": []}, "App": {"deps": ["Core"]}},
+    "targets": {
+        "Core": {"deps": []},
+        "AppModel": {"deps": ["Core"]},
+        "App": {"deps": ["Core", "AppModel"]},
+    },
 }
 
 TARGETS = {
     "App": {
         "kind": "binary",
-        "files": [
-            "Source/App/GraphLayout.cpp",
-            "Source/App/Panels/InspectorPanel.cpp",
-        ],
+        "files": ["Source/App/Panels/InspectorPanel.cpp"],
+        "deps": ["Core", "AppModel"],
+        "packages": [],
+        "frameworks": [],
+        "targetfile": "",
+    },
+    "AppModel": {
+        "kind": "static",
+        "files": ["Source/App/Model/GraphLayout.cpp"],
         "deps": ["Core"],
         "packages": [],
         "frameworks": [],
@@ -49,7 +58,7 @@ TARGETS = {
 }
 
 COMPILE_DB = {
-    "Source/App/GraphLayout.cpp": {
+    "Source/App/Model/GraphLayout.cpp": {
         "directory": "/repo",
         "arguments": [
             "clang++",
@@ -65,10 +74,10 @@ COMPILE_DB = {
             "-I",
             "/opt/glm/include",
             "-isystem",
-            "/opt/imgui/include",
+            "/opt/glm/system",
             "-o",
             "build/GraphLayout.cpp.o",
-            "Source/App/GraphLayout.cpp",
+            "Source/App/Model/GraphLayout.cpp",
         ],
     },
     "Source/App/Panels/InspectorPanel.cpp": {
@@ -120,14 +129,14 @@ class SyntaxCommandTests(unittest.TestCase):
         self.assertEqual(headers.syntax_command(entry), ["clang++", "-I../Source", "-fsyntax-only", "-x", "c++", "-"])
 
     def test_drops_compile_only_output_and_source_but_keeps_include_flags(self) -> None:
-        entry = dict(COMPILE_DB["Source/App/GraphLayout.cpp"])
-        entry["file"] = "Source/App/GraphLayout.cpp"
+        entry = dict(COMPILE_DB["Source/App/Model/GraphLayout.cpp"])
+        entry["file"] = "Source/App/Model/GraphLayout.cpp"
         command = headers.syntax_command(entry)
 
         self.assertNotIn("-c", command)
         self.assertNotIn("-o", command)
         self.assertNotIn("build/GraphLayout.cpp.o", command)
-        self.assertNotIn("Source/App/GraphLayout.cpp", command)
+        self.assertNotIn("Source/App/Model/GraphLayout.cpp", command)
         self.assertIn("-std=c++23", command)
         self.assertIn("-isysroot", command)
         self.assertIn("-target", command)
@@ -144,10 +153,13 @@ class CommandForTests(unittest.TestCase):
         self.assertIn("-isystem", command)
         self.assertIn("-ISource", command)
 
-    def test_model_header_resolves_to_the_same_app_command(self) -> None:
+    def test_model_header_resolves_to_its_own_target_command(self) -> None:
         panel_command = headers.command_for(Path("Source/App/Panels/InspectorPanel.h"), CONTRACT, TARGETS, COMPILE_DB)
-        model_command = headers.command_for(Path("Source/App/GraphLayout.h"), CONTRACT, TARGETS, COMPILE_DB)
-        self.assertEqual(panel_command, model_command)
+        model_command = headers.command_for(Path("Source/App/Model/GraphLayout.h"), CONTRACT, TARGETS, COMPILE_DB)
+        self.assertNotEqual(panel_command, model_command)
+        self.assertIn("/opt/imgui/include", panel_command)
+        self.assertNotIn("/opt/imgui/include", model_command)
+        self.assertIn("/opt/glm/include", model_command)
 
     def test_unowned_header_is_an_error(self) -> None:
         with self.assertRaises(headers.check_module_deps.ModuleContractError):
@@ -163,11 +175,11 @@ class CommandForTests(unittest.TestCase):
             headers.command_for(header, CONTRACT, TARGETS, forward),
             headers.command_for(header, CONTRACT, TARGETS, reversed_db),
         )
-        # The smallest path wins: GraphLayout.cpp sorts before Panels/InspectorPanel.cpp.
+        # A model source cannot supply the shell target's compilation context.
         self.assertEqual(
             headers.command_for(header, CONTRACT, TARGETS, forward),
             headers.syntax_command(
-                {**COMPILE_DB["Source/App/GraphLayout.cpp"], "file": "Source/App/GraphLayout.cpp"}
+                {**COMPILE_DB["Source/App/Panels/InspectorPanel.cpp"], "file": "Source/App/Panels/InspectorPanel.cpp"}
             ),
         )
 
@@ -192,11 +204,11 @@ class CheckHeaderTests(unittest.TestCase):
 
             return Result()
 
-        header = Path("Source/App/GraphLayout.h")
+        header = Path("Source/App/Model/GraphLayout.h")
         diagnostic = headers.check_header(header, ["clang++"], Path("/repo"), run=fake_run)
 
         self.assertIsNone(diagnostic)
-        self.assertEqual(calls[0]["input"], '#include "App/GraphLayout.h"\n')
+        self.assertEqual(calls[0]["input"], '#include "App/Model/GraphLayout.h"\n')
         self.assertEqual(calls[0]["cwd"], Path("/repo"))
 
     def test_nonzero_exit_reports_the_diagnostic(self) -> None:
@@ -207,27 +219,27 @@ class CheckHeaderTests(unittest.TestCase):
 
             return Result()
 
-        header = Path("Source/App/GraphLayout.h")
+        header = Path("Source/App/Model/GraphLayout.h")
         diagnostic = headers.check_header(header, ["clang++"], Path("/repo"), run=fake_run)
         self.assertEqual(diagnostic, "boom")
 
 
 class HeaderAllowlistTests(unittest.TestCase):
     def test_allowlisted_header_is_suppressed_and_marked_used(self) -> None:
-        entry = {"kind": "header", "file": "Source/App/GraphLayout.h", "reason": "r", "until": "R1.2"}
+        entry = {"kind": "header", "file": "Source/App/Model/GraphLayout.h", "reason": "r", "until": "R1.2"}
         allowlist = [entry]
-        self.assertTrue(headers.header_allowed(Path("Source/App/GraphLayout.h"), allowlist))
+        self.assertTrue(headers.header_allowed(Path("Source/App/Model/GraphLayout.h"), allowlist))
         self.assertTrue(entry["used"])
 
     def test_unused_header_entry_is_reported(self) -> None:
-        entry = {"kind": "header", "file": "Source/App/GraphLayout.h", "reason": "r", "until": "R1.2"}
+        entry = {"kind": "header", "file": "Source/App/Model/GraphLayout.h", "reason": "r", "until": "R1.2"}
         errors: list[str] = []
         headers.check_header_allowlist_use(Path("Tools/module_allowlist.json"), [entry], errors)
         self.assertEqual(len(errors), 1)
-        self.assertIn("Source/App/GraphLayout.h", errors[0])
+        self.assertIn("Source/App/Model/GraphLayout.h", errors[0])
 
     def test_used_header_entry_is_not_reported(self) -> None:
-        entry = {"kind": "header", "file": "Source/App/GraphLayout.h", "reason": "r", "until": "R1.2", "used": True}
+        entry = {"kind": "header", "file": "Source/App/Model/GraphLayout.h", "reason": "r", "until": "R1.2", "used": True}
         errors: list[str] = []
         headers.check_header_allowlist_use(Path("Tools/module_allowlist.json"), [entry], errors)
         self.assertEqual(errors, [])
@@ -240,8 +252,8 @@ class SourceHeadersTests(unittest.TestCase):
             write_tree(
                 root,
                 [
-                    "Source/App/GraphLayout.h",
-                    "Source/App/GraphLayout.cpp",
+                    "Source/App/Model/GraphLayout.h",
+                    "Source/App/Model/GraphLayout.cpp",
                     "Source/Core/Log.h",
                     "RHI/Include/RHI/Device.h",
                 ],
@@ -249,7 +261,7 @@ class SourceHeadersTests(unittest.TestCase):
             result = headers.source_headers(root)
             self.assertEqual(
                 result,
-                [Path("Source/App/GraphLayout.h"), Path("Source/Core/Log.h")],
+                [Path("Source/App/Model/GraphLayout.h"), Path("Source/Core/Log.h")],
             )
 
 

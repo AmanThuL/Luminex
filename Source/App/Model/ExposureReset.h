@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/EditorRenderSettings.h"
+#include "App/Model/EditorRenderSettings.h"
 #include "Scene/SceneLibrary.h"
 
 #include <cstdint>

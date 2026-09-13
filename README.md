@@ -128,7 +128,7 @@ paravirtual GPU. Renderer changes therefore require the local Metal-validation c
 flowchart TB
     subgraph Layers["Renderer layers"]
         direction LR
-        App["App<br/>SDL3 + ImGui"] --> Scene["Scene<br/>GPU scenes + uploads"] --> Render["Render<br/>camera + render graph"]
+        App["App<br/>SDL3 + ImGui"] --> AppModel["AppModel<br/>editor logic + scene session"] --> Scene["Scene<br/>GPU scenes + uploads"] --> Render["Render<br/>camera + render graph"]
         Scene --> Asset["Asset<br/>CPU decoding + baking"]
     end
     subgraph GPU["GPU interface"]
@@ -150,6 +150,7 @@ command recording, synchronization, residency and swapchain contracts; rendering
 | `Source/Render` | Camera, meshes, the validating render graph, shadow/scene/sky/display passes |
 | `Source/Asset` | CPU glTF/DDS/HDR/image decoding, geometry, clip sampling, IBL generation and mip baking |
 | `Source/Scene` | Scene catalog, GPU uploads, environments and playback |
+| `Source/App/Model` | Shared editor logic, scene sessions, frame declaration and capture metadata |
 | `Source/App` | SDL3 window, editor shell, CLI and offscreen screenshots |
 | `Shaders` | Slang modules and render/test entry points |
 | `Tools/GpuDebug` | Capture inspection, schema validation and profiling |

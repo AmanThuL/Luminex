@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/GraphInspectorModel.h"
+#include "App/Model/GraphInspectorModel.h"
 #include "RHI/RHI.h"
 #include "Render/RenderGraph.h"
 

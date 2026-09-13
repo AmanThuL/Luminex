@@ -3,7 +3,7 @@
 /// @brief Implements the pure decision behind spec 9's four exposure-feedback reset triggers.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/ExposureReset.h"
+#include "App/Model/ExposureReset.h"
 
 namespace lmx::app {
 

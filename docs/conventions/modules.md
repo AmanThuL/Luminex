@@ -23,7 +23,7 @@ order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
 | `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and passes, plus the frame input contract in its own leaf header | `core`, `rhi-public` | glm |
 | `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata, scene session and frame declaration | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
 | `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
@@ -41,17 +41,12 @@ hands back the interface, and no test names a backend, adapter or `RHI/Source` h
 Tests target links the `RHI` target is the link-level view, a target's dependency closure, which the
 link checks own; it is not an include edge and does not widen this row.
 
-### Transitional file lists
+### Directory ownership
 
-Until `Source/App/Model` is created, its file list defines ownership. Asset and Scene now own
-their directories and static targets; Engine is retired.
-
-- `app-model` — `Source/App/`: `AppOptions`, `CaptureMetadata`, `DynamicResolution`,
-  `EditorActions`, `EditorSelection`, `ExposureReset`, `FrameRecordRing`, `GraphInspectorModel`,
-  `GraphLayout`, `GraphNodeModel`, `PassTimingHistory`, `PerformanceModel`, `TemporalEditorState`,
-  `WorkspaceModel` (`.h` and `.cpp`), plus `DirectionalLightRole.h` and `EditorRenderSettings.h`.
-- `app-shell` — everything else under `Source/App/`, including `Panels/`, `EditorShell`,
-  `Screenshot` and `main.cpp`.
+Asset, Scene and AppModel own their directories and static targets; Engine is retired.
+`Source/App/Model` owns the shared editor models, scene session and frame declaration; everything
+else under `Source/App`, including Panels, EditorShell, Screenshot and main.cpp, belongs to App.
+App and Tests link AppModel. Tests compiles only its own C++ sources, alongside test shaders.
 
 ## Ownership precedence
 
@@ -154,8 +149,8 @@ responsibility named for each part, is not an improvement.
 
 ## Allowlist policy
 
-The current tree does not satisfy the contract yet, so the checker reads an allowlist from one
-checked-in file. The allowlist is a record of debt, not a configuration surface:
+The checker reads an allowlist from one checked-in file, currently empty. The allowlist is a
+record of migration debt, not a configuration surface:
 
 - Each entry names the file or target it applies to, the forbidden edge, a reason, and an `until`
   field naming the slice that removes it. All four are required, and the entry is scoped to that one

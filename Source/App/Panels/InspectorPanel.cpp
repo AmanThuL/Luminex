@@ -5,9 +5,8 @@
 
 #include "App/Panels/InspectorPanel.h"
 
-#include "App/DirectionalLightRole.h"
 #include "App/EditorShell.h"
-#include "Asset/SceneAnimation.h"
+#include "App/Model/DirectionalLightRole.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
@@ -98,11 +97,11 @@ void drawCameraSection(render::Camera& camera, const scene::Scene& scene) {
 
 //======================================================================================================================
 // Spec section 9's Temporal block: the toggles, the debug-view combo, playback transport, the
-// camera-cut button, and read-only status pulled from the last declared frame. `scene` is the
-// active scene (for the animation clock and whether a camera track exists to follow), not the
+// camera-cut button, and read-only status pulled from the last declared frame. The session owns
+// the active scene clock and camera-track follow, independently of the
 // renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
 void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                         scene::Scene& scene, TemporalEditorState& temporalState,
+                         SceneSession& session, TemporalEditorState& temporalState,
                          const DynamicResolutionState& dynamicResolutionState,
                          const rhi::TemporalScalerSupport& temporalSupport) {
     const render::TemporalStatus status = renderer.temporalStatus();
@@ -174,16 +173,12 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
     ImGui::SameLine();
     ImGui::BeginDisabled(settings.animationPlaying);
     if (ImGui::Button("Step")) {
-        // Matches EditorShell's own per-frame step -- a manual step while paused advances by the
-        // same fixed amount play would have.
-        scene.advanceAnimation(1.0 / asset::kAnimationBakeRate);
-        scene.animate(scene.animationTime);
+        session.stepAnimation();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
     if (ImGui::Button("Reset time")) {
-        scene.animationTime = 0.0;
-        scene.animate(0.0);
+        session.rewindAnimation();
         // Rewinding the clock is a discontinuity exactly like a scene switch: the object poses
         // this frame have nothing to do with what history recorded, so motion must not report a
         // jump and the renderer must not reproject across it. requestCameraCut() forces
@@ -191,11 +186,10 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
         // not move -- resetMotion() alone would leave the reset reason at None, and reprojecting
         // history from before the rewind onto geometry now back at t = 0 is exactly the artifact
         // this guards against.
-        scene.resetMotion();
         requestCameraCut(temporalState);
     }
 
-    const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
+    const bool hasCameraTrack = !session.scene().animation.cameraTrack.empty();
     ImGui::BeginDisabled(!hasCameraTrack);
     ImGui::Checkbox("Follow camera track", &settings.followCameraTrack);
     ImGui::EndDisabled();
@@ -251,7 +245,7 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
 //======================================================================================================================
 void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
                           ExposureResetContext& exposureContext, bool& exposureResetPending,
-                          scene::Scene& scene, TemporalEditorState& temporalState,
+                          SceneSession& session, TemporalEditorState& temporalState,
                           const DynamicResolutionState& dynamicResolutionState,
                           const rhi::TemporalScalerSupport& temporalSupport) {
     // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
@@ -309,7 +303,7 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
     }
 
     ImGui::SeparatorText("Temporal");
-    drawTemporalSection(renderer, settings, scene, temporalState, dynamicResolutionState,
+    drawTemporalSection(renderer, settings, session, temporalState, dynamicResolutionState,
                         temporalSupport);
 }
 
@@ -395,25 +389,27 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
         case EditorSubject::Camera:
             ImGui::SeparatorText("Camera");
             ImGui::TextUnformatted("Editor Camera");
-            drawCameraSection(context.camera, context.scene);
+            drawCameraSection(context.session.camera(), context.session.scene());
             break;
         case EditorSubject::Rendering:
             ImGui::SeparatorText("Rendering");
             ImGui::TextUnformatted("Rendering");
             drawRenderingSection(context.renderer, context.settings, context.exposureContext,
-                                 context.exposureResetPending, context.scene, context.temporalState,
-                                 context.dynamicResolutionState, context.temporalSupport);
+                                 context.exposureResetPending, context.session,
+                                 context.temporalState, context.dynamicResolutionState,
+                                 context.temporalSupport);
             drawDisplaySection(context);
             break;
         case EditorSubject::DirectionalLight:
             ImGui::SeparatorText("Directional Light");
             ImGui::Text("Light %d", static_cast<int>(context.selection.index));
-            drawDirectionalLightSection(context.scene, context.selection.index);
+            drawDirectionalLightSection(context.session.scene(), context.selection.index);
             break;
         case EditorSubject::Object:
             ImGui::SeparatorText("Object");
-            ImGui::TextUnformatted(context.scene.objects[context.selection.index].name.c_str());
-            drawObjectSection(context.scene, context.selection.index);
+            ImGui::TextUnformatted(
+                context.session.scene().objects[context.selection.index].name.c_str());
+            drawObjectSection(context.session.scene(), context.selection.index);
             break;
         }
     }

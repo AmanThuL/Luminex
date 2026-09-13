@@ -10,20 +10,17 @@ review that admits [M7.1](gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundati
 review reads the restructured tree; R1 prepares the review and approves nothing gate B owns.
 Shared delivery rules stay in the roadmap entry.
 
-The [foundation spec](../specs/2026-08-07-luminex-upgrade-design.md) assigned `Source/Core`
-logging, assertions, time and platform utilities; only logging, assertions and one alignment
-helper arrived, and later helpers settled wherever they were first needed. Six rendering milestones
-then grew `Renderer`, `RenderGraph`, the editor shell and their tests as single large units. M7
-adds GPU scene data, identities and visibility to exactly these seams; restructuring first keeps
-those slices small and their review about rendering rather than about where code lives.
+The [foundation spec](../specs/2026-08-07-luminex-upgrade-design.md) assigned Core logging, assertions,
+time and platform utilities; only logging, assertions and one alignment helper arrived. Later helpers
+settled at first use, while `Renderer`, `RenderGraph`, the editor shell and tests grew into large units.
+Restructuring before M7 adds GPU scene data, identities and visibility keeps those changes focused.
 
 ## Observed structure before R1.1
 
-The inventory below motivated R1. [R1.1](../milestones/r1.1.md) has since added enforcement and
-moved the adapter sources; [R1.2](../milestones/r1.2.md) separates Asset and Scene and extracts
-the shared leaf contracts. The remaining structural work belongs to R1.3–R1.4.
-The runtime had five build targets in a chain, `Core → RHI → Render → Engine → App`, plus Tests,
-TextureBake and FrameDataBench:
+The inventory below motivated R1. [R1.1](../milestones/r1.1.md) added enforcement and moved the adapter;
+[R1.2](../milestones/r1.2.md) separated Asset/Scene and shared leaf contracts; [R1.3](../milestones/r1.3.md)
+adds AppModel and a shared session, accepted with the parity exception below. R1.4 is next.
+The original targets were `Core → RHI → Render → Engine → App`, plus Tests, TextureBake and FrameDataBench:
 
 | Module | Files | Observation |
 |---|---|---|
@@ -129,14 +126,17 @@ and every output kept in the slice's evidence bundle outside the source tree.
   reproducible from a recorded substitution; formatting and policy green at every commit.
   Performance is not a claim of R1.
 
-**Sequence:** R1.1 → R1.2 → R1.3 → R1.4; R1.5 items may follow R1.1 individually. Each slice has
-its own plan; only one plan is active.
+**Recorded exception:** on 2026-09-13 the owner accepted R1.3 for local main despite its
+[six unresolved hashes at the eight-round cap](../milestones/r1.3.md#unresolved-image-parity).
+Parity remains failed with no established cause; this exception does not change later slices' protocol.
+
+**Sequence:** R1.1 → R1.2 → R1.3 → R1.4; each R1.5 item may follow R1.1. Each slice has a plan; only one is active.
 
 **Exit gate:** R1.1–R1.4 accepted: the checker's allowlist is empty for Asset, Scene, Render and
 `App/Model`; every project header compiles standalone; Tests link the model library and list no
 App sources; the Asset archive has no undefined references into `lmx::rhi`, and `TextureBake`
 links neither Render nor a Metal framework; the architecture overview, frame walkthrough, README
-directory table and `AGENTS.md` describe the new layout; the protocol held on every commit.
+directory table and `AGENTS.md` describe the new layout; the protocol held except for R1.3 as recorded above.
 
 **Defer:** any new rendering feature, shader change or RHI capability; GPU-scene identity and
 tables (M7.1 owns them); a second backend or publishing the RHI standalone; a shared cross-domain

@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/AppOptions.h"
+#include "App/Model/AppOptions.h"
 #include "Render/Renderer.h"
 
 #include <array>
@@ -389,7 +389,7 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 }
 
 //======================================================================================================================
-// The CLI text is generated from the catalog (Source/App/AppOptions.cpp's sceneIdList), not a
+// The CLI text is generated from the catalog (Source/App/Model/AppOptions.cpp's sceneIdList), not a
 // second hardcoded list -- this pins the catalog's own order/content so the two cannot drift.
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
     const std::array<std::string_view, 6> expected = {

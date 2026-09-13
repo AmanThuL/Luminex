@@ -1,4 +1,4 @@
-# Luminex — one frame with native or vendor reconstruction (2026-09-12)
+# Luminex — one frame with native or vendor reconstruction (2026-09-13)
 
 What the renderer does between `beginFrame` and `endFrame`. Native TAA is the default; vendor
 reconstruction is selected explicitly and shares the engine-owned temporal inputs.
@@ -12,6 +12,13 @@ over them; `compile()` proves the declarations form a DAG and answers a serial s
 dead-pass culling) before any of it reaches the GPU. `execute()` then runs that schedule, deriving
 the RAW, WAR, and WAW barriers each declared cross-pass access conflict justifies.
 
+`App/Model/SceneSession` shares activation, camera, playback, borrowed views and motion between
+the editor and capture loops. `FrameDeclaration` rotates their pool after device slot retirement,
+declares renderer passes and retains the accepted record. The editor appends UI/present, joins
+retired timings and renders platform windows after present; headless exports the display output
+and waits each frame. Screenshots start at authored time zero; sequences sample frame/60, including
+warmup; editor playback advances one fixed step only after drawable acquisition.
+
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
 (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
 `renderScale == 1.0`, byte-identical to M6.2's declaration (below 1.0 the scene pass's render area
@@ -20,21 +27,17 @@ declared passes either way; toggling one off removes only the declaration reachi
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
-│
 ├─ declare: import shadow map, scene color (HDR), this frame's depth and colour history slots, the
 │           other slot's depth and colour, display color, histogram buffer, exposure buffer
 │           {applied, previous}, swapchain drawable
-│
 ├─ 0. lmx.pass.exposure.seed   compute, 1 thread → exposure buffer
 │       shift-and-set: `previous = applied; applied = exp2(manualEV)`, always the CPU-computed
 │       manual exposure, whichever mode is running — including on an auto reset frame, where it is
 │       what restarts the loop from the manual value (spec 9). Manual mode: declared every temporal
 │       frame. Auto mode: only on a reset trigger
-│
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
 │       opaque and masked DrawItems, depth bias {-4.0, -32.0} (reversed-Z), light 0 only
 │       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
-│
 ├─ 2. lmx.pass.scene       → scene color (RGBA16Float), lmx.render.motion (RG16Float, extra 0),
 │    │  lmx.render.reactive (R8Unorm, extra 1, cleared to 0) + this frame's depth slot, viewport-sized
 │       │  per-pass uniforms (b2): viewProj, shadowTransform, eye, time, preExposure,
@@ -57,11 +60,9 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       └─ sky, drawn last: camera-centered sphere pinned to the reversed far plane (depth 0),
 │            cull none, GreaterEqual, t2 cubemap, the same preExposure, motion from the previous
 │            eye's rotation alone, reactive 0
-│
 ├─ [reset reason None] 2b. lmx.pass.temporal.reproject   compute, diagnostic only, over the output
 │       extent, reads the previous colour slot + scene colour + motion → temporalDiagnostic; culled
 │       unless ReprojectionError sinks it
-│
 ├─ 3. NativeTaa when render == output and (this frame resets or previous extents match):
 │       lmx.pass.temporal.resolve   compute, 8×8, reads scene colour, both depth slots, motion,
 │       reactive, the previous colour slot, the exposure pair → this frame's colour slot directly
@@ -71,7 +72,6 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       ADR 0014); any other frame runs lmx.pass.temporal.upscale instead (`Shaders/
 │       TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled writes this frame's
 │       colour slot instead, right here
-│
 ├─ 4. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
 ├─ 5. lmx.pass.exposure.histogram        compute, over the render extent, reads *raw* scene color +
 │       the exposure pair → histogram buffer (unaccumulated colour, independent of what it corrects)
@@ -80,7 +80,6 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       bounded step (`adaptUpStopsPerSecond`/`adaptDownStopsPerSecond` × dt) moves `applied` toward
 │       it and shifts the old `applied` into `previous` — rate 0 reproduces M6.1's instantaneous
 │       result exactly. The resolved pair is what the *next* frame reads — the one-frame lag holds
-│
 ├─ 7. lmx.pass.bloom.threshold        compute, over the output extent, reads the resolved (NativeTaa)
 │       or raw (Raw) colour → bloomChain mip 0: 2×2-box prefilter + soft threshold
 ├─ 8. lmx.pass.bloom.downsample0..N-1  compute, one pass per level, mip L-1 → mip L of bloomChain
@@ -90,25 +89,21 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       → bloomBlur (a second graph-created texture, one fewer mip than bloomChain): pixel-center
 │       bilinear upsample + add. A second texture rather than in-place accumulation, since one pass
 │       may read and write one texture only through disjoint ranges (spec 6)
-│
 ├─ 10. lmx.pass.display     fullscreen triangle: Load the resolved colour (Raw reads raw scene
 │       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
 │       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Tonemap.slang, shared with the
 │       debug view) → sRGB encode → display color (BGRA8Unorm), described by
 │       Render/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
-│
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
 │       carries no storage-write usage under this RHI. Declared against the display pass's own
 │       not-yet-declared output version; the graph's topological schedule still orders it after.
 │       Off / MotionVectors / ReprojectionError (M6.1) plus ReprojectedHistory (tone mapped through
 │       the shared module), RejectionMask (flat colours per reason, clipped flag added green),
 │       BlendWeight (grey = weight kept), HistoryAge (grey = age / warmup)
-│
 ├─ 11. lmx.pass.ui          → swapchain drawable
 │       Dear ImGui: display-referred sRGB, straight-alpha blending in encoded space, SDR white;
 │       the Viewport samples display color at 1:1 backing pixels once resize settles. App
 │       declares this pass and reads the display output to join it; detached windows stay SDR.
-│
 └─ graph.execute(commands) → endFrame → present (or endFrame(nullptr) for the offscreen
      --screenshot / test path, which stops at lmx.pass.display and reads that target back)
 ```
@@ -144,8 +139,7 @@ Vendor frames retain conservative `ExternalWrite` for current colour, `ExternalR
 depth and scene colour, and `ShaderRead` for the other depth; previous colour retains its access
 unless an engine diagnostic samples it. Native terminal-use rows remain unchanged (ADR 0017).
 
-Vertex data is bindless vertex-pulling everywhere: a `StructuredBuffer<VertexPNTU>` at slot b0
-(48-byte pos/normal/tangent₄/uv), indices as plain uint32 buffers consumed per draw.
+Vertex pulling uses `StructuredBuffer<VertexPNTU>` at b0 (48-byte pos/normal/tangent₄/uv) and uint32 indices.
 
 Masked materials select `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask` (ADR 0018).
 Shared `AlphaMask` discards texture alpha × factor alpha below cutoff, using the same UV transform;
@@ -230,7 +224,7 @@ submission does not make ImGui a core RHI dependency.
   baked assets and falls back to the same in-process filter. Metal's removed mip generator was
   measured to point-pick.
 
-## The math, briefly
+## The math
 
 - **GGX metallic-roughness BRDF** (`Shaders/Lighting.slang`): Trowbridge-Reitz D,
   height-correlated Smith visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and
@@ -260,7 +254,7 @@ submission does not make ImGui a core RHI dependency.
 - **Exposure reset mapping.** The temporal history and the exposure buffer each still choose their
   own reset policy: exposure clears on `SceneChanged`, `ExtentChanged`, and the auto-exposure enable
   transition (spec 9's triggers, unchanged), and ignores `CameraCut`/`ProjectionChanged`, which the
-  temporal history treats as resets of its own. `App/ExposureReset.h` is untouched: unifying the two
+  temporal history treats as resets of its own. `App/Model/ExposureReset.h` keeps its policy: unifying the two
   events was considered and rejected for M6.2, since `sceneGeneration` bumps on any content change
   and the blend's own exposure correction already absorbs a real exposure reset's discontinuity.
 - **Reversed infinite-far depth**: `Camera::projectionMatrix` maps the near plane to 1 and lets
@@ -301,7 +295,6 @@ sRGB at SDR white; the Viewport maps to backing pixels 1:1 after resize debounce
 previous target during debounce. Detached windows remain SDR. Extended-range presentation is
 under isolated evaluation and is not a production capability. Future scope belongs to the roadmap.
 
-Cross-references: [render graph](decisions/0005-render-graph.md),
-[scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
+Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
 [vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md), and `Shaders/` for
 scene shading, exposure, temporal reconstruction, bloom and the display boundary.

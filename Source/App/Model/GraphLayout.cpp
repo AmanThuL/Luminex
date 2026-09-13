@@ -3,7 +3,7 @@
 /// @brief Implements the stage grouping and placement behind the Render Graph canvas.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/GraphLayout.h"
+#include "App/Model/GraphLayout.h"
 
 #include "Core/Assert.h"
 

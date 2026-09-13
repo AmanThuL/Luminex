@@ -3,7 +3,7 @@
 /// @brief Implements the editor's scene generation counter and camera-cut latch.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/TemporalEditorState.h"
+#include "App/Model/TemporalEditorState.h"
 
 #include "Render/VendorTemporalScaler.h"
 

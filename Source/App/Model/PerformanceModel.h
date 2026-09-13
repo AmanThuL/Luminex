@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/PassTimingHistory.h"
+#include "App/Model/PassTimingHistory.h"
 #include "RHI/RHI.h"
 
 #include <cstdint>

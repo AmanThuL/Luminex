@@ -698,6 +698,58 @@ class IncludeCheckTests(unittest.TestCase):
         self.assertIn("Probe.mm -> Source/Engine/Mid.h -> Source/Engine/Bad.h -> RHI/Include/RHI/Device.h", errors[0])
 
 
+class AppModelBoundaryTests(unittest.TestCase):
+    def test_model_rejects_shell_and_ui_or_backend_headers(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract = json.loads(json.dumps(CONTRACT))
+            contract["units"]["app-model"]["paths"] = ["Source/App/Model"]
+            contract["units"]["app-model"]["targets"] = ["AppModel"]
+            contract["targets"]["AppModel"] = {"deps": ["Core"]}
+            contract["thirdPartyPrefixes"] = {"SDL3/": "libsdl3"}
+            file = "Source/App/Model/Options.cpp"
+            write_tree(root, [
+                "Source/Core/Log.h", "Source/App/Shell.h", file,
+                "ThirdParty/imgui/imgui.h", "ThirdParty/metal-cpp/Metal/Metal.hpp",
+            ])
+            (root / file).write_text(
+                '#include "App/Shell.h"\n#include <imgui.h>\n'
+                '#include <SDL3/SDL.h>\n#include <Metal/Metal.hpp>\n'
+            )
+            contract = modules.load_contract(write_contract(root, contract), root)
+            database = {
+                file: include_entry(root, file),
+                "Source/App/Shell.cpp": include_entry(root, "Source/App/Shell.cpp"),
+            }
+            errors: list[str] = []
+            modules.check_includes([Path(file)], {}, database, contract, [], errors, root)
+            self.assertEqual(sorted(errors), sorted([
+                f"{file}: app-model includes imgui directly",
+                f"{file}: app-model includes libsdl3 directly",
+                f"{file}: app-model includes metal-cpp directly",
+                f"{file}: app-model reaches app-shell via {file} -> Source/App/Shell.h",
+            ]))
+
+    def test_model_rejects_transitive_ui_target_dependencies(self) -> None:
+        contract = {
+            "thirdPartyTargets": ["ImGui"],
+            "targets": {
+                "Core": {"deps": []},
+                "Scene": {"deps": ["Core", "ImGui"]},
+                "AppModel": {"deps": ["Core", "Scene"]},
+            },
+        }
+        targets = {
+            "Core": {"deps": []},
+            "Scene": {"deps": ["Core", "ImGui"]},
+            "AppModel": {"deps": ["Core", "Scene"]},
+            "ImGui": {"deps": []},
+        }
+        errors: list[str] = []
+        modules.check_target_closure(targets, contract, [], errors)
+        self.assertEqual(errors, ["AppModel: depends on ImGui outside its allowed set"])
+
+
 class HardeningTests(unittest.TestCase):
     def test_unreadable_json_is_a_could_not_run_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -959,7 +1011,7 @@ class AllowlistLinkOnlyTests(unittest.TestCase):
 
     def test_unused_header_entry_is_tolerated_because_another_checker_owns_it(self) -> None:
         allowlist = [
-            {"kind": "header", "file": "Source/App/GraphLayout.h", "reason": "r", "until": "R1.2"},
+            {"kind": "header", "file": "Source/App/Model/GraphLayout.h", "reason": "r", "until": "R1.2"},
             {"kind": "target-dep", "target": "TextureBake", "dep": "Render", "reason": "r", "until": "R1.2"},
         ]
         errors: list[str] = []

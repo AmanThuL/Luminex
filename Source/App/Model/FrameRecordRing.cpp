@@ -3,7 +3,7 @@
 /// @brief Implements retention of compiled frame records and their join to retired GPU timings.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/FrameRecordRing.h"
+#include "App/Model/FrameRecordRing.h"
 
 #include <utility>
 

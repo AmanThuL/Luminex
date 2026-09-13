@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/AppOptions.h"
+#include "App/Model/AppOptions.h"
 #include "Render/SceneView.h"
 #include "Scene/SceneLibrary.h"
 
