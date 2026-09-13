@@ -75,6 +75,19 @@ class ContractLoadingTests(unittest.TestCase):
             with self.assertRaisesRegex(modules.ModuleContractError, "Source/App/Options.cpp"):
                 modules.load_contract(write_contract(root, CONTRACT), root)
 
+    def test_forbidden_header_must_exist_so_a_stale_boundary_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for header in ("Source/Core/Missing.h", str(root / "Source/Core/Log.h"),
+                           "Source/Core/./Log.h", "Source//Core/Log.h", "Source/Core/../Core/Log.h",
+                           "Source/App/Options.cpp"):
+                with self.subTest(header=header):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["units"]["app-model"]["forbidHeaders"] = [header]
+                    with self.assertRaisesRegex(modules.ModuleContractError, "must name an existing repository header"):
+                        modules.load_contract(write_contract(root, contract), root)
+
     def test_unknown_unit_reference_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -729,6 +742,44 @@ class AppModelBoundaryTests(unittest.TestCase):
                 f"{file}: app-model includes metal-cpp directly",
                 f"{file}: app-model reaches app-shell via {file} -> Source/App/Shell.h",
             ]))
+
+    def test_model_rejects_builder_directly_and_through_an_allowed_unit(self) -> None:
+        for indirect in (False, True):
+            with self.subTest(indirect=indirect), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                contract = json.loads(json.dumps(CONTRACT))
+                model = contract["units"]["app-model"]
+                model["paths"] = ["Source/App/Model"]
+                model["units"].append("render")
+                model["forbidHeaders"] = ["Source/Render/RenderGraph.h"]
+                contract["units"]["render"] = {
+                    "paths": ["Source/Render"], "targets": ["Render"],
+                    "units": [], "thirdParty": [],
+                }
+                file = "Source/App/Model/GraphModel.cpp"
+                write_tree(root, ["Source/Core/Log.h", file, "Source/Render/RenderGraph.h",
+                                  "Source/Render/Observer.h"])
+                middle = "Render/Observer.h" if indirect else "Render/RenderGraph.h"
+                (root / file).write_text(f'#include "{middle}"\n#include <{middle}>\n')
+                (root / "Source/Render/Observer.h").write_text('#include "Render/RenderGraph.h"\n')
+                contract = modules.load_contract(write_contract(root, contract), root)
+                database = {name: include_entry(root, name) for name in
+                            (file, "Source/Render/Render.cpp")}
+                errors: list[str] = []
+                modules.check_includes([Path(file)], {}, database, contract, [], errors, root)
+                chain = ("Source/Render/Observer.h -> " if indirect else "") + "Source/Render/RenderGraph.h"
+                self.assertEqual(errors, [
+                    f"{file}: app-model reaches forbidden header Source/Render/RenderGraph.h "
+                    f"via {file} -> {chain}",
+                ])
+                # Replacing the builder edge with the record leaf repairs the same include path.
+                leaf = root / "Source/Render/CompiledFrameRecord.h"
+                leaf.write_text("")
+                includer = root / "Source/Render/Observer.h" if indirect else root / file
+                includer.write_text('#include "Render/CompiledFrameRecord.h"\n')
+                errors.clear()
+                modules.check_includes([Path(file)], {}, database, contract, [], errors, root)
+                self.assertEqual(errors, [])
 
     def test_model_rejects_transitive_ui_target_dependencies(self) -> None:
         contract = {

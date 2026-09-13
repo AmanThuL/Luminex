@@ -6,7 +6,6 @@
 #include "App/Model/AppOptions.h"
 
 #include "Render/Temporal.h"
-#include "Render/VendorTemporalScaler.h"
 
 #include <charconv>
 #include <cmath>

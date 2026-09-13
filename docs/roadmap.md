@@ -44,8 +44,10 @@ allowances. [R1.3](milestones/r1.3.md) adds AppModel and shared scene/frame prep
 accepted it into local main on 2026-09-13 with an explicit
 [six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity). That comparison
 remains failed and unexplained; R1.3 is not an integration blocker, and the exception relaxes no
-later slice's validation. R1.4 is next within R1 before the gate B review and keeps its scope; R1
-approves nothing that review owns, and M7.1 follows the review. No GPU-scene or GPU-visibility
+later slice's validation. [R1.4](milestones/r1.4.md) separates the shadow/scene draw stages and
+compiled record; its strict parent/candidate matrix passes without exception. R1.1–R1.4's
+structural prerequisite is complete; interface gate B still needs its own review and approval,
+and M7.1 follows that review. No GPU-scene or GPU-visibility
 path is adopted yet.
 
 ## Project direction and delivery

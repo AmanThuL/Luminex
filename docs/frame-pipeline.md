@@ -13,8 +13,8 @@ dead-pass culling) before any of it reaches the GPU. `execute()` then runs that 
 the RAW, WAR, and WAW barriers each declared cross-pass access conflict justifies.
 
 `App/Model/SceneSession` shares activation, camera, playback, borrowed views and motion between
-the editor and capture loops. `FrameDeclaration` rotates their pool after device slot retirement,
-declares renderer passes and retains the accepted record. The editor appends UI/present, joins
+the editor and capture loops. `Render/FrameDeclaration` rotates their pool after device slot retirement,
+declares renderer passes and returns the accepted record for App's FrameRecordRing to retain. The editor appends UI/present, joins
 retired timings and renders platform windows after present; headless exports the display output
 and waits each frame. Screenshots start at authored time zero; sequences sample frame/60, including
 warmup; editor playback advances one fixed step only after drawable acquisition.
@@ -146,6 +146,11 @@ Shared `AlphaMask` discards texture alpha × factor alpha below cutoff, using th
 scene color/depth/motion/reactive share coverage. Two-sided variants reverse back-face shading
 normals. Opaque shaders and uniforms stay separate; ordinary alpha mips can thin distant foliage.
 
+`Renderer` composes `ShadowStage` and `SceneStage` for the shadow and scene+sky declarations.
+The stages own their opaque/masked pipelines, uniform mirrors, frame-data bindings and draw
+encoding; Renderer keeps targets, frame-wide state, temporal reconstruction, exposure, bloom
+and display orchestration. Stage callbacks borrow frame inputs through graph execution.
+
 ## The render graph
 
 `Source/Render/RenderGraph.h/.cpp` declares raster, compute, copy and external passes over versioned
@@ -160,6 +165,7 @@ run inside labelled RHI scopes; external callbacks open no scope and invoke a ti
 
 RAW, WAR and WAW barrier derivation includes subresources and `ExternalRead`/`ExternalWrite`.
 Persistent imports seed the prior frame's terminal access, ordering reuse across command buffers.
+`CompiledFrameRecord.h` owns the value-only record and debug vocabulary, separate from the builder.
 The `CompiledFrameRecord` retains schedule, culling, barriers, lifetimes and memory assignment;
 `GraphDump.h` prints it deterministically. Scheduling optimization remains limited to dead-pass
 culling and conservative transient pooling.

@@ -39,12 +39,6 @@ ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
 }
 
 //======================================================================================================================
-bool nativeOnlyTemporalView(TemporalDebugView view) {
-    return view == TemporalDebugView::RejectionMask || view == TemporalDebugView::BlendWeight ||
-           view == TemporalDebugView::HistoryAge;
-}
-
-//======================================================================================================================
 float vendorRenderScale(float scale, const rhi::TemporalScalerSupport& support) {
     if (!support.available) {
         return scale;

@@ -22,7 +22,7 @@ TARGET_DUMP_SCRIPT = "Tools/xmake_targets.lua"
 SCHEMA_VERSION = 1
 SOURCE_SUFFIXES = (".h", ".cpp", ".mm")
 COMPILED_SUFFIXES = (".cpp", ".mm")
-UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "thirdParty")
+UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "forbidHeaders", "thirdParty")
 INCLUDE_FLAGS = ("-I", "-isystem", "-iframework")
 INCLUDE_PATTERN = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:"([^"]+)"|<([^>]+)>)', re.MULTILINE)
 THIRD_PARTY_DIR = "ThirdParty"
@@ -102,6 +102,14 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
         for reference in unit["units"]:
             if reference not in units:
                 raise ModuleContractError(f"unit {name} depends on unknown unit {reference}")
+        for header in unit["forbidHeaders"]:
+            relative = Path(header)
+            if (relative.is_absolute() or ".." in relative.parts or relative.as_posix() != header
+                    or relative.suffix != ".h" or not (root / relative).is_file()):
+                raise ModuleContractError(
+                    f"unit {name} forbids {header}, which must name an existing repository header "
+                    "using a canonical relative path"
+                )
         for entry in unit["paths"]:
             if not (root / entry).exists():
                 raise ModuleContractError(f"unit {name} owns {entry}, which does not exist")
@@ -519,6 +527,11 @@ def check_includes(
                     continue
                 chains[reached] = chains[current.as_posix()] + [reached]
                 queue.append(include.path)
+                if reached in row.get("forbidHeaders", []):
+                    errors.append(
+                        f"{text}: {unit} reaches forbidden header {reached} via "
+                        f"{' -> '.join(chains[reached])}"
+                    )
                 if include.unit == unit or include.unit in row["units"] or include.unit in reported:
                     continue
                 if any(reached == name or reached.endswith(f"/{name}") for name in row["headers"]):

@@ -1,6 +1,7 @@
 #include "GpuTestSupport.h"
 
-#include "App/Model/FrameDeclaration.h"
+#include "App/Model/FrameRecordRing.h"
+#include "Render/FrameDeclaration.h"
 
 #include <algorithm>
 #include <array>
@@ -55,9 +56,9 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
             firstSharedFrame = frameId;
         }
         const bool poolingEnabled = index % 2 == 0;
-        lmx::app::FrameDeclaration frame(pool, **shared, commands, camera, view, poolingEnabled);
+        lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, view, poolingEnabled);
         frame.graph().exportTexture(frame.displayColor());
-        frame.execute(records);
+        records.retain(frame.execute());
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
 

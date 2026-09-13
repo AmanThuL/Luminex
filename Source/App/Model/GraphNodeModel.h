@@ -6,7 +6,7 @@
 #pragma once
 #include "App/Model/GraphInspectorModel.h"
 #include "RHI/RHI.h"
-#include "Render/RenderGraph.h"
+#include "Render/CompiledFrameRecord.h"
 
 #include <cstdint>
 #include <optional>

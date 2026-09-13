@@ -1,18 +1,19 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file FrameDeclaration.cpp
-/// @brief Implements shared application frame declaration and accepted-record retention.
+/// @brief Implements shared application frame declaration and accepted-record production.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/FrameDeclaration.h"
+#include "Render/FrameDeclaration.h"
 
 #include "Core/Assert.h"
+#include "Render/Renderer.h"
 
-namespace lmx::app {
+namespace lmx::render {
 
 //======================================================================================================================
-FrameDeclaration::FrameDeclaration(render::TransientPool& pool, render::Renderer& renderer,
-                                   rhi::CommandList& commands, const render::Camera& camera,
-                                   const render::SceneView& view, bool poolingEnabled)
+FrameDeclaration::FrameDeclaration(TransientPool& pool, Renderer& renderer,
+                                   rhi::CommandList& commands, const Camera& camera,
+                                   const SceneView& view, bool poolingEnabled)
     : m_commands(commands), m_frameId(pool.device().frameNumber()), m_graph(pool) {
     pool.beginFrame();
     m_graph.setPoolingEnabled(poolingEnabled);
@@ -20,16 +21,17 @@ FrameDeclaration::FrameDeclaration(render::TransientPool& pool, render::Renderer
 }
 
 //======================================================================================================================
-render::RenderGraph& FrameDeclaration::graph() {
+RenderGraph& FrameDeclaration::graph() {
     LMX_ASSERT(!m_executed, "FrameDeclaration cannot change an executed graph");
     return m_graph;
 }
 
 //======================================================================================================================
-void FrameDeclaration::execute(FrameRecordRing& records) {
+CompiledFrameRecord FrameDeclaration::execute() {
     LMX_ASSERT(!m_executed, "FrameDeclaration executes only once");
-    records.retain(m_graph.execute(m_commands, m_frameId));
+    auto record = m_graph.execute(m_commands, m_frameId);
     m_executed = true;
+    return record;
 }
 
-} // namespace lmx::app
+} // namespace lmx::render

@@ -167,7 +167,8 @@ extra colour attachments) over imported resources and over one-frame transients 
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
-as deterministic text; `SceneView.h` holds the frame input contract; `Renderer` — declares shadow, scene+sky, histogram exposure
+as deterministic text; `CompiledFrameRecord.h` owns the observer contract; `FrameDeclaration` shares graph execution;
+`SceneView.h` owns frame inputs; `Renderer` composes `ShadowStage`/`SceneStage` (pipelines, masked variants, bindings, draws) and declares histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -193,7 +194,7 @@ RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`Scene
 DDS/cubemap/IBL uploads, environment rig, labs, initial camera, playback and previous transforms;
 six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
-shared SceneSession and FrameDeclaration; Tests compiles only its own C++ sources; no SDL/ImGui/Metal) →
+shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/RenderGraph dependency) →
 `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
@@ -216,8 +217,7 @@ vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measu
 selection-scoped details pane, deterministic layout stable across unchanged frames, and
 session-only dragged positions; editor and capture loops share session playback/views/motion and
 frame declaration/record retention, keeping their own waits, UI sink and presentation scheduling).
-`Render/DisplayDomain.h` names
-the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
+`Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared

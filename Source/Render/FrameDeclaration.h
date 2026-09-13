@@ -1,17 +1,22 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file FrameDeclaration.h
-/// @brief Declares one application frame's shared graph construction and record retention.
+/// @brief Declares one application frame's shared graph construction and execution.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 
-#include "App/Model/FrameRecordRing.h"
 #include "Render/RenderGraph.h"
-#include "Render/Renderer.h"
 
 #include <cstdint>
 
-namespace lmx::app {
+namespace lmx::render {
+
+/// Camera borrowed by frame declaration.
+class Camera;
+/// Renderer composing the frame's draw and processing stages.
+class Renderer;
+/// Frame inputs borrowed until graph execution finishes.
+struct SceneView;
 
 /// One declared frame, with a caller-chosen sink and one accepted compiled record.
 ///
@@ -23,14 +28,13 @@ namespace lmx::app {
 ///
 /// This object never begins or ends a device frame, joins timings, waits, or presents. The caller
 /// appends its UI and present sink, or exports displayColor for headless readback, then executes
-/// once. Pool rotation, renderer declarations, and record retention are common to both paths.
+/// once. Pool rotation, renderer declarations, and execution are common to both paths.
 class FrameDeclaration {
 public:
     /// Rotates the retired transient slot, applies pooling policy, and declares renderer passes.
     /// The renderer, commands, camera, and view are borrowed until execute finishes.
-    FrameDeclaration(render::TransientPool& pool, render::Renderer& renderer,
-                     rhi::CommandList& commands, const render::Camera& camera,
-                     const render::SceneView& view, bool poolingEnabled);
+    FrameDeclaration(TransientPool& pool, Renderer& renderer, rhi::CommandList& commands,
+                     const Camera& camera, const SceneView& view, bool poolingEnabled);
 
     /// Frames cannot duplicate graph declarations or their single execution boundary.
     FrameDeclaration(const FrameDeclaration&) = delete;
@@ -38,21 +42,21 @@ public:
     FrameDeclaration& operator=(const FrameDeclaration&) = delete;
 
     /// The graph to append application passes and sinks to; asserts after execution.
-    render::RenderGraph& graph();
+    RenderGraph& graph();
 
     /// The final display-transformed image, to sample for UI or export for readback.
-    render::GraphTexture displayColor() const { return m_displayColor; }
+    GraphTexture displayColor() const { return m_displayColor; }
 
-    /// Executes exactly once and retains the accepted record under this device frame's number.
+    /// Executes exactly once and returns the accepted record under this device frame's number.
     /// Graph validation failure is programmer error; motion commit remains the caller's boundary.
-    void execute(FrameRecordRing& records);
+    CompiledFrameRecord execute();
 
 private:
     rhi::CommandList& m_commands;
     uint64_t m_frameId;
-    render::RenderGraph m_graph;
-    render::GraphTexture m_displayColor;
+    RenderGraph m_graph;
+    GraphTexture m_displayColor;
     bool m_executed = false;
 };
 
-} // namespace lmx::app
+} // namespace lmx::render

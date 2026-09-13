@@ -9,7 +9,9 @@
 #include "Render/DisplayDomain.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
+#include "Render/SceneStage.h"
 #include "Render/SceneView.h"
+#include "Render/ShadowStage.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TemporalResolve.h"
@@ -23,32 +25,10 @@
 
 namespace lmx::render {
 
-/// The light's view-projection and the same matrix with the NDC -> texcoord map baked in, which is
-/// what ScenePass.slang hands to CalcShadowFactor.
-struct ShadowMatrices {
-    glm::mat4 viewProj;        ///< World-to-light clip transform.
-    glm::mat4 shadowTransform; ///< World-to-shadow-texture transform.
-};
-
-/// For a right-handed camera and Metal's [0,1] clip depth, put the light at -2r along its own
-/// direction, look at the sphere's centre, and fit an
-/// orthographic frustum to the sphere exactly (extents +/-r, near r, far 3r).
-///
-/// Depth is reversed, like the camera's: the near plane maps to 1 and the far plane to 0, so the
-/// surface nearest the light holds the larger value. Everything downstream is built on that --
-/// the shadow pass clears to 0 and keeps what compares Greater, and the comparison sampler is
-/// GreaterEqual.
-///
-/// A free function because it is pure arithmetic on the scene's bounds -- unit-testable without a
-/// device, which is where its coverage lives (Tests/RenderTests.cpp).
-///
-/// `lightDir` is the direction the rays travel and need not be normalised. A direction parallel to
-/// world up is handled rather than producing NaNs because the editor can reach it.
-ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& lightDir);
-
-/// Capture tooling, not part of rendering: publishes the four uniform-block layouts this file
-/// uploads (name, slot, size, every field's offset and type) to rhi::debug::CaptureSchema, so the
-/// capture sidecar can name the bytes a .gputrace holds instead of leaving them a hex dump.
+/// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
+/// (including masked variants) (name, slot, size, every field's offset and type) to
+/// rhi::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds instead
+/// of leaving them a hex dump.
 ///
 /// Free-standing and idempotent -- re-registering a struct replaces it -- because the layouts
 /// describe the *shaders*, not any one Renderer: Renderer::create calls it, and a caller with no
@@ -199,21 +179,8 @@ private:
     // Non-copyable and non-movable (TransientPool's own contract), so it is constructed in place
     // above rather than assigned.
     TransientPool m_transientPool;
-    std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
-    // ScenePassAuto.slang: byte-for-byte ScenePass.slang except the final multiply reads the
-    // persistent exposure buffer instead of PassUniforms.preExposure (spec 9). A separate library
-    // and pipeline -- not a runtime branch in one shader -- because a branch that is never taken
-    // still gives the compiler a different fragment to schedule around: an M5 parity check failed
-    // by one rounding bit in one pixel the one time this shared a file with the manual path. See
-    // ScenePassAuto.slang's header for the full reasoning.
-    std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
-    std::array<std::unique_ptr<rhi::ShaderLibrary>, 2> m_maskSceneLibraries;
-    std::unique_ptr<rhi::ShaderLibrary> m_maskShadowLibrary;
-    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 16> m_maskScenePipelines;
-    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 2> m_maskShadowPipelines;
-    std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_skyAutoLibrary; // SkyAuto.slang; same reasoning as above
+    std::unique_ptr<ShadowStage> m_shadowStage;
+    std::unique_ptr<SceneStage> m_sceneStage;
     std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_histogramLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_exposureResolveLibrary;
@@ -221,24 +188,7 @@ private:
     std::unique_ptr<rhi::ShaderLibrary> m_bloomThresholdLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomDownsampleLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_bloomUpsampleLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAuto;
-    std::unique_ptr<rhi::GraphicsPipeline> m_shadowPipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAuto;
     std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
-    // The motion twins of the six pipelines above: the same entry points' motion variants, compiled
-    // against a second colour attachment in kMotionFormat. A temporal frame binds these instead,
-    // which is what leaves the pipelines above -- and so the picture a temporal-off frame produces
-    // -- exactly as they were.
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAutoMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAutoMotion;
     std::unique_ptr<rhi::ComputePipeline> m_histogramPipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureResolvePipeline;
     std::unique_ptr<rhi::ComputePipeline> m_exposureSeedPipeline;

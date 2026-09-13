@@ -6,13 +6,14 @@
 #include "App/Screenshot.h"
 
 #include "App/Model/CaptureMetadata.h"
-#include "App/Model/FrameDeclaration.h"
+#include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "Asset/BmpImage.h"
 #include "Asset/PngImage.h"
 #include "Core/Log.h"
 #include "RHI/RHI.h"
+#include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
@@ -177,10 +178,10 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         view.temporal.renderScale = renderScale;
 
         rhi::CommandList& commands = (*device)->beginFrame();
-        FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
-                                  /*poolingEnabled=*/true);
+        render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
+                                          /*poolingEnabled=*/true);
         declared.graph().exportTexture(declared.displayColor());
-        declared.execute(frameRecords);
+        frameRecords.retain(declared.execute());
         (*device)->endFrame(nullptr);
 
         // readback() has no synchronization; wait until the GPU releases the shared target, and

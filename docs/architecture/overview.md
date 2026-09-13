@@ -53,8 +53,12 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
   heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
-  record as deterministic text. Render also owns camera temporal history and the GPU-resident
-  motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
+  record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract,
+  independently of the builder. `Renderer` composes `ShadowStage` and `SceneStage`, which own
+  opaque/masked pipelines, per-object bindings and draw encoding; SceneStage draws sky last in
+  the same scene pass. `Render/FrameDeclaration` shares graph construction and execution across
+  application loops and returns the accepted record for App-side retention. Render also owns
+  camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
   when `SceneView::temporal.enabled` is set. The `TemporalResolve` reconstruction stage (ADR 0014)
@@ -115,12 +119,13 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
 - **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
   options, capture metadata, selection, workspace schema, actions, performance/graph models,
   timing history, frame-record retention, dynamic-resolution policy and temporal/exposure state.
-  The module checker keeps it free of ImGui, SDL and Metal headers. Tests compiles its own C++
-  sources only. The shared scene session borrows an active scene, owns its camera, prepares
+  The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
+  its own C++ sources only. The shared scene session borrows an active scene, owns its camera, prepares
   playback and borrowed views, and resets/commits motion. Activation resets editor motion but
-  preserves headless loader state, matching each path's first-frame contract. Shared frame declaration begins the
-  transient pool after device slot retirement, declares renderer passes and retains the accepted
-  graph record. Each caller appends its own output sink and owns scheduling and GPU waits.
+  preserves headless loader state, matching each path's first-frame contract. Graph models and
+  FrameRecordRing include the compiled record rather than the builder. Each application loop uses
+  Render's shared frame declaration, retains its accepted record, appends its own output sink and
+  owns scheduling and GPU waits.
 - **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the five
   panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and

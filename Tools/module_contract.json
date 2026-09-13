@@ -155,6 +155,9 @@
       ],
       "thirdParty": [
         "glm"
+      ],
+      "forbidHeaders": [
+        "Source/Render/RenderGraph.h"
       ]
     },
     "app-shell": {

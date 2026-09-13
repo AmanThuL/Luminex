@@ -137,4 +137,7 @@ glm::vec2 clipToMotionUv(const glm::vec4& clip);
 /// frame and the previous one. A consumer fetches history at `uv - motion`.
 glm::vec2 motionBetween(const glm::vec4& clipCurrent, const glm::vec4& clipPrevious);
 
+/// True for debug views that require the native accumulation kernel's internal state.
+bool nativeOnlyTemporalView(TemporalDebugView view);
+
 } // namespace lmx::render

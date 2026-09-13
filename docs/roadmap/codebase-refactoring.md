@@ -21,7 +21,7 @@ both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, a
 at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
 added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
 shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
-accepted into local main with the exception recorded below. R1.4 is next, with its scope unchanged.
+accepted into local main with the exception recorded below. [R1.4](../milestones/r1.4.md) completes the structural prerequisite with strict parity passed; gate B still needs its own review.
 
 ## Target module contract
 

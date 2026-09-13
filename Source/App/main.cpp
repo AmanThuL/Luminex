@@ -5,7 +5,6 @@
 
 #include "App/EditorShell.h"
 #include "App/Model/AppOptions.h"
-#include "App/Model/FrameDeclaration.h"
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
@@ -14,6 +13,7 @@
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 #include "RHI/RHI.h"
+#include "Render/FrameDeclaration.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
 #include "Scene/SceneLibrary.h"
@@ -309,8 +309,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // loop lives entirely on the GPU timeline.
         view.exposureReset = shell->consumeExposureReset();
 
-        lmx::app::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(), view,
-                                         shell->poolingEnabled());
+        lmx::render::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(),
+                                            view, shell->poolingEnabled());
         lmx::render::RenderGraph& graph = frame.graph();
         const lmx::render::GraphTexture displayColor = frame.displayColor();
         const lmx::render::GraphTexture drawable =
@@ -339,7 +339,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // Retaining the record it answers with is what lets an observer describe a frame that has
         // already been submitted: the timings of a frame are readable only once it retires, several
         // frames after the declarations that explain them are gone.
-        frame.execute(frameRecords);
+        frameRecords.retain(frame.execute());
         // The frame's declarations are committed now that execute() has accepted them: the next
         // frame's motion is measured from here. A frame skipped for a missing drawable reaches
         // neither this nor advanceFrameAnimation() above.

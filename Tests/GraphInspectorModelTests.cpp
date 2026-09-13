@@ -128,8 +128,8 @@ TEST_CASE("the model preserves declaration order and the proved schedule", "[app
 }
 
 //======================================================================================================================
-// Culling has two distinct reasons (RenderGraph.h's CullReason), and a dump-equivalent observer has
-// to tell them apart rather than flattening both to "not scheduled".
+// Culling has two distinct reasons (CompiledFrameRecord.h's CullReason), and a dump-equivalent
+// observer has to tell them apart rather than flattening both to "not scheduled".
 TEST_CASE("culled rows carry their reason, and scheduled ones carry none", "[app]") {
     FakeTexture color{64};
     FakeTexture displayed{64};

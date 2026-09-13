@@ -10,8 +10,8 @@ order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
 
 ## Units
 
-`Paths` names the unit's directory and its build target. App model logic remains in a
-[transitional file list](#transitional-file-lists) until its own directory and target are created.
+`Paths` names the unit's directory and its build target. App model logic owns its Model directory
+and AppModel static target.
 
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
@@ -21,9 +21,9 @@ order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
 | `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
 | `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
-| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and passes, plus the frame input contract in its own leaf header | `core`, `rhi-public` | glm |
+| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts | `core`, `rhi-public` | glm |
 | `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata, scene session and frame declaration | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
 | `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
@@ -44,9 +44,11 @@ link checks own; it is not an include edge and does not widen this row.
 ### Directory ownership
 
 Asset, Scene and AppModel own their directories and static targets; Engine is retired.
-`Source/App/Model` owns the shared editor models, scene session and frame declaration; everything
+`Source/App/Model` owns the shared editor models and scene session; everything
 else under `Source/App`, including Panels, EditorShell, Screenshot and main.cpp, belongs to App.
 App and Tests link AppModel. Tests compiles only its own C++ sources, alongside test shaders.
+Render owns shared FrameDeclaration graph execution; App retains its returned record. AppModel
+must not include RenderGraph.h directly or transitively; graph observers use CompiledFrameRecord.h.
 
 ## Ownership precedence
 
@@ -107,6 +109,8 @@ The rules above are checked as include edges:
 - The vendored `ImGui` and `ImGuiNodeEditor` xmake targets build third-party packages, not units.
   Ownership reconciliation skips them, and a unit that links one still needs the package in its
   third-party set.
+- `forbidHeaders` names exact repository-relative headers a unit must never reach, including
+  through an otherwise allowed unit. The checker reports the include chain and rejects stale paths.
 - Project reach is transitive. A unit reaches every unit its includes reach, at any depth, so an
   `app-model` header cannot borrow ImGui by including a shell header that includes it.
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
