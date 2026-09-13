@@ -1,0 +1,353 @@
+{
+  "schemaVersion": 1,
+  "roots": [
+    "Source",
+    "RHI",
+    "Tests",
+    "Tools/TextureBake",
+    "Benchmarks"
+  ],
+  "thirdPartyTargets": [
+    "ImGui",
+    "ImGuiNodeEditor"
+  ],
+  "budgets": {
+    "production": 1000,
+    "tests": 1500
+  },
+  "units": {
+    "core": {
+      "paths": [
+        "Source/Core"
+      ],
+      "targets": [
+        "Core"
+      ],
+      "units": [],
+      "thirdParty": [
+        "spdlog",
+        "glm"
+      ]
+    },
+    "rhi-public": {
+      "paths": [
+        "RHI/Include"
+      ],
+      "targets": [
+        "RHI"
+      ],
+      "units": [],
+      "thirdParty": []
+    },
+    "rhi-impl": {
+      "paths": [
+        "RHI/Source"
+      ],
+      "targets": [
+        "RHI"
+      ],
+      "units": [
+        "core",
+        "rhi-public"
+      ],
+      "thirdParty": []
+    },
+    "metal4-backend": {
+      "paths": [
+        "RHI/Backends/Metal4/Source"
+      ],
+      "targets": [
+        "RHI"
+      ],
+      "units": [
+        "core",
+        "rhi-public"
+      ],
+      "thirdParty": [
+        "metal-cpp"
+      ]
+    },
+    "imgui-adapter": {
+      "paths": [
+        "RHI/Backends/Metal4/ImGui"
+      ],
+      "targets": [
+        "RHIMetal4ImGui"
+      ],
+      "units": [
+        "core",
+        "rhi-public",
+        "metal4-backend"
+      ],
+      "thirdParty": [
+        "metal-cpp",
+        "imgui"
+      ],
+      "note": "R1.1 moves Metal4ImGui.cpp and ImGuiBackendContract.cpp out of RHI/Backends/Metal4/Source"
+    },
+    "asset": {
+      "paths": [
+        "Source/Engine/Asset.h",
+        "Source/Engine/Color.h",
+        "Source/Engine/DdsLoader.h",
+        "Source/Engine/DdsLoader.cpp",
+        "Source/Engine/GeometryGenerator.h",
+        "Source/Engine/GeometryGenerator.cpp",
+        "Source/Engine/GltfLoader.h",
+        "Source/Engine/GltfLoader.cpp",
+        "Source/Engine/HdrEnvironment.h",
+        "Source/Engine/HdrEnvironment.cpp",
+        "Source/Engine/Ibl.h",
+        "Source/Engine/Ibl.cpp",
+        "Source/Engine/PngImage.h",
+        "Source/Engine/PngImage.cpp",
+        "Source/Engine/SceneAnimation.h",
+        "Source/Engine/SceneAnimation.cpp",
+        "Source/Engine/TextureBake.h",
+        "Source/Engine/TextureBake.cpp"
+      ],
+      "targets": [
+        "Engine"
+      ],
+      "units": [
+        "core"
+      ],
+      "headers": [
+        "RHI/Format.h"
+      ],
+      "thirdParty": [
+        "glm",
+        "cgltf",
+        "stb"
+      ],
+      "note": "R1.2 moves these files to Source/Asset and the Asset target"
+    },
+    "render": {
+      "paths": [
+        "Source/Render"
+      ],
+      "targets": [
+        "Render"
+      ],
+      "units": [
+        "core",
+        "rhi-public"
+      ],
+      "thirdParty": [
+        "glm"
+      ]
+    },
+    "scene": {
+      "paths": [
+        "Source/Engine/MaterialLab.cpp",
+        "Source/Engine/SanMiguel.cpp",
+        "Source/Engine/Scene.cpp",
+        "Source/Engine/Scene.h",
+        "Source/Engine/SceneEnvironment.cpp",
+        "Source/Engine/SceneEnvironment.h",
+        "Source/Engine/SceneLibrary.cpp",
+        "Source/Engine/SceneLibrary.h",
+        "Source/Engine/TemporalLab.cpp"
+      ],
+      "targets": [
+        "Engine"
+      ],
+      "units": [
+        "core",
+        "rhi-public",
+        "asset",
+        "render"
+      ],
+      "thirdParty": [
+        "glm"
+      ],
+      "note": "R1.2 moves these files to Source/Scene and the Scene target"
+    },
+    "app-model": {
+      "paths": [
+        "Source/App/AppOptions.cpp",
+        "Source/App/AppOptions.h",
+        "Source/App/CaptureMetadata.cpp",
+        "Source/App/CaptureMetadata.h",
+        "Source/App/DirectionalLightRole.h",
+        "Source/App/DynamicResolution.cpp",
+        "Source/App/DynamicResolution.h",
+        "Source/App/EditorActions.cpp",
+        "Source/App/EditorActions.h",
+        "Source/App/EditorRenderSettings.h",
+        "Source/App/EditorSelection.cpp",
+        "Source/App/EditorSelection.h",
+        "Source/App/ExposureReset.cpp",
+        "Source/App/ExposureReset.h",
+        "Source/App/FrameRecordRing.cpp",
+        "Source/App/FrameRecordRing.h",
+        "Source/App/GraphInspectorModel.cpp",
+        "Source/App/GraphInspectorModel.h",
+        "Source/App/GraphLayout.cpp",
+        "Source/App/GraphLayout.h",
+        "Source/App/GraphNodeModel.cpp",
+        "Source/App/GraphNodeModel.h",
+        "Source/App/PassTimingHistory.cpp",
+        "Source/App/PassTimingHistory.h",
+        "Source/App/PerformanceModel.cpp",
+        "Source/App/PerformanceModel.h",
+        "Source/App/TemporalEditorState.cpp",
+        "Source/App/TemporalEditorState.h",
+        "Source/App/WorkspaceModel.cpp",
+        "Source/App/WorkspaceModel.h"
+      ],
+      "targets": [
+        "App"
+      ],
+      "units": [
+        "core",
+        "rhi-public",
+        "asset",
+        "scene",
+        "render"
+      ],
+      "thirdParty": [
+        "glm"
+      ],
+      "note": "R1.3 moves these files to Source/App/Model and the AppModel target"
+    },
+    "app-shell": {
+      "paths": [
+        "Source/App"
+      ],
+      "targets": [
+        "App"
+      ],
+      "units": [
+        "core",
+        "rhi-public",
+        "rhi-impl",
+        "metal4-backend",
+        "imgui-adapter",
+        "asset",
+        "render",
+        "scene",
+        "app-model"
+      ],
+      "thirdParty": [
+        "glm",
+        "imgui",
+        "imgui-node-editor",
+        "libsdl3"
+      ]
+    },
+    "tests": {
+      "paths": [
+        "Tests"
+      ],
+      "targets": [
+        "Tests"
+      ],
+      "units": [
+        "core",
+        "rhi-public",
+        "render",
+        "asset",
+        "scene",
+        "app-model"
+      ],
+      "thirdParty": [
+        "glm",
+        "catch2"
+      ]
+    },
+    "texture-bake": {
+      "paths": [
+        "Tools/TextureBake"
+      ],
+      "targets": [
+        "TextureBake"
+      ],
+      "units": [
+        "core",
+        "asset"
+      ],
+      "thirdParty": [
+        "glm",
+        "stb"
+      ]
+    },
+    "benchmarks": {
+      "paths": [
+        "Benchmarks"
+      ],
+      "targets": [
+        "FrameDataBench"
+      ],
+      "units": [
+        "core",
+        "rhi-public"
+      ],
+      "thirdParty": [
+        "glm"
+      ]
+    }
+  },
+  "targets": {
+    "Core": {
+      "deps": []
+    },
+    "RHI": {
+      "deps": [
+        "Core"
+      ]
+    },
+    "RHIMetal4ImGui": {
+      "deps": [
+        "Core",
+        "RHI",
+        "ImGui"
+      ]
+    },
+    "Render": {
+      "deps": [
+        "Core",
+        "RHI"
+      ]
+    },
+    "Engine": {
+      "deps": [
+        "Core",
+        "RHI",
+        "Render"
+      ]
+    },
+    "App": {
+      "deps": [
+        "Core",
+        "RHI",
+        "RHIMetal4ImGui",
+        "Render",
+        "Engine",
+        "ImGui",
+        "ImGuiNodeEditor"
+      ]
+    },
+    "Tests": {
+      "deps": [
+        "Core",
+        "RHI",
+        "Render",
+        "Engine"
+      ]
+    },
+    "TextureBake": {
+      "deps": [
+        "Core",
+        "Asset"
+      ],
+      "frameworks": []
+    },
+    "FrameDataBench": {
+      "deps": [
+        "Core",
+        "RHI"
+      ]
+    }
+  }
+}
