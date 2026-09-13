@@ -10,45 +10,18 @@ review that admits [M7.1](gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundati
 review reads the restructured tree; R1 prepares the review and approves nothing gate B owns.
 Shared delivery rules stay in the roadmap entry.
 
-The [foundation spec](../specs/2026-08-07-luminex-upgrade-design.md) assigned Core logging, assertions,
-time and platform utilities; only logging, assertions and one alignment helper arrived. Later helpers
-settled at first use, while `Renderer`, `RenderGraph`, the editor shell and tests grew into large units.
-Restructuring before M7 adds GPU scene data, identities and visibility keeps those changes focused.
-
 ## Observed structure before R1.1
 
-The inventory below motivated R1. [R1.1](../milestones/r1.1.md) added enforcement and moved the adapter;
-[R1.2](../milestones/r1.2.md) separated Asset/Scene and shared leaf contracts; [R1.3](../milestones/r1.3.md)
-adds AppModel and a shared session, accepted with the parity exception below. R1.4 is next.
-The original targets were `Core → RHI → Render → Engine → App`, plus Tests, TextureBake and FrameDataBench:
-
-| Module | Files | Observation |
-|---|---|---|
-| `Source/Core` | 4 | `Log`, `Assert`, `alignUp`. spdlog is a public dependency of every target |
-| `RHI/` | 46 | Own build description, public headers compiled standalone, backend private: the clearest boundary. The two ImGui adapter sources sit in the backend directory but belong to another target |
-| `Source/Render` | 26 | `Renderer.cpp` is about 2,000 lines with a 900-line `declarePasses`; `RenderGraph.cpp` about 1,950 with a 450-line transition derivation; `Renderer.h` carries the frame input contract and the orchestrator together and is included by 19 files |
-| `Source/Engine` | 27 | Two layers in one: decoding, baking, IBL and clip data need no GPU; scenes, catalog and labs own GPU meshes and textures. `Scene.h` includes `Render/Renderer.h`, which is why Engine sits above Render |
-| `Source/App` | 45 | 14 pure source files that Tests compile from an explicit list; `main.cpp`'s 300-line loop and `Screenshot.cpp`'s 180-line loop repeat device, renderer, scene and playback setup |
-| `Tests/` | 63 | Flat; `RenderGraphTests.cpp` and `GpuTemporalTests.cpp` exceed 3,000 lines each |
-
-Consequences of the missing standard:
-
-- `srgbToLinear` exists twice (`Engine/Color.h`, `Render/ColorTransfer.h`) because Render cannot
-  include Engine. Two `alignUp` functions carry different contracts: Core's requires a power-of-two
-  alignment, `RenderGraph.cpp`'s accepts any alignment and treats zero as a no-op. `divRoundUp` is
-  defined in `Renderer.cpp` and `TemporalResolve.cpp`. JSON string escaping exists three times
-  (`CaptureSchema`, `CaptureMetadata`, `TextureBake`); repository asset discovery four times
-  (`Scene.cpp`, `SceneLibrary.cpp`, `MaterialLab.cpp`, `SanMiguel.cpp`). Every file writer has its
-  own error contract, and only `CaptureSchema` writes atomically.
-- `render::AlphaMode` lives in Render because the glTF loader must name it; `Ibl.h` and
-  `DdsLoader.h` mix CPU generation with `rhi::Device` upload; the BMP encoder lives in App while
-  PNG lives in Engine; `cameraFromScene` is declared by the editor shell and used by the headless
-  capture path and two panels.
-- `TextureBake`, a CPU tool, links Render, the RHI and the Metal backend to reach the decoders.
-- Tests and App compile the same App sources separately, and nothing checks that those files stay
-  free of ImGui, SDL and Metal.
-- Only RHI public headers are compiled standalone. Dependency direction is described in the
-  [architecture overview](../architecture/overview.md) and enforced nowhere.
+The inventory that motivated R1 is recorded in
+[ADR 0020](../decisions/0020-module-layering-and-units.md) and the milestone records: five targets
+in a chain, `Core → RHI → Render → Engine → App`, Engine holding CPU decoding and GPU scenes together,
+`TextureBake` linking Metal to reach the decoders, `Renderer.cpp` and `RenderGraph.cpp` near 2,000
+lines each with `Renderer.h` carrying the frame input contract, fourteen App sources compiled by
+both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, and helpers settled
+at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
+added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
+shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
+accepted into local main with the exception recorded below. R1.4 is next, with its scope unchanged.
 
 ## Target module contract
 
@@ -83,6 +56,10 @@ Placement rules the convention states and the checker approximates:
 - Vocabulary shared by a producer and a consumer lives in the lower of the two units in its own
   leaf header, never inside the orchestrator that consumes it.
 - Tests link libraries, never loose sources. Every project header compiles standalone.
+- Headers stay beside their unit's sources; there is no repository-wide include directory. Moving
+  a header does not make it public: build exposure and the dependency rules decide visibility, and
+  the checker enforces them. A unit takes a module-local `Include/` and `Source/` split, as the
+  RHI has, only when independent consumption or distribution warrants it.
 - `Engine` is retired: Asset and Scene name what each half was. A new ADR records the layering,
   the names, the namespace renames and the descriptor-header decision.
 
@@ -126,9 +103,10 @@ and every output kept in the slice's evidence bundle outside the source tree.
   reproducible from a recorded substitution; formatting and policy green at every commit.
   Performance is not a claim of R1.
 
-**Recorded exception:** on 2026-09-13 the owner accepted R1.3 for local main despite its
-[six unresolved hashes at the eight-round cap](../milestones/r1.3.md#unresolved-image-parity).
-Parity remains failed with no established cause; this exception does not change later slices' protocol.
+**Recorded exception:** on 2026-09-13 the owner accepted R1.3 into local main with an explicit
+exception for its [six unresolved hashes at the eight-round cap](../milestones/r1.3.md#unresolved-image-parity).
+R1.3's image parity remains failed and unexplained; R1.3 is not an outstanding integration blocker.
+The exception relaxes nothing for later slices: each meets the full protocol above.
 
 **Sequence:** R1.1 → R1.2 → R1.3 → R1.4; each R1.5 item may follow R1.1. Each slice has a plan; only one is active.
 
@@ -139,9 +117,10 @@ links neither Render nor a Metal framework; the architecture overview, frame wal
 directory table and `AGENTS.md` describe the new layout; the protocol held except for R1.3 as recorded above.
 
 **Defer:** any new rendering feature, shader change or RHI capability; GPU-scene identity and
-tables (M7.1 owns them); a second backend or publishing the RHI standalone; a shared cross-domain
-error type; a logging facade or precompiled headers without a compile-time measurement; an entity
-system or general scene database; changing the build system, test framework or frames in flight.
+tables (M7.1 owns them); a second backend or publishing the RHI standalone; a repository-wide
+include directory; a shared cross-domain error type; a logging facade or precompiled headers without
+a compile-time measurement; an entity system or general scene database; changing the build system,
+test framework or frames in flight.
 
 ## R1.1 — Module contract and enforcement
 
@@ -264,7 +243,7 @@ as the composition root and pass labels, order, uniform layouts and transients u
 checkpoint A is unchanged; the App model library no longer includes `RenderGraph.h`.
 
 **Defer:** exposure, bloom and display stage extraction and graph implementation splits (R1.5);
-any change to pass order or content.
+any change to pass order or content; any shader change, which waits for the candidate below.
 
 ## R1.5 — Optional consolidation and decomposition
 
@@ -282,15 +261,25 @@ Not a gate B prerequisite; each item is accepted on its own plan under the proto
   `TemporalResolve.cpp` (native, upscale and vendor declaration units); tests `RenderGraphTests`,
   `GpuTemporalTests`, `RHIValidateTests`, the scene tests and `GpuRendererTests`, keeping tags and
   the checkpoint A filter.
+- Header visibility: the module contract names each unit's private headers and the checker rejects
+  an include of one from another unit, so visibility is a checked property of the contract, not of
+  location. Candidates: the shell and panel headers and the Render and Scene headers no other unit uses.
 - Build description: the setup task and rules move to `xmake/*.lua` includes; each unit owns a
-  `xmake.lua` the root includes, like `RHI/xmake.lua`; test-oracle shaders under `Shaders/Tests/`
-  and shared modules under `Shaders/Modules/`, with the rule's dependency glob widened, import
-  search paths passed to the compiler and basename collisions rejected.
+  `xmake.lua` the root includes, like `RHI/xmake.lua`.
+- Shader structure: test-oracle shaders move under `Shaders/Tests/` and shared modules under
+  `Shaders/Modules/`, with the rule's dependency glob widened, import search paths passed to the
+  compiler and basename collisions rejected; an import check beside the module checker holds the Slang
+  dependency rule — entry points and modules import modules only, production never imports a test
+  oracle — and fails on any other edge; and the shader-style convention records the twin rule the
+  variant files carry in comments today: which files are twins, the one difference each pair keeps,
+  and that every other edit is mirrored. This item moves and documents; it deduplicates nothing.
 
-Build items need their own evidence: a clean build; an incremental rebuild after editing an
-imported shader module rebuilds every importer; runtime shader output paths unchanged; the
-runtime-MSL fallback still loads with metallibs absent; App model sources compile once; Tests
-relink after a library change; each target's dependency closure matches the contract.
+Build and shader items need their own evidence: a clean build; each shader's generated MSL
+identical to the parent commit's once `#line` directives are dropped, since those carry the paths
+a move changes; the metallib inventory unchanged; an incremental rebuild after editing an imported
+shader module rebuilds every importer; runtime shader output paths unchanged; the runtime-MSL
+fallback still loads with metallibs absent; App model sources compile once; Tests relink after a
+library change; each target's dependency closure matches the contract.
 
 ## Later refactoring milestones
 
@@ -298,3 +287,14 @@ No further R identifiers are reserved. When a planned rendering slice would cros
 layering or grow a unit past a review budget, the owner opens the next R milestone here with its
 own outcome and gates rather than widening the allowlist. Visible candidates: RHI extraction once
 a second backend exists, and a logging facade if compile-time measurement justifies it.
+
+**Shader source deduplication** is a candidate that opens only after
+[M7.1](gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) settles the binding model, so the
+shared code it extracts is the code M7 keeps. It starts with the `ScenePass` family and explores
+thin entry-point files over one shared implementation module with compile-time choices for exposure
+source and alpha coverage, while every compiled pipeline stays separate: the runtime-branch
+regression behind the twin files justifies separate pipelines, not whole-file duplication forever.
+A bounded experiment on an `exp/` branch compares each variant's generated MSL, reflected resource
+layout and rendered output under the strict parity matrix against the parent before any abstraction
+is adopted. `TemporalResolve` and `TemporalUpscale` are not merged for overlap alone: each keeps its
+kernel, and only a helper with one contract moves into `TemporalCommon`.

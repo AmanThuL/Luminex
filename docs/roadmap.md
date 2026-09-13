@@ -41,10 +41,12 @@ belongs to the [architecture](architecture/overview.md) and [frame walkthrough](
 checks, with an explicit migration allowlist.
 [R1.2](milestones/r1.2.md) separates CPU Asset from GPU Scene and clears their migration
 allowances. [R1.3](milestones/r1.3.md) adds AppModel and shared scene/frame preparation; the owner
-accepted it on 2026-09-13 with a [six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity).
-The strict comparison remains failed and its cause unresolved. R1.4 is next within R1 before the
-gate B review; R1 approves nothing that review owns, and M7.1 follows the review. No GPU-scene or
-GPU-visibility path is adopted yet.
+accepted it into local main on 2026-09-13 with an explicit
+[six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity). That comparison
+remains failed and unexplained; R1.3 is not an integration blocker, and the exception relaxes no
+later slice's validation. R1.4 is next within R1 before the gate B review and keeps its scope; R1
+approves nothing that review owns, and M7.1 follows the review. No GPU-scene or GPU-visibility
+path is adopted yet.
 
 ## Project direction and delivery
 
