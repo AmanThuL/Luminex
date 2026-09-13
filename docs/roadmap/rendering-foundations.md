@@ -252,4 +252,3 @@ validate any correction before making performance or repeatability claims. Neith
 cause nor an authorized reference-image change is implied. Interface gate B remains required.
 
 **Defer:** An adopted EDR path when evidence is insufficient; platform output never changes upstream scene or temporal semantics.
-
