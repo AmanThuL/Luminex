@@ -104,11 +104,12 @@ The rules above are checked as include edges:
   takes the directory name — imgui, imgui-node-editor, metal-cpp. The rule covers subdirectories, so
   `imgui/backends` headers such as `imgui_impl_sdl3.h` and `imgui_impl_metal4.h` are imgui, and the
   Metal, MetalFX, QuartzCore and Foundation headers, which resolve under `ThirdParty/metal-cpp`, are
-  metal-cpp. A quoted include that resolves to no project file is resolved the same way. A header
-  whose resolved path falls under no package or `ThirdParty` root — or that resolves nowhere at
-  all — falls back to the contract's `thirdPartyPrefixes` table, keyed by include-spec prefix;
-  today that covers only `SDL3/` → libsdl3, because Homebrew installs SDL3 under
-  `/opt/homebrew/include` rather than an xrepo package directory.
+  metal-cpp. A quoted include that resolves to no project file is resolved the same way. For an
+  angle include only, a resolved path under no package or `ThirdParty` root — or one that resolves
+  nowhere at all — falls back to the contract's `thirdPartyPrefixes` table, keyed by include-spec
+  prefix; today that covers only `SDL3/` → libsdl3, because Homebrew installs SDL3 under
+  `/opt/homebrew/include` rather than an xrepo package directory. A quoted include never takes this
+  fallback: an unresolved quoted spec is a system include, not a third-party edge.
 - The vendored `ImGui` and `ImGuiNodeEditor` xmake targets build third-party packages, not units.
   Ownership reconciliation skips them, and a unit that links one still needs the package in its
   third-party set.
@@ -129,15 +130,20 @@ weakest one is deliberately last:
 1. **Include layer.** The header allowance admits format and descriptor headers only, so
    `rhi::Device`, `rhi::Texture` and `rhi::Buffer` are not nameable from `asset`. This is the
    layer that actually holds the boundary.
-2. **Link layer.** `TextureBake` links `core` and `asset` and neither the RHI target nor a Metal
-   framework, so an accidental dependency on RHI code fails the link rather than the review.
-3. **Archive layer.** The `asset` archive has no undefined `lmx::rhi` references. On its own this
-   proves little: the RHI's API is virtual interfaces, so a caller reaches it through a vtable
-   without leaving an undefined symbol behind, and today's transitional archive already shows none
-   while its sources still name RHI types. The check sees non-virtual RHI symbols only and is a
-   backstop under the first two layers, never a substitute for them; for a static-library target it
-   inspects the archive's own object files and passes vacuously if none reference the forbidden
-   symbols, whether or not the target actually depends on the framework it is checked against.
+2. **Framework layer.** `check_link`'s `frameworks` entry checks a target's own linked frameworks
+   (`otool -L`) against its allowed set — today only `TextureBake`'s empty set, so it may link
+   neither the RHI target's frameworks nor Metal. This check is vacuous for a static-library
+   target: a static archive links nothing at build time, so it names no framework regardless of
+   what its sources reference; it only proves something for an executable or shared target like
+   `TextureBake`.
+3. **Archive layer.** A `forbidUndefined` entry checks a target's built archive or binary for
+   undefined symbols (`nm -u`) starting with a forbidden prefix — the layer a static library like
+   `asset` needs, since the framework layer cannot see it. No contract target declares
+   `forbidUndefined` yet, so this check runs on nothing today; R1.2 adds `Asset`'s entry once the
+   target exists. On its own it would prove little even then: the RHI's API is virtual interfaces,
+   so a caller reaches it through a vtable without leaving an undefined symbol behind. It would see
+   non-virtual RHI symbols only and be a backstop under the include and framework layers, never a
+   substitute for them.
 
 ## Review budgets
 
