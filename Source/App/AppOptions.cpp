@@ -71,6 +71,17 @@ std::string_view temporalViewName(render::TemporalDebugView view) {
 } // namespace
 
 //======================================================================================================================
+std::string_view captureFormatName(CaptureFormat format) {
+    switch (format) {
+    case CaptureFormat::Png:
+        return "png";
+    case CaptureFormat::Bmp:
+        return "bmp";
+    }
+    return "unknown";
+}
+
+//======================================================================================================================
 render::ReconstructionMode temporalReconstructionMode(TemporalMode mode) {
     switch (mode) {
     case TemporalMode::Raw:
@@ -90,6 +101,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     std::string_view captureSequencePath;
     uint32_t warmup = 0;
     bool warmupSpecified = false;
+    CaptureFormat captureFormat = CaptureFormat::Png;
+    bool captureFormatSpecified = false;
     std::string_view sceneName = engine::sceneIdString(engine::defaultSceneId());
     bool maximized = true;
     uint32_t frames = 1;
@@ -104,7 +117,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         }
         if (argument == "--screenshot") {
             if (++i >= arguments.size()) {
-                return fail("--screenshot needs an output path: App --screenshot <out.bmp>");
+                return fail(
+                    "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
             }
             screenshotPath = arguments[i];
         } else if (argument == "--capture-sequence") {
@@ -112,6 +126,19 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--capture-sequence needs a non-empty output directory");
             }
             captureSequencePath = arguments[i];
+        } else if (argument == "--capture-format") {
+            if (++i >= arguments.size()) {
+                return fail("--capture-format needs one of png|bmp");
+            }
+            if (arguments[i] == "png") {
+                captureFormat = CaptureFormat::Png;
+            } else if (arguments[i] == "bmp") {
+                captureFormat = CaptureFormat::Bmp;
+            } else {
+                return fail("--capture-format needs one of png|bmp, got '" +
+                            std::string(arguments[i]) + "'");
+            }
+            captureFormatSpecified = true;
         } else if (argument == "--warmup") {
             if (++i >= arguments.size()) {
                 return fail("--warmup needs a non-negative frame count");
@@ -205,10 +232,11 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         } else {
             return fail(
                 "unknown argument '" + std::string(argument) +
-                "'; usage: App [--screenshot <out.bmp>] [--scene <" + sceneIdList("|") +
+                "'; usage: App [--screenshot <out.png|out.bmp>] [--scene <" + sceneIdList("|") +
                 ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
-                "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N>] "
+                "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
+                "--capture-format <png|bmp>] "
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
                 "after W unsaved warmup frames)");
         }
@@ -216,6 +244,16 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
 
     if (!captureSequencePath.empty() && !screenshotPath.empty()) {
         return fail("--capture-sequence conflicts with --screenshot");
+    }
+    if (!screenshotPath.empty()) {
+        const auto extension = std::filesystem::path(screenshotPath).extension();
+        if (extension != ".png" && extension != ".bmp") {
+            return fail("--screenshot accepts .png or .bmp output paths, got '" +
+                        std::string(screenshotPath) + "'");
+        }
+    }
+    if (captureFormatSpecified && captureSequencePath.empty()) {
+        return fail("--capture-format requires --capture-sequence");
     }
     if (warmupSpecified && captureSequencePath.empty()) {
         return fail("--warmup requires --capture-sequence");
@@ -254,6 +292,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.maximized = maximized;
     options.frames = frames;
     options.warmup = warmup;
+    options.captureFormat = captureFormat;
     options.captureSequencePath = captureSequencePath;
     options.temporal = temporal;
     options.temporalView = temporalView;

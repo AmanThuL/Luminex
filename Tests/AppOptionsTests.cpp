@@ -102,7 +102,7 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
 
     REQUIRE_FALSE(screenshotResult);
     REQUIRE(screenshotResult.error().message ==
-            "--screenshot needs an output path: App --screenshot <out.bmp>");
+            "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
     REQUIRE_FALSE(sceneResult);
     REQUIRE(sceneResult.error().message ==
             "--scene needs an ID: App --scene "
@@ -116,11 +116,12 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
 
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
-            "unknown argument '--unknown'; usage: App [--screenshot <out.bmp>] [--scene "
+            "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
             "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel>] [--windowed] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
-            "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N>] "
+            "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
+            "--capture-format <png|bmp>] "
             "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
             "after W unsaved warmup frames)");
 }
@@ -508,4 +509,50 @@ TEST_CASE("capture options reject conflicting output and invalid warmup", "[app]
     REQUIRE(result);
     REQUIRE(result->warmup == 0);
     REQUIRE(result->frames == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("screenshot extension declares its container", "[app][options]") {
+    for (std::string_view filename : {"out.png", "out.bmp"}) {
+        const std::array arguments = {std::string_view{"--screenshot"}, filename};
+        const auto result = parseAppOptions(arguments);
+        REQUIRE(result);
+        REQUIRE(result->screenshotPath == filename);
+    }
+    for (std::string_view filename : {"out.tga", "out", "out.jpeg"}) {
+        const std::array arguments = {std::string_view{"--screenshot"}, filename};
+        const auto result = parseAppOptions(arguments);
+        REQUIRE_FALSE(result);
+        REQUIRE(result.error().message.contains(".png"));
+        REQUIRE(result.error().message.contains(".bmp"));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("sequence container defaults to PNG and accepts an explicit BMP override",
+          "[app][options]") {
+    const std::array defaults = {std::string_view{"--capture-sequence"}, std::string_view{"seq"}};
+    const auto defaultResult = parseAppOptions(defaults);
+    REQUIRE(defaultResult);
+    REQUIRE(defaultResult->captureFormat == CaptureFormat::Png);
+    for (std::string_view format : {"png", "bmp"}) {
+        const std::array arguments = {std::string_view{"--capture-sequence"},
+                                      std::string_view{"seq"}, std::string_view{"--capture-format"},
+                                      format};
+        const auto result = parseAppOptions(arguments);
+        REQUIRE(result);
+        REQUIRE(captureFormatName(result->captureFormat) == format);
+    }
+    for (const auto& arguments : std::vector<std::vector<std::string_view>>{
+             {"--capture-sequence", "seq", "--capture-format"},
+             {"--capture-sequence", "seq", "--capture-format", "tga"},
+             {"--capture-format", "png"}}) {
+        REQUIRE_FALSE(parseAppOptions(arguments));
+    }
+    const std::array repeated = {std::string_view{"--capture-sequence"}, std::string_view{"seq"},
+                                 std::string_view{"--capture-format"},   std::string_view{"bmp"},
+                                 std::string_view{"--capture-format"},   std::string_view{"png"}};
+    const auto result = parseAppOptions(repeated);
+    REQUIRE(result);
+    REQUIRE(result->captureFormat == CaptureFormat::Png);
 }

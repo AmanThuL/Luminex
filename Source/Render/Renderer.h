@@ -7,6 +7,7 @@
 #include "RHI/RHI.h"
 #include "Render/AlphaMode.h"
 #include "Render/Camera.h"
+#include "Render/DisplayDomain.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
@@ -285,7 +286,10 @@ void registerUniformLayoutsForCapture();
 /// The scene renders in half float because that is what holds radiance above 1.0; the display
 /// target is the 8-bit surface the viewport, the swapchain, and the screenshot all expect.
 constexpr rhi::Format kSceneColorFormat = rhi::Format::RGBA16Float;
-constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm; ///< Display-encoded target format.
+/// Eight-bit BGRA storage of kSdrDisplayDomain; UNORM stores its already-encoded sRGB bytes.
+constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm;
+static_assert(kDisplayFormat == rhi::Format::BGRA8Unorm && kSdrDisplayDomain.bitsPerChannel == 8,
+              "display storage must match the named domain's channel precision");
 
 /// Floats in the persistent exposure buffer: `{ applied, previous }`. `applied` is what the scene
 /// pass multiplies by this frame; `previous` is what it multiplied by on the previous declared
@@ -336,6 +340,9 @@ public:
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     /// Barriered to ShaderRead when render() returned with barrierForSampling == true.
     rhi::Texture& colorTarget();
+
+    /// Colour domain of colorTarget(), shared by presentation, capture and diagnostics.
+    constexpr DisplayDomain displayDomain() const { return kSdrDisplayDomain; }
 
     /// The scene-linear, pre-exposed image the display transform consumed, in kSceneColorFormat.
     /// Exposed for tests that need to read radiance rather than the picture made of it; the frame

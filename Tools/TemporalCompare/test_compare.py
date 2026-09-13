@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from PIL import Image
+from PIL import Image, PngImagePlugin
 import compare
 
 
@@ -50,6 +50,91 @@ class ComparisonTests(unittest.TestCase):
         data = json.loads((self.root / "comparison.json").read_text())
         self.assertEqual(data["baseline"], "taa")
         self.assertEqual(len(data["frames"][0]["hashes"]["raw"]["png"]), 64)
+
+    def upgrade(self, mode, container="png"):
+        path = self.root / mode / "manifest.json"
+        data = json.loads(path.read_text())
+        data.pop("colorSpace")
+        data.update(schemaVersion=2, container=container, ui={"composited": False},
+                    display={"view": "sdr", "transfer": "srgb", "primaries": "bt709",
+                             "toneMap": "pbr-neutral", "referenceWhite": 1.0, "peakWhite": 1.0,
+                             "bitsPerChannel": 8, "opaque": True})
+        original = path.parent / data["frames"][0]["file"]
+        filename = "saved-image." + container
+        metadata = PngImagePlugin.PngInfo()
+        metadata.add_text("lmx:display", json.dumps(data["display"]))
+        metadata.add_text("lmx:frame", '{"scene":"test"}')
+        with Image.open(original) as img:
+            img.save(path.parent / filename, pnginfo=metadata)
+        data["frames"][0]["file"] = filename
+        path.write_text(json.dumps(data))
+        return path.parent / filename
+
+    def test_v2_png_report_preserves_capture_bytes_and_text(self):
+        for mode in compare.MODES:
+            self.upgrade(mode)
+        png = self.root / "raw/saved-image.png"
+        before = png.read_bytes()
+        compare.build_report(self.root)
+        compare.build_report(self.root)
+        self.assertEqual(before, png.read_bytes())
+        with Image.open(png) as img:
+            self.assertEqual(json.loads(img.info["lmx:display"])["view"], "sdr")
+            self.assertIn("lmx:frame", img.info)
+        data = json.loads((self.root / "comparison.json").read_text())
+        self.assertEqual(data["settings"]["display"]["transfer"], "srgb")
+        self.assertEqual(data["frames"][0]["images"]["raw"], "raw/saved-image.png")
+        self.assertEqual(data["frames"][0]["hashes"]["raw"], {"png": compare.sha256(png)})
+
+    def test_mixed_v1_bmp_v2_bmp_and_v2_png_report(self):
+        self.upgrade("taa", "bmp")
+        self.upgrade("metalfx", "png")
+        compare.build_report(self.root)
+        data = json.loads((self.root / "comparison.json").read_text())
+        self.assertIn("bmp", data["frames"][0]["hashes"]["taa"])
+        self.assertIn("png", data["frames"][0]["hashes"]["metalfx"])
+
+    def test_v2_refuses_view_transfer_and_domain_mismatch(self):
+        for mode in compare.MODES:
+            self.upgrade(mode)
+        for field, invalid in (("view", "edr"), ("transfer", "linear")):
+            self.mutate(lambda d: d["display"].update({field: invalid}))
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, "view=.*transfer="):
+                compare.validate_manifests(self.root)
+            self.mutate(lambda d: d["display"].update(view="sdr", transfer="srgb"))
+        self.mutate(lambda d: d["display"].update(primaries="bt2020"))
+        with self.assertRaisesRegex(ValueError, "display domain differs"):
+            compare.validate_manifests(self.root)
+
+    def test_v2_refuses_container_and_ui_mismatch(self):
+        self.upgrade("metalfx")
+        self.mutate(lambda d: d.update(container="bmp"))
+        with self.assertRaisesRegex(ValueError, "container"):
+            compare.validate_manifests(self.root)
+        self.mutate(lambda d: d.update(container="png", ui={"composited": True}))
+        with self.assertRaisesRegex(ValueError, "composited UI"):
+            compare.validate_manifests(self.root)
+
+    def test_refuses_reusing_one_image_for_distinct_frames(self):
+        for schema_version in (1, 2):
+            with self.subTest(schema_version=schema_version):
+                for mode in compare.MODES:
+                    if schema_version == 2:
+                        self.upgrade(mode)
+                    path = self.root / mode / "manifest.json"
+                    data = json.loads(path.read_text())
+                    data["frameCount"] = 2
+                    second = dict(data["frames"][0], ordinal=1, simulationFrame=3,
+                                  timeSeconds=3 / 60, jitterIndex=3)
+                    data["frames"] = [data["frames"][0], second]
+                    path.write_text(json.dumps(data))
+                with self.assertRaisesRegex(ValueError, "duplicate frame filename"):
+                    compare.validate_manifests(self.root)
+
+    def test_refuses_frame_paths_outside_capture(self):
+        self.mutate(lambda d: d["frames"][0].update(file="../taa/frame-000000.bmp"))
+        with self.assertRaisesRegex(ValueError, "invalid frame filename"):
+            compare.validate_manifests(self.root)
 
     def test_rejects_fallback_even_if_images_exist(self):
         self.mutate(lambda d: d["frames"][0].update(effectiveMode="taa", fallback=2))

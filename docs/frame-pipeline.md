@@ -94,7 +94,8 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 ├─ 10. lmx.pass.display     fullscreen triangle: Load the resolved colour (Raw reads raw scene
 │       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
 │       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Tonemap.slang, shared with the
-│       debug view) → sRGB encode → display color (BGRA8Unorm) — the only pass that encodes sRGB
+│       debug view) → sRGB encode → display color (BGRA8Unorm), described by
+│       Render/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
 │
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
 │       carries no storage-write usage under this RHI. Declared against the display pass's own
@@ -104,8 +105,9 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       BlendWeight (grey = weight kept), HistoryAge (grey = age / warmup)
 │
 ├─ 11. lmx.pass.ui          → swapchain drawable
-│       Dear ImGui (docked editor shell); the Viewport window samples the display color texture;
-│       App declares this pass itself and reads the display pass's output to join it
+│       Dear ImGui: display-referred sRGB, straight-alpha blending in encoded space, SDR white;
+│       the Viewport samples display color at 1:1 backing pixels once resize settles. App
+│       declares this pass and reads the display output to join it; detached windows stay SDR.
 │
 └─ graph.execute(commands) → endFrame → present (or endFrame(nullptr) for the offscreen
      --screenshot / test path, which stops at lmx.pass.display and reads that target back)
@@ -284,14 +286,19 @@ glTF assets disable their dropdown entries with setup guidance; an unavailable e
 exits with an error instead of falling back.
 
 `--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
-60 Hz, with camera/settings/status metadata. The [offline comparison guide](guides/temporal-comparison.md)
+60 Hz as PNG by default (`--capture-format bmp` preserves BMP), with camera/settings/status
+metadata. Manifest v2 names the display domain, container and absence of UI. PNG carries sRGB,
+gAMA and cHRM plus `lmx:display` and `lmx:frame` text; screenshots select PNG/BMP by extension. The [offline comparison guide](guides/temporal-comparison.md)
 covers synchronized reports and optional LDR-FLIP differences against Native TAA, not ground truth.
 
 ## Known limits
 
 PCSS retains its view/NDC blocker-search mismatch. IBL rebuilds on scene load; direct lighting
 remains single-scatter. Baked-DDS selection keys on image index rather than colour/data role.
-Sponza startup is synchronous, and Metal is the only backend. Future scope belongs to the roadmap.
+Sponza startup is synchronous, and Metal is the only backend. UI blends straight alpha in encoded
+sRGB at SDR white; the Viewport maps to backing pixels 1:1 after resize debounce, stretching the
+previous target during debounce. Detached windows remain SDR. Extended-range presentation is
+under isolated evaluation and is not a production capability. Future scope belongs to the roadmap.
 
 Cross-references: [render graph](decisions/0005-render-graph.md),
 [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),

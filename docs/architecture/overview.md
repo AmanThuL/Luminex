@@ -145,9 +145,12 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   Reconstruction offers Raw, Native TAA and the capability's algorithm name, with effective-mode,
   fallback and vendor-reset status. Native TAA remains the default; `--temporal metalfx` requests
   the vendor path. Native-only diagnostic entries are disabled while the effective mode is vendor.
-  `--capture-sequence <directory> --frames N --warmup W` writes N numbered BMPs after W unsaved
+  `--capture-sequence <directory> --frames N --warmup W` writes N numbered PNGs (or `--capture-format bmp`) after W unsaved
   frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
-  Vendor fallback fails a sequence. The offline [comparison workflow](../guides/temporal-comparison.md)
+  Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR
+  BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
+  metadata. Engine `PngImage` writes deterministic colour-tagged PNGs; manifest v2 records the
+  display domain, container and UI absence. The offline [comparison workflow](../guides/temporal-comparison.md)
   synchronizes Raw/Native/MetalFX reports and optional CPU LDR-FLIP on final sRGB images; Native TAA
   is the comparison baseline, not ground truth. Neither FLIP nor its Python dependencies enter App.
 

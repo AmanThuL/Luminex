@@ -93,7 +93,7 @@ Damaged Helmet or the diagnostic material lab scene from the Scene panel, or ren
 without a window:
 
 ```bash
-xmake run App --scene damaged-helmet --screenshot helmet.bmp
+xmake run App --scene damaged-helmet --screenshot helmet.png
 ```
 
 Use `--temporal metalfx` to select MetalFX in the editor or an offscreen run; add

@@ -314,6 +314,21 @@ void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& sett
 }
 
 //======================================================================================================================
+void drawDisplaySection(const InspectorPanelContext& context) {
+    ImGui::SeparatorText("Display");
+    ImGui::TextWrapped("%s", render::describe(context.renderer.displayDomain()).c_str());
+    ImGui::TextWrapped("UI: encoded sRGB, straight alpha, SDR white");
+    const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
+    ImGui::Text("Framebuffer scale: %.2f x %.2f", scale.x, scale.y);
+    ImGui::Text("Display target: %u x %u px", context.renderer.width(), context.renderer.height());
+    const bool identity = context.viewportWidth == context.renderer.width() &&
+                          context.viewportHeight == context.renderer.height();
+    ImGui::Text("Viewport image: %s", !context.viewportVisible ? "not visible"
+                                      : identity               ? "1:1 backing pixels"
+                                                               : "resizing (stretched)");
+}
+
+//======================================================================================================================
 void drawDirectionalLightSection(engine::Scene& scene, size_t index) {
     render::DirectionalLight& light = scene.lights[index];
     ImGui::Text("Role: %.*s", static_cast<int>(directionalLightRoleLabel(index).size()),
@@ -388,6 +403,7 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             drawRenderingSection(context.renderer, context.settings, context.exposureContext,
                                  context.exposureResetPending, context.scene, context.temporalState,
                                  context.dynamicResolutionState, context.temporalSupport);
+            drawDisplaySection(context);
             break;
         case EditorSubject::DirectionalLight:
             ImGui::SeparatorText("Directional Light");

@@ -4,7 +4,10 @@ The runner captures Raw, Native TAA/TAAU and MetalFX at identical simulation fra
 jitter indices and fixed render extents. The scene's deterministic camera rail supplies the motion;
 without a rail, the camera stays at its initial pose. Default output is 1280×720 with 32 unsaved
 warmup frames followed by 120 saved frames at 60 Hz. `--scale` controls the common input scale.
-Every capture stores its camera/settings/status manifest. A fallback, scale clamp, incomplete run or
+Every capture stores its camera/settings/status manifest. New captures default to PNG with display
+and frame metadata; `--capture-format bmp` requests legacy BMP files. The report accepts manifest
+version 1 (`sRGB LDR`) and version 2 (an SDR/sRGB display domain); PNG input bytes and metadata
+are preserved when rebuilding a report. A fallback, scale clamp, incomplete run or
 misaligned frame refuses the report instead of silently comparing different conditions.
 
 Use an isolated environment (Python 3.11 or 3.12):
@@ -25,7 +28,7 @@ images, with frame selection and a shared nearest-neighbour crop at 1:1, 2×, 4�
 overview to move the crop. Browser/display scaling may affect physical display pixels; 1:1 means one
 source pixel per CSS pixel. The same crop magnification applies to all three columns.
 
-The output directory must be new or empty. All BMPs, PNGs, capture logs, frame manifests, executable
+The output directory must be new or empty. All original captures, derived PNGs, capture logs, frame manifests, executable
 and shader SHA-256 hashes and exact launch commands are retained. San Miguel runs also retain the
 fetched asset's provenance and license metadata. To regenerate only the report:
 

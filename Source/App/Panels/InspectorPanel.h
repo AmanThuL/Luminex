@@ -28,7 +28,7 @@ inline constexpr const char* kInspectorPanelWindowName = "Inspector";
 struct InspectorPanelContext {
     EditorSelection selection;  ///< The resolved subject to draw; `None` shows the empty state.
     render::Camera& camera;     ///< The fly camera; angles are presented in degrees.
-    render::Renderer& renderer; ///< Borrowed for the scene target's clear color only.
+    render::Renderer& renderer; ///< Borrowed for clear color and read-only display status.
     engine::Scene& scene;       ///< The active scene, whose lights and objects are edited in place.
     EditorRenderSettings& settings;        ///< Editor-owned render knobs.
     ExposureResetContext& exposureContext; ///< What `shouldResetExposure` last compared against.
@@ -43,7 +43,10 @@ struct InspectorPanelContext {
     /// applyDynamicResolution() is what advances it, once per buildUI.
     const DynamicResolutionState& dynamicResolutionState;
     const rhi::TemporalScalerSupport&
-        temporalSupport; ///< Fixed device capability and display name.
+        temporalSupport;          ///< Fixed device capability and display name.
+    uint32_t viewportWidth = 0;   ///< Measured image backing width in pixels.
+    uint32_t viewportHeight = 0;  ///< Measured image backing height in pixels.
+    bool viewportVisible = false; ///< Whether the image was measured this frame.
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

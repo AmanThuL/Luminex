@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "source": "docs/milestones/m6.4.md#initial-adapter-parity-and-vendor-baselines",
+  "provenance": {
+    "device": "Apple M3 Max",
+    "macOS": "26.5.2",
+    "xcode": "26.6",
+    "buildMode": "release",
+    "width": 1280,
+    "height": 720,
+    "frames": 32,
+    "container": "bmp",
+    "camera": "fixed initial scene camera",
+    "environment": {
+      "MTL_DEBUG_LAYER": "1",
+      "LMX_SCREENSHOT_NO_BLOOM": "unset"
+    }
+  },
+  "evidenceLimit": "These are the initial adapter hashes, not a newly captured masked-material baseline. The later real-scene extension records within-version drift on Sponza and Damaged Helmet, including non-byte-identical batches; the cause remains unproven. A failed hash is evidence to investigate, never permission to replace the reference or loosen its check.",
+  "images": [
+    {
+      "name": "sponza-off",
+      "scene": "sponza",
+      "temporal": "off",
+      "renderScale": 1.0,
+      "sha256": "eac4b6d1e3478e4c84bd43e2415f71718c9870157c344154c223545b74bc28d1"
+    },
+    {
+      "name": "sponza-taa-1",
+      "scene": "sponza",
+      "temporal": "taa",
+      "renderScale": 1.0,
+      "sha256": "99f1232b04c3cc0ed8a8c1a4edfa491c78fcc1c100eac3ce75f9531d7e56c4d8"
+    },
+    {
+      "name": "sponza-taa-0.5",
+      "scene": "sponza",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "28740b86e4a4fea7f38005383ec9da974f8db0383a57702c3ffcde26bc4292d1"
+    },
+    {
+      "name": "damaged-helmet-off",
+      "scene": "damaged-helmet",
+      "temporal": "off",
+      "renderScale": 1.0,
+      "sha256": "05263c25be5f53e43c57eb74eec73e41d31f87c04a6b077ea205c6f2229f9219"
+    },
+    {
+      "name": "damaged-helmet-taa-1",
+      "scene": "damaged-helmet",
+      "temporal": "taa",
+      "renderScale": 1.0,
+      "sha256": "f82515f2b5fe43320d9cf1685e80e725dbce34c9f99b34ffb203ae1370801bc9"
+    },
+    {
+      "name": "damaged-helmet-taa-0.5",
+      "scene": "damaged-helmet",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "46c520d3cd2f3cf0991f9312b64619303138933be4c3da652e13c33dc963288f"
+    },
+    {
+      "name": "material-lab-off",
+      "scene": "material-lab",
+      "temporal": "off",
+      "renderScale": 1.0,
+      "sha256": "37287f61e17d099cc4076e662ce54032f45e3d727d00d757800c3ddd3b988960"
+    },
+    {
+      "name": "material-lab-taa-1",
+      "scene": "material-lab",
+      "temporal": "taa",
+      "renderScale": 1.0,
+      "sha256": "ddbcd5cfdbb3f2e75a32d4de63dabca610b19dcfc1ebd1692b227a9d5ed18a72"
+    },
+    {
+      "name": "material-lab-taa-0.5",
+      "scene": "material-lab",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "be9eaa09b7db59dcccdae55e2c4e728b2fcff0e6996298df3a2bcca969fd9347"
+    },
+    {
+      "name": "sponza-vendor-1",
+      "scene": "sponza",
+      "temporal": "metalfx",
+      "renderScale": 1.0,
+      "sha256": "8191b647e06bdeecd0d42c391718eb9a445b53f8e5c22ffddc7719e35e64060e"
+    },
+    {
+      "name": "sponza-vendor-0.5",
+      "scene": "sponza",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "8763a45404c40f9a10f04cb5861156f34c677c318ded9ea32546a6b56974b92c"
+    },
+    {
+      "name": "damaged-helmet-vendor-1",
+      "scene": "damaged-helmet",
+      "temporal": "metalfx",
+      "renderScale": 1.0,
+      "sha256": "43f2e77a46d478618fb2af5e7becb45e92d222f1ce69b53350c1cb6c8eab8bab"
+    },
+    {
+      "name": "damaged-helmet-vendor-0.5",
+      "scene": "damaged-helmet",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "f98ce89d2afa44046a10967d361c9e2e4d550e544c1e5b659691a26de2a67ebf"
+    },
+    {
+      "name": "material-lab-vendor-1",
+      "scene": "material-lab",
+      "temporal": "metalfx",
+      "renderScale": 1.0,
+      "sha256": "b8d6d1619fd5675b7f91d7185a13939939a40751df0a6ecfee63eda9cdfc0ec1"
+    },
+    {
+      "name": "material-lab-vendor-0.5",
+      "scene": "material-lab",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "61aff50cf919604c521eda66ba9fe1f7064308b26adee34c8219fd595d4af08e"
+    }
+  ]
+}

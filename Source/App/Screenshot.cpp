@@ -5,8 +5,10 @@
 
 #include "App/Screenshot.h"
 
+#include "App/CaptureMetadata.h"
 #include "App/EditorShell.h"
 #include "Core/Log.h"
+#include "Engine/PngImage.h"
 #include "Engine/Scene.h"
 #include "Engine/SceneAnimation.h"
 #include "Engine/SceneLibrary.h"
@@ -14,13 +16,12 @@
 #include "Render/Renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,31 @@ bool writeBmp(const std::filesystem::path& path, const std::vector<uint8_t>& bgr
 }
 
 //======================================================================================================================
+bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint8_t>& bgra,
+                       const render::DisplayDomain& display, std::string frameMetadata) {
+    if (path.extension() == ".bmp") {
+        return writeBmp(path, bgra, kScreenshotWidth, kScreenshotHeight);
+    }
+    if (path.extension() != ".png") {
+        LMX_LOG_ERROR("capture accepts .png or .bmp output paths: {}", path.string());
+        return false;
+    }
+    std::vector<uint8_t> rgba = bgra;
+    for (size_t pixel = 0; pixel < rgba.size(); pixel += 4) {
+        std::swap(rgba[pixel], rgba[pixel + 2]);
+    }
+    const std::array<engine::PngTextChunk, 2> text = {
+        engine::PngTextChunk{"lmx:display", render::toJson(display)},
+        engine::PngTextChunk{"lmx:frame", std::move(frameMetadata)}};
+    const auto written = engine::writePng(path, rgba, kScreenshotWidth, kScreenshotHeight, text);
+    if (!written) {
+        LMX_LOG_ERROR("capture: {}", written.error().message);
+        return false;
+    }
+    return true;
+}
+
+//======================================================================================================================
 // A flat readback is a scene-independent liveness failure without imposing a golden image.
 bool isFlatImage(const std::vector<uint8_t>& bgra) {
     if (bgra.size() < 4) {
@@ -113,98 +139,17 @@ bool isFlatImage(const std::vector<uint8_t>& bgra) {
 }
 
 //======================================================================================================================
-std::string jsonString(std::string_view value) {
-    std::string result = "\"";
-    for (const unsigned char c : value) {
-        if (c == '"' || c == '\\') {
-            result += '\\';
-            result += static_cast<char>(c);
-        } else if (c < 32) {
-            result += std::format("\\u{:04x}", c);
-        } else {
-            result += static_cast<char>(c);
-        }
-    }
-    return result + "\"";
-}
-
-//======================================================================================================================
-std::string_view captureModeName(TemporalMode mode) {
-    switch (mode) {
-    case TemporalMode::Off:
-        return "off";
-    case TemporalMode::Raw:
-        return "raw";
-    case TemporalMode::Taa:
-        return "taa";
-    case TemporalMode::Vendor:
-        return "metalfx";
-    }
-    return "unknown";
-}
-
-//======================================================================================================================
-bool writeManifest(const AppOptions& options, std::string_view device, bool cameraTrack,
+bool writeManifest(const AppOptions& options, std::string_view device,
+                   const render::DisplayDomain& display, bool cameraTrack,
                    const std::vector<std::string>& records, bool complete,
                    std::string_view failure = {}) {
     std::ofstream file(options.captureSequencePath / "manifest.json", std::ios::trunc);
     if (!file)
         return false;
-    file << std::setprecision(17)
-         << "{\n\"schemaVersion\":1,\"complete\":" << (complete ? "true" : "false")
-         << ",\"scene\":" << jsonString(engine::sceneIdString(options.initialScene))
-         << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
-         << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
-         << ",\"width\":" << kScreenshotWidth << ",\"height\":" << kScreenshotHeight
-         << ",\"fps\":60,\"warmup\":" << options.warmup << ",\"frameCount\":" << options.frames
-         << ",\"renderScale\":" << options.renderScale
-         << ",\"debugView\":" << static_cast<int>(options.temporalView)
-         << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
-         << ",\"colorSpace\":\"sRGB LDR\",\"dynamicResolution\":false,\"frames\":[\n";
-    for (size_t i = 0; i < records.size(); ++i) {
-        if (i != 0)
-            file << ",\n";
-        file << records[i];
-    }
-    file << "\n]}\n";
+    file << captureManifestJson(options, device, display, kScreenshotWidth, kScreenshotHeight,
+                                cameraTrack, records, complete, failure);
     file.close();
     return static_cast<bool>(file);
-}
-
-//======================================================================================================================
-std::string captureRecord(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
-                          const render::SceneView& view, const render::TemporalStatus& status,
-                          std::string_view filename, TemporalMode requested) {
-    std::ostringstream out;
-    out << std::setprecision(17) << "{\"ordinal\":" << ordinal << ",\"simulationFrame\":" << frame
-        << ",\"timeSeconds\":" << static_cast<double>(frame) / engine::kAnimationBakeRate
-        << ",\"file\":" << jsonString(filename) << ",\"camera\":{\"position\":["
-        << camera.position.x << ',' << camera.position.y << ',' << camera.position.z
-        << "],\"yaw\":" << camera.yaw << ",\"pitch\":" << camera.pitch
-        << ",\"fovY\":" << camera.fovY << ",\"nearZ\":" << camera.nearZ
-        << ",\"farZ\":" << camera.farZ << "}"
-        << ",\"effectiveMode\":"
-        << jsonString(requested == TemporalMode::Off ? "off"
-                      : status.reconstruction == render::ReconstructionMode::VendorTemporal
-                          ? "metalfx"
-                      : status.reconstruction == render::ReconstructionMode::NativeTaa ? "taa"
-                                                                                       : "raw")
-        << ",\"fallback\":" << static_cast<int>(status.vendorFallback)
-        << ",\"vendorName\":" << jsonString(status.vendorName)
-        << ",\"renderWidth\":" << status.extents.renderWidth
-        << ",\"renderHeight\":" << status.extents.renderHeight
-        << ",\"effectiveScale\":" << status.renderScale << ",\"jitterIndex\":" << status.jitterIndex
-        << ",\"jitterEnabled\":" << (view.temporal.jitterEnabled ? "true" : "false")
-        << ",\"historyAge\":" << status.historyAge
-        << ",\"lastResetReason\":" << jsonString(render::historyResetReasonName(status.lastReset))
-        << ",\"lastResetFrame\":" << status.lastResetFrame
-        << ",\"vendorReset\":" << (status.vendorReset ? "true" : "false")
-        << ",\"exposureEv\":" << view.exposureEv
-        << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")
-        << ",\"bloom\":" << (view.bloomEnabled ? "true" : "false")
-        << ",\"bloomThreshold\":" << view.bloomThreshold
-        << ",\"bloomIntensity\":" << view.bloomIntensity << ",\"shadowFilter\":\"pcf\"}";
-    return out.str();
 }
 
 //======================================================================================================================
@@ -259,8 +204,8 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
     const bool hasAnyTrack = engine::hasAnimationTracks(activeScene->animation);
 
-    if (sequence &&
-        !writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records, false)) {
+    if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
+                                   hasCameraTrack, records, false)) {
         return 1;
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
@@ -321,8 +266,8 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
                                 status.vendorFallback == render::VendorFallback::Unsupported
                                     ? "unsupported"
                                     : "creation-failed");
-                if (!writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records,
-                                   false, failure)) {
+                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
+                                   hasCameraTrack, records, false, failure)) {
                     LMX_LOG_ERROR("capture could not write fallback metadata");
                 }
                 LMX_LOG_ERROR("capture sequence refused vendor fallback: {}", failure);
@@ -330,17 +275,21 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
             }
             if (frame >= sequence->warmup) {
                 const uint32_t ordinal = frame - sequence->warmup;
-                const std::string filename = std::format("frame-{:06}.bmp", ordinal);
+                const std::string filename = std::format(
+                    "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
                 std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
                 (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
-                if (!writeBmp(sequence->captureSequencePath / filename, pixels, kScreenshotWidth,
-                              kScreenshotHeight)) {
+                if (!writeCaptureImage(sequence->captureSequencePath / filename, pixels,
+                                       (*renderer)->displayDomain(),
+                                       captureFrameMetadataJson(sceneId, frames, frame, temporal,
+                                                                temporalView, renderScale, status,
+                                                                (*device)->deviceName()))) {
                     return 1;
                 }
                 records.push_back(
-                    captureRecord(ordinal, frame, camera, view, status, filename, temporal));
-                if (!writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records,
-                                   false)) {
+                    captureRecordJson(ordinal, frame, camera, view, status, filename, temporal));
+                if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
+                                   hasCameraTrack, records, false)) {
                     return 1;
                 }
                 if (isFlatImage(pixels)) {
@@ -351,15 +300,20 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
         }
     }
     if (sequence) {
-        return writeManifest(*sequence, (*device)->deviceName(), hasCameraTrack, records, true) ? 0
-                                                                                                : 1;
+        return writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
+                             hasCameraTrack, records, true)
+                   ? 0
+                   : 1;
     }
 
     std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
     // Preserve flat output as debugging evidence before reporting liveness failure.
-    if (!writeBmp(outPath, pixels, kScreenshotWidth, kScreenshotHeight)) {
+    if (!writeCaptureImage(outPath, pixels, (*renderer)->displayDomain(),
+                           captureFrameMetadataJson(
+                               sceneId, frames, frames - 1, temporal, temporalView, renderScale,
+                               (*renderer)->temporalStatus(), (*device)->deviceName()))) {
         return 1;
     }
     LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
