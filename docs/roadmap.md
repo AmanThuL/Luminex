@@ -17,8 +17,8 @@ that decomposes the accepted boundary without expanding it.
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
 shared GPU scene data and its consumers. Foundation completion supplies those contracts;
-[interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation) still
-requires explicit approval before M7. The second part's
+[interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
+approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
 
 ## Current baseline
@@ -50,8 +50,10 @@ compiled record; its strict parent/candidate matrix passes without exception.
 build/shader groups. The owner accepted its
 [two-hash image parity exception](milestones/r1.5.md#integration) on 2026-09-13; that comparison
 remains failed and unexplained, with no outstanding integration blocker or relaxation of later
-validation. R1.1–R1.4's structural prerequisite and R1.5 are complete; interface gate B still needs
-its own review and approval, and M7.1 follows that review. No GPU-scene or GPU-visibility path is adopted yet.
+validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
+[Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
+under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). M7.1 awaits its own implementation
+plan; no GPU-scene or GPU-visibility path is adopted yet.
 
 ## Project direction and delivery
 

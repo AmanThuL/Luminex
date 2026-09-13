@@ -21,7 +21,7 @@ both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, a
 at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
 added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
 shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
-accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed. R1.5 is complete as recorded below; gate B needs its own review.
+accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed; R1.5 is complete as recorded below. The subsequent [separate gate B review](../milestones/interface-gate-b.md) approves M7.1 entry.
 
 ## Target module contract
 

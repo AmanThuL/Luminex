@@ -26,8 +26,9 @@ These sections preserve accepted delivery boundaries; their milestone records ow
 shipped evidence. In particular, M5.6 closed with no adopted submission path or performance
 conclusion. M6.4 retains manual/capture follow-ups, and M6.5 closed with EDR deferred and a narrow
 historical-hash exception. Their closure does not record a pass for every original gate.
-[Interface gate B](#m6--temporal-and-display-foundation) still requires explicit approval before M7;
-the [R1](codebase-refactoring.md) structural milestone runs before that review.
+[Interface gate B](#m6--temporal-and-display-foundation) passes in its
+[2026-09-13 review](../milestones/interface-gate-b.md), after [R1](codebase-refactoring.md),
+approving M7.1 entry while preserving those limits.
 
 ## M4 — Correct image formation
 
@@ -179,6 +180,11 @@ and a universal GPU score. Experiment-local instance tables do not define persis
 
 **Interface gate B:** M6.1 → M6.2 → M6.3 → M6.4; M6.5's bounded evaluation completes the display decision. Before M7, verify ADR 0010 conformance and approve the temporal, root-data, binding, synchronization, capability and minimal scene-identity semantics its first consumers need. Do not freeze all future GPU-scene layouts or implement them here. A new production submission capability still needs its own evidence. D3D12, when scheduled, must pass checkpoint A and reproduce the PBR/HDR/TAA frame without redefining shared semantics; another backend or an EDR adoption is not a gate.
 
+**Gate B disposition:** [PASS (2026-09-13)](../milestones/interface-gate-b.md), following M6.5 and
+R1. [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) approves the first-consumer
+identity/update semantics alongside the retained contracts. M7.1 may be planned; no GPU-scene
+implementation or new submission capability is adopted, and prior evidence limits remain open.
+
 **Exit gate:** M6.1–M6.5 pass their individual gates, the shared temporal rules hold, and interface gate B approves entry to M7. EDR may close with an evidenced defer decision.
 
 **Defer:** GPU visibility/submission, clustered lighting, LOD, full animation, transparent materials, scalable shadows, atmosphere, opaque-path experiments and frame generation.
@@ -249,6 +255,7 @@ This exception closes M6.5 without claiming a hash-gate pass or a drift repair.
 shader-validation bloom resource/view usage reports. Preserve the
 [milestone evidence](../milestones/m6.5.md#open-parity-investigation), establish a reproduction and
 validate any correction before making performance or repeatability claims. Neither a shared root
-cause nor an authorized reference-image change is implied. Interface gate B remains required.
+cause nor an authorized reference-image change is implied. The separate
+[interface gate B review](../milestones/interface-gate-b.md) preserves this limit.
 
 **Defer:** An adopted EDR path when evidence is insufficient; platform output never changes upstream scene or temporal semantics.

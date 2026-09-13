@@ -9,13 +9,14 @@ shipped capabilities. Numerical order alone does not determine when an area may 
 
 ## Entry from the rendering foundation
 
-The next planned slice is M7.1, after
-[interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation) explicitly approves
-entry. The structural milestone
-[R1](codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) runs before that review
-and adds no rendering scope. M6.5 closure and EDR DEFER do not by themselves pass that interface review. The review
-checks ADR 0010 conformance and the temporal, root-data, binding, synchronization, capability and
-minimal scene-identity semantics the first GPU-scene consumers need.
+The next planned slice is M7.1.
+[Interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation) explicitly
+approves entry in its [2026-09-13 review](../milestones/interface-gate-b.md), after the structural
+[R1](codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) milestone.
+The review verifies ADR 0010 conformance and the temporal, root-data, binding, synchronization
+and capability contracts; [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) records the
+minimal scene-identity/update semantics the first consumers must implement. M6.5 closure and EDR
+DEFER did not by themselves pass the review. M7.1 still requires its own implementation plan.
 
 The present `SceneView` borrows a frame-local span of `DrawItem`s with mesh/texture references and
 current/previous transforms. The renderer binds per-object frame data and encodes indexed draws;
