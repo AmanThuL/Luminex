@@ -35,6 +35,7 @@ ALLOWLIST_FIELDS = {
     "header": ("file",),
 }
 LINKED_FRAMEWORK_PATTERN = re.compile(r"/([^/]+)\.framework/")
+LINK_ONLY_ALLOWLIST_KINDS = {"framework"}
 
 
 class ModuleContractError(RuntimeError):
@@ -275,6 +276,14 @@ def third_party_name(path: Path, root: Path) -> str | None:
     return None
 
 
+def third_party_prefix(spec: str, contract: dict) -> str | None:
+    """Name the package a contract-declared spec prefix stands for, for a header no root resolves."""
+    for prefix, name in contract.get("thirdPartyPrefixes", {}).items():
+        if spec.startswith(prefix):
+            return name
+    return None
+
+
 def owner_of(path: Path, contract: dict) -> str | None:
     """Return the unit owning a repository-relative path; the longest matching entry wins."""
     text = path.as_posix()
@@ -338,10 +347,16 @@ def include_allowed(file: str, reaches: str, allowlist: list[dict]) -> bool:
     )
 
 
-def check_allowlist_use(path: Path, allowlist: list[dict], errors: list[str]) -> None:
-    """An entry that suppressed nothing is stale debt, and the convention makes that an error."""
+def check_allowlist_use(path: Path, allowlist: list[dict], errors: list[str], link: bool = False) -> None:
+    """An entry that suppressed nothing is stale debt, and the convention makes that an error.
+
+    A link-only kind can only be used while `--link` runs its check, so it is exempt here when
+    `link` is False: an unused `framework` entry is not stale debt on a run that never looked.
+    """
     for entry in allowlist:
         if entry.get("used"):
+            continue
+        if not link and entry["kind"] in LINK_ONLY_ALLOWLIST_KINDS:
             continue
         subject = entry.get("file") or entry.get("target") or ""
         errors.append(f"{path.as_posix()}: unused entry {entry['kind']} {subject} ({entry['until']})")
@@ -394,11 +409,15 @@ def resolve_include(
         name = third_party_name(path, root)
         if name is not None:
             return Resolved("third-party", None, name, None)
+        if not quoted:
+            prefixed = third_party_prefix(spec, contract)
+            if prefixed is not None:
+                return Resolved("third-party", None, prefixed, None)
         return Resolved("system", None, None, None)
     if not quoted:
-        for prefix, name in contract.get("thirdPartyPrefixes", {}).items():
-            if spec.startswith(prefix):
-                return Resolved("third-party", None, name, None)
+        prefixed = third_party_prefix(spec, contract)
+        if prefixed is not None:
+            return Resolved("third-party", None, prefixed, None)
     return Resolved("system", None, None, None)
 
 
@@ -543,7 +562,7 @@ def linked_frameworks(targetfile: Path, run=subprocess.run) -> list[str]:
     if completed.returncode != 0:
         raise ModuleContractError(f"otool -L {targetfile} failed: {completed.stderr.strip()}")
     names: list[str] = []
-    for line in completed.stdout.splitlines():
+    for line in completed.stdout.splitlines()[1:]:  # the first line names the binary itself
         match = LINKED_FRAMEWORK_PATTERN.search(line)
         if match and match.group(1) not in names:
             names.append(match.group(1))
@@ -666,7 +685,7 @@ def main(argv: list[str] | None = None) -> int:
         check_target_closure(targets, contract, allowlist, errors)
         if args.link:
             check_link(targets, contract, allowlist, errors)
-        check_allowlist_use(display_path(allowlist_path, root), allowlist, errors)
+        check_allowlist_use(display_path(allowlist_path, root), allowlist, errors, link=args.link)
         budget_lines = report_budgets(files, contract, root)
     except ModuleContractError as exc:
         print(f"module policy could not run: {exc}", file=sys.stderr)

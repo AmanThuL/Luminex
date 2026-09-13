@@ -15,6 +15,9 @@ function _list(value)
 end
 
 function main()
+    -- Loads the configured build mode so target:targetfile() below includes it (e.g.
+    -- build/macosx/arm64/release/App); without this call every targetfile omits the mode
+    -- segment and points at a path nothing ever builds.
     config.load()
     local out = {}
     for name, target in pairs(project.targets()) do

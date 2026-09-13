@@ -487,6 +487,21 @@ class IncludeResolutionTests(unittest.TestCase):
             )
             self.assertEqual((resolved.kind, resolved.name), ("third-party", "libsdl3"))
 
+    def test_angle_include_resolved_outside_every_package_root_is_charged_by_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryDirectory() as external_directory:
+            root = Path(directory).resolve()
+            write_include_tree(root)
+            contract = modules.load_contract(write_contract(root, INCLUDE_CONTRACT), root)
+            external = Path(external_directory).resolve()
+            sdl_header = external / "SDL3" / "SDL.h"
+            sdl_header.parent.mkdir(parents=True, exist_ok=True)
+            sdl_header.write_text("", encoding="utf-8")
+            dirs = modules.include_dirs(include_entry(root, "x.cpp")) + [external]
+            resolved = modules.resolve_include(
+                Path("Source/Engine/Absent.h"), "SDL3/SDL.h", False, dirs, root, contract
+            )
+            self.assertEqual((resolved.kind, resolved.name), ("third-party", "libsdl3"))
+
     def test_parse_includes_reads_quoted_and_angle_specs_in_order(self) -> None:
         text = '#pragma once\n#include "Engine/Asset.h"\n#  include <vector>\nint x; // #include "no.h"\n'
         self.assertEqual(modules.parse_includes(text), [("Engine/Asset.h", True), ("vector", False)])
@@ -755,7 +770,8 @@ class CheckLinkTests(unittest.TestCase):
             def run(args, **kwargs):
                 if args[0] == "otool":
                     return FakeCompleted(
-                        stdout="\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
+                        stdout="TextureBake:\n"
+                        "\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
                     )
                 return FakeCompleted(stdout="")
 
@@ -773,7 +789,8 @@ class CheckLinkTests(unittest.TestCase):
             def run(args, **kwargs):
                 if args[0] == "otool":
                     return FakeCompleted(
-                        stdout="\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
+                        stdout="TextureBake:\n"
+                        "\t/System/Library/Frameworks/Metal.framework/Versions/A/Metal (x)\n"
                     )
                 return FakeCompleted(stdout="")
 
@@ -812,6 +829,30 @@ class CheckLinkTests(unittest.TestCase):
         errors: list[str] = []
         modules.check_link(targets, contract, [], errors, run=lambda *a, **k: FakeCompleted())
         self.assertEqual(errors, [])
+
+
+class AllowlistLinkOnlyTests(unittest.TestCase):
+    def test_unused_framework_entry_is_tolerated_when_link_is_not_requested(self) -> None:
+        allowlist = [
+            {"kind": "framework", "target": "TextureBake", "framework": "Metal", "reason": "r", "until": "R1.2"}
+        ]
+        errors: list[str] = []
+        modules.check_allowlist_use(Path("Tools/module_allowlist.json"), allowlist, errors, link=False)
+        self.assertEqual(errors, [])
+
+    def test_unused_framework_entry_is_an_error_when_link_is_requested(self) -> None:
+        allowlist = [
+            {"kind": "framework", "target": "TextureBake", "framework": "Metal", "reason": "r", "until": "R1.2"}
+        ]
+        errors: list[str] = []
+        modules.check_allowlist_use(Path("Tools/module_allowlist.json"), allowlist, errors, link=True)
+        self.assertEqual(errors, ["Tools/module_allowlist.json: unused entry framework TextureBake (R1.2)"])
+
+    def test_unused_target_dep_entry_is_an_error_regardless_of_link(self) -> None:
+        allowlist = [{"kind": "target-dep", "target": "TextureBake", "dep": "Render", "reason": "r", "until": "R1.2"}]
+        errors: list[str] = []
+        modules.check_allowlist_use(Path("Tools/module_allowlist.json"), allowlist, errors, link=False)
+        self.assertEqual(errors, ["Tools/module_allowlist.json: unused entry target-dep TextureBake (R1.2)"])
 
 
 class BudgetTests(unittest.TestCase):
