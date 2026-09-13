@@ -125,4 +125,10 @@ glm::vec2 motionBetween(const glm::vec4& clipCurrent, const glm::vec4& clipPrevi
     return clipToMotionUv(clipCurrent) - clipToMotionUv(clipPrevious);
 }
 
+//======================================================================================================================
+bool nativeOnlyTemporalView(TemporalDebugView view) {
+    return view == TemporalDebugView::RejectionMask || view == TemporalDebugView::BlendWeight ||
+           view == TemporalDebugView::HistoryAge;
+}
+
 } // namespace lmx::render

@@ -12,6 +12,12 @@ from pathlib import Path
 from typing import Any
 
 
+try:
+    from .check_module_deps import load_contract
+except ImportError:
+    from check_module_deps import load_contract
+
+
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_ROOTS = ("Source", "RHI", "Benchmarks")
 SOURCE_SUFFIXES = {".h", ".cpp"}
@@ -35,15 +41,28 @@ def project_cpp_files(root: Path) -> list[Path]:
 def public_header_files(root: Path) -> list[Path]:
     """Return headers whose declarations form project API.
 
-    Source modules currently expose their headers directly. The standalone RHI component has an
-    explicit exported include tree; backend and shared implementation headers are deliberately
-    excluded.
+    Source visibility follows the module contract. The standalone RHI component has an
+    explicit exported include tree; backend and shared implementation headers are excluded.
     """
     source = (root / "Source").rglob("*.h") if (root / "Source").is_dir() else ()
     rhi = (root / "RHI/Include").rglob("*.h") if (root / "RHI/Include").is_dir() else ()
     imgui_root = root / "RHI/Backends/Metal4/ImGui/Include"
     imgui = imgui_root.rglob("*.h") if imgui_root.is_dir() else ()
-    return sorted([*source, *rhi, *imgui])
+    contract_path = root / "Tools/module_contract.json"
+    private: set[str] = set()
+    if contract_path.exists():
+        contract = load_contract(contract_path, root)
+        private = {header for unit in contract["units"].values() for header in unit["privateHeaders"]}
+    private_identities = set()
+    for name in private:
+        status = (root / name).stat()
+        private_identities.add((status.st_dev, status.st_ino))
+    public = []
+    for path in [*source, *rhi, *imgui]:
+        status = path.stat()
+        if (status.st_dev, status.st_ino) not in private_identities:
+            public.append(path)
+    return sorted(public)
 
 
 def check_file_header(path: Path, text: str) -> list[str]:

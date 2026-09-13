@@ -5,7 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/EditorActions.h"
+#include "App/Model/EditorActions.h"
 
 using namespace lmx;
 using namespace lmx::app;

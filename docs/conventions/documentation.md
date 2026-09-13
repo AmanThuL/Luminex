@@ -13,8 +13,13 @@ silently override an accepted higher-precedence decision.
    or tooling that makes the rule true.
 3. **Architecture or guide** (`docs/architecture/`, `docs/guides/`, `docs/frame-pipeline.md`): current
    system shape and operator workflow. These describe the repository as it exists now.
-4. **Roadmap** (`docs/roadmap.md`): accepted ordering, outcomes, gates, and explicit deferrals. It is
-   the sole owner of current milestone identifiers and boundaries, not an implementation transcript.
+4. **Roadmap** (`docs/roadmap.md` and its parts under `docs/roadmap/`): accepted ordering,
+   outcomes, gates, and explicit deferrals. Together they are the sole owner of current milestone
+   identifiers and boundaries, not an implementation transcript. The entry owns direction, shared
+   delivery rules and current baseline; Rendering Foundations owns M4–M6.5 and interface gate B;
+   GPU-Driven Hybrid Rendering owns M7–M11 and independent research; Codebase Refactoring owns
+   the R-series structural milestones. Define each boundary once and link to its owner from
+   summaries and dependency tables.
 5. **Active plan** (`docs/plans/`): an accepted change currently being executed. It may contain
    sequencing and exit criteria but does not become a permanent dependency of source comments.
 6. **Milestone record** (`docs/milestones/`): compact shipped behavior, evidence, known limits, and
@@ -59,7 +64,7 @@ remove the executor plan from the published baseline.
   numbers, commit hashes, review rounds, or task identifiers as explanations.
 - Use repository-relative paths in files and examples. Never store a personal home-directory path.
 - Keep operational documents concise: README and `AGENTS.md` at most 250 lines; conventions,
-  architecture, guides, milestones, postmortems, and the active plan at most 300 lines; the roadmap
-  at most 400, since it gains one section per accepted milestone by design.
-  Frozen research and historical specs are exempt.
+  architecture, guides, milestones, postmortems, the active plan, and each roadmap file at most
+  300 lines. The roadmap uses a short entry and named parts instead of a larger single-file
+  exception. These are line budgets, not word limits. Frozen research and historical specs are exempt.
 - Keep raw captures, temporary measurements, and recovery bundles outside the published source tree.

@@ -5,8 +5,8 @@
 #include <glm/gtc/epsilon.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "Engine/GltfLoader.h"
-#include "Engine/SceneAnimation.h"
+#include "Asset/GltfLoader.h"
+#include "Asset/SceneAnimation.h"
 #include "EngineTestSupport.h"
 
 #include <cmath>
@@ -18,7 +18,7 @@
 #include <string_view>
 #include <vector>
 
-using namespace lmx::engine;
+using namespace lmx::asset;
 using lmx::test::near3;
 using lmx::test::writeAnimatedQuadGltf;
 
@@ -315,7 +315,7 @@ std::filesystem::path findRepoPath(const std::filesystem::path& relative) {
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("loadGltf reports a descriptive error for a missing file", "[engine]") {
+TEST_CASE("loadGltf reports a descriptive error for a missing file", "[asset]") {
     const auto result = loadGltf("/nonexistent/does-not-exist.gltf");
     REQUIRE_FALSE(result.has_value());
     REQUIRE(result.error().code == AssetErrorCode::NotFound);
@@ -323,7 +323,7 @@ TEST_CASE("loadGltf reports a descriptive error for a missing file", "[engine]")
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf classifies a missing external buffer as NotFound", "[engine]") {
+TEST_CASE("loadGltf classifies a missing external buffer as NotFound", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-missing-buffer-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -338,7 +338,7 @@ TEST_CASE("loadGltf classifies a missing external buffer as NotFound", "[engine]
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf classifies an unreadable external buffer as Io", "[engine]") {
+TEST_CASE("loadGltf classifies an unreadable external buffer as Io", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-unreadable-buffer-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -353,7 +353,7 @@ TEST_CASE("loadGltf classifies an unreadable external buffer as Io", "[engine]")
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf parses a minimal quad: mesh/material/instance", "[engine]") {
+TEST_CASE("loadGltf parses a minimal quad: mesh/material/instance", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-loader-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -392,7 +392,7 @@ TEST_CASE("loadGltf parses a minimal quad: mesh/material/instance", "[engine]") 
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf traverses only the active scene and preserves parent transforms", "[engine]") {
+TEST_CASE("loadGltf traverses only the active scene and preserves parent transforms", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-active-scene-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -432,7 +432,7 @@ TEST_CASE("loadGltf traverses only the active scene and preserves parent transfo
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf ignores images referenced only by unused materials", "[engine]") {
+TEST_CASE("loadGltf ignores images referenced only by unused materials", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-unused-material-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -461,7 +461,7 @@ TEST_CASE("loadGltf ignores images referenced only by unused materials", "[engin
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf permits one image in base-color and normal slots", "[engine]") {
+TEST_CASE("loadGltf permits one image in base-color and normal slots", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-dual-colorspace-image-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -499,7 +499,7 @@ TEST_CASE("loadGltf permits one image in base-color and normal slots", "[engine]
 
 //======================================================================================================================
 // Factor-only: emissiveFactor with no emissive texture.
-TEST_CASE("loadGltf reads an emissive factor without an emissive texture", "[engine]") {
+TEST_CASE("loadGltf reads an emissive factor without an emissive texture", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-emissive-factor-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -526,7 +526,7 @@ TEST_CASE("loadGltf reads an emissive factor without an emissive texture", "[eng
 
 //======================================================================================================================
 // Texture-only: metallic-roughness and occlusion images, no emissiveFactor override.
-TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[engine]") {
+TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-mr-occlusion-texture-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -571,7 +571,7 @@ TEST_CASE("loadGltf reads metallic-roughness and occlusion textures", "[engine]"
 //======================================================================================================================
 // Both: an emissiveFactor and an emissive texture together, isolating that neither overwrites the
 // other.
-TEST_CASE("loadGltf reads an emissive factor together with an emissive texture", "[engine]") {
+TEST_CASE("loadGltf reads an emissive factor together with an emissive texture", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-emissive-both-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -611,7 +611,7 @@ TEST_CASE("loadGltf reads an emissive factor together with an emissive texture",
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf generates tangents for a quad with no authored TANGENT", "[engine]") {
+TEST_CASE("loadGltf generates tangents for a quad with no authored TANGENT", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-loader-tangent-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -628,8 +628,7 @@ TEST_CASE("loadGltf generates tangents for a quad with no authored TANGENT", "[e
 
 //======================================================================================================================
 // The authored (0,0,1,-1) tangent differs from the generated (1,0,0,1), isolating read-through.
-TEST_CASE("loadGltf reads an authored TANGENT accessor verbatim (does not regenerate)",
-          "[engine]") {
+TEST_CASE("loadGltf reads an authored TANGENT accessor verbatim (does not regenerate)", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-loader-authored-tangent-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir, /*includeTangent=*/true);
@@ -647,7 +646,7 @@ TEST_CASE("loadGltf reads an authored TANGENT accessor verbatim (does not regene
 //======================================================================================================================
 TEST_CASE("loadGltf fails descriptively when an index accessor's unpack fails "
           "(missing bufferView)",
-          "[engine]") {
+          "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-loader-bad-index-test";
     const std::filesystem::path gltfPath = writeBadIndexAccessorFixture(dir);
@@ -662,7 +661,7 @@ TEST_CASE("loadGltf fails descriptively when an index accessor's unpack fails "
 //======================================================================================================================
 TEST_CASE("loadGltf(DamagedHelmet.glb): one mesh, generated tangents (no authored TANGENT), "
           "base color + normal images",
-          "[engine]") {
+          "[asset]") {
     const std::filesystem::path path =
         findRepoPath("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb");
     if (!std::filesystem::exists(path)) {
@@ -727,7 +726,7 @@ TEST_CASE("loadGltf(DamagedHelmet.glb): one mesh, generated tangents (no authore
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf(Sponza.gltf): converted images decode and tangents generate", "[engine]") {
+TEST_CASE("loadGltf(Sponza.gltf): converted images decode and tangents generate", "[asset]") {
     const std::filesystem::path path = findRepoPath("Assets/Fetched/Sponza/Sponza.gltf");
     if (!std::filesystem::exists(path)) {
         SKIP("Assets/Fetched/Sponza/Sponza.gltf not present (xmake setup fetches it) -- "
@@ -784,7 +783,7 @@ TEST_CASE("loadGltf(Sponza.gltf): converted images decode and tangents generate"
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf leaves an unanimated file's tracks empty", "[engine]") {
+TEST_CASE("loadGltf leaves an unanimated file's tracks empty", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-no-animation-test";
     const std::filesystem::path gltfPath = writeQuadGltfFixture(dir);
@@ -797,7 +796,7 @@ TEST_CASE("loadGltf leaves an unanimated file's tracks empty", "[engine]") {
 
 //======================================================================================================================
 TEST_CASE("loadGltf bakes a LINEAR translation channel into world-space keys at the bake rate",
-          "[engine]") {
+          "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-linear-animation-test";
     const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "LINEAR");
@@ -821,7 +820,7 @@ TEST_CASE("loadGltf bakes a LINEAR translation channel into world-space keys at 
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf rejects a CUBICSPLINE animation sampler", "[engine]") {
+TEST_CASE("loadGltf rejects a CUBICSPLINE animation sampler", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-cubic-animation-test";
     const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "CUBICSPLINE");
@@ -832,7 +831,7 @@ TEST_CASE("loadGltf rejects a CUBICSPLINE animation sampler", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf rejects skins and morph targets", "[engine]") {
+TEST_CASE("loadGltf rejects skins and morph targets", "[asset]") {
     const std::filesystem::path skinDir =
         std::filesystem::temp_directory_path() / "lmx-gltf-skin-test";
     const auto skinned = loadGltf(writeDeformedQuadFixture(skinDir, "skin").string());
@@ -851,7 +850,7 @@ TEST_CASE("loadGltf rejects skins and morph targets", "[engine]") {
 // second apart alternating unit and zero scale. Baked at 60 Hz that must hold each key's value
 // right up to the next key's sample and jump there, and the zero-scale keys must survive the
 // world-transform round trip rather than failing to decompose.
-TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyframes", "[engine]") {
+TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyframes", "[asset]") {
     const std::filesystem::path asset =
         findRepoPath("Assets/Fetched/InterpolationTest/InterpolationTest.glb");
     if (!std::filesystem::exists(asset)) {
@@ -883,7 +882,7 @@ TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyfr
 //======================================================================================================================
 // The channel drives a parent node; the mesh hangs off a static child. The baked key must be the
 // composed world pose, since a RigidTrack carries no parent chain to re-evaluate later.
-TEST_CASE("loadGltf bakes an animated parent's world transform onto its static child", "[engine]") {
+TEST_CASE("loadGltf bakes an animated parent's world transform onto its static child", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-hierarchy-animation-test";
     const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "LINEAR", true);
@@ -908,7 +907,7 @@ TEST_CASE("loadGltf bakes an animated parent's world transform onto its static c
 }
 
 //======================================================================================================================
-TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[engine][alpha-mask]") {
+TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[asset][alpha-mask]") {
     const auto directory = std::filesystem::temp_directory_path() / "lmx-gltf-alpha-mask";
     const auto path = writeQuadGltfFixture(directory);
     std::ifstream input(path);
@@ -916,7 +915,7 @@ TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[engine][al
     input.close();
     auto opaque = loadGltf(path.string());
     REQUIRE(opaque);
-    REQUIRE(opaque->materials[0].alphaMode == lmx::render::AlphaMode::Opaque);
+    REQUIRE(opaque->materials[0].alphaMode == lmx::asset::GltfAlphaMode::Opaque);
     REQUIRE(opaque->materials[0].alphaCutoff == Catch::Approx(0.5f));
     const std::string marker = "\"materials\": [{";
     const auto index = json.find(marker);
@@ -926,7 +925,7 @@ TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[engine][al
         writeFile(path, json);
         auto scene = loadGltf(path.string());
         REQUIRE(scene);
-        REQUIRE(scene->materials[0].alphaMode == lmx::render::AlphaMode::Mask);
+        REQUIRE(scene->materials[0].alphaMode == lmx::asset::GltfAlphaMode::Mask);
         REQUIRE(scene->materials[0].alphaCutoff == Catch::Approx(0.5f));
         REQUIRE(scene->materials[0].doubleSided);
     }

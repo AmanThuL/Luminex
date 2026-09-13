@@ -4,14 +4,18 @@ Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple S
 thin RHI and one implemented backend.
 The long-term direction is a graph-scheduled, GPU-driven hybrid renderer sharing scene, material,
 light and temporal semantics; visible rendering quality and reproducible engineering evidence both
-serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.md`.
+serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.md` and its
+linked parts under `docs/roadmap/`.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
 - Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - Temporal sequences and offline FLIP: `docs/guides/temporal-comparison.md`
-- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
+- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
+- Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B),
+  `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research) and
+  `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B).
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
@@ -40,7 +44,7 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
   and normal image referenced by Sponza and Damaged Helmet into a deterministic offline mip chain
   (`Tools/TextureBake`, DDS + manifest) that scene loading prefers over its in-process fallback;
-  pins and hashes are in `xmake.lua`. Setup re-applies the maintained ThirdParty patches
+  pins and hashes are in `xmake/setup.lua`. Setup re-applies the maintained ThirdParty patches
   idempotently: a tree already carrying the current patch is left alone, and one carrying an older
   revision of it is restored to the pin before the patch is applied. Optional:
   `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
@@ -48,7 +52,7 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
 - Optional courtyard: `xmake setup --san-miguel` downloads the official ~511 MiB archive, converts
   its realtime OBJ at authored metre scale with diffuse alpha cutouts and `N_` tangent normals,
   and bakes referenced textures. `Assets/Fetched/SanMiguel/` preserves source metadata, license and
-  conversion provenance; archive and converted-tree hashes are pinned in `xmake.lua`.
+  conversion provenance; archive and converted-tree hashes are pinned in `xmake/setup.lua`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
@@ -59,11 +63,13 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
   must pass this filter unchanged; the working directory must be the Tests build directory (shaders
   resolve relative to CWD).
-- Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
+- Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
+  `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
   checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
   holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
-  Tools/check_project_policy.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
+  Tools/check_project_policy.py`; `python3 Tools/check_module_deps.py`; `python3
+  Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
   `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
@@ -140,7 +146,7 @@ serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.m
   and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
 
 ## Architecture
-`Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
+`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
@@ -161,7 +167,8 @@ extra colour attachments) over imported resources and over one-frame transients 
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
-as deterministic text; `Renderer` — declares shadow, scene+sky, histogram exposure
+as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
+`SceneView.h` owns frame inputs; `Renderer` composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -172,22 +179,22 @@ alpha cutoff coverage, with optional two-sided shading; color/depth/motion/react
 together. Opaque shaders and uniforms stay separate; glTF BLEND is unsupported (ADR 0018).
 `fitShadowOrtho` and friends are free functions;
 `Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
-and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve.h` holds the
+and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve` has native/upscale/vendor/diagnostic declaration units sharing the
 reconstruction contract, ping-pong slot ownership, the native/upscale kernel-selection rule and
 frozen constants (ADRs 0014–0016); its composed `VendorTemporalScaler` translates invalid motion to
 zero motion/reactive one, writes reciprocal applied exposure into one `R16Float` texel, and maps
 motion/jitter/content extents. The scaler resets on engine reset, vendor re-entry or recreation;
 engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
 `lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
-`ResolutionController` is a pure, App-driven policy that proposes
-a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
-`Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
-loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
-generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
-baking (`TextureBake.h`), rigid animation (`SceneAnimation`, glTF-baked `RigidTrack`s, camera
-tracks) and object previous-transform tracking (`SceneObject::previousModel`/`motionClass`,
-`Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`); six catalog scenes include optional
-San Miguel with a deterministic 12-second camera rail) →
+`ResolutionController` is a pure, App-driven policy that proposes a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
+`Source/Asset` (lmx::asset: CPU DDS/glTF/Radiance HDR/PNG/BMP loaders and writers,
+GeometryGenerator, deterministic environment/IBL generation, texture baking and SHA-256,
+repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
+RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
+DDS/cubemap/IBL uploads, environment rig, labs, initial camera, playback and previous transforms;
+six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
+`Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
+shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/RenderGraph dependency) →
 `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
@@ -208,33 +215,31 @@ Render Graph panel shapes the retained compiled frame into the ImGui-free
 stage groups, compact pins, an optional columns-per-row wrap, no pixels), and draws it on a
 vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measured sizes, with a
 selection-scoped details pane, deterministic layout stable across unchanged frames, and
-session-only dragged positions; frame loop advances animation and commits scene motion around
-`declarePasses`, joins its own UI pass to the graph plus the platform-window render after present,
-`--screenshot` and deterministic `--capture-sequence` paths). `Render/DisplayDomain.h` names
-the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
+session-only dragged positions; editor and capture loops share session playback/views/motion and
+frame declaration/record retention, keeping their own waits, UI sink and presentation scheduling).
+`Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
-Engine `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
-Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
-modules), ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, AlphaMask, ShadowPass/ShadowPassMask,
-Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
-ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample, DisplayTransform, TemporalReproject,
-TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (+ Triangle/SamplerSmoke/
-CubeSmoke/ShadowSmoke/FullscreenSample/MrtSmoke/RenderAreaSmoke as test oracles).
-One frame end-to-end: `docs/frame-pipeline.md`.
+Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
+Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
+Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon and AlphaMask. `Shaders/*.slang` entries:
+ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
+HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
+DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack.
+`Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
+MRT/render-area/compute/image/buffer-hazard/indirect oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.
 - xrepo deps only as needed (current: libsdl3, glm, spdlog, catch2, cgltf, stb). ThirdParty/ and
-  Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake.lua, never committed.
+  Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake/setup.lua, never committed.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
-  relevant tests, and passes `xmake policy`.
+  relevant tests and `xmake policy` (including private-header visibility and shader import checks).
 - Experimental source does not live on `main`. Preserve accepted evidence with an immutable tag
   and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
   adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
-  authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
-  (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or
+  authored color constants, including the editor's clear color, decode via `lmx::srgbToLinear` in `Core/Color.h` once at scene build or
   pass declaration. Nothing upstream of `Shaders/DisplayTransform.slang` encodes sRGB.
 - Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
   rendering behavior and uses plain feature themes for future work. It never exposes milestone

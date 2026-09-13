@@ -1,5 +1,5 @@
-#include "Engine/Ibl.h"
-#include "Engine/Scene.h"
+#include "Asset/Ibl.h"
+#include "Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,8 +12,8 @@
 #include <cstring>
 #include <vector>
 
-using namespace lmx::engine;
-using namespace lmx::engine::ibl;
+using namespace lmx::asset;
+using namespace lmx::asset::ibl;
 
 namespace {
 
@@ -114,7 +114,7 @@ std::vector<unsigned char> cubeBytes(const CpuCubemap& cube) {
 //======================================================================================================================
 // Pins the face-index-to-direction convention Ibl.h documents against RHI.h's cube face order, so a
 // generated cube cannot silently end up mirrored or rotated relative to the sky it came from.
-TEST_CASE("cube face centers look along the RHI's face axes", "[engine][ibl]") {
+TEST_CASE("cube face centers look along the RHI's face axes", "[asset][ibl]") {
     // An odd face size puts a texel exactly at each face center.
     constexpr uint32_t kSize = 5;
     constexpr uint32_t kCenter = 2;
@@ -138,7 +138,7 @@ TEST_CASE("cube face centers look along the RHI's face axes", "[engine][ibl]") {
 // The convolution's solid-angle weights are normalized by their own sum, so this closure holds
 // because the weights conserve energy rather than because a particular discretization happened to
 // integrate to pi.
-TEST_CASE("a constant environment convolves to its own radiance", "[engine][ibl]") {
+TEST_CASE("a constant environment convolves to its own radiance", "[asset][ibl]") {
     const CpuCubemap env = makeConstantCubemap(kTestRadiance, 8);
     REQUIRE(env.faceSize == 8);
     REQUIRE(env.faces[0].size() == 64);
@@ -157,7 +157,7 @@ TEST_CASE("a constant environment convolves to its own radiance", "[engine][ibl]
 //======================================================================================================================
 // Same argument one integral up: the N.L weights of the split-sum prefilter normalize out, so every
 // roughness level of a constant environment is that same constant.
-TEST_CASE("a constant environment prefilters to a constant chain", "[engine][ibl]") {
+TEST_CASE("a constant environment prefilters to a constant chain", "[asset][ibl]") {
     constexpr uint32_t kBase = 8;
     constexpr uint32_t kMips = 4;
     const CpuCubemap env = makeConstantCubemap(kTestRadiance, 4);
@@ -180,7 +180,7 @@ TEST_CASE("a constant environment prefilters to a constant chain", "[engine][ibl
 //======================================================================================================================
 // The mirror level has no convolution to mask a point resample. A linear face ramp must remain
 // continuous between source texel centers instead of expanding each source texel into a block.
-TEST_CASE("mirror prefilter reconstructs a linear face ramp", "[engine][ibl]") {
+TEST_CASE("mirror prefilter reconstructs a linear face ramp", "[asset][ibl]") {
     constexpr uint32_t kSourceSize = 8;
     constexpr uint32_t kOutputSize = 64;
     CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSourceSize);
@@ -211,7 +211,7 @@ TEST_CASE("mirror prefilter reconstructs a linear face ramp", "[engine][ibl]") {
 // analytic value checks face orientation and neighboring-face reconstruction independently of
 // the resampler; unlike a constant furnace it exposes clamped or wrongly mapped seam taps.
 TEST_CASE("mirror prefilter reconstructs continuous radiance across cube edges and corners",
-          "[engine][ibl]") {
+          "[asset][ibl]") {
     constexpr uint32_t kSourceSize = 16;
     constexpr uint32_t kOutputSize = 128;
     CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSourceSize);
@@ -248,7 +248,7 @@ TEST_CASE("mirror prefilter reconstructs continuous radiance across cube edges a
 //======================================================================================================================
 // The +X face's right edge neighbors -Z. A deliberately discontinuous face color makes the
 // contribution from the neighbor measurable, so merely clamping the sample cannot pass.
-TEST_CASE("mirror prefilter blends a neighboring cube face at the seam", "[engine][ibl]") {
+TEST_CASE("mirror prefilter blends a neighboring cube face at the seam", "[asset][ibl]") {
     CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), 8);
     env.faces[5].assign(64, glm::vec4(1.0f));
     const auto chain = prefilterSpecular(env, 64, 1);
@@ -261,7 +261,7 @@ TEST_CASE("mirror prefilter blends a neighboring cube face at the seam", "[engin
 // footprint. Reading source mip zero at every GGX sample creates deterministic mottling. The
 // footprint-filtered result must recover the mean without clipping away its above-one energy.
 TEST_CASE("rough prefilter integrates fine HDR radiance without sampling mottling",
-          "[engine][ibl]") {
+          "[asset][ibl]") {
     constexpr uint32_t kSize = 128;
     const glm::vec3 meanRadiance{4.0f, 16.0f, 32.0f};
     CpuCubemap env = makeConstantCubemap(glm::vec3(0.0f), kSize);
@@ -292,7 +292,7 @@ TEST_CASE("rough prefilter integrates fine HDR radiance without sampling mottlin
 // the unmatched texels. At roughness one, V=N makes the specular integral cosine weighted, so
 // the independent diffuse quadrature provides a bounded check of its mean (not bitwise parity).
 TEST_CASE("rough prefilter retains odd-sized source radiance including border texels",
-          "[engine][ibl]") {
+          "[asset][ibl]") {
     constexpr uint32_t kSize = 63;
     const auto constant = prefilterSpecular(makeConstantCubemap(kTestRadiance, kSize), 8, 3);
     for (const auto& level : constant) {
@@ -331,7 +331,7 @@ TEST_CASE("rough prefilter retains odd-sized source radiance including border te
 //======================================================================================================================
 // At normal incidence and mirror roughness the whole integral collapses: the half vector is the
 // normal, Schlick's (1 - V.H)^5 vanishes, and the split sum degenerates to F0 * 1 + 0.
-TEST_CASE("the DFG LUT reduces to F0 at normal incidence and mirror roughness", "[engine][ibl]") {
+TEST_CASE("the DFG LUT reduces to F0 at normal incidence and mirror roughness", "[asset][ibl]") {
     const std::vector<glm::vec2>& lut = productionDfgLut();
     const glm::vec2 corner = dfgTexel(lut, kDfgLutSize, kDfgLutSize - 1, 0);
     REQUIRE(std::abs(corner.x - 1.0f) < 0.02f);
@@ -353,7 +353,7 @@ TEST_CASE("the DFG LUT reduces to F0 at normal incidence and mirror roughness", 
 // 0.18 in the scale channel at mid roughness -- far outside any tolerance worth asserting. The
 // quadrature above agrees with computeDfgLut to better than 0.001 instead.
 TEST_CASE("the DFG LUT matches an independent quadrature of the GGX directional albedo",
-          "[engine][ibl]") {
+          "[asset][ibl]") {
     const std::vector<glm::vec2>& lut = productionDfgLut();
 
     struct Probe {
@@ -384,7 +384,7 @@ TEST_CASE("the DFG LUT matches an independent quadrature of the GGX directional 
 // it the rougher the surface gets. Monotonicity is asserted at a facing view direction and across
 // well-separated roughness rows: near grazing incidence a rough surface reflects *more* than a
 // smooth one, and adjacent rows at alpha near zero differ by less than the Monte Carlo noise floor.
-TEST_CASE("the DFG LUT is energy-bounded and loses energy with roughness", "[engine][ibl]") {
+TEST_CASE("the DFG LUT is energy-bounded and loses energy with roughness", "[asset][ibl]") {
     const std::vector<glm::vec2>& lut = productionDfgLut();
 
     for (const glm::vec2& texel : lut) {
@@ -410,7 +410,7 @@ TEST_CASE("the DFG LUT is energy-bounded and loses energy with roughness", "[eng
 // Hammersley points and a fixed traversal order, not an RNG and not a parallel reduction: repeating
 // a generation reproduces it bit for bit, which is the property that lets a generated IBL set be
 // treated as a build artifact.
-TEST_CASE("the generators are byte-identical across runs", "[engine][ibl]") {
+TEST_CASE("the generators are byte-identical across runs", "[asset][ibl]") {
     const CpuCubemap env = makeConstantCubemap(glm::vec3(0.21f, 0.44f, 0.87f), 4);
 
     const std::vector<unsigned char> irradianceA = cubeBytes(computeIrradiance(env, 8));
@@ -444,7 +444,7 @@ TEST_CASE("the generators are byte-identical across runs", "[engine][ibl]") {
 TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     auto device = lmx::rhi::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scene::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
 
     REQUIRE((*scene)->irradianceMap != nullptr);

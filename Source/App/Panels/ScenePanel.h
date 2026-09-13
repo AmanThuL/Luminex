@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/EditorSelection.h"
-#include "Engine/Scene.h"
-#include "Engine/SceneLibrary.h"
+#include "App/Model/EditorSelection.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneLibrary.h"
 
 #include <optional>
 #include <string>
@@ -23,11 +23,11 @@ inline constexpr const char* kScenePanelWindowName = "Scene";
 /// place and holds nothing past the call that resolved them, matching `InspectorPanelContext`'s
 /// pattern.
 struct ScenePanelContext {
-    const engine::SceneLibrary& library; ///< The scene catalog the top selector draws from.
-    engine::SceneId activeSceneId;       ///< The scene currently loaded and rendered.
-    const engine::Scene& activeScene;    ///< The active scene, whose subjects the rows list.
-    EditorSelection& selection;          ///< The single selected subject; edited in place.
-    std::string& filter;                 ///< The case-insensitive display-name filter text.
+    const scene::SceneLibrary& library; ///< The scene catalog the top selector draws from.
+    scene::SceneId activeSceneId;       ///< The scene currently loaded and rendered.
+    const scene::Scene& activeScene;    ///< The active scene, whose subjects the rows list.
+    EditorSelection& selection;         ///< The single selected subject; edited in place.
+    std::string& filter;                ///< The case-insensitive display-name filter text.
 };
 
 /// Draws the Scene panel, in the spec's fixed order: the scene-catalog selector (unavailable
@@ -44,6 +44,6 @@ struct ScenePanelContext {
 /// Switching scenes drains the GPU because in-flight frames may still reference the current
 /// scene's meshes and textures, so the panel reports the choice and the shell applies it through
 /// its own scene-switch boundary rather than loading a scene from inside a widget.
-std::optional<engine::SceneId> drawScenePanel(bool& open, const ScenePanelContext& context);
+std::optional<scene::SceneId> drawScenePanel(bool& open, const ScenePanelContext& context);
 
 } // namespace lmx::app

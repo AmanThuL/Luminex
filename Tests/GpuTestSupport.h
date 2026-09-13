@@ -13,8 +13,8 @@
 #include <string>
 #include <vector>
 
-#include "Engine/Asset.h"
-#include "Engine/GeometryGenerator.h"
+#include "Asset/Asset.h"
+#include "Asset/GeometryGenerator.h"
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
@@ -79,7 +79,7 @@ std::string errorOf(const lmx::rhi::Result<T>& result) {
 template <typename T>
 
 //======================================================================================================================
-std::string errorOf(const lmx::engine::AssetResult<T>& result) {
+std::string errorOf(const lmx::asset::AssetResult<T>& result) {
     return result ? std::string{} : result.error().message;
 }
 
@@ -99,12 +99,10 @@ makeProbeTarget(lmx::rhi::Device& device, const char* label) {
                                  .label = label});
 }
 
-inline std::vector<uint8_t> renderSampledImage(lmx::rhi::Device& device,
-                                               lmx::rhi::GraphicsPipeline& pipeline,
-                                               uint32_t textureSlot, lmx::rhi::Texture& source,
-                                               lmx::rhi::Sampler& sampler,
-                                               lmx::rhi::Texture& destination,
-                                               const lmx::rhi::TextureViewDesc& view = {}) {
+inline std::vector<uint8_t>
+renderSampledImage(lmx::rhi::Device& device, lmx::rhi::GraphicsPipeline& pipeline,
+                   uint32_t textureSlot, lmx::rhi::Texture& source, lmx::rhi::Sampler& sampler,
+                   lmx::rhi::Texture& destination, const lmx::rhi::TextureViewDesc& view = {}) {
     lmx::rhi::CommandList& commands = device.beginFrame();
     commands.beginRenderPass({.colorTarget = &destination,
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},

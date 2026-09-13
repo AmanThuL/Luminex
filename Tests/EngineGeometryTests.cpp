@@ -4,10 +4,10 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "Engine/GeometryGenerator.h"
+#include "Asset/GeometryGenerator.h"
 #include "EngineTestSupport.h"
 
-using namespace lmx::engine;
+using namespace lmx::asset;
 using lmx::test::near3;
 
 namespace {
@@ -36,14 +36,14 @@ void requireConsistentWinding(const GeoData& mesh) {
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("grid(20,30,60,40) has the expected vertex/triangle counts", "[engine]") {
+TEST_CASE("grid(20,30,60,40) has the expected vertex/triangle counts", "[asset]") {
     const GeoData grid = makeGrid(20.0f, 30.0f, 60, 40);
     REQUIRE(grid.vertices.size() == 60 * 40);
     REQUIRE(grid.indices.size() == 59 * 39 * 2 * 3);
 }
 
 //======================================================================================================================
-TEST_CASE("grid vertices carry +Y normals, +X tangents, and lie on the XZ plane", "[engine]") {
+TEST_CASE("grid vertices carry +Y normals, +X tangents, and lie on the XZ plane", "[asset]") {
     const GeoData grid = makeGrid(20.0f, 30.0f, 60, 40);
     for (const VertexPNTU& v : grid.vertices) {
         REQUIRE(v.py == 0.0f);
@@ -54,7 +54,7 @@ TEST_CASE("grid vertices carry +Y normals, +X tangents, and lie on the XZ plane"
 }
 
 //======================================================================================================================
-TEST_CASE("grid spans its half extents", "[engine]") {
+TEST_CASE("grid spans its half extents", "[asset]") {
     const GeoData grid = makeGrid(20.0f, 30.0f, 60, 40);
     glm::vec3 lo{1e9f}, hi{-1e9f};
     for (const VertexPNTU& v : grid.vertices) {
@@ -68,12 +68,12 @@ TEST_CASE("grid spans its half extents", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("grid triangles wind CCW as seen from outside (+Y)", "[engine]") {
+TEST_CASE("grid triangles wind CCW as seen from outside (+Y)", "[asset]") {
     requireConsistentWinding(makeGrid(20.0f, 30.0f, 60, 40));
 }
 
 //======================================================================================================================
-TEST_CASE("cylinder(0.5,0.3,3.0,20,20) has the expected vertex and index counts", "[engine]") {
+TEST_CASE("cylinder(0.5,0.3,3.0,20,20) has the expected vertex and index counts", "[asset]") {
     const GeoData cyl = makeCylinder(0.5f, 0.3f, 3.0f, 20, 20);
     // Body: (stacks+1) rings * (slices+1) verts/ring = 21*21 = 441. Each cap adds slices+1 ring
     // verts + 1 center = 22. Body indices: stacks*slices*6 = 2400; each cap adds slices*3 = 60.
@@ -82,12 +82,12 @@ TEST_CASE("cylinder(0.5,0.3,3.0,20,20) has the expected vertex and index counts"
 }
 
 //======================================================================================================================
-TEST_CASE("cylinder triangles wind CCW as seen from outside", "[engine]") {
+TEST_CASE("cylinder triangles wind CCW as seen from outside", "[asset]") {
     requireConsistentWinding(makeCylinder(0.5f, 0.3f, 3.0f, 20, 20));
 }
 
 //======================================================================================================================
-TEST_CASE("sphere's first triangle winds CCW as seen from outside", "[engine]") {
+TEST_CASE("sphere's first triangle winds CCW as seen from outside", "[asset]") {
     const GeoData sphere = makeSphere(2.0f, 20, 20);
     const VertexPNTU& v0 = sphere.vertices[sphere.indices[0]];
     const VertexPNTU& v1 = sphere.vertices[sphere.indices[1]];
@@ -101,12 +101,12 @@ TEST_CASE("sphere's first triangle winds CCW as seen from outside", "[engine]") 
 }
 
 //======================================================================================================================
-TEST_CASE("sphere triangles wind CCW as seen from outside", "[engine]") {
+TEST_CASE("sphere triangles wind CCW as seen from outside", "[asset]") {
     requireConsistentWinding(makeSphere(2.0f, 20, 20));
 }
 
 //======================================================================================================================
-TEST_CASE("sphere vertices lie on the sphere of the given radius", "[engine]") {
+TEST_CASE("sphere vertices lie on the sphere of the given radius", "[asset]") {
     const GeoData sphere = makeSphere(2.0f, 12, 8);
     for (const VertexPNTU& v : sphere.vertices) {
         REQUIRE(glm::length(glm::vec3{v.px, v.py, v.pz}) == Catch::Approx(2.0f).margin(1e-4));
@@ -115,7 +115,7 @@ TEST_CASE("sphere vertices lie on the sphere of the given radius", "[engine]") {
 
 //======================================================================================================================
 TEST_CASE("cylinder cap ring tangents have handedness matching each cap's bitangent direction",
-          "[engine]") {
+          "[asset]") {
     // Both caps share T=(1,0,0) and dP/dv along +Z (v = z/height + 0.5 for both rings), while N
     // flips between caps -- so B = w*cross(N,T) forces w = -1 on the top cap (N=(0,1,0)) and
     // w = +1 on the bottom cap (N=(0,-1,0)); see the derivation comment in
@@ -139,7 +139,7 @@ TEST_CASE("cylinder cap ring tangents have handedness matching each cap's bitang
 }
 
 //======================================================================================================================
-TEST_CASE("grid corner UVs run 0..1 with (0,0) at -X-Z and (1,1) at +X+Z", "[engine]") {
+TEST_CASE("grid corner UVs run 0..1 with (0,0) at -X-Z and (1,1) at +X+Z", "[asset]") {
     constexpr uint32_t m = 60, n = 40; // same grid as the other grid tests
     const GeoData grid = makeGrid(20.0f, 30.0f, m, n);
     const VertexPNTU& topLeft = grid.vertices[0];                       // i=0, j=0
@@ -158,7 +158,7 @@ TEST_CASE("grid corner UVs run 0..1 with (0,0) at -X-Z and (1,1) at +X+Z", "[eng
 }
 
 //======================================================================================================================
-TEST_CASE("cylinder ring v-coordinate follows 1 - i/stacks", "[engine]") {
+TEST_CASE("cylinder ring v-coordinate follows 1 - i/stacks", "[asset]") {
     constexpr uint32_t slices = 20, stacks = 20;
     const GeoData cyl = makeCylinder(0.5f, 0.3f, 3.0f, slices, stacks);
     const uint32_t ringVertexCount = slices + 1;
@@ -175,7 +175,7 @@ TEST_CASE("cylinder ring v-coordinate follows 1 - i/stacks", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("sphere(2,20,20) has the expected vertex and index counts", "[engine]") {
+TEST_CASE("sphere(2,20,20) has the expected vertex and index counts", "[asset]") {
     const GeoData sphere = makeSphere(2.0f, 20, 20);
     // Poles: 2 verts. Rings: (stacks-1)=19 rings * (slices+1)=21 verts/ring.
     REQUIRE(sphere.vertices.size() == 1 + 19 * 21 + 1);

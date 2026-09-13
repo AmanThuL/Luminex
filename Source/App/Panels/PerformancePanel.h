@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/PerformanceModel.h"
+#include "App/Model/PerformanceModel.h"
 
 namespace lmx::app {
 

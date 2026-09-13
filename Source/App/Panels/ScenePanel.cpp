@@ -48,7 +48,7 @@ bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selecti
 }
 
 //======================================================================================================================
-void selectRow(EditorSelection& selection, engine::SceneId activeSceneId,
+void selectRow(EditorSelection& selection, scene::SceneId activeSceneId,
                const EditorSelectionRow& row) {
     selection =
         EditorSelection{.sceneId = activeSceneId, .subject = row.subject, .index = row.index};
@@ -57,13 +57,13 @@ void selectRow(EditorSelection& selection, engine::SceneId activeSceneId,
 //======================================================================================================================
 // Draws the scene-catalog combo, unchanged from the pre-selection panel: unavailable entries stay
 // disabled with their hint shown inline because a disabled entry cannot be hovered reliably.
-std::optional<engine::SceneId> drawSceneSelector(const engine::SceneLibrary& library,
-                                                 engine::SceneId activeSceneId) {
-    std::optional<engine::SceneId> chosen;
-    const std::span<const engine::SceneEntry> entries = library.entries();
+std::optional<scene::SceneId> drawSceneSelector(const scene::SceneLibrary& library,
+                                                scene::SceneId activeSceneId) {
+    std::optional<scene::SceneId> chosen;
+    const std::span<const scene::SceneEntry> entries = library.entries();
     if (ImGui::BeginCombo("Scene", library.entry(activeSceneId).displayName.data())) {
         for (size_t i = 0; i < entries.size(); ++i) {
-            const engine::SceneEntry& entry = entries[i];
+            const scene::SceneEntry& entry = entries[i];
             ImGui::PushID(static_cast<int>(i));
             if (!entry.available) {
                 ImGui::BeginDisabled();
@@ -98,7 +98,7 @@ void drawFilter(std::string& filter) {
 // Draws every visible row, grouped under a header per group transition; a group with no visible
 // rows draws no header at all rather than an empty one. A click applies straight to `selection`.
 void drawRows(std::span<const EditorSelectionRow> rows, EditorSelection& selection,
-              engine::SceneId activeSceneId) {
+              scene::SceneId activeSceneId) {
     if (rows.empty()) {
         ImGui::TextDisabled("no items match filter");
         return;
@@ -126,7 +126,7 @@ void drawRows(std::span<const EditorSelectionRow> rows, EditorSelection& selecti
 // Up/Down navigation over the currently visible rows, active only while the Scene window itself is
 // focused so it does not fire while some other panel has keyboard focus.
 void handleKeyboardNav(std::span<const EditorSelectionRow> rows, EditorSelection& selection,
-                       engine::SceneId activeSceneId) {
+                       scene::SceneId activeSceneId) {
     if (!ImGui::IsWindowFocused()) {
         return;
     }
@@ -145,8 +145,8 @@ void handleKeyboardNav(std::span<const EditorSelectionRow> rows, EditorSelection
 } // namespace
 
 //======================================================================================================================
-std::optional<engine::SceneId> drawScenePanel(bool& open, const ScenePanelContext& context) {
-    std::optional<engine::SceneId> chosen;
+std::optional<scene::SceneId> drawScenePanel(bool& open, const ScenePanelContext& context) {
+    std::optional<scene::SceneId> chosen;
     if (ImGui::Begin(kScenePanelWindowName, &open)) {
         chosen = drawSceneSelector(context.library, context.activeSceneId);
 

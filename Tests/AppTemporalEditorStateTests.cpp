@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/TemporalEditorState.h"
-#include "Engine/SceneLibrary.h"
+#include "App/Model/TemporalEditorState.h"
+#include "Scene/SceneLibrary.h"
 
 using namespace lmx;
 using namespace lmx::app;
@@ -9,8 +9,8 @@ using namespace lmx::app;
 namespace {
 
 //======================================================================================================================
-engine::SceneId temporalLabId() {
-    const std::optional<engine::SceneId> id = engine::parseSceneId("temporal-lab");
+scene::SceneId temporalLabId() {
+    const std::optional<scene::SceneId> id = scene::parseSceneId("temporal-lab");
     REQUIRE(id.has_value());
     return *id;
 }
@@ -22,7 +22,7 @@ TEST_CASE("onSceneSelected bumps the generation on the first call", "[app]") {
     TemporalEditorState state;
     EditorRenderSettings settings;
 
-    onSceneSelected(state, settings, engine::defaultSceneId());
+    onSceneSelected(state, settings, scene::defaultSceneId());
 
     REQUIRE(state.sceneGeneration == 1);
 }
@@ -32,8 +32,8 @@ TEST_CASE("onSceneSelected bumps the generation on every call, including a resel
     TemporalEditorState state;
     EditorRenderSettings settings;
 
-    onSceneSelected(state, settings, engine::defaultSceneId());
-    onSceneSelected(state, settings, engine::defaultSceneId());
+    onSceneSelected(state, settings, scene::defaultSceneId());
+    onSceneSelected(state, settings, scene::defaultSceneId());
     onSceneSelected(state, settings, temporalLabId());
 
     REQUIRE(state.sceneGeneration == 3);
@@ -53,7 +53,7 @@ TEST_CASE("selecting any scene leaves the render settings untouched", "[app]") {
     REQUIRE_FALSE(settings.temporalEnabled);
     REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);
 
-    onSceneSelected(state, settings, engine::defaultSceneId());
+    onSceneSelected(state, settings, scene::defaultSceneId());
 
     REQUIRE_FALSE(settings.temporalEnabled);
     REQUIRE(settings.temporalDebugView == render::TemporalDebugView::Off);

@@ -11,11 +11,11 @@
 // to be written independently of it.
 //
 // The one thing this file does *not* re-derive is the split-sum DFG table: it reads the very table
-// Source/Engine/Ibl.h generates and the renderer uploads, because the point of a probe comparison
+// Source/Asset/Ibl.h generates and the renderer uploads, because the point of a probe comparison
 // is to check the shader's use of that data, not to re-implement the integrator. The integrator has
 // its own independent oracle in Tests/EngineIblTests.cpp.
 
-#include "Engine/Ibl.h"
+#include "Asset/Ibl.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>
@@ -132,7 +132,7 @@ inline glm::vec3 imageBasedLight(const glm::vec3& irradiance, const glm::vec3& p
 // kDfgLutSize^2 * kDfgSampleCount importance samples.
 inline const std::vector<glm::vec2>& productionDfgLut() {
     static const std::vector<glm::vec2> lut = [] {
-        std::vector<glm::vec2> table = engine::ibl::computeDfgLut(engine::ibl::kDfgLutSize);
+        std::vector<glm::vec2> table = asset::ibl::computeDfgLut(asset::ibl::kDfgLutSize);
         for (glm::vec2& texel : table) {
             texel.x = glm::unpackHalf1x16(glm::packHalf1x16(texel.x));
             texel.y = glm::unpackHalf1x16(glm::packHalf1x16(texel.y));
@@ -147,11 +147,11 @@ inline const std::vector<glm::vec2>& productionDfgLut() {
 // centered table Ibl.h documents: coordinate c addresses texel c * size - 0.5, and both ends clamp
 // to the outermost texel centre rather than running past them.
 inline glm::vec2 sampleDfg(float nov, float perceptualRoughness) {
-    const auto size = static_cast<int>(engine::ibl::kDfgLutSize);
+    const auto size = static_cast<int>(asset::ibl::kDfgLutSize);
     const std::vector<glm::vec2>& lut = productionDfgLut();
 
     const auto axis = [](float coordinate) {
-        constexpr auto extent = static_cast<float>(engine::ibl::kDfgLutSize);
+        constexpr auto extent = static_cast<float>(asset::ibl::kDfgLutSize);
         return std::clamp(coordinate * extent - 0.5f, 0.0f, extent - 1.0f);
     };
     const float x = axis(std::clamp(nov, 0.0f, 1.0f));
@@ -174,22 +174,23 @@ inline glm::vec2 sampleDfg(float nov, float perceptualRoughness) {
 
 //======================================================================================================================
 // The whole fragment, for a surface in a uniform environment of radiance `environment`. A constant
-// environment is what Source/Engine/Ibl.h's generators reproduce exactly at every roughness, so
+// environment is what Source/Asset/Ibl.h's generators reproduce exactly at every roughness, so
 // both image-based samples are that radiance itself and no cube lookup has to be mirrored here.
 //
 // `lights` is the same three-light set a SceneView carries, with the shadow factor already folded
 // into each strength by the caller.
-inline glm::vec3 shadeInUniformEnvironment(const Surface& surface, const glm::vec3& normal,
-                                           const glm::vec3& toEye, const glm::vec3& environment,
-                                           std::span<const std::pair<glm::vec3, glm::vec3>> lights) {
+inline glm::vec3
+shadeInUniformEnvironment(const Surface& surface, const glm::vec3& normal, const glm::vec3& toEye,
+                          const glm::vec3& environment,
+                          std::span<const std::pair<glm::vec3, glm::vec3>> lights) {
     glm::vec3 color(0.0f);
     for (const auto& [strength, direction] : lights) {
         color += directionalLight(strength, direction, normal, toEye, surface);
     }
     const float nov = std::clamp(glm::dot(normal, toEye), 1e-4f, 1.0f);
-    color += surface.occlusion *
-             imageBasedLight(environment, environment,
-                             sampleDfg(nov, surface.perceptualRoughness), surface);
+    color +=
+        surface.occlusion * imageBasedLight(environment, environment,
+                                            sampleDfg(nov, surface.perceptualRoughness), surface);
     return color + surface.emissive;
 }
 

@@ -1,9 +1,9 @@
 #include "GpuTestSupport.h"
 
-#include "App/FrameRecordRing.h"
-#include "App/GraphInspectorModel.h"
-#include "App/GraphLayout.h"
-#include "App/GraphNodeModel.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/GraphInspectorModel.h"
+#include "App/Model/GraphLayout.h"
+#include "App/Model/GraphNodeModel.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 #include "Render/TransientPool.h"

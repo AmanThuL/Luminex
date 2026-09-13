@@ -1,4 +1,4 @@
-#include "Engine/PngImage.h"
+#include "Asset/PngImage.h"
 #include "RHI/Validate.h"
 #include "Render/DisplayDomain.h"
 #include "Render/Renderer.h"
@@ -32,7 +32,7 @@ TEST_CASE("display goldens carry the production domain and expected extent", "[r
     const std::array names{"display-sdr-ramps.png", "display-sdr-bloom.png"};
     for (const char* name : names) {
         const auto path = std::filesystem::path(LMX_REPO_ROOT) / "Tests/Golden" / name;
-        auto image = lmx::engine::readPng(path);
+        auto image = lmx::asset::readPng(path);
         INFO(path.string());
         INFO((image ? "" : image.error().message));
         REQUIRE(image.has_value());
@@ -40,7 +40,7 @@ TEST_CASE("display goldens carry the production domain and expected extent", "[r
         REQUIRE(image->height == 64);
         REQUIRE(image->rgba.size() == size_t{image->width} * image->height * 4);
         const auto chunk =
-            std::ranges::find(image->text, "lmx:display", &lmx::engine::PngTextChunk::keyword);
+            std::ranges::find(image->text, "lmx:display", &lmx::asset::PngTextChunk::keyword);
         REQUIRE(chunk != image->text.end());
         REQUIRE(chunk->text == toJson(kSdrDisplayDomain));
     }
