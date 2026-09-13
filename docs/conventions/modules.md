@@ -1,0 +1,142 @@
+# Module Contract
+
+**Status**: Accepted
+
+The repository is a set of named units with an explicit dependency set each. A unit may depend on
+the units and third-party packages listed for it and on nothing else; anything absent from its row
+is forbidden, and the policy checker rejects it. The layering, the unit names and the namespace
+renames are decided in [ADR 0020](../decisions/0020-module-layering-and-units.md); the migration
+order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
+
+## Units
+
+`Paths` names the unit's directory and its build target. Three units are mid-migration: their
+target directory does not exist yet, so the [transitional file lists](#transitional-file-lists)
+below define their membership until the move that creates the directory.
+
+| Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
+|---|---|---|---|---|---|
+| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer functions; later, helpers that reach two consumers with one contract | — | spdlog, glm |
+| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi` | API-neutral GPU contracts, compiled standalone | — | — |
+| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
+| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi` | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
+| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
+| `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
+| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and passes, plus the frame input contract in its own leaf header | `core`, `rhi-public` | glm |
+| `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
+| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for every unit below the shell | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
+| `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
+| `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core`, `rhi-public` | glm |
+
+`app-shell` reaches the backend and the adapter because it creates the device and the editor's
+ImGui bridge; no other unit above `rhi-public` may name a backend or adapter header.
+
+### Transitional file lists
+
+Until the moves that create `Source/Asset`, `Source/Scene` and `Source/App/Model`, these lists are
+the ownership map for those three units. The header and its implementation always share a unit.
+
+- `asset` — `Source/Engine/`: `Asset`, `Color`, `DdsLoader`, `GltfLoader`, `HdrEnvironment`, `Ibl`,
+  `PngImage`, `TextureBake`, `GeometryGenerator`, `SceneAnimation` (`.h` and, where present,
+  `.cpp`).
+- `scene` — `Source/Engine/`: `Scene`, `SceneLibrary`, `SceneEnvironment` (`.h` and `.cpp`),
+  `MaterialLab.cpp`, `TemporalLab.cpp`, `SanMiguel.cpp`.
+- `app-model` — `Source/App/`: `AppOptions`, `CaptureMetadata`, `DynamicResolution`,
+  `EditorActions`, `EditorSelection`, `ExposureReset`, `FrameRecordRing`, `GraphInspectorModel`,
+  `GraphLayout`, `GraphNodeModel`, `PassTimingHistory`, `PerformanceModel`, `TemporalEditorState`,
+  `WorkspaceModel` (`.h` and `.cpp`), plus `DirectionalLightRole.h` and `EditorRenderSettings.h`.
+- `app-shell` — everything else under `Source/App/`, including `Panels/`, `EditorShell`,
+  `Screenshot` and `main.cpp`.
+
+The `imgui-adapter` sources `Metal4ImGui.cpp` and `ImGuiBackendContract.cpp` still sit in
+`RHI/Backends/Metal4/Source` and move into `RHI/Backends/Metal4/ImGui/Source/` so that the map and
+the target agree; the adapter's public header already lives under the adapter directory.
+
+## Ownership precedence
+
+Ownership comes from one explicit map from unit to paths, never from inference:
+
+- The longest matching path wins. A file entry beats the directory that contains it, and a nested
+  directory entry beats its parent, so `Source/App/Model` carves `app-model` out of `app-shell`
+  and a single file can be reassigned without moving it.
+- Every source and header under a mapped root matches exactly one entry. An unmatched file is a
+  failure, not an exemption; adding a file to the tree means adding it to a unit.
+- The map is reconciled with xmake target membership and disagreement fails. The compilation
+  database supplies compilation context only — include directories and defines — because a file
+  compiled by several targets cannot establish ownership on its own.
+
+## Placement rules
+
+- A helper with no domain meaning and consumers in two or more units, sharing one contract, goes to
+  `core`. One consumer keeps it local; a domain meaning keeps it in the owning unit.
+- Extraction preserves each caller's contract. Two helpers with different contracts keep different
+  names and a test that pins the difference. A behaviour change is its own commit with its own
+  test, never part of a move.
+- CPU decode and validation finish in `asset`. GPU creation and upload happen in `scene` or
+  `render` on the render-owning thread, as the
+  [engineering conventions](engineering.md) require.
+- Vocabulary shared by a producer and a consumer lives in the lower of the two units, in its own
+  leaf header, never inside the orchestrator that consumes it.
+- Tests link libraries, never loose sources from another unit.
+- Every project header compiles standalone: a generated translation unit that includes only that
+  header, compiled with its owning target's include paths, must build. `rhi-public` keeps a
+  stricter dependency-free command line, because its headers are required to need nothing.
+
+## Include-level form
+
+The rules above are checked as include edges:
+
+- A quoted include resolves relative to the including file first, then against the owning target's
+  include directories. It is a project edge from the includer's unit to the unit that owns the
+  resolved file.
+- An angle include resolves against the package and `ThirdParty` roots. It is a third-party edge
+  named by the package or vendored directory: spdlog, glm, cgltf, stb, catch2, libsdl3, imgui,
+  imgui-node-editor, metal-cpp. Metal, MetalFX, QuartzCore and Foundation headers come from
+  metal-cpp and count as that package. A quoted include that resolves to no project file is
+  resolved the same way.
+- Project reach is transitive. A unit reaches every unit its includes reach, at any depth, so an
+  `app-model` header cannot borrow ImGui by including a shell header that includes it.
+- Third-party reach is direct. A package is charged to the unit whose own file names it, not to
+  that file's includers, so `core` including spdlog does not spend spdlog everywhere.
+- Header allowances are per unit and per header, and are the only exception to the unit table.
+  `asset` may include `RHI/Format.h`; the texture descriptor header extracted in R1.2 joins that
+  allowance when it exists. An allowance grants those headers only — not the target, not the umbrella
+  `RHI/RHI.h`, and not any other header the allowed header happens to include.
+
+## Asset independence
+
+`asset` is CPU-only content and must stay linkable without a GPU. Three layers prove it, and the
+weakest one is deliberately last:
+
+1. **Include layer.** The header allowance admits format and descriptor headers only, so
+   `rhi::Device`, `rhi::Texture` and `rhi::Buffer` are not nameable from `asset`. This is the
+   layer that actually holds the boundary.
+2. **Link layer.** `TextureBake` links `core` and `asset` and neither the RHI target nor a Metal
+   framework, so an accidental dependency on RHI code fails the link rather than the review.
+3. **Archive layer.** The `asset` archive has no undefined `lmx::rhi` references. On its own this
+   proves little: the RHI's API is virtual interfaces, so a caller reaches it through a vtable
+   without leaving an undefined symbol behind, and today's transitional archive already shows none
+   while its sources still name RHI types. The check sees non-virtual RHI symbols only and is a
+   backstop under the first two layers, never a substitute for them.
+
+## Review budgets
+
+Per-file line budgets are review candidates, never failures: 1,000 lines for production sources and
+headers, 1,500 for test sources. The checker reports files over budget so a reviewer looks at them;
+it does not block. Responsibility justifies a split — a file that does one thing at 1,200 lines
+stays, and a file that does three at 600 does not. Splitting to satisfy a number, with no
+responsibility named for each part, is not an improvement.
+
+## Allowlist policy
+
+The current tree does not satisfy the contract yet, so the checker reads an allowlist from one
+checked-in file. The allowlist is a record of debt, not a configuration surface:
+
+- Each entry names the including file, the forbidden edge and the reason it exists, and is scoped
+  to that one edge — never a whole unit, directory or package.
+- The allowlist only shrinks. A slice that would add an entry either fixes the edge instead or
+  states in its plan why the edge is temporary and which slice removes it.
+- An empty allowlist for a unit is that unit's exit gate. Widening the allowlist is not how a
+  crossing gets approved; a rule that no longer fits opens the next refactoring milestone.
