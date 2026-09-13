@@ -2,7 +2,7 @@
 
 The Apache-2.0 license in this repository covers Luminex source code. It does not cover files
 downloaded into `Assets/Fetched/`, nor the gallery images derived from those files:
-`docs/media/sponza.png` and `docs/media/damaged-helmet.png`.
+`docs/media/sponza.png`, `docs/media/editor-sponza.png` and `docs/media/damaged-helmet.png`.
 
 ## Damaged Helmet
 
@@ -30,6 +30,11 @@ License texts: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode
 - Retrieved input: the official approximately 78 MB OBJ+PNG archive and its `info.js` record
 - License recorded by `info.js`: [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/legalcode)
 - Attribution: Crytek Sponza, © 2010 Frank Meinl/Crytek
+
+`docs/media/editor-sponza.png` shows Sponza rendered in the real Luminex editor with native TAA,
+automatic exposure and bloom. Its camera framing, lighting and image output are adaptations;
+the screenshot is presented with a decorative macOS-style title bar and background. The scene
+and editor content are captured from the running application.
 
 `xmake setup` verifies the source archive and then performs a deterministic local conversion to
 the uncompressed core glTF subset used by Luminex. The converted geometry, materials, and image

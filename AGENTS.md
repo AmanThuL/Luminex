@@ -13,9 +13,9 @@ linked parts under `docs/roadmap/`.
 - GPU debugging: `docs/guides/gpu-debugging.md`
 - Temporal sequences and offline FLIP: `docs/guides/temporal-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
-- Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B),
-  `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research) and
+- Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research) and
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B).
+- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved scene-identity/update handoff contract. M7.1 is eligible but not implemented or in execution.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.
