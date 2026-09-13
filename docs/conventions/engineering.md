@@ -27,6 +27,8 @@ rules live in `cpp-style.md`, `shader-style.md`, `commits.md`, and `documentatio
   the backend implementation.
 - CPU asset decode and validation complete in the Engine domain. GPU creation and upload happen on
   the render-owning thread, with domain errors translated at the App boundary.
+- Module ownership and the dependencies each unit may take are defined by the
+  [module contract](modules.md) and checked by policy, not by review.
 
 ## Graphics contracts
 

@@ -6,7 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/PerformanceModel.h"
+#include "App/Model/PerformanceModel.h"
 
 #include <array>
 #include <vector>

@@ -1,5 +1,5 @@
+#include "Asset/PngImage.h"
 #include "DisplayTransformOracle.h"
-#include "Engine/PngImage.h"
 #include "RHI/RHI.h"
 #include "Render/DisplayDomain.h"
 #include "Render/Renderer.h"
@@ -222,9 +222,9 @@ void verifyFixture(const Fixture& fixture, const char* filename) {
 
     const auto path = std::filesystem::path(LMX_REPO_ROOT) / "Tests/Golden" / filename;
     const std::array text{
-        engine::PngTextChunk{"lmx:display", render::toJson(render::kSdrDisplayDomain)}};
+        asset::PngTextChunk{"lmx:display", render::toJson(render::kSdrDisplayDomain)}};
     const auto write = [&](const std::filesystem::path& output) {
-        auto result = engine::writePng(output, actual, fixture.width, fixture.height, text);
+        auto result = asset::writePng(output, actual, fixture.width, fixture.height, text);
         INFO((result ? "" : result.error().message));
         REQUIRE(result.has_value());
     };
@@ -233,7 +233,7 @@ void verifyFixture(const Fixture& fixture, const char* filename) {
         REQUIRE(oracleFailures == 0);
         write(path);
     }
-    auto golden = engine::readPng(path);
+    auto golden = asset::readPng(path);
     INFO((golden ? "" : golden.error().message));
     if (!golden) {
         write(path.string() + ".actual.png");

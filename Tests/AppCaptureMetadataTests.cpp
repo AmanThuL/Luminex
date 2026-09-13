@@ -1,4 +1,4 @@
-#include "App/CaptureMetadata.h"
+#include "App/Model/CaptureMetadata.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -38,13 +38,13 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
     render::TemporalStatus status;
     status.reconstruction = render::ReconstructionMode::NativeTaa;
     status.vendorFallback = render::VendorFallback::Unsupported;
-    REQUIRE(captureFrameMetadataJson(engine::defaultSceneId(), 32, 31, TemporalMode::Vendor,
+    REQUIRE(captureFrameMetadataJson(scene::defaultSceneId(), 32, 31, TemporalMode::Vendor,
                                      render::TemporalDebugView::MotionVectors, 0.5f, status,
                                      "test GPU") ==
             R"({"scene":"sponza","frameCount":32,"simulationFrame":31,)"
             R"("requestedMode":"metalfx","effectiveMode":"taa","fallback":1,)"
             R"("renderScale":0.5,"debugView":1,"device":"test GPU"})");
-    const auto off = captureFrameMetadataJson(engine::defaultSceneId(), 1, 0, TemporalMode::Off,
+    const auto off = captureFrameMetadataJson(scene::defaultSceneId(), 1, 0, TemporalMode::Off,
                                               render::TemporalDebugView::Off, 1, status, "GPU");
     REQUIRE(off.contains(R"("effectiveMode":"off")"));
 }

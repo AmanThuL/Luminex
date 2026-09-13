@@ -18,6 +18,40 @@
 
 namespace lmx::render {
 
+/// How a temporal frame turns its inputs into the image the display transform reads.
+enum class ReconstructionMode : uint8_t {
+    /// The raw jittered frame reaches bloom and display, and a copy of it becomes the history.
+    /// It shares every input with NativeTaa, which is what lets a test compare the two at
+    /// identical inputs, and switching between the modes needs no reset because both leave a real
+    /// frame in the colour slot.
+    Raw,
+    /// The resolve accumulates this frame over the reprojected history and writes the colour slot
+    /// directly, so this frame's output is the next frame's history and there is no copy.
+    NativeTaa,
+    VendorTemporal ///< Device-capability-selected reconstruction with native fallback.
+};
+
+/// Why a requested vendor reconstruction ran the native kernels instead.
+enum class VendorFallback : uint8_t {
+    None,          ///< The requested mode is available.
+    Unsupported,   ///< The device offers no compatible temporal scaler.
+    CreationFailed ///< Scaler initialization failed for this output extent.
+};
+
+/// What the temporal passes draw into the display target instead of the frame's own picture. Off
+/// is the shipped image; every other view overwrites it with a diagnostic and is meant to be read
+/// rather than looked at -- except ReprojectedHistory, which is a colour signal and is encoded
+/// through the display pass's own tone map and transfer so the two compare side by side.
+enum class TemporalDebugView : uint8_t {
+    Off,                ///< The display transform's own output reaches the viewport unchanged.
+    MotionVectors,      ///< Motion recentred on grey, with the invalid sentinel drawn magenta.
+    ReprojectionError,  ///< The reprojected history's difference from this frame's scene colour.
+    ReprojectedHistory, ///< The exposure-corrected history, tone mapped; rejected pixels blue.
+    RejectionMask,      ///< Flat colours per rejection reason, with the clipped flag added green.
+    BlendWeight,        ///< Grey: how much of this frame the blend kept.
+    HistoryAge          ///< Grey: the per-pixel accumulation age over the warmup period.
+};
+
 /// The two pixel extents a frame renders at. The scene rasterises into the render extent and the
 /// frame is presented at the output extent; the render extent never exceeds the output on either
 /// axis, and the two are equal when nothing is upscaling. Motion vectors and jitter are relative
@@ -102,5 +136,8 @@ glm::vec2 clipToMotionUv(const glm::vec4& clip);
 /// Returns `uvCurrent - uvPrevious` for a surface point, from unjittered clip positions of this
 /// frame and the previous one. A consumer fetches history at `uv - motion`.
 glm::vec2 motionBetween(const glm::vec4& clipCurrent, const glm::vec4& clipPrevious);
+
+/// True for debug views that require the native accumulation kernel's internal state.
+bool nativeOnlyTemporalView(TemporalDebugView view);
 
 } // namespace lmx::render

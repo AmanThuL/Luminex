@@ -5,15 +5,18 @@
 
 #include "App/Screenshot.h"
 
-#include "App/CaptureMetadata.h"
-#include "App/EditorShell.h"
+#include "App/Model/CaptureMetadata.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/SceneDefaults.h"
+#include "App/Model/SceneSession.h"
+#include "Asset/BmpImage.h"
+#include "Asset/PngImage.h"
 #include "Core/Log.h"
-#include "Engine/PngImage.h"
-#include "Engine/Scene.h"
-#include "Engine/SceneAnimation.h"
-#include "Engine/SceneLibrary.h"
 #include "RHI/RHI.h"
+#include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneLibrary.h"
 
 #include <algorithm>
 #include <array>
@@ -34,75 +37,10 @@ constexpr uint32_t kScreenshotWidth = 1280;
 constexpr uint32_t kScreenshotHeight = 720;
 
 //======================================================================================================================
-void appendLittleEndian(std::vector<uint8_t>& out, uint32_t value) {
-    for (int byte = 0; byte < 4; ++byte) {
-        out.push_back(static_cast<uint8_t>((value >> (8 * byte)) & 0xFFu));
-    }
-}
-
-//======================================================================================================================
-void appendLittleEndian(std::vector<uint8_t>& out, uint16_t value) {
-    out.push_back(static_cast<uint8_t>(value & 0xFFu));
-    out.push_back(static_cast<uint8_t>((value >> 8) & 0xFFu));
-}
-
-//======================================================================================================================
-// A negative-height, 32-bit BI_RGB bitmap accepts top-down BGRA8 readback verbatim. Four-byte
-// pixels also satisfy BMP row alignment without padding.
-bool writeBmp(const std::filesystem::path& path, const std::vector<uint8_t>& bgra, uint32_t width,
-              uint32_t height) {
-    constexpr uint32_t kFileHeaderSize = 14;
-    constexpr uint32_t kInfoHeaderSize = 40;
-    constexpr uint32_t kPixelOffset = kFileHeaderSize + kInfoHeaderSize;
-    // Nonzero density prevents image readers from guessing display scale.
-    constexpr int32_t kPixelsPerMeter = 2835;
-
-    const uint32_t imageSize = static_cast<uint32_t>(bgra.size());
-
-    std::vector<uint8_t> header;
-    header.reserve(kPixelOffset);
-    header.push_back('B');
-    header.push_back('M');
-    appendLittleEndian(header, kPixelOffset + imageSize);
-    appendLittleEndian(header, uint16_t{0}); // reserved1
-    appendLittleEndian(header, uint16_t{0}); // reserved2
-    appendLittleEndian(header, kPixelOffset);
-
-    appendLittleEndian(header, kInfoHeaderSize);
-    appendLittleEndian(header, width);
-    // BMP encodes top-down rows with a negative signed height.
-    appendLittleEndian(header, static_cast<uint32_t>(-static_cast<int32_t>(height)));
-    appendLittleEndian(header, uint16_t{1});  // planes
-    appendLittleEndian(header, uint16_t{32}); // bits per pixel
-    appendLittleEndian(header, uint32_t{0});  // BI_RGB, no compression
-    appendLittleEndian(header, imageSize);
-    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
-    appendLittleEndian(header, static_cast<uint32_t>(kPixelsPerMeter));
-    appendLittleEndian(header, uint32_t{0}); // palette colors used
-    appendLittleEndian(header, uint32_t{0}); // palette colors required
-
-    std::ofstream file(path, std::ios::binary | std::ios::trunc);
-    if (!file) {
-        LMX_LOG_ERROR("screenshot: cannot open '{}' for writing", path.string());
-        return false;
-    }
-    file.write(reinterpret_cast<const char*>(header.data()),
-               static_cast<std::streamsize>(header.size()));
-    file.write(reinterpret_cast<const char*>(bgra.data()),
-               static_cast<std::streamsize>(bgra.size()));
-    file.close();
-    if (!file) {
-        LMX_LOG_ERROR("screenshot: failed while writing '{}'", path.string());
-        return false;
-    }
-    return true;
-}
-
-//======================================================================================================================
 bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint8_t>& bgra,
                        const render::DisplayDomain& display, std::string frameMetadata) {
     if (path.extension() == ".bmp") {
-        return writeBmp(path, bgra, kScreenshotWidth, kScreenshotHeight);
+        return asset::writeBmp(path, bgra, kScreenshotWidth, kScreenshotHeight);
     }
     if (path.extension() != ".png") {
         LMX_LOG_ERROR("capture accepts .png or .bmp output paths: {}", path.string());
@@ -112,10 +50,10 @@ bool writeCaptureImage(const std::filesystem::path& path, const std::vector<uint
     for (size_t pixel = 0; pixel < rgba.size(); pixel += 4) {
         std::swap(rgba[pixel], rgba[pixel + 2]);
     }
-    const std::array<engine::PngTextChunk, 2> text = {
-        engine::PngTextChunk{"lmx:display", render::toJson(display)},
-        engine::PngTextChunk{"lmx:frame", std::move(frameMetadata)}};
-    const auto written = engine::writePng(path, rgba, kScreenshotWidth, kScreenshotHeight, text);
+    const std::array<asset::PngTextChunk, 2> text = {
+        asset::PngTextChunk{"lmx:display", render::toJson(display)},
+        asset::PngTextChunk{"lmx:frame", std::move(frameMetadata)}};
+    const auto written = asset::writePng(path, rgba, kScreenshotWidth, kScreenshotHeight, text);
     if (!written) {
         LMX_LOG_ERROR("capture: {}", written.error().message);
         return false;
@@ -153,7 +91,7 @@ bool writeManifest(const AppOptions& options, std::string_view device,
 }
 
 //======================================================================================================================
-int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
                  const AppOptions* sequence) {
     std::vector<std::string> records;
@@ -173,8 +111,8 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    engine::SceneLibrary library(**device);
-    const engine::SceneEntry& entry = library.entry(sceneId);
+    scene::SceneLibrary library(**device);
+    const scene::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
         return 1;
@@ -185,8 +123,11 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
         LMX_LOG_ERROR("scene '{}' failed to load: {}", entry.stableId, scene.error().message);
         return 1;
     }
-    engine::Scene* activeScene = *scene;
+    scene::Scene* activeScene = *scene;
     LMX_LOG_INFO("scene: {} ({} objects)", activeScene->name, activeScene->objects.size());
+
+    // The renderer dies before its frame transients and their pool, while the device is alive.
+    render::TransientPool transientPool(**device);
 
     // Shared storage permits direct CPU readback after GPU completion.
     auto renderer = render::Renderer::create(**device, kScreenshotWidth, kScreenshotHeight,
@@ -200,9 +141,11 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
     (*renderer)->clearColor[2] = kSceneClearGray;
     (*renderer)->clearColor[3] = 1.0f;
 
-    render::Camera camera = cameraFromScene(activeScene->initialCamera);
+    SceneSession session;
+    session.activate(*activeScene, SceneActivationMotion::PreserveLoadedMotion);
+    const render::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
-    const bool hasAnyTrack = engine::hasAnimationTracks(activeScene->animation);
+    FrameRecordRing frameRecords;
 
     if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
                                    hasCameraTrack, records, false)) {
@@ -210,29 +153,15 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
-        // The first frame renders at the scene's authored t = 0; later frames advance by the same
-        // fixed step the editor's frame loop uses, so a warmup run matches what playback produces.
         if (sequence) {
-            activeScene->animationTime = static_cast<double>(frame) / engine::kAnimationBakeRate;
-            activeScene->animate(activeScene->animationTime);
-        } else if (frame > 0 && hasAnyTrack) {
-            activeScene->advanceAnimation(1.0 / engine::kAnimationBakeRate);
-            activeScene->animate(activeScene->animationTime);
-        }
-        if (hasCameraTrack) {
-            // On frame 0 this re-derives the pose `initialCamera` already holds (the track's first
-            // key), which is redundant and deliberately harmless -- one unconditional sample is
-            // clearer than a special case that must stay in step with the authored first key.
-            const engine::CameraKey pose = engine::sampleCameraTrack(
-                activeScene->animation.cameraTrack, activeScene->animationTime);
-            camera.position = pose.position;
-            camera.yaw = pose.yaw;
-            camera.pitch = pose.pitch;
+            session.prepareSequenceFrame(frame);
+        } else {
+            session.prepareScreenshotFrame(frame);
         }
 
         std::vector<render::DrawItem> items;
         render::SceneView view =
-            activeScene->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+            session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
         // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
         // (spec 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom
         // output -- "with auto exposure off and bloom off, a frame is byte-identical to the
@@ -249,14 +178,17 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
         view.temporal.renderScale = renderScale;
 
         rhi::CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
+                                          /*poolingEnabled=*/true);
+        declared.graph().exportTexture(declared.displayColor());
+        frameRecords.retain(declared.execute());
         (*device)->endFrame(nullptr);
 
         // readback() has no synchronization; wait until the GPU releases the shared target, and
         // commitFrame() must not promote this frame's motion to "previous" before the GPU has
         // actually consumed it.
         (*device)->waitIdle();
-        activeScene->commitFrame();
+        session.commitFrame();
         if (sequence) {
             const auto status = (*renderer)->temporalStatus();
             if (temporal == TemporalMode::Vendor &&
@@ -333,7 +265,7 @@ int runOffscreen(const std::filesystem::path& outPath, engine::SceneId sceneId, 
 } // namespace
 
 //======================================================================================================================
-int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
                   TemporalMode temporal, render::TemporalDebugView temporalView,
                   float renderScale) {
     return runOffscreen(outPath, sceneId, frames, temporal, temporalView, renderScale, nullptr);

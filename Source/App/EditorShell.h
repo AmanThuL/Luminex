@@ -4,21 +4,22 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/AppOptions.h"
-#include "App/DynamicResolution.h"
-#include "App/EditorActions.h"
-#include "App/EditorRenderSettings.h"
-#include "App/EditorSelection.h"
-#include "App/ExposureReset.h"
-#include "App/FrameRecordRing.h"
+#include "App/Model/AppOptions.h"
+#include "App/Model/DynamicResolution.h"
+#include "App/Model/EditorActions.h"
+#include "App/Model/EditorRenderSettings.h"
+#include "App/Model/EditorSelection.h"
+#include "App/Model/ExposureReset.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/PerformanceModel.h"
+#include "App/Model/SceneSession.h"
+#include "App/Model/TemporalEditorState.h"
+#include "App/Model/WorkspaceModel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "App/PerformanceModel.h"
-#include "App/TemporalEditorState.h"
-#include "App/WorkspaceModel.h"
-#include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <memory>
@@ -26,22 +27,10 @@
 #include <string_view>
 #include <vector>
 
-/// SDL is an implementation detail of the shell's input handling and of nothing else here, so the
-/// header takes the window as an opaque handle and every consumer that only wants the scene
-/// (Screenshot.cpp) stays free of SDL.
+/// SDL is an implementation detail of shell input; this header uses an opaque window handle.
 struct SDL_Window;
 
 namespace lmx::app {
-
-/// Display-space neutral clear value used by the editor scene target.
-constexpr float kSceneClearGray = 0.7f;
-
-/// Maps a Scene's initial pose (Engine/Scene.h's SceneCamera -- position/yaw/pitch/fovY/near/far,
-/// deliberately not render::Camera so Engine never has to carry the fly-camera's App-only
-/// moveSpeed) to a fresh render::Camera, which keeps Camera's own default moveSpeed. Shared by
-/// EditorShell's startup and scene-switch paths and by Screenshot.cpp's offscreen path, so a
-/// scene's screenshot and its editor view start from exactly the same pose.
-render::Camera cameraFromScene(const engine::SceneCamera& sceneCamera);
 
 /// Luminex's own section of `imgui.ini`, as the registered Dear ImGui settings handler sees it.
 ///
@@ -61,7 +50,7 @@ struct WorkspaceSettings {
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
-/// Render Graph window beside them, the fly camera, and the active engine::Scene the Inspector
+/// Render Graph window beside them, the fly camera, and the active scene::Scene the Inspector
 /// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
@@ -80,8 +69,8 @@ public:
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
     static std::unique_ptr<EditorShell> create(SDL_Window* window, rhi::Device& device,
-                                               engine::SceneLibrary& library,
-                                               engine::SceneId initialScene);
+                                               scene::SceneLibrary& library,
+                                               scene::SceneId initialScene);
     /// Releases the ImGui context and renderer integration while the device remains alive.
     ~EditorShell();
 
@@ -155,7 +144,7 @@ public:
     void controllerDeclared(uint64_t frame);
 
     /// Returns the camera currently controlled by the editor viewport.
-    const render::Camera& camera() const { return m_camera; }
+    const render::Camera& camera() const { return m_session.camera(); }
 
     /// Whether the frame's render graph may let transients whose lifetimes do not overlap share
     /// memory. Edited by the Render Settings checkbox; the picture is the same either way, so what
@@ -174,7 +163,7 @@ public:
 
     /// The active scene's display name, for capture tooling. Empty until a scene is loaded.
     std::string_view activeSceneName() const {
-        return m_activeScene != nullptr ? m_activeScene->name : std::string_view{};
+        return m_session.activeScene() != nullptr ? m_session.scene().name : std::string_view{};
     }
 
     /// Seeds dynamic resolution ahead of the frame loop, for automation that needs it on without
@@ -186,7 +175,7 @@ public:
     }
 
 private:
-    EditorShell(SDL_Window* window, engine::SceneLibrary& library);
+    EditorShell(SDL_Window* window, scene::SceneLibrary& library);
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
@@ -209,15 +198,14 @@ private:
     // whether the active scene actually changed (false for a reselect of the already-active scene
     // and for a failed load), which buildPanels feeds to sceneSwitchOutcome to decide the
     // selection and filter to store (spec section 5).
-    bool selectScene(rhi::Device& device, engine::SceneId id);
+    bool selectScene(rhi::Device& device, scene::SceneId id);
     void updateCameraInput(float deltaSeconds);
 
     SDL_Window* m_window = nullptr;
-    engine::SceneLibrary& m_library;
-    engine::SceneId m_activeSceneId = engine::defaultSceneId();
-    // Non-owning: the library owns every Scene it has built, for the device's lifetime, which
-    // outlives this shell. Never null once create() has returned successfully.
-    engine::Scene* m_activeScene = nullptr;
+    scene::SceneLibrary& m_library;
+    scene::SceneId m_activeSceneId = scene::defaultSceneId();
+    // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
+    SceneSession m_session;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at
@@ -227,7 +215,6 @@ private:
     EditorSelection m_selection;
     std::string m_sceneFilter;
 
-    render::Camera m_camera;
     std::vector<render::DrawItem> m_drawItems;
     // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
     // switching scenes does not reset any of them.
@@ -252,7 +239,7 @@ private:
 
     // The dynamic-resolution controller (render::ResolutionController.h) and the shell-local state
     // applyDynamicResolution() needs to tell an off->on edge and an already-observed frame apart
-    // from one buildUI() to the next (Source/App/DynamicResolution.h).
+    // from one buildUI() to the next (Source/App/Model/DynamicResolution.h).
     render::ResolutionController m_resolutionController;
     DynamicResolutionState m_dynamicResolutionState;
 

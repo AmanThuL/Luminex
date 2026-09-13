@@ -104,6 +104,14 @@ class ProjectPolicyTests(unittest.TestCase):
             policy.check_public_copy([Path("README.md")], errors)
         self.assertEqual(errors, [])
 
+    def test_process_policy_covers_extracted_build_scripts(self) -> None:
+        for path in ("xmake/setup.lua", "Source/Core/xmake.lua", "RHI/xmake.lua"):
+            with self.subTest(path=path):
+                errors: list[str] = []
+                with mock.patch.object(policy, "read_text", return_value="-- Close the backlog."):
+                    policy.check_process_narration([Path(path)], errors)
+                self.assertEqual(len(errors), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

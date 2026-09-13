@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/FrameRecordRing.h"
-#include "App/GraphLayout.h"
+#include "App/Model/FrameRecordRing.h"
+#include "App/Model/GraphLayout.h"
 
 #include <cstdint>
 #include <memory>

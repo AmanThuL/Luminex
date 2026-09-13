@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Core/Align.h"
 #include "Core/Assert.h"
 #include "RHI/RHI.h"
 
@@ -25,11 +26,6 @@ inline constexpr uint64_t kRingCapacityBytes = 256 * 1024;
 /// Mirrors the incumbent backend's fixed per-frame transient-uniform offset alignment: every write
 /// on that path rounds its occupied span up to this boundary regardless of its own size.
 inline constexpr uint64_t kRingAlignmentBytes = 256;
-
-/// Rounds `value` up to the next multiple of `alignment` (`alignment` a power of two).
-constexpr uint64_t alignUp(uint64_t value, uint64_t alignment) {
-    return (value + alignment - 1) & ~(alignment - 1);
-}
 
 /// Per-run state the delivery seam needs to reproduce the incumbent RHI's exact per-frame
 /// uniform-ring behavior: "the fixed uniform ring while blocks fit, then caller-side per-draw

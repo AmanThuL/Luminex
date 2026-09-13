@@ -8,9 +8,6 @@
 
 namespace lmx::render {
 
-/// True for debug views that require the native accumulation kernel's internal state.
-bool nativeOnlyTemporalView(TemporalDebugView view);
-
 /// Clamps input/output scale into the engine and supported vendor intervals.
 float vendorRenderScale(float scale, const rhi::TemporalScalerSupport& support);
 

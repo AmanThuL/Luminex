@@ -1,7 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "Engine/HdrEnvironment.h"
+#include "Asset/HdrEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 
@@ -14,7 +14,7 @@
 #include <string>
 
 using Catch::Approx;
-using namespace lmx::engine;
+using namespace lmx::asset;
 
 namespace {
 
@@ -47,7 +47,7 @@ private:
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("Radiance HDR decoder preserves scene-linear RGB", "[engine][hdr]") {
+TEST_CASE("Radiance HDR decoder preserves scene-linear RGB", "[asset][hdr]") {
     std::string bytes = "#?RADIANCE\nFORMAT=32-bit_rle_rgbe\n\n-Y 1 +X 2\n";
     bytes.append({static_cast<char>(128), static_cast<char>(64), static_cast<char>(32),
                   static_cast<char>(129), static_cast<char>(64), static_cast<char>(128),
@@ -69,7 +69,7 @@ TEST_CASE("Radiance HDR decoder preserves scene-linear RGB", "[engine][hdr]") {
 }
 
 //======================================================================================================================
-TEST_CASE("HDR conversion preserves a scaled constant environment", "[engine][hdr]") {
+TEST_CASE("HDR conversion preserves a scaled constant environment", "[asset][hdr]") {
     HdrEquirectangularImage image{
         .width = 4, .height = 2, .radiance = std::vector<glm::vec3>(8, {2.0f, 3.0f, 4.0f})};
 
@@ -87,7 +87,7 @@ TEST_CASE("HDR conversion preserves a scaled constant environment", "[engine][hd
 }
 
 //======================================================================================================================
-TEST_CASE("HDR conversion has pinned seam and yaw orientation", "[engine][hdr]") {
+TEST_CASE("HDR conversion has pinned seam and yaw orientation", "[asset][hdr]") {
     HdrEquirectangularImage image;
     image.width = 4;
     image.height = 2;
@@ -112,7 +112,7 @@ TEST_CASE("HDR conversion has pinned seam and yaw orientation", "[engine][hdr]")
 }
 
 //======================================================================================================================
-TEST_CASE("HDR boundaries reject incomplete or invalid radiance", "[engine][hdr]") {
+TEST_CASE("HDR boundaries reject incomplete or invalid radiance", "[asset][hdr]") {
     HdrEquirectangularImage incomplete{.width = 2, .height = 1, .radiance = {{1.0f, 1.0f, 1.0f}}};
     CHECK_FALSE(equirectangularToCubemap(incomplete, 1).has_value());
 
@@ -129,7 +129,7 @@ TEST_CASE("HDR boundaries reject incomplete or invalid radiance", "[engine][hdr]
 }
 
 //======================================================================================================================
-TEST_CASE("Radiance HDR loader distinguishes missing and non-HDR inputs", "[engine][hdr]") {
+TEST_CASE("Radiance HDR loader distinguishes missing and non-HDR inputs", "[asset][hdr]") {
     const AssetResult<HdrEquirectangularImage> missing =
         loadRadianceHdr("/definitely/missing/luminex-environment.hdr");
     REQUIRE_FALSE(missing.has_value());

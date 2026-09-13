@@ -38,7 +38,7 @@ void drawToolbar(const ViewportPanelContext& context) {
 
     ImGui::SameLine();
     if (ImGui::Button("Reset Camera")) {
-        context.camera = cameraFromScene(context.scene.initialCamera);
+        context.camera = scene::cameraFromScene(context.scene.initialCamera);
     }
 
     ImGui::SameLine();

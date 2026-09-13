@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "App/FrameRecordRing.h"
+#include "App/Model/FrameRecordRing.h"
 #include "Render/RenderGraph.h"
 
 #include <cstring>

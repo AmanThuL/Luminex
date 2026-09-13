@@ -1,4 +1,4 @@
-#include "Engine/PngImage.h"
+#include "Asset/PngImage.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 
-using namespace lmx::engine;
+using namespace lmx::asset;
 
 namespace {
 
@@ -57,7 +57,7 @@ uint32_t pngCrc(std::span<const uint8_t> bytes) {
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("SDR PNG chunks have declared order, values and CRCs", "[engine][png]") {
+TEST_CASE("SDR PNG chunks have declared order, values and CRCs", "[asset][png]") {
     const auto path = std::filesystem::temp_directory_path() / "lmx-png-chunks.png";
     const std::array<uint8_t, 8> pixels = {1, 128, 255, 0, 23, 45, 67, 89};
     const std::array<PngTextChunk, 2> text = {PngTextChunk{"lmx:display", "{\"view\":\"sdr\"}"},
@@ -114,7 +114,7 @@ TEST_CASE("SDR PNG chunks have declared order, values and CRCs", "[engine][png]"
 }
 
 //======================================================================================================================
-TEST_CASE("PNG writes are deterministic at one pixel and capture extent", "[engine][png]") {
+TEST_CASE("PNG writes are deterministic at one pixel and capture extent", "[asset][png]") {
     const auto first = std::filesystem::temp_directory_path() / "lmx-png-deterministic-a.png";
     const auto second = std::filesystem::temp_directory_path() / "lmx-png-deterministic-b.png";
     for (const auto [width, height] : {std::pair{1u, 1u}, std::pair{1280u, 720u}}) {
@@ -139,7 +139,7 @@ TEST_CASE("PNG writes are deterministic at one pixel and capture extent", "[engi
 
 //======================================================================================================================
 TEST_CASE("PNG boundary rejects malformed pixels, text, chunks and inaccessible files",
-          "[engine][png]") {
+          "[asset][png]") {
     const auto path = std::filesystem::temp_directory_path() / "lmx-png-invalid.png";
     const std::array<uint8_t, 4> pixels = {10, 20, 30, 40};
     REQUIRE_FALSE(writePng(path, pixels, 0, 1));

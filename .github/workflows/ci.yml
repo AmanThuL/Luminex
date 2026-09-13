@@ -31,6 +31,9 @@ jobs:
           fi
           python3 Tools/check_project_policy.py "${args[@]}"
 
+      - name: Shader import policy
+        run: python3 Tools/check_shader_imports.py
+
       - name: Policy checker tests
         run: python3 -m unittest discover -s Tools/tests -v
 
@@ -56,7 +59,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
 
       - name: Cache xmake packages
         uses: actions/cache@v5
@@ -75,8 +78,16 @@ jobs:
       - name: C++ layout policy
         run: python3 Tools/check_cpp_layout.py
 
+      - name: Module and header contract
+        run: |
+          python3 Tools/check_module_deps.py
+          python3 Tools/check_source_headers.py
+
       - name: Build
         run: xmake -y
+
+      - name: Module contract (link)
+        run: python3 Tools/check_module_deps.py --link
 
       - name: Unit tests
         run: xmake test Tests/unit
@@ -109,7 +120,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
       - name: Cache xmake packages
         uses: actions/cache@v5
         with:

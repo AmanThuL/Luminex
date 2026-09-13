@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Engine/DdsLoader.h"
-#include "Engine/TextureBake.h"
+#include "Asset/DdsLoader.h"
+#include "Asset/TextureBake.h"
 #include "RHI/RHI.h"
 
 #include <array>
@@ -14,7 +14,7 @@
 #include <string>
 #include <vector>
 
-using namespace lmx::engine;
+using namespace lmx::asset;
 namespace rhi = lmx::rhi;
 
 namespace {
@@ -121,7 +121,7 @@ std::vector<std::byte> bc1Payload(uint32_t width, uint32_t height, uint32_t mipL
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("loadDds accepts a 4x4 single-mip BC1 2D texture", "[engine]") {
+TEST_CASE("loadDds accepts a 4x4 single-mip BC1 2D texture", "[asset]") {
     DdsHeaderFixture fixture;
     fixture.width = 4;
     fixture.height = 4;
@@ -144,7 +144,7 @@ TEST_CASE("loadDds accepts a 4x4 single-mip BC1 2D texture", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("loadDds accepts a 1x1 RGBA8 (A8R8G8B8) texture, swizzled to RGBA", "[engine]") {
+TEST_CASE("loadDds accepts a 1x1 RGBA8 (A8R8G8B8) texture, swizzled to RGBA", "[asset]") {
     DdsHeaderFixture fixture;
     fixture.width = 1;
     fixture.height = 1;
@@ -183,7 +183,7 @@ TEST_CASE("loadDds accepts a 1x1 RGBA8 (A8R8G8B8) texture, swizzled to RGBA", "[
 
 //======================================================================================================================
 TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major then mip-major",
-          "[engine]") {
+          "[asset]") {
     DdsHeaderFixture fixture;
     fixture.width = 8;
     fixture.height = 8;
@@ -216,7 +216,7 @@ TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major 
 }
 
 //======================================================================================================================
-TEST_CASE("loadDds rejects a bad magic", "[engine]") {
+TEST_CASE("loadDds rejects a bad magic", "[asset]") {
     DdsHeaderFixture fixture;
     fixture.badMagic = true;
     const TempFile file(".dds", fixture.header());
@@ -225,7 +225,7 @@ TEST_CASE("loadDds rejects a bad magic", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("loadDds rejects fourCC DXT5 (unsupported compressed format)", "[engine]") {
+TEST_CASE("loadDds rejects fourCC DXT5 (unsupported compressed format)", "[asset]") {
     DdsHeaderFixture fixture;
     fixture.fourCC = {'D', 'X', 'T', '5'};
     std::vector<std::byte> bytes = fixture.header();
@@ -239,7 +239,7 @@ TEST_CASE("loadDds rejects fourCC DXT5 (unsupported compressed format)", "[engin
 
 //======================================================================================================================
 TEST_CASE("loadDds BC1 stride uses the ceiling of width/4 and height/4, not truncation",
-          "[engine]") {
+          "[asset]") {
     DdsHeaderFixture fixture;
     fixture.width = 6;
     fixture.height = 5;
@@ -291,11 +291,11 @@ std::array<uint8_t, 4> pixelAt(const std::vector<std::byte>& payload, size_t off
 // White and black 2x2 quadrants arranged diagonally: filtering never mixes colours within a
 // uniform quadrant, so level 1 (2x2) must equal the four quadrant colours exactly -- no sRGB math
 // needed to check that level. Level 2 (1x1) averages white and black through the sRGB curve:
-// linear mean (1+0+0+1)/4 = 0.5, and Engine/Color.h's linearToSrgb(0.5) is the same 0.735... value
+// linear mean (1+0+0+1)/4 = 0.5, and Core/Color.h's linearToSrgb(0.5) is the same 0.735... value
 // already pinned elsewhere in this codebase as byte 188 (e.g. Tests/GpuRendererTests.cpp's "the
 // scene pass encodes its linear output to sRGB").
 TEST_CASE("bakeMips --srgb filters a 4x4 diagonal image to exact level 1 and level 2 bytes",
-          "[engine]") {
+          "[asset]") {
     constexpr std::array<uint8_t, 4> kWhite = {255, 255, 255, 255};
     constexpr std::array<uint8_t, 4> kBlack = {0, 0, 0, 255};
     const std::vector<uint8_t> pixels = makeQuadrantImage(4, 4, kWhite, kBlack, kBlack, kWhite);
@@ -324,7 +324,7 @@ TEST_CASE("bakeMips --srgb filters a 4x4 diagonal image to exact level 1 and lev
 // flat raw average -- (64+192+0+255)/4 = 127.75, rounds to 128 -- and unlike --srgb this applies
 // identically to alpha too (every channel here is set to the same value per quadrant).
 TEST_CASE("bakeMips --linear filters a 4x4 diagonal image to exact level 1 and level 2 bytes",
-          "[engine]") {
+          "[asset]") {
     constexpr std::array<uint8_t, 4> kA = {64, 64, 64, 64};
     constexpr std::array<uint8_t, 4> kB = {192, 192, 192, 192};
     constexpr std::array<uint8_t, 4> kC = {0, 0, 0, 0};
@@ -350,7 +350,7 @@ TEST_CASE("bakeMips --linear filters a 4x4 diagonal image to exact level 1 and l
 // negligible after normalizing -- giving a unit vector at ~45 degrees in the XY plane:
 // normalize(0.5,0.5,~0) ~= (0.7071,0.7071,~0), which encodes to (218,218,128).
 TEST_CASE("bakeMips --normal-map filters a 4x4 diagonal image to exact level 1 and level 2 bytes",
-          "[engine]") {
+          "[asset]") {
     constexpr std::array<uint8_t, 4> kPlusX = {255, 128, 128, 255};
     constexpr std::array<uint8_t, 4> kPlusY = {128, 255, 128, 255};
     const std::vector<uint8_t> pixels = makeQuadrantImage(4, 4, kPlusX, kPlusY, kPlusY, kPlusX);
@@ -373,7 +373,7 @@ TEST_CASE("bakeMips --normal-map filters a 4x4 diagonal image to exact level 1 a
 // all three at equal weight: (40+160+250)/3 = 150.
 TEST_CASE("bakeMips folds the trailing texel of an odd source width into the last destination "
           "texel at equal weight",
-          "[engine]") {
+          "[asset]") {
     const std::vector<uint8_t> pixels = {
         0,   0,   0,   255, // column 0
         100, 100, 100, 255, // column 1
@@ -398,7 +398,7 @@ TEST_CASE("bakeMips folds the trailing texel of an odd source width into the las
 // 360/9 = 40 exactly, so the expected byte has no rounding ambiguity to double-check.
 TEST_CASE("bakeMips folds both axes together at a corner destination texel when width and height "
           "are both odd",
-          "[engine]") {
+          "[asset]") {
     std::vector<uint8_t> pixels(3 * 3 * 4);
     for (int i = 0; i < 9; ++i) {
         const auto v = static_cast<uint8_t>(i * 10);
@@ -416,7 +416,7 @@ TEST_CASE("bakeMips folds both axes together at a corner destination texel when 
 // non-power-of-two image exercises the fold rule on both axes across a full chain, not
 // just the hand-picked small cases above.
 TEST_CASE("baking the same image twice produces byte-identical DDS and manifest output",
-          "[engine]") {
+          "[asset]") {
     std::vector<uint8_t> pixels(9 * 7 * 4);
     for (size_t i = 0; i < pixels.size(); ++i) {
         // A fixed, non-uniform, non-symmetric pattern -- deterministic, not random.
@@ -467,10 +467,10 @@ TEST_CASE("baking the same image twice produces byte-identical DDS and manifest 
 }
 
 //======================================================================================================================
-// writeDds's output must be exactly what loadDds already parses (Engine/DdsLoader.h's contract):
+// writeDds's output must be exactly what loadDds already parses (Asset/DdsLoader.h's contract):
 // same dimensions, same mip count, and -- after loadDds's BGRA->RGBA swizzle undoes writeDds's
 // RGBA->BGRA swizzle -- the identical payload bytes bakeMips produced.
-TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payload", "[engine]") {
+TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payload", "[asset]") {
     std::vector<uint8_t> pixels(6 * 5 * 4);
     for (size_t i = 0; i < pixels.size(); ++i) {
         pixels[i] = static_cast<uint8_t>((i * 53 + 7) % 256);
@@ -497,7 +497,7 @@ TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payl
 // verifiably standard SHA-256 -- the same digest Tools/bake_gltf_textures.py's hashlib call
 // produces for the same bytes.
 TEST_CASE("sha256Hex matches the published SHA-256 test vectors for the empty string and 'abc'",
-          "[engine]") {
+          "[asset]") {
     REQUIRE(sha256Hex({}) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     const std::array<char, 3> abc = {'a', 'b', 'c'};
     REQUIRE(sha256Hex(std::as_bytes(std::span(abc))) ==
@@ -505,7 +505,7 @@ TEST_CASE("sha256Hex matches the published SHA-256 test vectors for the empty st
 }
 
 //======================================================================================================================
-TEST_CASE("bakeFilterName returns the manifest's literal filter string for each mode", "[engine]") {
+TEST_CASE("bakeFilterName returns the manifest's literal filter string for each mode", "[asset]") {
     REQUIRE(bakeFilterName(BakeMode::Srgb) == "box-linear");
     REQUIRE(bakeFilterName(BakeMode::Linear) == "box-raw");
     REQUIRE(bakeFilterName(BakeMode::NormalMap) == "box-normal");
