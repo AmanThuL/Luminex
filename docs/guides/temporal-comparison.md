@@ -52,7 +52,11 @@ similar image is not automatically a better one.
 
 The direct App interface is `--capture-sequence <directory> --frames N --warmup W`. It saves frames
 W through W+N−1 at 60 Hz, with actual effective mode, camera, exposure and status in `manifest.json`.
-Existing `--screenshot` still renders N frames and saves only the final image. Every saved frame
+New sequences default to PNG with sRGB colour chunks and `lmx:display` / `lmx:frame` text metadata;
+`--capture-format bmp` retains BMP output. Manifest version 2 records the display domain, container
+and absence of UI. The comparison tool reads both version 1 and version 2, follows manifest
+filenames, and preserves original PNG bytes and metadata. Existing report commands still work.
+`--screenshot image.png` or `image.bmp` renders N frames and saves only the final image. Every saved frame
 waits for GPU readback; capture timing is not a realtime performance measurement.
 
 ## FLIP's role
@@ -81,3 +85,21 @@ temporal metrics. No frozen native/vendor tolerance changes because this tool wa
   height maps are not simulated. The report compares the same imported content across all modes.
 - CSS pixel magnification is shared across columns; operating-system/browser scaling still affects
   physical screen pixels. The PNGs and metadata remain the authoritative exported evidence.
+
+## Fixed screenshot parity
+
+The strict [parity runner](../../Tools/Screenshots/parity.py) renders fifteen fixed 1280×720 BMPs
+at frame 32 and compares exact SHA-256 values against the initial native/vendor reference table:
+
+```bash
+python3 Tools/Screenshots/parity.py --selftest
+python3 Tools/Screenshots/parity.py --app build/macosx/arm64/release/App \
+  --output /tmp/luminex-sdr-parity
+```
+
+The output directory must be new or empty. Every capture enables Metal API validation and retains
+its log; `parity.json` records commands, binary/shader hashes and every result. Any mismatch or
+capture failure returns nonzero. The reference records Apple M3 Max, macOS 26.5.2, Xcode 26.6 and
+a release build. These initial hashes precede the later masked-material extension, whose evidence
+records within-version drift on Sponza and Damaged Helmet. Failed hashes stay failed and require
+investigation; the runner does not replace references or apply a pixel tolerance.

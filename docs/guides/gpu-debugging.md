@@ -6,6 +6,11 @@ Use a capture when rendered output is wrong, a timing trace when the question is
 render-graph dump when the question is what the frame declared. All three depend on meaningful GPU
 object and pass labels.
 
+The Inspector’s Rendering subject has a read-only Display block: output domain, encoded-space
+SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping. A resize may
+briefly stretch the prior image while debounce settles. PNG screenshots preserve the display
+domain and frame facts in metadata; BMP remains available for exact historical parity.
+
 ## Dump the compiled frame
 
 ```bash

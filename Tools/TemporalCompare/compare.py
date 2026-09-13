@@ -15,7 +15,7 @@ import sys
 MODES = ("raw", "taa", "metalfx")
 LABELS = {"raw": "Raw spatial", "taa": "Native TAA / TAAU", "metalfx": "MetalFX"}
 COMMON = ("scene", "width", "height", "fps", "warmup", "frameCount", "renderScale",
-          "debugView", "cameraTrack", "colorSpace", "dynamicResolution", "device")
+          "debugView", "cameraTrack", "dynamicResolution", "device")
 FRAME_COMMON = ("ordinal", "simulationFrame", "timeSeconds", "camera", "renderWidth", "renderHeight",
                 "effectiveScale", "jitterIndex", "jitterEnabled", "exposureEv", "autoExposure",
                 "bloom", "bloomThreshold", "bloomIntensity", "shadowFilter")
@@ -36,15 +36,30 @@ def validate_manifests(root: Path) -> dict:
     for mode in MODES:
         path = root / mode / "manifest.json"
         data = json.loads(path.read_text())
-        if data.get("schemaVersion") != 1 or data.get("complete") is not True:
+        if data.get("schemaVersion") not in (1, 2) or data.get("complete") is not True:
             raise ValueError(f"{mode}: incomplete or unsupported capture manifest")
         if data.get("requestedMode") != mode or data.get("debugView") != 0:
             raise ValueError(f"{mode}: wrong requested mode or diagnostic overlay")
-        if data.get("colorSpace") != "sRGB LDR" or data.get("dynamicResolution") is not False:
+        if data.get("dynamicResolution") is not False:
             raise ValueError(f"{mode}: expected fixed-scale sRGB LDR capture")
+        if data["schemaVersion"] == 1:
+            if data.get("colorSpace") != "sRGB LDR":
+                raise ValueError(f"{mode}: unsupported colorSpace={data.get('colorSpace')!r}")
+        else:
+            display = data.get("display", {})
+            if not isinstance(display, dict):
+                raise ValueError(f"{mode}: invalid display={display!r}")
+            view, transfer = display.get("view"), display.get("transfer")
+            if view != "sdr" or transfer != "srgb":
+                raise ValueError(f"{mode}: unsupported display view={view!r}, transfer={transfer!r}")
+            if data.get("container") not in ("png", "bmp"):
+                raise ValueError(f"{mode}: unsupported container={data.get('container')!r}")
+            if data.get("ui") != {"composited": False}:
+                raise ValueError(f"{mode}: expected an offscreen capture without composited UI")
         frames = data.get("frames", [])
         if not frames or len(frames) != data.get("frameCount"):
             raise ValueError(f"{mode}: saved frame count mismatch")
+        filenames = set()
         for index, frame in enumerate(frames):
             if frame.get("ordinal") != index or frame.get("simulationFrame") != data["warmup"] + index:
                 raise ValueError(f"{mode}: frame numbering is not contiguous")
@@ -57,10 +72,22 @@ def validate_manifests(root: Path) -> dict:
             if not math.isclose(frame["effectiveScale"], data["renderScale"], abs_tol=1e-7):
                 raise ValueError(f"{mode}: requested render scale was clamped")
             filename = frame.get("file", "")
-            if filename != f"frame-{index:06}.bmp" or not (root / mode / filename).is_file():
+            if (not isinstance(filename, str) or Path(filename).name != filename
+                    or Path(filename).suffix.lower() not in (".bmp", ".png")
+                    or not (root / mode / filename).is_file()):
                 raise ValueError(f"{mode}: missing or invalid frame filename")
+            if filename in filenames:
+                raise ValueError(f"{mode}: duplicate frame filename {filename!r}")
+            filenames.add(filename)
+            if data["schemaVersion"] == 2 and Path(filename).suffix.lower() != "." + data["container"]:
+                raise ValueError(f"{mode}: frame container differs from manifest")
         manifests[mode] = data
     baseline = manifests["taa"]
+    domains = [(mode, data["display"]) for mode, data in manifests.items()
+               if data["schemaVersion"] == 2]
+    for mode, domain in domains[1:]:
+        if domain != domains[0][1]:
+            raise ValueError(f"{mode}: display domain differs from {domains[0][0]}")
     for mode in MODES:
         data = manifests[mode]
         for field in COMMON:
@@ -97,7 +124,7 @@ def flip_difference(reference: Path, test: Path, output: Path, ppd: float) -> di
 
 
 def build_report(root: Path, with_flip: bool = False, ppd: float = 67.0) -> Path:
-    """Convert verified BMP captures and embed all navigation data for file:// playback."""
+    """Preserve PNG captures, convert BMPs, and embed navigation for file:// playback."""
     from PIL import Image
     manifests = validate_manifests(root)
     baseline = manifests["taa"]
@@ -105,19 +132,24 @@ def build_report(root: Path, with_flip: bool = False, ppd: float = 67.0) -> Path
             "comparisonMeaning": "Algorithm difference relative to Native TAA; no ground-truth accuracy or quality ranking.",
             "settings": {key: baseline[key] for key in COMMON}, "frames": [],
             "packages": {"Pillow": importlib.metadata.version("Pillow")}, "flip": None}
+    for field in ("colorSpace", "display", "ui"):
+        if field in baseline:
+            data["settings"][field] = baseline[field]
     for index in range(baseline["frameCount"]):
         record = {"time": baseline["frames"][index]["timeSeconds"],
                   "simulationFrame": baseline["frames"][index]["simulationFrame"],
                   "images": {}, "hashes": {}, "differences": {}}
         for mode in MODES:
-            bmp = root / mode / manifests[mode]["frames"][index]["file"]
-            png = bmp.with_suffix(".png")
-            with Image.open(bmp) as img:
+            source = root / mode / manifests[mode]["frames"][index]["file"]
+            png = source if source.suffix.lower() == ".png" else source.with_suffix(".png")
+            with Image.open(source) as img:
                 if img.size != (baseline["width"], baseline["height"]):
-                    raise ValueError(f"{bmp}: image extent differs from manifest")
-                img.convert("RGB").save(png)
+                    raise ValueError(f"{source}: image extent differs from manifest")
+                img.load()
+                if png != source:
+                    img.convert("RGB").save(png)
             record["images"][mode] = png.relative_to(root).as_posix()
-            record["hashes"][mode] = {"bmp": sha256(bmp), "png": sha256(png)}
+            record["hashes"][mode] = {source.suffix.lower()[1:]: sha256(source), "png": sha256(png)}
         if with_flip:
             for mode in ("raw", "metalfx"):
                 output = root / mode / f"difference-{index:06}.png"
@@ -166,6 +198,8 @@ def run_captures(args: argparse.Namespace) -> None:
         command = [str(app), "--scene", args.scene, "--capture-sequence", str(root / mode),
                    "--frames", str(args.frames), "--warmup", str(args.warmup),
                    "--temporal", mode, "--render-scale", str(args.scale)]
+        if args.capture_format is not None:
+            command.extend(["--capture-format", args.capture_format])
         commands.append(command)
         environment = os.environ.copy()
         environment.pop("LMX_SCREENSHOT_NO_BLOOM", None)
@@ -190,6 +224,8 @@ def main() -> int:
     parser.add_argument("--frames", type=int, default=120)
     parser.add_argument("--warmup", type=int, default=32)
     parser.add_argument("--scale", type=float, default=0.5)
+    parser.add_argument("--capture-format", choices=("png", "bmp"),
+                        help="Override App's sequence format (current default: png)")
     parser.add_argument("--report-only", action="store_true")
     parser.add_argument("--flip", action="store_true", help="Add optional LDR-FLIP algorithm differences against Native TAA")
     parser.add_argument("--ppd", type=float, default=67.0)

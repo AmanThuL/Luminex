@@ -6,11 +6,14 @@ This roadmap owns current milestone identifiers, boundaries, dependencies, outco
 
 ## Current baseline
 
-The shipped baseline is [M6.4](milestones/m6.4.md): optional MetalFX temporal reconstruction over
-the engine-owned contract, native fallback, masked San Miguel content and synchronized offline
-comparisons. The owner authorized integration on 2026-09-12 with the recorded evidence limits;
-manual Sponza switching review and Xcode opaque-encoder inspection remain explicit follow-ups,
-not completed checks or blockers to this accepted integration. No executor plan is active.
+The shipped baseline is [M6.5](milestones/m6.5.md): explicit SDR/UI/capture domains, tagged PNG,
+manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
+on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
+runs remain intact, and the drift is not fixed. No executor plan is active.
+
+This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
+masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
+encoder inspection remain explicit follow-ups, not completed checks.
 
 Its underlying baseline is [M6.3](milestones/m6.3.md) over [M6.2](milestones/m6.2.md) over [M6.1](milestones/m6.1.md): a scene pass that rasterises into a render rectangle smaller than the output extent, temporal upscaling that reconstructs the output-extent image from jittered lower-resolution samples, and a pure GPU-time-driven controller that proposes the render scale, with every temporal target still allocating at the output extent so a scale change reallocates nothing (ADR 0016), layered over M6.2's native-resolution TAA that reprojects, rejects, clips and accumulates over engine-owned rigid-object motion, a per-pixel reactive weight, and exposure that adapts at a bounded rate and corrects history for the brightness it was recorded at (ADR 0014), over M6.1's opt-in engine-owned rigid-object motion with Renderer-owned camera history, a declared motion-vector convention, and one Renderer-owned, reset-aware history texture (ADR 0013), over M5.5's scene-linear PBR/HDR, M5's validated compute/copy/barrier graph, exposure, bloom, transient pooling and timing, M5.2's ADR 0010 frame-data path, and the M5.3–M5.5 selection workspace and detached graph view. At render scale 1.0 the frame declaration and native kernel are unchanged from M6.2; with temporal inputs off, the frame declaration and fixed-camera output are unchanged from M5.5. The retained object RHI uses `bindFrameData` over growable frame-slot pages and `bindBuffer` for static reuse; `setUniforms` is removed. NoApi evidence remains at immutable tag `m5.1-noapi-evidence`, with no experimental source on `main`. The completed boundaries below and their milestone records retain the detailed behavior, evidence and limits.
 
@@ -18,7 +21,7 @@ Its underlying baseline is [M6.3](milestones/m6.3.md) over [M6.2](milestones/m6.
 
 Luminex is a Metal 4-first modern rendering playground and portfolio: visible image quality and verifiable graphics engineering are both outcomes. The [foundation goals](specs/2026-08-07-luminex-upgrade-design.md) and [research synthesis](research/2026-08-09-rendering-pipeline-synthesis.md) motivate a graph-scheduled, GPU-driven hybrid renderer whose raster, screen-space, ray, reconstruction and cache paths share scene, material, light and temporal semantics. Grow the thin RHI through actual consumers. ADR 0007 governs production backends: D3D12 second when a validated host exists; Vulkan is research only. A benchmark adapter is not a production backend, and additional hardware is not a renderer gate.
 
-The next planned slice is M6.5, the bounded display-path evaluation. GPU visibility and bounded local lighting follow the temporal slices. M5.6 closed as reliability failure / DEFER with no accepted performance conclusion (ADR 0012); it does not block M6 or preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
+The next planned slice is M7.1, after interface gate B explicitly approves entry. GPU visibility and bounded local lighting follow the temporal/display foundation. M5.6 closed as reliability failure / DEFER with no accepted performance conclusion (ADR 0012); it does not block M6 or preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md) also opens bounded neural-shader research without requiring completion of M8–M11.
 
 Each milestone has one recognizable completion outcome. Use a few independently accepted slices; implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs. M6's five slices and M7's four are fixed below; M8–M11 retain bounded work areas until planned. Identifiers organize work; the stated prerequisites, rather than numerical order, determine entry. Only one implementation plan is active at a time; independent entry does not start another plan.
 
@@ -233,6 +236,18 @@ the [milestone record](milestones/m6.4.md) preserves the unproven screenshot dri
 **Deliver:** Defined SDR transform, UI composition domain, capture encoding/metadata and a bounded macOS EDR/HDR evaluation with reference-white/headroom policy.
 
 **Exit gate:** Fixed SDR gradients and reference images pass; UI has the intended brightness and resolution; record EDR adopt/defer with evidence and limits, without changing scene/exposure/temporal semantics or requiring another display.
+
+**Acceptance:** Closed by owner authorization on 2026-09-13 with SDR goldens, capture metadata,
+UI evidence and EDR DEFER (ADR 0019). The strict fifteen historical screenshot hashes did not all
+reproduce. The accepted exception covers demonstrated pre-existing screenshot nondeterminism;
+reference hashes, tolerances, strict checker behavior and failed evidence remain unchanged.
+This exception closes M6.5 without claiming a hash-gate pass or a drift repair.
+
+**Follow-up:** isolate and correct the scene diffuse/UV-derivative drift; independently resolve
+shader-validation bloom resource/view usage reports. Preserve the
+[milestone evidence](milestones/m6.5.md#open-parity-investigation), establish a reproduction and
+validate any correction before making performance or repeatability claims. Neither a shared root
+cause nor an authorized reference-image change is implied. Interface gate B remains required.
 
 **Defer:** An adopted EDR path when evidence is insufficient; platform output never changes upstream scene or temporal semantics.
 
