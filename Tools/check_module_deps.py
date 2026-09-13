@@ -36,6 +36,7 @@ ALLOWLIST_FIELDS = {
 }
 LINKED_FRAMEWORK_PATTERN = re.compile(r"/([^/]+)\.framework/")
 LINK_ONLY_ALLOWLIST_KINDS = {"framework"}
+FOREIGN_ALLOWLIST_KINDS = {"header"}
 
 
 class ModuleContractError(RuntimeError):
@@ -352,9 +353,13 @@ def check_allowlist_use(path: Path, allowlist: list[dict], errors: list[str], li
 
     A link-only kind can only be used while `--link` runs its check, so it is exempt here when
     `link` is False: an unused `framework` entry is not stale debt on a run that never looked.
+    A foreign kind is never used by this checker at all — another checker owns marking it used —
+    so it is exempt unconditionally.
     """
     for entry in allowlist:
         if entry.get("used"):
+            continue
+        if entry["kind"] in FOREIGN_ALLOWLIST_KINDS:
             continue
         if not link and entry["kind"] in LINK_ONLY_ALLOWLIST_KINDS:
             continue

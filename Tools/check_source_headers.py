@@ -71,7 +71,7 @@ def command_for(header: Path, contract: dict, targets: dict, compile_db: dict) -
     files: set[str] = set()
     for name in target_names:
         files.update(targets.get(name, {}).get("files", []))
-    source = next((file for file in compile_db if file in files), None)
+    source = min((file for file in compile_db if file in files), default=None)
     if source is None:
         expected = ", ".join(target_names) or "no target"
         raise check_module_deps.ModuleContractError(

@@ -145,6 +145,24 @@ class CommandForTests(unittest.TestCase):
         with self.assertRaises(headers.check_module_deps.ModuleContractError):
             headers.command_for(Path("Source/Other/Thing.h"), CONTRACT, TARGETS, COMPILE_DB)
 
+    def test_choice_is_the_smallest_matching_path_regardless_of_database_order(self) -> None:
+        header = Path("Source/App/Panels/InspectorPanel.h")
+        forward = dict(COMPILE_DB)
+        reversed_db = dict(reversed(list(COMPILE_DB.items())))
+
+        self.assertEqual(list(forward), list(reversed(list(reversed_db))))
+        self.assertEqual(
+            headers.command_for(header, CONTRACT, TARGETS, forward),
+            headers.command_for(header, CONTRACT, TARGETS, reversed_db),
+        )
+        # The smallest path wins: GraphLayout.cpp sorts before Panels/InspectorPanel.cpp.
+        self.assertEqual(
+            headers.command_for(header, CONTRACT, TARGETS, forward),
+            headers.syntax_command(
+                {**COMPILE_DB["Source/App/GraphLayout.cpp"], "file": "Source/App/GraphLayout.cpp"}
+            ),
+        )
+
 
 class CheckHeaderTests(unittest.TestCase):
     def test_include_line_is_relative_to_source(self) -> None:

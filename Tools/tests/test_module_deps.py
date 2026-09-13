@@ -854,6 +854,15 @@ class AllowlistLinkOnlyTests(unittest.TestCase):
         modules.check_allowlist_use(Path("Tools/module_allowlist.json"), allowlist, errors, link=False)
         self.assertEqual(errors, ["Tools/module_allowlist.json: unused entry target-dep TextureBake (R1.2)"])
 
+    def test_unused_header_entry_is_tolerated_because_another_checker_owns_it(self) -> None:
+        allowlist = [
+            {"kind": "header", "file": "Source/App/GraphLayout.h", "reason": "r", "until": "R1.2"},
+            {"kind": "target-dep", "target": "TextureBake", "dep": "Render", "reason": "r", "until": "R1.2"},
+        ]
+        errors: list[str] = []
+        modules.check_allowlist_use(Path("Tools/module_allowlist.json"), allowlist, errors, link=False)
+        self.assertEqual(errors, ["Tools/module_allowlist.json: unused entry target-dep TextureBake (R1.2)"])
+
 
 class BudgetTests(unittest.TestCase):
     def test_file_over_its_root_budget_is_a_review_candidate(self) -> None:
