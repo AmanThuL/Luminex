@@ -59,10 +59,6 @@ the ownership map for those three units. The header and its implementation alway
 - `app-shell` — everything else under `Source/App/`, including `Panels/`, `EditorShell`,
   `Screenshot` and `main.cpp`.
 
-The `imgui-adapter` sources `Metal4ImGui.cpp` and `ImGuiBackendContract.cpp` still sit in
-`RHI/Backends/Metal4/Source` and move into `RHI/Backends/Metal4/ImGui/Source/` so that the map and
-the target agree; the adapter's public header already lives under the adapter directory.
-
 ## Ownership precedence
 
 Ownership comes from one explicit map from unit to paths, never from inference:
@@ -91,7 +87,9 @@ Ownership comes from one explicit map from unit to paths, never from inference:
 - Tests link libraries, never loose sources from another unit.
 - Every project header compiles standalone: a generated translation unit that includes only that
   header, compiled with its owning target's include paths, must build. `rhi-public` keeps a
-  stricter dependency-free command line, because its headers are required to need nothing.
+  stricter dependency-free command line, because its headers are required to need nothing; the
+  Source header check instead keeps each target's own flags and does not add `-Werror`, since it is
+  checking inclusion completeness rather than a warning-free public surface.
 
 ## Include-level form
 
@@ -106,7 +104,11 @@ The rules above are checked as include edges:
   takes the directory name — imgui, imgui-node-editor, metal-cpp. The rule covers subdirectories, so
   `imgui/backends` headers such as `imgui_impl_sdl3.h` and `imgui_impl_metal4.h` are imgui, and the
   Metal, MetalFX, QuartzCore and Foundation headers, which resolve under `ThirdParty/metal-cpp`, are
-  metal-cpp. A quoted include that resolves to no project file is resolved the same way.
+  metal-cpp. A quoted include that resolves to no project file is resolved the same way. A header
+  whose resolved path falls under no package or `ThirdParty` root — or that resolves nowhere at
+  all — falls back to the contract's `thirdPartyPrefixes` table, keyed by include-spec prefix;
+  today that covers only `SDL3/` → libsdl3, because Homebrew installs SDL3 under
+  `/opt/homebrew/include` rather than an xrepo package directory.
 - The vendored `ImGui` and `ImGuiNodeEditor` xmake targets build third-party packages, not units.
   Ownership reconciliation skips them, and a unit that links one still needs the package in its
   third-party set.
@@ -133,7 +135,9 @@ weakest one is deliberately last:
    proves little: the RHI's API is virtual interfaces, so a caller reaches it through a vtable
    without leaving an undefined symbol behind, and today's transitional archive already shows none
    while its sources still name RHI types. The check sees non-virtual RHI symbols only and is a
-   backstop under the first two layers, never a substitute for them.
+   backstop under the first two layers, never a substitute for them; for a static-library target it
+   inspects the archive's own object files and passes vacuously if none reference the forbidden
+   symbols, whether or not the target actually depends on the framework it is checked against.
 
 ## Review budgets
 
@@ -158,3 +162,7 @@ checked-in file. The allowlist is a record of debt, not a configuration surface:
   slice removes it, and writes that slice into `until`.
 - An empty allowlist for a unit is that unit's exit gate. Widening the allowlist is not how a
   crossing gets approved; a rule that no longer fits opens the next refactoring milestone.
+- Link-only kinds (`framework`) are exempt from the unused-entry check when `--link` is not
+  running, since only the link pass can confirm they are still needed. The `header` kind is a
+  foreign entry here: it is never marked used by this checker, because `check_source_headers.py`
+  owns it.

@@ -85,8 +85,7 @@
       "thirdParty": [
         "metal-cpp",
         "imgui"
-      ],
-      "note": "R1.1 moves Metal4ImGui.cpp and ImGuiBackendContract.cpp out of RHI/Backends/Metal4/Source"
+      ]
     },
     "asset": {
       "paths": [

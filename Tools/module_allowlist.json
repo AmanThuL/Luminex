@@ -1,4 +1,243 @@
 {
   "schemaVersion": 1,
-  "entries": []
+  "entries": [
+    {
+      "kind": "shared-source",
+      "file": "Source/App/AppOptions.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's option parsing directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/CaptureMetadata.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's capture metadata directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/DynamicResolution.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's dynamic-resolution policy directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/EditorActions.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's editor actions directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/EditorSelection.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's editor selection directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/ExposureReset.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's exposure reset directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/FrameRecordRing.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's frame record ring directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/GraphInspectorModel.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's graph inspector model directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/GraphLayout.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's graph layout directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/GraphNodeModel.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's graph node model directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/PassTimingHistory.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's pass timing history directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/PerformanceModel.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's performance model directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/TemporalEditorState.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's temporal editor state directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "shared-source",
+      "file": "Source/App/WorkspaceModel.cpp",
+      "targets": ["App", "Tests"],
+      "reason": "Tests links App's workspace model directly rather than through a library boundary",
+      "until": "R1.3"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/DdsLoader.h",
+      "reaches": "rhi-public",
+      "reason": "asset headers still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/DdsLoader.cpp",
+      "reaches": "rhi-public",
+      "reason": "asset sources still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/Ibl.h",
+      "reaches": "rhi-public",
+      "reason": "asset headers still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/Ibl.cpp",
+      "reaches": "rhi-public",
+      "reason": "asset sources still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/TextureBake.h",
+      "reaches": "rhi-public",
+      "reason": "asset headers still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/TextureBake.cpp",
+      "reaches": "rhi-public",
+      "reason": "asset sources still include RHI/RHI.h directly before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/HdrEnvironment.h",
+      "reaches": "rhi-public",
+      "reason": "asset headers reach RHI/RHI.h through Ibl.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/HdrEnvironment.cpp",
+      "reaches": "rhi-public",
+      "reason": "asset sources reach RHI/RHI.h through Ibl.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/GltfLoader.h",
+      "reaches": "render",
+      "reason": "asset headers include Render/AlphaMode.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/GltfLoader.cpp",
+      "reaches": "render",
+      "reason": "asset sources include Render/AlphaMode.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/GltfLoader.cpp",
+      "reaches": "scene",
+      "reason": "asset sources include Engine/Scene.h before R1.2 splits the Asset and Scene units out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Source/Engine/GltfLoader.cpp",
+      "reaches": "rhi-public",
+      "reason": "asset sources reach RHI/RHI.h through Scene.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "include",
+      "file": "Tools/TextureBake/main.cpp",
+      "reaches": "rhi-public",
+      "reason": "the TextureBake tool reaches RHI/RHI.h through Engine/TextureBake.h before R1.2 splits the Asset unit out",
+      "until": "R1.2"
+    },
+    {
+      "kind": "target-dep",
+      "target": "TextureBake",
+      "dep": "Engine",
+      "reason": "the TextureBake tool depends on the whole Engine target before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "target-dep",
+      "target": "TextureBake",
+      "dep": "RHI",
+      "reason": "the TextureBake tool depends on RHI transitively through Engine before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "target-dep",
+      "target": "TextureBake",
+      "dep": "Render",
+      "reason": "the TextureBake tool depends on Render transitively through Engine before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "framework",
+      "target": "TextureBake",
+      "framework": "Metal",
+      "reason": "the TextureBake tool links Metal transitively through RHI before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "framework",
+      "target": "TextureBake",
+      "framework": "MetalFX",
+      "reason": "the TextureBake tool links MetalFX transitively through RHI before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "framework",
+      "target": "TextureBake",
+      "framework": "QuartzCore",
+      "reason": "the TextureBake tool links QuartzCore transitively through RHI before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    },
+    {
+      "kind": "framework",
+      "target": "TextureBake",
+      "framework": "Foundation",
+      "reason": "the TextureBake tool links Foundation transitively through RHI before R1.2 gives it its own Asset dependency",
+      "until": "R1.2"
+    }
+  ]
 }
