@@ -17,9 +17,9 @@ below define their membership until the move that creates the directory.
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
 | `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer functions; later, helpers that reach two consumers with one contract | — | spdlog, glm |
-| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
+| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
 | `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
-| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
+| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
 | `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
 | `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, mesh, render graph, renderer and passes, plus the frame input contract in its own leaf header | `core`, `rhi-public` | glm |
@@ -71,6 +71,11 @@ Ownership comes from one explicit map from unit to paths, never from inference:
 - The map is reconciled with xmake target membership and disagreement fails. The compilation
   database supplies compilation context only — include directories and defines — because a file
   compiled by several targets cannot establish ownership on its own.
+- Every source is compiled by a target, and sources listed by targets are checked even outside
+  the walked roots. A `shared-source` allowance admits its exact target set only while that set
+  still includes an owning target. Every non-vendored target declares a dependency contract.
+- Compilation paths resolve against the entry's working directory under the selected repository
+  root. A missing compilation context is a could-not-run error, never an empty include search.
 
 ## Placement rules
 
@@ -98,18 +103,18 @@ The rules above are checked as include edges:
 - A quoted include resolves relative to the including file first, then against the owning target's
   include directories. It is a project edge from the includer's unit to the unit that owns the
   resolved file.
-- An angle include resolves against the package and `ThirdParty` roots and is a third-party edge.
+- An angle include resolving to a project header is a project edge, just like a quoted include.
+  Otherwise, resolution against package and `ThirdParty` roots produces a third-party edge.
   Its name comes from where it resolved: a header under an xrepo package directory takes that
   package's name — spdlog, glm, cgltf, stb, catch2, libsdl3 — and a header under `ThirdParty/<dir>`
   takes the directory name — imgui, imgui-node-editor, metal-cpp. The rule covers subdirectories, so
   `imgui/backends` headers such as `imgui_impl_sdl3.h` and `imgui_impl_metal4.h` are imgui, and the
   Metal, MetalFX, QuartzCore and Foundation headers, which resolve under `ThirdParty/metal-cpp`, are
-  metal-cpp. A quoted include that resolves to no project file is resolved the same way. For an
-  angle include only, a resolved path under no package or `ThirdParty` root — or one that resolves
-  nowhere at all — falls back to the contract's `thirdPartyPrefixes` table, keyed by include-spec
+  metal-cpp. A quoted include that resolves to no project file is resolved the same way. A resolved
+  path under no package or `ThirdParty` root falls back to `thirdPartyPrefixes`, keyed by include-spec
   prefix; today that covers only `SDL3/` → libsdl3, because Homebrew installs SDL3 under
-  `/opt/homebrew/include` rather than an xrepo package directory. A quoted include never takes this
-  fallback: an unresolved quoted spec is a system include, not a third-party edge.
+  `/opt/homebrew/include` rather than an xrepo package directory. An unresolved angle include also
+  takes this fallback; an unresolved quoted spec is treated as a system include.
 - The vendored `ImGui` and `ImGuiNodeEditor` xmake targets build third-party packages, not units.
   Ownership reconciliation skips them, and a unit that links one still needs the package in its
   third-party set.
@@ -160,7 +165,8 @@ checked-in file. The allowlist is a record of debt, not a configuration surface:
 
 - Each entry names the file or target it applies to, the forbidden edge, a reason, and an `until`
   field naming the slice that removes it. All four are required, and the entry is scoped to that one
-  edge — never a whole unit, directory or package.
+  edge: one file-to-unit/package reach or one target-to-dependency/framework edge, never every
+  file in a unit or directory or every consumer of a package.
 - An entry that matches no current violation fails the check. A stale allowance is an error, not a
   harmless leftover, so fixing an edge forces the entry out in the same change.
 - The allowlist shrinks by default and grows only with a plan-stated `until`: a slice that would add
@@ -171,4 +177,5 @@ checked-in file. The allowlist is a record of debt, not a configuration surface:
 - Link-only kinds (`framework`) are exempt from the unused-entry check when `--link` is not
   running, since only the link pass can confirm they are still needed. The `header` kind is a
   foreign entry here: it is never marked used by this checker, because `check_source_headers.py`
-  owns it.
+  owns it. Every allowlisted header is still checked; only a failed compilation consumes the entry.
+  A repaired header therefore fails with an unused allowance until that allowance is removed.

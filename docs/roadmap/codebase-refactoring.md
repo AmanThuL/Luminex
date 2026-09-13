@@ -17,10 +17,12 @@ then grew `Renderer`, `RenderGraph`, the editor shell and their tests as single 
 adds GPU scene data, identities and visibility to exactly these seams; restructuring first keeps
 those slices small and their review about rendering rather than about where code lives.
 
-## Observed structure
+## Observed structure before R1.1
 
-The runtime is five build targets in a chain, `Core → RHI → Render → Engine → App`, plus Tests,
-TextureBake and FrameDataBench. What each contains today:
+The inventory below motivated R1. [R1.1](../milestones/r1.1.md) has since added enforcement and
+moved the adapter sources; the remaining structural work belongs to R1.2–R1.4.
+The runtime had five build targets in a chain, `Core → RHI → Render → Engine → App`, plus Tests,
+TextureBake and FrameDataBench:
 
 | Module | Files | Observation |
 |---|---|---|
@@ -160,7 +162,7 @@ explicit, shrinking allowlist.
   through the shell; rejects edges outside the matrix; reads its allowlist from one checked-in
   file; has unit tests under `Tools/tests/`; runs in `xmake policy` and CI.
 - Link-level checks beside it, since textual allowlists prove nothing about linking: each
-  target's declared dependency closure (`xmake show`) against the contract; an archive symbol
+  target's declared dependency closure (`xmake lua Tools/xmake_targets.lua`) against the contract; an archive symbol
   check that Asset has no undefined `lmx::rhi` references; `TextureBake` links no Metal framework.
 - Standalone headers: a generated per-header translation unit compiled by the build for every
   header under `Source/`, inheriting each target's include paths. The RHI check keeps its

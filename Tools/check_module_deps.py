@@ -150,13 +150,14 @@ def load_allowlist(path: Path) -> list[dict]:
         for field in (*ALLOWLIST_FIELDS[kind], "reason", "until"):
             if not entry.get(field):
                 raise ModuleContractError(f"{path} entry {index} ({kind}) is missing {field}")
+        entry.pop("used", None)
     return entries
 
 
 def run_target_dump(root: Path) -> str:
     try:
         completed = subprocess.run(
-            ["xmake", "lua", TARGET_DUMP_SCRIPT],
+            ["xmake", "lua", "-P", str(root), TARGET_DUMP_SCRIPT],
             cwd=root,
             capture_output=True,
             text=True,
@@ -201,13 +202,14 @@ def load_targets(path: Path | None, root: Path) -> dict[str, dict]:
             "deps": [str(item) for item in as_list(target.get("deps"))],
             "packages": [str(item) for item in as_list(target.get("packages"))],
             "frameworks": [str(item) for item in as_list(target.get("frameworks"))],
-            "targetfile": target.get("targetfile", ""),
+            "targetfile": str(root / target["targetfile"]) if target.get("targetfile") else "",
         }
     return targets
 
 
-def load_compile_commands(path: Path) -> dict[str, dict]:
+def load_compile_commands(path: Path, root: Path | None = None) -> dict[str, dict]:
     """Map each compiled source to its entry; the compilation database supplies include context only."""
+    root = (root or path.parent).resolve()
     entries = read_json(path)
     if not isinstance(entries, list):
         raise ModuleContractError(f"{path} must hold a list of compilation entries")
@@ -220,12 +222,19 @@ def load_compile_commands(path: Path) -> dict[str, dict]:
             command = entry.get("command", "")
             if not isinstance(command, str):
                 raise ModuleContractError(f"{path} contains an entry whose command is not a string")
-            arguments = shlex.split(command)
-        if not isinstance(arguments, list):
+            try:
+                arguments = shlex.split(command)
+            except ValueError as exc:
+                raise ModuleContractError(f"{path} contains an invalid command: {exc}") from exc
+        if not isinstance(arguments, list) or not arguments:
             raise ModuleContractError(f"{path} contains an entry whose arguments are not a list")
+        directory = Path(entry.get("directory") or root)
+        directory = (root / directory).resolve()
+        source = (directory / entry["file"]).resolve()
+        key = os.path.relpath(source, root)
         database.setdefault(
-            str(entry["file"]),
-            {"directory": str(entry.get("directory", "")), "arguments": [str(item) for item in arguments]},
+            key,
+            {"directory": str(directory), "file": str(source), "arguments": [str(item) for item in arguments]},
         )
     return database
 
@@ -376,18 +385,23 @@ def check_ownership(
 ) -> None:
     """Reconcile the ownership map with target membership: one unit and one target per source."""
     owners = compiling_targets(targets, contract)
-    for path in files:
+    for path in sorted(set(files) | {Path(file) for file in owners}):
         text = path.as_posix()
         unit = owner_of(path, contract)
         if unit is None:
             errors.append(f"{text}: no unit owns this file; add it to Tools/module_contract.json")
             continue
         names = owners.get(text, [])
+        allowed = contract["units"][unit]["targets"]
+        if path.suffix in COMPILED_SUFFIXES and not names:
+            errors.append(f"{text}: no target compiles this source")
+            continue
         if len(names) > 1:
             if not shared_source_allowed(text, names, allowlist):
                 errors.append(f"{text}: compiled by {', '.join(names)}; a source belongs to one target")
+            if not set(names).intersection(allowed):
+                errors.append(f"{text}: no compiling target belongs to unit {unit}")
             continue
-        allowed = contract["units"][unit]["targets"]
         if names and names[0] not in allowed:
             expected = ", ".join(allowed) or "no target"
             errors.append(f"{text}: unit {unit} builds as {expected}, but target {names[0]} compiles it")
@@ -414,10 +428,9 @@ def resolve_include(
         name = third_party_name(path, root)
         if name is not None:
             return Resolved("third-party", None, name, None)
-        if not quoted:
-            prefixed = third_party_prefix(spec, contract)
-            if prefixed is not None:
-                return Resolved("third-party", None, prefixed, None)
+        prefixed = third_party_prefix(spec, contract)
+        if prefixed is not None:
+            return Resolved("third-party", None, prefixed, None)
         return Resolved("system", None, None, None)
     if not quoted:
         prefixed = third_party_prefix(spec, contract)
@@ -440,7 +453,7 @@ def context_for(
         for file in targets.get(name, {}).get("files", []):
             if file in compile_db:
                 return include_dirs(compile_db[file])
-    return []
+    raise ModuleContractError(f"no compilation context for {text}; regenerate compile_commands.json")
 
 
 def check_includes(
@@ -460,10 +473,9 @@ def check_includes(
         text = path.as_posix()
         if text in resolved:
             return resolved[text]
-        resolved[text] = []  # Memoized before the body is read; cycles are broken by the BFS visited set below.
         unit = owner_of(path, contract)
         if unit is None:
-            return resolved[text]
+            return []
         if text in compile_db:
             dirs = include_dirs(compile_db[text])
         elif unit in contexts:
@@ -549,6 +561,8 @@ def check_target_closure(
     targets: dict[str, dict], contract: dict, allowlist: list[dict], errors: list[str]
 ) -> None:
     """A target's transitive dependency closure minus its allowed deps; unknown allowed names are tolerated."""
+    for name in sorted(set(targets) - set(contract["targets"]) - set(contract.get("thirdPartyTargets", []))):
+        errors.append(f"{name}: no target contract; declare its allowed dependencies")
     for name, entry in contract["targets"].items():
         if name not in targets:
             continue
@@ -683,7 +697,7 @@ def main(argv: list[str] | None = None) -> int:
             raise ModuleContractError(
                 f"{compile_commands_path} is missing; run xmake project -k compile_commands"
             )
-        compile_db = load_compile_commands(compile_commands_path)
+        compile_db = load_compile_commands(compile_commands_path, root)
         files = project_files(root, contract)
         check_ownership(files, targets, contract, allowlist, errors)
         check_includes(files, targets, compile_db, contract, allowlist, errors, root)
@@ -692,7 +706,7 @@ def main(argv: list[str] | None = None) -> int:
             check_link(targets, contract, allowlist, errors)
         check_allowlist_use(display_path(allowlist_path, root), allowlist, errors, link=args.link)
         budget_lines = report_budgets(files, contract, root)
-    except ModuleContractError as exc:
+    except (ModuleContractError, OSError) as exc:
         print(f"module policy could not run: {exc}", file=sys.stderr)
         return 2
 

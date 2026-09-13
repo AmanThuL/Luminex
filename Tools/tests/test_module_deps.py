@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from Tools import check_module_deps as modules
 
@@ -106,6 +107,12 @@ class AllowlistTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.assertEqual(modules.load_allowlist(self.write_allowlist(root, [])), [])
+
+    def test_serialised_used_flag_does_not_hide_a_stale_entry(self) -> None:
+        entry = {"kind": "header", "file": "a.h", "reason": "r", "until": "R1.2", "used": True}
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_allowlist(Path(directory), [entry])
+            self.assertFalse(modules.load_allowlist(path)[0].get("used"))
 
     def test_every_supported_kind_loads(self) -> None:
         entries = [
@@ -209,8 +216,40 @@ class OwnershipTests(unittest.TestCase):
         modules.check_ownership([Path("Source/App/Options.h")], {}, self.contract, [], errors)
         self.assertEqual(errors, [])
 
+    def test_source_that_no_target_compiles_is_an_error(self) -> None:
+        errors = []
+        modules.check_ownership([Path("Source/Core/Log.cpp")], {}, self.contract, [], errors)
+        self.assertEqual(errors, ["Source/Core/Log.cpp: no target compiles this source"])
+
+    def test_target_source_outside_the_walked_roots_is_not_exempt(self) -> None:
+        errors = []
+        modules.check_ownership([], {"Core": {"files": ["Other/Log.cpp"]}}, self.contract, [], errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("no unit owns", errors[0])
+
+    def test_shared_source_still_needs_its_owning_target(self) -> None:
+        file = "Source/App/Options.cpp"
+        targets = {name: {"files": [file]} for name in ("Tests", "Other")}
+        allowance = {"kind": "shared-source", "file": file, "targets": ["Tests", "Other"]}
+        errors = []
+        modules.check_ownership([Path(file)], targets, self.contract, [allowance], errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("no compiling target belongs to unit app-model", errors[0])
+
 
 class TargetDumpTests(unittest.TestCase):
+    def test_target_file_is_relative_to_the_selected_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "targets.json"
+            path.write_text(json.dumps({"App": {"targetfile": "build/App"}}))
+            self.assertEqual(modules.load_targets(path, root)["App"]["targetfile"], str(root / "build/App"))
+
+    def test_xmake_dump_pins_the_selected_project_root(self) -> None:
+        with patch.object(modules.subprocess, "run", return_value=FakeCompleted(stdout="{}")) as run:
+            modules.run_target_dump(Path("/repo/worktree"))
+        self.assertEqual(run.call_args.args[0], ["xmake", "lua", "-P", "/repo/worktree", modules.TARGET_DUMP_SCRIPT])
+
     def test_single_valued_dependency_string_is_read_as_a_one_element_list(self) -> None:
         dump = {"RHI": {"kind": "static", "files": "RHI/Source/Device.cpp", "deps": "Core", "packages": {}, "frameworks": "Metal"}}
         with tempfile.TemporaryDirectory() as directory:
@@ -250,7 +289,11 @@ class MainTests(unittest.TestCase):
         }
         targets = root / "targets.json"
         targets.write_text(json.dumps(dump), encoding="utf-8")
-        (root / "compile_commands.json").write_text("[]", encoding="utf-8")
+        entries = [
+            {"directory": str(root), "file": file, "arguments": ["clang++", "-ISource", "-c", file]}
+            for target in dump.values() for file in target["files"]
+        ]
+        (root / "compile_commands.json").write_text(json.dumps(entries), encoding="utf-8")
         return contract, allowlist, targets
 
     def test_clean_tree_passes(self) -> None:
@@ -261,6 +304,16 @@ class MainTests(unittest.TestCase):
                 ["--root", str(root), "--contract", str(contract), "--allowlist", str(allowlist), "--targets", str(targets)]
             )
             self.assertEqual(code, 0)
+
+    def test_empty_database_cannot_certify_includes(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            contract, allowlist, targets = self.build_tree(root)
+            (root / "compile_commands.json").write_text("[]")
+            self.assertEqual(run_main([
+                "--root", str(root), "--contract", str(contract),
+                "--allowlist", str(allowlist), "--targets", str(targets),
+            ]), 2)
 
     def test_violation_returns_one(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -420,6 +473,33 @@ def include_db(root: Path) -> dict[str, dict]:
 
 
 class IncludeResolutionTests(unittest.TestCase):
+    def test_database_normalises_absolute_files_and_relative_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            file = root / "Source/Core/Log.cpp"
+            path = root / "commands.json"
+            path.write_text(json.dumps([
+                {"directory": "build", "file": str(file), "arguments": ["clang++", "-I../Source", "-c", "../Source/Core/Log.cpp"]},
+            ]))
+            entry = modules.load_compile_commands(path, root)["Source/Core/Log.cpp"]
+            self.assertEqual(entry["directory"], str(root / "build"))
+            self.assertEqual(entry["file"], str(file))
+            self.assertEqual([p.resolve() for p in modules.include_dirs(entry)], [root / "Source"])
+
+    def test_invalid_command_quoting_is_a_could_not_run_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "commands.json"
+            path.write_text(json.dumps([{"file": "a.cpp", "command": 'clang++ "'}]))
+            with self.assertRaises(modules.ModuleContractError):
+                modules.load_compile_commands(path)
+
+    def test_header_without_unit_sources_uses_its_targets_context(self) -> None:
+        file = "RHI/Backends/Metal4/Source/Metal4Device.mm"
+        entry = {"directory": "/repo", "arguments": ["clang++", "-IRHI/Include"]}
+        result = modules.context_for(Path("RHI/Include/RHI/Device.h"), "rhi-public",
+                                     {"RHI": {"files": [file]}}, {file: entry}, INCLUDE_CONTRACT)
+        self.assertEqual(result, [Path("/repo/RHI/Include")])
+
     def test_include_dirs_reads_joined_and_split_tokens_and_the_command_string(self) -> None:
         entry = {
             "directory": "/repo",
@@ -436,7 +516,7 @@ class IncludeResolutionTests(unittest.TestCase):
             path = root / "compile_commands.json"
             entry = {"directory": "/repo", "command": "clang++ -c -ISource a.cpp", "file": "a.cpp"}
             path.write_text(json.dumps([entry]), encoding="utf-8")
-            database = modules.load_compile_commands(path)
+            database = modules.load_compile_commands(path, Path("/repo"))
             self.assertEqual(modules.include_dirs(database["a.cpp"]), [Path("/repo/Source")])
 
     def test_quoted_include_resolves_next_to_the_includer_before_the_include_directories(self) -> None:
@@ -501,6 +581,10 @@ class IncludeResolutionTests(unittest.TestCase):
                 Path("Source/Engine/Absent.h"), "SDL3/SDL.h", False, dirs, root, contract
             )
             self.assertEqual((resolved.kind, resolved.name), ("third-party", "libsdl3"))
+            quoted = modules.resolve_include(
+                Path("Source/Engine/Absent.h"), "SDL3/SDL.h", True, dirs, root, contract
+            )
+            self.assertEqual((quoted.kind, quoted.name), ("third-party", "libsdl3"))
 
     def test_parse_includes_reads_quoted_and_angle_specs_in_order(self) -> None:
         text = '#pragma once\n#include "Engine/Asset.h"\n#  include <vector>\nint x; // #include "no.h"\n'
@@ -520,7 +604,9 @@ class IncludeCheckTests(unittest.TestCase):
         contract = modules.load_contract(write_contract(root, INCLUDE_CONTRACT), root)
         errors: list[str] = []
         modules.check_includes(
-            [Path(name) for name in names], {}, include_db(root), contract, allowlist or [], errors, root
+            [Path(name) for name in names],
+            {"RHI": {"files": ["RHI/Backends/Metal4/Source/Metal4Device.cpp"]}},
+            include_db(root), contract, allowlist or [], errors, root
         )
         return errors
 
@@ -604,6 +690,13 @@ class IncludeCheckTests(unittest.TestCase):
     def test_backend_metal_cpp_include_is_allowed_and_the_quoted_neighbour_resolves(self) -> None:
         self.assertEqual(self.check(self.root, ["RHI/Backends/Metal4/Source/Metal4Device.cpp"]), [])
 
+    def test_angle_project_include_in_objective_cpp_is_followed_transitively(self) -> None:
+        file = "Source/Engine/Probe.mm"
+        (self.root / file).write_text("#include <Engine/Mid.h>\n")
+        errors = self.check(self.root, [file])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Probe.mm -> Source/Engine/Mid.h -> Source/Engine/Bad.h -> RHI/Include/RHI/Device.h", errors[0])
+
 
 class HardeningTests(unittest.TestCase):
     def test_unreadable_json_is_a_could_not_run_error(self) -> None:
@@ -642,7 +735,11 @@ class HardeningTests(unittest.TestCase):
 
 class TargetClosureTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.contract = {"targets": {"TextureBake": {"deps": ["Core", "Asset"]}, "Core": {"deps": []}}}
+        self.contract = {"targets": {
+            "TextureBake": {"deps": ["Core", "Asset"]}, "Core": {"deps": []},
+            "RHI": {"deps": ["Core"]}, "Render": {"deps": ["Core", "RHI"]},
+            "Engine": {"deps": ["Core", "RHI", "Render"]},
+        }}
         self.targets = {
             "Core": {"deps": []},
             "RHI": {"deps": ["Core"]},
@@ -673,6 +770,12 @@ class TargetClosureTests(unittest.TestCase):
         errors: list[str] = []
         modules.check_target_closure(targets, self.contract, [], errors)
         self.assertEqual(errors, [])
+
+    def test_new_target_requires_a_contract_even_without_sources(self) -> None:
+        targets = {"NewTool": {"deps": []}, "ImGui": {"deps": []}}
+        errors = []
+        modules.check_target_closure(targets, {"targets": {}, "thirdPartyTargets": ["ImGui"]}, [], errors)
+        self.assertEqual(errors, ["NewTool: no target contract; declare its allowed dependencies"])
 
     def test_target_dep_allowlist_entry_suppresses_one_dependency(self) -> None:
         allowlist = [

@@ -44,6 +44,8 @@ def syntax_command(entry: dict) -> list[str]:
     """
     arguments = entry["arguments"]
     source = entry.get("file")
+    directory = Path(entry.get("directory") or ".")
+    source_path = (directory / source).resolve() if source is not None else None
     command: list[str] = []
     skip_next = False
     for token in arguments:
@@ -55,15 +57,15 @@ def syntax_command(entry: dict) -> list[str]:
         if token in DROP_FLAGS_WITH_VALUE:
             skip_next = True
             continue
-        if source is not None and token == source:
+        if source_path is not None and not token.startswith("-") and (directory / token).resolve() == source_path:
             continue
         command.append(token)
     command.extend(["-fsyntax-only", "-x", "c++", "-"])
     return command
 
 
-def command_for(header: Path, contract: dict, targets: dict, compile_db: dict) -> list[str]:
-    """The command line to check `header` with: a compiled source of its owning target."""
+def entry_for(header: Path, contract: dict, targets: dict, compile_db: dict) -> dict:
+    """A compilation entry from the header's owning target, including its working directory."""
     unit = check_module_deps.owner_of(header, contract)
     if unit is None:
         raise check_module_deps.ModuleContractError(f"no unit owns {header.as_posix()}")
@@ -78,16 +80,23 @@ def command_for(header: Path, contract: dict, targets: dict, compile_db: dict) -
             f"no compiled source found for {expected} to check {header.as_posix()}"
         )
     entry = dict(compile_db[source])
-    entry["file"] = source
-    return syntax_command(entry)
+    entry.setdefault("file", source)
+    return entry
 
 
-def check_header(header: Path, command: list[str], include_root: Path, run=subprocess.run) -> str | None:
+def command_for(header: Path, contract: dict, targets: dict, compile_db: dict) -> list[str]:
+    """The command line to check `header` with: a compiled source of its owning target."""
+    return syntax_command(entry_for(header, contract, targets, compile_db))
+
+
+def check_header(
+    header: Path, command: list[str], include_root: Path, run=subprocess.run, *, directory: Path | None = None
+) -> str | None:
     """Compile `header` as the sole include of an empty translation unit; None on success."""
     include = header.relative_to(SOURCE_DIR).as_posix()
     result = run(
         command,
-        cwd=include_root,
+        cwd=directory or include_root,
         input=f'#include "{include}"\n',
         text=True,
         stdout=subprocess.PIPE,
@@ -150,19 +159,21 @@ def main(argv: list[str] | None = None) -> int:
             raise check_module_deps.ModuleContractError(
                 f"{compile_commands_path} is missing; run xmake project -k compile_commands first"
             )
-        compile_db = check_module_deps.load_compile_commands(compile_commands_path)
+        compile_db = check_module_deps.load_compile_commands(compile_commands_path, root)
         targets = check_module_deps.load_targets(args.targets, root)
 
         headers = source_headers(root)
+        suppressed = 0
         for header in headers:
-            if header_allowed(header, allowlist):
-                continue
-            command = command_for(header, contract, targets, compile_db)
-            diagnostic = check_header(header, command, root)
+            entry = entry_for(header, contract, targets, compile_db)
+            diagnostic = check_header(header, syntax_command(entry), root, directory=Path(entry["directory"]))
             if diagnostic is not None:
-                errors.append(f"{header.as_posix()}: standalone include failed\n{diagnostic}")
+                if header_allowed(header, allowlist):
+                    suppressed += 1
+                else:
+                    errors.append(f"{header.as_posix()}: standalone include failed\n{diagnostic}")
         check_header_allowlist_use(check_module_deps.display_path(allowlist_path, root), allowlist, errors)
-    except check_module_deps.ModuleContractError as exc:
+    except (check_module_deps.ModuleContractError, OSError) as exc:
         print(f"source header check could not run: {exc}", file=sys.stderr)
         return 2
 
@@ -171,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {error}", file=sys.stderr)
         print(f"source header check failed ({len(errors)} error(s))", file=sys.stderr)
         return 1
-    print(f"source header check passed ({len(headers)} headers compiled standalone)")
+    print(f"source header check passed ({len(headers) - suppressed} headers compiled standalone, {suppressed} allowed failures)")
     return 0
 
 
