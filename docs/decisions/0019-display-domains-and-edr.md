@@ -1,6 +1,6 @@
 # ADR 0019 — Display domains and EDR evaluation
 
-**Status**: Proposed
+**Status**: Accepted
 
 ## Context
 
@@ -12,7 +12,7 @@ temporal semantics in ADRs 0006 and 0013–0017.
 An isolated macOS probe evaluates extended-linear presentation on the development machine's
 built-in Liquid Retina XDR display. It is evidence for a future display choice, not production
 presentation code. The [design spec](../specs/2026-09-12-m6.5-display-boundary-edr-design.md)
-and [execution plan](../plans/2026-09-12-m6.5-display-boundary-edr.md) define the pending gate.
+and [milestone record](../milestones/m6.5.md) preserve the evaluation and accepted closure limits.
 
 ## Verified SDR contract
 
@@ -103,7 +103,7 @@ the forced-headroom-one control yields maximum 1.0 and zero channels above one, 
 peak four when cleared. This verifies the range control only; metadata still names a linear EDR
 view and the layer remains float. The control does not establish production SDR fallback.
 
-## Proposed decision: defer adoption
+## Decision: defer adoption
 
 Keep production SDR-only. Physical highlight extension works on this display, but the specified
 curve materially darkens midtones and the probe does not establish a production SDR cost baseline
@@ -112,8 +112,9 @@ it does not resolve those independent curve, fallback and cost limitations. Defe
 separately scoped display view preserves that match and demonstrates the intended midtone
 appearance, with a measured production SDR comparison and complete layer/fallback/capture
 behavior. Do not silently change this formula or upstream exposure to hide the observed
-deficiencies. Milestone closure remains pending the separate strict historical-hash gate
-disposition. Any adoption is a separate later slice and supplies its own presentation
+deficiencies. The owner accepted the separate historical-hash closure exception recorded in the
+milestone; that exception does not change these display policies. Any adoption is a separate
+later slice and supplies its own presentation
 interface/capability contract and full fallback/capture validation. No experimental source merges into production.
 
 Experiment source is preserved by immutable tag `m6.5-edr-evidence`; the independent source
