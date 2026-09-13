@@ -17,7 +17,7 @@ SKIP_PARTS = {".git", "build", "ThirdParty"}
 SKIP_PREFIXES = (("Assets", "Fetched"),)
 STATUS_DIRS = {
     "architecture", "conventions", "decisions", "guides", "milestones", "plans",
-    "postmortems", "research", "specs",
+    "postmortems", "research", "roadmap", "specs",
 }
 LINE_BUDGETS = {
     "AGENTS.md": 250,
@@ -28,7 +28,8 @@ LINE_BUDGETS = {
     "docs/milestones/": 300,
     "docs/plans/": 300,
     "docs/postmortems/": 300,
-    "docs/roadmap.md": 400,
+    "docs/roadmap.md": 300,
+    "docs/roadmap/": 300,
 }
 HOME_PATH = re.compile(
     r"(?i)(?:/" + r"Users/[^/\s`]+|/" + r"home/[^/\s`]+|[A-Z]:\\Users\\[^\\\s`]+)"
@@ -193,7 +194,9 @@ def check_markdown(files: list[Path], errors: list[str]) -> None:
                     f"{path}:{line_number(text, match.start())}: broken local link: {target}"
                 )
 
-        if len(path.parts) >= 3 and path.parts[0] == "docs" and path.parts[1] in STATUS_DIRS:
+        if path == Path("docs/roadmap.md") or (
+            len(path.parts) >= 3 and path.parts[0] == "docs" and path.parts[1] in STATUS_DIRS
+        ):
             status = STATUS_FIELD.search("\n".join(text.splitlines()[:30]))
             if not status:
                 errors.append(f"{path}: missing status field in first 30 lines")
