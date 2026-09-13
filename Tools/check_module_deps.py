@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Check the repository module contract: unit ownership against xmake target membership."""
+"""Check the repository module contract: unit ownership and include edges against the unit table."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import shlex
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +23,10 @@ SCHEMA_VERSION = 1
 SOURCE_SUFFIXES = (".h", ".cpp", ".mm")
 COMPILED_SUFFIXES = (".cpp", ".mm")
 UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "thirdParty")
+INCLUDE_FLAGS = ("-I", "-isystem", "-iframework")
+INCLUDE_PATTERN = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:"([^"]+)"|<([^>]+)>)', re.MULTILINE)
+THIRD_PARTY_DIR = "ThirdParty"
+PACKAGE_DIR = "packages"
 ALLOWLIST_FIELDS = {
     "shared-source": ("file", "targets"),
     "include": ("file", "reaches"),
@@ -30,6 +38,16 @@ ALLOWLIST_FIELDS = {
 
 class ModuleContractError(RuntimeError):
     """The checker could not obtain a trustworthy view of the contract or of the build."""
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """One include directive after resolution: a project file, a named package, or a system header."""
+
+    kind: str  # project | third-party | system
+    unit: str | None
+    name: str | None
+    path: Path | None
 
 
 def as_list(value: Any) -> list[Any]:
@@ -50,7 +68,7 @@ def read_json(path: Path) -> Any:
         return json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ModuleContractError(f"{path} is missing") from exc
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
         raise ModuleContractError(f"cannot read {path}: {exc}") from exc
 
 
@@ -68,6 +86,7 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
     units = contract.get("units")
     if not isinstance(units, dict) or not units:
         raise ModuleContractError(f"{path} must list at least one unit")
+    claimed: dict[str, str] = {}
     for name, unit in units.items():
         if not isinstance(unit, dict):
             raise ModuleContractError(f"unit {name} must hold an object")
@@ -83,6 +102,9 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
         for entry in unit["paths"]:
             if not (root / entry).exists():
                 raise ModuleContractError(f"unit {name} owns {entry}, which does not exist")
+            owner = claimed.setdefault(entry, name)
+            if owner != name:
+                raise ModuleContractError(f"{entry} is owned by both {owner} and {name}")
 
     roots = contract.setdefault("roots", [])
     if not isinstance(roots, list) or not roots:
@@ -141,9 +163,14 @@ def run_target_dump(root: Path) -> str:
 
 def load_targets(path: Path | None, root: Path) -> dict[str, dict]:
     """Read the target dump from a file or from xmake, taking the last line of output as the object."""
-    text = path.read_text(encoding="utf-8") if path and path.is_file() else None
-    if text is None and path is not None:
-        raise ModuleContractError(f"{path} is missing")
+    text: str | None = None
+    if path is not None:
+        if not path.is_file():
+            raise ModuleContractError(f"{path} is missing")
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            raise ModuleContractError(f"cannot read {path}: {exc}") from exc
     if text is None:
         text = run_target_dump(root)
     lines = [line for line in text.splitlines() if line.strip()]
@@ -171,17 +198,75 @@ def load_targets(path: Path | None, root: Path) -> dict[str, dict]:
     return targets
 
 
-def load_compile_commands(path: Path) -> dict[str, list[str]]:
-    """Map each compiled source to its command line; the compilation database supplies context only."""
+def load_compile_commands(path: Path) -> dict[str, dict]:
+    """Map each compiled source to its entry; the compilation database supplies include context only."""
     entries = read_json(path)
     if not isinstance(entries, list):
         raise ModuleContractError(f"{path} must hold a list of compilation entries")
-    commands: dict[str, list[str]] = {}
+    database: dict[str, dict] = {}
     for entry in entries:
         if not isinstance(entry, dict) or "file" not in entry:
             raise ModuleContractError(f"{path} contains a malformed entry")
-        commands.setdefault(str(entry["file"]), list(entry.get("arguments", [])))
-    return commands
+        arguments = entry.get("arguments")
+        if arguments is None:
+            command = entry.get("command", "")
+            if not isinstance(command, str):
+                raise ModuleContractError(f"{path} contains an entry whose command is not a string")
+            arguments = shlex.split(command)
+        if not isinstance(arguments, list):
+            raise ModuleContractError(f"{path} contains an entry whose arguments are not a list")
+        database.setdefault(
+            str(entry["file"]),
+            {"directory": str(entry.get("directory", "")), "arguments": [str(item) for item in arguments]},
+        )
+    return database
+
+
+def include_dirs(entry: dict) -> list[Path]:
+    """The entry's include directories in command order, resolved against its working directory."""
+    base = Path(entry.get("directory") or ".")
+    arguments = entry.get("arguments", [])
+    dirs: list[Path] = []
+    index = 0
+    while index < len(arguments):
+        token = arguments[index]
+        value: str | None = None
+        if token in INCLUDE_FLAGS:
+            value = arguments[index + 1] if index + 1 < len(arguments) else None
+            index += 2
+        else:
+            for flag in INCLUDE_FLAGS:
+                if token.startswith(flag) and len(token) > len(flag):
+                    value = token[len(flag) :]
+                    break
+            index += 1
+        if not value:
+            continue
+        directory = Path(value)
+        directory = directory if directory.is_absolute() else base / directory
+        if directory not in dirs:
+            dirs.append(directory)
+    return dirs
+
+
+def parse_includes(text: str) -> list[tuple[str, bool]]:
+    """Every include directive in source order as (spec, quoted); a quoted spec carries True."""
+    return [(quoted or angled, bool(quoted)) for quoted, angled in INCLUDE_PATTERN.findall(text)]
+
+
+def third_party_name(path: Path, root: Path) -> str | None:
+    """Name the package a resolved header belongs to, or None when it is neither vendored nor packaged."""
+    parts = path.parts
+    for index, part in enumerate(parts):
+        if part == PACKAGE_DIR and index + 3 < len(parts) and len(parts[index + 1]) == 1:
+            return parts[index + 2]
+    try:
+        relative = path.relative_to(root).parts
+    except ValueError:
+        return None
+    if len(relative) > 1 and relative[0] == THIRD_PARTY_DIR:
+        return relative[1]
+    return None
 
 
 def owner_of(path: Path, contract: dict) -> str | None:
@@ -224,13 +309,36 @@ def compiling_targets(targets: dict[str, dict], contract: dict) -> dict[str, lis
     return owners
 
 
+def allow(entry: dict) -> bool:
+    """Record that an entry suppressed a violation, so an entry that suppresses nothing is visible."""
+    entry["used"] = True
+    return True
+
+
 def shared_source_allowed(file: str, names: list[str], allowlist: list[dict]) -> bool:
     return any(
         entry["kind"] == "shared-source"
         and entry["file"] == file
         and sorted(entry["targets"]) == sorted(names)
+        and allow(entry)
         for entry in allowlist
     )
+
+
+def include_allowed(file: str, reaches: str, allowlist: list[dict]) -> bool:
+    return any(
+        entry["kind"] == "include" and entry["file"] == file and entry["reaches"] == reaches and allow(entry)
+        for entry in allowlist
+    )
+
+
+def check_allowlist_use(path: Path, allowlist: list[dict], errors: list[str]) -> None:
+    """An entry that suppressed nothing is stale debt, and the convention makes that an error."""
+    for entry in allowlist:
+        if entry.get("used"):
+            continue
+        subject = entry.get("file") or entry.get("target") or ""
+        errors.append(f"{path.as_posix()}: unused entry {entry['kind']} {subject} ({entry['until']})")
 
 
 def check_ownership(
@@ -259,6 +367,127 @@ def check_ownership(
             errors.append(f"{text}: unit {unit} builds as {expected}, but target {names[0]} compiles it")
 
 
+def resolve_include(
+    includer: Path, spec: str, quoted: bool, dirs: list[Path], root: Path, contract: dict
+) -> Resolved:
+    """Resolve one directive: next to the includer for a quoted spec, then the include directories."""
+    candidates = [root / includer.parent / spec] if quoted else []
+    candidates.extend(directory / spec for directory in dirs)
+    for candidate in candidates:
+        path = Path(os.path.normpath(candidate))
+        if not path.is_file():
+            continue
+        try:
+            relative = Path(os.path.relpath(path, root))
+        except ValueError:
+            relative = None
+        if relative is not None and not relative.as_posix().startswith(".."):
+            unit = owner_of(relative, contract)
+            if unit is not None:
+                return Resolved("project", unit, None, relative)
+        name = third_party_name(path, root)
+        if name is not None:
+            return Resolved("third-party", None, name, None)
+        return Resolved("system", None, None, None)
+    return Resolved("system", None, None, None)
+
+
+def context_for(
+    path: Path, unit: str, targets: dict[str, dict], compile_db: dict[str, dict], contract: dict
+) -> list[Path]:
+    """Include directories for a file: its own command, else the first compiled source of its unit."""
+    text = path.as_posix()
+    if text in compile_db:
+        return include_dirs(compile_db[text])
+    for name in sorted(compile_db):
+        if owner_of(Path(name), contract) == unit:
+            return include_dirs(compile_db[name])
+    for name in contract["units"][unit]["targets"]:
+        for file in targets.get(name, {}).get("files", []):
+            if file in compile_db:
+                return include_dirs(compile_db[file])
+    return []
+
+
+def check_includes(
+    files: list[Path],
+    targets: dict[str, dict],
+    compile_db: dict[str, dict],
+    contract: dict,
+    allowlist: list[dict],
+    errors: list[str],
+    root: Path,
+) -> None:
+    """Charge every direct package include and every transitively reached unit against the unit table."""
+    contexts: dict[str, list[Path]] = {}
+    resolved: dict[str, list[Resolved]] = {}
+
+    def includes_of(path: Path) -> list[Resolved]:
+        text = path.as_posix()
+        if text in resolved:
+            return resolved[text]
+        resolved[text] = []  # A cycle between two headers must not recurse forever.
+        unit = owner_of(path, contract)
+        if unit is None:
+            return resolved[text]
+        if text in compile_db:
+            dirs = include_dirs(compile_db[text])
+        elif unit in contexts:
+            dirs = contexts[unit]
+        else:
+            dirs = contexts.setdefault(unit, context_for(path, unit, targets, compile_db, contract))
+        try:
+            body = (root / path).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise ModuleContractError(f"cannot read {path.as_posix()}: {exc}") from exc
+        resolved[text] = [
+            resolve_include(path, spec, quoted, dirs, root, contract) for spec, quoted in parse_includes(body)
+        ]
+        return resolved[text]
+
+    for path in files:
+        unit = owner_of(path, contract)
+        if unit is None:
+            continue
+        text = path.as_posix()
+        row = contract["units"][unit]
+        for include in includes_of(path):
+            if include.kind != "third-party" or include.name in row["thirdParty"]:
+                continue
+            if not include_allowed(text, include.name or "", allowlist):
+                errors.append(f"{text}: {unit} includes {include.name} directly")
+        reported: set[str] = set()
+        chains: dict[str, list[str]] = {text: [text]}
+        queue = [path]
+        while queue:
+            current = queue.pop(0)
+            for include in includes_of(current):
+                if include.kind != "project" or include.path is None:
+                    continue
+                reached = include.path.as_posix()
+                if reached in chains:
+                    continue
+                chains[reached] = chains[current.as_posix()] + [reached]
+                queue.append(include.path)
+                if include.unit == unit or include.unit in row["units"] or include.unit in reported:
+                    continue
+                if any(reached == name or reached.endswith(f"/{name}") for name in row["headers"]):
+                    continue
+                if include_allowed(text, include.unit or "", allowlist):
+                    reported.add(include.unit or "")
+                    continue
+                reported.add(include.unit or "")
+                errors.append(f"{text}: {unit} reaches {include.unit} via {' -> '.join(chains[reached])}")
+
+
+def display_path(path: Path, root: Path) -> Path:
+    """Report a path inside the repository relative to it, so messages do not carry a home directory."""
+    try:
+        return path.resolve().relative_to(root)
+    except ValueError:
+        return path
+
+
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=ROOT, help="repository root to check")
@@ -278,16 +507,22 @@ def main(argv: list[str] | None = None) -> int:
     root = args.root.resolve()
     contract_path = args.contract or root / "Tools" / "module_contract.json"
     allowlist_path = args.allowlist or root / "Tools" / "module_allowlist.json"
+    compile_commands_path = args.compile_commands or root / "compile_commands.json"
 
     errors: list[str] = []
     try:
         contract = load_contract(contract_path, root)
         allowlist = load_allowlist(allowlist_path)
         targets = load_targets(args.targets, root)
-        if args.compile_commands is not None:
-            load_compile_commands(args.compile_commands)
+        if not compile_commands_path.is_file():
+            raise ModuleContractError(
+                f"{compile_commands_path} is missing; run xmake project -k compile_commands"
+            )
+        compile_db = load_compile_commands(compile_commands_path)
         files = project_files(root, contract)
         check_ownership(files, targets, contract, allowlist, errors)
+        check_includes(files, targets, compile_db, contract, allowlist, errors, root)
+        check_allowlist_use(display_path(allowlist_path, root), allowlist, errors)
     except ModuleContractError as exc:
         print(f"module policy could not run: {exc}", file=sys.stderr)
         return 2
