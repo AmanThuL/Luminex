@@ -26,8 +26,7 @@ requires explicit approval before M7. The second part's
 The shipped baseline is [M6.5](milestones/m6.5.md): explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
-runs remain intact, and the drift is not fixed. The active plan is
-[R1.1](plans/2026-09-13-r1.1-module-contract.md).
+runs remain intact, and the drift is not fixed. No executor plan is active.
 
 This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
 masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
