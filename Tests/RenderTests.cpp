@@ -7,8 +7,8 @@
 
 #include "BrdfOracle.h"
 
-#include "Engine/GeometryGenerator.h"
-#include "Engine/Ibl.h"
+#include "Asset/GeometryGenerator.h"
+#include "Asset/Ibl.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
@@ -238,7 +238,7 @@ TEST_CASE("fitShadowOrtho bakes the NDC-to-texcoord map into shadowTransform", "
 TEST_CASE("fromGeo copies every Engine vertex field verbatim", "[render]") {
     // Distinct values in every one of the twelve floats: a swapped or dropped field shows up as a
     // specific number in the wrong place rather than as a plausible-looking mesh.
-    lmx::engine::GeoData geo;
+    lmx::asset::GeoData geo;
     geo.vertices = {
         {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, -1.0f, 10.0f, 11.0f},
         {-1.5f, -2.5f, -3.5f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.25f, 0.75f},
@@ -250,7 +250,7 @@ TEST_CASE("fromGeo copies every Engine vertex field verbatim", "[render]") {
     REQUIRE(data.vertices.size() == geo.vertices.size());
     for (size_t i = 0; i < data.vertices.size(); ++i) {
         const Vertex& out = data.vertices[i];
-        const lmx::engine::VertexPNTU& in = geo.vertices[i];
+        const lmx::asset::VertexPNTU& in = geo.vertices[i];
         REQUIRE(near3({out.px, out.py, out.pz}, {in.px, in.py, in.pz}));
         REQUIRE(near3({out.nx, out.ny, out.nz}, {in.nx, in.ny, in.nz}));
         REQUIRE(near3({out.tx, out.ty, out.tz}, {in.tx, in.ty, in.tz}));
@@ -318,13 +318,13 @@ TEST_CASE("plane mesh spans its half extent with +Y normals", "[render]") {
 // the shader and the generator agree; a chain generated at a different depth would otherwise shift
 // every specular lookup by a fraction of a mip with no build error.
 TEST_CASE("the scene shader's specular mip count matches the IBL generator's", "[render]") {
-    REQUIRE(lmx::engine::ibl::kSpecularMipCount == 5);
+    REQUIRE(lmx::asset::ibl::kSpecularMipCount == 5);
 }
 
 //======================================================================================================================
 // The energy statement the whole material model rests on, made without a GPU.
 //
-// In a uniform environment of radiance E, Source/Engine/Ibl.h's generators reproduce E exactly at
+// In a uniform environment of radiance E, Source/Asset/Ibl.h's generators reproduce E exactly at
 // every roughness -- the irradiance convolution and the prefilter both normalize by their own
 // accumulated weight -- so both image-based samples are E and the fragment reduces to E times the
 // surface's total reflectance. A white surface must then return E itself: it absorbs nothing, so

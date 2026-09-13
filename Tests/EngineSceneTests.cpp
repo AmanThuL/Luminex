@@ -1,3 +1,4 @@
+#include "Scene/IblUpload.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -6,19 +7,20 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "Asset/SceneAnimation.h"
+#include "Asset/TextureBake.h"
+#include "Asset/Transform.h"
 #include "BrdfOracle.h"
+#include "Core/Color.h"
 #include "DisplayTransformOracle.h"
-#include "Engine/Color.h"
-#include "Engine/Scene.h"
-#include "Engine/SceneAnimation.h"
-#include "Engine/SceneLibrary.h"
-#include "Engine/TextureBake.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneLibrary.h"
 
 #include <algorithm>
 #include <array>
@@ -32,14 +34,16 @@
 #include <string>
 #include <vector>
 
-using namespace lmx::engine;
+using namespace lmx::asset;
+using lmx::srgbToLinear;
+using namespace lmx::scene;
 using lmx::test::findRepoAsset;
 using lmx::test::near3;
 namespace rhi = lmx::rhi;
 namespace render = lmx::render;
 
 //======================================================================================================================
-TEST_CASE("srgbToLinear decodes the exact IEC sRGB curve", "[engine]") {
+TEST_CASE("srgbToLinear decodes the exact IEC sRGB curve", "[core]") {
     REQUIRE(srgbToLinear(0.0f) == 0.0f);
     REQUIRE(srgbToLinear(1.0f) == Catch::Approx(1.0f).margin(1e-4));
     REQUIRE(srgbToLinear(0.7f) == Catch::Approx(0.4479f).margin(1e-3));
@@ -47,8 +51,7 @@ TEST_CASE("srgbToLinear decodes the exact IEC sRGB curve", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("srgbToLinear's vec3/vec4 overloads decode component-wise; vec4 keeps alpha",
-          "[engine]") {
+TEST_CASE("srgbToLinear's vec3/vec4 overloads decode component-wise; vec4 keeps alpha", "[core]") {
     const glm::vec3 v3 = srgbToLinear(glm::vec3(0.7f, 0.5f, 1.0f));
     REQUIRE(v3.x == Catch::Approx(0.4479f).margin(1e-3));
     REQUIRE(v3.y == Catch::Approx(0.2140f).margin(1e-3));
@@ -93,7 +96,7 @@ bool matricesNear(const glm::mat4& a, const glm::mat4& b, float margin) {
 //======================================================================================================================
 TEST_CASE("decomposeTransform's rotation extraction matches modelMatrix's Y*X*Z composition "
           "order for a compound rotation",
-          "[engine]") {
+          "[scene]") {
     SceneObject original;
     original.position = {1.0f, 2.0f, 3.0f};
     original.eulerDegrees = {35.0f, 40.0f, 25.0f}; // x, y, z -- all three axes, none of them zero
@@ -123,7 +126,7 @@ TEST_CASE("decomposeTransform's rotation extraction matches modelMatrix's Y*X*Z 
 //======================================================================================================================
 TEST_CASE("decomposeTransform still round-trips both fetched assets' single-axis node "
           "transforms",
-          "[engine]") {
+          "[scene]") {
     // Sponza: a uniform scale, no rotation.
     {
         const glm::mat4 world = glm::scale(glm::mat4(1.0f), glm::vec3(0.008f));
@@ -154,8 +157,7 @@ TEST_CASE("decomposeTransform still round-trips both fetched assets' single-axis
 // A Scene with no IBL attached must still publish a renderable view. Empty objects make the
 // forwarding observable without constructing a GPU device -- and a bare Scene is exactly the case
 // where all three IBL pointers are null, which the renderer's fallbacks are what make legal.
-TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricating one",
-          "[engine]") {
+TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricating one", "[scene]") {
     Scene scene;
 
     std::vector<render::DrawItem> items;
@@ -306,7 +308,7 @@ std::vector<uint8_t> readMipLevel1(rhi::Device& device, rhi::Texture& texture) {
 // byte-identical -- compared as hashes so a mismatch stays diagnosable rather than asking Catch2
 // to print a 16KB byte vector (see Tests/EngineAssetTests.cpp's determinism test for the same
 // reasoning). Both loads start from the same stb_image-decoded JPEG bytes and run through the
-// same bakeMips code (Source/Engine/TextureBake.h), so equality is exact, not approximate.
+// same bakeMips code (Source/Asset/TextureBake.h), so equality is exact, not approximate.
 TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offline bake would",
           "[gpu]") {
     const std::optional<std::filesystem::path> path =
@@ -996,9 +998,9 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     view.items = items;
     // A white uniform environment and no analytic lights: every patch is lit only by the
     // image-based terms, which for a constant environment are that environment's own radiance
-    // (Engine/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
+    // (Asset/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
     // about the geometry of a light rig enters the expectation.
-    const lmx::engine::ibl::IblTextures environment =
+    const lmx::scene::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.patchFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
@@ -1086,7 +1088,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // Exit-gate check: Metal's blit generateMipmaps was measured to point-pick, not filter, so a
 // point-picked mip of MaterialLab's 1-texel checkerboard (makeCheckerboardPixels) reads solid
 // black or solid white -- stepping by a power of two always lands on the same parity. A correctly
-// box-filtered chain (Source/Engine/TextureBake.h's bakeMips, the same function the offline bake
+// box-filtered chain (Source/Asset/TextureBake.h's bakeMips, the same function the offline bake
 // tool uses) instead converges every level above 0 to an exact uniform mid-gray, because every 2x2
 // block of a 1-texel checkerboard contains exactly two black and two white texels.
 //
@@ -1138,7 +1140,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
 
     render::SceneView view;
     view.items = items;
-    const lmx::engine::ibl::IblTextures environment =
+    const lmx::scene::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
@@ -1187,7 +1189,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
 }
 
 //======================================================================================================================
-TEST_CASE("scene IDs are stable and reject unknown input", "[engine]") {
+TEST_CASE("scene IDs are stable and reject unknown input", "[scene]") {
     REQUIRE(sceneIdString(*parseSceneId("sponza")) == "sponza");
     REQUIRE(sceneIdString(*parseSceneId("damaged-helmet")) == "damaged-helmet");
     REQUIRE(sceneIdString(*parseSceneId("material-lab")) == "material-lab");
@@ -1278,7 +1280,7 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
 }
 
 //======================================================================================================================
-TEST_CASE("sampleRigidTrack interpolates translation and scale linearly between keys", "[engine]") {
+TEST_CASE("sampleRigidTrack interpolates translation and scale linearly between keys", "[asset]") {
     RigidTrack track;
     track.keys.push_back({.time = 0.0,
                           .translation = glm::vec3(0.0f, 0.0f, 0.0f),
@@ -1298,7 +1300,7 @@ TEST_CASE("sampleRigidTrack interpolates translation and scale linearly between 
 }
 
 //======================================================================================================================
-TEST_CASE("sampleRigidTrack slerps a quarter turn to its half angle", "[engine]") {
+TEST_CASE("sampleRigidTrack slerps a quarter turn to its half angle", "[asset]") {
     RigidTrack track;
     track.keys.push_back({.time = 0.0,
                           .translation = glm::vec3(0.0f),
@@ -1317,7 +1319,7 @@ TEST_CASE("sampleRigidTrack slerps a quarter turn to its half angle", "[engine]"
 }
 
 //======================================================================================================================
-TEST_CASE("sampleRigidTrack holds the previous key when the track steps", "[engine]") {
+TEST_CASE("sampleRigidTrack holds the previous key when the track steps", "[asset]") {
     RigidTrack track;
     track.step = true;
     track.keys.push_back({.time = 0.0, .translation = glm::vec3(0.0f)});
@@ -1328,7 +1330,7 @@ TEST_CASE("sampleRigidTrack holds the previous key when the track steps", "[engi
 }
 
 //======================================================================================================================
-TEST_CASE("sampleRigidTrack clamps before the first key and after the last", "[engine]") {
+TEST_CASE("sampleRigidTrack clamps before the first key and after the last", "[asset]") {
     RigidTrack track;
     track.keys.push_back({.time = 1.0, .translation = glm::vec3(-5.0f, 0.0f, 0.0f)});
     track.keys.push_back({.time = 3.0, .translation = glm::vec3(5.0f, 0.0f, 0.0f)});
@@ -1339,7 +1341,7 @@ TEST_CASE("sampleRigidTrack clamps before the first key and after the last", "[e
 
 //======================================================================================================================
 TEST_CASE("sampleCameraTrack interpolates position and angles linearly and clamps at the ends",
-          "[engine]") {
+          "[asset]") {
     const std::array<CameraKey, 2> keys = {
         CameraKey{
             .time = 0.0, .position = glm::vec3(0.0f, 3.0f, 10.0f), .yaw = 0.0f, .pitch = -0.2f},
@@ -1356,7 +1358,53 @@ TEST_CASE("sampleCameraTrack interpolates position and angles linearly and clamp
 }
 
 //======================================================================================================================
-TEST_CASE("sampleEmissiveTrack holds the last key at or before the sample time", "[engine]") {
+TEST_CASE("Scene::followCameraTrack samples the scene clock while preserving camera lens and speed",
+          "[scene]") {
+    Scene scene;
+    scene.animation.cameraTrack = {
+        CameraKey{.time = 0.0, .position = {0.0f, 2.0f, 4.0f}, .yaw = -0.4f, .pitch = 0.2f},
+        CameraKey{.time = 4.0, .position = {8.0f, 6.0f, 0.0f}, .yaw = 0.4f, .pitch = -0.2f}};
+    scene.animationTime = 1.0;
+    render::Camera camera;
+    camera.fovY = 0.9f;
+    camera.nearZ = 0.3f;
+    camera.farZ = 700.0f;
+    camera.moveSpeed = 8.0f;
+
+    scene.followCameraTrack(camera);
+
+    REQUIRE(near3(camera.position, {2.0f, 3.0f, 3.0f}));
+    REQUIRE(camera.yaw == Catch::Approx(-0.2f));
+    REQUIRE(camera.pitch == Catch::Approx(0.1f));
+    REQUIRE(camera.fovY == 0.9f);
+    REQUIRE(camera.nearZ == 0.3f);
+    REQUIRE(camera.farZ == 700.0f);
+    REQUIRE(camera.moveSpeed == 8.0f);
+    REQUIRE(scene.animationTime == 1.0);
+}
+
+//======================================================================================================================
+TEST_CASE("cameraFromScene copies authored pose and lens while keeping the default movement speed",
+          "[scene]") {
+    const SceneCamera authored{.position = {4.0f, 5.0f, 6.0f},
+                               .yaw = 0.7f,
+                               .pitch = -0.2f,
+                               .fovY = 1.1f,
+                               .nearZ = 0.4f,
+                               .farZ = 900.0f};
+    const render::Camera camera = cameraFromScene(authored);
+
+    REQUIRE(near3(camera.position, authored.position));
+    REQUIRE(camera.yaw == authored.yaw);
+    REQUIRE(camera.pitch == authored.pitch);
+    REQUIRE(camera.fovY == authored.fovY);
+    REQUIRE(camera.nearZ == authored.nearZ);
+    REQUIRE(camera.farZ == authored.farZ);
+    REQUIRE(camera.moveSpeed == render::Camera{}.moveSpeed);
+}
+
+//======================================================================================================================
+TEST_CASE("sampleEmissiveTrack holds the last key at or before the sample time", "[asset]") {
     EmissiveTrack track;
     track.keys.push_back({.time = 0.0, .strength = 0.0f});
     track.keys.push_back({.time = 3.0, .strength = 4.0f});
@@ -1372,7 +1420,7 @@ TEST_CASE("sampleEmissiveTrack holds the last key at or before the sample time",
 }
 
 //======================================================================================================================
-TEST_CASE("sampleEmissiveTrack clamps before the first key and after the last", "[engine]") {
+TEST_CASE("sampleEmissiveTrack clamps before the first key and after the last", "[asset]") {
     EmissiveTrack track;
     track.keys.push_back({.time = 1.0, .strength = 2.0f});
     track.keys.push_back({.time = 3.0, .strength = 5.0f});
@@ -1398,7 +1446,7 @@ Scene makeMotionTestScene() {
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("Scene::commitFrame promotes the current model and view reports both", "[engine]") {
+TEST_CASE("Scene::commitFrame promotes the current model and view reports both", "[scene]") {
     Scene scene = makeMotionTestScene();
     std::vector<render::DrawItem> items;
 
@@ -1417,7 +1465,7 @@ TEST_CASE("Scene::commitFrame promotes the current model and view reports both",
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose", "[engine]") {
+TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose", "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.objects[0].position = glm::vec3(9.0f, 0.0f, 0.0f);
     scene.resetMotion();
@@ -1429,7 +1477,7 @@ TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose",
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::view forwards an object's declared motion class", "[engine]") {
+TEST_CASE("Scene::view forwards an object's declared motion class", "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.objects[0].motionClass = render::MotionClass::Invalid;
 
@@ -1439,7 +1487,7 @@ TEST_CASE("Scene::view forwards an object's declared motion class", "[engine]") 
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::advanceAnimation wraps at the clip duration only while looping", "[engine]") {
+TEST_CASE("Scene::advanceAnimation wraps at the clip duration only while looping", "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.animation.duration = 2.0;
     scene.animation.loop = true;
@@ -1457,7 +1505,7 @@ TEST_CASE("Scene::advanceAnimation wraps at the clip duration only while looping
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[engine]") {
+TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[scene]") {
     Scene scene = makeMotionTestScene();
     RigidTrack track;
     track.objectIndex = 0;
@@ -1483,7 +1531,7 @@ TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[e
 //======================================================================================================================
 TEST_CASE("Scene::animate writes an object's sampled emissive strength, and view() multiplies it "
           "into the draw item's authored emissive colour",
-          "[engine]") {
+          "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.materials[0].emissive = glm::vec3(1.0f, 0.8f, 0.3f);
 
@@ -1505,7 +1553,7 @@ TEST_CASE("Scene::animate writes an object's sampled emissive strength, and view
 }
 
 //======================================================================================================================
-TEST_CASE("an emissive-only clip participates in automatic playback", "[engine]") {
+TEST_CASE("an emissive-only clip participates in automatic playback", "[scene]") {
     Scene scene = makeMotionTestScene();
     REQUIRE_FALSE(hasAnimationTracks(scene.animation));
     constexpr double kStep = 1.0 / kAnimationBakeRate;
@@ -1524,8 +1572,7 @@ TEST_CASE("an emissive-only clip participates in automatic playback", "[engine]"
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::view leaves emissive untouched when an object has no emissive track",
-          "[engine]") {
+TEST_CASE("Scene::view leaves emissive untouched when an object has no emissive track", "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.materials[0].emissive = glm::vec3(0.5f, 0.5f, 0.5f);
 
@@ -1817,7 +1864,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 // A zero scale is a legitimate authored pose -- glTF conformance clips collapse an object to
 // nothing and back -- and both the loader's validation and Scene::animate's write-back go through
 // decomposeTransform, so it has to survive the round trip rather than be rejected or return NaN.
-TEST_CASE("decomposeTransform round-trips a zero-scale pose", "[engine]") {
+TEST_CASE("decomposeTransform round-trips a zero-scale pose", "[asset]") {
     RigidTrack track;
     track.step = true;
     track.keys.push_back(
@@ -1842,7 +1889,7 @@ TEST_CASE("decomposeTransform round-trips a zero-scale pose", "[engine]") {
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale", "[engine]") {
+TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale", "[scene]") {
     Scene scene = makeMotionTestScene();
     RigidTrack track;
     track.objectIndex = 0;
@@ -1863,7 +1910,7 @@ TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale
 
 //======================================================================================================================
 TEST_CASE("decomposeTransform rejects a sheared transform instead of orthogonalising it",
-          "[engine]") {
+          "[asset]") {
     glm::mat4 sheared{1.0f};
     sheared[1][0] = 0.5f; // Y basis leans into X: no translate-rotate-scale chain produces this
     REQUIRE_FALSE(decomposeTransform(sheared).has_value());
@@ -1875,7 +1922,7 @@ TEST_CASE("decomposeTransform rejects a sheared transform instead of orthogonali
 // pins that loadGltfScene poses the scene at the clip's t = 0 and only then seeds the previous
 // transforms, so the first frame draws the played pose and still reports no motion.
 TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its authored rest pose",
-          "[engine][gpu]") {
+          "[scene][gpu]") {
     auto device = rhi::createDevice();
     REQUIRE(device.has_value());
 

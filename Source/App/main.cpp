@@ -8,13 +8,13 @@
 #include "App/FrameRecordRing.h"
 #include "App/Screenshot.h"
 #include "Core/Log.h"
-#include "Engine/SceneLibrary.h"
 #include "RHI/CaptureSchema.h"
 #include "RHI/Metal4/Metal4Capture.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 #include "RHI/RHI.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
+#include "Scene/SceneLibrary.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -96,7 +96,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::engine::SceneLibrary sceneLibrary(**device);
+    lmx::scene::SceneLibrary sceneLibrary(**device);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;

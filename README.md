@@ -45,7 +45,7 @@ inspectable codebase.
 flowchart TB
     subgraph Scene["Scene preparation"]
         direction LR
-        Assets["glTF + procedural geometry"] --> Engine["Engine scene + IBL"] --> View["SceneView"]
+        Assets["glTF + procedural geometry"] --> GPUScene["GPU scene + IBL uploads"] --> View["SceneView"]
     end
     subgraph Frame["Render graph, declared and validated per frame"]
         direction LR
@@ -62,7 +62,7 @@ flowchart TB
     Display --> UI
 ```
 
-The renderer keeps scene ownership above the rendering layer: Engine produces a plain per-frame
+The renderer keeps scene ownership above the rendering layer: Scene produces a plain per-frame
 `SceneView`, Render declares the frame's passes into a `RenderGraph` that validates every
 declared read and write before compiling a schedule, and the RHI records the Metal 4 work without
 leaking Metal types through public interfaces. The complete resource and synchronization
@@ -128,7 +128,8 @@ paravirtual GPU. Renderer changes therefore require the local Metal-validation c
 flowchart TB
     subgraph Layers["Renderer layers"]
         direction LR
-        App["App<br/>SDL3 + ImGui"] --> Engine["Engine<br/>scenes + IBL + baking"] --> Render["Render<br/>camera + render graph"]
+        App["App<br/>SDL3 + ImGui"] --> Scene["Scene<br/>GPU scenes + uploads"] --> Render["Render<br/>camera + render graph"]
+        Scene --> Asset["Asset<br/>CPU decoding + baking"]
     end
     subgraph GPU["GPU interface"]
         direction LR
@@ -140,14 +141,15 @@ flowchart TB
 
 The RHI is intentionally thin and currently has one backend: Metal 4. It owns resource creation,
 command recording, synchronization, residency and swapchain contracts; rendering policy stays in
-`Source/Render`, while scene and asset policy stays in `Source/Engine`.
+`Source/Render`, while `Source/Scene` owns GPU scene state and `Source/Asset` owns CPU content.
 
 | Path | Responsibility |
 |---|---|
 | `RHI/Include/RHI` | Backend-neutral interfaces and validation contracts |
 | `RHI/Backends/Metal4` | Metal objects, frame lifetime, command encoding and optional ImGui integration |
 | `Source/Render` | Camera, meshes, the validating render graph, shadow/scene/sky/display passes |
-| `Source/Engine` | Scene catalog, glTF/DDS loading, geometry, color handling, IBL generation, mip baking |
+| `Source/Asset` | CPU glTF/DDS/HDR/image decoding, geometry, clip sampling, IBL generation and mip baking |
+| `Source/Scene` | Scene catalog, GPU uploads, environments and playback |
 | `Source/App` | SDL3 window, editor shell, CLI and offscreen screenshots |
 | `Shaders` | Slang modules and render/test entry points |
 | `Tools/GpuDebug` | Capture inspection, schema validation and profiling |

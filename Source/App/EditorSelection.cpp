@@ -62,8 +62,8 @@ std::optional<size_t> visibleRowIndex(std::span<const EditorSelectionRow> rows,
 } // namespace
 
 //======================================================================================================================
-EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
-                                 const engine::Scene& scene) {
+EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
+                                 const scene::Scene& scene) {
     const EditorSelection healed{
         .sceneId = activeScene, .subject = EditorSubject::None, .index = 0};
 
@@ -92,13 +92,13 @@ EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId
 }
 
 //======================================================================================================================
-EditorSelection initialSelection(engine::SceneId sceneId) {
+EditorSelection initialSelection(scene::SceneId sceneId) {
     return EditorSelection{.sceneId = sceneId, .subject = EditorSubject::Camera, .index = 0};
 }
 
 //======================================================================================================================
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
-                                      engine::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activeScene,
+                                      scene::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter) {
     if (requestedScene == activeScene || !switchSucceeded) {
@@ -109,7 +109,7 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId acti
 }
 
 //======================================================================================================================
-std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
+std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
     rows.reserve(2 + std::size(scene.lights) + scene.objects.size());

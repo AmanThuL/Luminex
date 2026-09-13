@@ -5,8 +5,8 @@
 
 #pragma once
 #include "App/AppOptions.h"
-#include "Engine/SceneLibrary.h"
-#include "Render/Renderer.h"
+#include "Render/SceneView.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -25,7 +25,7 @@ namespace lmx::app {
 /// `temporal` maps `Off` to `render::TemporalSettings::enabled = false`, and `Raw`/`Taa` to
 /// enabled with the corresponding `render::ReconstructionMode` and jitter on. `renderScale` is
 /// copied verbatim onto `render::SceneView::temporal.renderScale`.
-int runScreenshot(const std::filesystem::path& outPath, engine::SceneId sceneId, uint32_t frames,
+int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
                   TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale);
 
 /// Captures options.frames post-warmup frames at exactly 60 Hz into a new or empty directory.

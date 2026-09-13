@@ -5,14 +5,14 @@
 
 #pragma once
 #include "App/EditorRenderSettings.h"
-#include "Engine/SceneLibrary.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 
 namespace lmx::app {
 
 /// Editor-owned temporal bookkeeping the shell keeps across scene switches, entirely separate from
-/// the scene's own animation clock (Engine/Scene.h): a monotonic counter `TemporalSettings::
+/// the scene's own animation clock (Scene/Scene.h): a monotonic counter `TemporalSettings::
 /// sceneGeneration` is built from, and a one-shot camera-cut request the Inspector's "Camera cut"
 /// button raises. Pure and SDL/ImGui-free, like ExposureReset.h, so it is unit-testable without a
 /// device.
@@ -45,7 +45,6 @@ bool consumeCameraCut(TemporalEditorState& state);
 /// Called for every scene selection, including the first: bumps `state.sceneGeneration`
 /// unconditionally. Selecting any scene leaves `settings` untouched -- TemporalLab now opens with
 /// the same defaults as every other scene.
-void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& settings,
-                     engine::SceneId id);
+void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& settings, scene::SceneId id);
 
 } // namespace lmx::app

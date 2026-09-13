@@ -14,7 +14,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "Engine/GeometryGenerator.h"
+#include "Asset/GeometryGenerator.h"
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"

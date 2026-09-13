@@ -7,8 +7,8 @@
 #include "Render/VendorTemporalScaler.h"
 
 #include "Core/Assert.h"
+#include "Core/Color.h"
 #include "RHI/CaptureSchema.h"
-#include "Render/ColorTransfer.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -267,11 +267,10 @@ constexpr uint64_t kHistogramBufferSize = uint64_t{kHistogramBins} * sizeof(uint
 constexpr float kExposureLogLuminanceMin = -12.0f;
 constexpr float kExposureLogLuminanceMax = 4.0f;
 // The seconds one declared frame advances the scene by, which is what exposure adaptation steps
-// against. The App's clock is a fixed step per frame rather than wall time -- engine::
-// kAnimationBakeRate -- and this restates the number rather than including it, because Engine sits
-// above Render in the dependency chain. A renderer that stepped by wall time would resolve a
-// different exposure for the same frame on a different machine, which is not something a frozen
-// stability tolerance can survive.
+// against. The App's clock is a fixed step per frame rather than wall time -- asset::
+// kAnimationBakeRate -- and this restates the number because Render cannot depend on Asset. A
+// renderer that stepped by wall time would resolve a different exposure for the same frame on a
+// different machine, which is not something a frozen stability tolerance can survive.
 constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
 
 constexpr uint32_t kComputeThreadsPerGroup2D = 8;
@@ -1356,7 +1355,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // every scene with a sky draws over the clear entirely -- and is strictly better than the
     // alternative of a blocking readback just to keep an unshaded background pixel exact.
     const glm::vec3 clearLinear =
-        srgbToLinear(glm::vec3(clearColor[0], clearColor[1], clearColor[2])) * preExposure;
+        lmx::srgbToLinear(glm::vec3(clearColor[0], clearColor[1], clearColor[2])) * preExposure;
 
     PassDesc sceneDesc;
     sceneDesc.textureReads.push_back(shadowRead);

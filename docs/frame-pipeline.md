@@ -217,14 +217,15 @@ submission does not make ImGui a core RHI dependency.
   are frame transients. Each encoded frame slot retains scaler state until retirement. A public
   fence bridges MetalFX's opaque encoders; CPU-readable outputs use creation-time private scratch
   and an in-call copy, included in external timing. Private outputs are written directly.
-- **Scenes are cached for the device's lifetime** (`SceneLibrary`): meshes, materials, textures,
+- **Scenes are cached for the device's lifetime** (`Scene/SceneLibrary.h`): meshes, materials, textures,
   and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
   material-referenced images; decoded CPU image data is dropped before the builder returns.
-- **IBL assets** (`Source/Engine/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered
+- **IBL assets** (`Source/Asset/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered
   specular (64², or 128² for MaterialLab, five mips), and a 64² DFG LUT. Filtering crosses cube
   faces and chooses source mips by GGX footprint. MaterialLab bounds diffuse work with a separate
-  32² source. RGBA16Float/RG16Float preserve HDR; absent inputs bind black-cube/zero-DFG fallbacks.
-- **Texture mip baking** (`Source/Engine/TextureBake.h`): setup writes deterministic DDS mip chains
+  32² source. `Scene/IblUpload.h` owns GPU upload; RGBA16Float/RG16Float preserve HDR and absent
+  inputs bind black-cube/zero-DFG fallbacks.
+- **Texture mip baking** (`Source/Asset/TextureBake.h`): setup writes deterministic DDS mip chains
   and manifests. Colour filters in linear light; normal maps renormalize. Scene loading prefers
   baked assets and falls back to the same in-process filter. Metal's removed mip generator was
   measured to point-pick.

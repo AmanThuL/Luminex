@@ -32,7 +32,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
 /// Serializes the lmx:frame PNG payload for a screenshot or sequence frame. frameCount is the
 /// requested number of saved frames (total rendered frames for a screenshot); simulationFrame
 /// is the zero-based rendered frame including warmup. Device and status describe the actual run.
-std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
+std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      uint32_t simulationFrame, TemporalMode requested,
                                      render::TemporalDebugView debugView, float renderScale,
                                      const render::TemporalStatus& status, std::string_view device);

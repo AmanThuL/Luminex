@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "Engine/SceneLibrary.h"
-#include "Render/Renderer.h"
+#include "Render/SceneView.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <expected>
@@ -47,8 +47,8 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode);
 /// Fully parsed, owned application startup configuration.
 struct AppOptions {
     RunMode mode = RunMode::Windowed; ///< Execution path selected by command-line options.
-    engine::SceneId initialScene = engine::defaultSceneId(); ///< Scene selected at startup.
-    std::filesystem::path screenshotPath;      ///< Destination used in screenshot mode.
+    scene::SceneId initialScene = scene::defaultSceneId(); ///< Scene selected at startup.
+    std::filesystem::path screenshotPath;                  ///< Destination used in screenshot mode.
     std::filesystem::path captureSequencePath; ///< New or empty directory for a frame sequence.
     /// Unsaved frames before the sequence; valid only with captureSequencePath.
     uint32_t warmup = 0;

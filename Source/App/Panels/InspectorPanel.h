@@ -9,9 +9,9 @@
 #include "App/EditorSelection.h"
 #include "App/ExposureReset.h"
 #include "App/TemporalEditorState.h"
-#include "Engine/Scene.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
+#include "Scene/Scene.h"
 
 namespace lmx::app {
 
@@ -29,7 +29,7 @@ struct InspectorPanelContext {
     EditorSelection selection;  ///< The resolved subject to draw; `None` shows the empty state.
     render::Camera& camera;     ///< The fly camera; angles are presented in degrees.
     render::Renderer& renderer; ///< Borrowed for clear color and read-only display status.
-    engine::Scene& scene;       ///< The active scene, whose lights and objects are edited in place.
+    scene::Scene& scene;        ///< The active scene, whose lights and objects are edited in place.
     EditorRenderSettings& settings;        ///< Editor-owned render knobs.
     ExposureResetContext& exposureContext; ///< What `shouldResetExposure` last compared against.
     /// Raised when an edit here is one of the exposure reset triggers, and consumed by the frame

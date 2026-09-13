@@ -61,7 +61,7 @@ target("Core")
     set_kind("static")
     add_files("Source/Core/*.cpp")
     add_includedirs("Source", {public = true})
-    add_packages("spdlog", {public = true})
+    add_packages("spdlog", "glm", {public = true})
 
 -- Dear ImGui (docking) + its SDL3 platform backend + native Metal 4 renderer backend, vendored
 -- wholesale like metal-cpp/slang (task("setup") below): the xrepo `imgui` package has no
@@ -124,31 +124,33 @@ target("Render")
     add_deps("Core", "RHI")
     add_packages("glm", {public = true})
 
--- Procedural mesh generators on top of Render. glm is public
--- so App/Tests only need "Engine" in their own add_deps to inherit its include path (mirrors
--- the Render target above).
-target("Engine")
+-- CPU decoding and generation share descriptor vocabulary without linking GPU interfaces.
+target("Asset")
     set_kind("static")
-    add_files("Source/Engine/*.cpp")
-    add_deps("Core", "RHI", "Render")
-    add_packages("glm", {public = true})
-    -- cgltf (parsing) + stb (image decode) back GltfLoader.{h,cpp}; both are implementation
-    -- details (GltfLoader.h's public interface carries no cgltf/stb types), so private.
+    add_files("Source/Asset/*.cpp")
+    add_deps("Core")
+    add_includedirs("RHI/Include", {public = true})
     add_packages("cgltf", "stb")
 
--- Offline mip bake CLI (Engine/TextureBake.h's thin wrapper). `xmake setup` builds and invokes
+-- Scenes own GPU uploads and produce the renderer's borrowed frame inputs.
+target("Scene")
+    set_kind("static")
+    add_files("Source/Scene/*.cpp")
+    add_deps("Core", "RHI", "Asset", "Render")
+
+-- Offline mip bake CLI (Asset/TextureBake.h's thin wrapper). `xmake setup` builds and invokes
 -- this against every fetched glTF's referenced images; Scene.cpp prefers its DDS output over the
 -- runtime fallback path.
 target("TextureBake")
     set_kind("binary")
     add_files("Tools/TextureBake/main.cpp")
-    add_deps("Core", "RHI", "Render", "Engine")
+    add_deps("Core", "Asset")
     add_packages("stb")
 
 target("App")
     set_kind("binary")
     add_files("Source/App/*.cpp", "Source/App/Panels/*.cpp")
-    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Engine", "ImGui", "ImGuiNodeEditor")
+    add_deps("Core", "RHI", "RHIMetal4ImGui", "Render", "Asset", "Scene", "ImGui", "ImGuiNodeEditor")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.
     add_rules("slang2metallib")
@@ -168,7 +170,7 @@ target("Tests")
               "Source/App/GraphLayout.cpp", "Source/App/GraphNodeModel.cpp",
               "Source/App/PassTimingHistory.cpp", "Source/App/PerformanceModel.cpp",
               "Source/App/TemporalEditorState.cpp", "Source/App/WorkspaceModel.cpp")
-    add_deps("Core", "RHI", "Render", "Engine")
+    add_deps("Core", "RHI", "Render", "Asset", "Scene")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
     add_defines('LMX_REPO_ROOT="$(projectdir)"')
@@ -502,9 +504,9 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
                                   "--tree-sha256", san_miguel_sha256})
         end
 
-        -- Deterministic offline mip bake (Source/Engine/TextureBake.h): every base-color and
+        -- Deterministic offline mip bake (Source/Asset/TextureBake.h): every base-color and
         -- normal image the two glTF/GLB files reference gets a sibling Baked/image<N>.dds that
-        -- Engine/Scene.cpp's ensureUploaded prefers over the runtime fallback path. Re-running
+        -- Scene/Scene.cpp's ensureUploaded prefers over the runtime fallback path. Re-running
         -- setup is cheap here too -- Tools/bake_gltf_textures.py skips any image whose manifest
         -- matches the current source hash, role-specific filter, and bake-tool version.
         import("core.project.config")

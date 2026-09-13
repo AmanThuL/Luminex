@@ -5,9 +5,12 @@
 Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI
 is a repository-root component; the other runtime layers remain under `Source/`:
 
-`Core → RHI → Render → Engine → App`
+`Core → Asset` and `Core → RHI → Render`, joined by `Scene → App`. Asset uses only
+RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer;
+`Render/SceneView.h` holds the borrowed frame input independently of the renderer.
 
-- **Core** owns logging, assertions, and dependency-free utilities.
+- **Core** owns logging, assertions, alignment and shared colour transfer; spdlog and glm are
+  public packages.
 - **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
   `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
   `Heap.h`, `Sampler.h`, `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`,
@@ -95,19 +98,20 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   depth, motion and reactive coverage share one scene invocation. Masked shadows use the same UV
   transform and cutoff. One- or two-sided variants support foliage and reverse back-face shading
   normals; the cutoff has its own frame-data block. Opaque shaders and uniform layouts stay separate.
-- **Engine** owns scenes, procedural geometry, color conversion, DDS/glTF/Radiance HDR decoding,
+- **Asset** owns procedural geometry, DDS/glTF/Radiance HDR and PNG/BMP image handling,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
   MaterialLab studio reflection source with a separate bounded diffuse source, and deterministic
-  offline texture mip baking (`TextureBake.h`).
-  It also owns object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
-  `Scene::resetMotion`/`commitFrame`) and rigid animation (`SceneAnimation`, glTF-baked
-  `RigidTrack`s, the shared `SceneEnvironment.h` sky/light rig, and the `temporal-lab`/`milk-truck`
-  catalog entries). The six-scene catalog also includes optional `san-miguel`, imported at authored
+  offline texture mip baking (`TextureBake.h`), clip data and sampling, shared transform
+  decomposition, repository discovery and the asset error domain. The glTF loader carries its own
+  MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
+- **Scene** owns GPU texture and IBL uploads, the scene catalog, initial camera mapping,
+  object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
+  `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
+  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The six-scene catalog also includes optional `san-miguel`, imported at authored
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
   pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
-  The glTF loader carries MASK cutoff/double-sided fields and rejects referenced BLEND materials.
 - **App** owns SDL3, the editor shell, and the frame loop. `Source/App/Panels/` holds the five
   panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
   coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and
@@ -136,7 +140,7 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
   animation play, camera-track follow); the pure `TemporalEditorState` tracks the scene-generation
   counter and camera-cut latch, and the frame loop calls `advanceFrameAnimation()`/`commitFrame()`
-  around `declarePasses` so a declared frame — and only a declared frame — advances Engine's
+  around `declarePasses` so a declared frame — and only a declared frame — advances Scene's
   animation clock and Render's history. `EditorRenderSettings` also carries `renderScale`,
   `dynamicResolutionEnabled` and `gpuBudgetMilliseconds`; `Source/App/DynamicResolution.h` is a pure
   per-frame policy (`applyDynamicResolution`) that seeds `EditorShell`'s owned
@@ -149,7 +153,7 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
   Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR
   BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
-  metadata. Engine `PngImage` writes deterministic colour-tagged PNGs; manifest v2 records the
+  metadata. Asset `PngImage` writes deterministic colour-tagged PNGs; manifest v2 records the
   display domain, container and UI absence. The offline [comparison workflow](../guides/temporal-comparison.md)
   synchronizes Raw/Native/MetalFX reports and optional CPU LDR-FLIP on final sRGB images; Native TAA
   is the comparison baseline, not ground truth. Neither FLIP nor its Python dependencies enter App.

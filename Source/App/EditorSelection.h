@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Engine/Scene.h"
-#include "Engine/SceneLibrary.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstddef>
 #include <optional>
@@ -30,7 +30,7 @@ enum class EditorSubject {
 /// `DirectionalLight` and `Object`; other subjects ignore it. Editor-local navigation state --
 /// never serialized, never passed to Render or the RHI (spec section 5).
 struct EditorSelection {
-    engine::SceneId sceneId;                     ///< The scene the selection was made against.
+    scene::SceneId sceneId;                      ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
     size_t index = 0;                            ///< Row index for DirectionalLight/Object only.
 };
@@ -41,12 +41,12 @@ struct EditorSelection {
 /// out of range for `scene`. `Camera`, `Rendering`, and `None` never fail range validation. Call
 /// this on every use before drawing the Inspector; it never mutates `scene`, and the caller stores
 /// the returned value rather than caching the argument.
-EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
-                                 const engine::Scene& scene);
+EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
+                                 const scene::Scene& scene);
 
 /// The selection stored at startup, or immediately after activating `sceneId`: every scene provides
 /// a `Camera`, so it is always resolvable without consulting scene contents.
-EditorSelection initialSelection(engine::SceneId sceneId);
+EditorSelection initialSelection(scene::SceneId sceneId);
 
 /// Selection and Scene-panel filter to store together, since a successful scene switch changes both
 /// at once (spec section 5).
@@ -65,13 +65,13 @@ struct SceneSwitchOutcome {
 /// `Camera` and clears the filter; a failed switch returns `currentSelection` and `currentFilter`
 /// unchanged, which is the spec's "failed scene switch retains selection and filter exactly" --
 /// callers do not need a second function to express the failure path.
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
-                                      engine::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activeScene,
+                                      scene::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter);
 
 /// Presentational grouping the Scene panel draws as separate headers. Does not alter scene ordering
-/// or introduce a tree into Engine (spec section 6).
+/// or introduce a tree into Scene (spec section 6).
 enum class EditorSelectionGroup {
     Workspace,         ///< Editor Camera, Rendering.
     DirectionalLights, ///< The three fixed lights, in index order.
@@ -93,7 +93,7 @@ struct EditorSelectionRow {
 /// every row; a filter matching nothing returns an empty vector rather than an error state.
 /// Duplicate object names still produce distinct rows: subject kind plus index, not label text,
 /// identifies a row. Never mutates `scene`.
-std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
+std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter);
 
 /// The row keyboard Down should select, continuing from `current` over `rows` (already filtered, in

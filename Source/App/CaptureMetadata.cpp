@@ -5,7 +5,7 @@
 
 #include "App/CaptureMetadata.h"
 
-#include "Engine/SceneAnimation.h"
+#include "Asset/SceneAnimation.h"
 
 #include <format>
 #include <iomanip>
@@ -57,7 +57,7 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
     std::ostringstream file;
     file << std::setprecision(17)
          << "{\n\"schemaVersion\":2,\"complete\":" << (complete ? "true" : "false")
-         << ",\"scene\":" << jsonString(engine::sceneIdString(options.initialScene))
+         << ",\"scene\":" << jsonString(scene::sceneIdString(options.initialScene))
          << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
          << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
          << ",\"width\":" << width << ",\"height\":" << height
@@ -83,7 +83,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
                               std::string_view filename, TemporalMode requested) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"ordinal\":" << ordinal << ",\"simulationFrame\":" << frame
-        << ",\"timeSeconds\":" << static_cast<double>(frame) / engine::kAnimationBakeRate
+        << ",\"timeSeconds\":" << static_cast<double>(frame) / asset::kAnimationBakeRate
         << ",\"file\":" << jsonString(filename) << ",\"camera\":{\"position\":["
         << camera.position.x << ',' << camera.position.y << ',' << camera.position.z
         << "],\"yaw\":" << camera.yaw << ",\"pitch\":" << camera.pitch
@@ -114,13 +114,13 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
 }
 
 //======================================================================================================================
-std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
+std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      uint32_t simulationFrame, TemporalMode requested,
                                      render::TemporalDebugView debugView, float renderScale,
                                      const render::TemporalStatus& status,
                                      std::string_view device) {
     std::ostringstream out;
-    out << std::setprecision(17) << "{\"scene\":" << jsonString(engine::sceneIdString(scene))
+    out << std::setprecision(17) << "{\"scene\":" << jsonString(scene::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
         << ",\"requestedMode\":" << jsonString(captureModeName(requested)) << ",\"effectiveMode\":"
         << jsonString(requested == TemporalMode::Off ? "off"

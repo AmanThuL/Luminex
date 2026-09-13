@@ -10,9 +10,9 @@
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/Panels/ScenePanel.h"
 #include "App/Panels/ViewportPanel.h"
+#include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
 #include "Core/Log.h"
-#include "Engine/SceneAnimation.h"
 #include "RHI/Metal4/Metal4ImGui.h"
 
 #include <SDL3/SDL.h>
@@ -195,25 +195,13 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 } // namespace
 
 //======================================================================================================================
-render::Camera cameraFromScene(const engine::SceneCamera& sceneCamera) {
-    render::Camera camera;
-    camera.position = sceneCamera.position;
-    camera.yaw = sceneCamera.yaw;
-    camera.pitch = sceneCamera.pitch;
-    camera.fovY = sceneCamera.fovY;
-    camera.nearZ = sceneCamera.nearZ;
-    camera.farZ = sceneCamera.farZ;
-    return camera;
-}
-
-//======================================================================================================================
-EditorShell::EditorShell(SDL_Window* window, engine::SceneLibrary& library)
+EditorShell::EditorShell(SDL_Window* window, scene::SceneLibrary& library)
     : m_window(window), m_library(library) {}
 
 //======================================================================================================================
 std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device& device,
-                                                 engine::SceneLibrary& library,
-                                                 engine::SceneId initialScene) {
+                                                 scene::SceneLibrary& library,
+                                                 scene::SceneId initialScene) {
     LMX_ASSERT(window != nullptr, "EditorShell::create: window must not be null");
 
     IMGUI_CHECKVERSION();
@@ -258,7 +246,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     }
     self->m_activeSceneId = initialScene;
     self->m_activeScene = *scene;
-    self->m_camera = cameraFromScene(self->m_activeScene->initialCamera);
+    self->m_camera = scene::cameraFromScene(self->m_activeScene->initialCamera);
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
     // The startup scene is a selection like any other (spec 9): the generation counter bumps from
@@ -484,7 +472,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
-        const std::optional<engine::SceneId> chosen =
+        const std::optional<scene::SceneId> chosen =
             drawScenePanel(open, ScenePanelContext{.library = m_library,
                                                    .activeSceneId = m_activeSceneId,
                                                    .activeScene = *m_activeScene,
@@ -494,7 +482,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         if (chosen) {
             // Captured before selectScene() runs: a successful switch overwrites m_activeSceneId,
             // and sceneSwitchOutcome needs the id the request was made against.
-            const engine::SceneId requestedFrom = m_activeSceneId;
+            const scene::SceneId requestedFrom = m_activeSceneId;
             const bool switched = selectScene(device, *chosen);
             // Applied here rather than inside the panel: the switch drains the GPU, and the panels
             // drawn below must already see whichever scene, selection, and filter end up active.
@@ -652,11 +640,11 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
     // A baked key lands on every played time exactly at this step.
-    constexpr double kFixedStep = 1.0 / engine::kAnimationBakeRate;
+    constexpr double kFixedStep = 1.0 / asset::kAnimationBakeRate;
 
-    engine::Scene& scene = *m_activeScene;
+    scene::Scene& scene = *m_activeScene;
     const bool hasCameraTrack = !scene.animation.cameraTrack.empty();
-    const bool hasAnyTrack = engine::hasAnimationTracks(scene.animation);
+    const bool hasAnyTrack = asset::hasAnimationTracks(scene.animation);
 
     if (m_settings.animationPlaying && hasAnyTrack) {
         scene.advanceAnimation(kFixedStep);
@@ -666,12 +654,7 @@ void EditorShell::advanceFrameAnimation() {
     // The fly-camera latch (m_looking, true while RMB is held) always wins: a user actively flying
     // the camera must not have it snapped back to the track underneath them.
     if (m_settings.followCameraTrack && hasCameraTrack && !m_looking) {
-        const engine::CameraKey pose =
-            engine::sampleCameraTrack(scene.animation.cameraTrack, scene.animationTime);
-        m_camera.position = pose.position;
-        m_camera.yaw = pose.yaw;
-        m_camera.pitch = pose.pitch;
-        // fovY/nearZ/farZ are lens state the track carries no opinion on; left untouched.
+        scene.followCameraTrack(m_camera);
     }
 }
 
@@ -681,7 +664,7 @@ void EditorShell::commitFrame() {
 }
 
 //======================================================================================================================
-bool EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
+bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
     if (id == m_activeSceneId) {
         return false;
     }
@@ -697,7 +680,7 @@ bool EditorShell::selectScene(rhi::Device& device, engine::SceneId id) {
     m_activeSceneId = id;
     m_activeScene = *scene;
     // Camera pose is scene-local; render settings remain editor-local.
-    m_camera = cameraFromScene(m_activeScene->initialCamera);
+    m_camera = scene::cameraFromScene(m_activeScene->initialCamera);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
     // rather than reproject the previous scene's pixels onto this one's geometry.

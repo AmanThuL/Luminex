@@ -53,8 +53,8 @@ this repository, the missing dependencies put both behind execution and shader e
 | [Renderer](../../Source/Render/Renderer.cpp), [frame-data decision](../decisions/0010-execution-model-partial-reshape.md) | Retained object model with efficient frame-owned data | Production iterates draw items; GPU addresses are not persistent GPU scene ownership |
 | [FrameData benchmark](../../Benchmarks/FrameData/Runner.cpp), [paired driver](../../Tools/Bench/frame_data_paired.py) | Existing discipline for repeatable paired CPU measurements | Must add visibility, GPU preparation, execution, and workload-specific accounting |
 | [Render graph](../../Source/Render/RenderGraph.h), [graph model](../../Source/App/GraphNodeModel.h), [layout](../../Source/App/GraphLayout.h) | Pass/resource/barrier inspection and exact retired-frame evidence | No device execution graph, command-processor counter, or causal bottleneck diagnosis |
-| [Lighting](../../Shaders/Lighting.slang), [BRDF oracle](../../Tests/BrdfOracle.h), [scene library](../../Source/Engine/SceneLibrary.h) | Analytic PBR and controlled material/image checks | No training, neural weights, or MaterialX compiler |
-| [glTF loader](../../Source/Engine/GltfLoader.cpp), [pipeline descriptor](../../RHI/Include/RHI/GraphicsPipeline.h) | Mesh assets and conventional depth-tested raster | Loader accepts triangle primitives; pipeline exposes no configurable alpha blend state |
+| [Lighting](../../Shaders/Lighting.slang), [BRDF oracle](../../Tests/BrdfOracle.h), [scene library](../../Source/Scene/SceneLibrary.h) | Analytic PBR and controlled material/image checks | No training, neural weights, or MaterialX compiler |
+| [glTF loader](../../Source/Asset/GltfLoader.cpp), [pipeline descriptor](../../RHI/Include/RHI/GraphicsPipeline.h) | Mesh assets and conventional depth-tested raster | Loader accepts triangle primitives; pipeline exposes no configurable alpha blend state |
 
 M5.4/M5.5 make a complex experiment easier to understand and demonstrate. They do not implement
 GPU scheduling, mesh shaders, tensor operations, or a benchmark database. The milestone records

@@ -1,10 +1,11 @@
 #include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
 #include "GpuTestSupport.h"
+#include "Scene/IblUpload.h"
 
-#include "Engine/Ibl.h"
-#include "Engine/Scene.h"
+#include "Asset/Ibl.h"
 #include "EngineTestSupport.h"
+#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -1161,8 +1162,7 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     REQUIRE(cube.has_value());
 
     auto skySphere = lmx::render::createMesh(
-        **device, lmx::render::fromGeo(lmx::engine::makeSphere(0.5f, 20, 20)),
-        "lmx.test.skySphere");
+        **device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)), "lmx.test.skySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
@@ -1395,7 +1395,7 @@ TEST_CASE("a pass resolving an undeclared texture is refused while the frame run
 
 namespace {
 
-// MaterialLab's three depth probes, mirrored from Source/Engine/MaterialLab.cpp: 0.5-unit cubes in
+// MaterialLab's three depth probes, mirrored from Source/Scene/MaterialLab.cpp: 0.5-unit cubes in
 // the X=28 depth lane at these distances, offset laterally so each occupies its own tangent-space
 // band. `distance` is to the cube's *centre*; the surface the camera sees is its front face, one
 // half-extent nearer.
@@ -1457,7 +1457,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    auto scene = lmx::scene::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
 
     auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
@@ -1595,7 +1595,7 @@ Camera pinnedAngleCamera() {
 // The environment is built through the production generators on a constant white cube, so this
 // exercises the same irradiance convolution, prefiltered chain and RG16Float DFG table a real scene
 // carries; both generators reproduce a constant environment exactly at every roughness
-// (Source/Engine/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading is 1.0 with no
+// (Source/Asset/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading is 1.0 with no
 // integration error folded into it. Lights are off and exposure is 0, which leaves the image-based
 // terms as the entire signal, and the HDR target is read directly so no tone map stands in the way.
 //
@@ -1618,7 +1618,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    auto scene = lmx::scene::loadMaterialLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -1627,15 +1627,15 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const lmx::engine::ibl::IblTextures environment =
+    const lmx::scene::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.whiteFurnace");
 
     // Only the sphere grid: the patches, ramp and depth probes sit outside this frustum anyway, and
     // leaving them out keeps every drawn pixel one of the 25 materials under test.
     std::vector<DrawItem> items;
     std::vector<glm::vec3> centers;
-    std::vector<const lmx::engine::SceneObject*> spheres;
-    for (const lmx::engine::SceneObject& object : (*scene)->objects) {
+    std::vector<const lmx::scene::SceneObject*> spheres;
+    for (const lmx::scene::SceneObject& object : (*scene)->objects) {
         if (!object.name.starts_with("material-lab sphere ")) {
             continue;
         }

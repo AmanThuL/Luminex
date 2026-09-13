@@ -1,12 +1,12 @@
 #include "GpuTestSupport.h"
 
-#include "Engine/GeometryGenerator.h"
-#include "Engine/Scene.h"
+#include "Asset/GeometryGenerator.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TransientPool.h"
+#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -1418,7 +1418,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadTemporalLabScene(**device);
+    auto scene = lmx::scene::loadTemporalLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -1778,7 +1778,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto skySphere = lmx::render::createMesh(
-        **device, lmx::render::fromGeo(lmx::engine::makeSphere(0.5f, 20, 20)),
+        **device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
         "lmx.test.temporalSkySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());

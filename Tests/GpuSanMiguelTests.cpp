@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Engine/Scene.h"
-#include "Engine/SceneLibrary.h"
 #include "RHI/RHI.h"
+#include "Scene/Scene.h"
+#include "Scene/SceneLibrary.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,8 +12,8 @@
 TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[gpu][san-miguel]") {
     auto device = lmx::rhi::createDevice();
     REQUIRE(device.has_value());
-    lmx::engine::SceneLibrary library(**device);
-    const auto id = lmx::engine::parseSceneId("san-miguel");
+    lmx::scene::SceneLibrary library(**device);
+    const auto id = lmx::scene::parseSceneId("san-miguel");
     REQUIRE(id.has_value());
     if (!library.entry(*id).available) {
         SKIP("Optional San Miguel absent; xmake setup --san-miguel installs it");

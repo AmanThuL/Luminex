@@ -18,7 +18,7 @@ TEST_CASE("app options default to a windowed Sponza scene", "[app][options]") {
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Windowed);
-    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
+    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath.empty());
     REQUIRE(result->maximized);
     REQUIRE(result->renderScale == 1.0f);
@@ -42,7 +42,7 @@ TEST_CASE("--windowed composes with --scene", "[app][options]") {
 
     REQUIRE(result);
     REQUIRE_FALSE(result->maximized);
-    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "damaged-helmet");
 }
 
 //======================================================================================================================
@@ -67,7 +67,7 @@ TEST_CASE("app options select screenshot mode and a stable scene ID", "[app][opt
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Screenshot);
-    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
+    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath == "capture.bmp");
 }
 
@@ -394,7 +394,7 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
     const std::array<std::string_view, 6> expected = {
         "sponza", "damaged-helmet", "milk-truck", "material-lab", "temporal-lab", "san-miguel"};
-    const std::span<const std::string_view> ids = lmx::engine::sceneStableIds();
+    const std::span<const std::string_view> ids = lmx::scene::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -420,7 +420,7 @@ TEST_CASE("app options keep the last repeated values and ignore a bare separator
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Screenshot);
-    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "damaged-helmet");
     REQUIRE(result->screenshotPath == "last.bmp");
 }
 

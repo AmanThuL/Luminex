@@ -6,9 +6,9 @@
 #pragma once
 #include "App/EditorRenderSettings.h"
 #include "App/ExposureReset.h"
-#include "Engine/Scene.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
+#include "Scene/Scene.h"
 
 #include <cstdint>
 #include <string_view>
@@ -44,7 +44,7 @@ struct ViewportPanelContext {
     render::Renderer& renderer;       ///< The scene target the panel displays.
     std::string_view activeSceneName; ///< Shown in the toolbar.
     render::Camera& camera;           ///< Reset Camera writes the active scene's initial pose here.
-    const engine::Scene& scene;       ///< Source of Reset Camera's initial pose.
+    const scene::Scene& scene;        ///< Source of Reset Camera's initial pose.
     EditorRenderSettings& settings;   ///< Editor-owned render knobs the quick toggles edit.
     ExposureResetContext& exposureContext; ///< What `shouldResetExposure` last compared against.
     /// Raised when a toolbar edit is one of the exposure reset triggers, and consumed by the frame

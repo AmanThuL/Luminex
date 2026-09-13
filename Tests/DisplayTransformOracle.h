@@ -18,7 +18,7 @@
 namespace lmx::test {
 
 //======================================================================================================================
-// IEC 61966-2-1, the decode side. Mirrors engine::srgbToLinear / render::srgbToLinear.
+// IEC 61966-2-1, the decode side. Mirrors lmx::srgbToLinear / lmx::srgbToLinear.
 inline float srgbDecode(float encoded) {
     return encoded <= 0.04045f ? encoded / 12.92f : std::pow((encoded + 0.055f) / 1.055f, 2.4f);
 }

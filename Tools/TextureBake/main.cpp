@@ -1,6 +1,6 @@
-// Thin CLI wrapper around Source/Engine/TextureBake.{h,cpp} -- decodes one PNG/JPG, bakes a full
+// Thin CLI wrapper around Source/Asset/TextureBake.{h,cpp} -- decodes one PNG/JPG, bakes a full
 // linear-light box-filtered mip chain, and writes it as an uncompressed A8R8G8B8 DDS plus a
-// sibling "<out>.dds.json" manifest. All the deterministic math lives in Engine so unit tests
+// sibling "<out>.dds.json" manifest. All the deterministic math lives in Asset so unit tests
 // exercise it directly; this file only does argv parsing and file I/O.
 //
 // Usage: TextureBake <in.png|jpg> <out.dds> --srgb|--linear|--normal-map [--source-name NAME]
@@ -10,7 +10,7 @@
 //   --source-name overrides the manifest's recorded "source" string (default: <in> verbatim) --
 //                 for an embedded glTF image baked from a temp extraction file, the caller passes
 //                 a human-meaningful identifier instead of the throwaway temp path.
-#include "Engine/TextureBake.h"
+#include "Asset/TextureBake.h"
 
 #include <stb/stb_image.h>
 
@@ -58,15 +58,15 @@ int main(int argc, char** argv) {
 
     const std::string inPath = args[0];
     const std::string outPath = args[1];
-    std::optional<lmx::engine::BakeMode> mode;
+    std::optional<lmx::asset::BakeMode> mode;
     std::string sourceName = inPath;
     for (size_t i = 2; i < args.size(); ++i) {
         if (args[i] == "--srgb") {
-            mode = lmx::engine::BakeMode::Srgb;
+            mode = lmx::asset::BakeMode::Srgb;
         } else if (args[i] == "--linear") {
-            mode = lmx::engine::BakeMode::Linear;
+            mode = lmx::asset::BakeMode::Linear;
         } else if (args[i] == "--normal-map") {
-            mode = lmx::engine::BakeMode::NormalMap;
+            mode = lmx::asset::BakeMode::NormalMap;
         } else if (args[i] == "--source-name" && i + 1 < args.size()) {
             sourceName = args[++i];
         } else {
@@ -97,19 +97,19 @@ int main(int argc, char** argv) {
     }
 
     const std::span<const uint8_t> rgba8(pixels, static_cast<size_t>(width) * height * 4);
-    const lmx::engine::BakedMipChain baked = lmx::engine::bakeMips(
+    const lmx::asset::BakedMipChain baked = lmx::asset::bakeMips(
         rgba8, static_cast<uint32_t>(width), static_cast<uint32_t>(height), *mode);
     stbi_image_free(pixels);
 
-    if (auto written = lmx::engine::writeDds(outPath, baked); !written) {
+    if (auto written = lmx::asset::writeDds(outPath, baked); !written) {
         std::fprintf(stderr, "TextureBake: %s\n", written.error().message.c_str());
         return 1;
     }
 
-    const std::string sourceHash = lmx::engine::sha256Hex(*sourceBytes);
+    const std::string sourceHash = lmx::asset::sha256Hex(*sourceBytes);
     const std::string manifestPath = outPath + ".json";
     if (auto written =
-            lmx::engine::writeManifest(manifestPath, sourceName, sourceHash, *mode, kToolVersion);
+            lmx::asset::writeManifest(manifestPath, sourceName, sourceHash, *mode, kToolVersion);
         !written) {
         std::fprintf(stderr, "TextureBake: %s\n", written.error().message.c_str());
         return 1;

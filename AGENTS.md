@@ -146,7 +146,7 @@ linked parts under `docs/roadmap/`.
   and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
 
 ## Architecture
-`Source/Core` (lmx:: log/assert) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
+`Source/Core` (lmx:: log/assert, alignment and shared colour transfer; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
 `RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
@@ -167,7 +167,7 @@ extra colour attachments) over imported resources and over one-frame transients 
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
-as deterministic text; `Renderer` — declares shadow, scene+sky, histogram exposure
+as deterministic text; `SceneView.h` holds the frame input contract; `Renderer` — declares shadow, scene+sky, histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -186,13 +186,12 @@ motion/jitter/content extents. The scaler resets on engine reset, vendor re-entr
 engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
 `lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
 `ResolutionController` is a pure, App-driven policy that proposes a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
-`Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
-loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
-generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip
-baking (`TextureBake.h`), rigid animation (`SceneAnimation`, glTF-baked `RigidTrack`s, camera
-tracks) and object previous-transform tracking (`SceneObject::previousModel`/`motionClass`,
-`Scene::resetMotion`/`commitFrame`/`advanceAnimation`/`animate`); six catalog scenes include optional
-San Miguel with a deterministic 12-second camera rail) →
+`Source/Asset` (lmx::asset: CPU DDS/glTF/Radiance HDR/PNG/BMP loaders and writers,
+GeometryGenerator, deterministic environment/IBL generation, texture baking and SHA-256,
+repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
+RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
+DDS/cubemap/IBL uploads, environment rig, labs, initial camera, playback and previous transforms;
+six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
 `Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
 Inspector / Performance docked together, Render Graph always detached into its own OS window via
 Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
@@ -218,7 +217,7 @@ session-only dragged positions; frame loop advances animation and commits scene 
 `--screenshot` and deterministic `--capture-sequence` paths). `Render/DisplayDomain.h` names
 the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
-Engine `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
+Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
 Shaders: `Shaders/*.slang` — Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon (shared
 modules), ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, AlphaMask, ShadowPass/ShadowPassMask,
 Sky/SkyAuto, HistogramAccumulate, ExposureSeed,
@@ -238,8 +237,7 @@ One frame end-to-end: `docs/frame-pipeline.md`.
   and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
   adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
-  authored color constants, including the editor's clear color, decode via `engine::srgbToLinear`
-  (or `Render/ColorTransfer.h`'s copy, below Engine in the dependency chain) once at scene build or
+  authored color constants, including the editor's clear color, decode via `lmx::srgbToLinear` in `Core/Color.h` once at scene build or
   pass declaration. Nothing upstream of `Shaders/DisplayTransform.slang` encodes sRGB.
 - Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
   rendering behavior and uses plain feature themes for future work. It never exposes milestone

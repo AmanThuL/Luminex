@@ -15,10 +15,10 @@
 #include "App/PerformanceModel.h"
 #include "App/TemporalEditorState.h"
 #include "App/WorkspaceModel.h"
-#include "Engine/SceneLibrary.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
+#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <memory>
@@ -35,13 +35,6 @@ namespace lmx::app {
 
 /// Display-space neutral clear value used by the editor scene target.
 constexpr float kSceneClearGray = 0.7f;
-
-/// Maps a Scene's initial pose (Engine/Scene.h's SceneCamera -- position/yaw/pitch/fovY/near/far,
-/// deliberately not render::Camera so Engine never has to carry the fly-camera's App-only
-/// moveSpeed) to a fresh render::Camera, which keeps Camera's own default moveSpeed. Shared by
-/// EditorShell's startup and scene-switch paths and by Screenshot.cpp's offscreen path, so a
-/// scene's screenshot and its editor view start from exactly the same pose.
-render::Camera cameraFromScene(const engine::SceneCamera& sceneCamera);
 
 /// Luminex's own section of `imgui.ini`, as the registered Dear ImGui settings handler sees it.
 ///
@@ -61,7 +54,7 @@ struct WorkspaceSettings {
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
-/// Render Graph window beside them, the fly camera, and the active engine::Scene the Inspector
+/// Render Graph window beside them, the fly camera, and the active scene::Scene the Inspector
 /// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
@@ -80,8 +73,8 @@ public:
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
     static std::unique_ptr<EditorShell> create(SDL_Window* window, rhi::Device& device,
-                                               engine::SceneLibrary& library,
-                                               engine::SceneId initialScene);
+                                               scene::SceneLibrary& library,
+                                               scene::SceneId initialScene);
     /// Releases the ImGui context and renderer integration while the device remains alive.
     ~EditorShell();
 
@@ -186,7 +179,7 @@ public:
     }
 
 private:
-    EditorShell(SDL_Window* window, engine::SceneLibrary& library);
+    EditorShell(SDL_Window* window, scene::SceneLibrary& library);
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
@@ -209,15 +202,15 @@ private:
     // whether the active scene actually changed (false for a reselect of the already-active scene
     // and for a failed load), which buildPanels feeds to sceneSwitchOutcome to decide the
     // selection and filter to store (spec section 5).
-    bool selectScene(rhi::Device& device, engine::SceneId id);
+    bool selectScene(rhi::Device& device, scene::SceneId id);
     void updateCameraInput(float deltaSeconds);
 
     SDL_Window* m_window = nullptr;
-    engine::SceneLibrary& m_library;
-    engine::SceneId m_activeSceneId = engine::defaultSceneId();
+    scene::SceneLibrary& m_library;
+    scene::SceneId m_activeSceneId = scene::defaultSceneId();
     // Non-owning: the library owns every Scene it has built, for the device's lifetime, which
     // outlives this shell. Never null once create() has returned successfully.
-    engine::Scene* m_activeScene = nullptr;
+    scene::Scene* m_activeScene = nullptr;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at

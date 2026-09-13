@@ -20,7 +20,8 @@ those slices small and their review about rendering rather than about where code
 ## Observed structure before R1.1
 
 The inventory below motivated R1. [R1.1](../milestones/r1.1.md) has since added enforcement and
-moved the adapter sources; the remaining structural work belongs to R1.2–R1.4.
+moved the adapter sources; [R1.2](../milestones/r1.2.md) separates Asset and Scene and extracts
+the shared leaf contracts. The remaining structural work belongs to R1.3–R1.4.
 The runtime had five build targets in a chain, `Core → RHI → Render → Engine → App`, plus Tests,
 TextureBake and FrameDataBench:
 

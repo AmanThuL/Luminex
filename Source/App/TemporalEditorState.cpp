@@ -46,7 +46,7 @@ bool consumeCameraCut(TemporalEditorState& state) {
 
 //======================================================================================================================
 void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& /*settings*/,
-                     engine::SceneId /*id*/) {
+                     scene::SceneId /*id*/) {
     ++state.sceneGeneration;
 }
 

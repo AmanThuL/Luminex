@@ -7,7 +7,7 @@
 
 #include "App/DirectionalLightRole.h"
 #include "App/EditorShell.h"
-#include "Engine/SceneAnimation.h"
+#include "Asset/SceneAnimation.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
@@ -48,7 +48,7 @@ void beginFieldRow(const char* label) {
 }
 
 //======================================================================================================================
-void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
+void drawCameraSection(render::Camera& camera, const scene::Scene& scene) {
     if (ImGui::BeginTable("cameraFields", 2, kFieldTableFlags)) {
         beginFieldRow("Position (world)");
         ImGui::DragFloat3("##position", &camera.position.x, 0.05f);
@@ -92,7 +92,7 @@ void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
     }
 
     if (ImGui::Button("Reset Camera")) {
-        camera = cameraFromScene(scene.initialCamera);
+        camera = scene::cameraFromScene(scene.initialCamera);
     }
 }
 
@@ -102,7 +102,7 @@ void drawCameraSection(render::Camera& camera, const engine::Scene& scene) {
 // active scene (for the animation clock and whether a camera track exists to follow), not the
 // renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
 void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                         engine::Scene& scene, TemporalEditorState& temporalState,
+                         scene::Scene& scene, TemporalEditorState& temporalState,
                          const DynamicResolutionState& dynamicResolutionState,
                          const rhi::TemporalScalerSupport& temporalSupport) {
     const render::TemporalStatus status = renderer.temporalStatus();
@@ -176,7 +176,7 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
     if (ImGui::Button("Step")) {
         // Matches EditorShell's own per-frame step -- a manual step while paused advances by the
         // same fixed amount play would have.
-        scene.advanceAnimation(1.0 / engine::kAnimationBakeRate);
+        scene.advanceAnimation(1.0 / asset::kAnimationBakeRate);
         scene.animate(scene.animationTime);
     }
     ImGui::EndDisabled();
@@ -251,7 +251,7 @@ void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& setti
 //======================================================================================================================
 void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
                           ExposureResetContext& exposureContext, bool& exposureResetPending,
-                          engine::Scene& scene, TemporalEditorState& temporalState,
+                          scene::Scene& scene, TemporalEditorState& temporalState,
                           const DynamicResolutionState& dynamicResolutionState,
                           const rhi::TemporalScalerSupport& temporalSupport) {
     // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
@@ -329,7 +329,7 @@ void drawDisplaySection(const InspectorPanelContext& context) {
 }
 
 //======================================================================================================================
-void drawDirectionalLightSection(engine::Scene& scene, size_t index) {
+void drawDirectionalLightSection(scene::Scene& scene, size_t index) {
     render::DirectionalLight& light = scene.lights[index];
     ImGui::Text("Role: %.*s", static_cast<int>(directionalLightRoleLabel(index).size()),
                 directionalLightRoleLabel(index).data());
@@ -359,8 +359,8 @@ void drawDirectionalLightSection(engine::Scene& scene, size_t index) {
 }
 
 //======================================================================================================================
-void drawObjectSection(engine::Scene& scene, size_t index) {
-    engine::SceneObject& object = scene.objects[index];
+void drawObjectSection(scene::Scene& scene, size_t index) {
+    scene::SceneObject& object = scene.objects[index];
 
     if (ImGui::BeginTable("objectFields", 2, kFieldTableFlags)) {
         beginFieldRow("Position (world)");

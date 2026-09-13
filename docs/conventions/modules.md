@@ -10,9 +10,8 @@ order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
 
 ## Units
 
-`Paths` names the unit's directory and its build target. Three units are mid-migration: their
-target directory does not exist yet, so the [transitional file lists](#transitional-file-lists)
-below define their membership until the move that creates the directory.
+`Paths` names the unit's directory and its build target. App model logic remains in a
+[transitional file list](#transitional-file-lists) until its own directory and target are created.
 
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
@@ -44,14 +43,9 @@ link checks own; it is not an include edge and does not widen this row.
 
 ### Transitional file lists
 
-Until the moves that create `Source/Asset`, `Source/Scene` and `Source/App/Model`, these lists are
-the ownership map for those three units. The header and its implementation always share a unit.
+Until `Source/App/Model` is created, its file list defines ownership. Asset and Scene now own
+their directories and static targets; Engine is retired.
 
-- `asset` — `Source/Engine/`: `Asset`, `Color`, `DdsLoader`, `GltfLoader`, `HdrEnvironment`, `Ibl`,
-  `PngImage`, `TextureBake`, `GeometryGenerator`, `SceneAnimation` (`.h` and, where present,
-  `.cpp`).
-- `scene` — `Source/Engine/`: `Scene`, `SceneLibrary`, `SceneEnvironment` (`.h` and `.cpp`),
-  `MaterialLab.cpp`, `TemporalLab.cpp`, `SanMiguel.cpp`.
 - `app-model` — `Source/App/`: `AppOptions`, `CaptureMetadata`, `DynamicResolution`,
   `EditorActions`, `EditorSelection`, `ExposureReset`, `FrameRecordRing`, `GraphInspectorModel`,
   `GraphLayout`, `GraphNodeModel`, `PassTimingHistory`, `PerformanceModel`, `TemporalEditorState`,
@@ -123,8 +117,9 @@ The rules above are checked as include edges:
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
   that file's includers, so `core` including spdlog does not spend spdlog everywhere.
 - Header allowances are per unit and per header, and are the only exception to the unit table.
-  `asset` may include `RHI/Format.h`; the texture descriptor header extracted in R1.2 joins that
-  allowance when it exists. An allowance grants those headers only — not the target, not the umbrella
+  `asset` and its `texture-bake` consumer may include `RHI/Format.h` and `RHI/TextureDesc.h`.
+  TextureBake reaches these through Asset's public mip-chain structure; it still links Core and
+  Asset only. An allowance grants those headers only — not the target, not the umbrella
   `RHI/RHI.h`, and not any other header the allowed header happens to include.
 
 ## Asset independence
@@ -143,9 +138,8 @@ weakest one is deliberately last:
    `TextureBake`.
 3. **Archive layer.** A `forbidUndefined` entry checks a target's built archive or binary for
    undefined symbols (`nm -u`) starting with a forbidden prefix — the layer a static library like
-   `asset` needs, since the framework layer cannot see it. No contract target declares
-   `forbidUndefined` yet, so this check runs on nothing today; R1.2 adds `Asset`'s entry once the
-   target exists. On its own it would prove little even then: the RHI's API is virtual interfaces,
+   `asset` needs, since the framework layer cannot see it. `Asset` declares
+   `forbidUndefined: lmx::rhi::`. On its own this proves little: the RHI's API is virtual interfaces,
    so a caller reaches it through a vtable without leaving an undefined symbol behind. It would see
    non-virtual RHI symbols only and be a backstop under the include and framework layers, never a
    substitute for them.

@@ -89,40 +89,23 @@
     },
     "asset": {
       "paths": [
-        "Source/Engine/Asset.h",
-        "Source/Engine/Color.h",
-        "Source/Engine/DdsLoader.h",
-        "Source/Engine/DdsLoader.cpp",
-        "Source/Engine/GeometryGenerator.h",
-        "Source/Engine/GeometryGenerator.cpp",
-        "Source/Engine/GltfLoader.h",
-        "Source/Engine/GltfLoader.cpp",
-        "Source/Engine/HdrEnvironment.h",
-        "Source/Engine/HdrEnvironment.cpp",
-        "Source/Engine/Ibl.h",
-        "Source/Engine/Ibl.cpp",
-        "Source/Engine/PngImage.h",
-        "Source/Engine/PngImage.cpp",
-        "Source/Engine/SceneAnimation.h",
-        "Source/Engine/SceneAnimation.cpp",
-        "Source/Engine/TextureBake.h",
-        "Source/Engine/TextureBake.cpp"
+        "Source/Asset"
       ],
       "targets": [
-        "Engine"
+        "Asset"
       ],
       "units": [
         "core"
       ],
       "headers": [
-        "RHI/Format.h"
+        "RHI/Format.h",
+        "RHI/TextureDesc.h"
       ],
       "thirdParty": [
         "glm",
         "cgltf",
         "stb"
-      ],
-      "note": "R1.2 moves these files to Source/Asset and the Asset target"
+      ]
     },
     "render": {
       "paths": [
@@ -141,18 +124,10 @@
     },
     "scene": {
       "paths": [
-        "Source/Engine/MaterialLab.cpp",
-        "Source/Engine/SanMiguel.cpp",
-        "Source/Engine/Scene.cpp",
-        "Source/Engine/Scene.h",
-        "Source/Engine/SceneEnvironment.cpp",
-        "Source/Engine/SceneEnvironment.h",
-        "Source/Engine/SceneLibrary.cpp",
-        "Source/Engine/SceneLibrary.h",
-        "Source/Engine/TemporalLab.cpp"
+        "Source/Scene"
       ],
       "targets": [
-        "Engine"
+        "Scene"
       ],
       "units": [
         "core",
@@ -162,8 +137,7 @@
       ],
       "thirdParty": [
         "glm"
-      ],
-      "note": "R1.2 moves these files to Source/Scene and the Scene target"
+      ]
     },
     "app-model": {
       "paths": [
@@ -272,6 +246,10 @@
       "thirdParty": [
         "glm",
         "stb"
+      ],
+      "headers": [
+        "RHI/Format.h",
+        "RHI/TextureDesc.h"
       ]
     },
     "benchmarks": {
@@ -313,22 +291,16 @@
         "RHI"
       ]
     },
-    "Engine": {
-      "deps": [
-        "Core",
-        "RHI",
-        "Render"
-      ]
-    },
     "App": {
       "deps": [
         "Core",
         "RHI",
         "RHIMetal4ImGui",
         "Render",
-        "Engine",
         "ImGui",
-        "ImGuiNodeEditor"
+        "ImGuiNodeEditor",
+        "Asset",
+        "Scene"
       ]
     },
     "Tests": {
@@ -336,7 +308,8 @@
         "Core",
         "RHI",
         "Render",
-        "Engine"
+        "Asset",
+        "Scene"
       ]
     },
     "TextureBake": {
@@ -350,6 +323,20 @@
       "deps": [
         "Core",
         "RHI"
+      ]
+    },
+    "Asset": {
+      "deps": [
+        "Core"
+      ],
+      "forbidUndefined": "lmx::rhi::"
+    },
+    "Scene": {
+      "deps": [
+        "Core",
+        "RHI",
+        "Asset",
+        "Render"
       ]
     }
   }
