@@ -63,11 +63,13 @@ linked parts under `docs/roadmap/`.
   build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
   must pass this filter unchanged; the working directory must be the Tests build directory (shaders
   resolve relative to CWD).
-- Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy`
+- Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
+  `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
   checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
   holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
-  Tools/check_project_policy.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
+  Tools/check_project_policy.py`; `python3 Tools/check_module_deps.py`; `python3
+  Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
   `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
@@ -183,8 +185,7 @@ zero motion/reactive one, writes reciprocal applied exposure into one `R16Float`
 motion/jitter/content extents. The scaler resets on engine reset, vendor re-entry or recreation;
 engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
 `lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
-`ResolutionController` is a pure, App-driven policy that proposes
-a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
+`ResolutionController` is a pure, App-driven policy that proposes a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
 `Source/Engine` (lmx::engine: `Scene`/`SceneLibrary`, GeometryGenerator, DDS/glTF/Radiance HDR
 loaders, sRGB color utilities, deterministic environment conversion and CPU-side image-based-lighting
 generation with filtered cubemap sampling (`HdrEnvironment.h`, `Ibl.h`, `SceneEnvironment.h`), deterministic offline texture mip

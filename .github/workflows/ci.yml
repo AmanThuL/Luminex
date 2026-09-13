@@ -75,8 +75,16 @@ jobs:
       - name: C++ layout policy
         run: python3 Tools/check_cpp_layout.py
 
+      - name: Module and header contract
+        run: |
+          python3 Tools/check_module_deps.py
+          python3 Tools/check_source_headers.py
+
       - name: Build
         run: xmake -y
+
+      - name: Module contract (link)
+        run: python3 Tools/check_module_deps.py --link
 
       - name: Unit tests
         run: xmake test Tests/unit

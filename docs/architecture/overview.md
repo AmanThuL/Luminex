@@ -40,8 +40,8 @@ is a repository-root component; the other runtime layers remain under `Source/`:
   reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains
   state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time
   private scratch and a copy inside the same timed call. The optional `RHIMetal4ImGui` target
-  owns the adapter, its ImGui-dependent public extension header, and the dependency on Dear ImGui;
-  the core RHI does not inherit any of them.
+  owns the adapter (sources under `RHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
+  extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
 - **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It
