@@ -21,11 +21,17 @@ and capability contracts; [ADR 0021](../decisions/0021-gpu-scene-handoff-contrac
 minimal scene-identity/update semantics the first consumers must implement. M6.5 closure and EDR
 DEFER did not by themselves pass the review. M7.1 still requires its own implementation plan.
 
-The present `SceneView` borrows a frame-local span of `DrawItem`s with mesh/texture references and
-current/previous transforms. The renderer binds per-object frame data and encodes indexed draws;
-the scene exposes three directional lights. M7.1 therefore first makes the retained CPU draw path
-consume shared GPU identities/tables. M7.2 can then compare CPU and GPU visibility over the same
-scene representation; M7.4 adds the point/spot light model before clustered assignment.
+The present `SceneView` borrows a frame-local span of `DrawItem`s with mesh/texture references,
+copied materials, current/previous transforms and a per-item motion class; masked materials select
+dedicated pipelines by alpha mode, cutoff and double-sided flag. The renderer binds per-object
+frame data and encodes indexed draws inside the `ShadowStage`/`SceneStage` owners and shared
+`FrameDeclaration` that [R1.4](codebase-refactoring.md#r14--renderer-seams-for-m7) created; the
+scene exposes three directional lights and no point or spot light. The RHI already offers compute
+passes, buffer barriers and indirect draws/dispatches over RHI-owned argument layouts, yet no
+frustum culling exists on either processor. M7.1 therefore first makes the retained CPU draw path
+consume shared GPU identities/tables inside those stages. M7.2 adds the CPU visibility reference
+and the indirect-draw baseline that M7.3's GPU visibility is measured against; M7.5 adds the
+point/spot light model before clustered assignment.
 
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).
 M5.6 does not establish a production speedup or select ICB. The M6.4 manual/capture checks and
@@ -42,14 +48,14 @@ editor work is defined only in [Part IV](editor-experience.md#placement-and-owne
 
 | Area | Required foundation | Independent ordering |
 |---|---|---|
-| M7 scene, visibility and lighting | Gate B → M7.1; M7.2 → M7.3 | M7.4 can follow M7.1 before occlusion |
-| M8 shadows and composition | M7 scene/lighting, M6 temporal; depth/HZB and surface guides for screen-space effects | Basic transparency precedes transparent fog/refraction integration; a page-cached (VSM-style) atlas is eligible inside M8 |
+| M7 scene, visibility and lighting | Gate B → M7.1; M7.2 → M7.3 → M7.4 | M7.5 can follow M7.1 before the visibility slices |
+| M8 shadows and composition | M7 scene/lighting, M6 temporal; depth/HZB and surface guides for screen-space effects | M8.1 → M8.2; M8.3 and M8.4 need only M7; M8.5 follows M8.4; a page-cached (VSM-style) atlas is eligible inside M8.2 |
 | M9 geometry and surface paths | M7 scene/visibility/Forward+, M6 temporal | Cluster LOD and cluster culling first; M8 is not a prerequisite and follows M9 in the accepted order |
 | M10 query and transport reference | M7 scene/light data, M6 temporal/capture | Query/reference work need not wait for M9 or all of M8 |
 | M10 real-time reflections | Query/reference gates, then M8 SSR/probe fallback | Budget tracing, denoising and composition together |
 | M11 GI | M10 query/reference/denoising and shared temporal/light contracts | Accepted separately from content residency |
 | M11 residency | M7 identity/safe updates and measured content pressure; M9 coarse LOD for geometry streaming | Ordinary loading/mip streaming need not wait for M10 or GI |
-| Independent extensions/research | Their own fallback, oracle, budget and host gates below | Area lights and stochastic direct lighting follow M7.4; learned-rendering slices are owned by [Part V](neural-rendering.md#dependency-map) |
+| Independent extensions/research | Their own fallback, oracle, budget and host gates below | Area lights and stochastic direct lighting follow M7.5; learned-rendering slices are owned by [Part V](neural-rendering.md#dependency-map) |
 
 **Hardware floor.** Mesh shaders and hardware ray tracing require Apple M3/A17 Pro or later; GPU
 neural acceleration requires M5/A19 Pro or later. Every slice below that depends on one of these
@@ -61,13 +67,13 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7 — Scalable scene and direct lighting
 
-**Outcome:** the existing scenes use shared GPU data, validated GPU visibility and bounded local lighting. M7 finishes when these four slices pass; LOD, transparency and advanced command mechanisms do not extend its completion boundary.
+**Outcome:** the existing scenes use shared GPU data, validated GPU visibility and bounded local lighting. M7 finishes when these five slices pass; LOD, transparency and advanced command mechanisms do not extend its completion boundary.
 
-**Deliver:** shared GPU scene data, frustum visibility and measured submission, conservative occlusion, and clustered point/spot lighting through M7.1–M7.4.
+**Deliver:** shared GPU scene data, a CPU visibility reference with an indirect-draw baseline, GPU frustum visibility with measured work generation, conservative occlusion, and clustered point/spot lighting through M7.1–M7.5.
 
-**Sequence:** gate B → M7.1 → M7.2 → M7.3; M7.4 can follow M7.1 without waiting for occlusion. M7.2 reuses M5.6's workload/oracle contract in a production benchmark; leave frozen experiment artifacts untouched and do not require an unaccepted result or unavailable final tag. Native-host timings never establish production speedups. Validate GPU classification, CPU command count and full-frame benefit separately. Adopt a GPU-generated default only with representative production evidence; preserve a CPU/batched fallback and disclose remaining per-object encoding. ICB is optional. Each implemented backend passes the same semantic cases or declares a tested capability fallback.
+**Sequence:** gate B → M7.1 → M7.2 → M7.3 → M7.4; M7.5 can follow M7.1 without waiting for the visibility slices. M7.2 reuses M5.6's workload/oracle contract in a production benchmark; leave frozen experiment artifacts untouched and do not require an unaccepted result or unavailable final tag. Native-host timings never establish production speedups. Validate GPU classification, CPU command count and full-frame benefit separately. Adopt a GPU-generated default only with representative production evidence; preserve a CPU/batched fallback and disclose remaining per-object encoding. ICB is optional. Each implemented backend passes the same semantic cases or declares a tested capability fallback.
 
-**Exit gate:** all four slices pass their individual gates and the shared production evidence rules. No LOD, transparency or ICB work extends M7's completion boundary.
+**Exit gate:** all five slices pass their individual gates and the shared production evidence rules. No LOD, transparency or ICB work extends M7's completion boundary.
 
 **Defer:** cluster LOD and its offline data to M9; basic transparency to M8; area lights to the independent light-model extension below; streaming/general residency to M11. Also defer meshlets, two-phase occlusion optimization, cascaded/cached shadows, ray queries and dynamic GI.
 
@@ -75,23 +81,33 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 **Outcome:** Existing scenes draw correctly from shared GPU identities and tables through the retained CPU path.
 
-**Deliver:** Minimal stable instance/mesh/material/texture IDs and GPU tables, material indexing and the binding/update path current scenes need; retain CPU drawing as the first consumer.
+**Deliver:** Minimal stable instance/mesh/material/texture IDs and GPU tables, material indexing and the binding/update path current scenes need, inside the R1.4 shadow/scene stages; tables carry every per-draw input those stages already consume, including alpha mode, cutoff, double-sided flag, previous transform and motion class. Retain CPU drawing as the first consumer and turn the [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) requirements into the identity-sharing, update/reorder, remove/reuse, scene-replacement, texture-fallback, capacity-growth and three-frame-overlap fixtures.
 
-**Exit gate:** Existing scenes preserve material and temporal output; bounded update/remap/fallback fixtures keep identities and resources valid across three frames; no general scene or residency system is required.
+**Exit gate:** Existing scenes preserve material and temporal output; bounded update/remap/fallback fixtures keep identities and resources valid across three frames; masked coverage and motion classes agree with the pre-table path; no general scene or residency system is required.
 
-**Defer:** GPU visibility/submission to M7.2, occlusion to M7.3, and local lighting to M7.4; general scene/residency systems remain out of scope.
+**Defer:** Visibility to M7.2–M7.3, occlusion to M7.4 and local lighting to M7.5; general scene/residency systems remain out of scope.
 
-## M7.2 — GPU visibility and submission
+## M7.2 — CPU visibility reference and indirect baseline
 
-**Outcome:** GPU frustum visibility and work generation have a validated production path and a measured CPU/batched reference.
+**Outcome:** A maintained CPU frustum-visibility oracle and a competent indirect-draw production baseline over the shared tables give M7.3 a measured reference.
 
-**Deliver:** A maintained CPU visibility oracle and competent batched/indirect production baseline, then GPU frustum culling, compaction and work generation through supported execution.
+**Deliver:** Per-instance world bounds from the M7.1 tables, CPU frustum classification with an unculled bypass, an indirect-draw baseline that consumes the existing RHI argument layouts, VisibilityLab with deterministic camera tracks and controlled instance counts, and the paired measurement harness that reuses M5.6's workload/oracle contract; report CPU work/calls, GPU preparation, full-frame cost and memory.
 
-**Exit gate:** CPU/GPU visible sets and final images match within declared boundary rules; counters reconcile candidates and emitted work; bounded capacity overflow is safe; paired production measurements report CPU work/calls, GPU preparation, full-frame cost and memory.
+**Exit gate:** The oracle's visible set and image match the unculled reference within declared boundary rules; the indirect baseline reproduces the per-object path's images on every catalog scene; measurements are paired on the frozen device with variation reported; rejected instances and bypass reasons are inspectable.
 
-**Defer:** Temporal occlusion to M7.3 and cluster LOD to M9; ICB remains optional and native-host results do not select a production default.
+**Defer:** GPU classification, compaction and work generation to M7.3; occlusion to M7.4; cluster LOD to M9.
 
-## M7.3 — Conservative occlusion
+## M7.3 — GPU visibility and work generation
+
+**Outcome:** GPU frustum visibility and work generation have a validated production path measured against the M7.2 reference.
+
+**Deliver:** GPU frustum culling, compaction and work generation over the shared tables through supported execution, with explicit capacities, overflow policy and counters; the M7.2 harness compares both paths under the same sequences.
+
+**Exit gate:** CPU/GPU visible sets and final images match within declared boundary rules; counters reconcile candidates and emitted work; bounded capacity overflow is safe; paired production measurements report CPU work/calls, GPU preparation, full-frame cost and memory against M7.2.
+
+**Defer:** Temporal occlusion to M7.4 and cluster LOD to M9; ICB remains optional and native-host results do not select a production default.
+
+## M7.4 — Conservative occlusion
 
 **Outcome:** Conservative temporal occlusion rejects hidden work without losing newly visible geometry.
 
@@ -101,7 +117,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 **Defer:** Cluster LOD to M9, and two-phase occlusion optimization beyond M7.
 
-## M7.4 — Clustered local lighting
+## M7.5 — Clustered local lighting
 
 **Outcome:** Opaque scenes support bounded point/spot lighting through a validated clustered Forward+ path.
 
@@ -113,20 +129,72 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M8 — Shadows, indirect-lighting floor and environment
 
-**Outcome:** dependable shadows, screen-space/probe lighting, atmosphere and transparent composition extend the shared frame with visible quality gains and bounded costs.
+**Outcome:** dependable shadows, screen-space/probe lighting, atmosphere and transparent composition extend the shared frame with visible quality gains and bounded costs. M8 finishes when the five slices below pass.
 
-**Deliver:**
+**Deliver:** through M8.1–M8.5:
 
 - Validate stable sun cascades/per-cascade culling, PCF and corrected PCSS, then a budgeted local-light shadow atlas/cache; a page-cached (VSM-style) atlas with ordinary fallback is an eligible form of that cache, since the technique is documented down to Apple M2.
 - Add GTAO-class ambient occlusion (a visibility-bitmask implementation is preferred) and SSR with local reflection-probe/sky fallback, shared surface guides and confidence/history views.
 - Establish basic sorted premultiplied Forward+ transparency with shared lighting, followed by refraction/reactive masks and baseline particles.
 - Add environment/atmosphere LUTs and analytic height fog before temporal froxel fog and opaque/transparent transmittance integration.
 
-**Prerequisites:** use M7 scene/lighting and M6 temporal contracts. The screen-space/probe area needs depth/HZB and its actual surface guides; in the accepted order M9's cluster geometry ships first, and M8 consumes whichever opaque path M9 retains without depending on its experiments. Establish basic transparency here before any transparent fog/refraction integration; it is no longer a M7 gate.
+**Prerequisites:** use M7 scene/lighting and M6 temporal contracts. The screen-space/probe area needs the M7.4 HZB and its actual surface guides; in the accepted order M9's cluster geometry ships first, and M8 consumes whichever opaque path M9 retains without depending on its experiments. Establish basic transparency here before any transparent fog/refraction integration; it is no longer a M7 gate.
+
+**Sequence:** M8.1 → M8.2; M8.3 and M8.4 need only the M7 contracts and may follow M8.1 in either order; M8.5 follows M8.4.
 
 **Exit gate:** cascades remain stable and bias is inspectable; atlas allocation, eviction and invalidation are deterministic; AO does not double-darken indirect energy; invalid SSR always has a declared fallback. Transparency shares light evaluation, fog composition agrees across surfaces, and temporal effects expose rejection/coverage without persistent trails. Alpha-test coverage agrees across supported depth, shadow, color and motion passes. Extend LightLab, TransportLab, TransparencyLab and a bounded OutdoorLab only for these checks.
 
 **Defer:** area lights, virtualized shadow caches without an ordinary fallback, clouds/weather, advanced OIT (adaptive voxel OIT is a named later study), opaque-path replacement, hardware ray effects, stochastic direct lighting and full specialist material systems.
+
+## M8.1 — Sun cascades
+
+**Outcome:** The directional caster's shadow is stable, culled per cascade and filtered with corrected PCF/PCSS.
+
+**Deliver:** Stable cascade splits and texel snapping, per-cascade culling over the M7.3 visibility path, PCF and corrected PCSS with inspectable bias/normal-offset controls; OutdoorLab exercises cascade transitions on a fixed camera rail.
+
+**Exit gate:** Cascade edges and bias are stable under camera motion within frozen tolerances; per-cascade culling agrees with the unculled reference; masked coverage agrees between depth and shadow passes; cascade cost is reported per split.
+
+**Defer:** Local-light shadows to M8.2; cached or virtualized sun shadows without an ordinary fallback.
+
+## M8.2 — Local-light shadow atlas
+
+**Outcome:** Point/spot lights from M7.5 cast budgeted shadows through a deterministic atlas/cache.
+
+**Deliver:** A budgeted atlas with allocation, eviction and invalidation rules over the clustered light set; a page-cached (VSM-style) form is eligible with the ordinary atlas as fallback and reference; LightLab exercises overlap and churn.
+
+**Exit gate:** Allocation, eviction and invalidation are deterministic and inspectable; overflow degrades to unshadowed lights without holes; both atlas forms agree on the reference scenes; atlas cost and memory are bounded and reported.
+
+**Defer:** Area-light shadows to the independent light-model extension; ray-traced shadows to the stochastic direct-lighting study, whose shadowed variant needs M10 queries.
+
+## M8.3 — Screen-space and probe lighting
+
+**Outcome:** GTAO-class occlusion and SSR with probe/sky fallback give an indirect-lighting floor over shared surface guides.
+
+**Deliver:** Visibility-bitmask GTAO, SSR over the M7.4 HZB with local reflection-probe/sky fallback, the shared depth/normal/roughness guides those consumers need, and confidence/history views; TransportLab compares against the ambient and IBL baseline.
+
+**Exit gate:** AO does not double-darken indirect energy; invalid SSR always has a declared fallback; temporal effects expose rejection/coverage without persistent trails; guides are grown only for these consumers.
+
+**Defer:** Ray-traced reflections to M10; probe volumes and dynamic GI to M11.
+
+## M8.4 — Transparency
+
+**Outcome:** Sorted premultiplied Forward+ transparency shares the opaque light evaluation, followed by refraction, reactive masks and baseline particles.
+
+**Deliver:** glTF BLEND materials as sorted premultiplied surfaces lit through the M7.5 clustered path, reactive masks for the temporal contract, then refraction and baseline particles; TransparencyLab exercises ordering, overlap and motion.
+
+**Exit gate:** Transparent surfaces share light evaluation with opaque ones; ordering and reactive rejection are inspectable; alpha-test and blend coverage agree across supported depth, shadow, color and motion passes; [ADR 0018](../decisions/0018-masked-material-coverage.md) is superseded explicitly.
+
+**Defer:** Order-independent transparency (adaptive voxel OIT is a named later study); transparent fog and transmittance integration to M8.5.
+
+## M8.5 — Atmosphere and fog
+
+**Outcome:** Environment/atmosphere LUTs and fog compose consistently over opaque and transparent surfaces.
+
+**Deliver:** Sky/atmosphere LUTs, analytic height fog, then temporal froxel fog with opaque/transparent transmittance integration; a bounded OutdoorLab covers time of day and camera motion.
+
+**Exit gate:** Fog composition agrees across surfaces; froxel history exposes rejection and coverage; atmosphere output respects scene-linear pre-exposure and the display transform.
+
+**Defer:** Clouds/weather; volumetric shadows beyond froxel transmittance.
 
 ## M9 — Geometry LOD and surface-path experiments
 
@@ -134,7 +202,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 **Deliver:** offline cluster LOD through a maintained clusterization library (meshlets, bounds/cones, hierarchical simplification) with runtime selection/transition; GPU cluster culling and ordinary indirect cluster raster over the M7 visibility path; optional mesh-shader execution on M3/A17 Pro and later with the vertex/compute cluster path as the fallback and reference; separately compare compact/tile-local deferred and visibility-buffer material reconstruction/classification. Use required attachment/load-store/tile support only for the measured path, with materialized fallbacks. Extend MipLab and VisibilityLab for derivatives, alpha coverage, LOD and tiny geometry. Publish a native-Metal measurement table for cluster culling and raster on the frozen device and workloads; such numbers are nearly absent from the public corpus.
 
-**Prerequisites:** M7 scene/visibility and Forward+ plus M6 temporal contracts. M8 is not a prerequisite and follows M9 in the accepted order; its screen-space consumers later pressure-test the retained surface outputs. GTAO and SSR/probes belong to M8 and do not depend on an opaque-path experiment winning.
+**Prerequisites:** M7 scene/visibility (M7.1–M7.4) and Forward+ (M7.5) plus M6 temporal contracts. M8 is not a prerequisite and follows M9 in the accepted order; its screen-space consumers later pressure-test the retained surface outputs. GTAO and SSR/probes belong to M8 and do not depend on an opaque-path experiment winning.
 
 **Exit gate:** cluster LOD selection and transitions meet declared error/stability limits; supported surface paths agree on material references; the mesh-shader path, when built, matches the fallback path's visible set and image. Measure cull/raster/resolve/shading and downstream cost, memory, overdraw and available bandwidth/tile/occupancy counters; mark unavailable metrics explicitly. Record adopt/retain/defer per platform/workload, retain the Forward+ oracle, and rerun the suite on representative Windows hardware once D3D12 exists.
 
@@ -168,6 +236,6 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 Learned-rendering studies, including the tiny-network inference lab, learned reconstruction, denoiser adapters and material distillation, are owned by [Part V](neural-rendering.md) with their own gates; they are not conditions of any M-slice. Hybrid mesh/splat selection needs paired representations, error oracles and depth/transparency/temporal composition contracts after M8 and M9; the ratified glTF splat extension and compressed interchange formats do not change that. Splat conformance remains a separate pinned-specification corpus/reference tool. These are optional studies, not commitments to all ideas.
 
-Area lights are a separate light-model extension after M7.4: select one shape, evaluation method, units and numerical/image reference before implementation; shadow support needs its own boundary. They are not implied by point/spot clustering and are not a condition of finishing M7 or M8. Stochastic direct lighting (ReSTIR-DI/MegaLights-class) is a separate study after M7.4 with the clustered path as reference; its shadowed variant needs M10 queries, and the shadow-map variant may precede them.
+Area lights are a separate light-model extension after M7.5: select one shape, evaluation method, units and numerical/image reference before implementation; shadow support needs its own boundary. They are not implied by point/spot clustering and are not a condition of finishing M7 or M8. Stochastic direct lighting (ReSTIR-DI/MegaLights-class) is a separate study after M7.5 with the clustered path as reference; its shadowed variant needs M10 queries, and the shadow-map variant may precede them.
 
 D3D12 Work Graphs are reported to have stopped advancing beyond Shader Model 6.9, with a spec-only "Work Lists" successor targeting a 2027 preview; Vulkan device-generated commands have uneven driver support. Either study needs the basic submission benchmark and a same-device comparison, and Metal indirect command buffers already cover the GPU-generated-command case. Mesh/task studies need M9 geometry controls. Async scheduling needs measured overlap plus a matching serial fallback. Virtualized geometry streaming, adaptive voxel OIT, ReSTIR and frame generation remain research; frame generation also requires stable real-frame timing, frame identity, latency and UI pacing, with MetalFX Frame Interpolation as the concrete Metal candidate once those exist. Each study freezes a target, fallback, budget, oracle and debugging surface before measurement. Compare APIs on the same device where possible; cross-device results describe systems. Preserve immutable `exp/<topic>` evidence and graduate production changes through explicit roadmap/ADR decisions.
