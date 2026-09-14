@@ -2,12 +2,12 @@
 
 **Status**: Accepted
 
-This entry and its four parts jointly own current milestone identifiers, boundaries, dependencies,
+This entry and its five parts jointly own current milestone identifiers, boundaries, dependencies,
 outcomes, gates and deferrals. Each boundary is defined in one part; frozen research preserves
 its supporting evidence. Starting a milestone requires an `In progress` plan under `docs/plans/`
 that decomposes the accepted boundary without expanding it.
 
-## Four parts
+## Five parts
 
 | Part | Scope | Purpose |
 |---|---|---|
@@ -15,6 +15,7 @@ that decomposes the accepted boundary without expanding it.
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-refactoring.md) | R1 between M6.5 and gate B; later R milestones | Restructure modules and large units between rendering milestones without changing output |
 | [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator |
+| [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
 shared GPU scene data and its consumers. Foundation completion supplies those contracts;
@@ -23,6 +24,10 @@ approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md).
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
 [UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
 M7.1 is next and remains inactive pending its own plan; gate B's technical approval is preserved.
+After the four M7 slices the accepted order is
+[N1 → M9 → M8 → M10 → M11](roadmap/neural-rendering.md#placement-and-ownership), which puts
+visible cluster geometry and the learned-rendering entry before the shadow and composition work
+while preserving every M-slice gate.
 
 ## Current baseline
 
@@ -77,14 +82,19 @@ and additional hardware is not a renderer gate.
 M5.6 closed as reliability failure / DEFER with no accepted performance conclusion
 ([ADR 0012](decisions/0012-gpu-submission-defer.md)); it does not block the temporal foundation or
 preselect ICB. The [project-fit assessment](research/2026-09-06-graphics-paradigm-project-fit.md)
-also opens bounded neural-shader research without requiring completion of M8–M11.
+opened bounded neural-shader research without requiring completion of M8–M11; the
+[2026-09-14 direction review](research/2026-09-14-rendering-direction-review.md) confirms M7–M11
+against shipped 2023–2026 practice and motivates [Part V](roadmap/neural-rendering.md), the
+accepted post-M7 order and the hardware floor (M3/A17 Pro for mesh shaders and ray tracing,
+M5/A19 Pro for neural acceleration). CUDA is a training substrate, never a backend.
 
 Each milestone has one recognizable completion outcome. Use a few independently accepted slices;
 implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
 M6's five slices and M7's four are fixed in Parts I and II; M8–M11 retain bounded work areas
 until planned. R milestones in Part III restructure code between rendering milestones and add no
 rendering scope. Part IV owns editor experience and its completion criteria independently of the
-rendering and structural milestones. Stated prerequisites and accepted delivery order, rather than
+rendering and structural milestones. Part V owns the four learned-rendering slices, each an
+independently accepted study that never becomes a correctness dependency of the shared frame. Stated prerequisites and accepted delivery order, rather than
 numerical order, determine entry. Only one
 implementation plan is active at a time; independent entry does not start another plan.
 
