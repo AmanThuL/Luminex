@@ -84,7 +84,8 @@ All required areas above must pass the following observable tasks on the actual 
   gesture as unverified, never as a pass inferred from source or screenshots.
 
 Retain before/after screenshots and action/result records outside published source; document
-actual coverage, unresolved defects and evidence limits in the eventual UX1 milestone record.
+actual coverage, unresolved defects and evidence limits in the [UX1 milestone record](../milestones/ux1.md),
+which starts as a proposed specification before implementation.
 The original audit's tool limitations require new verification, not inherited passes. Apply the
 [engineering evidence rules](../conventions/engineering.md#validation-evidence) by change risk;
 UI work neither closes historical M6/R1 exceptions nor substitutes for GPU/image validation.

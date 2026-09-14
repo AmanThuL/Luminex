@@ -57,7 +57,8 @@ validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
 [Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
 under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 [editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
-Its [design](specs/2026-09-14-ux1-editor-experience-design.md) and
+Its [milestone specification](milestones/ux1.md),
+[design](specs/2026-09-14-ux1-editor-experience-design.md) and
 [implementation plan](plans/2026-09-14-ux1-editor-experience.md) are proposed; implementation has
 not started. M7.1 remains technically eligible and awaits UX1 completion in the accepted delivery
 order, then its own implementation plan; no GPU-scene or GPU-visibility path is adopted yet.

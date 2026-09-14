@@ -3,13 +3,14 @@
 **Status**: Proposed
 
 This plan decomposes [UX1](../roadmap/editor-experience.md) using the
+[milestone specification](../milestones/ux1.md),
 [overall design](../specs/2026-09-14-ux1-editor-experience-design.md) and
 [baseline audit](../research/2026-09-14-editor-uiux-audit.md). It does not start implementation or
 M7.1. The accepted roadmap includes every P1–P3 area; implementation detail remains proposed.
 
 ## Start and branch sequence
 
-The initial `codex/editor-experience-roadmap` branch contains the roadmap, evidence synthesis,
+The documentation baseline contains the roadmap, evidence synthesis, milestone specification,
 overall design and this plan. Integrate this documentation outcome independently of source work.
 Begin source work by resolving the design against the baseline, marking it Accepted and this
 plan In progress, and updating the roadmap's active-plan sentence together. Preserve the rule
@@ -114,12 +115,13 @@ for rendering/RHI/shader-facing changes as required by the engineering rules. Ch
 checks by changed behavior, not by mechanically copying a structural-refactoring test matrix.
 Do not infer a rendering speedup from UI captures or relax unresolved historical image results.
 
-Review all P1–P3 areas against the roadmap gate. Record actual behavior, evidence, limitations
-and any durable deviations in `docs/milestones/ux1.md` only at closure; no shipped record is
-created by this documentation branch. Update current architecture/guides and AGENTS to match
+Review all P1–P3 areas against the roadmap gate. At closure, update the existing
+[milestone specification](../milestones/ux1.md) with actual behavior, evidence, limitations and
+durable deviations, replacing proposed behavior and pending results with the implementation
+record. Update current architecture/guides and AGENTS to match
 implemented controls/commands, retain the design as implemented context, and remove this
-executor plan from the published baseline under documentation policy. Update roadmap links so
-they point to the milestone record rather than a removed plan.
+executor plan from the published baseline under documentation policy. Update the roadmap and
+other current-document links to reference the milestone record rather than a removed plan.
 
 Only the complete accepted UX1 outcome advances the roadmap to M7.1 planning. Its GPU scene
 implementation remains a separate outcome under the already accepted gate B contract.
