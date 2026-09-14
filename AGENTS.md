@@ -15,7 +15,7 @@ linked parts under `docs/roadmap/`.
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), and `docs/roadmap/editor-experience.md` (UX1 editor usability and diagnostics before M7.1).
-- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved scene-identity/update handoff contract. M7.1 remains technically eligible; UX1 precedes it in the accepted delivery order. Neither is implemented or in execution; UX1 has a proposed design and plan.
+- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved scene-identity/update handoff contract. M7.1 remains technically eligible; UX1 precedes it in the accepted delivery order. Neither is implemented or in execution; UX1 has a proposed milestone specification (`docs/milestones/ux1.md`), detailed design and plan.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
   slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
   separate extension. These are planned boundaries, not current renderer capabilities.

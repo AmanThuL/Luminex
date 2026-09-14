@@ -4,7 +4,8 @@
 
 This design translates the accepted [UX1 boundary](../roadmap/editor-experience.md) into one
 coherent editor experience. The [audit](../research/2026-09-14-editor-uiux-audit.md) supplies the
-observed baseline; the [plan](../plans/2026-09-14-ux1-editor-experience.md) sequences implementation.
+observed baseline; the [milestone specification](../milestones/ux1.md) summarizes the intended
+behavior and verification, and the [plan](../plans/2026-09-14-ux1-editor-experience.md) sequences implementation.
 These are proposed behaviors and layout targets, not descriptions of the shipped application.
 
 ## User tasks and information hierarchy
