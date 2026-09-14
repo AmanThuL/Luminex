@@ -16,7 +16,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
   M7.1 is eligible for its own plan and remains inactive.
-- Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting slices; transparency belongs to M8, cluster LOD
+- Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order; transparency belongs to M8, cluster LOD
   to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
   EDR DEFER and an accepted historical-hash exception; ADR 0019) over
@@ -115,7 +115,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   Stage groups collapse by default; `columns` 0 means no wrap. Fit graph/selection, 100%, Reset
   layout and output Copy path/Reveal are explicit actions. See `docs/guides/gpu-debugging.md`.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
-  GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
+  GPU cases; docs-only changes (`docs/`, README, AGENTS/CLAUDE.md, LICENSE) run the policy job alone; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
 - Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
   `Camera help` explains controls; text entry suppresses camera/capture keys. Viewport owns scene

@@ -10,8 +10,9 @@ from completed acceptance.
 
 ## Placement and ownership
 
-The accepted delivery order is **interface gate B (PASS) → UX1 → M7.1**. Finish the complete UX1
-boundary below before opening the M7.1 executor plan. The
+The roadmap entry's [execution sequence](../roadmap.md#execution-sequence) places UX1 as
+**interface gate B (PASS) → UX1 → M7.1**. Finish the complete UX1 boundary below before opening
+the M7.1 executor plan. The
 [gate B record](../milestones/interface-gate-b.md) and
 [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) remain accepted: UX1 changes project
 priority without invalidating or repeating the technical handoff review.
