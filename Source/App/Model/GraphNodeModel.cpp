@@ -128,10 +128,14 @@ std::string buildShapeSignature(const GraphNodeModel& model) {
             out += std::format("n{} sink {} {}\n", index, sinkKindName(node.sinkKind), node.label);
         }
         for (uint32_t pin = 0; pin < node.inputs.size(); ++pin) {
-            out += std::format("n{} in{} {}\n", index, pin, node.inputs[pin].label);
+            const auto& input = node.inputs[pin];
+            out += std::format("n{} in{} r{} {} v{}\n", index, pin, input.resource,
+                               graphResourceLogicalName(input.resourceName), input.version);
         }
         for (uint32_t pin = 0; pin < node.outputs.size(); ++pin) {
-            out += std::format("n{} out{} {}\n", index, pin, node.outputs[pin].label);
+            const auto& output = node.outputs[pin];
+            out += std::format("n{} out{} r{} {} v{}\n", index, pin, output.resource,
+                               graphResourceLogicalName(output.resourceName), output.version);
         }
     }
     for (uint32_t index = 0; index < model.edges.size(); ++index) {
@@ -151,6 +155,19 @@ std::string buildShapeSignature(const GraphNodeModel& model) {
 }
 
 } // namespace
+
+//======================================================================================================================
+// The compiler's resource index identifies the current/previous role in this declaration. These
+// two explicitly double-buffered resources exchange physical names without changing that role.
+std::string_view graphResourceLogicalName(std::string_view name) {
+    if (name == "lmx.render.sceneDepth0" || name == "lmx.render.sceneDepth1") {
+        return "lmx.render.sceneDepth";
+    }
+    if (name == "lmx.render.historyColor0" || name == "lmx.render.historyColor1") {
+        return "lmx.render.historyColor";
+    }
+    return name;
+}
 
 //======================================================================================================================
 GraphNodeModel buildGraphNodeModel(const CompiledFrameRecord& record,

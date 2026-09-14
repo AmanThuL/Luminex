@@ -1,4 +1,4 @@
-#include "GpuTestSupport.h"
+#include "GpuTemporalTestSupport.h"
 
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/GraphInspectorModel.h"
@@ -9,7 +9,10 @@
 #include "Render/TransientPool.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <format>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -293,4 +296,49 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
     for (const lmx::app::GraphLayoutEdge& edge : expanded.edges) {
         REQUIRE(edge.fromItem != edge.toItem);
     }
+}
+
+//======================================================================================================================
+TEST_CASE("Native TAA physical history alternates without changing canvas topology", "[gpu]") {
+    using namespace lmx::rhi;
+    using namespace lmx::render;
+    auto device = createDevice();
+    REQUIRE(device.has_value());
+    auto renderer = Renderer::create(**device, 64, 64, true);
+    REQUIRE(renderer.has_value());
+    SceneView view = temporalSceneView({});
+    view.temporal.enabled = true;
+    view.temporal.reconstruction = ReconstructionMode::NativeTaa;
+    TransientPool pool(**device);
+    std::vector<CompiledFrameRecord> records;
+    for (uint32_t frame = 0; frame < 4; ++frame) {
+        CommandList& commands = (*device)->beginFrame();
+        pool.beginFrame();
+        RenderGraph graph(pool);
+        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+        graph.presentTexture(display);
+        records.push_back(graph.execute(commands, (*device)->frameNumber()));
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
+    }
+    const auto first = lmx::app::buildGraphNodeModel(records[2], {});
+    const auto second = lmx::app::buildGraphNodeModel(records[3], {});
+    REQUIRE(records[2].debug.resources.size() == records[3].debug.resources.size());
+    bool physicalNamesDiffer = false;
+    for (size_t index = 0; index < records[2].debug.resources.size(); ++index) {
+        physicalNamesDiffer |=
+            records[2].debug.resources[index].name != records[3].debug.resources[index].name;
+    }
+    REQUIRE(physicalNamesDiffer);
+    if (const char* directory = std::getenv("LMX_GRAPH_EVIDENCE_DIR")) {
+        std::filesystem::create_directories(directory);
+        for (size_t index = 2; index < records.size(); ++index) {
+            std::ofstream(std::filesystem::path(directory) /
+                          std::format("native-frame-{}.txt", index))
+                << dumpCompiledFrame(records[index]);
+        }
+        std::ofstream(std::filesystem::path(directory) / "shape-a.txt") << first.shapeSignature;
+        std::ofstream(std::filesystem::path(directory) / "shape-b.txt") << second.shapeSignature;
+    }
+    REQUIRE(first.shapeSignature == second.shapeSignature);
 }

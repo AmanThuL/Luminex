@@ -6,10 +6,32 @@ Use a capture when rendered output is wrong, a timing trace when the question is
 render-graph dump when the question is what the frame declared. All three depend on meaningful GPU
 object and pass labels.
 
-The Inspector’s Rendering subject has a read-only Display block: output domain, encoded-space
+Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using
+collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
+tips while disabled controls retain visible reasons. The Inspector’s Rendering subject has a
+read-only Display details section: output domain, encoded-space
 SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping. A resize may
 briefly stretch the prior image while debounce settles. PNG screenshots preserve the display
 domain and frame facts in metadata; BMP remains available for exact historical parity.
+
+## Restore editor settings
+
+Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose
+and lens and stops camera-rail following. Light Reset restores authored direction and scene-linear
+radiance. Object Reset restores its authored transform or samples that object's animated transform
+at the current playback time, preserving other object edits. Pause scene to retain a manual edit
+to an animated transform; playback replaces it on the next track sample.
+
+Rendering groups restore these editor defaults without resetting playback or another group:
+
+| Group | Defaults |
+|---|---|
+| Exposure | Manual 0 EV; auto off; percentiles 50–95%; target grey 0.18; automatic EV range −8 to 8; compensation 0 EV; adaptation up/down 3/1.5 stops per second |
+| Bloom | Enabled; linear threshold 1; intensity 0.2 |
+| Shadows | PCF |
+| Reconstruction | Temporal inputs and jitter enabled; Native TAA; Final diagnostic view |
+| Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
+| Display & Details | Encoded sRGB clear RGBA (0.05, 0.07, 0.10, 1); wireframe off; transient pooling on |
 
 ## Dump the compiled frame
 
@@ -24,14 +46,51 @@ reason it was dropped, and the barriers the graph derived. It carries no GPU tim
 driver-reported value, so it answers "was this pass declared, ordered, and kept?" — not "how long did
 it take", which is the timing trace's question.
 
-Reach for it first when a pass appears to do nothing: a pass listed under `culled` never ran, and
-its reason says whether it produces nothing or no sink reaches it. The editor's Render Graph panel,
-opened in its own detached OS window, shows the same compiled record live as a grouped, wrapped
-node canvas with a selection-scoped details pane, and its Dump frame button renders this same text
-format for the currently displayed frame to `graph-dump-frame-<id>.txt` next to the binary, without
-setting the environment variable.
+Reach for a graph dump first when a pass appears to do nothing: a pass listed under `culled`
+never ran, and its reason explains why. The detached Render Graph window displays one coherent
+frame as a grouped node canvas with selection-scoped details. Live publishes a complete owned
+record and its matched timing set four times per second, using Performance's 0.25-second interval.
+Graph timing is the exact latest value for that displayed frame, not a rolling average. The
+Live/Frozen label identifies it; node labels, details and Dump read the same publication. First
+data and Resume publish immediately; later topology and timing updates wait for the next
+publication boundary. Freeze keeps the displayed publication through later frames and scene
+switches. Unavailable matched timing is N/A.
+Fit graph, Fit selection and 100% change navigation explicitly. Dump frame writes the currently
+displayed record to `graph-dump-frame-<id>.txt` next to the binary, including while frozen.
+The result reports success or a recoverable write failure, with an absolute path and Copy path/
+Reveal controls. This text dump still contains graph declarations, not GPU timing measurements.
+
+## Console and editor selection diagnostics
+
+Window > Console opens the bounded read-only log viewer. Its default tab sits beside Performance;
+workspace schema 2 adds Console visibility without rebuilding existing saved docking. The store
+retains at most 2,000 messages and 2 MiB of payload, truncating each message at 16 KiB on a UTF-8
+boundary. UTC timestamps, Trace/Debug/Info/Warning/Error/Critical levels, and eviction/truncation
+counts remain visible. Minimum severity and case-insensitive message search filter only display.
+Freeze display retains the shown messages and counters while logging continues. Resume shows
+current retained history. Clear empties retained/displayed messages and counters, retaining filters
+and freeze state. Copy visible copies exactly the matching displayed messages, timestamps and
+severity. Follow newest scrolls only when already at the end; the search field executes no commands.
+
+Viewport's selection outline follows visible selected geometry, including depth occlusion and
+masked cutouts; Frame selected separately fits reliable object bounds. The outline is an editor
+presentation aid that can be hidden. Foreground occlusion cuts never become silhouette edges;
+border source and destination are depth-tested. App declares `lmx.pass.selection.coverage`,
+`lmx.pass.selection.visibility` and
+`lmx.pass.selection.outline` through Render's `SelectionOutline` utility, then samples its separate
+SDR output target. Their GPU costs appear in graph/timing records. They never write scene targets
+or temporal history, and ordinary offscreen screenshots/sequences do not invoke them. See the
+[UX1 design](../specs/2026-09-14-ux1-editor-experience-design.md) and
+[active acceptance record](../milestones/ux1.md) for scope and validation status.
 
 ## Capture and inspect a frame
+
+For an interactive capture, launch with `MTL_CAPTURE_ENABLED=1`, then use Debug > Capture Next
+GPU Frame, C outside text entry, or the Viewport GPU capture controls. They share one pending/result
+state. Startup without capture support explains how to enable it; changing the environment requires
+a relaunch. A successful result retains the output path with Copy path and Reveal. On failure,
+read the reason, correct the path or process capability and retry. Graph/metric freeze do not pause
+the rendered scene; pause the scene transport separately when a stable pose is needed.
 
 ```bash
 MTL_CAPTURE_ENABLED=1 \
@@ -71,9 +130,15 @@ symptom, evidence, root cause, correction, and prevention.
 
 ## Inspect vendor temporal reconstruction
 
-`--temporal metalfx` opts into the capability-selected scaler; check effective mode and fallback
-in the Inspector before interpreting a capture. Native TAA remains the default. For a windowed
-TemporalLab capture with dynamic resolution:
+`--temporal metalfx` opts into the capability-selected scaler. In Rendering > Reconstruction,
+compare the requested algorithm with the effective summary and fallback reason. Temporal inputs
+off retains that request while execution is Off at scale 1. Resolution separates the live retired
+timed-pass sum and its frame ID from the controller's last observation. Disable dynamic resolution
+for a controlled fixed-scale capture. History & vendor details retain the last reset event,
+declared-frame provenance, vendor generation and supported scale range. Native-only diagnostics
+explain why device reconstruction cannot provide them; choose Native TAA for rejection, blend
+weight and accumulation age. Native TAA remains the default. For a windowed TemporalLab capture
+with dynamic resolution:
 
 ```bash
 MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1 \
@@ -172,3 +237,18 @@ identical does not apply -- check that all three scenes actually printed `IDENTI
 effect is checked the opposite way: capture once more without `LMX_SCREENSHOT_NO_BLOOM` and confirm
 the file differs from the bloom-off capture (`cmp` reports a byte offset) and opens as a plausible
 image (no full-screen white, no NaN speckle) rather than asserting a specific diff.
+
+### Editor UI scale
+
+Use the main bar's minus/percentage/plus buttons or Layout > UI Scale to change fonts and
+controls together (75–150%). Click the percentage or press Cmd+0 for 100%; Cmd+- shrinks and
+Cmd++ / Cmd+= grows. Text editing, active widget drags and popups suppress these shortcuts.
+The detached graph shares this preference, while its canvas zoom remains independent.
+`UiScalePercent` persists in the existing workspace section of `imgui.ini`; old files default
+to 100% without redocking. Reset Default Layout keeps the UI-scale preference.
+
+The editor uses bundled Inter Regular (16 logical points at 100%, 12 at 75%), with fixed-width
+digits for stable diagnostic columns. `xmake setup` fetches the pinned Inter 4.1 TrueType source
+and SIL license; building App stages `Fonts/` beside the executable. A missing font logs a
+warning and uses the embedded fallback; rerun setup and rebuild to restore Inter. UI zoom still
+controls all panels together and restores independently of docking.

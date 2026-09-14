@@ -207,13 +207,17 @@
       ],
       "privateHeaders": [
         "Source/App/EditorShell.h",
+        "Source/App/ConsoleLogSink.h",
+        "Source/App/Panels/ConsolePanel.h",
         "Source/App/Panels/InspectorPanel.h",
         "Source/App/Panels/PerformancePanel.h",
         "Source/App/Panels/RenderGraphPanel.h",
         "Source/App/Panels/RenderGraphPanelInternal.h",
         "Source/App/Panels/ScenePanel.h",
         "Source/App/Panels/ViewportPanel.h",
-        "Source/App/Screenshot.h"
+        "Source/App/Screenshot.h",
+        "Source/App/Panels/ActionFeedback.h",
+        "Source/App/Panels/EditorStyle.h"
       ]
     },
     "tests": {

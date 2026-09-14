@@ -343,4 +343,40 @@ GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& o
     return layout;
 }
 
+//======================================================================================================================
+std::string graphItemKey(const GraphNodeModel& model, const GraphLayout& layout, uint32_t index) {
+    const auto& item = layout.items[index];
+    if (item.kind == GraphLayoutItemKind::Group) {
+        return "group:" + layout.groups[item.index].key;
+    }
+    const auto& node = model.nodes[item.index];
+    const auto logicalLabel = [](const GraphNode& value) {
+        if (value.kind == GraphNodeKind::Sink && !value.inputs.empty()) {
+            return std::format("{}:{}", value.label,
+                               graphResourceLogicalName(value.inputs.front().resourceName));
+        }
+        return value.label;
+    };
+    const std::string label = logicalLabel(node);
+    uint32_t occurrence = 0;
+    for (uint32_t previous = 0; previous < item.index; ++previous) {
+        const auto& other = model.nodes[previous];
+        if (other.kind == node.kind && logicalLabel(other) == label) {
+            ++occurrence;
+        }
+    }
+    return std::format("{}:{}:{}", static_cast<int>(node.kind), label, occurrence);
+}
+
+//======================================================================================================================
+std::optional<uint32_t> findGraphItem(const GraphNodeModel& model, const GraphLayout& layout,
+                                      std::string_view key) {
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        if (graphItemKey(model, layout, index) == key) {
+            return index;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace lmx::app

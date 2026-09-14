@@ -3,6 +3,7 @@
 /// @brief Runs the windowed editor or offscreen screenshot application.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "App/ConsoleLogSink.h"
 #include "App/EditorShell.h"
 #include "App/Model/AppOptions.h"
 #include "App/Model/FrameRecordRing.h"
@@ -26,6 +27,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -87,7 +89,8 @@ float dynamicResolutionBudgetFromEnv() {
 //======================================================================================================================
 // RHI and ImGui objects are scoped inside the lifetime of the SDL-owned Metal layer. Declaration
 // order keeps the device alive until every dependent object has been released.
-int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& options) {
+int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& options,
+        const std::shared_ptr<lmx::app::ConsoleLog>& consoleLog) {
     auto device = lmx::rhi::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
@@ -139,13 +142,14 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     (*renderer)->clearColor[3] = 1.0f;
 
     // EditorShell must release ImGui resources before the renderer and device.
-    auto shell =
-        lmx::app::EditorShell::create(window, **device, sceneLibrary, options.initialScene);
+    auto shell = lmx::app::EditorShell::create(window, **device, sceneLibrary, options.initialScene,
+                                               consoleLog);
     if (!shell) {
         return 1;
     }
 
     shell->primeTemporal(options);
+    shell->actions().configureCapture(lmx::rhi::metal4::captureAvailable());
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
     if (dynamicResolutionBudget > 0.0f) {
@@ -257,7 +261,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         // Resize can drain and replace scene targets, so it precedes the ImGui frame that uses
         // them.
-        shell->applyPendingViewportResize(**device, **renderer);
+        if (!shell->applyPendingViewportResize(**device, **renderer)) {
+            (*device)->waitIdle();
+            return 1;
+        }
 
         // Acquire before ImGui::NewFrame so a dropped drawable cannot leave an open ImGui frame.
         auto target = (*swapchain)->acquireNextTexture();
@@ -276,10 +283,20 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         bool capturingThisFrame = false;
         if (shell->actions().consumeCapture()) {
             capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, capturePath);
+            auto& result = shell->actions().captureResult();
+            std::error_code pathError;
+            result.path = std::filesystem::absolute(capturePath, pathError).string();
+            if (!capturingThisFrame) {
+                result.status = lmx::app::ActionStatus::Failed;
+                result.message = lmx::rhi::metal4::captureFailureReason();
+            } else {
+                result.message = "Capturing GPU work; waiting for completion.";
+            }
         }
 
         // The Metal backend prepares its frame before ImGui builds draw data and RHI encoding
         // begins.
+        shell->prepareUIFrame();
         lmx::rhi::metal4::imguiNewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
@@ -308,8 +325,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         lmx::render::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(),
                                             view, shell->poolingEnabled());
+        shell->observeDeclaration(**renderer, (*device)->frameNumber());
         lmx::render::RenderGraph& graph = frame.graph();
-        const lmx::render::GraphTexture displayColor = frame.displayColor();
+        const lmx::render::GraphTexture displayColor =
+            shell->declareSelection(graph, commands, frame.displayColor(), view, **renderer);
         const lmx::render::GraphTexture drawable =
             graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
 
@@ -336,7 +355,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // Retaining the record it answers with is what lets an observer describe a frame that has
         // already been submitted: the timings of a frame are readable only once it retires, several
         // frames after the declarations that explain them are gone.
-        frameRecords.retain(frame.execute());
+        frameRecords.retain(frame.execute(), shell->frameMetrics(**renderer));
         // The frame's declarations are committed now that execute() has accepted them: the next
         // frame's motion is measured from here. A frame skipped for a missing drawable reaches
         // neither this nor advanceFrameAnimation() above.
@@ -374,6 +393,14 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             // Captured work must complete before the trace document is finalized.
             (*device)->waitIdle();
             lmx::rhi::metal4::endCapture();
+            auto& result = shell->actions().captureResult();
+            std::error_code outputError;
+            const bool written = std::filesystem::is_directory(result.path, outputError);
+            result.status =
+                written ? lmx::app::ActionStatus::Succeeded : lmx::app::ActionStatus::Failed;
+            result.message = written ? "GPU trace written."
+                                     : "Capture completed without an output document. Check the "
+                                       "output path and retry.";
         }
 
         if (maxFrames > 0 && frameIndex >= maxFrames) {
@@ -390,7 +417,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 }
 
 //======================================================================================================================
-int runWindowed(const lmx::app::AppOptions& options) {
+int runWindowed(const lmx::app::AppOptions& options,
+                const std::shared_ptr<lmx::app::ConsoleLog>& consoleLog) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         LMX_LOG_ERROR("SDL_Init failed: {}", SDL_GetError());
         return 1;
@@ -418,7 +446,7 @@ int runWindowed(const lmx::app::AppOptions& options) {
         return 1;
     }
 
-    const int exitCode = run(window, SDL_Metal_GetLayer(view), options);
+    const int exitCode = run(window, SDL_Metal_GetLayer(view), options, consoleLog);
 
     SDL_Metal_DestroyView(view);
     SDL_DestroyWindow(window);
@@ -431,6 +459,8 @@ int runWindowed(const lmx::app::AppOptions& options) {
 //======================================================================================================================
 int main(int argc, char** argv) {
     lmx::log::init();
+    auto consoleLog = std::make_shared<lmx::app::ConsoleLog>();
+    lmx::app::ConsoleLogSink consoleSink(consoleLog);
 
     std::vector<std::string_view> arguments;
     arguments.reserve(static_cast<size_t>(argc > 0 ? argc - 1 : 0));
@@ -453,5 +483,5 @@ int main(int argc, char** argv) {
     if (options->mode == lmx::app::RunMode::CaptureSequence) {
         return lmx::app::runCaptureSequence(*options);
     }
-    return runWindowed(*options);
+    return runWindowed(*options, consoleLog);
 }

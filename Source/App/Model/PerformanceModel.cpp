@@ -5,6 +5,7 @@
 
 #include "App/Model/PerformanceModel.h"
 
+#include <algorithm>
 #include <numeric>
 #include <utility>
 
@@ -12,8 +13,10 @@ namespace lmx::app {
 
 //======================================================================================================================
 void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sample) {
-    // Coherent pause (spec section 10): collection stops entirely while paused, so resuming has
-    // nothing collected-but-unpublished to reconcile against the frozen snapshot.
+    m_elapsedSeconds += deltaSeconds;
+    if (sample != nullptr) {
+        m_lastSeenFrameId = std::max(m_lastSeenFrameId, sample->frameId);
+    }
     if (m_paused) {
         return;
     }
@@ -27,7 +30,8 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
     bool sampleAccepted = false;
     // A zero, repeated, or regressing frame id is ignored in full: neither its pass timings nor
     // its counts, sizes, or transient bytes take effect, matching PassTimingHistory's own rule.
-    if (sample != nullptr && sample->frameId != 0 && sample->frameId > m_lastAcceptedFrameId) {
+    if (sample != nullptr && sample->contextEpoch == m_contextEpoch && sample->frameId != 0 &&
+        sample->frameId > m_lastAcceptedFrameId) {
         scheduleChanged = m_passTimingHistory.addFrame(sample->frameId, sample->timings);
         m_lastAcceptedFrameId = sample->frameId;
         m_objectCount = sample->objectCount;
@@ -36,6 +40,8 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
         m_viewportLogicalHeight = sample->viewportLogicalHeight;
         m_sceneTargetPixelWidth = sample->sceneTargetPixelWidth;
         m_sceneTargetPixelHeight = sample->sceneTargetPixelHeight;
+        m_renderPixelWidth = sample->renderPixelWidth;
+        m_renderPixelHeight = sample->renderPixelHeight;
         m_transientRequestedBytes = sample->transientRequestedBytes;
         m_transientHighWaterBytes = sample->transientHighWaterBytes;
         m_transientAliasSavingsBytes = sample->transientAliasSavingsBytes;
@@ -55,6 +61,19 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
 }
 
 //======================================================================================================================
+void PerformanceModel::setContextEpoch(uint64_t epoch) {
+    if (epoch == m_contextEpoch) {
+        return;
+    }
+    m_contextEpoch = epoch;
+    const PerformanceSnapshot frozen = m_paused ? m_frozen : PerformanceSnapshot{};
+    clearHistory();
+    if (m_paused) {
+        m_frozen = frozen;
+    }
+}
+
+//======================================================================================================================
 void PerformanceModel::setPaused(bool paused) {
     if (paused == m_paused) {
         return;
@@ -64,24 +83,22 @@ void PerformanceModel::setPaused(bool paused) {
         m_frozen = m_live;
         return;
     }
-    // Resume publishes one internally consistent current snapshot immediately rather than waiting
-    // for the next 0.25 s tick, so the panel never shows a stale frozen row beside a live
-    // resolution or memory value.
-    rebuildLiveSnapshot();
-    m_republishAccumulator = 0.0f;
+    clearHistory();
 }
 
 //======================================================================================================================
 void PerformanceModel::clearHistory() {
     m_frameIntervalMsHistory.clear();
     m_passTimingHistory = PassTimingHistory{};
-    m_lastAcceptedFrameId = 0;
+    m_lastAcceptedFrameId = m_lastSeenFrameId;
     m_objectCount = 0;
     m_drawCount = 0;
     m_viewportLogicalWidth = 0;
     m_viewportLogicalHeight = 0;
     m_sceneTargetPixelWidth = 0;
     m_sceneTargetPixelHeight = 0;
+    m_renderPixelWidth = 0;
+    m_renderPixelHeight = 0;
     m_transientRequestedBytes = 0;
     m_transientHighWaterBytes = 0;
     m_transientAliasSavingsBytes = 0;
@@ -118,7 +135,10 @@ void PerformanceModel::rebuildLiveSnapshot() {
         snapshot.timedPassSumMilliseconds += row.averageGpuMilliseconds;
     }
 
-    snapshot.frameId = m_lastAcceptedFrameId;
+    snapshot.frameId = snapshot.passRows.empty() ? 0 : m_lastAcceptedFrameId;
+    snapshot.publishedAtSeconds = m_elapsedSeconds;
+    snapshot.renderPixelWidth = m_renderPixelWidth;
+    snapshot.renderPixelHeight = m_renderPixelHeight;
     snapshot.objectCount = m_objectCount;
     snapshot.drawCount = m_drawCount;
     snapshot.viewportLogicalWidth = m_viewportLogicalWidth;

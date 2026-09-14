@@ -5,8 +5,8 @@
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
 rendering evidence. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
-unstable graph make that capability difficult to inspect. This part defines future outcomes;
-it does not describe shipped improvements.
+unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
+from completed acceptance.
 
 ## Placement and ownership
 
@@ -35,8 +35,8 @@ P2 and P3 are part of completion, not optional polish.
 | P1 | Performance | Readable summaries, meaningful units, labeled plots and a sortable cost table; measurement source, sample window, freshness and unavailable values are explicit |
 | P1 | Inspector | Consistent label/control layout, readable narrow panels and task-oriented settings groups; advanced diagnostics remain available with clear hierarchy |
 | P1 | Status correctness | Requested, effective and available modes are distinct; disabled dependencies explain why; last reset reason/frame stay paired; controller measurements cannot masquerade as current GPU frame time |
-| P1 | Render Graph | Stable live selection/navigation under Native TAA; freeze one coherent frame; fit/navigation controls, readable details and non-overlapping selected cards |
-| P2 | Scene identification | Persistent selector/search, counts, groups and useful source names; explicit hidden selection; Frame selected and a visible bounds/highlight cue |
+| P1 | Render Graph | Stable live selection/navigation under Native TAA; freeze one coherent frame; 4 Hz coherent frame publication, fit/navigation controls, readable details and non-overlapping selected cards |
+| P2 | Scene identification | File-menu catalog loading, persistent search/counts and an indented Hierarchy; explicit hidden selection; Frame selected and a visible-geometry outline |
 | P2 | Diagnostics and labs | Viewport mode name, accurate legend/range/units, return to Final, and concise lab purpose/axis annotations |
 | P2 | Playback and recovery | Discoverable transport, time and step duration; distinguish playback, graph freeze and metric freeze; labeled components/units and per-group reset to defined defaults |
 | P2 | Capture and dump | Availability and reason, pending/result feedback, output path and reveal/copy actions; both menu and keyboard routes report the same outcome |
@@ -85,7 +85,7 @@ All required areas above must pass the following observable tasks on the actual 
 
 Retain before/after screenshots and action/result records outside published source; document
 actual coverage, unresolved defects and evidence limits in the [UX1 milestone record](../milestones/ux1.md),
-which starts as a proposed specification before implementation.
+which records owner acceptance for integration and the limits of automated evidence.
 The original audit's tool limitations require new verification, not inherited passes. Apply the
 [engineering evidence rules](../conventions/engineering.md#validation-evidence) by change risk;
 UI work neither closes historical M6/R1 exceptions nor substitutes for GPU/image validation.
@@ -100,13 +100,16 @@ do not alter rendering algorithms merely to improve a status label.
 Frame selected and a selection cue are included. Full viewport picking, transform gizmos, a
 general Undo/Redo stack, asset browser/database, arbitrary layout-preset management and theme
 editing are deferred. Likewise, side-by-side image comparison and a general event-log product
-are not required. The bounded action feedback and reset behavior above must still ship.
+are not required. The manual review adds a bounded read-only Console for existing logs, with
+filter/copy/clear/freeze, while keeping CLI output. Contextual hover help supplements visible
+status and failure reasons. The bounded action feedback and reset behavior above must still ship.
 
 GPU scene identities/tables remain owned by M7.1. UX1 may expose current source names and
 scene-local identifiers for disambiguation, without presenting them as durable GPU IDs. No
 renderer feature, new backend, HDR/EDR path or broad UI framework replacement expands UX1.
 
-The [design](../specs/2026-09-14-ux1-editor-experience-design.md) specifies interactions and the
-[plan](../plans/2026-09-14-ux1-editor-experience.md) decomposes delivery; neither expands this
-boundary. Keep one executor plan active at a time. Use short-lived outcome branches for the
-documentation and subsequent implementation stages, integrating validated stages in sequence.
+The [implemented design](../specs/2026-09-14-ux1-editor-experience-design.md) records the interaction
+contract. On 2026-09-14 the owner accepted the result after manual review and requested integration
+and PR merge. The executor plan is closed. This acceptance does not turn unverified automated
+gestures or known GPU/image limitations into passes; the [milestone](../milestones/ux1.md) retains
+them. M7.1 is eligible for a separate plan and remains inactive.

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/PassTimingHistory.h"
 #include "RHI/RHI.h"
 
@@ -22,6 +23,7 @@ namespace lmx::app {
 /// itself, so it stays ImGui/SDL/Metal/RHI-backend free.
 struct PerformanceFrameSample {
     uint64_t frameId = 0;                     ///< The device frame number this sample measured.
+    uint64_t contextEpoch = 0;                ///< Scene/mode revision captured at declaration.
     std::span<const rhi::PassTiming> timings; ///< Per-pass GPU times, schedule order.
     uint32_t objectCount = 0;                 ///< Scene object count at this frame.
     uint32_t drawCount = 0;                   ///< Draw-call count at this frame.
@@ -29,6 +31,8 @@ struct PerformanceFrameSample {
     uint32_t viewportLogicalHeight = 0;       ///< Viewport panel size, in ImGui logical points.
     uint32_t sceneTargetPixelWidth = 0;       ///< Scene render target size, in device pixels.
     uint32_t sceneTargetPixelHeight = 0;      ///< Scene render target size, in device pixels.
+    uint32_t renderPixelWidth = 0;            ///< Effective render width before reconstruction.
+    uint32_t renderPixelHeight = 0;           ///< Effective render height before reconstruction.
     uint64_t transientRequestedBytes = 0;     ///< `render::TransientMemory::requested`.
     uint64_t transientHighWaterBytes = 0;     ///< `render::TransientMemory::highWater`.
     uint64_t transientAliasSavingsBytes = 0;  ///< `render::TransientMemory::aliasSavings`.
@@ -61,10 +65,13 @@ struct PerformanceSnapshot {
     uint64_t frameId = 0;     ///< The newest displayed rolling frame's ID; 0 before any sample.
     uint32_t objectCount = 0; ///< Scene object count from the frame the pass rows accompanied.
     uint32_t drawCount = 0;   ///< Draw-call count from the frame the pass rows accompanied.
-    uint32_t viewportLogicalWidth = 0;       ///< Viewport panel size, in ImGui logical points.
-    uint32_t viewportLogicalHeight = 0;      ///< Viewport panel size, in ImGui logical points.
-    uint32_t sceneTargetPixelWidth = 0;      ///< Scene render target size, in device pixels.
-    uint32_t sceneTargetPixelHeight = 0;     ///< Scene render target size, in device pixels.
+    uint32_t viewportLogicalWidth = 0;   ///< Viewport panel size, in ImGui logical points.
+    uint32_t viewportLogicalHeight = 0;  ///< Viewport panel size, in ImGui logical points.
+    uint32_t sceneTargetPixelWidth = 0;  ///< Scene render target size, in device pixels.
+    uint32_t sceneTargetPixelHeight = 0; ///< Scene render target size, in device pixels.
+    uint32_t renderPixelWidth = 0;       ///< Effective render width before reconstruction.
+    uint32_t renderPixelHeight = 0;      ///< Effective render height before reconstruction.
+    double publishedAtSeconds = 0.0; ///< Wall-clock seconds since model creation at publication.
     uint64_t transientRequestedBytes = 0;    ///< Bytes requested by the retained compiled frame.
     uint64_t transientHighWaterBytes = 0;    ///< Bytes its transient heap had to provide.
     uint64_t transientAliasSavingsBytes = 0; ///< Bytes aliasing saved against `requested`.
@@ -87,7 +94,8 @@ public:
     /// Wall-clock frame intervals retained for the rolling plot before the oldest rolls out.
     static constexpr size_t kFrameIntervalCapacity = 120;
     /// Seconds between republished snapshots while running.
-    static constexpr float kRepublishIntervalSeconds = 0.25f;
+    static constexpr float kRepublishIntervalSeconds =
+        static_cast<float>(kDiagnosticRefreshIntervalSeconds);
 
     /// Feeds one App frame. `deltaSeconds` is the frame loop's wall-clock delta and is always
     /// consumed; `sample` is non-null only on a frame that has a newly retired GPU frame to report,
@@ -96,8 +104,13 @@ public:
     /// its pass timings nor its counts, sizes, or transient bytes take effect -- matching
     /// `PassTimingHistory`'s own rule so the two never disagree about which frame is current.
     ///
-    /// While paused this is a no-op: collection stops, so resuming has nothing stale to reconcile.
+    /// While paused collection stops; only time and the newest seen frame ID advance privately,
+    /// so resuming can wait for a new sample instead of accepting an old retired frame.
     void tick(float deltaSeconds, const PerformanceFrameSample* sample);
+
+    /// Selects the App's current scene/mode revision. Changing revision clears live metrics and
+    /// rejects older-context retirements while preserving an independently frozen display.
+    void setContextEpoch(uint64_t epoch);
 
     /// The current display snapshot: the frozen one while paused, the latest published one while
     /// running.
@@ -106,10 +119,8 @@ public:
     /// Whether the model is currently paused.
     bool paused() const { return m_paused; }
 
-    /// Pausing freezes the currently published snapshot; every subsequent `tick()` is ignored until
-    /// resumed. Resuming immediately republishes one internally consistent current snapshot rather
-    /// than waiting for the next 0.25 s tick, so the panel never has to show a stale frozen row
-    /// beside a live resolution or memory value.
+    /// Freezes the complete published snapshot. Resume clears both histories and reports waiting
+    /// until a newer retired sample arrives; neither operation pauses scene playback.
     void setPaused(bool paused);
 
     /// Empties the frame-interval and pass-timing history together and republishes immediately, so
@@ -124,6 +135,9 @@ private:
     bool m_paused = false;
     float m_republishAccumulator = 0.0f;
     uint64_t m_lastAcceptedFrameId = 0;
+    uint64_t m_lastSeenFrameId = 0;
+    uint64_t m_contextEpoch = 0;
+    double m_elapsedSeconds = 0.0;
 
     std::vector<float> m_frameIntervalMsHistory;
     PassTimingHistory m_passTimingHistory;
@@ -136,6 +150,8 @@ private:
     uint32_t m_viewportLogicalHeight = 0;
     uint32_t m_sceneTargetPixelWidth = 0;
     uint32_t m_sceneTargetPixelHeight = 0;
+    uint32_t m_renderPixelWidth = 0;
+    uint32_t m_renderPixelHeight = 0;
     uint64_t m_transientRequestedBytes = 0;
     uint64_t m_transientHighWaterBytes = 0;
     uint64_t m_transientAliasSavingsBytes = 0;

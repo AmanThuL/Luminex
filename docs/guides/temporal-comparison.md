@@ -17,9 +17,14 @@ xmake run App --scene san-miguel
 
 The scene uses the archive's realtime variant, imported at its authored metre scale, with diffuse
 alpha cutouts, two-sided foliage, tangent-space normal maps and a deterministic 12-second camera
-rail. In the Rendering Inspector, enable playback and Follow camera track for repeatable movement.
-Select Raw, Native TAA or MetalFX Temporal and compare the same render scale; scale 0.5 makes the
-reconstruction work easier to inspect. Keep dynamic resolution off for a controlled comparison.
+rail. In the Viewport transport, use Play scene and Follow camera rail for repeatable movement.
+Pause scene fixes playback time; Step 1/60 s pauses and advances one step, while Reset time rewinds
+the scene. Freeze metrics and Freeze graph leave playback independent. In Rendering >
+Reconstruction, select Raw, Native TAA or MetalFX Temporal and verify the effective algorithm and
+any fallback reason. In Resolution, compare the same render scale; scale 0.5 makes reconstruction
+work easier to inspect. Keep dynamic resolution off for a controlled comparison. Active diagnostic
+views show a shader-derived legend and Return to Final in Viewport; Raw-mode placeholders are
+identified explicitly rather than presented as native accumulation measurements.
 
 The archive is from [Morgan McGuire's Computer Graphics Archive](https://casual-effects.com/data/).
 Guillermo M. Leal Llaguno authored it; the archive credits improvements to Morgan McGuire, Guedis

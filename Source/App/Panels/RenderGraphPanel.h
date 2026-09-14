@@ -4,8 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/ActionResult.h"
 #include "App/Model/GraphLayout.h"
+#include "App/Model/GraphSnapshot.h"
 
 #include <cstdint>
 #include <memory>
@@ -78,6 +79,16 @@ struct RenderGraphPanelState {
     /// number being typed -- because adopting each intermediate value would relayout the picture
     /// and drop the dragged positions and the selection with it. Zero, the default, is no wrap.
     int columnsEdit = 0;
+    GraphSnapshot snapshot;  ///< Owns the 4 Hz publication or frozen record and matched timings.
+    ActionResult dumpResult; ///< Last dump outcome, retained until another dump or dismissal.
+    std::optional<render::CompiledFrameRecord>
+        dumpPending;             ///< Exact clicked record awaiting write.
+    std::string selectedKey;     ///< Logical selection identity across topology updates.
+    std::string selectionNotice; ///< Explains a selection invalidated by a topology update.
+    int navigation = 0; ///< One-shot request: 1 fits graph, 2 fits selection, 3 restores 100%.
+    bool navigateAfterLayout = true; ///< Initial/reset layouts frame their leading columns.
+    /// Last global font/control scale drawn. Changes remeasure cards once without changing zoom.
+    float appliedUiScale = 0.0f;
 };
 
 /// Destroys the node-editor context and clears the canvas state, leaving `state` reusable.
@@ -86,7 +97,8 @@ struct RenderGraphPanelState {
 /// which for the shell means immediately before `ImGui::DestroyContext()`.
 void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 
-/// Draws the Render Graph panel over the newest retained frame whose GPU timings have retired and
+/// Draws the Render Graph panel over its owned 4 Hz publication of the newest retained frame with
+/// retired GPU timings. First data and Resume publish immediately. The record and timings are
 /// joined by frame ID: the compiled frame as a node canvas on the left, and a details pane scoped
 /// to the selected item on the right, under a header row carrying the frame identity, its transient
 /// totals, a button that dumps that same record to a file next to the binary, a layout reset, and
@@ -94,14 +106,14 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 /// the window's close button, and equally the OS window's, exactly as `ImGui::Begin` writes it.
 ///
 /// A stage of passes draws as one group node until it is double-clicked open, and a pin carries a
-/// short label until it is hovered or its item is selected, so what the canvas shows is the frame's
-/// exact shape at the level of detail the user asked for.
+/// compact label with its full name available on hover and in details, so the canvas shows the
+/// frame's exact shape at the level of detail the user asked for.
 ///
 /// This is the exact compiled shape of one frame, not a rolling summary, and it says so when no
 /// frame has retired yet -- true for the first few frames of a run, and not an error. No editor
 /// context is created until a frame has retired.
 ///
-/// This panel's time domain is the exact newest retired frame, independent of Performance pause.
+/// This panel's time domain is one published exact retired frame, independent of Performance pause.
 void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
                           const FrameRecordRing& frameRecords);
 

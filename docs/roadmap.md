@@ -21,15 +21,15 @@ shared GPU scene data and its consumers. Foundation completion supplies those co
 [interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
 approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
-The next scheduled work is [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics),
-followed by M7.1. This accepted delivery order preserves gate B's technical approval.
+[UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
+M7.1 is next and remains inactive pending its own plan; gate B's technical approval is preserved.
 
 ## Current baseline
 
 The shipped baseline is [M6.5](milestones/m6.5.md): explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
-runs remain intact, and the drift is not fixed. No executor plan is active.
+runs remain intact, and the drift is not fixed. UX1 adds the accepted editor experience; no executor plan is active.
 
 This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
 masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
@@ -57,11 +57,10 @@ validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
 [Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
 under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 [editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
-Its [milestone specification](milestones/ux1.md),
-[design](specs/2026-09-14-ux1-editor-experience-design.md) and
-[implementation plan](plans/2026-09-14-ux1-editor-experience.md) are proposed; implementation has
-not started. M7.1 remains technically eligible and awaits UX1 completion in the accepted delivery
-order, then its own implementation plan; no GPU-scene or GPU-visibility path is adopted yet.
+The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the owner's acceptance
+after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
+is implemented and its executor plan is closed. M7.1 is eligible for its own implementation plan;
+no GPU-scene or GPU-visibility path is adopted yet.
 
 ## Project direction and delivery
 

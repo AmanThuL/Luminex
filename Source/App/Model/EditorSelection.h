@@ -85,16 +85,39 @@ struct EditorSelectionRow {
     size_t index = 0;                            ///< DirectionalLight/Object index; else 0.
     std::string displayLabel;                    ///< Text the panel draws for the row.
     EditorSelectionGroup group = EditorSelectionGroup::Workspace; ///< Which header it draws under.
+    /// Full source-qualified name for search, hover and copy; empty when the short label suffices.
+    std::string detailLabel;
+    std::string sourceGroup; ///< Optional imported source navigation group; no parent transform.
 };
+
+/// Authored name with a scene-local object suffix for duplicate names; unnamed objects always get
+/// a deterministic `Unnamed object [N]` label. An out-of-range index returns `Unavailable object`.
+std::string sceneObjectLabel(const scene::Scene& scene, size_t index);
+
+/// Whether a resolved selected subject is hidden by the current case-insensitive name filter.
+/// Filtering never clears the selection; Inspector can keep showing it with an explicit notice.
+bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& selection,
+                             std::string_view filter);
 
 /// Builds the Scene panel's rows for `scene` in the spec's fixed order -- Editor Camera, Rendering,
 /// the three directional lights in index order, then `scene.objects` in scene order -- then drops
-/// rows whose `displayLabel` does not contain `filter` case-insensitively. An empty `filter` keeps
-/// every row; a filter matching nothing returns an empty vector rather than an error state.
-/// Duplicate object names still produce distinct rows: subject kind plus index, not label text,
-/// identifies a row. Never mutates `scene`.
+/// rows whose visible or full source-qualified label does not contain `filter` case-insensitively.
+/// An empty `filter` keeps every row; a filter matching nothing returns an empty vector rather than
+/// an error state. Duplicate object names still produce distinct rows: subject kind plus index, not
+/// label text, identifies a row. Never mutates `scene`.
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter);
+
+/// Objects grouped for navigation in first-source encounter order. An empty source label means
+/// leaves can draw directly under Objects. Rows preserve their scene-local selection indices.
+struct EditorObjectGroup {
+    std::string sourceName;               ///< Authored source label, or empty for ungrouped leaves.
+    std::vector<EditorSelectionRow> rows; ///< Object leaves in original encounter order.
+};
+
+/// Groups only object rows, merging repeated source groups without merging their subjects. Group
+/// order follows first encounter and is deterministic; filtered rows retain their source group.
+std::vector<EditorObjectGroup> groupSceneObjectRows(std::span<const EditorSelectionRow> rows);
 
 /// The row keyboard Down should select, continuing from `current` over `rows` (already filtered, in
 /// display order). When `current` names no visible row -- filtered out, or nothing selected yet --

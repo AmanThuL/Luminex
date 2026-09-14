@@ -24,12 +24,14 @@ struct DynamicResolutionState {
     /// off->on edge of that state can be told apart from "still active" and the controller is
     /// seeded exactly once per enable.
     bool wasEnabled = false;
-    /// The frame number `observe()` was last called with, so a newest-timed frame that has not
-    /// advanced since the last call is not judged twice.
+    /// Latest timing publication consumed or skipped while inactive, so an idle or duplicate
+    /// sample cannot later drive the controller. This is not the last measurement's frame.
     uint64_t lastObservedFrame = 0;
     /// The GPU time the controller last judged, in milliseconds, for the Inspector's status row.
     /// Left unchanged when no new frame is observed.
     double lastObservedMilliseconds = 0.0;
+    /// Frame paired with lastObservedMilliseconds; zero until the controller observes a sample.
+    uint64_t lastMeasurementFrame = 0;
 };
 
 /// Whether the dynamic-resolution controller is driving this frame: dynamic resolution is on and

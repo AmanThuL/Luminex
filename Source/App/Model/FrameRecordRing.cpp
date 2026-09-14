@@ -10,11 +10,15 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void FrameRecordRing::retain(render::CompiledFrameRecord record) {
+void FrameRecordRing::retain(render::CompiledFrameRecord record,
+                             std::optional<FrameMetricsMetadata> metrics) {
     if (m_frames.size() == kCapacity) {
         m_frames.erase(m_frames.begin());
     }
-    m_frames.push_back({.record = std::move(record), .timings = {}, .timed = false});
+    m_frames.push_back({.record = std::move(record),
+                        .timings = {},
+                        .metrics = std::move(metrics),
+                        .timed = false});
 }
 
 //======================================================================================================================

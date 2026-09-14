@@ -130,3 +130,47 @@ TEST_CASE("independent intents do not interfere with each other", "[app]") {
     REQUIRE(actions.consumeResetLayout());
     REQUIRE_FALSE(actions.resetLayoutPending());
 }
+
+//======================================================================================================================
+TEST_CASE("capture availability and result lifecycle are shared by action routes", "[app]") {
+    EditorActions actions;
+    actions.configureCapture(false);
+    actions.requestCapture();
+    REQUIRE_FALSE(actions.consumeCapture());
+    REQUIRE(actions.captureResult().status == ActionStatus::Unavailable);
+    REQUIRE(actions.captureResult().message.find("MTL_CAPTURE_ENABLED=1") != std::string::npos);
+    actions.configureCapture(true);
+    actions.requestCapture();
+    REQUIRE(actions.captureResult().status == ActionStatus::Pending);
+    REQUIRE(actions.consumeCapture());
+    actions.requestCapture();
+    REQUIRE_FALSE(actions.consumeCapture());
+    actions.captureResult() = {ActionStatus::Failed, "Permission denied", "/capture.gputrace"};
+    actions.requestCapture();
+    REQUIRE(actions.consumeCapture());
+    actions.captureResult() = {ActionStatus::Succeeded, "GPU trace written", "/capture.gputrace"};
+    REQUIRE(actions.captureResult().path == "/capture.gputrace");
+}
+
+//======================================================================================================================
+TEST_CASE("dismissing capture feedback preserves the operation and a new request restores it",
+          "[app]") {
+    EditorActions actions;
+    actions.configureCapture(true);
+    actions.requestCapture();
+    REQUIRE(actions.captureFeedbackVisible());
+    actions.dismissCaptureFeedback();
+    REQUIRE_FALSE(actions.captureFeedbackVisible());
+    REQUIRE(actions.captureResult().status == ActionStatus::Pending);
+    REQUIRE(actions.consumeCapture());
+    actions.captureResult() = {ActionStatus::Succeeded, "Saved", "/frame.gputrace"};
+    actions.requestCapture();
+    REQUIRE(actions.captureFeedbackVisible());
+    REQUIRE(actions.captureResult().status == ActionStatus::Pending);
+    actions.configureCapture(false);
+    actions.dismissCaptureFeedback();
+    actions.requestCapture();
+    REQUIRE(actions.captureFeedbackVisible());
+    REQUIRE(actions.captureResult().status == ActionStatus::Unavailable);
+    REQUIRE_FALSE(actions.consumeCapture());
+}

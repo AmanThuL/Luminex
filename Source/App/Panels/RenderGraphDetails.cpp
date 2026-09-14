@@ -6,6 +6,7 @@
 #include "App/Panels/RenderGraphPanelInternal.h"
 
 #include "App/Model/GraphInspectorModel.h"
+#include "App/Panels/EditorStyle.h"
 
 #include <imgui.h>
 
@@ -58,13 +59,22 @@ void drawUseRows(const std::vector<GraphInspectorUseRow>& uses) {
         ImGui::TextDisabled("none");
         return;
     }
-    for (const GraphInspectorUseRow& use : uses) {
-        std::string line = std::format("{} r{} \"{}\" v{}", render::roleName(use.role),
-                                       use.resource, use.resourceName, use.version);
+    for (size_t index = 0; index < uses.size(); ++index) {
+        const auto& use = uses[index];
+        ImGui::PushID(static_cast<int>(index));
+        ImGui::TextWrapped("%s", use.resourceName.c_str());
+        ImGui::Text("Resource r%u | version %u | %s", use.resource, use.version,
+                    render::roleName(use.role).data());
         if (!use.rangeText.empty()) {
-            line += std::format(" {}", use.rangeText);
+            ImGui::TextWrapped("%s", use.rangeText.c_str());
         }
-        ImGui::TextUnformatted(line.c_str());
+        if (ImGui::SmallButton("Copy resource")) {
+            const auto value = std::format("r{} \"{}\" v{} {} {}", use.resource, use.resourceName,
+                                           use.version, render::roleName(use.role), use.rangeText);
+            ImGui::SetClipboardText(value.c_str());
+        }
+        ImGui::Separator();
+        ImGui::PopID();
     }
 }
 
@@ -125,7 +135,7 @@ void drawPassDetails(const GraphNode& node) {
     if (node.gpuMilliseconds) {
         ImGui::Text("GPU %.3f ms", *node.gpuMilliseconds);
     } else {
-        ImGui::TextDisabled("GPU unmeasured");
+        ImGui::TextDisabled("GPU N/A (no matched timing)");
     }
 
     ImGui::SeparatorText("Uses");
@@ -169,13 +179,14 @@ void drawGroupDetails(const GraphNodeModel& model, const GraphLayoutGroup& group
         ImGui::Text("GPU %.3f ms over %u measured", *group.gpuMillisecondsSum,
                     group.measuredMembers);
     } else {
-        ImGui::TextDisabled("GPU unmeasured");
+        ImGui::TextDisabled("GPU N/A (no matched timing)");
     }
     // A group item is drawn only while its stage is folded -- an open stage draws its members
     // instead -- so the only act this pane can offer here is opening it.
     if (ImGui::Button("Expand")) {
         toggleGroupExpansion(options, group.key);
     }
+    editorTooltip("Show every pass in this stage. Double-clicking its graph card does the same.");
 
     ImGui::SeparatorText("Members");
     if (!ImGui::BeginTable("members", 3,
@@ -233,6 +244,8 @@ void drawMemberStageSection(const GraphLayoutGroup& group, GraphLayoutOptions& o
     if (ImGui::Button(std::format("Collapse {}", group.stage).c_str())) {
         toggleGroupExpansion(options, group.key);
     }
+    editorTooltip(
+        "Fold this stage into one card while retaining its boundary resource connections.");
 }
 
 } // namespace
