@@ -2,24 +2,27 @@
 
 **Status**: Accepted
 
-This entry and its three parts jointly own current milestone identifiers, boundaries, dependencies,
+This entry and its four parts jointly own current milestone identifiers, boundaries, dependencies,
 outcomes, gates and deferrals. Each boundary is defined in one part; frozen research preserves
 its supporting evidence. Starting a milestone requires an `In progress` plan under `docs/plans/`
 that decomposes the accepted boundary without expanding it.
 
-## Three parts
+## Four parts
 
 | Part | Scope | Purpose |
 |---|---|---|
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-refactoring.md) | R1 between M6.5 and gate B; later R milestones | Restructure modules and large units between rendering milestones without changing output |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
 shared GPU scene data and its consumers. Foundation completion supplies those contracts;
 [interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
 approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
+The next scheduled work is [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics),
+followed by M7.1. This accepted delivery order preserves gate B's technical approval.
 
 ## Current baseline
 
@@ -52,8 +55,12 @@ build/shader groups. The owner accepted its
 remains failed and unexplained, with no outstanding integration blocker or relaxation of later
 validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
 [Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
-under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). M7.1 awaits its own implementation
-plan; no GPU-scene or GPU-visibility path is adopted yet.
+under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
+[editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
+Its [design](specs/2026-09-14-ux1-editor-experience-design.md) and
+[implementation plan](plans/2026-09-14-ux1-editor-experience.md) are proposed; implementation has
+not started. M7.1 remains technically eligible and awaits UX1 completion in the accepted delivery
+order, then its own implementation plan; no GPU-scene or GPU-visibility path is adopted yet.
 
 ## Project direction and delivery
 
@@ -76,7 +83,9 @@ Each milestone has one recognizable completion outcome. Use a few independently 
 implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
 M6's five slices and M7's four are fixed in Parts I and II; M8–M11 retain bounded work areas
 until planned. R milestones in Part III restructure code between rendering milestones and add no
-rendering scope. Stated prerequisites, rather than numerical order, determine entry. Only one
+rendering scope. Part IV owns editor experience and its completion criteria independently of the
+rendering and structural milestones. Stated prerequisites and accepted delivery order, rather than
+numerical order, determine entry. Only one
 implementation plan is active at a time; independent entry does not start another plan.
 
 Every rendering slice includes a diagnostic fixture, relevant intermediate views, deterministic
