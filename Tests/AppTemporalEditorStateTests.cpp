@@ -101,3 +101,95 @@ TEST_CASE(
         REQUIRE(clampTemporalDebugView(view, render::ReconstructionMode::VendorTemporal) == view);
     }
 }
+
+//======================================================================================================================
+TEST_CASE("editor preserves the paired last reset event across normal frames", "[app]") {
+    TemporalEditorState state;
+    EditorRenderSettings settings;
+    render::TemporalStatus status;
+    status.lastReset = render::HistoryResetReason::CameraCut;
+    status.lastResetFrame = 12;
+    observeDeclaredTemporal(state, settings, status, 15);
+    status.lastReset = render::HistoryResetReason::None;
+    observeDeclaredTemporal(state, settings, status, 16);
+    CHECK(state.lastResetReason == render::HistoryResetReason::CameraCut);
+    CHECK(state.lastResetFrame == 12);
+    CHECK(status.lastReset == render::HistoryResetReason::None);
+}
+
+//======================================================================================================================
+TEST_CASE("temporal off retains requests while presenting full resolution and no history",
+          "[app]") {
+    TemporalEditorState state;
+    EditorRenderSettings settings;
+    settings.temporalEnabled = false;
+    settings.reconstruction = render::ReconstructionMode::VendorTemporal;
+    settings.renderScale = 0.5f;
+    settings.dynamicResolutionEnabled = true;
+    render::TemporalStatus status;
+    status.reconstruction = render::ReconstructionMode::VendorTemporal;
+    status.renderScale = 0.5f;
+    observeDeclaredTemporal(state, settings, status, 1);
+    const auto presentation = temporalPresentation(state, settings, status, {}, 1920, 1080);
+    CHECK(presentation.effectiveName == "Off");
+    CHECK_FALSE(presentation.temporalActive);
+    CHECK(presentation.effectiveScale == 1.0f);
+    CHECK(presentation.extents.renderWidth == 1920);
+    CHECK(presentation.extents.renderHeight == 1080);
+    CHECK(settings.renderScale == 0.5f);
+    CHECK(settings.dynamicResolutionEnabled);
+    CHECK(settings.reconstruction == render::ReconstructionMode::VendorTemporal);
+}
+
+//======================================================================================================================
+TEST_CASE("vendor fallback keeps requested and effective algorithms distinct", "[app]") {
+    TemporalEditorState state;
+    EditorRenderSettings settings;
+    settings.reconstruction = render::ReconstructionMode::VendorTemporal;
+    render::TemporalStatus status;
+    status.reconstruction = render::ReconstructionMode::NativeTaa;
+    status.vendorFallback = render::VendorFallback::CreationFailed;
+    const rhi::TemporalScalerSupport support{.available = true, .name = "Test Temporal"};
+    observeDeclaredTemporal(state, settings, status, 1);
+    auto presentation = temporalPresentation(state, settings, status, support, 1280, 720);
+    CHECK(presentation.requestedName == "Test Temporal");
+    CHECK(presentation.effectiveName == "Native TAA");
+    CHECK_FALSE(presentation.fallbackReason.empty());
+    settings.reconstruction = render::ReconstructionMode::Raw;
+    presentation = temporalPresentation(state, settings, status, support, 1280, 720);
+    CHECK(presentation.waitingForDeclaration);
+    CHECK(presentation.effectiveName == "Waiting for declaration");
+    CHECK(presentation.fallbackReason.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("live telemetry distinguishes waiting from measured zero and invalidates scene or mode",
+          "[app]") {
+    TemporalEditorState state;
+    EditorRenderSettings settings;
+    render::TemporalStatus status;
+    observeDeclaredTemporal(state, settings, status, 10);
+    CHECK_FALSE(state.liveTimedPassSumMilliseconds.has_value());
+    RetainedFrame frame;
+    frame.record.frameId = 9;
+    frame.timed = true;
+    observeRetiredTemporal(state, &frame);
+    CHECK_FALSE(state.liveTimedPassSumMilliseconds.has_value());
+    frame.record.frameId = 10;
+    observeRetiredTemporal(state, &frame);
+    REQUIRE(state.liveTimedPassSumMilliseconds.has_value());
+    CHECK(*state.liveTimedPassSumMilliseconds == 0.0);
+    CHECK(state.liveMeasurementFrame == 10);
+    settings.temporalEnabled = false;
+    observeDeclaredTemporal(state, settings, status, 11);
+    observeRetiredTemporal(state, &frame);
+    CHECK_FALSE(state.liveTimedPassSumMilliseconds.has_value());
+    frame.record.frameId = 11;
+    observeRetiredTemporal(state, &frame);
+    CHECK(state.liveTimedPassSumMilliseconds.has_value());
+    onSceneSelected(state, settings, scene::defaultSceneId());
+    CHECK_FALSE(state.liveTimedPassSumMilliseconds.has_value());
+    observeDeclaredTemporal(state, settings, status, 12);
+    observeRetiredTemporal(state, &frame);
+    CHECK_FALSE(state.liveTimedPassSumMilliseconds.has_value());
+}

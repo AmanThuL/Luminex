@@ -159,6 +159,12 @@ struct CardTitle {
 };
 
 //======================================================================================================================
+// FontScaleMain is the global UI preference; the node editor applies its own zoom separately.
+float scaled(float baseLength) {
+    return baseLength * ImGui::GetStyle().FontScaleMain;
+}
+
+//======================================================================================================================
 // A node item keeps the identity of the node it draws and a group item takes an id above every node
 // index, so one id space carries both and a group can never be mistaken for a node.
 uintptr_t itemIdValue(const GraphLayout& layout, uint32_t itemIndex) {
@@ -324,7 +330,7 @@ float pinColumnWidth(const std::vector<GraphLayoutPin>& pins, bool fullLabels) {
     for (const GraphLayoutPin& pin : pins) {
         widest = std::max(widest, ImGui::CalcTextSize(pinText(pin, fullLabels).c_str()).x);
     }
-    return kPinDotRadius + kPinLabelGap + widest;
+    return scaled(kPinDotRadius) + scaled(kPinLabelGap) + widest;
 }
 
 //======================================================================================================================
@@ -352,21 +358,22 @@ void drawPin(const GraphLayoutPin& pin, ed::PinId id, ed::PinKind kind, float ed
     ed::PinPivotRect(dot, dot);
     if (kind == ed::PinKind::Input) {
         ImGui::SetCursorScreenPos(ImVec2(edgeX, rowY));
-        ImGui::Dummy(ImVec2(kPinDotRadius + kPinLabelGap, lineHeight));
+        ImGui::Dummy(ImVec2(scaled(kPinDotRadius) + scaled(kPinLabelGap), lineHeight));
         ImGui::SameLine(0.0f, 0.0f);
         ImGui::TextUnformatted(text.c_str());
     } else {
         const float width = ImGui::CalcTextSize(text.c_str()).x;
-        ImGui::SetCursorScreenPos(ImVec2(edgeX - kPinDotRadius - kPinLabelGap - width, rowY));
+        ImGui::SetCursorScreenPos(
+            ImVec2(edgeX - scaled(kPinDotRadius) - scaled(kPinLabelGap) - width, rowY));
         ImGui::TextUnformatted(text.c_str());
         ImGui::SameLine(0.0f, 0.0f);
-        ImGui::Dummy(ImVec2(kPinLabelGap + kPinDotRadius, lineHeight));
+        ImGui::Dummy(ImVec2(scaled(kPinLabelGap) + scaled(kPinDotRadius), lineHeight));
     }
     ed::EndPin();
-    if (ImGui::IsItemHovered()) {
+    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         hoveredLabel = pin.label;
     }
-    ImGui::GetWindowDrawList()->AddCircleFilled(dot, kPinDotRadius, ImColor(accent));
+    ImGui::GetWindowDrawList()->AddCircleFilled(dot, scaled(kPinDotRadius), ImColor(accent));
 }
 
 //======================================================================================================================
@@ -380,11 +387,12 @@ void addDashedLine(ImDrawList* drawList, const ImVec2& from, const ImVec2& to, I
         return;
     }
     const ImVec2 step{delta.x / length, delta.y / length};
-    for (float travelled = 0.0f; travelled < length; travelled += kDashLength + kDashGap) {
-        const float end = std::min(travelled + kDashLength, length);
+    for (float travelled = 0.0f; travelled < length;
+         travelled += scaled(kDashLength) + scaled(kDashGap)) {
+        const float end = std::min(travelled + scaled(kDashLength), length);
         drawList->AddLine(ImVec2(from.x + step.x * travelled, from.y + step.y * travelled),
                           ImVec2(from.x + step.x * end, from.y + step.y * end), color,
-                          kDashThickness);
+                          scaled(kDashThickness));
     }
 }
 
@@ -400,7 +408,7 @@ void addDashedRect(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, I
 // One card, whether it draws one declaration or a folded stage: a title band in the kind's colour
 // across the full width, then a body with the versions arriving down the left edge and the versions
 // leaving down the right. Its width is measured from the text this frame actually puts in it, so
-// expanding a selection's labels widens exactly those cards.
+// selection does not change card geometry; details retain complete physical labels.
 //
 // The editor's node padding is zero for the whole canvas, so the cursor at BeginNode is the card's
 // top-left corner and the title band and the pin dots can be placed against the card's own edges.
@@ -415,12 +423,12 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     const CardTitle title = isGroup ? groupTitleText(layout.groups[item.index])
                                     : nodeTitleText(model.nodes[item.index]);
     const float rightWidth = ImGui::CalcTextSize(title.right.c_str()).x;
-    const float titleWidth =
-        kTitlePadX * 2.0f + ImGui::CalcTextSize(title.left.c_str()).x + kTitleGap + rightWidth;
+    const float titleWidth = scaled(kTitlePadX) * 2.0f + ImGui::CalcTextSize(title.left.c_str()).x +
+                             scaled(kTitleGap) + rightWidth;
     const float inputsWidth = pinColumnWidth(item.inputs, fullLabels);
     const float outputsWidth = pinColumnWidth(item.outputs, fullLabels);
-    const float cardWidth =
-        std::max({kCardMinWidth, titleWidth, inputsWidth + kColumnInnerGap + outputsWidth});
+    const float cardWidth = std::max(
+        {scaled(kCardMinWidth), titleWidth, inputsWidth + scaled(kColumnInnerGap) + outputsWidth});
 
     const uintptr_t itemId = itemIdValue(layout, itemIndex);
     ed::PushStyleColor(ed::StyleColor_NodeBorder, style.border);
@@ -430,17 +438,19 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     // with zero node padding this origin is the card's own top-left corner.
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     const float lineHeight = ImGui::GetTextLineHeight();
-    const float titleHeight = lineHeight + kTitlePadY * 2.0f;
+    const float titleHeight = lineHeight + scaled(kTitlePadY) * 2.0f;
     ImDrawList* drawList = ImGui::GetWindowDrawList();
     drawList->AddRectFilled(origin, ImVec2(origin.x + cardWidth, origin.y + titleHeight),
-                            ImColor(style.title), kCardRounding, ImDrawFlags_RoundCornersTop);
-    drawList->AddText(ImVec2(origin.x + kTitlePadX, origin.y + kTitlePadY), style.titleText,
-                      title.left.c_str());
-    drawList->AddText(ImVec2(origin.x + cardWidth - kTitlePadX - rightWidth, origin.y + kTitlePadY),
+                            ImColor(style.title), scaled(kCardRounding),
+                            ImDrawFlags_RoundCornersTop);
+    drawList->AddText(ImVec2(origin.x + scaled(kTitlePadX), origin.y + scaled(kTitlePadY)),
+                      style.titleText, title.left.c_str());
+    drawList->AddText(ImVec2(origin.x + cardWidth - scaled(kTitlePadX) - rightWidth,
+                             origin.y + scaled(kTitlePadY)),
                       style.titleText, title.right.c_str());
     ImGui::Dummy(ImVec2(cardWidth, titleHeight));
 
-    const float pinsTop = origin.y + titleHeight + kBodyPadY;
+    const float pinsTop = origin.y + titleHeight + scaled(kBodyPadY);
     float bodyBottom = pinsTop;
     if (!item.inputs.empty()) {
         ImGui::SetCursorScreenPos(ImVec2(origin.x, pinsTop));
@@ -467,7 +477,7 @@ void drawItem(const GraphNodeModel& model, const GraphLayout& layout, uint32_t i
     // A pinless card would otherwise be a title band with nothing under it, and every card needs a
     // body deep enough for the bottom rounding to read.
     ImGui::SetCursorScreenPos(ImVec2(origin.x, bodyBottom));
-    ImGui::Dummy(ImVec2(cardWidth, kBodyBottomPad));
+    ImGui::Dummy(ImVec2(cardWidth, scaled(kBodyBottomPad)));
 
     ed::EndNode();
     ed::PopStyleColor();
@@ -499,10 +509,10 @@ void drawItemOverlays(const GraphNodeModel& model, const GraphLayout& layout) {
         }
         const float middle = position.y + size.y * 0.5f;
         const ImVec4 accent = nodeAccentColor(model.nodes[item.index]);
-        drawList->AddTriangleFilled(ImVec2(position.x + size.x, middle - kSinkMarkerHalfHeight),
-                                    ImVec2(position.x + size.x + kSinkMarkerLength, middle),
-                                    ImVec2(position.x + size.x, middle + kSinkMarkerHalfHeight),
-                                    ImColor(accent));
+        drawList->AddTriangleFilled(
+            ImVec2(position.x + size.x, middle - scaled(kSinkMarkerHalfHeight)),
+            ImVec2(position.x + size.x + scaled(kSinkMarkerLength), middle),
+            ImVec2(position.x + size.x, middle + scaled(kSinkMarkerHalfHeight)), ImColor(accent));
     }
 
     for (const GraphLayoutAliasLink& link : layout.aliasLinks) {
@@ -545,35 +555,16 @@ void applyDoubleClick(const GraphLayout& layout, GraphLayoutOptions& options) {
 }
 
 //======================================================================================================================
-// The items whose pins spell their versions out in full: the selected one and everything a visible
-// edge joins it to, which is exactly the neighbourhood a reader is checking when they select a box.
-std::vector<bool> fullLabelItems(const GraphLayout& layout, std::optional<uint32_t> selectedItem) {
-    std::vector<bool> full(layout.items.size(), false);
-    if (!selectedItem || *selectedItem >= layout.items.size()) {
-        return full;
-    }
-    full[*selectedItem] = true;
-    for (const GraphLayoutEdge& edge : layout.edges) {
-        if (edge.fromItem == *selectedItem) {
-            full[edge.toItem] = true;
-        }
-        if (edge.toItem == *selectedItem) {
-            full[edge.fromItem] = true;
-        }
-    }
-    return full;
-}
-
-//======================================================================================================================
 // The coarse grid a picture is drawn at once, so that every card reports a size the measured pass
 // can then place it from. Overlap here is harmless: nothing is read off these positions.
 void applyProvisionalPositions(const GraphLayout& layout) {
     for (uint32_t index = 0; index < layout.items.size(); ++index) {
         const GraphLayoutItem& item = layout.items[index];
-        ed::SetNodePosition(itemNodeId(layout, index),
-                            ImVec2(static_cast<float>(item.column) * kProvisionalColumnPitch,
-                                   static_cast<float>(item.row) * kProvisionalRowPitch +
-                                       static_cast<float>(item.rank) * kProvisionalRankPitch));
+        ed::SetNodePosition(
+            itemNodeId(layout, index),
+            ImVec2(static_cast<float>(item.column) * scaled(kProvisionalColumnPitch),
+                   static_cast<float>(item.row) * scaled(kProvisionalRowPitch) +
+                       static_cast<float>(item.rank) * scaled(kProvisionalRankPitch)));
     }
 }
 
@@ -617,21 +608,23 @@ bool applyMeasuredPositions(const GraphLayout& layout, MeasuredColumns& columns)
 
     std::vector<float> columnX(columnCount, 0.0f);
     for (uint32_t column = 1; column < columnCount; ++column) {
-        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + kColumnGap;
+        columnX[column] = columnX[column - 1] + columnWidth[column - 1] + scaled(kColumnGap);
     }
     std::vector<float> rowY(rowCount, 0.0f);
     for (uint32_t row = 1; row < rowCount; ++row) {
         const float height =
-            static_cast<float>(rowRanks[row - 1]) * (rowCardHeight[row - 1] + kRankGap);
-        rowY[row] = rowY[row - 1] + height + (rowIsBand[row] ? kCulledBandGap : kRowGap);
+            static_cast<float>(rowRanks[row - 1]) * (rowCardHeight[row - 1] + scaled(kRankGap));
+        rowY[row] =
+            rowY[row - 1] + height + (rowIsBand[row] ? scaled(kCulledBandGap) : scaled(kRowGap));
     }
 
     for (uint32_t index = 0; index < layout.items.size(); ++index) {
         const GraphLayoutItem& item = layout.items[index];
-        ed::SetNodePosition(itemNodeId(layout, index),
-                            ImVec2(columnX[item.column],
-                                   rowY[item.row] + static_cast<float>(item.rank) *
-                                                        (rowCardHeight[item.row] + kRankGap)));
+        ed::SetNodePosition(
+            itemNodeId(layout, index),
+            ImVec2(columnX[item.column],
+                   rowY[item.row] + static_cast<float>(item.rank) *
+                                        (rowCardHeight[item.row] + scaled(kRankGap))));
     }
     columns.x = std::move(columnX);
     columns.width = std::move(columnWidth);
@@ -710,25 +703,54 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
                "a compiled frame declares more nodes than the canvas id space holds");
 
     ed::SetCurrentEditor(state.editor->context);
+    const float uiScale = ImGui::GetStyle().FontScaleMain;
+    const bool uiScaleChanged = state.appliedUiScale > 0.0f && state.appliedUiScale != uiScale;
+    const float scaleRatio = uiScaleChanged ? uiScale / state.appliedUiScale : 1.0f;
+    state.appliedUiScale = uiScale;
     // Zero node padding lets a card own its edges: the title band reaches the rounded corners and a
     // pin dot sits on the silhouette. The two link directions are the editor's own defaults, stated
     // here so the round curves below are read against something explicit rather than a default.
     ed::PushStyleVar(ed::StyleVar_NodePadding, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-    ed::PushStyleVar(ed::StyleVar_NodeRounding, kCardRounding);
-    ed::PushStyleVar(ed::StyleVar_LinkStrength, kLinkStrength);
+    ed::PushStyleVar(ed::StyleVar_NodeRounding, scaled(kCardRounding));
+    ed::PushStyleVar(ed::StyleVar_LinkStrength, scaled(kLinkStrength));
     ed::PushStyleVar(ed::StyleVar_SourceDirection, ImVec2(1.0f, 0.0f));
     ed::PushStyleVar(ed::StyleVar_TargetDirection, ImVec2(-1.0f, 0.0f));
+    ed::PushStyleVar(ed::StyleVar_NodeBorderWidth, scaled(ed::GetStyle().NodeBorderWidth));
+    ed::PushStyleVar(ed::StyleVar_HoveredNodeBorderWidth,
+                     scaled(ed::GetStyle().HoveredNodeBorderWidth));
+    ed::PushStyleVar(ed::StyleVar_SelectedNodeBorderWidth,
+                     scaled(ed::GetStyle().SelectedNodeBorderWidth));
     ed::Begin("lmx.renderGraph", ImVec2(0.0f, 0.0f));
 
-    // Item indices only mean something within one picture, so the positions the user dragged and
-    // the item they selected are both surrendered the moment the drawn picture changes.
     const bool pictureChanged = state.appliedSignature != layout.signature;
     if (pictureChanged) {
+        state.navigateAfterLayout = state.appliedSignature.empty();
         state.appliedSignature = layout.signature;
         state.layoutPhase = GraphLayoutPhase::Provisional;
+        const auto previousKey = state.selectedKey;
+        state.selectedItem = findGraphItem(model, layout, previousKey);
+        ed::ClearSelection();
+        if (!state.selectedItem && !previousKey.empty()) {
+            state.selectionNotice = "The selected item is no longer visible in this graph.";
+        }
+    }
+    if (uiScaleChanged) {
+        // Existing bounds still use the old font size. Scale their positions for this measuring
+        // frame, then apply measured spacing once on the next frame. Keep the canvas view and
+        // selection untouched; a global density change never invokes canvas zoom or navigation.
+        for (uint32_t index = 0; index < layout.items.size(); ++index) {
+            const auto id = itemNodeId(layout, index);
+            const auto position = ed::GetNodePosition(id);
+            ed::SetNodePosition(id, ImVec2(position.x * scaleRatio, position.y * scaleRatio));
+        }
+        state.layoutPhase = GraphLayoutPhase::Provisional;
+        state.navigateAfterLayout = false;
+    }
+    if (resetLayout) {
+        state.navigateAfterLayout = true;
     }
     MeasuredColumns columns;
-    if (state.layoutPhase == GraphLayoutPhase::Provisional || resetLayout) {
+    if (!uiScaleChanged && (state.layoutPhase == GraphLayoutPhase::Provisional || resetLayout)) {
         if (applyMeasuredPositions(layout, columns)) {
             state.layoutPhase = GraphLayoutPhase::Measured;
         } else {
@@ -737,10 +759,9 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         }
     }
 
-    const std::vector<bool> fullLabels = fullLabelItems(layout, state.selectedItem);
     std::string hoveredLabel;
     for (uint32_t index = 0; index < layout.items.size(); ++index) {
-        drawItem(model, layout, index, fullLabels[index], hoveredLabel);
+        drawItem(model, layout, index, false, hoveredLabel);
     }
 
     for (uint32_t index = 0; index < layout.edges.size(); ++index) {
@@ -750,10 +771,13 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
             static_cast<uint32_t>(layout.items[edge.fromItem].inputs.size()) + edge.fromPin;
         ed::Link(ed::LinkId(static_cast<uintptr_t>(index) + 1), pinIdOf(fromId, fromOrdinal),
                  pinIdOf(itemIdValue(layout, edge.toItem), edge.toPin),
-                 kLinkPalette[edge.resource % kLinkPalette.size()], kEdgeThickness);
+                 kLinkPalette[edge.resource % kLinkPalette.size()], scaled(kEdgeThickness));
     }
 
     drawItemOverlays(model, layout);
+    if (pictureChanged && state.selectedItem) {
+        ed::SelectNode(itemNodeId(layout, *state.selectedItem));
+    }
 
     if (!hoveredLabel.empty()) {
         // A tooltip is an ImGui window, and the canvas is a transformed space: suspending it is
@@ -763,19 +787,28 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
         ed::Resume();
     }
 
-    if (pictureChanged) {
-        ed::ClearSelection();
-        state.selectedItem.reset();
-    }
     if (state.layoutPhase == GraphLayoutPhase::Measured) {
         // Card bounds are current by now, which is what makes navigating meaningful on the very
         // frame the measured positions were applied.
-        navigateToLeadingColumns(layout, columns);
+        if (state.navigateAfterLayout) {
+            navigateToLeadingColumns(layout, columns);
+            if (state.selectedItem) {
+                ed::SelectNode(itemNodeId(layout, *state.selectedItem));
+            }
+        }
         state.layoutPhase = GraphLayoutPhase::Settled;
     }
 
+    if (state.navigation == 1) {
+        ed::NavigateToContent(0.0f);
+    } else if (state.navigation == 2 && state.selectedItem) {
+        ed::NavigateToSelection(true, 0.0f);
+    } else if (state.navigation == 3) {
+        ed::SetCurrentZoom(1.0f);
+    }
+    state.navigation = 0;
     ed::End();
-    ed::PopStyleVar(5);
+    ed::PopStyleVar(8);
 
     // Read after End(): that is where this frame's input is turned into the editor's selection and
     // its double-click.
@@ -783,6 +816,10 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
     const int selectedCount = ed::GetSelectedNodes(selected, 2);
     state.selectedItem =
         selectedCount == 1 ? itemOfCanvasId(layout, selected[0].Get()) : std::nullopt;
+    state.selectedKey = state.selectedItem ? graphItemKey(model, layout, *state.selectedItem) : "";
+    if (state.selectedItem) {
+        state.selectionNotice.clear();
+    }
     applyDoubleClick(layout, state.layoutOptions);
 
     ed::SetCurrentEditor(nullptr);

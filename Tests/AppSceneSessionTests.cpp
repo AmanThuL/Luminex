@@ -220,3 +220,53 @@ TEST_CASE("SceneSession playback includes camera and emissive tracks but leaves 
         REQUIRE(scene.animationTime == 2.0);
     }
 }
+
+//======================================================================================================================
+TEST_CASE("SceneSession restores original static defaults after leaving and reactivating a scene",
+          "[app][scene-session]") {
+    auto first = makeSessionScene();
+    first.animation.tracks.clear();
+    first.lights[0].strength = {4.0f, 2.0f, 1.0f};
+    auto second = makeSessionScene();
+    SceneSession session;
+    session.activate(first, SceneActivationMotion::Reset);
+    session.editObject(0, {.position = {20.0f, 1.0f, 2.0f}});
+    first.lights[0].strength = {10.0f, 10.0f, 10.0f};
+    REQUIRE(session.objectChanged(0));
+    REQUIRE(session.lightChanged(0));
+    session.activate(second, SceneActivationMotion::Reset);
+    session.activate(first, SceneActivationMotion::Reset);
+    REQUIRE(first.objects[0].position.x == 20.0f);
+    session.resetObject(0);
+    session.resetLight(0);
+    CHECK(first.objects[0].position == glm::vec3(7.0f, 0.0f, 0.0f));
+    CHECK(first.objects[0].previousModel == first.objects[0].modelMatrix());
+    CHECK(first.lights[0].strength == glm::vec3(4.0f, 2.0f, 1.0f));
+    CHECK_FALSE(session.objectChanged(0));
+    CHECK_FALSE(session.lightChanged(0));
+}
+
+//======================================================================================================================
+TEST_CASE(
+    "SceneSession resets one animated transform at current time without discarding other edits",
+    "[app][scene-session]") {
+    auto scene = makeSessionScene();
+    scene.objects.push_back({.name = "other", .position = {9.0f, 0.0f, 0.0f}});
+    scene.animation.tracks.push_back({.objectIndex = 1,
+                                      .keys = {{.time = 0.0, .translation = {2.0f, 0.0f, 0.0f}},
+                                               {.time = 1.0, .translation = {4.0f, 0.0f, 0.0f}}}});
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    scene.animationTime = 0.5;
+    session.editObject(0, {.position = {100.0f, 0.0f, 0.0f}});
+    session.editObject(1, {.position = {200.0f, 0.0f, 0.0f}});
+    scene.lights[1].strength = {6.0f, 5.0f, 4.0f};
+    session.resetObject(0);
+    CHECK(scene.animationTime == 0.5);
+    CHECK(scene.objects[0].position.x == Catch::Approx(30.0f));
+    CHECK(scene.objects[0].previousModel == scene.objects[0].modelMatrix());
+    CHECK(scene.objects[1].position.x == 200.0f);
+    CHECK(scene.lights[1].strength == glm::vec3(6.0f, 5.0f, 4.0f));
+    CHECK_FALSE(session.objectChanged(0));
+    CHECK(session.objectChanged(1));
+}

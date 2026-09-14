@@ -24,6 +24,21 @@ struct PassTimingSummary {
     size_t sampleCount = 0;              ///< Samples contributing to the statistics.
 };
 
+/// Column used to sort a presentation copy of schedule-ordered pass rows.
+enum class PassTimingSort {
+    Schedule, ///< Original execution order, irrespective of sort direction.
+    Average,  ///< Arithmetic mean GPU duration.
+    Latest,   ///< Most recent GPU duration.
+    Minimum,  ///< Minimum retained GPU duration.
+    Maximum,  ///< Maximum retained GPU duration.
+    Samples,  ///< Number of retained measurements.
+};
+
+/// Returns row indices in the requested order. Equal values retain deterministic schedule order;
+/// the source rows are never changed, so a selected row's identity survives sorting.
+std::vector<size_t> sortedPassTimingIndices(std::span<const PassTimingSummary> rows,
+                                            PassTimingSort column, bool descending = true);
+
 /// Keeps a bounded timing history without confusing different compiled schedules.
 ///
 /// Pass labels are diagnostics and need not be unique, so a series is identified by its position

@@ -198,8 +198,8 @@ TEST_CASE("duplicate object display names keep distinct row identity", "[app]") 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "crate");
 
     REQUIRE(rows.size() == 2);
-    REQUIRE(rows[0].displayLabel == "Crate");
-    REQUIRE(rows[1].displayLabel == "Crate");
+    REQUIRE(rows[0].displayLabel == "Crate [object 0]");
+    REQUIRE(rows[1].displayLabel == "Crate [object 1]");
     REQUIRE(rows[0].index == 0);
     REQUIRE(rows[1].index == 1);
 }
@@ -307,4 +307,92 @@ TEST_CASE("navigation over an empty row list finds nothing", "[app]") {
 
     REQUIRE_FALSE(nextVisibleRow(empty, selection).has_value());
     REQUIRE_FALSE(previousVisibleRow(empty, selection).has_value());
+}
+
+//======================================================================================================================
+TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local identity", "[app]") {
+    const scene::Scene scene = sceneWithObjects({"", "Arch", "Arch"});
+    const auto rows = buildSceneSelectionRows(scene, "");
+    REQUIRE(rows[5].displayLabel == "Unnamed object [0]");
+    REQUIRE(sceneObjectLabel(scene, 1) == "Arch [object 1]");
+    REQUIRE(sceneObjectLabel(scene, 2) == "Arch [object 2]");
+    const EditorSelection selection{
+        .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
+    REQUIRE(selectionHiddenByFilter(scene, selection, "Unnamed"));
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, selection, "ARCH"));
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, selection, ""));
+    REQUIRE(buildSceneSelectionRows(scene, "object 2").front().index == 2);
+    REQUIRE(selection.index == 2);
+}
+
+//======================================================================================================================
+TEST_CASE("primitive qualifiers are compact but full source names remain searchable", "[app]") {
+    scene::Scene scene = sceneWithObjects({"Sponza / arch", "Sponza / leaf", "Courtyard / arch"});
+    scene.objects[0].sourceName = "Sponza";
+    scene.objects[0].materialQualifier = "arch";
+    scene.objects[1].sourceName = "Sponza";
+    scene.objects[1].materialQualifier = "leaf";
+    scene.objects[2].sourceName = "Courtyard";
+    scene.objects[2].materialQualifier = "arch";
+    const auto all = buildSceneSelectionRows(scene, "");
+    REQUIRE(all[5].displayLabel == "arch [object 0]");
+    REQUIRE(all[5].detailLabel == "Sponza / arch");
+    REQUIRE(all[6].displayLabel == "leaf");
+    REQUIRE(all[7].displayLabel == "arch [object 2]");
+    REQUIRE(buildSceneSelectionRows(scene, "Sponza").size() == 2);
+    REQUIRE(buildSceneSelectionRows(scene, "leaf").size() == 1);
+    REQUIRE(sceneObjectLabel(scene, 2) == "Courtyard / arch");
+    const EditorSelection selected{
+        .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, "object 2"));
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, "Courtyard"));
+    REQUIRE(selectionHiddenByFilter(scene, selected, "leaf"));
+}
+
+//======================================================================================================================
+TEST_CASE("source hierarchy preserves distinct primitive identities and filtered parent groups",
+          "[app]") {
+    scene::Scene scene =
+        sceneWithObjects({"Hall / arch", "Courtyard / stone", "Hall / leaf", "Lamp"});
+    scene.objects[0].sourceName = "Hall";
+    scene.objects[0].materialQualifier = "arch";
+    scene.objects[1].sourceName = "Courtyard";
+    scene.objects[1].materialQualifier = "stone";
+    scene.objects[2].sourceName = "Hall";
+    scene.objects[2].materialQualifier = "leaf";
+    const auto groups = groupSceneObjectRows(buildSceneSelectionRows(scene, ""));
+    REQUIRE(groups.size() == 2);
+    REQUIRE(groups[0].sourceName == "Hall");
+    REQUIRE(groups[0].rows.size() == 2);
+    REQUIRE(groups[0].rows[0].index == 0);
+    REQUIRE(groups[0].rows[1].index == 2);
+    REQUIRE(groups[1].sourceName.empty());
+    REQUIRE(groups[1].rows.size() == 2);
+    REQUIRE(groups[1].rows[0].index == 1);
+    REQUIRE(groups[1].rows[1].index == 3);
+
+    const auto filtered = groupSceneObjectRows(buildSceneSelectionRows(scene, "leaf"));
+    REQUIRE(filtered.size() == 1);
+    REQUIRE(filtered[0].sourceName == "Hall");
+    REQUIRE(filtered[0].rows.size() == 1);
+    REQUIRE(filtered[0].rows[0].index == 2);
+    REQUIRE(scene.objects[2].name == "Hall / leaf");
+}
+
+//======================================================================================================================
+TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses", "[app]") {
+    const auto scene = sceneWithObjects({"Arch", "Leaf", "Lamp"});
+    const auto all = buildSceneSelectionRows(scene, "");
+    // The panel submits only leaves whose ancestors are expanded; closing the first source group
+    // removes Arch and Leaf from navigation without changing the selected scene-local identity.
+    const std::vector<EditorSelectionRow> drawn{all[0], all[1], all[7]};
+    const EditorSelection rendering{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
+    REQUIRE(nextVisibleRow(drawn, rendering)->index == 2);
+    REQUIRE(nextVisibleRow(drawn, rendering)->subject == EditorSubject::Object);
+    const EditorSelection lamp{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
+    REQUIRE(previousVisibleRow(drawn, lamp)->subject == EditorSubject::Rendering);
+    const EditorSelection collapsed{
+        .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
+    REQUIRE(nextVisibleRow(drawn, collapsed)->subject == EditorSubject::Camera);
+    REQUIRE(collapsed.index == 0);
 }

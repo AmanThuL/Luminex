@@ -5,6 +5,11 @@
 
 #include "App/EditorShell.h"
 
+#include "App/EditorFont.h"
+
+#include "App/Panels/ActionFeedback.h"
+#include "App/Panels/ConsolePanel.h"
+#include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorPanel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
@@ -39,9 +44,6 @@ constexpr float kLookRadiansPerPixel = 0.0025f;
 
 // The default topology's share of the work area: Scene and Inspector flank a central column whose
 // lower quarter holds Performance, and the Viewport takes what remains.
-constexpr float kSceneWidthFraction = 0.18f;
-constexpr float kInspectorWidthFraction = 0.24f;
-constexpr float kPerformanceHeightFraction = 0.25f;
 
 // The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
@@ -103,7 +105,9 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
                                ImGuiTextBuffer* outBuffer) {
     const WorkspaceSettings& settings = workspaceSettingsOf(handler);
     outBuffer->appendf("[%s][%s]\n", kWorkspaceSettingsType, kWorkspaceSettingsName);
-    outBuffer->append(writeWorkspaceSettings(kWorkspaceSchemaVersion, settings.visibility).c_str());
+    outBuffer->append(writeWorkspaceSettings(kWorkspaceSchemaVersion, settings.visibility,
+                                             settings.uiScalePercent)
+                          .c_str());
     outBuffer->append("\n");
 }
 
@@ -125,10 +129,9 @@ struct DefaultLayoutExtents {
 // gets them, and a narrower one loses them to the Viewport in proportion either way.
 DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
     DefaultLayoutExtents extents;
-    extents.sceneWidth = std::max(workWidth * kSceneWidthFraction, kMinSceneWidthPoints);
-    extents.inspectorWidth =
-        std::max(workWidth * kInspectorWidthFraction, kMinInspectorWidthPoints);
-    extents.performanceHeight = workHeight * kPerformanceHeightFraction;
+    extents.sceneWidth = workWidth >= 1500.0f ? 240.0f : kMinSceneWidthPoints;
+    extents.inspectorWidth = workWidth >= 1500.0f ? 340.0f : kMinInspectorWidthPoints;
+    extents.performanceHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
 
     const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);
     const float sideWanted = extents.sceneWidth + extents.inspectorWidth;
@@ -170,6 +173,10 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 
     // Each ratio is a share of the node being split, and that node shrinks as the splits proceed.
     ImGuiID centerId = dockspaceId;
+    ImGuiID performanceId = 0;
+    ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
+                                splitFraction(extents.performanceHeight, work.y), &performanceId,
+                                &centerId);
     ImGuiID sceneId = 0;
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, splitFraction(extents.sceneWidth, work.x),
                                 &sceneId, &centerId);
@@ -177,14 +184,11 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Right,
                                 splitFraction(extents.inspectorWidth, work.x - extents.sceneWidth),
                                 &inspectorId, &centerId);
-    ImGuiID performanceId = 0;
-    ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
-                                splitFraction(extents.performanceHeight, work.y), &performanceId,
-                                &centerId);
 
     ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
     ImGui::DockBuilderDockWindow(kPerformancePanelWindowName, performanceId);
+    ImGui::DockBuilderDockWindow(kConsolePanelWindowName, performanceId);
     // Render Graph is deliberately absent: its window class forbids docking into an unclassed
     // node, so it always owns its own OS window and there is no dock node to place it in.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
@@ -194,13 +198,15 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 } // namespace
 
 //======================================================================================================================
-EditorShell::EditorShell(SDL_Window* window, scene::SceneLibrary& library)
-    : m_window(window), m_library(library) {}
+EditorShell::EditorShell(SDL_Window* window, scene::SceneLibrary& library,
+                         std::shared_ptr<ConsoleLog> consoleLog)
+    : m_window(window), m_library(library), m_consoleModel(std::move(consoleLog)) {}
 
 //======================================================================================================================
 std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device& device,
                                                  scene::SceneLibrary& library,
-                                                 scene::SceneId initialScene) {
+                                                 scene::SceneId initialScene,
+                                                 std::shared_ptr<ConsoleLog> consoleLog) {
     LMX_ASSERT(window != nullptr, "EditorShell::create: window must not be null");
 
     IMGUI_CHECKVERSION();
@@ -211,7 +217,11 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
     // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+    configureEditorFont();
     ImGui::StyleColorsDark();
+    ImGui::GetStyle().FramePadding = ImVec2(8.0f, 5.0f);
+    ImGui::GetStyle().ItemSpacing = ImVec2(8.0f, 8.0f);
+    ImGui::GetStyle().WindowPadding = ImVec2(12.0f, 12.0f);
 
     if (!ImGui_ImplSDL3_InitForMetal(window)) {
         LMX_LOG_ERROR("ImGui_ImplSDL3_InitForMetal failed: {}", SDL_GetError());
@@ -225,7 +235,19 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
         return nullptr;
     }
 
-    std::unique_ptr<EditorShell> self(new EditorShell(window, library));
+    std::unique_ptr<EditorShell> self(new EditorShell(window, library, std::move(consoleLog)));
+    self->m_baseUiStyle = std::make_unique<ImGuiStyle>(ImGui::GetStyle());
+
+    int pixelWidth = 0;
+    int pixelHeight = 0;
+    SDL_GetWindowSizeInPixels(window, &pixelWidth, &pixelHeight);
+    auto outline = render::SelectionOutline::create(device, static_cast<uint32_t>(pixelWidth),
+                                                    static_cast<uint32_t>(pixelHeight));
+    if (!outline) {
+        LMX_LOG_ERROR("Selection presentation creation failed: {}", outline.error().message);
+        return nullptr;
+    }
+    self->m_selectionOutline = std::move(*outline);
 
     // Startup needs a renderable scene; later switch failures can retain the current one. This runs
     // before any ini is loaded: LoadIniSettingsFromDisk (below) sets ImGui's SettingsLoaded flag,
@@ -278,6 +300,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
                                       : std::nullopt;
     const WorkspaceDecision decision = decideWorkspace(parsed);
     self->m_workspace.visibility = decision.visibility;
+    self->m_workspace.uiScalePercent = decision.uiScalePercent;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
     self->m_layoutBuildReason = kNoSchemaReason;
 
@@ -304,15 +327,15 @@ EditorShell::~EditorShell() {
 }
 
 //======================================================================================================================
-void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer) {
+bool EditorShell::applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer) {
     if (m_viewportWidth == 0 || m_viewportHeight == 0) {
-        return;
+        return true;
     }
     if (m_viewportWidth == renderer.width() && m_viewportHeight == renderer.height()) {
-        return;
+        return true;
     }
     if (m_stableFrames < kResizeDebounceFrames) {
-        return;
+        return true;
     }
 
     // In-flight encoders and residency sets retain the old targets; drain before replacement.
@@ -320,13 +343,16 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     // Remove the old target from ImGui's persistent residency set before freeing it.
     rhi::metal4::imguiForgetTexture(renderer.colorTarget());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
-        // Keep the prior targets and restart the debounce to avoid retrying every frame. Failure
-        // means the resize never took effect, so m_exposureContext is left naming the old extent
-        // and shouldResetExposure() is never asked about this attempt at all.
-        m_stableFrames = 0;
-        LMX_LOG_ERROR("viewport resize to {}x{} failed: {}", m_viewportWidth, m_viewportHeight,
-                      resized.error().message);
-        return;
+        // Renderer::resize can replace some targets before a later allocation fails. Do not
+        // declare another frame against mixed extents, even if the requested size now matches.
+        LMX_LOG_ERROR("viewport resize to {}x{} failed; stopping rendering: {}", m_viewportWidth,
+                      m_viewportHeight, resized.error().message);
+        return false;
+    }
+    rhi::metal4::imguiForgetTexture(m_selectionOutline->target());
+    if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height()); !result) {
+        LMX_LOG_ERROR("Selection presentation resize failed: {}", result.error().message);
+        m_showSelectionOutline = false;
     }
     // A resize is a reset trigger (spec 9): the histogram's binning covered a differently-sized
     // image last frame, so the feedback loop restarts from the manual EV.
@@ -338,36 +364,86 @@ void EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     }
     m_exposureContext = candidate;
     LMX_LOG_INFO("scene target resized to {}x{} px", m_viewportWidth, m_viewportHeight);
+    return true;
+}
+
+//======================================================================================================================
+void EditorShell::prepareUIFrame() {
+    const uint32_t percent = m_workspace.uiScalePercent;
+    if (m_appliedUiScalePercent == percent) {
+        return;
+    }
+    ImGuiStyle& style = ImGui::GetStyle();
+    const float dpiScale = style.FontScaleDpi;
+    style = *m_baseUiStyle;
+    const float scale = static_cast<float>(percent) / 100.0f;
+    style.ScaleAllSizes(scale);
+    style.FontScaleMain = scale;
+    style.FontScaleDpi = dpiScale;
+    // ScaleAllSizes truncates integer metrics. Keep thin borders and the software cursor visible
+    // at compact scales, while always deriving them from the same unscaled base.
+    style.WindowBorderSize = m_baseUiStyle->WindowBorderSize;
+    style.ChildBorderSize = m_baseUiStyle->ChildBorderSize;
+    style.PopupBorderSize = m_baseUiStyle->PopupBorderSize;
+    style.MouseCursorScale = m_baseUiStyle->MouseCursorScale * scale;
+    m_appliedUiScalePercent = percent;
+    LMX_LOG_INFO("editor UI scale: {}%", percent);
+}
+
+//======================================================================================================================
+void EditorShell::setUiScale(uint32_t percent) {
+    percent = normalizedUiScalePercent(percent);
+    if (m_workspace.uiScalePercent != percent) {
+        m_workspace.uiScalePercent = percent;
+        ImGui::MarkIniSettingsDirty();
+    }
+}
+
+//======================================================================================================================
+void EditorShell::updateUiScaleShortcuts() {
+    const ImGuiIO& io = ImGui::GetIO();
+    // ImGui's macOS behavior maps physical Command to its logical Ctrl modifier.
+    const bool command = io.ConfigMacOSXBehaviors ? io.KeyCtrl : io.KeySuper;
+    const bool control = io.ConfigMacOSXBehaviors ? io.KeySuper : io.KeyCtrl;
+    if (!command || control || io.KeyAlt || io.WantTextInput || io.AppFocusLost || m_looking ||
+        ImGui::IsAnyItemActive() ||
+        ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+        return;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Equal, false) ||
+        ImGui::IsKeyPressed(ImGuiKey_KeypadAdd, false)) {
+        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, true));
+    } else if (ImGui::IsKeyPressed(ImGuiKey_Minus, false) ||
+               ImGui::IsKeyPressed(ImGuiKey_KeypadSubtract, false)) {
+        setUiScale(stepUiScalePercent(m_workspace.uiScalePercent, false));
+    } else if (ImGui::IsKeyPressed(ImGuiKey_0, false) ||
+               ImGui::IsKeyPressed(ImGuiKey_Keypad0, false)) {
+        setUiScale(kDefaultUiScalePercent);
+    }
 }
 
 //======================================================================================================================
 void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
-    // m_viewportWidth/Height and m_drawItems still name the previous iteration here -- buildPanels
-    // (below) is what updates them for this frame -- which is exactly what keeps this sample
-    // coherent with frameRecords' own newest-joined-as-of-the-previous-iteration record.
+    applyPendingScene(device);
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
+    observeRetiredTemporal(m_temporalState, newestTimed);
     std::optional<PerformanceFrameSample> sample;
-    if (newestTimed != nullptr) {
-        // ImGui works in points; the Viewport panel converts to pixels via DisplayFramebufferScale
-        // before this shell ever sees m_viewportWidth/Height, so this inverts that same conversion
-        // to recover the logical size the panel is actually laid out in.
-        const ImGuiIO& io = ImGui::GetIO();
-        const float scaleX =
-            io.DisplayFramebufferScale.x > 0.0f ? io.DisplayFramebufferScale.x : 1.0f;
-        const float scaleY =
-            io.DisplayFramebufferScale.y > 0.0f ? io.DisplayFramebufferScale.y : 1.0f;
+    m_performanceModel.setContextEpoch(metricsContextEpoch());
+    if (newestTimed != nullptr && newestTimed->metrics) {
+        const FrameMetricsMetadata& metrics = *newestTimed->metrics;
         sample = PerformanceFrameSample{
             .frameId = newestTimed->record.frameId,
+            .contextEpoch = metrics.contextEpoch,
             .timings = newestTimed->timings,
-            .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
-            .drawCount = static_cast<uint32_t>(m_drawItems.size()),
-            .viewportLogicalWidth =
-                static_cast<uint32_t>(static_cast<float>(m_viewportWidth) / scaleX),
-            .viewportLogicalHeight =
-                static_cast<uint32_t>(static_cast<float>(m_viewportHeight) / scaleY),
-            .sceneTargetPixelWidth = renderer.width(),
-            .sceneTargetPixelHeight = renderer.height(),
+            .objectCount = metrics.objectCount,
+            .drawCount = metrics.drawCount,
+            .viewportLogicalWidth = metrics.viewportLogicalWidth,
+            .viewportLogicalHeight = metrics.viewportLogicalHeight,
+            .sceneTargetPixelWidth = metrics.outputPixelWidth,
+            .sceneTargetPixelHeight = metrics.outputPixelHeight,
+            .renderPixelWidth = metrics.renderPixelWidth,
+            .renderPixelHeight = metrics.renderPixelHeight,
             .transientRequestedBytes = newestTimed->record.debug.memory.requested,
             .transientHighWaterBytes = newestTimed->record.debug.memory.highWater,
             .transientAliasSavingsBytes = newestTimed->record.debug.memory.aliasSavings,
@@ -407,6 +483,8 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
         m_layoutBuildReason = kResetReason;
     }
 
+    updateUiScaleShortcuts();
+
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     buildMainMenu();
 
@@ -414,6 +492,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
+        m_focusDefaultPerformance = true;
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
@@ -428,6 +507,12 @@ void EditorShell::buildMainMenu() {
         return;
     }
     if (ImGui::BeginMenu("File")) {
+        const auto requested = drawSceneMenu(SceneMenuContext{
+            .library = m_library, .activeSceneId = m_activeSceneId, .loading = m_sceneLoading});
+        if (requested && *requested != m_activeSceneId) {
+            m_sceneLoading.request(*requested);
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Quit")) {
             m_actions.requestQuit();
         }
@@ -445,19 +530,77 @@ void EditorShell::buildMainMenu() {
         visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
         visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
         visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
+        visibilityItem(kConsolePanelWindowName, EditorPanel::Console);
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Layout")) {
+        if (ImGui::BeginMenu("UI Scale")) {
+            const uint32_t current = m_workspace.uiScalePercent;
+            if (ImGui::MenuItem("Zoom Out", "Cmd+-", false, current > kUiScalePresets.front())) {
+                setUiScale(stepUiScalePercent(current, false));
+            }
+            if (ImGui::MenuItem("Zoom In", "Cmd++", false, current < kUiScalePresets.back())) {
+                setUiScale(stepUiScalePercent(current, true));
+            }
+            if (ImGui::MenuItem("Reset UI Scale", "Cmd+0")) {
+                setUiScale(kDefaultUiScalePercent);
+            }
+            ImGui::Separator();
+            for (const uint32_t percent : kUiScalePresets) {
+                const std::string label = std::to_string(percent) + "%";
+                if (ImGui::MenuItem(label.c_str(), nullptr, current == percent)) {
+                    setUiScale(percent);
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Reset Default Layout")) {
             m_actions.requestResetLayout();
         }
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Debug")) {
-        if (ImGui::MenuItem("Capture Next GPU Frame", "C")) {
+        if (ImGui::MenuItem("Capture Next GPU Frame", "C", false,
+                            m_actions.captureAvailable() &&
+                                m_actions.captureResult().status != ActionStatus::Pending)) {
             m_actions.requestCapture();
         }
+        drawActionFeedback("capture", m_actions.captureResult());
         ImGui::EndMenu();
+    }
+    const uint32_t current = m_workspace.uiScalePercent;
+    const float buttonPadding = ImGui::GetStyle().FramePadding.x * 2.0f;
+    const std::string resetLabel = std::to_string(current) + "%##ResetUiZoom";
+    const float controlsWidth = ImGui::CalcTextSize("-+").x +
+                                ImGui::CalcTextSize(resetLabel.c_str(), nullptr, true).x +
+                                buttonPadding * 3.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+    const float rightAlignedX =
+        ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - controlsWidth;
+    // Tiny detached/narrow arrangements still have the Layout menu and keyboard shortcuts.
+    if (rightAlignedX >= ImGui::GetCursorPosX()) {
+        ImGui::SetCursorPosX(rightAlignedX);
+        ImGui::BeginDisabled(current <= kUiScalePresets.front());
+        if (ImGui::SmallButton("-##UiZoomOut")) {
+            setUiScale(stepUiScalePercent(current, false));
+        }
+        ImGui::EndDisabled();
+        editorTooltip("Zoom out the editor UI (Cmd+-). Fonts and controls shrink; camera settings "
+                      "stay unchanged. Minimum 75%.");
+        ImGui::SameLine();
+        if (ImGui::SmallButton(resetLabel.c_str())) {
+            setUiScale(kDefaultUiScalePercent);
+        }
+        editorTooltip("Current editor UI scale. Click to reset to 100% (Cmd+0). Saved with the "
+                      "workspace; Reset Default Layout keeps this preference.");
+        ImGui::SameLine();
+        ImGui::BeginDisabled(current >= kUiScalePresets.back());
+        if (ImGui::SmallButton("+##UiZoomIn")) {
+            setUiScale(stepUiScalePercent(current, true));
+        }
+        ImGui::EndDisabled();
+        editorTooltip("Zoom in the editor UI (Cmd++ or Cmd+=). Maximum 150%. The detached Render "
+                      "Graph uses the same UI scale.");
     }
     ImGui::EndMainMenuBar();
 }
@@ -469,26 +612,11 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
-        const std::optional<scene::SceneId> chosen =
-            drawScenePanel(open, ScenePanelContext{.library = m_library,
-                                                   .activeSceneId = m_activeSceneId,
-                                                   .activeScene = m_session.scene(),
-                                                   .selection = m_selection,
-                                                   .filter = m_sceneFilter});
+        drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
+                                               .activeScene = m_session.scene(),
+                                               .selection = m_selection,
+                                               .filter = m_sceneFilter});
         setPanelVisible(EditorPanel::Scene, open);
-        if (chosen) {
-            // Captured before selectScene() runs: a successful switch overwrites m_activeSceneId,
-            // and sceneSwitchOutcome needs the id the request was made against.
-            const scene::SceneId requestedFrom = m_activeSceneId;
-            const bool switched = selectScene(device, *chosen);
-            // Applied here rather than inside the panel: the switch drains the GPU, and the panels
-            // drawn below must already see whichever scene, selection, and filter end up active.
-            const SceneSwitchOutcome outcome =
-                sceneSwitchOutcome(switched, /*activeScene=*/requestedFrom,
-                                   /*requestedScene=*/*chosen, m_selection, m_sceneFilter);
-            m_selection = outcome.selection;
-            m_sceneFilter = outcome.filter;
-        }
     }
 
     // Whether the Viewport is both visible and expanded this frame -- the condition under which a
@@ -498,16 +626,24 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         bool open = true;
         const ViewportPanelResult result = drawViewportPanel(
             open, ViewportPanelContext{.renderer = renderer,
+                                       .outlineTarget = m_selectionOutline->target(),
+                                       .showOutline = m_showSelectionOutline,
                                        .activeSceneName = m_session.scene().name,
                                        .camera = m_session.camera(),
                                        .scene = m_session.scene(),
                                        .settings = m_settings,
                                        .exposureContext = m_exposureContext,
-                                       .exposureResetPending = m_exposureResetPending});
+                                       .exposureResetPending = m_exposureResetPending,
+                                       .session = m_session,
+                                       .temporalState = m_temporalState,
+                                       .selection = m_selection,
+                                       .actions = m_actions,
+                                       .sceneId = m_activeSceneId});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
         m_viewportFocused = result.focused;
         viewportUsable = result.measured;
+        m_viewportBackingScale = result.backingScale;
         if (result.measured) {
             m_viewportWidth = result.width;
             m_viewportHeight = result.height;
@@ -525,6 +661,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         m_viewportHovered = false;
         m_viewportFocused = false;
     }
+    m_viewportUsable = viewportUsable;
     if (!viewportUsable) {
         // Closed (visibility false) or collapsed (visible but Begin reported nothing to measure):
         // either way there is no image left to look over. A no-op when no look is in progress.
@@ -548,14 +685,38 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .temporalSupport = device.capabilities().temporalScaler,
                                         .viewportWidth = m_viewportWidth,
                                         .viewportHeight = m_viewportHeight,
-                                        .viewportVisible = viewportUsable});
+                                        .viewportVisible = viewportUsable,
+                                        .selectionHiddenByFilter = selectionHiddenByFilter(
+                                            m_session.scene(), m_selection, m_sceneFilter),
+                                        .sceneFilter = &m_sceneFilter});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
+        m_performanceModel.setContextEpoch(metricsContextEpoch());
+        if (m_focusDefaultPerformance) {
+            ImGui::SetNextWindowFocus();
+            m_focusDefaultPerformance = false;
+        }
         drawPerformancePanel(open, m_performanceModel);
         setPanelVisible(EditorPanel::Performance, open);
+    }
+
+    if (m_workspace.visibility.isVisible(EditorPanel::Console)) {
+        // Add only the new tab to an existing workspace. Existing dock nodes and selected tabs
+        // remain untouched; a previously saved Console position wins over this first-use hint.
+        if (const auto* settings =
+                ImGui::FindWindowSettingsByID(ImHashStr(kPerformancePanelWindowName));
+            settings != nullptr && settings->DockId != 0) {
+            ImGui::SetNextWindowDockID(settings->DockId, ImGuiCond_FirstUseEver);
+        } else if (const auto* performance = ImGui::FindWindowByName(kPerformancePanelWindowName);
+                   performance != nullptr && performance->DockId != 0) {
+            ImGui::SetNextWindowDockID(performance->DockId, ImGuiCond_FirstUseEver);
+        }
+        bool open = true;
+        drawConsolePanel(open, m_consoleModel);
+        setPanelVisible(EditorPanel::Console, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
@@ -620,6 +781,22 @@ render::SceneView EditorShell::sceneView() {
 }
 
 //======================================================================================================================
+render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
+                                                   rhi::CommandList& commands,
+                                                   render::GraphTexture display,
+                                                   const render::SceneView& view,
+                                                   const render::Renderer& renderer) {
+    if (m_selectionOutline->target().width() != renderer.width() ||
+        m_selectionOutline->target().height() != renderer.height() || !m_showSelectionOutline ||
+        !m_viewportUsable || m_selection.subject != EditorSubject::Object ||
+        m_selection.index >= view.items.size()) {
+        return display;
+    }
+    return m_selectionOutline->declare(graph, commands, display, m_session.camera(), view,
+                                       m_selection.index, m_viewportBackingScale);
+}
+
+//======================================================================================================================
 bool EditorShell::consumeExposureReset() {
     const bool pending = m_exposureResetPending;
     m_exposureResetPending = false;
@@ -640,8 +817,53 @@ void EditorShell::advanceFrameAnimation() {
 }
 
 //======================================================================================================================
+uint64_t EditorShell::metricsContextEpoch() {
+    const uint64_t key = m_temporalState.sceneGeneration * 16 +
+                         static_cast<uint64_t>(m_settings.reconstruction) * 2 +
+                         (m_settings.temporalEnabled ? 1 : 0);
+    return m_metricsContextRevision.observe(key);
+}
+
+//======================================================================================================================
+FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer) {
+    const auto& io = ImGui::GetIO();
+    const auto& extents = renderer.temporalStatus().extents;
+    return {
+        .contextEpoch = metricsContextEpoch(),
+        .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
+        .drawCount = static_cast<uint32_t>(m_drawItems.size()),
+        .viewportLogicalWidth =
+            static_cast<uint32_t>(m_viewportWidth / std::max(io.DisplayFramebufferScale.x, 1.0f)),
+        .viewportLogicalHeight =
+            static_cast<uint32_t>(m_viewportHeight / std::max(io.DisplayFramebufferScale.y, 1.0f)),
+        .renderPixelWidth = m_settings.temporalEnabled ? extents.renderWidth : renderer.width(),
+        .renderPixelHeight = m_settings.temporalEnabled ? extents.renderHeight : renderer.height(),
+        .outputPixelWidth = renderer.width(),
+        .outputPixelHeight = renderer.height()};
+}
+
+//======================================================================================================================
+void EditorShell::observeDeclaration(const render::Renderer& renderer, uint64_t frameId) {
+    observeDeclaredTemporal(m_temporalState, m_settings, renderer.temporalStatus(), frameId);
+}
+
+//======================================================================================================================
 void EditorShell::commitFrame() {
     m_session.commitFrame();
+}
+
+//======================================================================================================================
+void EditorShell::applyPendingScene(rhi::Device& device) {
+    const auto requested = m_sceneLoading.consumeRequest();
+    if (!requested) {
+        return;
+    }
+    const scene::SceneId requestedFrom = m_activeSceneId;
+    const bool switched = selectScene(device, *requested);
+    const SceneSwitchOutcome outcome =
+        sceneSwitchOutcome(switched, requestedFrom, *requested, m_selection, m_sceneFilter);
+    m_selection = outcome.selection;
+    m_sceneFilter = outcome.filter;
 }
 
 //======================================================================================================================
@@ -656,6 +878,7 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         // A failed switch leaves the current scene renderable.
         LMX_LOG_ERROR("scene '{}' failed to load: {}", m_library.entry(id).displayName,
                       scene.error().message);
+        m_sceneLoading.fail(id, scene.error().message);
         return false;
     }
     m_activeSceneId = id;
@@ -684,6 +907,10 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
     float relativeY = 0.0f;
     SDL_GetRelativeMouseState(&relativeX, &relativeY);
 
+    if (ImGui::GetIO().WantTextInput) {
+        endMouseLook();
+        return;
+    }
     if (!m_looking) {
         if (m_viewportHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
             m_looking = true;

@@ -11,6 +11,38 @@
 namespace lmx::app {
 
 //======================================================================================================================
+std::vector<size_t> sortedPassTimingIndices(std::span<const PassTimingSummary> rows,
+                                            PassTimingSort column, bool descending) {
+    std::vector<size_t> order(rows.size());
+    std::iota(order.begin(), order.end(), size_t{0});
+    if (column == PassTimingSort::Schedule) {
+        return order;
+    }
+    const auto value = [column](const PassTimingSummary& row) {
+        switch (column) {
+        case PassTimingSort::Average:
+            return row.averageGpuMilliseconds;
+        case PassTimingSort::Latest:
+            return row.latestGpuMilliseconds;
+        case PassTimingSort::Minimum:
+            return row.minimumGpuMilliseconds;
+        case PassTimingSort::Maximum:
+            return row.maximumGpuMilliseconds;
+        case PassTimingSort::Samples:
+            return static_cast<double>(row.sampleCount);
+        case PassTimingSort::Schedule:
+            return 0.0;
+        }
+        return 0.0;
+    };
+    std::stable_sort(order.begin(), order.end(), [&](size_t left, size_t right) {
+        return descending ? value(rows[left]) > value(rows[right])
+                          : value(rows[left]) < value(rows[right]);
+    });
+    return order;
+}
+
+//======================================================================================================================
 bool PassTimingHistory::addFrame(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
     if (frameId == 0 || frameId <= m_lastFrameId) {
         return false;

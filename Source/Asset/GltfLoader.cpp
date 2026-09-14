@@ -861,9 +861,18 @@ AssetResult<GltfScene> loadGltf(std::string_view path) {
         const cgltf_size meshIdx = cgltf_mesh_index(data.get(), node->mesh);
         const glm::mat4 world = nodeWorldMatrix(*node);
         for (cgltf_size p = 0; p < node->mesh->primitives_count; ++p) {
-            scene.instances.push_back({.meshIndex = primitiveFlatIndex[meshIdx][p],
-                                       .materialIndex = primitiveMaterialIndex[meshIdx][p],
-                                       .world = world});
+            const cgltf_material* material = node->mesh->primitives[p].material;
+            scene.instances.push_back(
+                {.meshIndex = primitiveFlatIndex[meshIdx][p],
+                 .materialIndex = primitiveMaterialIndex[meshIdx][p],
+                 .world = world,
+                 .sourceName = node->name != nullptr && node->name[0] != '\0'
+                                   ? node->name
+                                   : (node->mesh->name != nullptr ? node->mesh->name : ""),
+                 .materialQualifier = node->mesh->primitives_count > 1 && material != nullptr &&
+                                              material->name != nullptr
+                                          ? material->name
+                                          : ""});
             instanceNodes.push_back(node);
         }
     }

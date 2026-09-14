@@ -159,3 +159,54 @@ TEST_CASE("a frame measured as having no passes is still timed", "[app]") {
     REQUIRE(ring.find(1)->timings.empty());
     REQUIRE(ring.newestTimedFrame() == ring.find(1));
 }
+
+//======================================================================================================================
+TEST_CASE("delayed timings retain the declared metrics across later scene and extent changes",
+          "[app]") {
+    FrameRecordRing ring;
+    FrameMetricsMetadata metadata{.contextEpoch = 7,
+                                  .objectCount = 100,
+                                  .drawCount = 80,
+                                  .viewportLogicalWidth = 640,
+                                  .viewportLogicalHeight = 360,
+                                  .renderPixelWidth = 960,
+                                  .renderPixelHeight = 540,
+                                  .outputPixelWidth = 1280,
+                                  .outputPixelHeight = 720};
+    ring.retain(recordFor(1, "scene"), metadata);
+    metadata.contextEpoch = 8;
+    metadata.objectCount = 2;
+    metadata.renderPixelWidth = 1920;
+    metadata.outputPixelWidth = 2560;
+    ring.retain(recordFor(2, "scene"), metadata);
+    const std::array timings = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 3.5}};
+    REQUIRE(ring.joinTimings(1, timings));
+    const auto* retired = ring.newestTimedFrame();
+    REQUIRE(retired != nullptr);
+    REQUIRE(retired->record.frameId == 1);
+    REQUIRE(retired->metrics.has_value());
+    REQUIRE(retired->metrics->contextEpoch == 7);
+    REQUIRE(retired->metrics->objectCount == 100);
+    REQUIRE(retired->metrics->drawCount == 80);
+    REQUIRE(retired->metrics->viewportLogicalWidth == 640);
+    REQUIRE(retired->metrics->viewportLogicalHeight == 360);
+    REQUIRE(retired->metrics->renderPixelWidth == 960);
+    REQUIRE(retired->metrics->renderPixelHeight == 540);
+    REQUIRE(retired->metrics->outputPixelWidth == 1280);
+    REQUIRE(retired->metrics->outputPixelHeight == 720);
+    const RetainedFrame frozen = *retired;
+    for (uint64_t frame = 3; frame <= 6; ++frame) {
+        ring.retain(recordFor(frame, "later"), metadata);
+    }
+    REQUIRE(ring.find(1) == nullptr);
+    REQUIRE(frozen.metrics->contextEpoch == 7);
+    REQUIRE(frozen.timings.front().gpuMilliseconds == 3.5);
+}
+
+//======================================================================================================================
+TEST_CASE("capture frame retention does not invent editor metrics", "[app]") {
+    FrameRecordRing ring;
+    ring.retain(recordFor(1, "capture"));
+    REQUIRE(ring.joinTimings(1, {}));
+    REQUIRE_FALSE(ring.newestTimedFrame()->metrics.has_value());
+}

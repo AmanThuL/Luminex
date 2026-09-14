@@ -9,10 +9,25 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
 namespace lmx::app {
+
+/// Editor measurements captured when a frame is declared, before GPU retirement. These values
+/// belong to that frame even when a later resize, scene switch or mode change has already occurred.
+struct FrameMetricsMetadata {
+    uint64_t contextEpoch = 0;         ///< App revision separating incompatible scene/mode samples.
+    uint32_t objectCount = 0;          ///< Scene object count submitted for this frame.
+    uint32_t drawCount = 0;            ///< Draw items submitted for this frame.
+    uint32_t viewportLogicalWidth = 0; ///< Image width in logical UI points.
+    uint32_t viewportLogicalHeight = 0; ///< Image height in logical UI points.
+    uint32_t renderPixelWidth = 0;  ///< Active rendering width before reconstruction, in pixels.
+    uint32_t renderPixelHeight = 0; ///< Active rendering height before reconstruction, in pixels.
+    uint32_t outputPixelWidth = 0;  ///< Scene output width after reconstruction, in pixels.
+    uint32_t outputPixelHeight = 0; ///< Scene output height after reconstruction, in pixels.
+};
 
 /// One retained frame: what compilation decided, and what the GPU later measured of it.
 ///
@@ -25,6 +40,7 @@ struct RetainedFrame {
     /// Copied rather than borrowed: rhi::Device::passTimings() is invalidated by the next
     /// beginFrame(), and this outlives several of those.
     std::vector<rhi::PassTiming> timings;
+    std::optional<FrameMetricsMetadata> metrics; ///< Declaration-time editor context, if supplied.
     bool timed = false; ///< Whether `timings` has been joined; distinguishes it from a timed frame
                         ///< that ran no passes.
 };
@@ -47,7 +63,10 @@ public:
 
     /// Retains one compiled frame, evicting the oldest once kCapacity are held. Frames are expected
     /// in increasing frameId order, which is the order a frame loop declares them in.
-    void retain(render::CompiledFrameRecord record);
+    /// Optional metrics are copied into the same retained entry, so delayed timings cannot be
+    /// paired with current live settings. Capture callers may omit editor-only metadata.
+    void retain(render::CompiledFrameRecord record,
+                std::optional<FrameMetricsMetadata> metrics = std::nullopt);
 
     /// Joins timings measured on `frameId` to the retained record of that frame, and answers
     /// whether one was still retained. `frameId` of zero -- the RHI's "nothing published yet" --

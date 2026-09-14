@@ -5,13 +5,16 @@
 
 #pragma once
 #include "App/Model/AppOptions.h"
+#include "App/Model/ConsoleModel.h"
 #include "App/Model/DynamicResolution.h"
 #include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
 #include "App/Model/FrameRecordRing.h"
+#include "App/Model/MetricsContextRevision.h"
 #include "App/Model/PerformanceModel.h"
+#include "App/Model/SceneLoadState.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/WorkspaceModel.h"
@@ -19,6 +22,7 @@
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
+#include "Render/SelectionOutline.h"
 #include "Scene/SceneLibrary.h"
 
 #include <cstdint>
@@ -29,6 +33,8 @@
 
 /// SDL is an implementation detail of shell input; this header uses an opaque window handle.
 struct SDL_Window;
+/// ImGui style storage is private to the shell; its definition stays in the implementation.
+struct ImGuiStyle;
 
 namespace lmx::app {
 
@@ -47,6 +53,8 @@ struct WorkspaceSettings {
     std::string sectionText;
     /// The live panel visibility this shell draws from and persists.
     WorkspaceVisibility visibility;
+    /// User-selected UI density, persisted independently of dock topology.
+    uint32_t uiScalePercent = kDefaultUiScalePercent;
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
@@ -55,11 +63,12 @@ struct WorkspaceSettings {
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
 ///
-/// It owns no RHI object and no Scene. The SceneLibrary (which owns every Scene it has built, for
-/// the device's lifetime) is passed in and outlives the shell; everything else the shell touches
-/// (the scene target it displays, the device it resizes against) is passed in per call, which
-/// keeps the destruction order the RHI requires visible in run(): the shell is declared last and
-/// so torn down first, while the device is still alive for imguiShutdown() to drain against.
+/// It owns selection presentation resources but no Scene. The SceneLibrary (which owns every Scene
+/// it has built, for the device's lifetime) is passed in and outlives the shell; everything else
+/// the shell touches (the scene target it displays, the device it resizes against) is passed in per
+/// call, which keeps the destruction order the RHI requires visible in run(): the shell is declared
+/// last and so torn down first, while the device is still alive for imguiShutdown() to drain
+/// against.
 class EditorShell {
 public:
     /// Creates the ImGui context and both backends (order per Metal4ImGui.h), then loads the
@@ -70,7 +79,8 @@ public:
     /// logs and keeps the previous scene active instead.
     static std::unique_ptr<EditorShell> create(SDL_Window* window, rhi::Device& device,
                                                scene::SceneLibrary& library,
-                                               scene::SceneId initialScene);
+                                               scene::SceneId initialScene,
+                                               std::shared_ptr<ConsoleLog> consoleLog);
     /// Releases the ImGui context and renderer integration while the device remains alive.
     ~EditorShell();
 
@@ -86,11 +96,16 @@ public:
     /// old targets. Running it *after* the Viewport image was recorded would leave ImGui's draw
     /// data naming a texture that no longer exists, which is why the frame loop calls it at the
     /// top of the frame rather than next to the size measurement that feeds it.
-    void applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer);
+    /// False on renderer allocation failure: the caller must leave the frame loop before drawing.
+    bool applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer);
+
+    /// Applies queued font/control scaling before backend and ImGui NewFrame calls.
+    /// Uses the unscaled base style so repeated zoom/reset operations cannot accumulate drift.
+    void prepareUIFrame();
 
     /// Builds the whole UI for this frame and applies camera input. Between ImGui::NewFrame() and
-    /// ImGui::Render(). Takes the device because selecting a new scene this frame drains the GPU
-    /// (device.waitIdle()) before the library builds or hands back the scene.
+    /// ImGui::Render(). Applies a scene request from the preceding presented frame before drawing:
+    /// the device drains in-flight references before the library builds or returns the scene.
     ///
     /// `frameRecords` feeds both observability views: the Render Graph panel shows one exact
     /// retired frame, while Performance rolls timings from successive retired frames into a stable
@@ -105,6 +120,12 @@ public:
 
     /// Seeds both interactive and scripted runs from the parsed startup temporal options.
     void primeTemporal(const AppOptions& options);
+
+    /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
+    render::GraphTexture declareSelection(render::RenderGraph& graph, rhi::CommandList& commands,
+                                          render::GraphTexture display,
+                                          const render::SceneView& view,
+                                          const render::Renderer& renderer);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
     /// Build the UI first: the Inspector edits the active scene's objects and lights that this
@@ -143,6 +164,12 @@ public:
     /// once per frame, after `device.beginFrame()`, with the device's own frame number.
     void controllerDeclared(uint64_t frame);
 
+    /// Retains the current declaration's temporal event and effective status for editor observers.
+    void observeDeclaration(const render::Renderer& renderer, uint64_t frameId);
+
+    /// Captures declaration-time dimensions and counts for the exact frame retained by the loop.
+    FrameMetricsMetadata frameMetrics(const render::Renderer& renderer);
+
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_session.camera(); }
 
@@ -175,11 +202,16 @@ public:
     }
 
 private:
-    EditorShell(SDL_Window* window, scene::SceneLibrary& library);
+    EditorShell(SDL_Window* window, scene::SceneLibrary& library,
+                std::shared_ptr<ConsoleLog> consoleLog);
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
     void buildMainMenu();
+    // Queues a bounded UI-density preference for the next frame and persistence.
+    void setUiScale(uint32_t percent);
+    // Global shortcuts exclude text editing, active widgets, popups and camera look.
+    void updateUiScaleShortcuts();
     // Draws every visible panel in dock order and folds each window's close button back into
     // m_workspace.visibility. Panels draw the state this shell owns; they keep no copy of it.
     void buildPanels(rhi::Device& device, render::Renderer& renderer,
@@ -192,14 +224,13 @@ private:
     // close button, and the only place that tells ImGui the ini needs rewriting for a change that
     // moved no window.
     void setPanelVisible(EditorPanel panel, bool visible);
-    // device.waitIdle() then library.get(id); on failure, logs and leaves the current scene
-    // active (spec §3: "error -> log + keep current scene"). On success, re-points the camera at
-    // the new scene's initial pose -- the only per-scene UI state this shell carries. Returns
-    // whether the active scene actually changed (false for a reselect of the already-active scene
-    // and for a failed load), which buildPanels feeds to sceneSwitchOutcome to decide the
-    // selection and filter to store (spec section 5).
+    // Consumes the preceding presented frame's request, preserving selection/filter on failure.
+    void applyPendingScene(rhi::Device& device);
+    // Drains in-flight scene references and loads one requested catalog entry, retaining an
+    // actionable failure for ScenePanel while the current scene remains renderable.
     bool selectScene(rhi::Device& device, scene::SceneId id);
     void updateCameraInput(float deltaSeconds);
+    uint64_t metricsContextEpoch();
 
     SDL_Window* m_window = nullptr;
     scene::SceneLibrary& m_library;
@@ -214,8 +245,14 @@ private:
     // before panels draw, so a stale scene id or out-of-range index never reaches the Inspector.
     EditorSelection m_selection;
     std::string m_sceneFilter;
+    SceneLoadState m_sceneLoading;
+    MetricsContextRevision m_metricsContextRevision;
 
     std::vector<render::DrawItem> m_drawItems;
+    std::unique_ptr<render::SelectionOutline> m_selectionOutline;
+    bool m_showSelectionOutline = true;
+    bool m_viewportUsable = false;
+    float m_viewportBackingScale = 1.0f;
     // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
     // switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
@@ -265,11 +302,14 @@ private:
     // Panel visibility plus the settings-handler storage that persists it in imgui.ini. The
     // handler reaches this through a pointer create() installs as its UserData.
     WorkspaceSettings m_workspace;
+    std::unique_ptr<ImGuiStyle> m_baseUiStyle;
+    uint32_t m_appliedUiScalePercent = 0;
     // Set at create() when the ini named no matching workspace schema, and again when a layout
     // reset is consumed; cleared by the frame that lays out the dockspace. Rebuilding the default
     // layout on a run whose schema did match would throw away the re-docking the ini exists to
     // persist.
     bool m_buildDefaultLayout = false;
+    bool m_focusDefaultPerformance = false;
     // Why the pending build was scheduled, for the one line logged when it actually happens.
     std::string_view m_layoutBuildReason;
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the
@@ -280,6 +320,7 @@ private:
     // PerformanceFrameSample each buildUI when a GPU frame has newly retired; owns all of the
     // panel's timing, resolution, count, and transient-memory state so the panel itself holds none.
     PerformanceModel m_performanceModel;
+    ConsoleModel m_consoleModel;
 
     // The Render Graph canvas's session state: the node-editor context, the shape it is laid out
     // for, and the selected node. Owned here rather than by the panel because the context has to

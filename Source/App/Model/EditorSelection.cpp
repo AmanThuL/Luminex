@@ -9,6 +9,7 @@
 #include <cctype>
 #include <format>
 #include <iterator>
+#include <unordered_map>
 
 namespace lmx::app {
 namespace {
@@ -109,6 +110,61 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activ
 }
 
 //======================================================================================================================
+std::string sceneObjectLabel(const scene::Scene& scene, size_t index) {
+    if (index >= scene.objects.size()) {
+        return "Unavailable object";
+    }
+    const std::string& name = scene.objects[index].name;
+    if (name.empty()) {
+        return std::format("Unnamed object [{}]", index);
+    }
+    const auto count = std::count_if(scene.objects.begin(), scene.objects.end(),
+                                     [&](const auto& object) { return object.name == name; });
+    return count > 1 ? std::format("{} [object {}]", name, index) : name;
+}
+
+//======================================================================================================================
+bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& selection,
+                             std::string_view filter) {
+    if (filter.empty() || selection.subject == EditorSubject::None) {
+        return false;
+    }
+    std::string label;
+    std::string compact;
+    switch (selection.subject) {
+    case EditorSubject::Camera:
+        label = "Editor Camera";
+        break;
+    case EditorSubject::Rendering:
+        label = "Rendering";
+        break;
+    case EditorSubject::DirectionalLight:
+        label = std::format("Light {}", selection.index);
+        break;
+    case EditorSubject::Object:
+        label = sceneObjectLabel(scene, selection.index);
+        if (selection.index < scene.objects.size()) {
+            const auto& object = scene.objects[selection.index];
+            compact = object.materialQualifier.empty() ? object.name : object.materialQualifier;
+            const auto duplicates = std::count_if(
+                scene.objects.begin(), scene.objects.end(), [&](const auto& candidate) {
+                    return (candidate.materialQualifier.empty()
+                                ? candidate.name
+                                : candidate.materialQualifier) == compact;
+                });
+            if (duplicates > 1) {
+                compact = std::format("{} [object {}]", compact, selection.index);
+            }
+        }
+        break;
+    case EditorSubject::None:
+        return false;
+    }
+    const std::string needle = toLower(filter);
+    return !containsCaseInsensitive(label, needle) && !containsCaseInsensitive(compact, needle);
+}
+
+//======================================================================================================================
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
@@ -130,11 +186,37 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scen
                         .group = EditorSelectionGroup::DirectionalLights});
     }
 
+    std::unordered_map<std::string_view, size_t> nameCounts;
+    std::unordered_map<std::string_view, size_t> displayCounts;
+    std::unordered_map<std::string_view, size_t> sourceCounts;
+    for (const auto& object : scene.objects) {
+        ++nameCounts[object.name];
+        if (!object.sourceName.empty() && !object.materialQualifier.empty()) {
+            ++sourceCounts[object.sourceName];
+        }
+        ++displayCounts[object.materialQualifier.empty() ? object.name : object.materialQualifier];
+    }
     for (size_t i = 0; i < scene.objects.size(); ++i) {
-        rows.push_back({.subject = EditorSubject::Object,
-                        .index = i,
-                        .displayLabel = scene.objects[i].name,
-                        .group = EditorSelectionGroup::Objects});
+        const auto& object = scene.objects[i];
+        const std::string& name = object.name;
+        const std::string& compact =
+            object.materialQualifier.empty() ? name : object.materialQualifier;
+        const std::string label = compact.empty() ? std::format("Unnamed object [{}]", i)
+                                  : displayCounts[compact] > 1
+                                      ? std::format("{} [object {}]", compact, i)
+                                      : compact;
+        const std::string full = name.empty()           ? std::format("Unnamed object [{}]", i)
+                                 : nameCounts[name] > 1 ? std::format("{} [object {}]", name, i)
+                                                        : name;
+        rows.push_back(
+            {.subject = EditorSubject::Object,
+             .index = i,
+             .displayLabel = label,
+             .group = EditorSelectionGroup::Objects,
+             .detailLabel = full,
+             .sourceGroup = !object.materialQualifier.empty() && sourceCounts[object.sourceName] > 1
+                                ? object.sourceName
+                                : ""});
     }
 
     if (filter.empty()) {
@@ -143,9 +225,27 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scen
 
     const std::string needleLower = toLower(filter);
     std::erase_if(rows, [&](const EditorSelectionRow& row) {
-        return !containsCaseInsensitive(row.displayLabel, needleLower);
+        return !containsCaseInsensitive(row.displayLabel, needleLower) &&
+               !containsCaseInsensitive(row.detailLabel, needleLower);
     });
     return rows;
+}
+
+//======================================================================================================================
+std::vector<EditorObjectGroup> groupSceneObjectRows(std::span<const EditorSelectionRow> rows) {
+    std::vector<EditorObjectGroup> groups;
+    std::unordered_map<std::string_view, size_t> groupIndices;
+    for (const auto& row : rows) {
+        if (row.subject != EditorSubject::Object) {
+            continue;
+        }
+        const auto [entry, inserted] = groupIndices.try_emplace(row.sourceGroup, groups.size());
+        if (inserted) {
+            groups.push_back({.sourceName = row.sourceGroup, .rows = {}});
+        }
+        groups[entry->second].rows.push_back(row);
+    }
+    return groups;
 }
 
 //======================================================================================================================

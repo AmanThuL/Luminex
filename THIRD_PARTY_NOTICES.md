@@ -2,7 +2,8 @@
 
 The Apache-2.0 license in this repository covers Luminex source code. It does not cover files
 downloaded into `Assets/Fetched/`, nor the gallery images derived from those files:
-`docs/media/sponza.png`, `docs/media/editor-sponza.png` and `docs/media/damaged-helmet.png`.
+`docs/media/sponza.png`, `docs/media/editor-sponza.jpg` and `docs/media/damaged-helmet.png`.
+Fetched third-party fonts retain their own licenses as listed below.
 
 ## Damaged Helmet
 
@@ -31,10 +32,9 @@ License texts: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode
 - License recorded by `info.js`: [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/legalcode)
 - Attribution: Crytek Sponza, © 2010 Frank Meinl/Crytek
 
-`docs/media/editor-sponza.png` shows Sponza rendered in the real Luminex editor with native TAA,
-automatic exposure and bloom. Its camera framing, lighting and image output are adaptations;
-the screenshot is presented with a decorative macOS-style title bar and background. The scene
-and editor content are captured from the running application.
+`docs/media/editor-sponza.jpg` shows Sponza rendered in the real Luminex editor with native TAA.
+Its camera framing, lighting and image output are adaptations. The scene, editor content and
+native macOS window frame are captured from the running application.
 
 `xmake setup` verifies the source archive and then performs a deterministic local conversion to
 the uncompressed core glTF subset used by Luminex. The converted geometry, materials, and image
@@ -64,3 +64,15 @@ geometry, approximates Phong materials, uses diffuse alpha for cutouts and selec
 normal maps; Luminex's lighting, camera and rendering further change derived images.
 
 Archive record: <https://casual-effects.com/data>.
+
+## Inter
+
+- Source: [Inter 4.1](https://github.com/rsms/inter/tree/e3a3d4c57d5ecc01453a575621882a384c1995a3)
+- Author: Rasmus Andersson and contributors
+- File: unmodified `docs/font-files/InterVariable.ttf`, using default Regular outlines
+- License: SIL Open Font License 1.1, retained verbatim alongside the font
+
+`xmake setup` verifies the pinned font and license hashes. Building App copies the font,
+`LICENSE.txt` and `SOURCE.txt` to its `Fonts/` directory; keep them together when distributing App.
+The editor sets digit advances at runtime without modifying the font file. Gallery screenshots
+show the typeface in use; the font itself is not relicensed under Apache-2.0.

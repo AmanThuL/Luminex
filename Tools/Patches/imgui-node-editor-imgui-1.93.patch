@@ -89,3 +89,52 @@ index 3ca9eb3..d2c37d1 100644
      }
  }
  
+diff --git a/imgui_node_editor.h b/imgui_node_editor.h
+index c79f41a..d64a47f 100644
+--- a/imgui_node_editor.h
++++ b/imgui_node_editor.h
+@@ -408,6 +408,8 @@ IMGUI_NODE_EDITOR_API int  GetActionContextLinks(LinkId* links, int size);
+ IMGUI_NODE_EDITOR_API void EndShortcut();
+ 
+ IMGUI_NODE_EDITOR_API float GetCurrentZoom();
++// Canvas units per screen point, retaining the current view center.
++IMGUI_NODE_EDITOR_API void SetCurrentZoom(float zoom);
+ 
+ IMGUI_NODE_EDITOR_API NodeId GetHoveredNode();
+ IMGUI_NODE_EDITOR_API PinId GetHoveredPin();
+diff --git a/imgui_node_editor_api.cpp b/imgui_node_editor_api.cpp
+index c8c7c3f..539694d 100644
+--- a/imgui_node_editor_api.cpp
++++ b/imgui_node_editor_api.cpp
+@@ -667,6 +667,11 @@ float ax::NodeEditor::GetCurrentZoom()
+     return s_Editor->GetView().InvScale;
+ }
+ 
++void ax::NodeEditor::SetCurrentZoom(float zoom)
++{
++    s_Editor->SetCurrentZoom(zoom);
++}
++
+ ax::NodeEditor::NodeId ax::NodeEditor::GetHoveredNode()
+ {
+     return s_Editor->GetHoveredNode();
+diff --git a/imgui_node_editor_internal.h b/imgui_node_editor_internal.h
+index 0d018cf..cf67e8e 100644
+--- a/imgui_node_editor_internal.h
++++ b/imgui_node_editor_internal.h
+@@ -1437,6 +1437,15 @@ struct EditorContext
+         m_NavigateAction.NavigateTo(bounds, zoomMode, duration);
+     }
+ 
++    void SetCurrentZoom(float zoom)
++    {
++        IM_ASSERT(zoom > 0.0f);
++        const auto center = GetViewRect().GetCenter();
++        const auto halfSize = GetRect().GetSize() * (zoom * 0.5f);
++        m_NavigateAction.NavigateTo(ImRect(center - halfSize, center + halfSize),
++            NavigateAction::ZoomMode::Exact, 0.0f);
++    }
++
+     void RegisterAnimation(Animation* animation);
+     void UnregisterAnimation(Animation* animation);
+ 

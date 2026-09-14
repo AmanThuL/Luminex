@@ -36,6 +36,7 @@ void applyDynamicResolution(DynamicResolutionState& state, render::ResolutionCon
             controller.setSettings(updated);
         }
         if (newestTimed != nullptr && newestTimed->record.frameId != state.lastObservedFrame) {
+            state.lastMeasurementFrame = newestTimed->record.frameId;
             state.lastObservedMilliseconds = frameGpuMilliseconds(newestTimed->timings);
             controller.observe(newestTimed->record.frameId, state.lastObservedMilliseconds);
             state.lastObservedFrame = newestTimed->record.frameId;

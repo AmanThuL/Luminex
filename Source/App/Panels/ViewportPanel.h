@@ -4,8 +4,12 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
+#include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
+#include "App/Model/SceneSession.h"
+#include "App/Model/TemporalEditorState.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
@@ -29,6 +33,7 @@ struct ViewportPanelResult {
     uint32_t width = 0;
     /// Content-region height in backing pixels; meaningful only if `measured`.
     uint32_t height = 0;
+    float backingScale = 1.0f; ///< Scale of this panel's own platform window.
     /// Whether the pointer is over the panel. This is what gates camera look.
     bool hovered = false;
     /// Whether the panel has keyboard focus. Display-only.
@@ -41,7 +46,9 @@ struct ViewportPanelResult {
 /// Inspector row are visible to each other on the same UI frame because there is only one value
 /// between them, never two.
 struct ViewportPanelContext {
-    render::Renderer& renderer;       ///< The scene target the panel displays.
+    render::Renderer& renderer;  ///< The scene target the panel displays.
+    rhi::Texture& outlineTarget; ///< Separate display target for the enabled object cue.
+    bool& showOutline;           ///< Editor-local cue toggle; leaves framing and capture unchanged.
     std::string_view activeSceneName; ///< Shown in the toolbar.
     render::Camera& camera;           ///< Reset Camera writes the active scene's initial pose here.
     const scene::Scene& scene;        ///< Source of Reset Camera's initial pose.
@@ -50,6 +57,11 @@ struct ViewportPanelContext {
     /// Raised when a toolbar edit is one of the exposure reset triggers, and consumed by the frame
     /// loop rather than by this panel.
     bool& exposureResetPending;
+    SceneSession& session;              ///< Shared playback and camera owner.
+    TemporalEditorState& temporalState; ///< Camera discontinuity and status provenance.
+    EditorSelection selection; ///< Resolved selected subject for editor-only framing and bounds.
+    EditorActions& actions;    ///< Shared capture status and action intent.
+    scene::SceneId sceneId;    ///< Catalog identity for concise lab context.
 };
 
 /// Draws the Viewport panel: a compact toolbar (active scene, Reset Camera, and quick toggles for

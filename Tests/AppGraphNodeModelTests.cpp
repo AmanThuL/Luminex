@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/GraphInspectorModel.h"
+#include "App/Model/GraphLayout.h"
 #include "App/Model/GraphNodeModel.h"
 #include "GraphTestSupport.h"
 #include "Render/RenderGraph.h"
@@ -589,4 +590,40 @@ TEST_CASE("node facts equal the inspector rows for the same pass", "[app]") {
     // A pass carrying real barriers is what makes the comparison above worth making.
     REQUIRE_FALSE(model.nodes[1].barriersBefore.empty());
     REQUIRE(model.nodes[0].gpuMilliseconds == 0.1);
+}
+
+//======================================================================================================================
+TEST_CASE("graph logical selection survives insertion and reports actual removal", "[app]") {
+    GraphNodeModel original;
+    original.nodes = {GraphNode{.label = "pass.a"}, GraphNode{.label = "pass.b"}};
+    const auto layout = layoutGraph(original, {});
+    const auto selected = graphItemKey(original, layout, 1);
+    GraphNodeModel changed;
+    changed.nodes = {GraphNode{.label = "pass.new"}, GraphNode{.label = "pass.a"},
+                     GraphNode{.label = "pass.b"}};
+    const auto inserted = layoutGraph(changed, {});
+    REQUIRE(findGraphItem(changed, inserted, selected) == 2);
+    changed.nodes.pop_back();
+    REQUIRE_FALSE(findGraphItem(changed, layoutGraph(changed, {}), selected));
+}
+
+//======================================================================================================================
+TEST_CASE("graph sink selection follows its output across export reordering", "[app]") {
+    GraphNodeModel model;
+    model.nodes = {GraphNode{.label = "pass.writer", .scheduleOrder = 0},
+                   GraphNode{.kind = GraphNodeKind::Sink,
+                             .label = "export",
+                             .inputs = {GraphNodePin{.resourceName = "lmx.render.historyColor0"}},
+                             .producerPass = 0},
+                   GraphNode{.kind = GraphNodeKind::Sink,
+                             .label = "export",
+                             .inputs = {GraphNodePin{.resourceName = "lmx.render.exposureBuffer"}},
+                             .producerPass = 0}};
+    const auto before = layoutGraph(model, {});
+    const auto key = graphItemKey(model, before, 1);
+    std::swap(model.nodes[1], model.nodes[2]);
+    model.nodes[2].inputs[0].resourceName = "lmx.render.historyColor1";
+    REQUIRE(findGraphItem(model, layoutGraph(model, {}), key) == 2);
+    model.nodes.pop_back();
+    REQUIRE_FALSE(findGraphItem(model, layoutGraph(model, {}), key));
 }

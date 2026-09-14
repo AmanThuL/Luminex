@@ -24,9 +24,15 @@
 
 namespace lmx::scene {
 
+/// Axis-aligned bounds in the coordinate space named by the containing field or function.
+struct ObjectBounds {
+    glm::vec3 minimum{0.0f}; ///< Inclusive minimum XYZ coordinates.
+    glm::vec3 maximum{0.0f}; ///< Inclusive maximum XYZ coordinates.
+};
+
 /// Editable scene instance referencing one mesh and material.
 struct SceneObject {
-    std::string name;            ///< User-facing instance name.
+    std::string name; ///< Display name, qualified by authored material for multi-primitive assets.
     glm::vec3 position{0.f};     ///< World-space translation.
     glm::vec3 eulerDegrees{0.f}; ///< XYZ Euler rotation in degrees.
     glm::vec3 scale{1.f};        ///< Per-axis object scale.
@@ -42,6 +48,11 @@ struct SceneObject {
     /// `Scene::animate()` from an `EmissiveTrack`. Objects with no track keep the default of 1, so
     /// the authored colour passes through unchanged.
     float emissiveStrength = 1.0f;
+    /// Conservative mesh-local bounds from loaded vertices or generated geometry; absent when
+    /// reliable geometry bounds are unavailable. Editor diagnostics only; no GPU identity implied.
+    std::optional<ObjectBounds> localBounds;
+    std::string sourceName;        ///< Exact authored node/mesh name, empty for generated objects.
+    std::string materialQualifier; ///< Authored primitive material qualifier, empty when unneeded.
 
     /// Builds the object's model matrix from its authored transform fields.
     glm::mat4 modelMatrix() const;

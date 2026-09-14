@@ -9,7 +9,8 @@ shipped capabilities. Numerical order alone does not determine when an area may 
 
 ## Entry from the rendering foundation
 
-The next planned slice is M7.1.
+The next rendering slice is M7.1; [Editor Experience](editor-experience.md#placement-and-ownership)
+owns the accepted UX1-before-M7.1 delivery order.
 [Interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation) explicitly
 approves entry in its [2026-09-13 review](../milestones/interface-gate-b.md), after the structural
 [R1](codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) milestone.
@@ -27,12 +28,15 @@ scene representation; M7.4 adds the point/spot light model before clustered assi
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).
 M5.6 does not establish a production speedup or select ICB. The M6.4 manual/capture checks and
 M6.5 parity investigation remain open follow-ups; entering M7 does not resolve them. Gate B owns
-entry requirements; these follow-ups do not silently become additional milestone prerequisites.
+technical entry requirements; these follow-ups do not silently become additional milestone
+prerequisites. The separately accepted editor delivery order does not reopen gate B.
 
 ## Dependency map
 
 This table summarizes the prerequisites below; each area's own gate governs acceptance. Eligible
-areas can be ordered independently, while only one implementation plan may be active.
+areas can be ordered independently within the accepted delivery order, while only one
+implementation plan may be active. The entry row records technical dependencies; the intervening
+editor work is defined only in [Part IV](editor-experience.md#placement-and-ownership).
 
 | Area | Required foundation | Independent ordering |
 |---|---|---|

@@ -21,6 +21,11 @@ bool EditorActions::consumeQuit() {
 
 //======================================================================================================================
 void EditorActions::requestCapture() {
+    m_captureFeedbackVisible = true;
+    if (!m_captureAvailable || m_captureResult.status == ActionStatus::Pending) {
+        return;
+    }
+    m_captureResult = {ActionStatus::Pending, "Waiting for the next drawable frame.", {}};
     m_capturePending = true;
 }
 
@@ -41,6 +46,18 @@ bool EditorActions::consumeResetLayout() {
     const bool wasPending = m_resetLayoutPending;
     m_resetLayoutPending = false;
     return wasPending;
+}
+
+//======================================================================================================================
+void EditorActions::configureCapture(bool available) {
+    m_captureAvailable = available;
+    m_capturePending = false;
+    m_captureResult =
+        available ? ActionResult{ActionStatus::Ready, "Capture the next GPU frame (C).", {}}
+                  : ActionResult{
+                        ActionStatus::Unavailable,
+                        "Relaunch with MTL_CAPTURE_ENABLED=1 xmake run App to enable GPU capture.",
+                        {}};
 }
 
 } // namespace lmx::app

@@ -18,12 +18,14 @@ silently override an accepted higher-precedence decision.
    identifiers and boundaries, not an implementation transcript. The entry owns direction, shared
    delivery rules and current baseline; Rendering Foundations owns M4–M6.5 and interface gate B;
    GPU-Driven Hybrid Rendering owns M7–M11 and independent research; Codebase Refactoring owns
-   the R-series structural milestones. Define each boundary once and link to its owner from
-   summaries and dependency tables.
+   the R-series structural milestones; Editor Experience owns UX1 and its placement before M7.1.
+   Define each boundary once and link to its owner from summaries and dependency tables.
 5. **Active plan** (`docs/plans/`): an accepted change currently being executed. It may contain
    sequencing and exit criteria but does not become a permanent dependency of source comments.
 6. **Milestone record** (`docs/milestones/`): compact shipped behavior, evidence, known limits, and
-   durable deviations at a boundary.
+   durable deviations at a boundary. Before implementation, a `Proposed` milestone specification
+   may summarize the intended design and verification; at closure, update it with actual behavior
+   and evidence. The roadmap continues to own the boundary and completion gate.
 7. **Postmortem** (`docs/postmortems/`): closed symptom, evidence, root cause, correction, prevention.
 8. **Research** (`docs/research/`): dated evidence and synthesis. It is frozen and non-normative;
    milestone sequences inside it are historical proposals, and decisions derived from it must be

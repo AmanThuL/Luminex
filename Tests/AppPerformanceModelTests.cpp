@@ -6,6 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include "App/Model/MetricsContextRevision.h"
 #include "App/Model/PerformanceModel.h"
 
 #include <array>
@@ -283,8 +284,7 @@ TEST_CASE("performance model freezes every field together while paused", "[app]"
 }
 
 //======================================================================================================================
-TEST_CASE("performance model resume publishes one internally consistent current snapshot",
-          "[app]") {
+TEST_CASE("performance model resume waits for new data and starts a fresh window", "[app]") {
     PerformanceModel model;
     const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA = sampleFor(1, timingsA, /*objectCount=*/5);
@@ -294,11 +294,13 @@ TEST_CASE("performance model resume publishes one internally consistent current 
     model.setPaused(false);
     REQUIRE_FALSE(model.paused());
 
-    // Resuming without new data is still coherent: nothing was collected while paused, so the
-    // republished snapshot matches what was frozen -- never a stale row paired with fresh context.
     const PerformanceSnapshot resumedIdle = model.snapshot();
-    REQUIRE(resumedIdle.frameId == 1);
-    REQUIRE(resumedIdle.objectCount == 5);
+    REQUIRE(resumedIdle.frameId == 0);
+    REQUIRE(resumedIdle.objectCount == 0);
+    REQUIRE(resumedIdle.waitingForSamples);
+    REQUIRE(resumedIdle.frameIntervalsMs.empty());
+    model.tick(0.3f, &sampleA);
+    REQUIRE(model.snapshot().waitingForSamples);
 
     // A new sample after resume updates every field of the snapshot together.
     const std::array timingsB = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 9.0}};
@@ -329,15 +331,15 @@ TEST_CASE("performance model clears both histories and reports waiting until the
     REQUIRE(cleared.frameIntervalsMs.empty());
     REQUIRE(cleared.frameId == 0);
 
-    // The frame-id sequence also restarts, so a sample that would have regressed against the
-    // pre-clear history is accepted again.
+    model.tick(0.3f, &sampleA);
+    REQUIRE(model.snapshot().waitingForSamples);
     const std::array timingsAgain = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
-    const PerformanceFrameSample sampleAgain = sampleFor(1, timingsAgain);
+    const PerformanceFrameSample sampleAgain = sampleFor(2, timingsAgain);
     model.tick(0.3f, &sampleAgain);
 
     const PerformanceSnapshot& reseeded = model.snapshot();
     REQUIRE_FALSE(reseeded.waitingForSamples);
-    REQUIRE(reseeded.frameId == 1);
+    REQUIRE(reseeded.frameId == 2);
     REQUIRE(reseeded.passRows[0].sampleCount == 1);
 }
 
@@ -356,4 +358,101 @@ TEST_CASE("performance model clear takes effect immediately even while paused", 
     REQUIRE(snapshot.waitingForSamples);
     REQUIRE(snapshot.passRows.empty());
     REQUIRE(snapshot.frameIntervalsMs.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("performance frozen clear resume rejects frames observed while frozen", "[app]") {
+    PerformanceModel model;
+    const std::array timing = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.0}};
+    auto sample = sampleFor(1, timing);
+    sample.renderPixelWidth = 640;
+    sample.renderPixelHeight = 360;
+    model.tick(0.3f, &sample);
+    const auto published = model.snapshot();
+    REQUIRE_FALSE(published.waitingForSamples);
+    REQUIRE(published.timedPassSumMilliseconds == 0.0);
+    REQUIRE(published.renderPixelWidth == 640);
+    model.setPaused(true);
+    sample.frameId = 5;
+    model.tick(1.0f, &sample);
+    REQUIRE(model.snapshot().publishedAtSeconds == published.publishedAtSeconds);
+    REQUIRE(model.snapshot().frameIntervalsMs == published.frameIntervalsMs);
+    model.clearHistory();
+    REQUIRE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().frameIntervalsMs.empty());
+    model.tick(1.0f, &sample);
+    REQUIRE(model.snapshot().frameIntervalsMs.empty());
+    model.setPaused(false);
+    model.tick(0.3f, &sample);
+    REQUIRE(model.snapshot().waitingForSamples);
+    sample.frameId = 6;
+    model.tick(0.01f, &sample);
+    REQUIRE_FALSE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().frameId == 6);
+    REQUIRE(model.snapshot().passRows.front().sampleCount == 1);
+    REQUIRE(model.snapshot().publishedAtSeconds > published.publishedAtSeconds);
+}
+
+//======================================================================================================================
+TEST_CASE("performance context changes reject old scene retirements without changing frozen data",
+          "[app]") {
+    PerformanceModel model;
+    const std::array timing = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    auto sample = sampleFor(1, timing, 50);
+    model.tick(0.3f, &sample);
+    model.setPaused(true);
+    const auto frozen = model.snapshot();
+    model.setContextEpoch(1);
+    REQUIRE(model.snapshot().frameId == frozen.frameId);
+    REQUIRE(model.snapshot().objectCount == 50);
+    REQUIRE(model.snapshot().publishedAtSeconds == frozen.publishedAtSeconds);
+    sample.frameId = 2;
+    model.tick(0.3f, &sample);
+    model.setPaused(false);
+    REQUIRE(model.snapshot().waitingForSamples);
+    sample.frameId = 3;
+    model.tick(0.3f, &sample);
+    REQUIRE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().objectCount == 0);
+    sample.contextEpoch = 1;
+    sample.frameId = 4;
+    sample.objectCount = 2;
+    model.tick(0.01f, &sample);
+    REQUIRE_FALSE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().objectCount == 2);
+    REQUIRE(model.snapshot().passRows.front().sampleCount == 1);
+    model.setContextEpoch(2);
+    REQUIRE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().frameIntervalsMs.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("performance mode re-entry rejects delayed frames from the first visit", "[app]") {
+    MetricsContextRevision revisions;
+    PerformanceModel model;
+    const auto firstA = revisions.observe(7);
+    REQUIRE(revisions.observe(7) == firstA);
+    model.setContextEpoch(firstA);
+    const std::array timings = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
+    auto sample = sampleFor(10, timings);
+    sample.contextEpoch = firstA;
+    model.tick(0.3f, &sample);
+    REQUIRE_FALSE(model.snapshot().waitingForSamples);
+    const auto modeB = revisions.observe(9);
+    model.setContextEpoch(modeB);
+    const auto secondA = revisions.observe(7);
+    REQUIRE(firstA < modeB);
+    REQUIRE(modeB < secondA);
+    REQUIRE(revisions.observe(7) == secondA);
+    model.setContextEpoch(secondA);
+    sample.frameId = 11;
+    model.tick(0.3f, &sample);
+    REQUIRE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().passRows.empty());
+    sample.frameId = 12;
+    sample.contextEpoch = secondA;
+    model.tick(0.01f, &sample);
+    REQUIRE_FALSE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().frameId == 12);
+    REQUIRE(model.snapshot().passRows.front().sampleCount == 1);
 }

@@ -258,12 +258,35 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
                     " scene: a node's world transform could not be decomposed into "
                     "position/rotation/scale"});
         }
-        scene->objects.push_back({.name = std::string(sceneName) + " object " + std::to_string(i),
+        scene->objects.push_back({.name = instance.sourceName,
                                   .position = decomposed->position,
                                   .eulerDegrees = decomposed->eulerDegrees,
                                   .scale = decomposed->scale,
                                   .meshIndex = instance.meshIndex,
                                   .materialIndex = instance.materialIndex});
+        SceneObject& object = scene->objects.back();
+        object.sourceName = instance.sourceName;
+        object.materialQualifier = instance.materialQualifier;
+        if (!instance.materialQualifier.empty()) {
+            object.name = instance.sourceName.empty()
+                              ? instance.materialQualifier
+                              : instance.sourceName + " / " + instance.materialQualifier;
+        }
+        ObjectBounds bounds{.minimum = glm::vec3(std::numeric_limits<float>::max()),
+                            .maximum = glm::vec3(std::numeric_limits<float>::lowest())};
+        bool finiteBounds = true;
+        for (const auto& vertex : gltfScene.meshes[instance.meshIndex].vertices) {
+            const glm::vec3 point(vertex.px, vertex.py, vertex.pz);
+            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
+                finiteBounds = false;
+                break;
+            }
+            bounds.minimum = glm::min(bounds.minimum, point);
+            bounds.maximum = glm::max(bounds.maximum, point);
+        }
+        if (finiteBounds && !gltfScene.meshes[instance.meshIndex].vertices.empty()) {
+            scene->objects.back().localBounds = bounds;
+        }
     }
 
     scene->animation.tracks.reserve(gltfScene.tracks.size());

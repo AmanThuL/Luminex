@@ -7,14 +7,18 @@
 
 #include "App/EditorShell.h"
 #include "App/Model/DirectionalLightRole.h"
+#include "App/Model/EditorRenderDefaults.h"
+#include "App/Panels/EditorStyle.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
+#include <format>
 #include <iterator>
 #include <limits>
 #include <string>
@@ -32,25 +36,39 @@ constexpr float kMinExposurePercentileGap = 1.0f;
 // Never let interactive editing collapse the clip range to nothing.
 constexpr float kMinClipGap = 0.01f;
 
-constexpr ImGuiTableFlags kFieldTableFlags = ImGuiTableFlags_SizingStretchProp;
+using editor_style::checkbox;
+using editor_style::field;
+using editor_style::slider;
 
 //======================================================================================================================
-// Left column holds the label, right column holds a full-width widget with a hidden ("##") ImGui
-// label -- the pairing Unreal's Details panel uses -- so every row in the enclosing table shares
-// one aligned label/value boundary (spec section 7's "aligned field tables").
 void beginFieldRow(const char* label) {
-    ImGui::TableNextRow();
-    ImGui::TableNextColumn();
-    ImGui::TextUnformatted(label);
-    ImGui::TableNextColumn();
-    ImGui::SetNextItemWidth(-FLT_MIN);
+    field(label);
 }
 
 //======================================================================================================================
-void drawCameraSection(render::Camera& camera, const scene::Scene& scene) {
-    if (ImGui::BeginTable("cameraFields", 2, kFieldTableFlags)) {
-        beginFieldRow("Position (world)");
-        ImGui::DragFloat3("##position", &camera.position.x, 0.05f);
+void valueRow(const char* label, const std::string& value) {
+    editor_style::readOnly(label, value.c_str());
+}
+
+//======================================================================================================================
+void drawCameraSection(const InspectorPanelContext& context) {
+    auto& camera = context.session.camera();
+    const auto initial = scene::cameraFromScene(context.session.scene().initialCamera);
+    const bool changed = camera.position != initial.position || camera.yaw != initial.yaw ||
+                         camera.pitch != initial.pitch || camera.fovY != initial.fovY ||
+                         camera.nearZ != initial.nearZ || camera.farZ != initial.farZ ||
+                         camera.moveSpeed != initial.moveSpeed;
+    if (ImGui::Button("Reset Camera")) {
+        camera = initial;
+        context.settings.followCameraTrack = false;
+        requestCameraCut(context.temporalState);
+    }
+    editorTooltip("Restore this scene's initial camera, stop following its camera track, and reset "
+                  "temporal history on the next frame.");
+    ImGui::SameLine();
+    editor_style::message(changed ? "Changed from scene default" : "Scene default");
+    if (editor_style::beginFields("cameraFields")) {
+        editor_style::vector3("Position (world)", "cameraPosition", &camera.position.x, 0.05f);
 
         // Camera stores radians; present degrees.
         beginFieldRow("Yaw (deg)");
@@ -89,222 +107,337 @@ void drawCameraSection(render::Camera& camera, const scene::Scene& scene) {
 
         ImGui::EndTable();
     }
+}
 
-    if (ImGui::Button("Reset Camera")) {
-        camera = scene::cameraFromScene(scene.initialCamera);
+//======================================================================================================================
+void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup group) {
+    ImGui::PushID(static_cast<int>(group));
+    const bool changed =
+        renderingGroupChanged(context.settings, group) ||
+        (group == EditorRenderGroup::Display &&
+         (context.renderer.clearColor[0] != 0.05f || context.renderer.clearColor[1] != 0.07f ||
+          context.renderer.clearColor[2] != 0.10f || context.renderer.clearColor[3] != 1.0f));
+    if (ImGui::Button("Reset group")) {
+        resetRenderingGroup(context.settings, group);
+        if (group == EditorRenderGroup::Exposure) {
+            setAutoExposureEnabled(context.settings, context.exposureContext,
+                                   context.exposureResetPending,
+                                   context.settings.autoExposureEnabled);
+        }
+        if (group == EditorRenderGroup::Display) {
+            constexpr std::array kClear{0.05f, 0.07f, 0.10f, 1.0f};
+            std::copy(kClear.begin(), kClear.end(), context.renderer.clearColor);
+        }
+    }
+    editorTooltip("Restore the editor defaults for this rendering group. Other groups, the camera "
+                  "and scene playback keep their current settings.");
+    ImGui::SameLine();
+    editor_style::message(changed ? "Changed from defaults" : "Editor defaults");
+    ImGui::PopID();
+}
+
+//======================================================================================================================
+void drawTemporalSection(const InspectorPanelContext& context) {
+    auto& settings = context.settings;
+    const auto status = context.renderer.temporalStatus();
+    const auto presentation =
+        temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
+                             context.renderer.width(), context.renderer.height());
+    if (ImGui::CollapsingHeader("Reconstruction", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawRenderingReset(context, EditorRenderGroup::Reconstruction);
+        if (editor_style::beginFields("reconstructionFields")) {
+            checkbox("Temporal inputs", "##temporal", &settings.temporalEnabled);
+            editorTooltip("Enable motion and history inputs for reconstruction and diagnostics. "
+                          "Turning this off renders at full resolution; the algorithm, scale and "
+                          "diagnostic requests are retained.");
+            ImGui::BeginDisabled(!settings.temporalEnabled);
+            checkbox("Jitter", "##jitter", &settings.jitterEnabled);
+            editorTooltip(
+                "Offset raster samples each frame for temporal reconstruction. Motion "
+                "vectors stay unjittered; turning jitter off does not stop the sequence.");
+            field("Requested algorithm");
+            if (ImGui::BeginCombo("##reconstruction",
+                                  std::string(presentation.requestedName).c_str())) {
+                for (int index = 0; index < 3; ++index) {
+                    const auto mode = static_cast<render::ReconstructionMode>(index);
+                    const auto name = reconstructionName(mode, context.temporalSupport);
+                    if (ImGui::Selectable(std::string(name).c_str(),
+                                          settings.reconstruction == mode)) {
+                        settings.reconstruction = mode;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            editorTooltip("Raw keeps the current frame without temporal accumulation. Native TAA "
+                          "accumulates engine history. The device algorithm may fall back to "
+                          "Native TAA; the effective mode and reason appear above.");
+            const auto effectiveMode =
+                render::resolveReconstruction(settings.reconstruction, context.temporalSupport,
+                                              status.vendorFallback ==
+                                                  render::VendorFallback::CreationFailed)
+                    .mode;
+            settings.temporalDebugView =
+                clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
+            constexpr const char* kDebugViewNames[] = {
+                "Final",          "Motion vectors", "Reprojection error", "Reprojected history",
+                "Rejection mask", "Blend weight",   "History age"};
+            field("Diagnostic view");
+            if (ImGui::BeginCombo(
+                    "##debugView",
+                    kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
+                for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
+                    const auto view = static_cast<render::TemporalDebugView>(index);
+                    const bool unavailable = clampTemporalDebugView(view, effectiveMode) != view;
+                    ImGui::BeginDisabled(unavailable);
+                    if (ImGui::Selectable(kDebugViewNames[index],
+                                          settings.temporalDebugView == view)) {
+                        settings.temporalDebugView = view;
+                    }
+                    ImGui::EndDisabled();
+                    if (unavailable) {
+                        editorTooltip("Requires native accumulation; choose Native TAA to "
+                                      "inspect this view.");
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            editorTooltip("Replace the final image with a temporal diagnostic. The Viewport "
+                          "explains its colors and units; Final restores the rendered image.");
+            ImGui::EndDisabled();
+            editor_style::endFields();
+            if (!settings.temporalEnabled) {
+                editor_style::message("Temporal inputs are off. Jitter, reconstruction and "
+                                      "diagnostics are inactive; requests are retained.");
+            } else if (effectiveMode == render::ReconstructionMode::VendorTemporal) {
+                editor_style::message(
+                    "Rejection, blend weight and history age require Native TAA accumulation.");
+            }
+        }
+        if (ImGui::Button("Camera cut")) {
+            requestCameraCut(context.temporalState);
+        }
+        editorTooltip("Discard temporal history on the next frame without moving the camera. "
+                      "Use after a camera teleport or to inspect history warmup.");
+        if (ImGui::TreeNode("History & vendor details")) {
+            if (editor_style::beginFields("historyFields")) {
+                valueRow("Declared device frame",
+                         std::to_string(context.temporalState.declaredFrameId));
+                valueRow("History", !presentation.temporalActive ? "N/A"
+                                    : status.historyValid        ? "Valid"
+                                                                 : "Reset / warming up");
+                valueRow("Warmup", !presentation.temporalActive ? "N/A"
+                                   : status.warmupComplete      ? "Complete"
+                                                                : "In progress");
+                valueRow("History age", presentation.temporalActive
+                                            ? std::format("{} frames", status.historyAge)
+                                            : "N/A");
+                valueRow("Jitter index",
+                         presentation.temporalActive ? std::to_string(status.jitterIndex) : "N/A");
+                valueRow("Last reset event",
+                         context.temporalState.lastResetFrame == 0
+                             ? "N/A"
+                             : std::format("{} · declared frame {}",
+                                           render::historyResetReasonName(
+                                               context.temporalState.lastResetReason),
+                                           context.temporalState.lastResetFrame));
+                valueRow("History memory",
+                         std::format("{} color + {} depth bytes", status.historyBytes,
+                                     status.depthHistoryBytes));
+                valueRow("Vendor capability", context.temporalSupport.available
+                                                  ? std::string(context.temporalSupport.name)
+                                                  : "Unavailable");
+                valueRow("Vendor scale range",
+                         context.temporalSupport.available
+                             ? std::format("{:.2f}–{:.2f}", context.temporalSupport.minInputScale,
+                                           context.temporalSupport.maxInputScale)
+                             : "N/A");
+                valueRow("Vendor generation",
+                         presentation.temporalActive &&
+                                 status.reconstruction == render::ReconstructionMode::VendorTemporal
+                             ? std::to_string(status.vendorScalerGeneration)
+                             : "N/A");
+                editor_style::endFields();
+            }
+            editor_style::message("Motion = current UV - previous UV, unjittered render-extent UV, "
+                                  "+Y down; infinity marks invalid motion.");
+            ImGui::TreePop();
+        }
+    }
+    if (ImGui::CollapsingHeader("Resolution", ImGuiTreeNodeFlags_DefaultOpen)) {
+        drawRenderingReset(context, EditorRenderGroup::Resolution);
+        if (editor_style::beginFields("resolutionFields")) {
+            ImGui::BeginDisabled(!settings.temporalEnabled || settings.dynamicResolutionEnabled);
+            slider("Requested scale", "##scale", &settings.renderScale, render::kMinRenderScale,
+                   1.0f);
+            editorTooltip("Scale the render width and height relative to output; 0.50 uses one "
+                          "quarter as many pixels. Reconstruction returns the image to output "
+                          "size. Device limits may clamp the effective scale.");
+            ImGui::EndDisabled();
+            ImGui::BeginDisabled(!settings.temporalEnabled);
+            checkbox("Dynamic resolution", "##dynamic", &settings.dynamicResolutionEnabled);
+            editorTooltip("Adjust render scale from retired timed-pass measurements, starting at "
+                          "the current manual scale. Disabling keeps the last requested scale "
+                          "for manual editing.");
+            ImGui::EndDisabled();
+            ImGui::BeginDisabled(!dynamicResolutionActive(settings));
+            slider("Timed-pass budget (ms)", "##budget", &settings.gpuBudgetMilliseconds, 2.0f,
+                   33.0f);
+            editorTooltip("Budget for the sum of measured GPU passes. The controller keeps "
+                          "headroom and waits for repeated samples before changing scale. "
+                          "This is not a total frame-time or FPS limit.");
+            ImGui::EndDisabled();
+            valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
+            valueRow("Live retired timed-pass sum",
+                     context.temporalState.liveTimedPassSumMilliseconds &&
+                             !presentation.waitingForDeclaration
+                         ? std::format("{:.2f} ms · frame {}",
+                                       *context.temporalState.liveTimedPassSumMilliseconds,
+                                       context.temporalState.liveMeasurementFrame)
+                         : "Waiting for compatible retired sample");
+            editorTooltip("Newest retired timed-pass sum compatible with the active rendering "
+                          "context. It remains live while Performance is frozen and excludes "
+                          "presentation, driver and untimed GPU work.");
+            const auto& controller = context.dynamicResolutionState;
+            valueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
+            valueRow("Last controller observation",
+                     controller.lastMeasurementFrame == 0
+                         ? "N/A"
+                         : std::format("{:.2f} ms · frame {}", controller.lastObservedMilliseconds,
+                                       controller.lastMeasurementFrame));
+            editorTooltip("Most recent sample offered while dynamic resolution was active. "
+                          "It may be skipped during settling or if its scale is obsolete; this "
+                          "value stays unchanged while the controller is inactive.");
+            editor_style::endFields();
+        }
+        if (!settings.temporalEnabled) {
+            editor_style::message("Temporal inputs are off: full-resolution rendering uses scale "
+                                  "1.00. Scale and dynamic-resolution requests are retained.");
+        } else if (settings.dynamicResolutionEnabled) {
+            editor_style::message(
+                "Dynamic resolution controls scale. Disable it to set scale manually.");
+        } else {
+            editor_style::message(
+                "Manual scale is active. Enable dynamic resolution to edit its timed-pass budget.");
+        }
+        editor_style::message("Timed-pass sum excludes presentation, driver and untimed GPU work. "
+                              "Inspector measurements remain live when Performance is frozen.");
     }
 }
 
 //======================================================================================================================
-// Spec section 9's Temporal block: the toggles, the debug-view combo, playback transport, the
-// camera-cut button, and read-only status pulled from the last declared frame. The session owns
-// the active scene clock and camera-track follow, independently of the
-// renderer's own state -- Renderer::temporalStatus() is the only renderer-owned read here.
-void drawTemporalSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                         SceneSession& session, TemporalEditorState& temporalState,
-                         const DynamicResolutionState& dynamicResolutionState,
-                         const rhi::TemporalScalerSupport& temporalSupport) {
-    const render::TemporalStatus status = renderer.temporalStatus();
-    ImGui::Checkbox("Temporal inputs", &settings.temporalEnabled);
-    ImGui::BeginDisabled(!settings.temporalEnabled);
-    ImGui::Checkbox("Jitter", &settings.jitterEnabled);
-
-    const std::array<std::string, 3> reconstructionNames = {
-        std::string(reconstructionName(render::ReconstructionMode::Raw, temporalSupport)),
-        std::string(reconstructionName(render::ReconstructionMode::NativeTaa, temporalSupport)),
-        std::string(
-            reconstructionName(render::ReconstructionMode::VendorTemporal, temporalSupport))};
-    if (ImGui::BeginCombo(
-            "Reconstruction",
-            reconstructionNames[static_cast<size_t>(settings.reconstruction)].c_str())) {
-        for (size_t index = 0; index < reconstructionNames.size(); ++index) {
-            const auto mode = static_cast<render::ReconstructionMode>(index);
-            if (ImGui::Selectable(reconstructionNames[index].c_str(),
-                                  settings.reconstruction == mode)) {
-                settings.reconstruction = mode;
-            }
-        }
-        ImGui::EndCombo();
+void drawRenderingSection(const InspectorPanelContext& context) {
+    auto& settings = context.settings;
+    auto& renderer = context.renderer;
+    const auto status = renderer.temporalStatus();
+    const auto presentation =
+        temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
+                             renderer.width(), renderer.height());
+    ImGui::TextColored(editor_style::kAccent, "%s",
+                       std::string(presentation.effectiveName).c_str());
+    ImGui::TextWrapped("Render %u × %u px  /  Output %u × %u px", presentation.extents.renderWidth,
+                       presentation.extents.renderHeight, presentation.extents.outputWidth,
+                       presentation.extents.outputHeight);
+    ImGui::TextWrapped("Requested: %s", std::string(presentation.requestedName).c_str());
+    if (!presentation.fallbackReason.empty()) {
+        editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
     }
-
-    const auto effectiveMode = render::resolveReconstruction(
-                                   settings.reconstruction, temporalSupport,
-                                   status.vendorFallback == render::VendorFallback::CreationFailed)
-                                   .mode;
-    settings.temporalDebugView = clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
-    constexpr const char* kDebugViewNames[] = {"Off",
-                                               "Motion vectors",
-                                               "Reprojection error",
-                                               "Reprojected history",
-                                               "Rejection mask",
-                                               "Blend weight",
-                                               "History age"};
-    if (ImGui::BeginCombo("Debug view",
-                          kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
-        for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
-            const auto debugView = static_cast<render::TemporalDebugView>(index);
-            const bool disabled = clampTemporalDebugView(debugView, effectiveMode) != debugView;
-            ImGui::BeginDisabled(disabled);
-            if (ImGui::Selectable(kDebugViewNames[index],
-                                  settings.temporalDebugView == debugView)) {
-                settings.temporalDebugView = debugView;
+    if (ImGui::CollapsingHeader("Exposure")) {
+        drawRenderingReset(context, EditorRenderGroup::Exposure);
+        if (editor_style::beginFields("exposureFields")) {
+            slider("Manual exposure (EV)", "##exposure", &settings.exposureEv, -6.0f, 6.0f);
+            editorTooltip("Each +1 EV doubles manual exposure. With auto exposure enabled, this "
+                          "value seeds exposure when it resets; Compensation adjusts metering.");
+            bool automatic = settings.autoExposureEnabled;
+            if (checkbox("Auto exposure", "##autoExposure", &automatic)) {
+                setAutoExposureEnabled(settings, context.exposureContext,
+                                       context.exposureResetPending, automatic);
+            }
+            editorTooltip("Meter scene luminance and apply the result on the following frame. "
+                          "Enabling starts from Manual exposure, then adapts toward the target.");
+            editor_style::endFields();
+        }
+        if (ImGui::TreeNode("Metering details")) {
+            ImGui::BeginDisabled(!settings.autoExposureEnabled);
+            if (editor_style::beginFields("meteringFields")) {
+                slider("Low percentile (%)", "##low", &settings.exposureLowPercentile, 0.0f,
+                       settings.exposureHighPercentile - kMinExposurePercentileGap, "%.0f");
+                editorTooltip(
+                    "Exclude the darkest part of the pixel population from metering. "
+                    "50% discards the darkest half; the retained range must stay nonempty.");
+                slider("High percentile (%)", "##high", &settings.exposureHighPercentile,
+                       settings.exposureLowPercentile + kMinExposurePercentileGap, 100.0f, "%.0f");
+                editorTooltip("Upper edge of the retained pixel population. 95% discards the "
+                              "brightest 5%; the remaining log luminance determines exposure.");
+                slider("Target grey", "##grey", &settings.exposureTargetGrey, 0.01f, 1.0f, "%.3f");
+                editorTooltip("Linear luminance the metered average should reach before the "
+                              "display transform. Higher values request a brighter exposure.");
+                slider("Minimum (EV)", "##minimum", &settings.exposureEvMin, -12.0f,
+                       settings.exposureEvMax);
+                editorTooltip("Lower limit on the applied automatic exposure, in stops.");
+                slider("Maximum (EV)", "##maximum", &settings.exposureEvMax, settings.exposureEvMin,
+                       12.0f);
+                editorTooltip("Upper limit on the applied automatic exposure, in stops.");
+                slider("Compensation (EV)", "##compensation", &settings.exposureCompensationEv,
+                       -6.0f, 6.0f);
+                editorTooltip("Bias the automatic metering target before its exposure limits. "
+                              "+1 EV requests twice the exposure.");
+                slider("Adapt up (stops/s)", "##adaptUp", &settings.exposureAdaptUpStopsPerSecond,
+                       0.0f, 16.0f);
+                editorTooltip("Maximum brightening rate, using the fixed 1/60-second step per "
+                              "rendered frame. Zero snaps immediately in this direction.");
+                slider("Adapt down (stops/s)", "##adaptDown",
+                       &settings.exposureAdaptDownStopsPerSecond, 0.0f, 16.0f);
+                editorTooltip("Maximum darkening rate, using the fixed 1/60-second step per "
+                              "rendered frame. Zero snaps immediately in this direction.");
+                editor_style::endFields();
             }
             ImGui::EndDisabled();
+            if (!settings.autoExposureEnabled)
+                editor_style::message("Enable auto exposure to edit metering and adaptation.");
+            ImGui::TreePop();
         }
-        ImGui::EndCombo();
     }
-    ImGui::EndDisabled();
-
-    // Disabled while dynamic resolution drives renderScale itself -- the slider still shows the
-    // controller's value, it just cannot be dragged out from under it.
-    ImGui::BeginDisabled(settings.dynamicResolutionEnabled);
-    ImGui::SliderFloat("Render scale", &settings.renderScale, render::kMinRenderScale, 1.0f, "%.2f",
-                       ImGuiSliderFlags_AlwaysClamp);
-    ImGui::EndDisabled();
-    ImGui::Checkbox("Dynamic resolution", &settings.dynamicResolutionEnabled);
-    ImGui::BeginDisabled(!settings.dynamicResolutionEnabled);
-    ImGui::SliderFloat("GPU budget (ms)", &settings.gpuBudgetMilliseconds, 2.0f, 33.0f, "%.2f",
-                       ImGuiSliderFlags_AlwaysClamp);
-    ImGui::EndDisabled();
-
-    if (ImGui::Button(settings.animationPlaying ? "Pause" : "Play")) {
-        settings.animationPlaying = !settings.animationPlaying;
+    if (ImGui::CollapsingHeader("Bloom")) {
+        drawRenderingReset(context, EditorRenderGroup::Bloom);
+        if (editor_style::beginFields("bloomFields")) {
+            checkbox("Bloom", "##bloom", &settings.bloomEnabled);
+            ImGui::BeginDisabled(!settings.bloomEnabled);
+            slider("Threshold (linear)", "##threshold", &settings.bloomThreshold, 0.0f, 10.0f);
+            editorTooltip("Bloom extracts highlights above this pre-exposed linear luminance. "
+                          "Changing exposure also changes which highlights cross the threshold.");
+            slider("Intensity", "##intensity", &settings.bloomIntensity, 0.0f, 2.0f);
+            ImGui::EndDisabled();
+            editor_style::endFields();
+        }
+        if (!settings.bloomEnabled)
+            editor_style::message("Enable bloom to edit its threshold and intensity.");
     }
-    ImGui::SameLine();
-    ImGui::BeginDisabled(settings.animationPlaying);
-    if (ImGui::Button("Step")) {
-        session.stepAnimation();
+    if (ImGui::CollapsingHeader("Shadows")) {
+        drawRenderingReset(context, EditorRenderGroup::Shadows);
+        if (editor_style::beginFields("shadowFields")) {
+            field("Shadow filter");
+            int filter = static_cast<int>(settings.shadowFilter);
+            constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
+            if (ImGui::Combo("##shadowFilter", &filter, kFilterNames, 2))
+                settings.shadowFilter = static_cast<render::ShadowFilter>(filter);
+            editor_style::endFields();
+        }
     }
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    if (ImGui::Button("Reset time")) {
-        session.rewindAnimation();
-        // Rewinding the clock is a discontinuity exactly like a scene switch: the object poses
-        // this frame have nothing to do with what history recorded, so motion must not report a
-        // jump and the renderer must not reproject across it. requestCameraCut() forces
-        // HistoryResetReason::CameraCut on the next declared frame even when the camera itself did
-        // not move -- resetMotion() alone would leave the reset reason at None, and reprojecting
-        // history from before the rewind onto geometry now back at t = 0 is exactly the artifact
-        // this guards against.
-        requestCameraCut(temporalState);
+    drawTemporalSection(context);
+    if (ImGui::CollapsingHeader("Display & Details")) {
+        drawRenderingReset(context, EditorRenderGroup::Display);
+        if (editor_style::beginFields("displayEditFields")) {
+            field("Clear color (sRGB)");
+            ImGui::ColorEdit4("##clearColor", renderer.clearColor);
+            checkbox("Wireframe", "##wireframe", &settings.wireframe);
+            editorTooltip("Draw scene mesh triangle edges with the wireframe raster pipeline. "
+                          "This changes the rendered scene image.");
+            checkbox("Transient pooling", "##pooling", &settings.poolingEnabled);
+            editorTooltip("Reuse GPU heap memory for transient graph resources whose lifetimes "
+                          "do not overlap. Inspect assignments and memory totals in Render Graph.");
+            editor_style::endFields();
+        }
     }
-
-    const bool hasCameraTrack = !session.scene().animation.cameraTrack.empty();
-    ImGui::BeginDisabled(!hasCameraTrack);
-    ImGui::Checkbox("Follow camera track", &settings.followCameraTrack);
-    ImGui::EndDisabled();
-
-    if (ImGui::Button("Camera cut")) {
-        requestCameraCut(temporalState);
-    }
-
-    const std::string_view effectiveName =
-        reconstructionName(status.reconstruction, temporalSupport);
-    ImGui::Text("Effective reconstruction: %.*s", static_cast<int>(effectiveName.size()),
-                effectiveName.data());
-    switch (status.vendorFallback) {
-    case render::VendorFallback::None:
-        break;
-    case render::VendorFallback::Unsupported:
-        ImGui::TextWrapped("Native fallback: vendor reconstruction unavailable on this device");
-        break;
-    case render::VendorFallback::CreationFailed:
-        ImGui::TextWrapped("Native fallback: vendor scaler creation failed");
-        break;
-    }
-    if (!status.vendorName.empty()) {
-        ImGui::Text("Vendor: %.*s", static_cast<int>(status.vendorName.size()),
-                    status.vendorName.data());
-        ImGui::Text("Vendor history reset: %s", status.vendorReset ? "yes" : "no");
-        ImGui::Text("Scaler generation: %u", status.vendorScalerGeneration);
-    }
-    const std::string_view resetReason = render::historyResetReasonName(status.lastReset);
-    ImGui::Text("Last reset: %.*s (frame %llu)", static_cast<int>(resetReason.size()),
-                resetReason.data(), static_cast<unsigned long long>(status.lastResetFrame));
-    ImGui::Text("Jitter index: %u", status.jitterIndex);
-    ImGui::Text("History: %s, %llu bytes", status.historyValid ? "valid" : "invalid",
-                static_cast<unsigned long long>(status.historyBytes));
-    ImGui::Text("History age: %u", status.historyAge);
-    ImGui::Text("Warmup: %s", status.warmupComplete ? "complete" : "in progress");
-    ImGui::Text("Depth history: %llu bytes",
-                static_cast<unsigned long long>(status.depthHistoryBytes));
-    ImGui::TextWrapped("Motion = uvCurrent - uvPrevious, UV of the render extent, +y down, "
-                       "unjittered; +inf = invalid.");
-
-    ImGui::Text("Render extent: %ux%u (scale %.2f)", status.extents.renderWidth,
-                status.extents.renderHeight, static_cast<double>(status.renderScale));
-    ImGui::Text("Frame GPU time: %.2f ms",
-                static_cast<double>(dynamicResolutionState.lastObservedMilliseconds));
-    // TemporalStatus carries the declared-frame count the render extent last changed at, not how
-    // many frames ago that was (it keeps no running declared-frame count of its own to subtract
-    // from), so this reports the same raw form lastResetFrame does above.
-    ImGui::Text("Render extent changed: at frame %llu",
-                static_cast<unsigned long long>(status.lastRenderExtentChangeFrame));
-}
-
-//======================================================================================================================
-void drawRenderingSection(render::Renderer& renderer, EditorRenderSettings& settings,
-                          ExposureResetContext& exposureContext, bool& exposureResetPending,
-                          SceneSession& session, TemporalEditorState& temporalState,
-                          const DynamicResolutionState& dynamicResolutionState,
-                          const rhi::TemporalScalerSupport& temporalSupport) {
-    // Display-authored; Renderer::declarePasses decodes it through the existing scene-linear
-    // boundary. Relocated from the Camera section verbatim -- clear color is not a camera field.
-    ImGui::ColorEdit4("Clear color", renderer.clearColor);
-
-    ImGui::Checkbox("Wireframe", &settings.wireframe);
-    // Six stops each way: enough to drive a scene to black or to the tone map's shoulder, which is
-    // the whole range a manual exposure control is useful over here.
-    ImGui::SliderFloat("Exposure (EV)", &settings.exposureEv, -6.0f, 6.0f, "%.2f",
-                       ImGuiSliderFlags_AlwaysClamp);
-    // Off->on is a reset trigger (spec 9): the feedback loop has produced nothing yet, so the first
-    // auto frame has to start from the manual EV exactly like a fresh scene would. On->off is not:
-    // setAutoExposureEnabled only fires the trigger on the false->true edge.
-    bool autoExposureEnabled = settings.autoExposureEnabled;
-    if (ImGui::Checkbox("Auto exposure", &autoExposureEnabled)) {
-        setAutoExposureEnabled(settings, exposureContext, exposureResetPending,
-                               autoExposureEnabled);
-    }
-    if (settings.autoExposureEnabled) {
-        ImGui::SliderFloat("Low percentile", &settings.exposureLowPercentile, 0.0f,
-                           settings.exposureHighPercentile - kMinExposurePercentileGap, "%.0f",
-                           ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("High percentile", &settings.exposureHighPercentile,
-                           settings.exposureLowPercentile + kMinExposurePercentileGap, 100.0f,
-                           "%.0f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Target grey", &settings.exposureTargetGrey, 0.01f, 1.0f, "%.3f",
-                           ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Auto EV min", &settings.exposureEvMin, -12.0f, settings.exposureEvMax,
-                           "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Auto EV max", &settings.exposureEvMax, settings.exposureEvMin, 12.0f,
-                           "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Exposure compensation", &settings.exposureCompensationEv, -6.0f, 6.0f,
-                           "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Adapt up (stops/s)", &settings.exposureAdaptUpStopsPerSecond, 0.0f,
-                           16.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Adapt down (stops/s)", &settings.exposureAdaptDownStopsPerSecond, 0.0f,
-                           16.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
-    }
-    ImGui::Checkbox("Bloom", &settings.bloomEnabled);
-    if (settings.bloomEnabled) {
-        ImGui::SliderFloat("Bloom threshold", &settings.bloomThreshold, 0.0f, 10.0f, "%.2f",
-                           ImGuiSliderFlags_AlwaysClamp);
-        ImGui::SliderFloat("Bloom intensity", &settings.bloomIntensity, 0.0f, 2.0f, "%.2f",
-                           ImGuiSliderFlags_AlwaysClamp);
-    }
-    // Off gives every transient its own memory. Nothing about the image changes -- a transient
-    // cannot be read before it is written -- so what this compares is cost.
-    ImGui::Checkbox("Transient pooling", &settings.poolingEnabled);
-    int filterIndex = static_cast<int>(settings.shadowFilter);
-    constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
-    if (ImGui::Combo("Shadow filter", &filterIndex, kFilterNames,
-                     static_cast<int>(std::size(kFilterNames)))) {
-        settings.shadowFilter = static_cast<render::ShadowFilter>(filterIndex);
-    }
-
-    ImGui::SeparatorText("Temporal");
-    drawTemporalSection(renderer, settings, session, temporalState, dynamicResolutionState,
-                        temporalSupport);
 }
 
 //======================================================================================================================
@@ -323,57 +456,69 @@ void drawDisplaySection(const InspectorPanelContext& context) {
 }
 
 //======================================================================================================================
-void drawDirectionalLightSection(scene::Scene& scene, size_t index) {
-    render::DirectionalLight& light = scene.lights[index];
-    ImGui::Text("Role: %.*s", static_cast<int>(directionalLightRoleLabel(index).size()),
-                directionalLightRoleLabel(index).data());
-
-    if (ImGui::BeginTable("directionalLightFields", 2, kFieldTableFlags)) {
-        beginFieldRow("Direction (world)");
+void drawDirectionalLightSection(const InspectorPanelContext& context, size_t index) {
+    auto& session = context.session;
+    auto& light = session.scene().lights[index];
+    ImGui::TextWrapped("Role: %s", std::string(directionalLightRoleLabel(index)).c_str());
+    if (ImGui::Button("Reset light")) {
+        session.resetLight(index);
+    }
+    editorTooltip("Restore this directional light's direction and scene-linear radiance from "
+                  "the current scene defaults.");
+    ImGui::SameLine();
+    editor_style::message(session.lightChanged(index) ? "Changed from scene default"
+                                                      : "Scene default");
+    if (editor_style::beginFields("directionalLightFields")) {
         glm::vec3 direction = light.direction;
-        if (ImGui::DragFloat3("##direction", &direction.x, 0.01f)) {
-            // Reject zero directions before normalization; they would poison shadow and N.L math.
+        if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
             if (glm::length(direction) > kMinLightDirectionLength) {
                 light.direction = glm::normalize(direction);
             }
         }
-
-        // Non-negative scene-linear radiance; values above one are legal HDR intensities, so this
-        // is a DragFloat3 with only a lower clamp rather than a [0,1]-clamped ColorEdit3.
-        beginFieldRow("Radiance (scene-linear RGB)");
-        glm::vec3 radiance = light.strength;
-        if (ImGui::DragFloat3("##radiance", &radiance.x, 0.01f, 0.0f,
-                              std::numeric_limits<float>::max(), "%.3f",
-                              ImGuiSliderFlags_AlwaysClamp)) {
-            light.strength = radiance;
-        }
-
-        ImGui::EndTable();
+        editor_style::vector3("Radiance (scene-linear RGB)", "radiance", &light.strength.x, 0.01f,
+                              0.0f, std::numeric_limits<float>::max(), "%.3f",
+                              ImGuiSliderFlags_AlwaysClamp, true);
+        editor_style::endFields();
     }
+    editor_style::message("Scene-linear radiance; values above 1 are valid HDR intensities.");
 }
 
 //======================================================================================================================
-void drawObjectSection(scene::Scene& scene, size_t index) {
-    scene::SceneObject& object = scene.objects[index];
-
-    if (ImGui::BeginTable("objectFields", 2, kFieldTableFlags)) {
-        beginFieldRow("Position (world)");
-        ImGui::DragFloat3("##position", &object.position.x, 0.05f);
-
-        beginFieldRow("Rotation (XYZ deg)");
-        ImGui::DragFloat3("##rotation", &object.eulerDegrees.x, 1.0f);
-
-        beginFieldRow("Scale");
-        ImGui::DragFloat3("##scale", &object.scale.x, 0.01f, 0.01f, 100.0f, "%.2f",
-                          ImGuiSliderFlags_AlwaysClamp);
-
-        beginFieldRow("Mesh index");
-        ImGui::Text("%u", object.meshIndex);
-
-        beginFieldRow("Material index");
-        ImGui::Text("%u", object.materialIndex);
-
-        ImGui::EndTable();
+void drawObjectSection(const InspectorPanelContext& context, size_t index) {
+    auto& session = context.session;
+    auto& object = session.scene().objects[index];
+    if (ImGui::Button("Reset transform")) {
+        session.resetObject(index);
+        requestCameraCut(context.temporalState);
+    }
+    editorTooltip("Restore this object's authored transform and reset temporal history. Animated "
+                  "objects use their authored track at the current playback time.");
+    ImGui::SameLine();
+    editor_style::message(session.objectChanged(index) ? "Changed from authored pose"
+                                                       : "Authored pose");
+    if (editor_style::beginFields("objectFields")) {
+        asset::DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
+        bool edited =
+            editor_style::vector3("Position (world)", "position", &transform.position.x, 0.05f);
+        edited |= editor_style::vector3("Rotation (XYZ degrees)", "rotation",
+                                        &transform.eulerDegrees.x, 1.0f);
+        edited |= editor_style::vector3("Scale", "scale", &transform.scale.x, 0.01f, 0.01f, 100.0f,
+                                        "%.3f", ImGuiSliderFlags_AlwaysClamp);
+        if (edited) {
+            session.editObject(index, transform);
+            requestCameraCut(context.temporalState);
+        }
+        valueRow("Mesh index", std::to_string(object.meshIndex));
+        valueRow("Material index", std::to_string(object.materialIndex));
+        editor_style::endFields();
+    }
+    const bool animated =
+        std::ranges::any_of(session.scene().animation.tracks,
+                            [index](const auto& track) { return track.objectIndex == index; });
+    if (animated) {
+        editor_style::message(
+            "Animated transform: pause playback to edit. Reset samples the authored track at the "
+            "current time; playback replaces edits on its next sample.");
     }
 }
 
@@ -382,36 +527,53 @@ void drawObjectSection(scene::Scene& scene, size_t index) {
 //======================================================================================================================
 void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
     if (ImGui::Begin(kInspectorPanelWindowName, &open)) {
-        switch (context.selection.subject) {
-        case EditorSubject::None:
-            ImGui::TextDisabled("Select an item in Scene");
-            break;
-        case EditorSubject::Camera:
-            ImGui::SeparatorText("Camera");
+        const auto subject = context.selection.subject;
+        if (subject == EditorSubject::Object) {
+            ImGui::TextWrapped(
+                "%s", sceneObjectLabel(context.session.scene(), context.selection.index).c_str());
+            editor_style::message("Object transform");
+        } else if (subject == EditorSubject::DirectionalLight) {
+            ImGui::TextWrapped("Light %zu", context.selection.index);
+            editor_style::message("Directional light");
+        } else if (subject == EditorSubject::Camera) {
             ImGui::TextUnformatted("Editor Camera");
-            drawCameraSection(context.session.camera(), context.session.scene());
-            break;
-        case EditorSubject::Rendering:
-            ImGui::SeparatorText("Rendering");
+        } else if (subject == EditorSubject::Rendering) {
             ImGui::TextUnformatted("Rendering");
-            drawRenderingSection(context.renderer, context.settings, context.exposureContext,
-                                 context.exposureResetPending, context.session,
-                                 context.temporalState, context.dynamicResolutionState,
-                                 context.temporalSupport);
-            drawDisplaySection(context);
-            break;
-        case EditorSubject::DirectionalLight:
-            ImGui::SeparatorText("Directional Light");
-            ImGui::Text("Light %d", static_cast<int>(context.selection.index));
-            drawDirectionalLightSection(context.session.scene(), context.selection.index);
-            break;
-        case EditorSubject::Object:
-            ImGui::SeparatorText("Object");
-            ImGui::TextUnformatted(
-                context.session.scene().objects[context.selection.index].name.c_str());
-            drawObjectSection(context.session.scene(), context.selection.index);
-            break;
         }
+        if (context.selectionHiddenByFilter) {
+            editor_style::message("Selection is hidden by the Scene search filter. Clear the "
+                                  "filter to find it in the list.",
+                                  true);
+            if (context.sceneFilter && ImGui::Button("Clear filter")) {
+                context.sceneFilter->clear();
+            }
+        }
+        ImGui::Separator();
+        if (ImGui::BeginChild("InspectorFields", ImVec2(0, 0))) {
+            switch (subject) {
+            case EditorSubject::None:
+                editor_style::message(
+                    "Select a camera, rendering settings, light or object in Scene.");
+                break;
+            case EditorSubject::Camera:
+                drawCameraSection(context);
+                break;
+            case EditorSubject::Rendering:
+                drawRenderingSection(context);
+                if (ImGui::TreeNode("Display details")) {
+                    drawDisplaySection(context);
+                    ImGui::TreePop();
+                }
+                break;
+            case EditorSubject::DirectionalLight:
+                drawDirectionalLightSection(context, context.selection.index);
+                break;
+            case EditorSubject::Object:
+                drawObjectSection(context, context.selection.index);
+                break;
+            }
+        }
+        ImGui::EndChild();
     }
     ImGui::End();
 }

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "App/Model/ActionResult.h"
+
 namespace lmx::app {
 
 /// Pending menu- and shortcut-triggered action intents (spec section 9's action boundary).
@@ -50,7 +52,21 @@ public:
     /// Consumes a pending reset-layout request, clearing it. Returns whether one was pending.
     bool consumeResetLayout();
 
+    /// Sets actual process capability once at startup, retaining a recovery explanation.
+    void configureCapture(bool available);
+    /// Persistent capture result shared by menu, shortcut and frame completion.
+    ActionResult& captureResult() { return m_captureResult; }
+    /// Whether an explicit capture request needs a persistent visible result.
+    bool captureFeedbackVisible() const { return m_captureFeedbackVisible; }
+    /// Hides the notification while preserving the last result in the capture controls.
+    void dismissCaptureFeedback() { m_captureFeedbackVisible = false; }
+    /// Whether capture is possible in this process.
+    bool captureAvailable() const { return m_captureAvailable; }
+
 private:
+    bool m_captureAvailable = true;
+    bool m_captureFeedbackVisible = false;
+    ActionResult m_captureResult;
     bool m_quitPending = false;
     bool m_capturePending = false;
     bool m_resetLayoutPending = false;
