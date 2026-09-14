@@ -14,6 +14,8 @@
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
 
+#include <string>
+
 namespace lmx::app {
 
 /// The Dear ImGui window name this panel submits. The shell's dock builder places the window under
@@ -43,10 +45,12 @@ struct InspectorPanelContext {
     /// applyDynamicResolution() is what advances it, once per buildUI.
     const DynamicResolutionState& dynamicResolutionState;
     const rhi::TemporalScalerSupport&
-        temporalSupport;          ///< Fixed device capability and display name.
-    uint32_t viewportWidth = 0;   ///< Measured image backing width in pixels.
-    uint32_t viewportHeight = 0;  ///< Measured image backing height in pixels.
-    bool viewportVisible = false; ///< Whether the image was measured this frame.
+        temporalSupport;                  ///< Fixed device capability and display name.
+    uint32_t viewportWidth = 0;           ///< Measured image backing width in pixels.
+    uint32_t viewportHeight = 0;          ///< Measured image backing height in pixels.
+    bool viewportVisible = false;         ///< Whether the image was measured this frame.
+    bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
+    std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

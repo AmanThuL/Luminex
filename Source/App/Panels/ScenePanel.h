@@ -1,10 +1,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file ScenePanel.h
-/// @brief Declares the Scene panel's drawing entry point and the state it edits.
+/// @brief Declares the subject Hierarchy and the File menu's scene loading entry point.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 #include "App/Model/EditorSelection.h"
+#include "App/Model/SceneLoadState.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
@@ -13,37 +14,34 @@
 
 namespace lmx::app {
 
-/// The Dear ImGui window name this panel submits. The shell's dock builder places the window under
-/// exactly this name, so both sides read it from here.
-inline constexpr const char* kScenePanelWindowName = "Scene";
+/// Visible Hierarchy title with the original Scene window ID retained for saved docking. The
+/// pinned ImGui hashes a ### suffix exactly as the suffix alone, including window settings.
+inline constexpr const char* kScenePanelWindowName = "Hierarchy###Scene";
 
-/// The editor state the Scene panel draws and edits, borrowed for the duration of one draw call.
-///
-/// Every member is a reference to storage the shell owns, so the panel edits the shell's values in
-/// place and holds nothing past the call that resolved them, matching `InspectorPanelContext`'s
-/// pattern.
+/// Borrowed state for the compact subject Hierarchy; selection and search remain shell-owned.
 struct ScenePanelContext {
-    const scene::SceneLibrary& library; ///< The scene catalog the top selector draws from.
-    scene::SceneId activeSceneId;       ///< The scene currently loaded and rendered.
-    const scene::Scene& activeScene;    ///< The active scene, whose subjects the rows list.
-    EditorSelection& selection;         ///< The single selected subject; edited in place.
-    std::string& filter;                ///< The case-insensitive display-name filter text.
+    scene::SceneId activeSceneId;    ///< Catalog identity scoping this scene's tree state.
+    const scene::Scene& activeScene; ///< Flat scene whose subjects are grouped for navigation.
+    EditorSelection& selection;      ///< Selected leaf, edited in place.
+    std::string& filter;             ///< Case-insensitive short/full name filter, edited in place.
 };
 
-/// Draws the Scene panel, in the spec's fixed order: the scene-catalog selector (unavailable
-/// entries disabled with their availability hints shown inline, since a disabled entry cannot be
-/// hovered reliably), the filter text box, then the Workspace / Directional Lights / Objects
-/// groups of selectable rows built by `buildSceneSelectionRows`. `open` follows the window's close
-/// button, exactly as `ImGui::Begin` writes it.
-///
-/// Mouse click and Up/Down keyboard navigation (while the Scene window is focused) update
-/// `context.selection` over the rows currently visible under `context.filter`; grouping and
-/// filtering are presentational only and never mutate `context.activeScene`.
-///
-/// Returns the scene the user picked this frame, or `std::nullopt` when nothing was picked.
-/// Switching scenes drains the GPU because in-flight frames may still reference the current
-/// scene's meshes and textures, so the panel reports the choice and the shell applies it through
-/// its own scene-switch boundary rather than loading a scene from inside a widget.
-std::optional<scene::SceneId> drawScenePanel(bool& open, const ScenePanelContext& context);
+/// Borrowed scene-loading state for File > Open Scene. Loading remains a shell frame-boundary
+/// action.
+struct SceneMenuContext {
+    const scene::SceneLibrary& library; ///< Catalog entries and availability explanations.
+    scene::SceneId activeSceneId;       ///< The currently rendered scene.
+    const SceneLoadState& loading;      ///< Persistent failure retained for an explicit Retry.
+};
+
+/// Draws File's Open Scene submenu and returns a newly selected or retried catalog entry. Keeps
+/// the submenu open to present Loading before the shell consumes the request on the next frame.
+/// Call inside an open File menu; failures and unavailable-entry reasons remain visible here.
+std::optional<scene::SceneId> drawSceneMenu(const SceneMenuContext& context);
+
+/// Draws an indented Workspace and active-scene tree over a flat scene, with a fixed search/count
+/// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering
+/// never clears selection. `open` follows the native ImGui window close button.
+void drawScenePanel(bool& open, const ScenePanelContext& context);
 
 } // namespace lmx::app

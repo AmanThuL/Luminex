@@ -12,6 +12,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace lmx::app {
@@ -123,10 +124,17 @@ struct GraphNodeModel {
 /// asserts rather than being drawn.
 ///
 /// `shapeSignature` identifies the drawn shape and nothing else: node identities, pins, edges, and
-/// alias links, with timings, frame ID, byte offsets, and memory totals excluded. Two frames with
+/// alias links, with timings, frame ID, byte offsets, memory totals and the physical slot suffixes
+/// of the renderer's double-buffered sceneDepth/historyColor resources excluded. Their declaration
+/// indices and versions still distinguish current and previous roles. Two frames with
 /// equal signatures are the same graph, which is what lets a caller keep dragged node positions
 /// across frames and know when it must not.
 GraphNodeModel buildGraphNodeModel(const render::CompiledFrameRecord& record,
                                    std::span<const rhi::PassTiming> timings);
+
+/// Canvas identity of a resource name. Only the renderer's two explicit double-buffered
+/// sceneDepth/historyColor families omit their physical slot suffix; the returned view borrows
+/// its input or names a static string. Displayed records retain the original name.
+std::string_view graphResourceLogicalName(std::string_view name);
 
 } // namespace lmx::app

@@ -19,7 +19,7 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
 void drawDetails(const GraphNodeModel& model, const GraphLayout& layout,
                  RenderGraphPanelState& state);
 /// Writes the displayed compiled record to its frame-numbered file in the working directory.
-void dumpFrame(const render::CompiledFrameRecord& record, uint64_t frameId);
+ActionResult dumpFrame(const render::CompiledFrameRecord& record, uint64_t frameId);
 /// Returns the panel's label for a pass kind.
 std::string_view passKindLabel(render::PassKind kind);
 /// Returns the panel's label for a culling reason.

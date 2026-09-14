@@ -94,3 +94,29 @@ TEST_CASE("pass timing history evicts samples beyond its rolling capacity", "[ap
     REQUIRE(row.latestGpuMilliseconds == 61.0);
     REQUIRE(row.averageGpuMilliseconds == 31.5);
 }
+
+//======================================================================================================================
+TEST_CASE("pass cost sorting preserves source identities and deterministic schedule ties",
+          "[app]") {
+    const std::array rows = {PassTimingSummary{.label = "duplicate",
+                                               .averageGpuMilliseconds = 1.0,
+                                               .latestGpuMilliseconds = 9.0,
+                                               .sampleCount = 2},
+                             PassTimingSummary{.label = "expensive",
+                                               .averageGpuMilliseconds = 4.0,
+                                               .latestGpuMilliseconds = 2.0,
+                                               .sampleCount = 4},
+                             PassTimingSummary{.label = "duplicate",
+                                               .averageGpuMilliseconds = 4.0,
+                                               .latestGpuMilliseconds = 1.0,
+                                               .sampleCount = 3}};
+    REQUIRE(sortedPassTimingIndices(rows, PassTimingSort::Average) == std::vector<size_t>{1, 2, 0});
+    REQUIRE(sortedPassTimingIndices(rows, PassTimingSort::Average, false) ==
+            std::vector<size_t>{0, 1, 2});
+    REQUIRE(sortedPassTimingIndices(rows, PassTimingSort::Latest) == std::vector<size_t>{0, 1, 2});
+    REQUIRE(sortedPassTimingIndices(rows, PassTimingSort::Samples) == std::vector<size_t>{1, 2, 0});
+    REQUIRE(sortedPassTimingIndices(rows, PassTimingSort::Schedule) ==
+            std::vector<size_t>{0, 1, 2});
+    REQUIRE(rows[0].label == "duplicate");
+    REQUIRE(rows[0].latestGpuMilliseconds == 9.0);
+}

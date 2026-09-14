@@ -227,3 +227,23 @@ TEST_CASE("re-enabling temporal reseeds from the retained scale and drops the id
     applyDynamicResolution(state, controller, settings, &idleFrame);
     CHECK(controller.scale() == 0.8f);
 }
+
+//======================================================================================================================
+TEST_CASE("inactive controller retains its last measurement and matching frame", "[app]") {
+    DynamicResolutionState state;
+    render::ResolutionController controller;
+    EditorRenderSettings settings;
+    settings.dynamicResolutionEnabled = true;
+    const std::vector<rhi::PassTiming> timings = {{.label = "scene", .gpuMilliseconds = 7.5}};
+    const auto measured = timedFrame(10, timings);
+    controller.declared(10);
+    applyDynamicResolution(state, controller, settings, &measured);
+    CHECK(state.lastMeasurementFrame == 10);
+    CHECK(state.lastObservedMilliseconds == 7.5);
+    settings.dynamicResolutionEnabled = false;
+    const auto idle = timedFrame(11, timings);
+    applyDynamicResolution(state, controller, settings, &idle);
+    CHECK(state.lastObservedFrame == 11);
+    CHECK(state.lastMeasurementFrame == 10);
+    CHECK(state.lastObservedMilliseconds == 7.5);
+}

@@ -1,44 +1,41 @@
 # Luminex
 
-Modern rendering playground / portfolio piece. Metal 4-first (macOS 26+, Apple Silicon) with a
-thin RHI and one implemented backend.
-The long-term direction is a graph-scheduled, GPU-driven hybrid renderer sharing scene, material,
-light and temporal semantics; visible rendering quality and reproducible engineering evidence both
-serve the portfolio. Future scope and prerequisites live only in `docs/roadmap.md` and its
-linked parts under `docs/roadmap/`.
+Metal 4-first rendering playground / portfolio (macOS 26+, Apple Silicon), with a thin RHI and
+one backend. Direction: graph-scheduled GPU-driven hybrid rendering with shared scene/material/
+light/temporal semantics, visible quality and reproducible evidence. Future scope and prerequisites
+live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
-- Current architecture: `docs/architecture/overview.md` · Frame walkthrough: `docs/frame-pipeline.md`
-- GPU debugging: `docs/guides/gpu-debugging.md`
-- Temporal sequences and offline FLIP: `docs/guides/temporal-comparison.md`
+- Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), and `docs/roadmap/editor-experience.md` (UX1 editor usability and diagnostics before M7.1).
-- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved scene-identity/update handoff contract. M7.1 remains technically eligible; UX1 precedes it in the accepted delivery order. Neither is implemented or in execution; UX1 has a proposed milestone specification (`docs/milestones/ux1.md`), detailed design and plan.
+- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
+  scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
+  after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
+  M7.1 is eligible for its own plan and remains inactive.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
-  slices. Basic transparency belongs to M8, ordinary LOD to M9, and area lights to a
-  separate extension. These are planned boundaries, not current renderer capabilities.
+  slices; transparency belongs to M8, ordinary LOD to M9, area lights to a separate extension.
+  These are planned boundaries, not current renderer capabilities.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
   EDR DEFER and an accepted historical-hash exception; ADR 0019) over
   `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
   offline comparison; ADRs 0017–0018, evidence limits and follow-up QA recorded there) over
   `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
   `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
-  `docs/milestones/m6.1.md` (temporal state and motion, ADR 0013) over
-  `docs/milestones/m5.5.md` (Render Graph legibility and detached window) over
-  `docs/milestones/m5.4.md` (Render Graph node view, ADR 0011) over
+  `docs/milestones/m6.1.md` (temporal state/motion, ADR 0013) over `docs/milestones/m5.5.md`
+  (graph legibility/detached window) over `docs/milestones/m5.4.md` (graph nodes, ADR 0011) over
   `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
   (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
 - M5.6 closed as reliability failure / DEFER, with no accepted performance conclusion (ADR 0012).
-  Evidence and experiment source are frozen at `m5.6-gpu-submission-evidence`; see
-  `docs/milestones/m5.6.md`. Raw bundles are backed up as GitHub Release attachments; location and
-  restore commands: `docs/guides/gpu-submission-archive.md`. The original local bundles were deleted
-  after verification. At that closure the rendering baseline remained M5.5; M6 was unblocked.
+  Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5.6.md`.
+  Verified raw bundles are GitHub Release attachments; local originals were deleted. Restore:
+  `docs/guides/gpu-submission-archive.md`. Baseline remained M5.5; M6 was unblocked.
 
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
-  slang, Dear ImGui docking-branch commit, imgui-node-editor), Damaged Helmet, the CC0 Studio
+  slang, Dear ImGui docking-branch commit, imgui-node-editor, Inter 4.1 font/license), Damaged Helmet, the CC0 Studio
   Small 09 HDRI, and the official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored
   `Assets/Fetched/`, with upstream provenance/license metadata.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
@@ -56,9 +53,8 @@ linked parts under `docs/roadmap/`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
-- **Gotcha**: the Tests target has `set_default(false)` — a plain `xmake` does NOT relink the
-  test binary after `Source/` changes. `xmake test` rebuilds it; when running the Tests binary
-  directly, `xmake build Tests` first or risk a false pass against a stale binary.
+- **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits.
+  `xmake test` rebuilds; before running Tests directly, run `xmake build Tests` to avoid stale passes.
 - Frozen portability-checkpoint-A subset (ADR 0009): `xmake build Tests && cd
   build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
   must pass this filter unchanged; the working directory must be the Tests build directory (shaders
@@ -77,7 +73,7 @@ linked parts under `docs/roadmap/`.
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
-  selected by default (catalog selector in the Scene panel); `--windowed` keeps the fixed 1280×720
+  selected by default (File > Open Scene catalog); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel> --screenshot <out.bmp>`. `--frames N`
   (default 1) renders N frames before writing the last — the temporal warmup control — advancing
@@ -107,43 +103,46 @@ linked parts under `docs/roadmap/`.
   exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress;
   `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` starts the editor with dynamic resolution on and that GPU
   budget before the frame loop begins, and logs every controller scale change at INFO — the
-  automation hook a long scripted run uses to show the controller settle. The Performance panel
-  shows a pausable 60-frame rolling Pass/Average/Latest/Min–Max/Samples table per render-graph
-  pass, refreshed four times per second, with Pause and Clear History. The Render Graph panel opens
-  in its own real OS window (Dear ImGui platform viewports; a macOS title bar with close/minimise/
-  zoom, and it never docks) and draws the exact newest-retired-frame's compiled record as a node
-  canvas of Falcor-style cards — a title band in the pass kind's colour, inputs and outputs as dots
-  centred on the card's edges, links coloured per resource — placed left to right from the cards'
-  measured sizes and opened with the leading columns filling the view, pan and zoom for the rest. Stage groups (a shared label prefix, at least two members, scheduled and culled
-  kept separate) are collapsed by default and opened by double-click or the details pane's Expand
-  button; pins are compact and show their full label on hover or selection; the `columns` control
-  defaults to 0, no wrap, and a positive value wraps long chains into rows. A details pane is
-  scoped to the selected item, Reset Layout re-measures and re-places, and dragged node positions
-  are session state only.
+  automation hook for controller-settling evidence. Performance publishes a coherent 60-retired-
+  frame rolling snapshot at 4 Hz, with sortable pass costs, frame interval/FPS, extents and memory.
+  `Freeze metrics` freezes the whole snapshot; frozen `Clear history` empties it; `Resume metrics`
+  waits for new samples. Timed-pass sum excludes presentation, driver and untimed GPU work.
+  Render Graph owns a detached native window and publishes one owned frame at 4 Hz, including
+  exact matched timings (never averages). First data/Resume publish immediately; later topology
+  changes wait for publication. Freeze latches the displayed frame through scene switches.
+  Physical temporal-resource alternation preserves unchanged canvas identity/navigation while
+  details retain exact physical resources. Dump exports the displayed frame, including frozen.
+  Stage groups collapse by default; `columns` 0 means no wrap. Fit graph/selection, 100%, Reset
+  layout and output Copy path/Reveal are explicit actions. See `docs/guides/gpu-debugging.md`.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
-- Controls: fly camera — hold RMB in the Viewport panel + WASD (move) / QE (down/up) while held.
-  The main menu (File/Window/Layout/Debug) exposes quit, per-panel visibility, Reset Default
-  Layout, and GPU capture. Dock layout and Luminex's own versioned workspace metadata (schema
-  version, per-panel visibility) persist together in `imgui.ini` next to the built binary (build
-  dir, gitignored): a clean or pre-M5.5 ini rebuilds the default four-panel dock layout once, a
-  matching schema restores it unchanged, and Reset Default Layout rebuilds it on demand without
-  touching unrelated ini entries. Render Graph is never part of that dock layout — its window class
-  forbids docking into an unclassed node, so it always opens as its own OS window, positioned
-  centred over the main window's work area on first use and remembered by `imgui.ini` afterwards
-  like any other window.
-- GPU debug: capture+dump via `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
-  LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` (path must be absolute) then `python3
-  Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings via `python3
-  Tools/GpuDebug/profile.py`. What the frame *declared*: `LMX_GRAPH_DUMP=/tmp/out.txt xmake run
-  App` writes the first compiled frame's passes, sinks, culled passes, and derived barriers
-  (absolute path, written once). The editor's read-only Render Graph panel, in its own detached OS
-  window, shows the same compiled record live as a grouped node canvas with a
-  selection-scoped details pane (uses, schedule, culling, transitions, transient lifetimes and
-  memory) and a button to dump the displayed frame on demand.
-  Guide: `docs/guides/gpu-debugging.md`, whose Parity checks section documents the exact procedure
-  and commands for verifying auto-exposure/bloom toggles leave pre-M5 output unchanged.
+- Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
+  `Camera help` explains controls; text entry suppresses camera/capture keys. Viewport owns scene
+  Play/Pause, Step 1/60 s (also pauses), Reset time and camera-rail follow. Playback, metric freeze
+  and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow.
+  Hierarchy has compact search, collapsible subjects and keyboard navigation; File > Open Scene
+  owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
+  selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
+  Inspector's Exposure/Bloom/Shadows start collapsed; Reconstruction/Resolution start expanded.
+  Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
+  nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
+  File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Versioned
+  workspace schema 2, docking and viewport state persist in build-local `imgui.ini`; Console is an
+  additive visibility key and bottom tab beside Performance; UiScalePercent is also optional. Existing layouts restore without
+  redocking; clean/legacy/reset builds defaults. Render Graph remains detached with remembered bounds.
+  Menu, C and viewport capture share capability/pending/result state; disabled startup explains
+  `MTL_CAPTURE_ENABLED=1` and relaunch. Failures retain reasons; successes expose Copy path/Reveal.
+  Pending capture waits for a drawable. Scene-only captures contain no transport/selection cues.
+  Console retains 2,000 entries/2 MiB, truncates messages at 16 KiB, and shows UTC/severity/loss
+  counts. Search/minimum severity filter its display; Freeze keeps ingestion live, Clear empties
+  history/counters, and Copy visible exports matching displayed messages. It never executes commands.
+- GPU debug: `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
+  LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` then `python3
+  Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings: `python3 Tools/GpuDebug/profile.py`.
+  `LMX_GRAPH_DUMP=/tmp/out.txt xmake run App` writes the first compiled frame once; paths must be
+  absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
+  parity checks: `docs/guides/gpu-debugging.md`.
 
 ## Architecture
 `Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
@@ -191,40 +190,41 @@ engine history stays valid across native/vendor switches. `lmx.pass.temporal.ven
 GeometryGenerator, deterministic environment/IBL generation, texture baking and SHA-256,
 repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
 RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
-DDS/cubemap/IBL uploads, environment rig, labs, initial camera, playback and previous transforms;
+DDS/cubemap/IBL uploads, environment rig, labs, source names, local object bounds, initial camera,
+playback and previous transforms;
 six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
-shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/RenderGraph dependency) →
-`Source/App` (SDL3 window, a five-panel editor shell — Scene / Viewport /
-Inspector / Performance docked together, Render Graph always detached into its own OS window via
-Dear ImGui platform viewports — drawn from `Source/App/Panels/` — with a main menu
-(File/Window/Layout/Debug, GPU capture with a `C` shortcut), versioned `imgui.ini` workspace
-persistence with legacy migration and Reset Default Layout, and a single selection resolved
-against the Scene panel's filterable, grouped subject list that drives the Inspector's
-subject-scoped editing (camera, rendering — including a Temporal block of toggles, a Reconstruction
-combo (Raw/Native TAA/device algorithm name), effective mode/fallback, vendor reset/generation,
-and the seven-item debug-view combo (rejection/weight/age disabled under effective vendor mode;
-motion/reprojection/reprojected-history remain available), a render-scale slider, a dynamic-resolution
-checkbox and GPU-budget slider with status rows for render extent/scale, frame GPU time and the last
-render-extent-change frame, animation transport, a camera-cut button, and Exposure adapt-up/
-adapt-down sliders — one of three directional lights, or one object); `DynamicResolution.h` is the
-pure per-frame policy (`applyDynamicResolution`) `EditorShell` drives its owned
-`render::ResolutionController` with; the
-Render Graph panel shapes the retained compiled frame into the ImGui-free
-`GraphNodeModel`, groups it into a `GraphLayout` of layers, ranks, rows and columns (collapsible
-stage groups, compact pins, an optional columns-per-row wrap, no pixels), and draws it on a
-vendored `ImGuiNodeEditor` canvas as cards the panel places from their own measured sizes, with a
-selection-scoped details pane, deterministic layout stable across unchanged frames, and
-session-only dragged positions; editor and capture loops share session playback/views/motion and
-frame declaration/record retention, keeping their own waits, UI sink and presentation scheduling).
+shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
+RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
+first activation and performs targeted current-time edits/resets. `EditorRenderDefaults` defines
+independent rendering reset scopes; `SelectionBounds` transforms reliable local geometry bounds
+for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
+paired with declared-frame counts, and compatible live retired timing. Renderer’s
+per-frame reset field retains its original meaning. `DynamicResolutionState::lastObservedFrame`
+is the consumed/skipped publication cursor; `lastMeasurementFrame` pairs with the last controller
+measurement. `FrameRecordRing` retains declaration-time counts/extents/context with compiled
+records; `GraphSnapshot` owns live/frozen 4 Hz copies. `ConsoleLog`/`ConsoleModel` own bounded
+thread-safe logging and filtered/frozen display) →
+`Source/App` (SDL3 six-panel editor: Hierarchy/Viewport/Inspector/Performance/Console dock together;
+Render Graph remains detached. `EditorStyle.h` shares responsive fields/tips; Inspector separates
+requested/effective/available reconstruction, live timing and controller observations. Temporal
+off shows Off/N/A and full resolution while retaining requests. `DiagnosticLegend` supplies
+shader-derived legends and Raw placeholder notes; Viewport owns playback/framing. App alone declares
+`Render/SelectionOutline` silhouette/scene-depth/composite passes into a separate SDR target; graph costs remain
+visible, while ordinary Renderer/offscreen paths and temporal histories are untouched.
+`EditorActions`/`ActionFeedback` share capability-aware results while the frame loop executes
+capture. `DynamicResolution.h` drives the shell-owned controller from retired timed-pass sums.
+`GraphNodeModel`/`GraphLayout` preserve logical canvas identity across physical temporal instances.
+Editor/capture loops share session playback/views/motion and declaration/retention, but own their
+waits, UI sink and presentation scheduling; full structure: `docs/architecture/overview.md`).
 `Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
-the read-only Inspector Display block (domain, encoded SDR UI, backing scale and 1:1 status).
-Asset `PngImage` owns deterministic tagged PNG read/write; the RHI remains SDR-only.
-Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
+the read-only Inspector Display details (domain, encoded SDR UI, backing scale and 1:1 status).
+Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
 Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon and AlphaMask. `Shaders/*.slang` entries:
 ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
-DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack.
+DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
+SelectionMask and SelectionOutline (editor-only).
 `Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
 MRT/render-area/compute/image/buffer-hazard/indirect oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 

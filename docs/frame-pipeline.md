@@ -128,7 +128,12 @@ This cancels engine exposure in MetalFX's working domain; measured output stays 
 unchanged bloom/display. The vendor owns private history independently of the engine's slots.
 Switching to or from it derives no engine reset; vendor entry, an engine reset or scaler recreation
 sets its own reset flag. Unsupported or failed creation falls back to Native TAA with status.
-`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation.
+`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation. The editor
+preserves its per-declaration `lastReset` meaning, retaining a separate last-event reason paired
+with its original declared-frame count. Live Inspector timing has its own retired-frame provenance,
+independent of Performance freeze; the controller's last observation is labeled separately.
+Temporal-off presentation reports no active reconstruction/history and full output resolution
+while retaining requests.
 
 Motion and reprojection-error views remain engine-owned. ReprojectedHistory additionally declares
 `lmx.pass.temporal.reprojectedHistory` using `VendorTemporalHistory.slang`'s reprojection/exposure
@@ -177,9 +182,35 @@ changing the picture. Histogram and exposure buffers remain persistent imports a
 
 Every pass kind is a GPU timing boundary. `Device::passTimings()` returns labels and milliseconds
 for the retired frame named by `passTimingsFrame()`, using Metal counter samples resolved after
-shared-event retirement. Performance retains a pausable 60-sample rolling table, refreshed four
-times per second; ordered pass-label changes reset it. Render Graph shows the exact newest retired
-compiled record with joined timings, including the external pass's card and opaque-operation cost.
+shared-event retirement. The editor retains declaration-time counts, logical image size,
+render/output extents and context alongside each compiled record before joining its timings.
+Performance publishes a coherent 60-retired-frame rolling snapshot four times per second;
+ordered pass-label changes reset its timing window. Freeze/Clear/Resume affect that snapshot,
+including its wall-clock interval plot, independently of scene playback. Timed-pass sum excludes
+presentation, driver and untimed GPU work. Render Graph independently publishes one owned record
+and only its frame-ID-matched timing set at the same 0.25-second interval. These are exact latest
+values for that frame, never rolling averages. First data and Resume publish immediately; later
+updates, including topology changes, wait for the next publication boundary. Freeze latches the
+displayed publication; node labels, details and Dump all use that same record.
+Physical temporal-resource alternation changes frame details without resetting unchanged canvas
+topology or navigation.
+
+The editor may append `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and
+`lmx.pass.selection.outline` after the
+scene display declaration. App owns this opt-in use of Render's `SelectionOutline` utility:
+selected-only full-resolution unjittered depth/coverage retains the object silhouette
+(including masked cutouts), while a separate unjittered scene-depth pass resolves occluders.
+The composite depth-tests both border source and destination against scene visibility, avoiding
+false edges from foreground cuts and expansion onto foreground surfaces. A separate SDR target
+holds the soft border and display for UI sampling. Its GPU costs remain visible in the compiled record and timing observations.
+It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture
+paths do not declare the passes; the Viewport toggle controls the editor cue.
+
+The six-panel shell uses Hierarchy for subjects and File > Open Scene for catalog loading.
+Console is an additive bottom tab beside Performance under workspace schema 2; existing docking
+is retained. Its bounded log ingestion is independent of GPU retirement and all panel freezes.
+Display filters, Clear and Copy visible operate on the retained/displayed messages; detailed
+limits and recovery controls are described in the [GPU debugging guide](guides/gpu-debugging.md).
 
 Neutral interfaces and capture schema live under `RHI/Include/RHI/`, implementation/validation in
 `RHI/Source/`, and the sole backend in `RHI/Backends/Metal4/Source/`. Optional `RHIMetal4ImGui`
@@ -272,7 +303,7 @@ submission does not make ImGui a core RHI dependency.
 
 ## Scenes
 
-The Scene panel and `--scene` share six IDs: **Sponza** (`sponza`, default, converted Crytek OBJ),
+File > Open Scene and `--scene` share six IDs: **Sponza** (`sponza`, default, converted Crytek OBJ),
 **Damaged Helmet** (`damaged-helmet`, glTF), **CesiumMilkTruck** (`milk-truck`, rigid animation),
 **MaterialLab** (`material-lab`, procedural materials and image diagnostics),
 **TemporalLab** (`temporal-lab`, checker floor, rigid/orbiting motion, emissive and invalid-motion
@@ -298,3 +329,8 @@ Detached windows remain SDR. EDR is deferred; future scope belongs to the roadma
 Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
 [vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/` holds entries,
 `Shaders/Modules/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
+
+UI density changes are queued and applied before the next backend/ImGui NewFrame calls. Font
+scale and sizes are regenerated from an unscaled base style; panel measurement then reports any
+changed Viewport image extent through the existing debounced, GPU-idle resize path. UI zoom
+never writes camera or render-scale settings and does not rebuild a matching workspace layout.

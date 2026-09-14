@@ -19,6 +19,15 @@ local imgui_pin    = "83f668625ad45364de71d385aeb6a5dd04bee02e"
 -- below; re-pinning requires re-verifying the patch's version gates.
 local node_editor_pin = "021aa0ea4da13fed864bafb2a92d4c5205076866"
 
+-- Inter 4.1 source tree. The default TrueType outlines are Regular; no variable axes are used.
+local inter_commit = "e3a3d4c57d5ecc01453a575621882a384c1995a3"
+local inter_files = {
+    {source = "docs/font-files/InterVariable.ttf", name = "InterVariable.ttf",
+     sha256 = "4989b125924991b90d05b2d16e0e388c48f7d5bb8b30539bbf9c755278d0ccaf"},
+    {source = "LICENSE.txt", name = "LICENSE.txt",
+     sha256 = "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"}
+}
+
 local helmet_pin = "2bac6f8c57bf471df0d2a1e8a8ec023c7801dddf" -- KhronosGroup/glTF-Sample-Assets
 local helmet_sha256 = "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
 local helmet_license_sha256 = "424cf69d2b709c8cd1316c72671e9f8370a15e10fee03734c2a95072152f2f5d"
@@ -90,6 +99,26 @@ task("setup")
                                                 "--exclude-standard"}):trim()
             assert(untracked == "", format("%s contains untracked files", dir))
         end
+
+        os.mkdir("ThirdParty/Inter")
+        for _, entry in ipairs(inter_files) do
+            local dest = path.join("ThirdParty/Inter", entry.name)
+            local candidate = dest
+            if not os.isfile(dest) then
+                candidate = dest .. ".download"
+                os.execv("curl", {"-fL", "--retry", "2", "--max-time", "300", "-o", candidate,
+                    "https://raw.githubusercontent.com/rsms/inter/" .. inter_commit .. "/" .. entry.source})
+            end
+            local actual = os.iorunv("shasum", {"-a", "256", candidate}):match("^(%x+)")
+            assert(actual == entry.sha256, format("Inter %s checksum mismatch; expected %s",
+                                                 entry.name, entry.sha256))
+            if candidate ~= dest then
+                os.mv(candidate, dest)
+            end
+        end
+        io.writefile("ThirdParty/Inter/SOURCE.txt",
+                     "Inter 4.1 (Regular default outlines)\nhttps://github.com/rsms/inter/tree/" ..
+                     inter_commit .. "\nLicense: SIL Open Font License 1.1; see LICENSE.txt\n")
 
         if not os.isdir("ThirdParty/metal-cpp") then
             os.mkdir("ThirdParty/metal-cpp")

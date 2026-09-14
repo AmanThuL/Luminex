@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -12,13 +13,26 @@
 
 namespace lmx::app {
 
-/// One of the editor's five independently visible top-level panels (spec section 3).
+/// Editor text/control scale used when no supported preference was saved.
+inline constexpr uint32_t kDefaultUiScalePercent = 100;
+/// Ordered menu and shortcut steps; intermediate persisted percentages remain valid.
+inline constexpr std::array<uint32_t, 7> kUiScalePresets{75, 80, 90, 100, 110, 125, 150};
+
+/// Keeps percentages in the inclusive preset bounds; unsupported values return the default.
+uint32_t normalizedUiScalePercent(uint32_t percent);
+
+/// Selects the next strictly greater/lesser preset, saturating at the endpoints. Unsupported
+/// input is normalized to the default before stepping; zoomIn selects the greater direction.
+uint32_t stepUiScalePercent(uint32_t percent, bool zoomIn);
+
+/// One of the editor's six independently visible top-level panels (spec section 3).
 enum class EditorPanel {
     Scene,       ///< Active-scene choice, filtering, grouped subjects, single selection.
     Viewport,    ///< Rendered image, camera input, compact rendering toolbar.
     Inspector,   ///< Properties of the selected subject only.
     Performance, ///< Rolling frame-interval and GPU-pass observations.
-    RenderGraph, ///< Exact newest-retired compiled-frame record and dump.
+    RenderGraph, ///< Coherent published compiled-frame record and dump.
+    Console,     ///< Bounded project log viewer.
 };
 
 /// One app-owned visibility value per panel, with spec section 3's defaults (every panel open
@@ -30,6 +44,7 @@ struct WorkspaceVisibility {
     bool viewport = true;     ///< `EditorPanel::Viewport`.
     bool inspector = true;    ///< `EditorPanel::Inspector`.
     bool performance = true;  ///< `EditorPanel::Performance`.
+    bool console = true;      ///< `EditorPanel::Console`; a bottom tab beside Performance.
     bool renderGraph = false; ///< `EditorPanel::RenderGraph`.
 
     /// Reads the stored value for `panel`.
@@ -48,6 +63,8 @@ struct WorkspaceVisibility {
 /// own, so a version 1 ini's dock data still carries a node holding it. Restoring that data would
 /// bring the panel back as a tab, and dock data is only ever restored wholesale, so every version
 /// 1 ini is legacy and rebuilds the default layout once.
+/// Console visibility and UI scale are additive optional keys; missing keys use defaults without
+/// redocking.
 inline constexpr uint32_t kWorkspaceSchemaVersion = 2;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
@@ -65,6 +82,8 @@ struct ParsedWorkspaceSettings {
     uint32_t schemaVersion = 0;     ///< Meaningful only when `schemaState == Present`.
     WorkspaceVisibility visibility; ///< Panel keys found in the text; a missing key keeps its
                                     ///< `WorkspaceVisibility` default.
+    /// Parsed scale, or default if missing or invalid.
+    uint32_t uiScalePercent = kDefaultUiScalePercent;
 };
 
 /// Parses the body of Luminex's workspace settings section: line-oriented `Key=Value` text, the
@@ -74,14 +93,14 @@ struct ParsedWorkspaceSettings {
 ///
 /// Unknown keys are ignored. A panel key absent from `sectionText` keeps its `WorkspaceVisibility`
 /// default rather than failing the parse; a boolean value other than `0` or `1` is likewise
-/// ignored, leaving that panel's default in place.
+/// ignored, leaving that panel's default in place. UiScalePercent accepts integers in [75,150];
+/// missing, malformed or out-of-range values use kDefaultUiScalePercent.
 ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText);
 
-/// Encodes `schemaVersion` and `visibility` as the deterministic `Key=Value` section body that
-/// `parseWorkspaceSettings` round-trips exactly: for any `schemaVersion` and `visibility`,
-/// `parseWorkspaceSettings(writeWorkspaceSettings(schemaVersion, visibility))` reports
-/// `schemaState == Present` with that same `schemaVersion` and `visibility`.
-std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility);
+/// Encodes schema, visibility and normalized UI scale as a deterministic Key=Value section body.
+/// Parsing the result preserves the schema and visibility exactly and returns the normalized scale.
+std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility,
+                                   uint32_t uiScalePercent = kDefaultUiScalePercent);
 
 /// What the workspace shell must do with a parsed settings section (or its absence) at startup.
 enum class WorkspaceDecisionKind {
@@ -94,6 +113,8 @@ struct WorkspaceDecision {
     /// See `WorkspaceDecisionKind`.
     WorkspaceDecisionKind kind = WorkspaceDecisionKind::BuildDefault;
     WorkspaceVisibility visibility; ///< Visibility to apply either way.
+    /// Restored scale; default for legacy schema.
+    uint32_t uiScalePercent = kDefaultUiScalePercent;
 };
 
 /// Decides `BuildDefault` vs `Restore` from a parsed settings section, or from `std::nullopt` when
@@ -104,7 +125,7 @@ struct WorkspaceDecision {
 /// newer -- is also legacy. Migration never guesses how stored visibility fits a topology that does
 /// not match the current schema, so every `BuildDefault` result carries default visibility rather
 /// than whatever a legacy section happened to contain. Only an exact schema match restores the
-/// parsed visibility unchanged.
+/// parsed visibility and normalized scale. Legacy schemas also reset scale to its default.
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed);
 
 /// The default visibility (spec section 3), used both for `WorkspaceDecision::BuildDefault` and to

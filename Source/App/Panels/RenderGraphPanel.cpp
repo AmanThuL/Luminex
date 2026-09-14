@@ -5,6 +5,8 @@
 
 #include "App/Panels/RenderGraphPanel.h"
 
+#include "App/Panels/ActionFeedback.h"
+#include "App/Panels/EditorStyle.h"
 #include "App/Panels/RenderGraphPanelInternal.h"
 
 #include <imgui.h>
@@ -44,9 +46,11 @@ constexpr float kColumnsControlWidth = 110.0f;
 // would otherwise be unreadable.
 float canvasWidthFor(float availableWidth) {
     const float spacing = ImGui::GetStyle().ItemSpacing.x;
+    const float uiScale = ImGui::GetStyle().FontScaleMain;
     const float canvasWidth = availableWidth * kCanvasWidthFraction;
-    if (availableWidth - canvasWidth - spacing < kDetailsMinWidth) {
-        return std::max(kCanvasMinWidth, availableWidth - kDetailsMinWidth - spacing);
+    if (availableWidth - canvasWidth - spacing < kDetailsMinWidth * uiScale) {
+        return std::max(kCanvasMinWidth * uiScale,
+                        availableWidth - kDetailsMinWidth * uiScale - spacing);
     }
     return canvasWidth;
 }
@@ -61,7 +65,13 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state) {
     state.selectedItem.reset();
     state.columnsEdit = 0;
     state.layoutPhase = GraphLayoutPhase::Provisional;
+    state.appliedUiScale = 0.0f;
     state.ownsPlatformWindow = false;
+    state.snapshot.resume();
+    state.selectedKey.clear();
+    state.selectionNotice.clear();
+    state.dumpPending.reset();
+    state.dumpResult = {};
 }
 
 //======================================================================================================================
@@ -112,7 +122,12 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         return;
     }
 
-    const RetainedFrame* newest = frameRecords.newestTimedFrame();
+    if (state.dumpPending) {
+        state.dumpResult = graph_panel::dumpFrame(*state.dumpPending, state.dumpPending->frameId);
+        state.dumpPending.reset();
+    }
+    state.snapshot.update(ImGui::GetTime(), frameRecords.newestTimedFrame());
+    const RetainedFrame* newest = state.snapshot.displayed();
     if (newest == nullptr) {
         // Nothing has retired yet -- true for the first few frames of a run, and not an error. No
         // editor context is created until there is a graph to draw into it.
@@ -121,55 +136,101 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         return;
     }
 
-    const GraphNodeModel model = buildGraphNodeModel(newest->record, newest->timings);
-    // Measured before the header row, which changes the height left for the children but not the
-    // width they are given.
-    const float canvasWidth = canvasWidthFor(ImGui::GetContentRegionAvail().x);
-
-    ImGui::Text("frame %llu -- pooling %s", static_cast<unsigned long long>(model.frameId),
-                model.poolingEnabled ? "on" : "off");
-    ImGui::SameLine();
-    if (ImGui::Button("Dump frame")) {
-        graph_panel::dumpFrame(newest->record, model.frameId);
+    if (ImGui::Button(state.snapshot.frozen() ? "Resume graph" : "Freeze graph")) {
+        if (state.snapshot.frozen()) {
+            state.snapshot.resume();
+        } else {
+            state.snapshot.freeze();
+        }
+        state.snapshot.update(ImGui::GetTime(), frameRecords.newestTimedFrame());
+        newest = state.snapshot.displayed();
+    }
+    editorTooltip("Freeze the displayed compiled frame and its matching GPU timings. "
+                  "Resume publishes the newest retired frame immediately; scene playback and "
+                  "metrics continue.");
+    if (!newest) {
+        ImGui::TextUnformatted("Waiting for a retired frame.");
+        ImGui::End();
+        return;
     }
     ImGui::SameLine();
-    // Reset Layout re-measures the cards and places them again, which is also what drops whatever
-    // the user dragged. It seeds no column count: the default is one row, left to right.
-    const bool resetLayout = ImGui::Button("Reset Layout");
+    ImGui::Text("%s | frame %llu", state.snapshot.frozen() ? "Frozen" : "Live | 4 Hz",
+                static_cast<unsigned long long>(newest->record.frameId));
+    ImGui::TextDisabled("Exact-frame timings | freeze does not pause the scene.");
+    const GraphNodeModel model = buildGraphNodeModel(newest->record, newest->timings);
+    if (ImGui::Button("Fit graph")) {
+        state.navigation = 1;
+    }
+    editorTooltip("Fit every visible graph card into the canvas, including culled passes.");
     ImGui::SameLine();
-    ImGui::SetNextItemWidth(kColumnsControlWidth);
-    // The control edits its own value and the layout adopts it only once the edit is finished:
-    // every intermediate value is a different picture, and reapplying a picture drops the node
-    // positions and the selection with it. A held step button is one gesture, not one per repeat.
-    ImGui::InputInt("columns", &state.columnsEdit);
+    ImGui::BeginDisabled(!state.selectedItem);
+    if (ImGui::Button("Fit selection")) {
+        state.navigation = 2;
+    }
+    editorTooltip("Center and fit the selected card. Select a node or stage first.");
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("100%")) {
+        state.navigation = 3;
+    }
+    editorTooltip(
+        "Restore one canvas unit per logical screen point while keeping the view center.");
+    ImGui::SameLine();
+    const bool resetLayout = ImGui::Button("Reset layout");
+    editorTooltip("Re-measure and arrange cards, replacing positions you dragged. "
+                  "Group expansion and the column setting are preserved.");
+    if (ImGui::Button("Dump frame")) {
+        state.dumpPending = newest->record;
+        state.dumpResult = {ActionStatus::Pending, "Writing the displayed frame...", ""};
+    }
+    editorTooltip("Write this displayed compiled frame to a text file beside the app binary. "
+                  "Live and Frozen both export the shown frame, not a later retirement.");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(kColumnsControlWidth * ImGui::GetStyle().FontScaleMain);
+    ImGui::InputInt("Columns", &state.columnsEdit);
     if (ImGui::IsItemDeactivatedAfterEdit()) {
         state.columnsEdit = std::clamp(state.columnsEdit, kMinColumns, kMaxColumns);
         state.layoutOptions.columnsPerRow = static_cast<uint32_t>(state.columnsEdit);
     }
+    editorTooltip("Maximum layout columns before wrapping to another row. Zero keeps one long row. "
+                  "The layout changes when the edit is finished.");
     ImGui::SameLine();
-    ImGui::TextDisabled(state.layoutOptions.columnsPerRow == 0 ? "no wrap" : "0 = no wrap");
-    ImGui::Text("transients: requested %llu B, high-water %llu B, saved %llu B",
-                static_cast<unsigned long long>(model.memory.requested),
-                static_cast<unsigned long long>(model.memory.highWater),
-                static_cast<unsigned long long>(model.memory.aliasSavings));
+    ImGui::TextDisabled("0 = no wrap");
+    drawActionFeedback("graph-dump", state.dumpResult);
+    if (!state.selectionNotice.empty()) {
+        ImGui::TextWrapped("%s", state.selectionNotice.c_str());
+    }
+    ImGui::TextWrapped("Pooling %s | transient high-water %.2f MiB | timings: %s",
+                       model.poolingEnabled ? "on" : "off",
+                       static_cast<double>(model.memory.highWater) / (1024.0 * 1024.0),
+                       newest->timed ? "latest, matched to this frame" : "N/A");
     ImGui::Separator();
 
     graph_panel::ensureCanvas(state);
 
     const GraphLayout layout = layoutGraph(model, state.layoutOptions);
     const float availableHeight = ImGui::GetContentRegionAvail().y;
-
-    if (ImGui::BeginChild("RenderGraphCanvas", ImVec2(canvasWidth, availableHeight),
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    const float uiScale = ImGui::GetStyle().FontScaleMain;
+    const bool stacked = availableWidth < 760.0f * uiScale;
+    const float canvasWidth = stacked ? availableWidth : canvasWidthFor(availableWidth);
+    const float canvasHeight =
+        stacked ? std::max(100.0f * uiScale, availableHeight * 0.58f) : availableHeight;
+    if (ImGui::BeginChild("RenderGraphCanvas", ImVec2(canvasWidth, canvasHeight),
                           ImGuiChildFlags_Borders,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
         graph_panel::drawCanvas(model, layout, state, resetLayout);
     }
     ImGui::EndChild();
 
-    ImGui::SameLine();
-    if (ImGui::BeginChild("RenderGraphDetails", ImVec2(0.0f, availableHeight),
+    if (!stacked) {
+        ImGui::SameLine();
+    }
+    if (ImGui::BeginChild("RenderGraphDetails", ImVec2(0.0f, stacked ? 0.0f : availableHeight),
                           ImGuiChildFlags_Borders)) {
+        ImGui::PushTextWrapPos(0.0f);
         graph_panel::drawDetails(model, layout, state);
+        ImGui::PopTextWrapPos();
     }
     ImGui::EndChild();
 

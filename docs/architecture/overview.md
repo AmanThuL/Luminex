@@ -116,7 +116,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   decomposition, repository discovery and the asset error domain. The glTF loader carries its own
   MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 - **Scene** owns GPU texture and IBL uploads, the scene catalog, initial camera mapping,
-  object identity and previous transforms (`SceneObject::previousModel`/`motionClass`,
+  source-derived object names, optional local geometry bounds, and previous transforms
+  (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
   the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The six-scene catalog also includes optional `san-miguel`, imported at authored
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
@@ -124,18 +125,36 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
 - **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
   options, capture metadata, selection, workspace schema, actions, performance/graph models,
-  timing history, frame-record retention, dynamic-resolution policy and temporal/exposure state.
+  timing history, frame-record retention, dynamic-resolution policy, temporal/exposure state and
+  bounded Console storage/presentation.
   The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
-  its own C++ sources only. The shared scene session borrows an active scene, owns its camera, prepares
-  playback and borrowed views, and resets/commits motion. Activation resets editor motion but
-  preserves headless loader state, matching each path's first-frame contract. Graph models and
+  its own C++ sources only. The shared scene session borrows library-owned scenes, owns its camera,
+  prepares playback and borrowed views, and resets/commits motion. It captures authored transform
+  and light defaults once per scene on first activation; returning to a cached scene never replaces
+  those defaults with edited values. An animated object's default samples only that object's rigid
+  track at the current playback time. Editing/resetting one transform collapses only its previous
+  transform; the editor separately raises its temporal discontinuity latch. Activation resets
+  editor motion but preserves headless loader state, matching each path's first-frame contract.
+  Graph models and
   FrameRecordRing include the compiled record rather than the builder. Each application loop uses
   Render's shared frame declaration, retains its accepted record, appends its own output sink and
   owns scheduling and GPU waits.
-- **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the five
-  panel drawing functions (Scene, Viewport, Inspector, Performance, Render Graph); `EditorShell`
-  coordinates them and the process-global ImGui context. Scene, Viewport, Inspector, and
-  Performance dock together as in M5.3; Render Graph is submitted with its own `ImGuiWindowClass`
+  Declaration-time counts, logical image size, render/output extents and context epoch travel with
+  each retained frame. Performance joins those values with that frame's retired timing and
+  publishes/freezes them as one snapshot. Its 60-frame timing window refreshes at 4 Hz; the interval
+  plot measures wall-clock intervals and labels the 60 Hz reference. Sorting preserves pass
+  identity and schedule order remains available. `GraphSnapshot` uses the same shared 0.25-second
+  publication interval but owns one complete retained record and its exact matched timing set,
+  never averaged timings. Labels, details and dumps read that publication. First data and Resume
+  publish immediately; later changes, including topology, wait for the next boundary. Freeze owns
+  the displayed publication through ring eviction and scene changes. `ConsoleLog` serializes
+  ingestion/snapshot/clear, limiting storage to 2,000 messages and 2 MiB of payload with a 16 KiB
+  per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
+- **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
+  panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
+  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport,
+  Inspector, Performance and Console dock together, with Console beside Performance; Render Graph
+  is submitted with its own `ImGuiWindowClass`
   (docking with unclassed windows disallowed, auto-merge overridden off) under Dear ImGui platform
   viewports (`ImGuiConfigFlags_ViewportsEnable`), so it always owns a separate OS window and the
   dock builder never places it. Selection (`EditorSelection.h`), panel visibility and the workspace
@@ -149,26 +168,54 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   belong to AppModel alongside the rest of App's plain logic. The Render Graph panel coordinates its detached window, with separate canvas ownership,
   selection details and dump implementation units. Its canvas draws a `GraphLayout` on a vendored `ImGuiNodeEditor` canvas (ADR 0011) with compact pins (full
   label on hover or selection), a selection-scoped details pane, and a `columns` control; dragged
-  node positions are session state, and a changed layout signature (shape, expanded-group set, or
-  column count) reapplies the deterministic positions. A registered ImGui settings handler persists
+  node positions are session state. Stable canvas identity excludes alternating physical temporal
+  resource instances while details retain the displayed frame's exact physical names and ranges.
+  Unchanged topology preserves selection, groups and pan/zoom. Real topology changes still update
+  the model and explicitly invalidate disappeared selections. Fit graph, Fit selection, 100% and
+  Reset layout remain explicit actions; narrow graph windows stack canvas and details. A registered
+  ImGui settings handler persists
   the workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
-  ImGui's own docking and viewport data. Menu drawing and keyboard shortcuts only raise action
+  ImGui's own docking and viewport data. Schema 2 remains current: Console visibility is additive,
+  absent keys default visible, and its first-use tab joins Performance without rebuilding existing
+  dock nodes. Hierarchy keeps the original `Scene` window ID for saved layouts. Menu drawing and keyboard shortcuts only raise action
   intents; the frame loop consumes quit and capture at the boundary that already owns each
   operation, calls `ImGui::UpdatePlatformWindows()`/`RenderPlatformWindowsDefault()` after each
   presented frame so the vendored Metal 4 ImGui backend renders any detached window with its own
   command buffer and per-slot event, and the shell consumes a layout-reset intent at the start of
   the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
-  animation play, camera-track follow); the pure `TemporalEditorState` tracks the scene-generation
-  counter and camera-cut latch, and the frame loop calls `advanceFrameAnimation()`/`commitFrame()`
-  through the shared session around frame declaration so an accepted frame advances Scene's
-  animation clock and Render's history. `EditorRenderSettings` also carries `renderScale`,
-  `dynamicResolutionEnabled` and `gpuBudgetMilliseconds`; `Source/App/Model/DynamicResolution.h` is a pure
-  per-frame policy (`applyDynamicResolution`) that seeds `EditorShell`'s owned
-  `render::ResolutionController` on the off-to-on edge, feeds it each retired frame's summed GPU
-  pass time, and writes its proposed scale back onto the settings while dynamic resolution is on.
-  Reconstruction offers Raw, Native TAA and the capability's algorithm name, with effective-mode,
-  fallback and vendor-reset status. Native TAA remains the default; `--temporal metalfx` requests
-  the vendor path. Native-only diagnostic entries are disabled while the effective mode is vendor.
+  animation play, camera-track follow). `TemporalEditorState` tracks scene generation and the
+  camera-cut latch, retains the last non-None reset reason with its original declared-frame count,
+  and observes compatible live retired timing independently of metric freeze. It separates current
+  request, declared execution and device availability: temporal off is Off/N/A at scale 1; vendor
+  fallback retains the request and reason. Waiting differs from a measured zero. Renderer’s
+  per-frame `TemporalStatus::lastReset` remains unchanged. The frame loop advances and commits
+  animation through the shared session around frame declaration. `DynamicResolution.h` drives the
+  shell-owned controller only while temporal and dynamic resolution are active; its publication
+  cursor and last actual measurement have separate frame IDs, so inactive status never pairs an
+  idle frame with an older measurement. Native TAA remains the default; device reconstruction
+  explains native-only diagnostic availability.
+  `EditorStyle.h` shares responsive fields and delayed contextual tooltips; Inspector keeps a selected-subject heading above its
+  scrolling fields. Exposure/Bloom/Shadows start collapsed, Reconstruction/Resolution expanded;
+  each editable group has scoped Reset and changed-from-default state. File > Open Scene owns
+  catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
+  groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
+  selection remains explicit and can clear its filter in Inspector. Viewport owns
+  camera help, scene playback/step/reset, camera-rail following and Frame selected. `SelectionBounds`
+  frames reliable world bounds. `Render/SelectionOutline` supplies an editor-only utility that
+  App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
+  preserve the true silhouette, respecting masked alpha. A soft 1.5-logical-point border is
+  depth-tested at source and destination before compositing into its own SDR target, so foreground
+  occlusion cuts do not become edges. `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and
+  `lmx.pass.selection.outline` appear in graph costs. Ordinary Renderer/offscreen paths never
+  declare these passes; scene targets, temporal history and scene-only captures remain unchanged. `DiagnosticLegend` describes shader encodings and Raw-mode placeholders beside the
+  active mode and Return to Final. `EditorActions` retains capture capability and results;
+  `ActionFeedback` shows recovery reasons and Copy path/Reveal without executing capture in panels.
+  `ConsoleLogSink` subscribes after logger setup and before option parsing/device initialization;
+  its RAII subscription lasts through application shutdown. Callbacks only append to the thread-safe store. Console displays UTC
+  timestamps, six severity levels, minimum-severity and case-insensitive message filters. Freeze
+  latches display/counters while ingestion continues, Resume refreshes, Clear empties history and
+  counters while preserving filters/freeze, and Copy visible exports exactly matching displayed
+  messages. It is read-only; follow-newest applies only when already at the end.
   `--capture-sequence <directory> --frames N --warmup W` writes N numbered PNGs (or `--capture-format bmp`) after W unsaved
   frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
   Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR
@@ -193,3 +240,12 @@ residency, and barrier model and the render graph's logical ownership; M5.2 ship
 `bindFrameData` over per-slot growable page arenas is the current runtime's per-frame data-delivery
 contract. D3D12 is the intended second production
 backend; Vulkan remains research evidence rather than a planned target.
+
+`EditorFont` loads bundled Inter Regular before the first frame, with fixed-width digits and an
+embedded fallback. App stages the pinned font/license beside its executable during build.
+The shell applies persisted UI zoom before ImGui NewFrame, deriving font/control sizes from an
+unscaled base style. Schema 2's optional `UiScalePercent` defaults to 100% without changing dock
+restoration. Top-bar controls and Layout presets cover 75–150%; Cmd zoom shortcuts account for
+ImGui's macOS modifier mapping and exclude text editing, active widgets, popups and camera look.
+Shared panel measurements scale with the preference. Graph cards remeasure once when it changes,
+preserving selected identity, frozen data and the canvas's separate navigation state.

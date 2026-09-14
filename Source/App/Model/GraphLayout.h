@@ -148,4 +148,11 @@ GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& o
 /// version, so `lmx.render.sceneColorHdr` at version 1 reads `sceneColorHdr v1`.
 std::string graphPinShortLabel(std::string_view resourceName, uint32_t version);
 
+/// Logical selection identity, independent of declaration indices and physical history names.
+std::string graphItemKey(const GraphNodeModel& model, const GraphLayout& layout, uint32_t item);
+
+/// Resolves a surviving selection; empty when that logical item disappeared from this picture.
+std::optional<uint32_t> findGraphItem(const GraphNodeModel& model, const GraphLayout& layout,
+                                      std::string_view key);
+
 } // namespace lmx::app

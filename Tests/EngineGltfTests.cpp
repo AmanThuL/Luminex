@@ -949,3 +949,52 @@ TEST_CASE("glTF preserves alpha mask factors and rejects blending", "[asset][alp
     }
     std::filesystem::remove_all(directory);
 }
+
+//======================================================================================================================
+TEST_CASE("glTF instance identity retains source node name with mesh fallback", "[asset]") {
+    const auto dir = std::filesystem::temp_directory_path() / "lmx-gltf-source-name-test";
+    const auto path = writeQuadGltfFixture(dir);
+    std::ifstream input(path);
+    std::string json((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    input.close();
+    SECTION("authored node wins over mesh") {
+        json.replace(json.find("\"mesh\": 0"), std::string("\"mesh\": 0").size(),
+                     "\"name\": \"Arch instance\", \"mesh\": 0");
+        json.replace(json.find("\"primitives\""), std::string("\"primitives\"").size(),
+                     "\"name\": \"Arch mesh\", \"primitives\"");
+        writeFile(path, json);
+        const auto loaded = loadGltf(path.string());
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->instances.front().sourceName == "Arch instance");
+    }
+    SECTION("unnamed node uses authored mesh") {
+        json.replace(json.find("\"primitives\""), std::string("\"primitives\"").size(),
+                     "\"name\": \"Arch mesh\", \"primitives\"");
+        writeFile(path, json);
+        const auto loaded = loadGltf(path.string());
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->instances.front().sourceName == "Arch mesh");
+    }
+    SECTION("multi-primitive material provides a qualifier without rewriting source provenance") {
+        json.replace(json.find("\"mesh\": 0"), std::string("\"mesh\": 0").size(),
+                     "\"name\": \"Building\", \"mesh\": 0");
+        json.insert(json.find("\"pbrMetallicRoughness\""), "\"name\": \"arch\", ");
+        const size_t primitiveStart = json.find('[', json.find("\"primitives\"")) + 1;
+        const size_t primitiveEnd = json.find("]}", primitiveStart);
+        json.insert(primitiveEnd, "," + json.substr(primitiveStart, primitiveEnd - primitiveStart));
+        writeFile(path, json);
+        const auto loaded = loadGltf(path.string());
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->instances.size() == 2);
+        REQUIRE(loaded->instances[0].sourceName == "Building");
+        REQUIRE(loaded->instances[1].sourceName == "Building");
+        REQUIRE(loaded->instances[0].materialQualifier == "arch");
+        REQUIRE(loaded->instances[1].materialQualifier == "arch");
+    }
+    SECTION("unnamed source remains distinguishable from a generated label") {
+        const auto loaded = loadGltf(path.string());
+        REQUIRE(loaded.has_value());
+        REQUIRE(loaded->instances.front().sourceName.empty());
+    }
+    std::filesystem::remove_all(dir);
+}

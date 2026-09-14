@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -57,6 +58,10 @@ struct GltfInstance {
     uint32_t meshIndex = 0;     ///< Index into `GltfScene::meshes`.
     uint32_t materialIndex = 0; ///< Index into `GltfScene::materials`.
     glm::mat4 world{1.f};       ///< Flattened object-to-world transform.
+    std::string sourceName; ///< Authored node name, falling back to mesh name; empty if unnamed.
+    /// Authored material name distinguishing a primitive in a multi-primitive mesh; empty when
+    /// the mesh has one primitive or its material is unnamed. Does not change renderer identity.
+    std::string materialQualifier;
 };
 
 /// One instance's animation, resampled from the glTF clip into world-space poses. The clip's node

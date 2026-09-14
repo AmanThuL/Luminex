@@ -12,16 +12,9 @@ namespace lmx::app {
 /// exactly this name, so both sides read it from here.
 inline constexpr const char* kPerformancePanelWindowName = "Performance";
 
-/// Draws the Performance panel over one coherent `PerformanceModel::snapshot()`: the wall-clock
-/// frame interval and FPS, the Viewport panel's logical size and the scene target's pixel extent
-/// shown as separate labelled values, the rolling per-pass GPU table (Pass/Average/Latest/
-/// Min-Max/Samples, schedule order), the `Timed pass sum` with its explicit
-/// not-total-GPU-frame-time caveat, and the snapshot's frame ID, object/draw counts, and transient
-/// memory. `open` follows the window's close button, exactly as `ImGui::Begin` writes it.
-///
-/// Pause and Clear History are model calls (`PerformanceModel::setPaused`,
-/// `PerformanceModel::clearHistory`) -- this panel holds no timing state of its own, so what the
-/// controls do and what the snapshot shows can never drift apart.
+/// Draws coherent, responsive metrics with sortable GPU timing rows and a labeled wall-clock
+/// interval plot. Freeze, Resume and Clear change the model before the snapshot is read; selection
+/// and sorting affect presentation only. `open` follows the ImGui window close button.
 void drawPerformancePanel(bool& open, PerformanceModel& model);
 
 } // namespace lmx::app

@@ -13,10 +13,12 @@ namespace lmx::app {
 namespace {
 
 constexpr std::string_view kSchemaKey = "Schema";
+constexpr std::string_view kUiScaleKey = "UiScalePercent";
 constexpr std::string_view kSceneKey = "Scene";
 constexpr std::string_view kViewportKey = "Viewport";
 constexpr std::string_view kInspectorKey = "Inspector";
 constexpr std::string_view kPerformanceKey = "Performance";
+constexpr std::string_view kConsoleKey = "Console";
 constexpr std::string_view kRenderGraphKey = "RenderGraph";
 
 //======================================================================================================================
@@ -45,6 +47,32 @@ void applyBoolValue(std::string_view text, bool& value) {
 } // namespace
 
 //======================================================================================================================
+uint32_t normalizedUiScalePercent(uint32_t percent) {
+    return percent >= kUiScalePresets.front() && percent <= kUiScalePresets.back()
+               ? percent
+               : kDefaultUiScalePercent;
+}
+
+//======================================================================================================================
+uint32_t stepUiScalePercent(uint32_t percent, bool zoomIn) {
+    percent = normalizedUiScalePercent(percent);
+    if (zoomIn) {
+        for (const uint32_t preset : kUiScalePresets) {
+            if (preset > percent) {
+                return preset;
+            }
+        }
+        return kUiScalePresets.back();
+    }
+    for (auto preset = kUiScalePresets.rbegin(); preset != kUiScalePresets.rend(); ++preset) {
+        if (*preset < percent) {
+            return *preset;
+        }
+    }
+    return kUiScalePresets.front();
+}
+
+//======================================================================================================================
 bool WorkspaceVisibility::isVisible(EditorPanel panel) const {
     switch (panel) {
     case EditorPanel::Scene:
@@ -55,6 +83,8 @@ bool WorkspaceVisibility::isVisible(EditorPanel panel) const {
         return inspector;
     case EditorPanel::Performance:
         return performance;
+    case EditorPanel::Console:
+        return console;
     case EditorPanel::RenderGraph:
         return renderGraph;
     }
@@ -76,6 +106,9 @@ void WorkspaceVisibility::setVisible(EditorPanel panel, bool visible) {
         return;
     case EditorPanel::Performance:
         performance = visible;
+        return;
+    case EditorPanel::Console:
+        console = visible;
         return;
     case EditorPanel::RenderGraph:
         renderGraph = visible;
@@ -112,6 +145,10 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
             } else {
                 parsed.schemaState = WorkspaceSchemaState::Unparseable;
             }
+        } else if (key == kUiScaleKey) {
+            uint32_t percent = kDefaultUiScalePercent;
+            parsed.uiScalePercent = parseNumber(value, percent) ? normalizedUiScalePercent(percent)
+                                                                : kDefaultUiScalePercent;
         } else if (key == kSceneKey) {
             applyBoolValue(value, parsed.visibility.scene);
         } else if (key == kViewportKey) {
@@ -120,6 +157,8 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
             applyBoolValue(value, parsed.visibility.inspector);
         } else if (key == kPerformanceKey) {
             applyBoolValue(value, parsed.visibility.performance);
+        } else if (key == kConsoleKey) {
+            applyBoolValue(value, parsed.visibility.console);
         } else if (key == kRenderGraphKey) {
             applyBoolValue(value, parsed.visibility.renderGraph);
         }
@@ -130,7 +169,8 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
 }
 
 //======================================================================================================================
-std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility) {
+std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibility& visibility,
+                                   uint32_t uiScalePercent) {
     std::string text;
     text += kSchemaKey;
     text += '=';
@@ -148,6 +188,11 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
     writeBool(kInspectorKey, visibility.inspector);
     writeBool(kPerformanceKey, visibility.performance);
     writeBool(kRenderGraphKey, visibility.renderGraph);
+    writeBool(kConsoleKey, visibility.console);
+    text += kUiScaleKey;
+    text += '=';
+    text += std::to_string(normalizedUiScalePercent(uiScalePercent));
+    text += '\n';
     return text;
 }
 
@@ -156,7 +201,9 @@ WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& 
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
         parsed->schemaVersion == kWorkspaceSchemaVersion) {
         return WorkspaceDecision{.kind = WorkspaceDecisionKind::Restore,
-                                 .visibility = parsed->visibility};
+                                 .visibility = parsed->visibility,
+                                 .uiScalePercent =
+                                     normalizedUiScalePercent(parsed->uiScalePercent)};
     }
     // No section, no schema key, an unparseable value, or a version that does not exactly match:
     // all legacy, and migration never guesses -- default visibility, not the legacy contents.
