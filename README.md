@@ -62,7 +62,7 @@ Layout and scale are saved automatically.
 [Temporal comparisons](docs/guides/temporal-comparison.md) ·
 [Roadmap](docs/roadmap.md)
 
-CI checks the build, CPU tests and repository policy. Metal 4 GPU tests run on supported hardware.
+CI checks the build, CPU tests and repository policy; documentation-only changes run the policy checks alone. Metal 4 GPU tests run on supported hardware.
 
 ## License and credits
 

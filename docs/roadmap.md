@@ -22,12 +22,47 @@ shared GPU scene data and its consumers. Foundation completion supplies those co
 [interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
 approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
+
+## Execution sequence
+
+This section owns the cross-part delivery order. Each part still owns its slices' boundaries and
+gates; a row here changes priority, never a gate. Starting a row requires the preceding rows to be
+accepted unless its entry column names an earlier technical prerequisite, and only one
+implementation plan is active at a time. Slices inside one row deliver in numerical order unless
+the row says otherwise.
+
+| Step | Slice | Part | State | Enters after |
+|---|---|---|---|---|
+| 1 | [M6.5](roadmap/rendering-foundations.md#m65--display-boundary-and-edr-evaluation) display boundary | I | Closed 2026-09-13 | M6.4 |
+| 2 | [R1.1–R1.5](roadmap/codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) module boundaries | III | Complete 2026-09-13 | M6.5 |
+| 3 | [Interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation) | I | PASS 2026-09-13 | R1 |
+| 4 | [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics) editor usability | IV | Implemented, owner-accepted | Gate B |
+| 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Next; no plan open | UX1 |
+| 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Inactive | M7.1 |
+| 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Inactive | M7.2 |
+| 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Inactive | M7.3 |
+| 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Inactive | M7.1; may run before steps 6–8 |
+| 10 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | M7 complete; technically gate B |
+| 11 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
+| 12 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
+| 13 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
+| 14 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
+
+Rows that interleave when their own prerequisites exist, without a fixed step:
+
+- [N2](roadmap/neural-rendering.md#n2--learned-reconstruction-study) after N1; N3's reconstruction
+  adapter after N1 and its denoiser after M10; N4 candidates one at a time after N1 and each
+  candidate's baseline. None is a condition of any M-slice.
+- Later [R milestones](roadmap/codebase-refactoring.md#later-refactoring-milestones) between
+  rendering milestones, adding no rendering scope.
+- Area lights and stochastic direct lighting after M7.5; other
+  [independent research](roadmap/gpu-driven-hybrid-rendering.md#independent-research-and-graduation-gates)
+  behind its own gates; a D3D12 backend only under [ADR 0007](decisions/0007-d3d12-backend-target.md).
+
+The order puts visible cluster geometry and the learned-rendering entry before the shadow and
+composition work while preserving every M-slice gate.
 [UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
 M7.1 is next and remains inactive pending its own plan; gate B's technical approval is preserved.
-After the four M7 slices the accepted order is
-[N1 → M9 → M8 → M10 → M11](roadmap/neural-rendering.md#placement-and-ownership), which puts
-visible cluster geometry and the learned-rendering entry before the shadow and composition work
-while preserving every M-slice gate.
 
 ## Current baseline
 
@@ -90,12 +125,13 @@ M5/A19 Pro for neural acceleration). CUDA is a training substrate, never a backe
 
 Each milestone has one recognizable completion outcome. Use a few independently accepted slices;
 implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
-M6's five slices and M7's four are fixed in Parts I and II; M8–M11 retain bounded work areas
-until planned. R milestones in Part III restructure code between rendering milestones and add no
+M6's five slices, M7's five and M8's five are fixed in Parts I and II; M9–M11 retain bounded work
+areas until planned. R milestones in Part III restructure code between rendering milestones and add no
 rendering scope. Part IV owns editor experience and its completion criteria independently of the
 rendering and structural milestones. Part V owns the four learned-rendering slices, each an
-independently accepted study that never becomes a correctness dependency of the shared frame. Stated prerequisites and accepted delivery order, rather than
-numerical order, determine entry. Only one
+independently accepted study that never becomes a correctness dependency of the shared frame; N1
+is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,
+rather than numerical order, determine entry. Only one
 implementation plan is active at a time; independent entry does not start another plan.
 
 Every rendering slice includes a diagnostic fixture, relevant intermediate views, deterministic

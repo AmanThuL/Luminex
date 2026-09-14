@@ -230,7 +230,7 @@ Graph; undo, persistence or asset browsing.
 
 ## R1.4 — Renderer seams for M7
 
-**Outcome:** the stages M7.1 and M7.2 rewrite are separable units, and App's graph models depend
+**Outcome:** the stages M7.1–M7.3 rewrite are separable units, and App's graph models depend
 on the compiled record rather than the graph builder.
 
 **Deliver:** the shadow and scene draw stages (pipelines, per-object frame data binding, draw
