@@ -10,14 +10,14 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 - Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
-  `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), and `docs/roadmap/editor-experience.md` (UX1 editor usability and diagnostics before M7.1).
+  `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), `docs/roadmap/editor-experience.md` (UX1 before M7.1), and
+  `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
 - Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
   M7.1 is eligible for its own plan and remains inactive.
-- Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting
-  slices; transparency belongs to M8, ordinary LOD to M9, area lights to a separate extension.
-  These are planned boundaries, not current renderer capabilities.
+- Roadmap entry: M6 has five temporal/display slices; M7 ends after four scene/visibility/lighting slices; transparency belongs to M8, cluster LOD
+  to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
   EDR DEFER and an accepted historical-hash exception; ADR 0019) over
   `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
