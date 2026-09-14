@@ -7,9 +7,9 @@ Explore detailed scenes, temporal reconstruction and the frame behind each image
 
 [Quick start](#quick-start) · [Architecture](docs/architecture/overview.md) · [GPU debugging](docs/guides/gpu-debugging.md)
 
-![Crytek Sponza in the Luminex editor, with scene controls and frame diagnostics](docs/media/editor-sponza.png)
+![Crytek Sponza in the Luminex editor, with Hierarchy, Inspector and frame diagnostics](docs/media/editor-sponza.jpg)
 
-<p align="center"><sub>Crytek Sponza in the Luminex editor · native TAA, automatic exposure and bloom</sub></p>
+<p align="center"><sub>Crytek Sponza · native TAA, scene Hierarchy and live frame diagnostics</sub></p>
 
 ## Highlights
 
@@ -17,10 +17,16 @@ Explore detailed scenes, temporal reconstruction and the frame behind each image
   masked foliage, HDR exposure and bloom.
 - **Temporal reconstruction.** Native TAA and temporal upscaling, dynamic resolution, and optional
   MetalFX reconstruction with native fallback.
-- **An inspectable frame.** Scene controls, per-pass GPU timings, motion diagnostics
-  and a visual render graph inspector.
+- **An inspectable frame.** Coherent GPU timing snapshots, motion diagnostics and a detached
+  render graph window with resource connections, frame freeze and export.
+- **A practical editor.** Searchable scene Hierarchy, visible-object selection outlines, scoped
+  resets, playback controls and a log Console. Inter typography and one-click UI zoom fit the workspace.
 - **Built close to the GPU.** C++23, Slang shaders and a thin RHI, with explicit resource
   dependencies, transient pooling and Metal validation tests.
+
+![Render Graph in its own macOS window, showing pass dependencies and the selected pass resources](docs/media/render-graph.jpg)
+
+<p align="center"><sub>Render Graph · freeze a frame, follow its resources and inspect matched GPU timings</sub></p>
 
 <p align="center">
   <img src="docs/media/damaged-helmet.png" alt="Damaged Helmet rendered with physically based materials and image-based lighting" width="640">
@@ -41,8 +47,12 @@ xmake
 xmake run App
 ```
 
-Setup downloads pinned dependencies and sample assets. The editor opens on Sponza;
-hold the right mouse button in the viewport and use WASD + Q/E to fly.
+Setup downloads pinned dependencies, the Inter font and sample assets. The editor opens maximized
+on Sponza. Hold the right mouse button in the viewport and use WASD + Q/E to fly.
+
+Use **File → Open Scene** to switch scenes and **Window → Render Graph** for the detached graph.
+The top-right **− / percentage / +** controls adjust UI scale; click the percentage to reset it.
+Layout and scale are saved automatically.
 
 ## Explore the project
 
