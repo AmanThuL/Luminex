@@ -37,7 +37,7 @@ the row says otherwise.
 | 2 | [R1.1–R1.5](roadmap/codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) module boundaries | III | Complete 2026-09-13 | M6.5 |
 | 3 | [Interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation) | I | PASS 2026-09-13 | R1 |
 | 4 | [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics) editor usability | IV | Implemented, owner-accepted | Gate B |
-| 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Next; no plan open | UX1 |
+| 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Implemented, owner-accepted 2026-09-15 | UX1 |
 | 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Inactive | M7.1 |
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Inactive | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Inactive | M7.3 |
@@ -62,14 +62,19 @@ Rows that interleave when their own prerequisites exist, without a fixed step:
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
 composition work while preserving every M-slice gate.
 [UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
-M7.1 is next and remains inactive pending its own plan; gate B's technical approval is preserved.
+M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
+and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
+profile passes 15/15. [The record](milestones/m7.1.md) retains both results and limits. Its executor
+plan is closed; no milestone is currently in execution. Gate B is preserved.
 
 ## Current baseline
 
 The shipped baseline is [M6.5](milestones/m6.5.md): explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
-runs remain intact, and the drift is not fixed. UX1 adds the accepted editor experience; no executor plan is active.
+runs remain intact, and the drift is not fixed. UX1 adds the accepted editor experience. M7.1
+adds owner-accepted GPU scene foundations with a scoped vendor comparison criterion; its plan
+is closed and the owner approved main integration on 2026-09-15.
 
 This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
 masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
@@ -99,8 +104,9 @@ under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 [editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
 The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the owner's acceptance
 after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
-is implemented and its executor plan is closed. M7.1 is eligible for its own implementation plan;
-no GPU-scene or GPU-visibility path is adopted yet.
+is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
+paced scene tables through retained CPU drawing; its [record](milestones/m7.1.md) owns evidence
+and retained evidence limits. M7.2 and GPU visibility remain inactive.
 
 ## Project direction and delivery
 

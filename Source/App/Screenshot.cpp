@@ -159,6 +159,13 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
             session.prepareScreenshotFrame(frame);
         }
 
+        rhi::CommandList& commands = (*device)->beginFrame();
+        if (auto prepared = session.prepareFrame((*device)->frameNumber()); !prepared) {
+            LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
+            (*device)->endFrame(nullptr);
+            (*device)->waitIdle();
+            return 1;
+        }
         std::vector<render::DrawItem> items;
         render::SceneView view =
             session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
@@ -177,7 +184,6 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         view.temporal.debugView = temporalView;
         view.temporal.renderScale = renderScale;
 
-        rhi::CommandList& commands = (*device)->beginFrame();
         render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
                                           /*poolingEnabled=*/true);
         declared.graph().exportTexture(declared.displayColor());

@@ -1,4 +1,11 @@
 #include "GpuTemporalTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // The Raw age view samples its newly committed colour slot. When that slot is recycled two frames
@@ -13,7 +20,7 @@ TEST_CASE("raw history age records the sampled slot before recycling",
     auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
-    SceneView view = temporalSceneView({});
+    FixtureSceneView view = temporalSceneView({});
     view.temporal.enabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
     view.temporal.debugView = lmx::render::TemporalDebugView::HistoryAge;
@@ -25,7 +32,8 @@ TEST_CASE("raw history age records the sampled slot before recycling",
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(), view));
+    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, device)));
     const auto record = graph.compileFrame(3);
     REQUIRE(record.has_value());
     bool sawRecycledSlot = false;
@@ -142,7 +150,7 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -150,8 +158,8 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     const Camera camera = temporalCamera();
 
     view.temporal.enabled = true;
@@ -227,7 +235,7 @@ TEST_CASE("history age restarts across temporal off and survives a mode switch",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -235,8 +243,8 @@ TEST_CASE("history age restarts across temporal off and survives a mode switch",
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     const Camera camera = temporalCamera();
     view.temporal.enabled = true;
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
@@ -291,7 +299,7 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -299,8 +307,8 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     const Camera camera = temporalCamera();
 
     view.temporal.enabled = true;
@@ -318,8 +326,8 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, camera, view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, camera, lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(1);
@@ -349,7 +357,7 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -357,8 +365,8 @@ TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     const Camera camera = temporalCamera();
 
     // The debug view is what makes the frame *read* motion and the history, so the overlap covers

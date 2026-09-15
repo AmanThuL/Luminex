@@ -11,18 +11,25 @@
 
 #include <catch2/catch_approx.hpp>
 
+#include "SceneTableTestSupport.h"
 #include <cmath>
 #include <cstring>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 namespace {
 
 using lmx::render::Camera;
 using lmx::render::DirectionalLight;
-using lmx::render::DrawItem;
-using lmx::render::Material;
-using lmx::render::Mesh;
 using lmx::render::Renderer;
-using lmx::render::SceneView;
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::FixtureSceneView;
 
 [[maybe_unused]] constexpr std::array<float, 4> kSceneClear = {0.05f, 0.07f, 0.10f, 1.0f};
 
@@ -36,8 +43,8 @@ inline Camera sceneCamera() {
 }
 
 //======================================================================================================================
-inline SceneView litSceneView(std::span<const DrawItem> items) {
-    SceneView view;
+inline FixtureSceneView litSceneView(std::span<const FixtureDrawItem> items) {
+    FixtureSceneView view;
     view.items = items;
     view.lights[0] = {.strength = {0.5f, 0.5f, 0.5f}, .direction = {0.0f, 0.0f, -1.0f}};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
@@ -66,7 +73,7 @@ inline void requireClearPixel(const Pixel& pixel) {
 }
 
 //======================================================================================================================
-inline std::array<DrawItem, 2> twoCubeScene(const Mesh& cube) {
+inline std::array<FixtureDrawItem, 2> twoCubeScene(const FixtureMesh& cube) {
     return {{
         {.mesh = &cube,
          .model = glm::translate(glm::mat4{1.0f}, glm::vec3{-kCubeOffsetX, 0.0f, 0.0f}),

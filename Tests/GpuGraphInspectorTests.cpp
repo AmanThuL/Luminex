@@ -8,6 +8,7 @@
 #include "Render/RenderGraph.h"
 #include "Render/TransientPool.h"
 
+#include "SceneTableTestSupport.h"
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
@@ -17,6 +18,12 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 namespace {
 
@@ -306,7 +313,7 @@ TEST_CASE("Native TAA physical history alternates without changing canvas topolo
     REQUIRE(device.has_value());
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer.has_value());
-    SceneView view = temporalSceneView({});
+    FixtureSceneView view = temporalSceneView({});
     view.temporal.enabled = true;
     view.temporal.reconstruction = ReconstructionMode::NativeTaa;
     TransientPool pool(**device);
@@ -315,7 +322,8 @@ TEST_CASE("Native TAA physical history alternates without changing canvas topolo
         CommandList& commands = (*device)->beginFrame();
         pool.beginFrame();
         RenderGraph graph(pool);
-        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+        const auto display = (*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                        lmx::test::prepareSceneView(view, device));
         graph.presentTexture(display);
         records.push_back(graph.execute(commands, (*device)->frameNumber()));
         (*device)->endFrame(nullptr);

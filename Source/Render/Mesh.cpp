@@ -1,11 +1,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Mesh.cpp
-/// @brief Builds built-in mesh data and uploads renderer meshes.
+/// @brief Builds built-in CPU mesh geometry.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Mesh.h"
-
-#include "Core/Assert.h"
 
 #include <glm/glm.hpp>
 
@@ -72,31 +70,6 @@ MeshData makePlane(float halfExtent) {
     // u=+Z and v=+X produce an upward normal and CCW winding from above.
     addFace(mesh, glm::vec3{0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
             halfExtent);
-    return mesh;
-}
-
-//======================================================================================================================
-rhi::Result<Mesh> createMesh(rhi::Device& device, const MeshData& data, std::string_view label) {
-    LMX_ASSERT(!data.vertices.empty() && !data.indices.empty(),
-               "createMesh: mesh data must not be empty");
-    Mesh mesh;
-    const std::string base(label);
-    // Temporary label strings outlive each synchronous createBuffer call.
-    auto vertices = device.createBuffer(
-        {.size = data.vertices.size() * sizeof(Vertex), .label = base + ".vertices"},
-        data.vertices.data());
-    if (!vertices) {
-        return std::unexpected(vertices.error());
-    }
-    mesh.vertexBuffer = std::move(*vertices);
-    auto indices = device.createBuffer(
-        {.size = data.indices.size() * sizeof(uint32_t), .label = base + ".indices"},
-        data.indices.data());
-    if (!indices) {
-        return std::unexpected(indices.error());
-    }
-    mesh.indexBuffer = std::move(*indices);
-    mesh.indexCount = static_cast<uint32_t>(data.indices.size());
     return mesh;
 }
 

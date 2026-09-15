@@ -71,7 +71,7 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createZeroDfgTexture(rhi::Device& dev
 
 //======================================================================================================================
 void registerUniformLayoutsForCapture() {
-    SceneStage::registerObjectLayoutForCapture();
+    SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
     SceneStage::registerPassLayoutsForCapture();
 }
@@ -465,15 +465,31 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
 
+    std::vector<GraphBuffer> sceneBuffers;
+    if (view.tables.vertices) {
+        LMX_ASSERT(view.tables.indices && view.tables.meshes && view.tables.instances &&
+                       view.tables.materials,
+                   "scene table bindings must be complete");
+        sceneBuffers = {graph.importBuffer(*view.tables.vertices, "lmx.scene.vertices"),
+                        graph.importBuffer(*view.tables.indices, "lmx.scene.indices"),
+                        graph.importBuffer(*view.tables.meshes, "lmx.scene.meshes"),
+                        graph.importBuffer(*view.tables.instances, "lmx.scene.instances"),
+                        graph.importBuffer(*view.tables.materials, "lmx.scene.materials")};
+    } else {
+        LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
+    }
+
     const GraphTexture shadowRead =
         m_shadowStage->declare(graph, commands, view,
-                               {.shadowMap = shadowMap,
+                               {.sceneBuffers = sceneBuffers,
+                                .shadowMap = shadowMap,
                                 .lightViewProj = shadow.viewProj,
                                 .whiteTexture = m_whiteTexture.get(),
                                 .linearSampler = m_linearSampler.get()});
     const GraphTexture sceneColorRead = m_sceneStage->declare(
         graph, commands, view,
-        {.sceneColor = sceneColor,
+        {.sceneBuffers = sceneBuffers,
+         .sceneColor = sceneColor,
          .sceneDepth = sceneDepth,
          .shadowRead = shadowRead,
          .motion = motionTargetHandle,

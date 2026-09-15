@@ -1,4 +1,11 @@
 #include "GpuTemporalTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // Parity: with temporal off the renderer declares the frame it declared before temporal existed.
@@ -13,7 +20,7 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -21,15 +28,15 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    const SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    const FixtureSceneView view = temporalSceneView(items);
 
     lmx::render::TransientPool transients(**device);
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(1);
@@ -56,7 +63,7 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -64,8 +71,8 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::NativeTaa;
@@ -79,8 +86,8 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -104,7 +111,7 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -112,8 +119,8 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
@@ -125,8 +132,8 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -151,7 +158,7 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -159,8 +166,8 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
@@ -180,8 +187,8 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -211,7 +218,7 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -219,8 +226,8 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::NativeTaa;
@@ -236,8 +243,8 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    const lmx::render::GraphTexture display =
-        (*renderer)->declarePasses(graph, commands, temporalCamera(), view);
+    const lmx::render::GraphTexture display = (*renderer)->declarePasses(
+        graph, commands, temporalCamera(), lmx::test::prepareSceneView(view, device));
     graph.presentTexture(display);
 
     const auto record = graph.compileFrame(2);
@@ -272,7 +279,7 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    SceneView view = temporalSceneView({});
+    FixtureSceneView view = temporalSceneView({});
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
@@ -284,7 +291,8 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
     CommandList& commands = (*device)->beginFrame();
     transients.beginFrame();
     lmx::render::RenderGraph graph(transients);
-    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(), view));
+    graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                    lmx::test::prepareSceneView(view, device)));
     const auto record = graph.compileFrame(2);
     REQUIRE(record.has_value());
     const std::string dump = lmx::render::dumpCompiledFrame(*record);
@@ -310,7 +318,7 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -318,8 +326,8 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::NativeTaa;
@@ -337,7 +345,8 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
         CommandList& commands = (*device)->beginFrame();
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
-        graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(), view));
+        graph.presentTexture((*renderer)->declarePasses(graph, commands, temporalCamera(),
+                                                        lmx::test::prepareSceneView(view, device)));
         const auto record = graph.compileFrame(2);
         INFO((record.has_value() ? std::string{} : record.error().message));
         REQUIRE(record.has_value());

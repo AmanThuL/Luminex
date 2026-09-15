@@ -313,6 +313,12 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // clock and camera-track follow advance now, before the SceneView below captures whatever
         // pose and object transforms result.
         shell->advanceFrameAnimation();
+        if (auto prepared = shell->prepareSceneFrame((*device)->frameNumber()); !prepared) {
+            LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
+            (*device)->endFrame(nullptr);
+            (*device)->waitIdle();
+            return 1;
+        }
 
         // Named rather than passed inline: the pass bodies borrow this view and run when the
         // graph executes, which is past the end of the statement that would hold a temporary.

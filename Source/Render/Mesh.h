@@ -1,14 +1,10 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Mesh.h
-/// @brief Declares renderer vertex, mesh-data, and GPU mesh helpers.
+/// @brief Declares renderer vertex layouts and CPU geometry helpers.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
-
 #include <cstdint>
-#include <memory>
-#include <string_view>
 #include <vector>
 
 namespace lmx::render {
@@ -45,15 +41,5 @@ MeshData fromGeo(const Geo& geo) {
 MeshData makeCube();
 /// Builds an XZ plane at y=0 with the requested half extent and a +Y normal.
 MeshData makePlane(float halfExtent);
-
-/// Owns the GPU buffers and draw count for one indexed mesh.
-struct Mesh {
-    std::unique_ptr<rhi::Buffer> vertexBuffer; ///< Owned GPU vertex storage.
-    std::unique_ptr<rhi::Buffer> indexBuffer;  ///< Owned GPU index storage.
-    uint32_t indexCount = 0;                   ///< Number of indices submitted per draw.
-};
-
-/// Uploads CPU mesh data into labelled vertex and index buffers.
-rhi::Result<Mesh> createMesh(rhi::Device& device, const MeshData& data, std::string_view label);
 
 } // namespace lmx::render

@@ -1,4 +1,5 @@
 #include "App/Model/SceneSession.h"
+#include "GraphTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -18,9 +19,14 @@ namespace scene = lmx::scene;
 //======================================================================================================================
 scene::Scene makeSessionScene() {
     scene::Scene result;
-    result.meshes.resize(1);
-    result.materials.resize(1);
-    result.objects.push_back({.name = "session object", .position = {7.0f, 0.0f, 0.0f}});
+    const auto mesh = result.addMesh(render::makeCube(), "lmx.test.session");
+    const auto material = result.addMaterial({});
+    result.addObject({.name = "session object",
+                      .position = {7.0f, 0.0f, 0.0f},
+                      .mesh = mesh,
+                      .material = material});
+    // Model a loaded scene carrying an earlier accepted pose for the activation policy test.
+    result.objects[0].previousModel = glm::mat4(1.0f);
     result.initialCamera = {.position = {3.0f, 4.0f, 5.0f},
                             .yaw = 0.2f,
                             .pitch = -0.1f,
@@ -156,27 +162,37 @@ TEST_CASE("SceneSession sequence samples absolute frames across the looping clip
 //======================================================================================================================
 TEST_CASE("SceneSession view borrows item storage while commit and rewind preserve frame ownership",
           "[app][scene-session]") {
+    FakeDevice device;
     scene::Scene scene = makeSessionScene();
-    scene.materials[0].roughness = 0.25f;
+    scene.material(scene.objects[0].material).roughness = 0.25f;
+    REQUIRE(scene.finalize(device));
     SceneSession session;
     session.activate(scene, SceneActivationMotion::Reset);
     session.advanceEditorFrame(true, false, false);
+    device.frame = 1;
+    REQUIRE(session.prepareFrame(device.frameNumber()));
     std::vector<render::DrawItem> items;
     const render::SceneView view = session.view(items, render::ShadowFilter::PCSS, true);
     REQUIRE(view.items.data() == items.data());
     REQUIRE(view.items.size() == 1);
-    REQUIRE(view.items[0].mesh == &scene.meshes[0]);
+    REQUIRE(view.items[0].instanceRow == scene.objects[0].id.slot);
+    REQUIRE(view.items[0].mesh.firstIndex == scene.tryMesh(scene.objects[0].mesh)->firstIndex);
+    REQUIRE(view.items[0].mesh.indexCount == scene.tryMesh(scene.objects[0].mesh)->indexCount);
     REQUIRE(view.shadowFilter == render::ShadowFilter::PCSS);
     REQUIRE(view.wireframe);
-    REQUIRE(view.items[0].model[3].x == Catch::Approx(1.0f));
-    REQUIRE(view.items[0].previousModel[3].x == 7.0f);
-    scene.materials[0].roughness = 0.75f;
-    REQUIRE(view.items[0].material.roughness == 0.25f);
-
+    render::InstanceRow instance;
+    view.tables.instances->readback(&instance, sizeof(instance));
+    REQUIRE(instance.model[3].x == Catch::Approx(1.0f));
+    REQUIRE(instance.previousModel[3].x == 7.0f);
+    scene.material(scene.objects[0].material).roughness = 0.75f;
+    render::MaterialRow material;
+    view.tables.materials->readback(&material, sizeof(material));
+    REQUIRE(material.roughness == 0.25f);
     session.commitFrame();
     REQUIRE(scene.animationTime == 1.0 / asset::kAnimationBakeRate);
     REQUIRE(scene.objects[0].previousModel == scene.objects[0].modelMatrix());
-    REQUIRE(view.items[0].previousModel[3].x == 7.0f);
+    view.tables.instances->readback(&instance, sizeof(instance));
+    REQUIRE(instance.previousModel[3].x == 7.0f);
     session.rewindAnimation();
     REQUIRE(scene.animationTime == 0.0);
     REQUIRE(scene.objects[0].position.x == 0.0f);
@@ -251,7 +267,10 @@ TEST_CASE(
     "SceneSession resets one animated transform at current time without discarding other edits",
     "[app][scene-session]") {
     auto scene = makeSessionScene();
-    scene.objects.push_back({.name = "other", .position = {9.0f, 0.0f, 0.0f}});
+    scene.addObject({.name = "other",
+                     .position = {9.0f, 0.0f, 0.0f},
+                     .mesh = scene.objects[0].mesh,
+                     .material = scene.objects[0].material});
     scene.animation.tracks.push_back({.objectIndex = 1,
                                       .keys = {{.time = 0.0, .translation = {2.0f, 0.0f, 0.0f}},
                                                {.time = 1.0, .translation = {4.0f, 0.0f, 0.0f}}}});

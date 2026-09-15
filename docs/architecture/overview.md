@@ -19,11 +19,15 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   `Validate.h`, and `CaptureSchema.h` — behind an includes-only `RHI.h` umbrella that declares no
   parallel surface. Every leaf compiles alone and the set exposes API-neutral resource, pipeline,
   command, synchronization, capture, and domain-owned error contracts without Metal or ImGui
-  dependencies. Per-frame CPU-to-GPU data delivery is one typed operation,
+  dependencies. Transient CPU-to-GPU parameter delivery is one typed operation,
   `CommandList::bindFrameData(slot, value)`: it allocates, copies, and binds the caller's block in
   one call and returns a `GpuAddress` — a standard-layout, arithmetic-free value naming the block's
   GPU location for the open frame. Data that survives the frame stays on the unchanged `bindBuffer`
-  path instead of being copied through the frame-data arena. `RenderPassDesc` and
+  path instead of being copied through the frame-data arena. `BufferDesc::cpuWrite` enables
+  checked `Buffer::write(offset, data, size)` uploads into host-visible memory. Writes require
+  non-null data and a nonempty in-bounds range; the caller proves all GPU readers/writers of that
+  range retired. Metal4 copies into Shared storage; device-private placed buffers reject this flag.
+  Paced scene tables are the first consumer. `RenderPassDesc` and
   `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
   beyond the primary (`ExtraColorTarget`/`extraColorFormats`), validated for colour-renderable
   formats and matching extent; `RG16Float` and `R8Unorm` are colour-renderable and CPU-readable,
@@ -35,7 +39,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   `CommandList::temporalScale` consumes neutral frame parameters. `R16Float` is sampled and
   storage-writable for the exposure texel; no MetalFX types enter public headers.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
-  frames in flight, argument tables, a per-frame-slot growable frame-data page arena (256 KiB
+  frames in flight, argument tables (texture slots cleared before each render/compute pass), a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
   retained mapped and resident until device destruction so a slot's high water becomes its reused
   capacity rather than being released), residency, shared-event pacing, render, compute, and copy
@@ -46,7 +50,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   private scratch and a copy inside the same timed call. The optional `RHIMetal4ImGui` target
   owns the adapter (sources under `RHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
-- **Render** owns camera, mesh, the validating render graph (`RenderGraph`), the shadow/scene/sky/
+- **Render** owns camera, CPU geometry vocabulary (`Vertex`/`MeshData`), shared scene-table rows,
+  the validating render graph (`RenderGraph`), the shadow/scene/sky/
   display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It
   declares raster, compute, copy and external passes with per-subresource uses over resources it either
@@ -58,8 +63,13 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
   validation have separate implementation units with private shared range helpers. `Renderer`
   composes `ShadowStage` and `SceneStage`, which own
-  opaque/masked pipelines, per-object bindings and draw encoding; SceneStage draws sky last in
-  the same scene pass. Private `ExposureStage`, `BloomStage` and `DisplayStage` owners hold
+  opaque/masked pipelines and retained CPU indexed draws. `SceneTables.h` and its Slang module
+  mirror the 208-byte instance, 112-byte material and 16-byte mesh rows. Each draw uploads a
+  16-byte `DrawUniforms` selector at b1; shaders read instance/material rows at b5/b6 and compose
+  current/previous transforms there. Vertices at b0 and the rebased index pool are shared per pass.
+  Five named read-only `lmx.scene.*` imports expose vertices, indices, meshes, instances and
+  materials in the graph. Mesh rows have only an ABI-oracle shader reader. SceneStage draws sky
+  last from a mesh row in that same geometry pool. Private `ExposureStage`, `BloomStage` and `DisplayStage` owners hold
   their pipelines/resources and declare their passes; Renderer keeps frame ordering and targets.
   `Render/FrameDeclaration` shares graph construction and execution across
   application loops and returns the accepted record for App-side retention. Render also owns
@@ -107,7 +117,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   discards when base-color texture alpha times factor alpha is below the material cutoff; color,
   depth, motion and reactive coverage share one scene invocation. Masked shadows use the same UV
   transform and cutoff. One- or two-sided variants support foliage and reverse back-face shading
-  normals; the cutoff has its own frame-data block. Opaque shaders and uniform layouts stay separate.
+  normals; cutoff and flags come from the shared material row. `AlphaMask.slang` is a pure
+  coverage function; the separate alpha-mask frame-data block is retired. Pipeline variants remain.
 - **Asset** owns procedural geometry, DDS/glTF/Radiance HDR and PNG/BMP image handling,
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
@@ -115,7 +126,9 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   offline texture mip baking (`TextureBake.h`), clip data and sampling, shared transform
   decomposition, repository discovery and the asset error domain. The glTF loader carries its own
   MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
-- **Scene** owns GPU texture and IBL uploads, the scene catalog, initial camera mapping,
+- **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` handles,
+  the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL
+  uploads, the scene catalog, initial camera mapping,
   source-derived object names, optional local geometry bounds, and previous transforms
   (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
@@ -123,13 +136,22 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
   pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
+  `addMesh`/`addTexture`/`addMaterial`/`addObject` build a scene, and `finalize` merges geometry
+  including sky with rebased indices and allocates three table slots. Slot indices remain stable
+  across draw-list removal/reorder; stale generations and foreign stores fail checked queries.
+  `prepareFrame(frameNumber)` follows `Device::beginFrame`, updating only rows dirty for that
+  retired slot. Changes mark all three slots dirty; static scenes converge to zero writes.
+  Growth doubles capacity and retains old buffers until `lastFrame + 3`; texture removal invalidates
+  the handle immediately and defers allocation release the same way. Scene destruction requires retired GPU reads. New instances seed their own previous
+  pose; `commitFrame` promotes transforms only when the caller accepts the rendered frame.
+  `MaterialRecord` owns texture handles; views resolve per-draw pointers for existing fallbacks.
 - **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
   options, capture metadata, selection, workspace schema, actions, performance/graph models,
   timing history, frame-record retention, dynamic-resolution policy, temporal/exposure state and
   bounded Console storage/presentation.
   The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
   its own C++ sources only. The shared scene session borrows library-owned scenes, owns its camera,
-  prepares playback and borrowed views, and resets/commits motion. It captures authored transform
+  prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion. It captures authored transform
   and light defaults once per scene on first activation; returning to a cached scene never replaces
   those defaults with edited values. An animated object's default samples only that object's rigid
   track at the current playback time. Editing/resetting one transform collapses only its previous
@@ -150,6 +172,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   the displayed publication through ring eviction and scene changes. `ConsoleLog` serializes
   ingestion/snapshot/clear, limiting storage to 2,000 messages and 2 MiB of payload with a 16 KiB
   per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
+  `SceneTableDisplay` formats live scene counts/capacities, geometry bytes, writes, slot, growth
+  events and pending release buffers for Inspector's read-only Scene tables block in Display & Details.
 - **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
   panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
   `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport,
@@ -203,7 +227,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   camera help, scene playback/step/reset, camera-rail following and Frame selected. `SelectionBounds`
   frames reliable world bounds. `Render/SelectionOutline` supplies an editor-only utility that
   App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
-  preserve the true silhouette, respecting masked alpha. A soft 1.5-logical-point border is
+  preserve the true silhouette, reading the same instance/material tables and masked alpha. A soft 1.5-logical-point border is
   depth-tested at source and destination before compositing into its own SDR target, so foreground
   occlusion cuts do not become edges. `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and
   `lmx.pass.selection.outline` appear in graph costs. Ordinary Renderer/offscreen paths never
@@ -237,8 +261,8 @@ rendering feature supplies a real portability requirement. Metal is the first im
 the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 selected an
 address-first per-frame data path while retaining the object-shaped resource, pass, pipeline,
 residency, and barrier model and the render graph's logical ownership; M5.2 shipped that path —
-`bindFrameData` over per-slot growable page arenas is the current runtime's per-frame data-delivery
-contract. D3D12 is the intended second production
+`bindFrameData` over per-slot growable page arenas delivers transient parameters; persistent scene
+tables use explicit paced `Buffer::write` uploads under the same retirement proof. D3D12 is the intended second production
 backend; Vulkan remains research evidence rather than a planned target.
 
 `EditorFont` loads bundled Inter Regular before the first frame, with fixed-width digits and an

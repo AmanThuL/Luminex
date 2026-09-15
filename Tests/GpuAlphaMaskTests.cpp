@@ -2,8 +2,15 @@
 
 #include <glm/gtc/packing.hpp>
 
+#include "SceneTableTestSupport.h"
 #include <array>
 #include <cmath>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 namespace {
 using namespace lmx::render;
@@ -35,11 +42,11 @@ std::unique_ptr<Texture> cutoutTexture(Device& device) {
 }
 
 //======================================================================================================================
-std::vector<uint16_t> cutoutFrame(Device& device, Renderer& renderer, SceneView view) {
+std::vector<uint16_t> cutoutFrame(Device& device, Renderer& renderer, FixtureSceneView view) {
     Camera camera;
     camera.position = {0, 0, 5};
     auto& commands = device.beginFrame();
-    renderer.render(commands, camera, view, false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device), false);
     device.endFrame(nullptr);
     device.waitIdle();
     std::vector<uint16_t> pixels(kSize * kSize * 4);
@@ -53,8 +60,8 @@ float cutoutChannel(const std::vector<uint16_t>& pixels, uint32_t x, uint32_t ch
 }
 
 //======================================================================================================================
-SceneView cutoutView(std::span<const DrawItem> items) {
-    SceneView view;
+FixtureSceneView cutoutView(std::span<const FixtureDrawItem> items) {
+    FixtureSceneView view;
     view.items = items;
     view.boundingSphere = {0, 0, -1, 5};
     view.lights[0] = {.strength = {1, 1, 1}, .direction = {0, 0, -1}};
@@ -76,10 +83,10 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     auto renderer = Renderer::create(**device, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = createMesh(**device, cutoutQuad(), "lmx.test.cutout.quad");
+    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.quad");
     REQUIRE(mesh);
     auto texture = cutoutTexture(**device);
-    std::array<DrawItem, 2> items;
+    std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
     items[0].material.alphaMode = AlphaMode::Mask;
@@ -152,10 +159,10 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     auto renderer = Renderer::create(**device, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = createMesh(**device, cutoutQuad(), "lmx.test.cutout.shadowQuad");
+    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.shadowQuad");
     REQUIRE(mesh);
     auto texture = cutoutTexture(**device);
-    std::array<DrawItem, 2> items;
+    std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
     items[0].material.alphaMode = AlphaMode::Mask;
@@ -190,9 +197,9 @@ TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][
     auto renderer = Renderer::create(**device, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer);
-    auto mesh = createMesh(**device, cutoutQuad(), "lmx.test.cutout.backFace");
+    auto mesh = fixtureMesh(**device, cutoutQuad(), "lmx.test.cutout.backFace");
     REQUIRE(mesh);
-    DrawItem item;
+    FixtureDrawItem item;
     item.mesh = &*mesh;
     item.material.alphaMode = AlphaMode::Mask;
     item.material.alphaCutoff = 0.5f;

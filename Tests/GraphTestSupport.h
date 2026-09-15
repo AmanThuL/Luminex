@@ -3,6 +3,7 @@
 #include "RHI/RHI.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <deque>
 #include <span>
 #include <string>
@@ -178,16 +179,36 @@ struct FakeDevice final : lmx::rhi::Device {
         void readback(void*, uint64_t) override { std::abort(); }
     };
     struct BufferObject final : lmx::rhi::Buffer {
-        uint64_t bytes;
+        std::vector<std::byte> storage;
 
         //==============================================================================================================
-        explicit BufferObject(uint64_t size) : bytes(size) {}
+        explicit BufferObject(uint64_t size, const void* initialData = nullptr) : storage(size) {
+            if (initialData) {
+                std::memcpy(storage.data(), initialData, size);
+            }
+        }
 
         //==============================================================================================================
-        uint64_t size() const override { return bytes; }
+        uint64_t size() const override { return storage.size(); }
 
         //==============================================================================================================
-        void readback(void*, uint64_t) override { std::abort(); }
+        void readback(void* destination, uint64_t size) override {
+            if (size > storage.size()) {
+                std::abort();
+            }
+            std::memcpy(destination, storage.data(), size);
+        }
+
+        //==============================================================================================================
+        void write(uint64_t offset, const void* source, uint64_t size) override {
+            if (offset > storage.size()) {
+                std::abort();
+            }
+            if (size > storage.size() - offset) {
+                std::abort();
+            }
+            std::memcpy(storage.data() + offset, source, size);
+        }
     };
     lmx::rhi::DeviceCapabilities deviceCaps;
     bool failTemporalScalerCreation = false;
@@ -242,8 +263,8 @@ struct FakeDevice final : lmx::rhi::Device {
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>>
-    createBuffer(const lmx::rhi::BufferDesc& desc, const void*) override {
-        return std::make_unique<BufferObject>(desc.size);
+    createBuffer(const lmx::rhi::BufferDesc& desc, const void* initialData) override {
+        return std::make_unique<BufferObject>(desc.size, initialData);
     }
 
     //==================================================================================================================

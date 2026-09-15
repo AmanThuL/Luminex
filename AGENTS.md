@@ -7,7 +7,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
-- Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md`
+- Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), `docs/roadmap/editor-experience.md` (UX1 before M7.1), and
@@ -15,7 +15,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 - Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
-  M7.1 is eligible for its own plan and remains inactive.
+  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is inactive.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order; transparency belongs to M8, cluster LOD
   to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
@@ -147,7 +147,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 ## Architecture
 `Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
-`RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables
+`RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables (texture slots cleared at each render/compute pass)
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
 shared-event pacing, per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float
 formats, depth-only passes, compute passes with storage bindings, subresource views, explicit
@@ -159,15 +159,15 @@ placement heaps whose resources are created at explicit offsets, and up to `kMax
 a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral temporal-scaler
 capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
 between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
-output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels;
-`RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, `Mesh`, the
+output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
+`RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
 as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
-`SceneView.h` owns frame inputs; `Renderer` composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
+`SceneView.h` owns row selectors/mesh ranges/resolved textures plus five borrowed table/geometry buffers; 16-byte `DrawUniforms` selects instance b5/material b6, vertices b0; shaders compose transforms; CPU indexed draws and per-draw textures remain. `Renderer` imports five read-only `lmx.scene.*` buffers and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -175,7 +175,7 @@ the next frame), bloom (threshold/downsample/bilinear upsample), display-transfo
 packing plus external reconstruction, debug view) into a graph consuming a plain `SceneView`;
 `AlphaMode::Mask` uses dedicated scene/auto-exposure/shadow pipelines sharing texture-alpha × factor
 alpha cutoff coverage, with optional two-sided shading; color/depth/motion/reactive are discarded
-together. Opaque shaders and uniforms stay separate; glTF BLEND is unsupported (ADR 0018).
+together. Cutoff/flags come from shared material rows; AlphaMask is a pure function and its old per-draw block is retired. Pipeline variants stay separate; glTF BLEND is unsupported (ADR 0018).
 `fitShadowOrtho` and friends are free functions;
 `Temporal.h`/`TemporalHistory.h` hold the motion convention, jitter sequence, active render extent
 and reset-reason derivation (ADR 0013, narrowed by ADR 0016); `TemporalResolve` has native/upscale/vendor/diagnostic declaration units sharing the
@@ -191,12 +191,12 @@ GeometryGenerator, deterministic environment/IBL generation, texture baking and 
 repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
 RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
 DDS/cubemap/IBL uploads, environment rig, labs, source names, local object bounds, initial camera,
-playback and previous transforms;
+playback and previous transforms; generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` reject stale/foreign handles; add/finalize builds one immutable rebased vertex/index pool including sky. Stable row slots survive removal/reorder; three paced table buffers per kind update only dirty rows. Growth doubles capacity and retires old buffers at lastFrame+3; new instances seed their previous pose;
 six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
-first activation and performs targeted current-time edits/resets. `EditorRenderDefaults` defines
+first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats Inspector Display & Details counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
 independent rendering reset scopes; `SelectionBounds` transforms reliable local geometry bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
 paired with declared-frame counts, and compatible live retired timing. Renderer’s
@@ -220,13 +220,13 @@ waits, UI sink and presentation scheduling; full structure: `docs/architecture/o
 `Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display details (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
-Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon and AlphaMask. `Shaders/*.slang` entries:
+Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon, SceneTables and AlphaMask. `Shaders/*.slang` entries:
 ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
 SelectionMask and SelectionOutline (editor-only).
 `Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
-MRT/render-area/compute/image/buffer-hazard/indirect oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
+MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.

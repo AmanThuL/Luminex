@@ -747,6 +747,11 @@ void EditorShell::primeTemporal(const AppOptions& options) {
 }
 
 //======================================================================================================================
+rhi::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
+    return m_session.prepareFrame(frameNumber);
+}
+
+//======================================================================================================================
 render::SceneView EditorShell::sceneView() {
     render::SceneView view =
         m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);

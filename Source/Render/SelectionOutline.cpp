@@ -5,26 +5,26 @@
 #include "Render/SelectionOutline.h"
 
 #include "Core/Assert.h"
-#include "Render/AlphaMaskParams.h"
 #include "Render/Camera.h"
-#include "Render/Mesh.h"
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace lmx::render {
 namespace {
 // Matches SelectionMask.slang. Coverage is non-color data; all scene transforms remain borrowed.
 struct MaskParams {
-    glm::mat4 mvp;
-    glm::mat4 uvTransform;
-    float alpha;
-    uint32_t masked;
+    glm::mat4 viewProj;
+    uint32_t instanceRow;
     float selected;
-    float padding = 0;
+    uint32_t padding[2]{};
 };
-static_assert(sizeof(MaskParams) == 144);
+static_assert(sizeof(MaskParams) == 80);
+static_assert(offsetof(MaskParams, instanceRow) == 64);
+static_assert(offsetof(MaskParams, selected) == 68);
 
 struct OutlineParams {
     float radius;
@@ -161,35 +161,40 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rhi::CommandList& com
     const auto drawCoverage = [this, &commands, view, selectedDraw,
                                viewProjection](bool selectedOnly) {
         commands.bindSampler(0, *m_sampler);
+        commands.bindBuffer(0, *view.tables.vertices);
+        commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
+        commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
         for (uint32_t index = 0; index < view.items.size(); ++index) {
             const auto& item = view.items[index];
-            if (item.mesh == nullptr || (selectedOnly && index != selectedDraw)) {
+            if (selectedOnly && index != selectedDraw) {
                 continue;
             }
-            const bool masked = item.material.alphaMode == AlphaMode::Mask;
-            const bool doubleSided = masked && item.material.doubleSided;
+            const bool masked = item.alphaMode == AlphaMode::Mask;
+            const bool doubleSided = masked && item.doubleSided;
             commands.bindPipeline(
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)
                              : (doubleSided ? *m_doubleSidedDepthPipeline : *m_depthPipeline));
-            commands.bindBuffer(0, *item.mesh->vertexBuffer);
-            commands.bindTexture(0, item.material.diffuse ? *item.material.diffuse : *m_white);
-            const MaskParams params{.mvp = viewProjection * item.model,
-                                    .uvTransform = item.material.uvTransform,
-                                    .alpha = item.material.albedo.a,
-                                    .masked = masked ? 1u : 0u,
-                                    .selected = 1.0f};
+            commands.bindTexture(0, item.diffuse ? *item.diffuse : *m_white);
+            const MaskParams params{
+                .viewProj = viewProjection, .instanceRow = item.instanceRow, .selected = 1.0f};
             commands.bindFrameData(1, params);
-            commands.bindFrameData(kAlphaMaskParamsSlot,
-                                   AlphaMaskParams{item.material.alphaCutoff});
-            commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+            commands.drawIndexed(*view.tables.indices, item.mesh.indexCount, item.mesh.firstIndex);
         }
     };
+    // Read-only aliases keep editor passes independent of Renderer's graph-local handles.
+    const std::vector<GraphBuffer> sceneBuffers{
+        graph.importBuffer(*view.tables.vertices, "lmx.selection.vertices"),
+        graph.importBuffer(*view.tables.indices, "lmx.selection.indices"),
+        graph.importBuffer(*view.tables.instances, "lmx.selection.instances"),
+        graph.importBuffer(*view.tables.materials, "lmx.selection.materials")};
     PassDesc coverage;
+    coverage.bufferReads = sceneBuffers;
     coverage.color = ColorAttachment{.handle = mask, .clearColor = {0, 0, 0, 0}};
     coverage.depth = DepthAttachment{.handle = depth, .store = StoreOp::Store};
     graph.addPass("lmx.pass.selection.coverage", std::move(coverage),
                   [drawCoverage](const PassResources&) { drawCoverage(true); });
     PassDesc visibility;
+    visibility.bufferReads = sceneBuffers;
     visibility.depth = DepthAttachment{.handle = sceneDepth, .store = StoreOp::Store};
     graph.addPass("lmx.pass.selection.visibility", std::move(visibility),
                   [drawCoverage](const PassResources&) { drawCoverage(false); });

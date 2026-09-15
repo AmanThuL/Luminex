@@ -41,13 +41,8 @@ asset::AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
                                            bool analyticLights, std::string_view label,
                                            ibl::GenerationOptions options) {
     // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
-    auto sphere = render::createMesh(device, render::fromGeo(asset::makeSphere(0.5f, 20, 20)),
-                                     std::string(label) + ".skySphere");
-    if (!sphere) {
-        return std::unexpected(asset::AssetError{asset::AssetErrorCode::UploadFailed,
-                                                 std::move(sphere.error().message)});
-    }
-    scene.skySphere = std::move(*sphere);
+    scene.skySphere = scene.addMesh(render::fromGeo(asset::makeSphere(0.5f, 20, 20)),
+                                    std::string(label) + ".skySphere");
     scene.skyCubemap = std::move(skyCubemap);
 
     auto generated = ibl::generate(device, environment, label, options);

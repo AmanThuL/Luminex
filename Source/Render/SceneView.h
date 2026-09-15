@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Render/AlphaMode.h"
+#include "Render/SceneTables.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
@@ -14,6 +15,7 @@
 #include <glm/vec4.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 
@@ -23,59 +25,18 @@ class Texture;
 
 namespace lmx::render {
 
-struct Mesh;
-
-/// Physically based material factors and optional texture bindings.
-struct Material {
-    /// Null means the renderer's white 1x1 fallback -- so `albedo` alone applies, rather than the
-    /// draw silently reading an unbound texture slot.
-    rhi::Texture* diffuse = nullptr;
-    /// Null means no normal mapping: the shader's flags bit 0 stays clear and its TBN path never
-    /// runs. The slot is still bound (to a flat-normal 1x1) so nothing dereferences an empty one.
-    rhi::Texture* normalMap = nullptr;
-    /// glTF 2.0 channel convention: roughness = G, metallic = B (R and A unused). Null means the
-    /// shared white fallback, so `metallic`/`roughness` alone apply.
-    rhi::Texture* metallicRoughness = nullptr;
-    /// glTF 2.0 channel convention: occlusion = R. Null means the shared white fallback (no
-    /// occlusion). Attenuates the image-based terms only, never the analytic lights.
-    rhi::Texture* occlusion = nullptr;
-    /// Null means the shared white fallback, so `emissive` alone applies.
-    rhi::Texture* emissiveMap = nullptr;
-    /// The glTF base colour: linear, and the input the shader derives both the diffuse albedo and a
-    /// metal's F0 from -- which is why there is no separate reflectance field to keep in step with
-    /// it.
-    glm::vec4 albedo{1.0f};
-    /// Perceptual roughness, squared to the GGX alpha in the shader. The shader floors it at
-    /// Lighting.slang's kMinRoughness, so a 0 here is a near-mirror rather than a singular lobe.
-    float roughness = 0.5f;
-    /// dielectric/metal mix. Deliberately diverges from glTF's material default of 1.0
-    /// (GltfMaterial keeps that spec default, and Scene.cpp sets this explicitly for every glTF
-    /// material): every non-glTF material here -- MaterialLab's sphere grid, known-color patches,
-    /// ramp/probe materials, test materials -- relies on Material{} and never sets metallic, so a
-    /// metallic default would render all of them as conductors.
-    float metallic = 0.0f;
-    /// glTF occlusion strength: 0 ignores the map and 1 applies it fully.
-    float occlusionStrength = 1.0f;
-    glm::vec3 emissive{0.0f};    ///< linear radiance the surface emits, added after all lighting
-    glm::mat4 uvTransform{1.0f}; ///< Material UV transform applied before texture sampling.
-    AlphaMode alphaMode = AlphaMode::Opaque; ///< Opaque or alpha-tested coverage.
-    float alphaCutoff = 0.5f; ///< Nonnegative MASK threshold for texture alpha times albedo alpha.
-    bool doubleSided = false; ///< MASK surfaces render both faces and reverse back-face normals.
-};
-
-/// One object to draw this frame. Non-owning: `mesh` and the material's textures must outlive the
-/// render() call that consumes them, which is what lets a caller build the span on the stack every
-/// frame from resources it keeps.
+/// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive
+/// execution.
 struct DrawItem {
-    const Mesh* mesh = nullptr; ///< Borrowed mesh drawn by this item.
-    glm::mat4 model{1.0f};      ///< Object-to-world transform.
-    Material material;          ///< Material copied for this frame.
-    /// The object-to-world transform this item was drawn with in the previous declared frame.
-    /// Equal to `model` when the item has not moved, so a still object reprojects onto itself.
-    glm::mat4 previousModel{1.0f};
-    /// How this item's motion is produced; `Invalid` writes the motion sentinel instead of
-    /// reprojecting through `previousModel`.
-    MotionClass motionClass = MotionClass::Rigid;
+    uint32_t instanceRow = 0;          ///< Stable instance slot; independent of draw-list position.
+    MeshRow mesh;                      ///< Range in the scene geometry pool.
+    rhi::Texture* diffuse = nullptr;   ///< Null selects the white fallback.
+    rhi::Texture* normalMap = nullptr; ///< Null selects the flat-normal fallback.
+    rhi::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
+    rhi::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
+    rhi::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
+    AlphaMode alphaMode = AlphaMode::Opaque;   ///< Coverage pipeline selection.
+    bool doubleSided = false;                  ///< Masked culling pipeline selection.
 };
 
 /// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
@@ -165,14 +126,15 @@ struct TemporalStatus {
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
 struct SceneView {
+    SceneTables tables;              ///< Borrowed geometry and paced row buffers for this frame.
     std::span<const DrawItem> items; ///< Borrowed draw list for the current render call.
     /// Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
     /// multiplies. Lights 1 and 2 contribute without shadowing.
     DirectionalLight lights[3];
-    /// Both null or both set. A sky needs geometry to rasterise and a cubemap to sample; either
+    /// Both absent or both set. A sky needs geometry to rasterise and a cubemap to sample; either
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.
-    const Mesh* skySphere = nullptr;
+    std::optional<MeshRow> skySphere;
     rhi::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
     /// (Source/Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,

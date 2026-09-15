@@ -1,4 +1,11 @@
 #include "GpuRendererTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // An emissive factor of 0.5 with every light off and no environment bound is linear 0.5 at the
@@ -20,7 +27,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.encodePlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.encodePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -28,13 +35,13 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {{
+    const std::array<FixtureDrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
          .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}}},
     }};
 
-    SceneView view;
+    FixtureSceneView view;
     view.items = items;
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
@@ -42,7 +49,8 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
 
     CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -77,7 +85,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.exposurePlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.exposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -85,13 +93,13 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {{
+    const std::array<FixtureDrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
          .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}}},
     }};
 
-    SceneView view;
+    FixtureSceneView view;
     view.items = items;
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
@@ -105,7 +113,8 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     const auto renderAtExposure = [&](float exposureEv) {
         view.exposureEv = exposureEv;
         CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                            /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
         (*renderer)->hdrColorTarget().readback(texels.data(), texels.size() * sizeof(uint16_t));
@@ -159,8 +168,8 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto plane = lmx::render::createMesh(**device, lmx::render::makePlane(2.0f),
-                                         "lmx.test.autoExposurePlane");
+    auto plane = lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f),
+                                        "lmx.test.autoExposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -168,13 +177,13 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 1> items = {{
+    const std::array<FixtureDrawItem, 1> items = {{
         {.mesh = &*plane,
          .model = glm::rotate(glm::mat4{1.0f}, glm::half_pi<float>(), glm::vec3{1.0f, 0.0f, 0.0f}),
          .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}}},
     }};
 
-    SceneView view;
+    FixtureSceneView view;
     view.items = items;
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
@@ -185,7 +194,8 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 
     const auto submitFrame = [&]() {
         CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                            /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
     };
 
@@ -251,10 +261,11 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
                                            .srcHeight = kSize,
                                            .dstWidth = kProbeSize,
                                            .dstHeight = kProbeSize};
-    SceneView view;
+    FixtureSceneView view;
 
     CommandList& first = (*device)->beginFrame();
-    (*renderer)->render(first, sceneCamera(), view, /*barrierForSampling=*/false);
+    (*renderer)->render(first, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     first.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                          TextureUse::ShaderRead);
     first.beginComputePass("lmx.test.sampleDepth");
@@ -267,7 +278,8 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
     (*device)->endFrame(nullptr);
 
     CommandList& second = (*device)->beginFrame();
-    (*renderer)->render(second, sceneCamera(), view, /*barrierForSampling=*/false);
+    (*renderer)->render(second, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 }
@@ -288,11 +300,12 @@ TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    SceneView view;
+    FixtureSceneView view;
     const auto renderWithBloom = [&](bool enabled) {
         view.bloomEnabled = enabled;
         CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, sceneCamera(), view, /*barrierForSampling=*/false);
+        (*renderer)->render(commands, sceneCamera(), lmx::test::prepareSceneView(view, device),
+                            /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
 
