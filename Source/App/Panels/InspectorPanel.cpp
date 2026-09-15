@@ -9,6 +9,7 @@
 #include "App/Model/DirectionalLightRole.h"
 #include "App/Model/EditorRenderDefaults.h"
 #include "App/Model/SceneTableDisplay.h"
+#include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
@@ -118,7 +119,7 @@ void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup 
         (group == EditorRenderGroup::Display &&
          (context.renderer.clearColor[0] != 0.05f || context.renderer.clearColor[1] != 0.07f ||
           context.renderer.clearColor[2] != 0.10f || context.renderer.clearColor[3] != 1.0f));
-    if (ImGui::Button("Reset group")) {
+    if (ImGui::SmallButton("Reset group")) {
         resetRenderingGroup(context.settings, group);
         if (group == EditorRenderGroup::Exposure) {
             setAutoExposureEnabled(context.settings, context.exposureContext,
@@ -132,9 +133,19 @@ void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup 
     }
     editorTooltip("Restore the editor defaults for this rendering group. Other groups, the camera "
                   "and scene playback keep their current settings.");
-    ImGui::SameLine();
-    editor_style::message(changed ? "Changed from defaults" : "Editor defaults");
+    if (changed) {
+        ImGui::SameLine();
+        editor_style::message("Modified");
+    }
     ImGui::PopID();
+}
+
+//======================================================================================================================
+bool renderingHeader(const char* label, const char* explanation, bool defaultOpen = false) {
+    const bool open = ImGui::CollapsingHeader(label, defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen
+                                                                 : ImGuiTreeNodeFlags_None);
+    editorTooltip(explanation);
+    return open;
 }
 
 //======================================================================================================================
@@ -144,7 +155,10 @@ void drawTemporalSection(const InspectorPanelContext& context) {
     const auto presentation =
         temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
                              context.renderer.width(), context.renderer.height());
-    if (ImGui::CollapsingHeader("Reconstruction", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (renderingHeader(
+            "Reconstruction",
+            "Combine frame history to smooth edges and rebuild a smaller render at output size.",
+            true)) {
         drawRenderingReset(context, EditorRenderGroup::Reconstruction);
         if (editor_style::beginFields("reconstructionFields")) {
             checkbox("Temporal inputs", "##temporal", &settings.temporalEnabled);
@@ -152,11 +166,7 @@ void drawTemporalSection(const InspectorPanelContext& context) {
                           "Turning this off renders at full resolution; the algorithm, scale and "
                           "diagnostic requests are retained.");
             ImGui::BeginDisabled(!settings.temporalEnabled);
-            checkbox("Jitter", "##jitter", &settings.jitterEnabled);
-            editorTooltip(
-                "Offset raster samples each frame for temporal reconstruction. Motion "
-                "vectors stay unjittered; turning jitter off does not stop the sequence.");
-            field("Requested algorithm");
+            field("Algorithm");
             if (ImGui::BeginCombo("##reconstruction",
                                   std::string(presentation.requestedName).c_str())) {
                 for (int index = 0; index < 3; ++index) {
@@ -172,53 +182,65 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             editorTooltip("Raw keeps the current frame without temporal accumulation. Native TAA "
                           "accumulates engine history. The device algorithm may fall back to "
                           "Native TAA; the effective mode and reason appear above.");
-            const auto effectiveMode =
-                render::resolveReconstruction(settings.reconstruction, context.temporalSupport,
-                                              status.vendorFallback ==
-                                                  render::VendorFallback::CreationFailed)
-                    .mode;
-            settings.temporalDebugView =
-                clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
-            constexpr const char* kDebugViewNames[] = {
-                "Final",          "Motion vectors", "Reprojection error", "Reprojected history",
-                "Rejection mask", "Blend weight",   "History age"};
-            field("Diagnostic view");
-            if (ImGui::BeginCombo(
-                    "##debugView",
-                    kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
-                for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
-                    const auto view = static_cast<render::TemporalDebugView>(index);
-                    const bool unavailable = clampTemporalDebugView(view, effectiveMode) != view;
-                    ImGui::BeginDisabled(unavailable);
-                    if (ImGui::Selectable(kDebugViewNames[index],
-                                          settings.temporalDebugView == view)) {
-                        settings.temporalDebugView = view;
-                    }
-                    ImGui::EndDisabled();
-                    if (unavailable) {
-                        editorTooltip("Requires native accumulation; choose Native TAA to "
-                                      "inspect this view.");
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            editorTooltip("Replace the final image with a temporal diagnostic. The Viewport "
-                          "explains its colors and units; Final restores the rendered image.");
             ImGui::EndDisabled();
             editor_style::endFields();
-            if (!settings.temporalEnabled) {
-                editor_style::message("Temporal inputs are off. Jitter, reconstruction and "
-                                      "diagnostics are inactive; requests are retained.");
-            } else if (effectiveMode == render::ReconstructionMode::VendorTemporal) {
-                editor_style::message(
-                    "Rejection, blend weight and history age require Native TAA accumulation.");
+        }
+        const auto effectiveMode =
+            render::resolveReconstruction(settings.reconstruction, context.temporalSupport,
+                                          status.vendorFallback ==
+                                              render::VendorFallback::CreationFailed)
+                .mode;
+        settings.temporalDebugView =
+            clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
+        if (!settings.temporalEnabled)
+            editor_style::message("Off: full resolution; temporal settings are retained.");
+        if (settings.temporalEnabled &&
+            settings.temporalDebugView != render::TemporalDebugView::Off)
+            editor_style::message(
+                "Diagnostic image active. Choose Final in Advanced & diagnostics.");
+        if (ImGui::TreeNode("Advanced & diagnostics")) {
+            ImGui::BeginDisabled(!settings.temporalEnabled);
+            if (editor_style::beginFields("temporalDiagnostics")) {
+                checkbox("Jitter", "##jitter", &settings.jitterEnabled);
+                editorTooltip(
+                    "Offset raster samples each frame for temporal reconstruction. Motion "
+                    "vectors stay unjittered; turning jitter off does not stop the sequence.");
+                constexpr const char* kDebugViewNames[] = {
+                    "Final",          "Motion vectors", "Reprojection error", "Reprojected history",
+                    "Rejection mask", "Blend weight",   "History age"};
+                field("Diagnostic view");
+                if (ImGui::BeginCombo(
+                        "##debugView",
+                        kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
+                    for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
+                        const auto view = static_cast<render::TemporalDebugView>(index);
+                        const bool unavailable =
+                            clampTemporalDebugView(view, effectiveMode) != view;
+                        ImGui::BeginDisabled(unavailable);
+                        if (ImGui::Selectable(kDebugViewNames[index],
+                                              settings.temporalDebugView == view)) {
+                            settings.temporalDebugView = view;
+                        }
+                        ImGui::EndDisabled();
+                        if (unavailable) {
+                            editorTooltip("Requires native accumulation; choose Native TAA to "
+                                          "inspect this view.");
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                editorTooltip("Replace the final image with a temporal diagnostic. The Viewport "
+                              "explains its colors and units; Final restores the rendered image.");
+                editor_style::endFields();
             }
+            ImGui::EndDisabled();
+            if (ImGui::Button("Reset history")) {
+                requestCameraCut(context.temporalState);
+            }
+            editorTooltip("Discard temporal history on the next frame without moving the camera. "
+                          "Use after a camera teleport or to inspect history warmup.");
+            ImGui::TreePop();
         }
-        if (ImGui::Button("Camera cut")) {
-            requestCameraCut(context.temporalState);
-        }
-        editorTooltip("Discard temporal history on the next frame without moving the camera. "
-                      "Use after a camera teleport or to inspect history warmup.");
         if (ImGui::TreeNode("History & vendor details")) {
             if (editor_style::beginFields("historyFields")) {
                 valueRow("Declared device frame",
@@ -264,12 +286,14 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             ImGui::TreePop();
         }
     }
-    if (ImGui::CollapsingHeader("Resolution", ImGuiTreeNodeFlags_DefaultOpen)) {
+    if (renderingHeader("Resolution",
+                        "Trade rendered pixel count for GPU cost. Dynamic resolution adjusts this "
+                        "scale automatically.",
+                        true)) {
         drawRenderingReset(context, EditorRenderGroup::Resolution);
         if (editor_style::beginFields("resolutionFields")) {
             ImGui::BeginDisabled(!settings.temporalEnabled || settings.dynamicResolutionEnabled);
-            slider("Requested scale", "##scale", &settings.renderScale, render::kMinRenderScale,
-                   1.0f);
+            slider("Render scale", "##scale", &settings.renderScale, render::kMinRenderScale, 1.0f);
             editorTooltip("Scale the render width and height relative to output; 0.50 uses one "
                           "quarter as many pixels. Reconstruction returns the image to output "
                           "size. Device limits may clamp the effective scale.");
@@ -280,49 +304,63 @@ void drawTemporalSection(const InspectorPanelContext& context) {
                           "the current manual scale. Disabling keeps the last requested scale "
                           "for manual editing.");
             ImGui::EndDisabled();
-            ImGui::BeginDisabled(!dynamicResolutionActive(settings));
-            slider("Timed-pass budget (ms)", "##budget", &settings.gpuBudgetMilliseconds, 2.0f,
-                   33.0f);
-            editorTooltip("Budget for the sum of measured GPU passes. The controller keeps "
-                          "headroom and waits for repeated samples before changing scale. "
-                          "This is not a total frame-time or FPS limit.");
-            ImGui::EndDisabled();
-            valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
-            valueRow("Live retired timed-pass sum",
-                     context.temporalState.liveTimedPassSumMilliseconds &&
-                             !presentation.waitingForDeclaration
-                         ? std::format("{:.2f} ms · frame {}",
-                                       *context.temporalState.liveTimedPassSumMilliseconds,
-                                       context.temporalState.liveMeasurementFrame)
-                         : "Waiting for compatible retired sample");
-            editorTooltip("Newest retired timed-pass sum compatible with the active rendering "
-                          "context. It remains live while Performance is frozen and excludes "
-                          "presentation, driver and untimed GPU work.");
-            const auto& controller = context.dynamicResolutionState;
-            valueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
-            valueRow("Last controller observation",
-                     controller.lastMeasurementFrame == 0
-                         ? "N/A"
-                         : std::format("{:.2f} ms · frame {}", controller.lastObservedMilliseconds,
-                                       controller.lastMeasurementFrame));
-            editorTooltip("Most recent sample offered while dynamic resolution was active. "
-                          "It may be skipped during settling or if its scale is obsolete; this "
-                          "value stays unchanged while the controller is inactive.");
+            if (settings.dynamicResolutionEnabled) {
+                ImGui::BeginDisabled(!dynamicResolutionActive(settings));
+                slider("GPU budget (ms)", "##budget", &settings.gpuBudgetMilliseconds, 2.0f, 33.0f);
+                editorTooltip("Budget for the sum of measured GPU passes. The controller keeps "
+                              "headroom and waits for repeated samples before changing scale. "
+                              "This is not a total frame-time or FPS limit.");
+                ImGui::EndDisabled();
+            }
             editor_style::endFields();
         }
-        if (!settings.temporalEnabled) {
-            editor_style::message("Temporal inputs are off: full-resolution rendering uses scale "
-                                  "1.00. Scale and dynamic-resolution requests are retained.");
-        } else if (settings.dynamicResolutionEnabled) {
-            editor_style::message(
-                "Dynamic resolution controls scale. Disable it to set scale manually.");
-        } else {
-            editor_style::message(
-                "Manual scale is active. Enable dynamic resolution to edit its timed-pass budget.");
+        if (settings.temporalEnabled && settings.dynamicResolutionEnabled)
+            editor_style::message("Scale adjusts automatically to the GPU budget.");
+        if (ImGui::TreeNode("Timing & scale details")) {
+            if (editor_style::beginFields("resolutionDetails")) {
+                valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
+                valueRow("Live GPU passes",
+                         context.temporalState.liveTimedPassSumMilliseconds &&
+                                 !presentation.waitingForDeclaration
+                             ? std::format("{:.2f} ms · frame {}",
+                                           *context.temporalState.liveTimedPassSumMilliseconds,
+                                           context.temporalState.liveMeasurementFrame)
+                             : "Waiting for compatible retired sample");
+                editorTooltip("Newest retired timed-pass sum compatible with the active rendering "
+                              "context. It remains live while Performance is frozen and excludes "
+                              "presentation, driver and untimed GPU work.");
+                const auto& controller = context.dynamicResolutionState;
+                valueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
+                valueRow("Controller sample", controller.lastMeasurementFrame == 0
+                                                  ? "N/A"
+                                                  : std::format("{:.2f} ms · frame {}",
+                                                                controller.lastObservedMilliseconds,
+                                                                controller.lastMeasurementFrame));
+                editorTooltip("Most recent sample offered while dynamic resolution was active. "
+                              "It may be skipped during settling or if its scale is obsolete; this "
+                              "value stays unchanged while the controller is inactive.");
+                editor_style::endFields();
+            }
+            editor_style::message("GPU pass sum excludes presentation, driver and untimed work. "
+                                  "These readings stay live when Performance is frozen.");
+            ImGui::TreePop();
         }
-        editor_style::message("Timed-pass sum excludes presentation, driver and untimed GPU work. "
-                              "Inspector measurements remain live when Performance is frozen.");
     }
+}
+
+//======================================================================================================================
+void drawDisplaySection(const InspectorPanelContext& context) {
+    ImGui::SeparatorText("Display");
+    ImGui::TextWrapped("%s", render::describe(context.renderer.displayDomain()).c_str());
+    ImGui::TextWrapped("UI: encoded sRGB, straight alpha, SDR white");
+    const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
+    ImGui::Text("Framebuffer scale: %.2f x %.2f", scale.x, scale.y);
+    ImGui::Text("Display target: %u x %u px", context.renderer.width(), context.renderer.height());
+    const bool identity = context.viewportWidth == context.renderer.width() &&
+                          context.viewportHeight == context.renderer.height();
+    ImGui::Text("Viewport image: %s", !context.viewportVisible ? "not visible"
+                                      : identity               ? "1:1 backing pixels"
+                                                               : "resizing (stretched)");
 }
 
 //======================================================================================================================
@@ -333,16 +371,35 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     const auto presentation =
         temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
                              renderer.width(), renderer.height());
-    ImGui::TextColored(editor_style::kAccent, "%s",
-                       std::string(presentation.effectiveName).c_str());
+    ImGui::TextColored(editor_style::kAccent, "%s · %.0f%%",
+                       std::string(presentation.effectiveName).c_str(),
+                       presentation.effectiveScale * 100.0f);
     ImGui::TextWrapped("Render %u × %u px  /  Output %u × %u px", presentation.extents.renderWidth,
                        presentation.extents.renderHeight, presentation.extents.outputWidth,
                        presentation.extents.outputHeight);
-    ImGui::TextWrapped("Requested: %s", std::string(presentation.requestedName).c_str());
+    if (presentation.requestedName != presentation.effectiveName)
+        ImGui::TextWrapped("Requested: %s", std::string(presentation.requestedName).c_str());
     if (!presentation.fallbackReason.empty()) {
         editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
     }
-    if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
+    const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+                                                       : renderer.visibilityStatus();
+    const bool currentVisibility =
+        visibility.frameNumber != 0 &&
+        visibility.sceneGeneration == context.temporalState.sceneGeneration;
+    const bool visibilityReady =
+        currentVisibility &&
+        (visibility.classifyMode == render::ClassifyMode::Cpu || visibility.isRetired);
+    if (visibilityReady) {
+        const auto failure = visibilityFailure(visibility);
+        if (!failure.empty())
+            editor_style::message(failure.c_str(), true);
+    }
+    drawTemporalSection(context);
+    if (renderingHeader("Visibility",
+                        "Skip objects outside the camera view. Choose where classification runs "
+                        "and how draws are submitted.",
+                        true)) {
         ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled);
         editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
         if (editor_style::beginFields("visibilityControls")) {
@@ -359,10 +416,10 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             editorTooltip(
                 "GPU results arrive after retirement. CPU remains the default reference.");
             if (settings.classifyMode == render::ClassifyMode::Gpu) {
-                editor_style::field("CPU oracle check");
-                ImGui::Checkbox("##classifyCheck", &settings.classifyCheck);
-                editorTooltip("Compares retired states, ordered rows, counts and arguments; "
-                              "unscored diagnostics.");
+                checkbox("Verify against CPU", "##classifyCheck", &settings.classifyCheck);
+                editorTooltip(
+                    "CPU oracle check: compare GPU states, ordered rows, counts and arguments "
+                    "with the CPU reference. Diagnostic runs are unscored.");
             }
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
@@ -377,22 +434,60 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 "CPU indirect issues one command per retained object. GPU indirect issues one "
                 "command per candidate slot; GPU batched issues one per run, including empty "
                 "runs.");
-            const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->status()
-                                                               : renderer.visibilityStatus();
-            if (visibility.frameNumber != 0 &&
-                visibility.sceneGeneration == context.temporalState.sceneGeneration) {
-                for (const auto& field :
-                     visibilityFields(visibility, context.visibilityDisplay
-                                                      ? context.visibilityDisplay->timings()
-                                                      : std::span<const rhi::PassTiming>{}))
-                    valueRow(field.label.c_str(), field.value);
-            } else {
-                valueRow("Visibility", "Waiting for this scene's rendered frame");
-            }
             editor_style::endFields();
         }
+        if (visibilityReady) {
+            const auto& counts = visibility.sceneCounters;
+            const uint64_t kept = uint64_t{counts.visible} + counts.bypassed[1] +
+                                  counts.bypassed[2] + counts.bypassed[3] + counts.bypassed[4];
+            ImGui::TextWrapped("%llu kept / %u candidates · %u culled",
+                               static_cast<unsigned long long>(kept), counts.candidates,
+                               counts.rejected);
+            editorTooltip("Kept includes visible objects and conservative bypasses. Culled means "
+                          "outside the camera frustum; shadows stay unculled. The detail rows "
+                          "describe the same declared or retired frame as this summary.");
+            editor_style::message(
+                std::format("{} frame {}{}", visibility.isRetired ? "GPU retired" : "CPU declared",
+                            visibility.frameNumber,
+                            visibility.checkEnabled
+                                ? (visibility.checkPassed() ? " · Check passed" : " · Check FAILED")
+                                : "")
+                    .c_str());
+        } else {
+            editor_style::message("Waiting for this scene's visibility result.");
+        }
+        if (ImGui::TreeNode("Counters, work & timings")) {
+            editor_style::message(
+                "Candidates are tested objects; commands are CPU-issued draws. "
+                "Rows select scene instances. GPU results arrive after retirement.");
+            if (editor_style::beginFields("visibilityDetails")) {
+                if (currentVisibility) {
+                    for (const auto& row :
+                         visibilityFields(visibility, context.visibilityDisplay
+                                                          ? context.visibilityDisplay->timings()
+                                                          : std::span<const rhi::PassTiming>{})) {
+                        if (row.label.starts_with("lmx.pass.visibility.")) {
+                            valueRow(
+                                std::format("GPU {}",
+                                            row.label.substr(
+                                                std::string_view("lmx.pass.visibility.").size()))
+                                    .c_str(),
+                                row.value);
+                            editorTooltip(row.label.c_str());
+                        } else {
+                            valueRow(row.label.c_str(), row.value);
+                        }
+                    }
+                } else {
+                    valueRow("Visibility", "Waiting for this scene's rendered frame");
+                }
+                editor_style::endFields();
+            }
+            ImGui::TreePop();
+        }
     }
-    if (ImGui::CollapsingHeader("Exposure")) {
+    if (renderingHeader("Exposure",
+                        "Set scene brightness manually or adapt it to measured luminance.")) {
         drawRenderingReset(context, EditorRenderGroup::Exposure);
         if (editor_style::beginFields("exposureFields")) {
             slider("Manual exposure (EV)", "##exposure", &settings.exposureEv, -6.0f, 6.0f);
@@ -448,7 +543,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             ImGui::TreePop();
         }
     }
-    if (ImGui::CollapsingHeader("Bloom")) {
+    if (renderingHeader("Bloom", "Spread bright highlights into a soft glow.")) {
         drawRenderingReset(context, EditorRenderGroup::Bloom);
         if (editor_style::beginFields("bloomFields")) {
             checkbox("Bloom", "##bloom", &settings.bloomEnabled);
@@ -463,7 +558,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
         if (!settings.bloomEnabled)
             editor_style::message("Enable bloom to edit its threshold and intensity.");
     }
-    if (ImGui::CollapsingHeader("Shadows")) {
+    if (renderingHeader("Shadows", "Choose the filtering used at shadow edges.")) {
         drawRenderingReset(context, EditorRenderGroup::Shadows);
         if (editor_style::beginFields("shadowFields")) {
             field("Shadow filter");
@@ -474,8 +569,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             editor_style::endFields();
         }
     }
-    drawTemporalSection(context);
-    if (ImGui::CollapsingHeader("Display & Details")) {
+    if (renderingHeader(
+            "Display & Details",
+            "Display options, scene table storage and output color-space information.")) {
         drawRenderingReset(context, EditorRenderGroup::Display);
         if (editor_style::beginFields("displayEditFields")) {
             field("Clear color (sRGB)");
@@ -488,30 +584,20 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                           "do not overlap. Inspect assignments and memory totals in Render Graph.");
             editor_style::endFields();
         }
-        ImGui::SeparatorText("Scene tables");
-        if (editor_style::beginFields("sceneTableFields")) {
-            for (const auto& row : sceneTableFields(context.session.tableStats())) {
-                field(row.label.data());
-                ImGui::TextWrapped("%s", row.value.c_str());
+        if (ImGui::TreeNode("Scene table details")) {
+            if (editor_style::beginFields("sceneTableFields")) {
+                for (const auto& row : sceneTableFields(context.session.tableStats())) {
+                    valueRow(row.label.data(), row.value);
+                }
+                editor_style::endFields();
             }
-            editor_style::endFields();
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode("Display details")) {
+            drawDisplaySection(context);
+            ImGui::TreePop();
         }
     }
-}
-
-//======================================================================================================================
-void drawDisplaySection(const InspectorPanelContext& context) {
-    ImGui::SeparatorText("Display");
-    ImGui::TextWrapped("%s", render::describe(context.renderer.displayDomain()).c_str());
-    ImGui::TextWrapped("UI: encoded sRGB, straight alpha, SDR white");
-    const ImVec2 scale = ImGui::GetIO().DisplayFramebufferScale;
-    ImGui::Text("Framebuffer scale: %.2f x %.2f", scale.x, scale.y);
-    ImGui::Text("Display target: %u x %u px", context.renderer.width(), context.renderer.height());
-    const bool identity = context.viewportWidth == context.renderer.width() &&
-                          context.viewportHeight == context.renderer.height();
-    ImGui::Text("Viewport image: %s", !context.viewportVisible ? "not visible"
-                                      : identity               ? "1:1 backing pixels"
-                                                               : "resizing (stretched)");
 }
 
 //======================================================================================================================
@@ -625,10 +711,6 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
                 break;
             case EditorSubject::Rendering:
                 drawRenderingSection(context);
-                if (ImGui::TreeNode("Display details")) {
-                    drawDisplaySection(context);
-                    ImGui::TreePop();
-                }
                 break;
             case EditorSubject::DirectionalLight:
                 drawDirectionalLightSection(context, context.selection.index);

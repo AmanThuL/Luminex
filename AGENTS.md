@@ -127,7 +127,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Hierarchy has compact search, collapsible subjects and keyboard navigation; File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Inspector's Exposure/Bloom/Shadows start collapsed; Reconstruction/Resolution start expanded.
+  Inspector shows Reconstruction/Resolution before Visibility; Exposure/Bloom/Shadows start collapsed. Visibility counters, temporal diagnostics and resolution timings expand on demand; fallback and failure warnings remain visible.
   Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
   File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.

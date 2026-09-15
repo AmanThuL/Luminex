@@ -7,7 +7,7 @@ Use a capture for wrong rendered output, a timing trace for performance, and a r
 Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using
 collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
 tips while disabled controls retain visible reasons. The Inspector’s Rendering subject has a
-read-only Display details section: output domain, encoded-space SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping.
+Display & Details > Display details section: output domain, encoded-space SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping.
 A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
 
 ## Editor playback
@@ -141,10 +141,10 @@ symptom, evidence, root cause, correction, and prevention.
 
 `--temporal metalfx` opts into the capability-selected scaler. In Rendering > Reconstruction,
 compare the requested algorithm with the effective summary and fallback reason. Temporal inputs
-off retains that request while execution is Off at scale 1. Resolution separates the live retired
-timed-pass sum and its frame ID from the controller's last observation. Disable dynamic resolution
+off retains that request while execution is Off at scale 1. Resolution > Timing & scale details separates the live retired
+timed-pass sum/frame from the controller sample; GPU budget appears with dynamic resolution enabled. Disable dynamic resolution
 for a controlled fixed-scale capture. History & vendor details retain the last reset event,
-declared-frame provenance, vendor generation and supported scale range. Native-only diagnostics
+declared-frame provenance, vendor generation and supported scale range. Advanced & diagnostics holds jitter, diagnostic view and Reset history. Native-only diagnostics
 explain why device reconstruction cannot provide them; choose Native TAA for rejection, blend
 weight and accumulation age. Native TAA remains the default. For a windowed TemporalLab capture
 with dynamic resolution:
