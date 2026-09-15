@@ -205,8 +205,14 @@ WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& 
                                  .uiScalePercent =
                                      normalizedUiScalePercent(parsed->uiScalePercent)};
     }
-    // No section, no schema key, an unparseable value, or a version that does not exactly match:
-    // all legacy, and migration never guesses -- default visibility, not the legacy contents.
+    if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
+        parsed->schemaVersion == 2) {
+        return WorkspaceDecision{.kind = WorkspaceDecisionKind::BuildDefault,
+                                 .visibility = resetWorkspaceVisibility(),
+                                 .uiScalePercent =
+                                     normalizedUiScalePercent(parsed->uiScalePercent)};
+    }
+    // Unknown schemas cannot establish a compatible layout or preference contract.
     return WorkspaceDecision{.kind = WorkspaceDecisionKind::BuildDefault,
                              .visibility = resetWorkspaceVisibility()};
 }

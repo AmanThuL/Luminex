@@ -197,6 +197,11 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context)
             ImGui::OpenPopup("playback-options");
         }
         if (ImGui::BeginPopup("playback-options")) {
+            if (ImGui::MenuItem("Show measurement"))
+                action = PlaybackToolbarAction::ShowMeasurement;
+            tooltip("Open Performance to configure or inspect measurement. Closing it does not "
+                    "stop a run.");
+            ImGui::Separator();
             ImGui::BeginDisabled(!context.hasCameraRail || context.measurementActive);
             ImGui::Checkbox("Follow camera rail", &context.followCameraRail);
             ImGui::EndDisabled();

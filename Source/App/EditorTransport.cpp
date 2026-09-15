@@ -12,6 +12,13 @@
 namespace lmx::app {
 
 //======================================================================================================================
+void EditorShell::showMeasurement() {
+    setPanelVisible(EditorPanel::Performance, true);
+    m_performancePanel.requestFocus = true;
+    m_revealMeasurement = true;
+}
+
+//======================================================================================================================
 void EditorShell::stopPlayback() {
     if (m_measurement.active())
         m_measurement.cancel();
@@ -57,9 +64,7 @@ void EditorShell::buildPlaybackTransport(rhi::Device& device, const render::Rend
     case PlaybackToolbarAction::Play:
         endMouseLook();
         if (m_measureOnPlay) {
-            setPanelVisible(EditorPanel::Performance, true);
-            m_focusDefaultPerformance = true;
-            m_revealMeasurement = true;
+            showMeasurement();
             startMeasurement(device, renderer);
         } else {
             m_playback.play(m_session, m_settings.followCameraTrack);
@@ -76,6 +81,9 @@ void EditorShell::buildPlaybackTransport(rhi::Device& device, const render::Rend
         m_playback.step(m_session, m_settings.followCameraTrack);
         break;
     case PlaybackToolbarAction::None:
+        break;
+    case PlaybackToolbarAction::ShowMeasurement:
+        showMeasurement();
         break;
     }
 }

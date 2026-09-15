@@ -63,8 +63,8 @@ Reveal controls. This text dump still contains graph declarations, not GPU timin
 
 ## Console and editor selection diagnostics
 
-Window > Console opens the bounded read-only log viewer. Its default tab sits beside Performance;
-workspace schema 2 adds Console visibility without rebuilding existing saved docking. The store
+Window > Console opens the bounded read-only log viewer, alone in the default bottom dock. Performance and Render Graph use detached native windows, both closed by default; Window > Performance toggles its window.
+Workspace schema 3 restores visibility and geometry. Schema 2 migrates to default topology while preserving valid UI scale; Reset Default Layout closes Performance/Graph and resets Performance's next-open bounds. The store
 retains at most 2,000 messages and 2 MiB of payload, truncating each message at 16 KiB on a UTF-8
 boundary. UTC timestamps, Trace/Debug/Info/Warning/Error/Critical levels, and eviction/truncation
 counts remain visible. Minimum severity and case-insensitive message search filter only display.
@@ -220,10 +220,10 @@ xmake run App --scene visibility-lab --measure /absolute/new-run.json --warmup 3
 python3 Tools/Bench/visibility_paired.py --binary /absolute/frozen/App --out /absolute/new-evidence
 ```
 
-Omit `--windowed` for maximized fullscreen-windowed editor validation. Select Measure in the top toolbar:
-Play starts the deterministic W/N live viewport run; Stop cancels it and Pause is disabled for the uninterrupted plan.
-Performance > Measure retains warmup/frame counts, results and Export, with no separate Start/Cancel buttons.
-Completion or Stop restores the prior preview state while retaining the report. Editor reports remain interactive/unscored; disable dynamic resolution first.
+Omit `--windowed` for maximized fullscreen-windowed editor validation. Selecting Measure mode does not open a window.
+Play starts deterministic W/N, opens/focuses the detached Performance window once and expands Measure; Stop cancels and Pause is disabled for the uninterrupted plan. Closing the window leaves the run active.
+Performance > Measure retains warmup/frame counts, results and Export; toolbar options > Show measurement opens/focuses this section anytime, including during a run. Window > Performance is a normal visibility toggle.
+Completion or Stop restores preview state and retains the report without reopening Performance. Editor reports remain interactive/unscored; disable dynamic resolution first.
 CLI behavior is unchanged: `--measure` conflicts with screenshot/sequence output; `--measure-camera initial|track` chooses authored camera or rail. Scored headless output refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
 
 Both front ends wait for GPU retirement after each submitted frame because RHI exposes only the
@@ -244,7 +244,7 @@ Failures remain in the output directory; no adoption rule is applied. Use `--sel
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session.
+These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 
@@ -289,9 +289,9 @@ image (no full-screen white, no NaN speckle) rather than asserting a specific di
 Use the main bar's minus/percentage/plus buttons or Layout > UI Scale to change fonts and
 controls together (75–150%). Click the percentage or press Cmd+0 for 100%; Cmd+- shrinks and
 Cmd++ / Cmd+= grows. Text editing, active widget drags and popups suppress these shortcuts.
-The detached graph shares this preference, while its canvas zoom remains independent.
-`UiScalePercent` persists in the existing workspace section of `imgui.ini`; old files default
-to 100% without redocking. Reset Default Layout keeps the UI-scale preference.
+Detached Performance and Render Graph share this preference; graph canvas zoom remains independent.
+`UiScalePercent` persists in the workspace section of `imgui.ini`; missing values default to 100%.
+Schema 2 layout migration and Reset Default Layout preserve valid UI-scale preferences.
 
 The editor uses bundled Inter Regular (16 logical points at 100%, 12 at 75%), with fixed-width
 digits for stable diagnostic columns. `xmake setup` fetches the pinned Inter 4.1 TrueType source

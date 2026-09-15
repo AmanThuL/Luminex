@@ -12,7 +12,7 @@ TemporalResolve's native/upscale/vendor units share one history owner.
 `Render/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
 Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
-Toolbar Measure Play runs deterministic W/N with Pause disabled; Stop or completion restores preview state and keeps results in Performance. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
+Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
 (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
@@ -196,8 +196,8 @@ holds the soft border and display for UI sampling. Its GPU costs remain visible 
 It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture
 paths do not declare the passes; the Viewport toggle controls the editor cue.
 
-Console docks beside Performance (workspace schema 2); log ingestion is independent of GPU/panel
-freeze. See the [GPU debugging guide](guides/gpu-debugging.md) for filters, Clear and Copy visible.
+Console alone occupies the bottom dock; Performance/Graph are detached, initially closed. Workspace schema 3 restores visibility/bounds; schema 2 migrates to default topology and preserves valid UI scale.
+Window > Performance toggles normally; Show measurement opens/focuses Measure anytime. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](guides/gpu-debugging.md).
 
 Neutral interfaces/capture schema live in `RHI/Include/RHI/`, shared implementation in `RHI/Source/`,
 and the backend in `RHI/Backends/Metal4/Source/`; optional `RHIMetal4ImGui` contains UI dependencies.

@@ -43,7 +43,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 constexpr float kLookRadiansPerPixel = 0.0025f;
 
 // The default topology's share of the work area: Scene and Inspector flank a central column whose
-// lower quarter holds Performance, and the Viewport takes what remains.
+// lower quarter holds Console, and the Viewport takes what remains.
 
 // The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
@@ -115,7 +115,7 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
 struct DefaultLayoutExtents {
     float sceneWidth = 0.0f;
     float inspectorWidth = 0.0f;
-    float performanceHeight = 0.0f;
+    float consoleHeight = 0.0f;
 };
 
 //======================================================================================================================
@@ -131,7 +131,7 @@ DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
     DefaultLayoutExtents extents;
     extents.sceneWidth = workWidth >= 1500.0f ? 240.0f : kMinSceneWidthPoints;
     extents.inspectorWidth = workWidth >= 1500.0f ? 340.0f : kMinInspectorWidthPoints;
-    extents.performanceHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
+    extents.consoleHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
 
     const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);
     const float sideWanted = extents.sceneWidth + extents.inspectorWidth;
@@ -140,8 +140,8 @@ DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
         extents.sceneWidth *= scale;
         extents.inspectorWidth *= scale;
     }
-    extents.performanceHeight =
-        std::min(extents.performanceHeight, std::max(workHeight - kMinViewportHeightPoints, 0.0f));
+    extents.consoleHeight =
+        std::min(extents.consoleHeight, std::max(workHeight - kMinViewportHeightPoints, 0.0f));
     return extents;
 }
 
@@ -156,9 +156,8 @@ float splitFraction(float extent, float available) {
 }
 
 //======================================================================================================================
-// Builds the four docked panels of the default topology: Scene left, Inspector right, Performance
-// below the Viewport, and the Viewport in what remains. The fifth panel, Render Graph, is never
-// docked -- it lives in its own OS window.
+// Builds Scene/Inspector beside the Viewport and Console across the bottom.
+// Performance and Render Graph live in independent native windows.
 void buildDefaultLayout(ImGuiID dockspaceId) {
     const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
     const DefaultLayoutExtents extents = defaultLayoutExtents(work.x, work.y);
@@ -173,9 +172,9 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 
     // Each ratio is a share of the node being split, and that node shrinks as the splits proceed.
     ImGuiID centerId = dockspaceId;
-    ImGuiID performanceId = 0;
+    ImGuiID consoleId = 0;
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
-                                splitFraction(extents.performanceHeight, work.y), &performanceId,
+                                splitFraction(extents.consoleHeight, work.y), &consoleId,
                                 &centerId);
     ImGuiID sceneId = 0;
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, splitFraction(extents.sceneWidth, work.x),
@@ -187,10 +186,9 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 
     ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
-    ImGui::DockBuilderDockWindow(kPerformancePanelWindowName, performanceId);
-    ImGui::DockBuilderDockWindow(kConsolePanelWindowName, performanceId);
-    // Render Graph is deliberately absent: its window class forbids docking into an unclassed
-    // node, so it always owns its own OS window and there is no dock node to place it in.
+    ImGui::DockBuilderDockWindow(kConsolePanelWindowName, consoleId);
+    // Performance and Render Graph are deliberately absent: their window classes forbid docking
+    // into an unclassed node, so each owns its own OS window and has no default dock node.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
     ImGui::DockBuilderFinish(dockspaceId);
 }
@@ -493,7 +491,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
-        m_focusDefaultPerformance = true;
+        m_performancePanel.resetPlacement = true;
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
@@ -702,31 +700,17 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
         m_performanceModel.setContextEpoch(metricsContextEpoch());
-        if (m_focusDefaultPerformance) {
-            ImGui::SetNextWindowFocus();
-            m_focusDefaultPerformance = false;
-        }
         MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
                                             m_measurementExportPath, m_measurementFeedback};
         measurement.reveal = m_revealMeasurement;
-        m_revealMeasurement = false;
-        drawPerformancePanel(open, m_performanceModel, &measurement);
+        drawPerformancePanel(open, m_performanceModel, m_performancePanel, &measurement);
+        m_revealMeasurement = measurement.reveal;
         if (measurement.action == MeasurementAction::Export)
             exportMeasurement();
         setPanelVisible(EditorPanel::Performance, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Console)) {
-        // Add only the new tab to an existing workspace. Existing dock nodes and selected tabs
-        // remain untouched; a previously saved Console position wins over this first-use hint.
-        if (const auto* settings =
-                ImGui::FindWindowSettingsByID(ImHashStr(kPerformancePanelWindowName));
-            settings != nullptr && settings->DockId != 0) {
-            ImGui::SetNextWindowDockID(settings->DockId, ImGuiCond_FirstUseEver);
-        } else if (const auto* performance = ImGui::FindWindowByName(kPerformancePanelWindowName);
-                   performance != nullptr && performance->DockId != 0) {
-            ImGui::SetNextWindowDockID(performance->DockId, ImGuiCond_FirstUseEver);
-        }
         bool open = true;
         drawConsolePanel(open, m_consoleModel);
         setPanelVisible(EditorPanel::Console, open);
@@ -745,6 +729,8 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
         return;
     }
     m_workspace.visibility.setVisible(panel, visible);
+    if (panel == EditorPanel::Performance)
+        m_performancePanel.requestFocus = visible;
     // Nothing moved a window, so ImGui has no reason of its own to rewrite the ini; without this
     // the new visibility would be lost on exit.
     ImGui::MarkIniSettingsDirty();

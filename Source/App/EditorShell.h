@@ -21,6 +21,7 @@
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "App/Model/WorkspaceModel.h"
+#include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
@@ -61,7 +62,7 @@ struct WorkspaceSettings {
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
-/// Render Graph window beside them, the fly camera, and the active scene::Scene the Inspector
+/// Performance and Render Graph windows, the fly camera, and the active scene::Scene the Inspector
 /// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
@@ -223,6 +224,7 @@ private:
     // the menu bar. Menu items only read visibility and raise intents.
     void buildMainMenu();
     void buildPlaybackTransport(rhi::Device& device, const render::Renderer& renderer);
+    void showMeasurement();
     void stopPlayback();
     void finishMeasurementPlayback();
     // Queues a bounded UI-density preference for the next frame and persistence.
@@ -341,7 +343,7 @@ private:
     // layout on a run whose schema did match would throw away the re-docking the ini exists to
     // persist.
     bool m_buildDefaultLayout = false;
-    bool m_focusDefaultPerformance = false;
+    PerformancePanelState m_performancePanel;
     // Why the pending build was scheduled, for the one line logged when it actually happens.
     std::string_view m_layoutBuildReason;
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the

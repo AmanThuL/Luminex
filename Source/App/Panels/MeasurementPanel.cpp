@@ -14,12 +14,18 @@ namespace lmx::app {
 void drawMeasurementSection(MeasurementPanelContext& context) {
     if (context.reveal)
         ImGui::SetNextItemOpen(true);
-    if (!ImGui::CollapsingHeader("Measure"))
+    const bool expanded = ImGui::CollapsingHeader("Measure");
+    if (context.reveal) {
+        ImGui::SetScrollHereY(0.0f);
+        context.reveal = false;
+    }
+    if (!expanded)
         return;
     const auto& run = context.run;
     editor_style::message("Interactive / unscored. Live viewport, UI and presentation; each frame "
                           "waits for retirement.");
-    editor_style::message("Choose Measure in the top toolbar, then Play. Stop cancels the run.");
+    editor_style::message("Choose Measure in the top toolbar, then Play. Stop cancels the run. "
+                          "Closing this window keeps measurement running.");
     ImGui::BeginDisabled(run.active());
     if (editor_style::beginFields("measurePlan")) {
         int warmup = static_cast<int>(context.warmup);

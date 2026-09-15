@@ -194,16 +194,16 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   Editor and headless measurement serialize GPU retirement after each submitted frame because RHI
   publishes only the newest retired timing set. Reports disclose this pacing, separate beginFrame
   wait from encoding, and exclude the post-submit wait; they do not measure realtime throughput.
-  Editor runs remain interactive/unscored. Toolbar Measure Play starts the fixed plan; Stop cancels, Pause is disabled, and completion/cancellation restores preview state while retaining results. Performance owns plan/results/export. Headless scored runs refuse validation/capture flags.
+  Editor runs remain interactive/unscored. Toolbar Measure Play starts the fixed plan; Stop cancels, Pause is disabled, and completion/cancellation restores preview state while retaining results. Performance owns plan/results/export in a detached native window. Measure mode selection has no window side effect; Play opens/focuses Measure once, while closing the window leaves the run active. Completion/cancellation never reopens it; explicit Show measurement opens/focuses it anytime. Headless scored runs refuse validation/capture flags.
   The [debugging guide](../guides/gpu-debugging.md#measure-visibility-and-submission) owns commands.
 - **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
   panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
-  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport,
-  Inspector, Performance and Console dock together, with Console beside Performance; Render Graph
-  is submitted with its own `ImGuiWindowClass`
-  (docking with unclassed windows disallowed, auto-merge overridden off) under Dear ImGui platform
-  viewports (`ImGuiConfigFlags_ViewportsEnable`), so it always owns a separate OS window and the
-  dock builder never places it. Selection (`EditorSelection.h`), panel visibility and the workspace
+  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport and
+  Inspector dock together, with Console alone below. Performance and Render Graph each own a
+  detached native window with an `ImGuiWindowClass` that disallows unclassed docking and overrides
+  auto-merge off under Dear ImGui platform viewports (`ImGuiConfigFlags_ViewportsEnable`).
+  The dock builder places neither; both start closed, and Window menu toggles remain explicit.
+  Selection (`EditorSelection.h`), panel visibility and the workspace
   persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised action intents
   (`EditorActions.h`), the Performance panel's coherent snapshot (`PerformanceModel.h`), the Render
   Graph panel's node shaping (`GraphNodeModel.h`, deriving nodes, edges, a culled band, and alias
@@ -221,13 +221,15 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   Reset layout remain explicit actions; narrow graph windows stack canvas and details. A registered
   ImGui settings handler persists
   the workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
-  ImGui's own docking and viewport data. Schema 2 remains current: Console visibility is additive,
-  absent keys default visible, and its first-use tab joins Performance without rebuilding existing
-  dock nodes. Hierarchy keeps the original `Scene` window ID for saved layouts. Menu drawing and keyboard shortcuts only raise action
+  ImGui's own docking and viewport data. Schema 3 restores panel visibility and detached geometry;
+  schema 2 migrates to default topology while preserving valid UI scale. Reset Default Layout
+  closes Performance/Graph and resets Performance's next-open bounds. Hierarchy retains its `Scene` window ID. Menu drawing and keyboard shortcuts only raise action
   intents; the frame loop consumes quit and capture at the boundary that already owns each
   operation, calls `ImGui::UpdatePlatformWindows()`/`RenderPlatformWindowsDefault()` after each
   presented frame so the vendored Metal 4 ImGui backend renders any detached window with its own
-  command buffer and per-slot event, and the shell consumes a layout-reset intent at the start of
+  command buffer and per-slot event. The maintained backend patch quarantines uploaded vertex/index
+  buffers in per-slot `usedBuffers` until slot revisit; platform events and App's main-frame pacing precede reuse/eviction, preventing same-frame window uploads from overwriting GPU reads.
+  Explicit Performance focus resolves ImGui's SDL3 `PlatformHandle` as an `SDL_WindowID` and restores only minimized windows. The shell consumes a layout-reset intent at the start of
   the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
   animation play, camera-track follow). `TemporalEditorState` tracks scene generation and the
   camera-cut latch, retains the last non-None reset reason with its original declared-frame count,
@@ -290,8 +292,8 @@ backend; Vulkan remains research evidence rather than a planned target.
 `EditorFont` loads bundled Inter Regular before the first frame, with fixed-width digits and an
 embedded fallback. App stages the pinned font/license beside its executable during build.
 The shell applies persisted UI zoom before ImGui NewFrame, deriving font/control sizes from an
-unscaled base style. Schema 2's optional `UiScalePercent` defaults to 100% without changing dock
-restoration. Top-bar controls and Layout presets cover 75–150%; Cmd zoom shortcuts account for
+unscaled base style. Optional `UiScalePercent` defaults to 100%; schema-2 migration preserves valid
+values while rebuilding topology. Top-bar controls and Layout presets cover 75–150%; Cmd zoom shortcuts account for
 ImGui's macOS modifier mapping and exclude text editing, active widgets, popups and camera look.
 Shared panel measurements scale with the preference. Graph cards remeasure once when it changes,
 preserving selected identity, frozen data and the canvas's separate navigation state.

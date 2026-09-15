@@ -122,7 +122,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Metal 4 Apple Silicon before merge.
 - Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
   `Camera help` explains controls; text entry suppresses camera/capture keys. Top Scene/Measure toolbar owns a state-switching Play/Pause button, separate Stop/Step and camera-rail follow options; scenes load Stopped. First Scene Play captures camera/time and animation-owned object poses/emissive strength; Step advances 1/60 s and pauses.
-  Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Measure Play starts fixed W/N; Pause is disabled, Stop cancels, and completion/Stop restores preview state. Performance retains plan/results/export; CLI is unchanged.
+  Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Measure Play starts fixed W/N; Pause is disabled, Stop cancels, and completion/Stop restores preview state. Performance retains plan/results/export in a detached native window; Measure Play opens/focuses it once, while mode selection and completion/cancellation do not. Closing it leaves the run active; toolbar options > Show measurement opens/focuses Measure anytime. CLI is unchanged.
   Playback, metric freeze and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow; static scenes allow camera preview; unavailable camera-rail options explain their disabled state.
   Hierarchy has compact search, collapsible subjects and keyboard navigation; File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
@@ -130,10 +130,10 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Inspector's Exposure/Bloom/Shadows start collapsed; Reconstruction/Resolution start expanded.
   Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
-  File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Versioned
-  workspace schema 2, docking and viewport state persist in build-local `imgui.ini`; Console is an
-  additive visibility key and bottom tab beside Performance; UiScalePercent is also optional. Existing layouts restore without
-  redocking; clean/legacy/reset builds defaults. Render Graph remains detached with remembered bounds.
+  File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.
+  Console alone occupies the bottom dock; Performance and Render Graph are detached native windows, closed by default. Window > Performance toggles it normally.
+  Schema 2 migrates to default topology while preserving valid UiScalePercent; schema 3 restores visibility and window bounds. Missing scale defaults to 100%.
+  Reset Default Layout preserves UI scale, closes Performance/Graph and resets Performance's next-open bounds; both detached windows otherwise remember geometry.
   Menu, C and viewport capture share capability/pending/result state; disabled startup explains
   `MTL_CAPTURE_ENABLED=1` and relaunch. Failures retain reasons; successes expose Copy path/Reveal.
   Pending capture waits for a drawable. Scene-only captures contain no transport/selection cues.
@@ -162,7 +162,7 @@ a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral
 capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
 between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
 output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
-`RHIMetal4ImGui`: optional ImGui glue target) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
+`RHIMetal4ImGui`: optional ImGui glue target; maintained backend patch quarantines each slot's used vertex/index buffers until its next paced visit, preventing native-window uploads from overwriting main-window GPU reads) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
@@ -207,8 +207,8 @@ is the consumed/skipped publication cursor; `lastMeasurementFrame` pairs with th
 measurement. `MeasurementRun` shares exact frame/GPU joins with serialized-retirement headless and unscored interactive runs. `FrameRecordRing` retains declaration-time counts/extents/context with compiled
 records; `GraphSnapshot` owns live/frozen 4 Hz copies. `ConsoleLog`/`ConsoleModel` own bounded
 thread-safe logging and filtered/frozen display) →
-`Source/App` (SDL3 six-panel editor: Hierarchy/Viewport/Inspector/Performance/Console dock together;
-Render Graph remains detached. `EditorStyle.h` shares responsive fields/tips; Inspector separates
+`Source/App` (SDL3 six-panel editor: Hierarchy/Viewport/Inspector dock with Console alone below;
+Performance and Render Graph own detached native windows. `EditorStyle.h` shares responsive fields/tips; Inspector separates
 requested/effective/available reconstruction, live timing and controller observations. Temporal
 off shows Off/N/A and full resolution while retaining requests. `DiagnosticLegend` supplies
 shader-derived legends and Raw placeholder notes; Viewport owns framing, the top toolbar playback. App alone declares

@@ -34,12 +34,14 @@ TEST_CASE("workspace visibility shares one storage per panel between accessor an
 }
 
 //======================================================================================================================
-TEST_CASE("default workspace visibility matches spec section 3", "[app]") {
+TEST_CASE("default workspace opens docked panels and closes detached diagnostics",
+          "[app][workspace]") {
     const WorkspaceVisibility visibility;
     REQUIRE(visibility.isVisible(EditorPanel::Scene));
     REQUIRE(visibility.isVisible(EditorPanel::Viewport));
     REQUIRE(visibility.isVisible(EditorPanel::Inspector));
-    REQUIRE(visibility.isVisible(EditorPanel::Performance));
+    REQUIRE(visibility.isVisible(EditorPanel::Console));
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::Performance));
     REQUIRE_FALSE(visibility.isVisible(EditorPanel::RenderGraph));
 }
 
@@ -53,8 +55,10 @@ TEST_CASE("clean settings with no workspace section build the default", "[app]")
     REQUIRE(decision.visibility.isVisible(EditorPanel::Scene));
     REQUIRE(decision.visibility.isVisible(EditorPanel::Viewport));
     REQUIRE(decision.visibility.isVisible(EditorPanel::Inspector));
-    REQUIRE(decision.visibility.isVisible(EditorPanel::Performance));
+    REQUIRE(decision.visibility.isVisible(EditorPanel::Console));
+    REQUIRE_FALSE(decision.visibility.isVisible(EditorPanel::Performance));
     REQUIRE_FALSE(decision.visibility.isVisible(EditorPanel::RenderGraph));
+    REQUIRE(decision.uiScalePercent == kDefaultUiScalePercent);
 }
 
 //======================================================================================================================
@@ -93,6 +97,7 @@ TEST_CASE("matching schema restores exact custom visibility", "[app]") {
     custom.inspector = false;
     custom.performance = true;
     custom.renderGraph = true;
+    custom.console = false;
 
     const std::string text = writeWorkspaceSettings(kWorkspaceSchemaVersion, custom);
     const ParsedWorkspaceSettings parsed = parseWorkspaceSettings(text);
@@ -106,6 +111,7 @@ TEST_CASE("matching schema restores exact custom visibility", "[app]") {
     REQUIRE(decision.visibility.isVisible(EditorPanel::Inspector) == false);
     REQUIRE(decision.visibility.isVisible(EditorPanel::Performance) == true);
     REQUIRE(decision.visibility.isVisible(EditorPanel::RenderGraph) == true);
+    REQUIRE_FALSE(decision.visibility.isVisible(EditorPanel::Console));
 }
 
 //======================================================================================================================
@@ -217,6 +223,8 @@ TEST_CASE("write then parse round-trips every panel combination", "[app]") {
                 visibility.isVisible(EditorPanel::Performance));
         REQUIRE(parsed.visibility.isVisible(EditorPanel::RenderGraph) ==
                 visibility.isVisible(EditorPanel::RenderGraph));
+        REQUIRE(parsed.visibility.isVisible(EditorPanel::Console) ==
+                visibility.isVisible(EditorPanel::Console));
     }
 }
 
@@ -234,7 +242,7 @@ TEST_CASE("write emits the exact persisted section text for default visibility",
                                 "Scene=1\n"
                                 "Viewport=1\n"
                                 "Inspector=1\n"
-                                "Performance=1\n"
+                                "Performance=0\n"
                                 "RenderGraph=0\n"
                                 "Console=1\n"
                                 "UiScalePercent=100\n",
@@ -271,14 +279,18 @@ TEST_CASE("reset default layout is idempotent", "[app]") {
     REQUIRE(firstReset.isVisible(EditorPanel::RenderGraph) ==
             secondReset.isVisible(EditorPanel::RenderGraph));
     REQUIRE(secondReset.isVisible(EditorPanel::Scene));
+    REQUIRE(secondReset.isVisible(EditorPanel::Console));
+    REQUIRE_FALSE(secondReset.isVisible(EditorPanel::Performance));
     REQUIRE_FALSE(secondReset.isVisible(EditorPanel::RenderGraph));
 }
 
 //======================================================================================================================
-TEST_CASE("console visibility extends schema two without resetting saved docks",
+TEST_CASE("schema three restores console visibility without resetting saved docks",
           "[app][workspace]") {
-    const auto legacy = parseWorkspaceSettings("Schema=2\nScene=0\nPerformance=0\nRenderGraph=1\n");
-    const auto restored = decideWorkspace(legacy);
+    REQUIRE(kWorkspaceSchemaVersion == 3);
+    const auto parsedCurrent =
+        parseWorkspaceSettings("Schema=3\nScene=0\nPerformance=0\nRenderGraph=1\n");
+    const auto restored = decideWorkspace(parsedCurrent);
     REQUIRE(restored.kind == WorkspaceDecisionKind::Restore);
     REQUIRE_FALSE(restored.visibility.scene);
     REQUIRE_FALSE(restored.visibility.performance);
@@ -286,9 +298,37 @@ TEST_CASE("console visibility extends schema two without resetting saved docks",
     REQUIRE(restored.visibility.console);
     auto customized = restored.visibility;
     customized.setVisible(EditorPanel::Console, false);
-    const auto parsed = parseWorkspaceSettings(writeWorkspaceSettings(2, customized));
+    const auto parsed = parseWorkspaceSettings(writeWorkspaceSettings(3, customized));
     REQUIRE_FALSE(parsed.visibility.isVisible(EditorPanel::Console));
     REQUIRE(decideWorkspace(parsed).kind == WorkspaceDecisionKind::Restore);
+}
+
+//======================================================================================================================
+TEST_CASE("schema two rebuilds console-only default docks and preserves valid UI scale",
+          "[app][workspace]") {
+    for (const uint32_t scale : {75u, 113u, 150u}) {
+        const auto parsed = parseWorkspaceSettings(
+            std::format("Schema=2\nScene=0\nViewport=0\nInspector=0\nPerformance=1\nRenderGraph=1\n"
+                        "Console=0\nUiScalePercent={}\n",
+                        scale));
+        const auto migrated = decideWorkspace(parsed);
+        REQUIRE(migrated.kind == WorkspaceDecisionKind::BuildDefault);
+        REQUIRE(migrated.uiScalePercent == scale);
+        REQUIRE(migrated.visibility.scene);
+        REQUIRE(migrated.visibility.viewport);
+        REQUIRE(migrated.visibility.inspector);
+        REQUIRE(migrated.visibility.console);
+        REQUIRE_FALSE(migrated.visibility.performance);
+        REQUIRE_FALSE(migrated.visibility.renderGraph);
+        const auto persisted = writeWorkspaceSettings(kWorkspaceSchemaVersion, migrated.visibility,
+                                                      migrated.uiScalePercent);
+        const auto reopened = decideWorkspace(parseWorkspaceSettings(persisted));
+        REQUIRE(reopened.kind == WorkspaceDecisionKind::Restore);
+        REQUIRE(reopened.uiScalePercent == scale);
+        REQUIRE(reopened.visibility.console);
+        REQUIRE_FALSE(reopened.visibility.performance);
+        REQUIRE_FALSE(reopened.visibility.renderGraph);
+    }
 }
 
 //======================================================================================================================
@@ -326,18 +366,21 @@ TEST_CASE("workspace scale accepts optional integers and safely defaults malform
     for (const std::string_view value :
          {"", "no", "74", "151", "-1", "100.0", "100%", " 100", "100 ", "4294967296", "+100"}) {
         INFO(value);
-        const auto parsed =
-            parseWorkspaceSettings(std::format("Schema=2\nUiScalePercent={}\n", value));
-        REQUIRE(parsed.uiScalePercent == 100);
-        const auto decision = decideWorkspace(parsed);
-        REQUIRE(decision.kind == WorkspaceDecisionKind::Restore);
-        REQUIRE(decision.uiScalePercent == 100);
+        for (const uint32_t schema : {2u, 3u}) {
+            const auto parsed = parseWorkspaceSettings(
+                std::format("Schema={}\nUiScalePercent={}\n", schema, value));
+            REQUIRE(parsed.uiScalePercent == 100);
+            const auto decision = decideWorkspace(parsed);
+            REQUIRE(decision.kind == (schema == 3 ? WorkspaceDecisionKind::Restore
+                                                  : WorkspaceDecisionKind::BuildDefault));
+            REQUIRE(decision.uiScalePercent == 100);
+        }
     }
     REQUIRE(parseWorkspaceSettings("Schema=2\nUiScalePercent=125\nUiScalePercent=no\n")
                 .uiScalePercent == 100);
     REQUIRE(parseWorkspaceSettings("Schema=2\r\nUiScalePercent=110\r\n").uiScalePercent == 110);
     const auto existing =
-        decideWorkspace(parseWorkspaceSettings("Schema=2\nScene=0\nRenderGraph=1\n"));
+        decideWorkspace(parseWorkspaceSettings("Schema=3\nScene=0\nRenderGraph=1\n"));
     REQUIRE(existing.kind == WorkspaceDecisionKind::Restore);
     REQUIRE(existing.uiScalePercent == 100);
     REQUIRE_FALSE(existing.visibility.scene);
@@ -345,17 +388,21 @@ TEST_CASE("workspace scale accepts optional integers and safely defaults malform
 }
 
 //======================================================================================================================
-TEST_CASE("only matching workspace schema restores UI scale", "[app][workspace]") {
+TEST_CASE("unknown workspace schemas reset UI scale and visibility", "[app][workspace]") {
     for (const std::string_view schema :
-         {"Schema=0\n", "Schema=1\n", "Schema=3\n", "Schema=no\n", ""}) {
-        const auto parsed = parseWorkspaceSettings(std::string(schema) + "UiScalePercent=125\n");
+         {"Schema=0\n", "Schema=1\n", "Schema=4\n", "Schema=no\n", "Schema=2\nSchema=no\n", ""}) {
+        const auto parsed = parseWorkspaceSettings(
+            std::string(schema) + "UiScalePercent=125\nPerformance=1\nRenderGraph=1\nConsole=0\n");
         REQUIRE(parsed.uiScalePercent == 125);
         const auto decision = decideWorkspace(parsed);
         REQUIRE(decision.kind == WorkspaceDecisionKind::BuildDefault);
         REQUIRE(decision.uiScalePercent == 100);
+        REQUIRE(decision.visibility.console);
+        REQUIRE_FALSE(decision.visibility.performance);
+        REQUIRE_FALSE(decision.visibility.renderGraph);
     }
     REQUIRE(decideWorkspace(std::nullopt).uiScalePercent == 100);
-    const auto restored = decideWorkspace(parseWorkspaceSettings("Schema=2\nUiScalePercent=125\n"));
+    const auto restored = decideWorkspace(parseWorkspaceSettings("Schema=3\nUiScalePercent=125\n"));
     REQUIRE(restored.kind == WorkspaceDecisionKind::Restore);
     REQUIRE(restored.uiScalePercent == 125);
 }
@@ -366,14 +413,14 @@ TEST_CASE("workspace scale persistence is deterministic and round-trips every su
     WorkspaceVisibility visibility;
     visibility.inspector = false;
     for (uint32_t percent = 75; percent <= 150; ++percent) {
-        const std::string text = writeWorkspaceSettings(2, visibility, percent);
-        REQUIRE(text == writeWorkspaceSettings(2, visibility, percent));
+        const std::string text = writeWorkspaceSettings(3, visibility, percent);
+        REQUIRE(text == writeWorkspaceSettings(3, visibility, percent));
         REQUIRE(text.ends_with(std::format("UiScalePercent={}\n", percent)));
         const auto parsed = parseWorkspaceSettings(text);
         REQUIRE(parsed.uiScalePercent == percent);
         REQUIRE_FALSE(parsed.visibility.inspector);
         REQUIRE(decideWorkspace(parsed).uiScalePercent == percent);
     }
-    REQUIRE(parseWorkspaceSettings(writeWorkspaceSettings(2, visibility, 999)).uiScalePercent ==
+    REQUIRE(parseWorkspaceSettings(writeWorkspaceSettings(3, visibility, 999)).uiScalePercent ==
             100);
 }

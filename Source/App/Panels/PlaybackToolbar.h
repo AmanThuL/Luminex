@@ -11,11 +11,12 @@ namespace lmx::app {
 
 /// One playback intent for the shell to apply after drawing the toolbar.
 enum class PlaybackToolbarAction {
-    None,  ///< No playback control was activated.
-    Play,  ///< Start or resume the selected run mode.
-    Pause, ///< Pause scene playback while retaining its starting state.
-    Stop,  ///< Stop the active run and restore its starting state.
-    Step,  ///< Advance a paused scene by one fixed frame.
+    None,            ///< No playback control was activated.
+    Play,            ///< Start or resume the selected run mode.
+    Pause,           ///< Pause scene playback while retaining its starting state.
+    Stop,            ///< Stop the active run and restore its starting state.
+    Step,            ///< Advance a paused scene by one fixed frame.
+    ShowMeasurement, ///< Open and focus measurement settings/results without starting a run.
 };
 
 /// Borrowed state for one toolbar draw; the shell owns playback and measurement execution.
