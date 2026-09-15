@@ -16,16 +16,27 @@ TEST_CASE("loadMaterialLabScene builds deterministic diagnostics without requiri
     REQUIRE((*scene)->objects.size() == 37);
     // One material per sphere (25, distinct roughness/metallic) + 6 patches + the ramp + the
     // normal probe + one material shared by the three depth probes + the mip probe.
-    REQUIRE((*scene)->materials.size() == 35);
+    REQUIRE((*scene)->tableStats().materialCount == 35);
     // Sphere, unit quad (shared by the patches, the normal probe, and the mip probe), gradient
     // ramp quad, cube.
-    REQUIRE((*scene)->meshes.size() == 4);
+    REQUIRE((*scene)->tableStats().meshCount - 1 == 4);
     // The gradient ramp, the normal map, and the mip probe's checkerboard.
-    REQUIRE((*scene)->textures.size() == 3);
+    std::vector<TextureId> textures;
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        for (const auto id : {material.diffuse, material.normalMap, material.metallicRoughness,
+                              material.occlusion, material.emissiveMap}) {
+            if (id && std::ranges::find(textures, *id) == textures.end()) {
+                textures.push_back(*id);
+            }
+        }
+    }
+    REQUIRE(textures.size() == 3);
 
     size_t normalMapped = 0;
-    for (const render::Material& material : (*scene)->materials) {
-        if (material.normalMap != nullptr) {
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        if (material.normalMap.has_value()) {
             ++normalMapped;
         }
     }
@@ -92,10 +103,10 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
-    const auto materialOf = [&](std::string_view name) -> const render::Material& {
+    const auto materialOf = [&](std::string_view name) -> const MaterialRecord& {
         const SceneObject* object = findObject(**scene, name);
         REQUIRE(object != nullptr);
-        return (*scene)->materials[object->materialIndex];
+        return (*scene)->material(object->material);
     };
 
     REQUIRE(materialOf("material-lab sphere r0c0").roughness == Catch::Approx(0.05f));
@@ -238,7 +249,8 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 
     const SceneObject* normalProbe = findObject(**scene, "material-lab normal probe");
     REQUIRE(normalProbe != nullptr);
-    rhi::Texture* normalMap = (*scene)->materials[normalProbe->materialIndex].normalMap;
+    rhi::Texture* normalMap =
+        (*scene)->tryTexture(*(*scene)->material(normalProbe->material).normalMap);
     REQUIRE(normalMap != nullptr);
 
     constexpr uint32_t kMapSize = 64;
@@ -345,6 +357,10 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
+    rhi::CommandList& commands = (*device)->beginFrame();
+    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+    std::vector<render::DrawItem> allItems;
+    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
     std::vector<render::DrawItem> items;
     std::vector<glm::vec3> patchPositions;
     for (const Patch& patch : kPatches) {
@@ -352,16 +368,13 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
             findObject(**scene, std::string("material-lab patch ") + patch.name);
         REQUIRE(object != nullptr);
         patchPositions.push_back(object->position);
-        items.push_back({.mesh = &(*scene)->meshes[object->meshIndex],
-                         .model = object->modelMatrix(),
-                         .material = (*scene)->materials[object->materialIndex]});
+        items.push_back(allItems[static_cast<size_t>(object - (*scene)->objects.data())]);
     }
-    items.push_back({.mesh = &(*scene)->meshes[ramp->meshIndex],
-                     .model = ramp->modelMatrix(),
-                     .material = (*scene)->materials[ramp->materialIndex]});
+    items.push_back(allItems[static_cast<size_t>(ramp - (*scene)->objects.data())]);
 
     render::SceneView view;
     view.items = items;
+    view.tables = (*scene)->tables();
     // A white uniform environment and no analytic lights: every patch is lit only by the
     // image-based terms, which for a constant environment are that environment's own radiance
     // (Asset/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
@@ -376,7 +389,6 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     }
     view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
 
-    rhi::CommandList& commands = (*device)->beginFrame();
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
@@ -499,13 +511,16 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
+    rhi::CommandList& commands = (*device)->beginFrame();
+    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
+    std::vector<render::DrawItem> allItems;
+    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
     std::vector<render::DrawItem> items;
-    items.push_back({.mesh = &(*scene)->meshes[probe->meshIndex],
-                     .model = probe->modelMatrix(),
-                     .material = (*scene)->materials[probe->materialIndex]});
+    items.push_back(allItems[static_cast<size_t>(probe - (*scene)->objects.data())]);
 
     render::SceneView view;
     view.items = items;
+    view.tables = (*scene)->tables();
     const lmx::scene::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
     view.irradiance = environment.irradiance.get();
@@ -516,7 +531,6 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     }
     view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};
 
-    rhi::CommandList& commands = (*device)->beginFrame();
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();

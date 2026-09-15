@@ -262,36 +262,16 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
         aabbMax = glm::max(aabbMax, center + halfExtent);
     };
 
-    auto sphereMesh = render::createMesh(device, render::fromGeo(asset::makeSphere(0.5f, 32, 32)),
-                                         "MaterialLab.sphereMesh");
-    if (!sphereMesh) {
-        return std::unexpected(uploadFailure(std::move(sphereMesh.error())));
-    }
-    const auto sphereMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*sphereMesh));
+    const MeshId sphereMeshIndex =
+        scene->addMesh(render::fromGeo(asset::makeSphere(0.5f, 32, 32)), "MaterialLab.sphereMesh");
 
-    auto unitQuadMesh =
-        render::createMesh(device, makeMaterialQuad(0.5f, 0.5f), "MaterialLab.unitQuadMesh");
-    if (!unitQuadMesh) {
-        return std::unexpected(uploadFailure(std::move(unitQuadMesh.error())));
-    }
-    const auto unitQuadMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*unitQuadMesh));
+    const MeshId unitQuadMeshIndex =
+        scene->addMesh(makeMaterialQuad(0.5f, 0.5f), "MaterialLab.unitQuadMesh");
 
-    auto rampMesh =
-        render::createMesh(device, makeMaterialQuad(3.0f, 0.5f), "MaterialLab.rampMesh");
-    if (!rampMesh) {
-        return std::unexpected(uploadFailure(std::move(rampMesh.error())));
-    }
-    const auto rampMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*rampMesh));
+    const MeshId rampMeshIndex =
+        scene->addMesh(makeMaterialQuad(3.0f, 0.5f), "MaterialLab.rampMesh");
 
-    auto cubeMesh = render::createMesh(device, render::makeCube(), "MaterialLab.cubeMesh");
-    if (!cubeMesh) {
-        return std::unexpected(uploadFailure(std::move(cubeMesh.error())));
-    }
-    const auto cubeMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*cubeMesh));
+    const MeshId cubeMeshIndex = scene->addMesh(render::makeCube(), "MaterialLab.cubeMesh");
 
     // Sphere grid: perceptual roughness sweeps columns, metallic sweeps rows.
     constexpr int kGridSize = 5;
@@ -299,20 +279,19 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     constexpr float kSphereRadius = 0.5f;
     for (int row = 0; row < kGridSize; ++row) {
         for (int col = 0; col < kGridSize; ++col) {
-            render::Material material;
+            MaterialRecord material;
             material.albedo = srgbToLinear(glm::vec4(1.0f));
             material.roughness = 0.05f + static_cast<float>(col) * (1.0f - 0.05f) / (kGridSize - 1);
             material.metallic = static_cast<float>(row) / (kGridSize - 1);
-            const auto materialIndex = static_cast<uint32_t>(scene->materials.size());
-            scene->materials.push_back(material);
+            const MaterialId materialIndex = scene->addMaterial(material);
 
             const glm::vec3 position{kMaterialLaneX + static_cast<float>(col - 2) * kGridSpacing,
                                      static_cast<float>(row - 2) * kGridSpacing, 0.0f};
-            scene->objects.push_back(
+            scene->addObject(
                 {.name = "material-lab sphere r" + std::to_string(row) + "c" + std::to_string(col),
                  .position = position,
-                 .meshIndex = sphereMeshIndex,
-                 .materialIndex = materialIndex});
+                 .mesh = sphereMeshIndex,
+                 .material = materialIndex});
             expandAabb(position, glm::vec3(kSphereRadius));
         }
     }
@@ -333,17 +312,16 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     constexpr float kPatchY = 1.5f;
     constexpr float kPatchSpacing = 1.2f;
     for (size_t i = 0; i < kPatchColors.size(); ++i) {
-        render::Material material;
+        MaterialRecord material;
         material.albedo = srgbToLinear(glm::vec4(kPatchColors[i].srgb, 1.0f));
-        const auto materialIndex = static_cast<uint32_t>(scene->materials.size());
-        scene->materials.push_back(material);
+        const MaterialId materialIndex = scene->addMaterial(material);
 
         const glm::vec3 position{kTextureLaneX + (static_cast<float>(i) - 2.5f) * kPatchSpacing,
                                  kPatchY, 0.0f};
-        scene->objects.push_back({.name = std::string("material-lab patch ") + kPatchColors[i].name,
-                                  .position = position,
-                                  .meshIndex = unitQuadMeshIndex,
-                                  .materialIndex = materialIndex});
+        scene->addObject({.name = std::string("material-lab patch ") + kPatchColors[i].name,
+                          .position = position,
+                          .mesh = unitQuadMeshIndex,
+                          .material = materialIndex});
         expandAabb(position, glm::vec3(0.5f, 0.5f, 0.0f));
     }
 
@@ -360,21 +338,19 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     if (!rampTexture) {
         return std::unexpected(uploadFailure(std::move(rampTexture.error())));
     }
-    rhi::Texture* rampTexturePtr = rampTexture->get();
-    scene->textures.push_back(std::move(*rampTexture));
+    const TextureId rampTexturePtr = scene->addTexture(std::move(*rampTexture));
 
-    render::Material rampMaterial;
+    MaterialRecord rampMaterial;
     rampMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     rampMaterial.diffuse = rampTexturePtr;
-    const auto rampMaterialIndex = static_cast<uint32_t>(scene->materials.size());
-    scene->materials.push_back(rampMaterial);
+    const MaterialId rampMaterialIndex = scene->addMaterial(rampMaterial);
 
     constexpr float kRampY = 0.0f;
     const glm::vec3 rampPosition{kTextureLaneX, kRampY, 0.0f};
-    scene->objects.push_back({.name = "material-lab gradient ramp",
-                              .position = rampPosition,
-                              .meshIndex = rampMeshIndex,
-                              .materialIndex = rampMaterialIndex});
+    scene->addObject({.name = "material-lab gradient ramp",
+                      .position = rampPosition,
+                      .mesh = rampMeshIndex,
+                      .material = rampMaterialIndex});
     expandAabb(rampPosition, glm::vec3(3.0f, 0.5f, 0.0f));
 
     // Normal-map probe: one unit quad textured with the code-generated hemispherical bump.
@@ -390,21 +366,19 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     if (!normalTexture) {
         return std::unexpected(uploadFailure(std::move(normalTexture.error())));
     }
-    rhi::Texture* normalTexturePtr = normalTexture->get();
-    scene->textures.push_back(std::move(*normalTexture));
+    const TextureId normalTexturePtr = scene->addTexture(std::move(*normalTexture));
 
-    render::Material normalMaterial;
+    MaterialRecord normalMaterial;
     normalMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     normalMaterial.normalMap = normalTexturePtr;
-    const auto normalMaterialIndex = static_cast<uint32_t>(scene->materials.size());
-    scene->materials.push_back(normalMaterial);
+    const MaterialId normalMaterialIndex = scene->addMaterial(normalMaterial);
 
     constexpr float kNormalProbeY = -1.5f;
     const glm::vec3 normalProbePosition{kTextureLaneX, kNormalProbeY, 0.0f};
-    scene->objects.push_back({.name = "material-lab normal probe",
-                              .position = normalProbePosition,
-                              .meshIndex = unitQuadMeshIndex,
-                              .materialIndex = normalMaterialIndex});
+    scene->addObject({.name = "material-lab normal probe",
+                      .position = normalProbePosition,
+                      .mesh = unitQuadMeshIndex,
+                      .material = normalMaterialIndex});
     expandAabb(normalProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
     // Depth probes: three 0.5-unit cubes on the camera's forward axis at known distances. Lateral
@@ -412,9 +386,8 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     // amplification) so each lands in its own tangent-space band alongside the grid's -- see the
     // file-level comment above for the derivation and the corresponding test in
     // Tests/EngineSceneTests.cpp that verifies it in screen space.
-    render::Material depthProbeMaterial; // default albedo/roughness/fresnel
-    const auto depthProbeMaterialIndex = static_cast<uint32_t>(scene->materials.size());
-    scene->materials.push_back(depthProbeMaterial);
+    MaterialRecord depthProbeMaterial; // default albedo/roughness/fresnel
+    const MaterialId depthProbeMaterialIndex = scene->addMaterial(depthProbeMaterial);
 
     struct DepthProbe {
         const char* name;
@@ -429,11 +402,11 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     for (const DepthProbe& probe : kDepthProbes) {
         const glm::vec3 position{kDepthLaneX + probe.lateralOffset, 0.0f,
                                  kCameraDistance - probe.distance};
-        scene->objects.push_back({.name = std::string("material-lab depth probe ") + probe.name,
-                                  .position = position,
-                                  .scale = glm::vec3(0.5f),
-                                  .meshIndex = cubeMeshIndex,
-                                  .materialIndex = depthProbeMaterialIndex});
+        scene->addObject({.name = std::string("material-lab depth probe ") + probe.name,
+                          .position = position,
+                          .scale = glm::vec3(0.5f),
+                          .mesh = cubeMeshIndex,
+                          .material = depthProbeMaterialIndex});
         expandAabb(position, glm::vec3(0.25f));
     }
 
@@ -457,28 +430,26 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     if (!checkerTexture) {
         return std::unexpected(uploadFailure(std::move(checkerTexture.error())));
     }
-    rhi::Texture* checkerTexturePtr = checkerTexture->get();
-    scene->textures.push_back(std::move(*checkerTexture));
+    const TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
 
-    render::Material checkerMaterial;
+    MaterialRecord checkerMaterial;
     checkerMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     checkerMaterial.diffuse = checkerTexturePtr;
-    const auto checkerMaterialIndex = static_cast<uint32_t>(scene->materials.size());
-    scene->materials.push_back(checkerMaterial);
+    const MaterialId checkerMaterialIndex = scene->addMaterial(checkerMaterial);
 
     constexpr float kMipProbeZ = kCameraDistance + 15.0f;
     const glm::vec3 mipProbePosition{0.0f, 0.0f, kMipProbeZ};
-    scene->objects.push_back({.name = "material-lab mip probe",
-                              .position = mipProbePosition,
-                              .meshIndex = unitQuadMeshIndex,
-                              .materialIndex = checkerMaterialIndex});
+    scene->addObject({.name = "material-lab mip probe",
+                      .position = mipProbePosition,
+                      .mesh = unitQuadMeshIndex,
+                      .material = checkerMaterialIndex});
     expandAabb(mipProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
     for (SceneObject& object : scene->objects) {
         glm::vec3 halfExtent(0.5f);
-        if (object.meshIndex == unitQuadMeshIndex) {
+        if (object.mesh == unitQuadMeshIndex) {
             halfExtent = glm::vec3(0.5f, 0.5f, 0.0f);
-        } else if (object.meshIndex == rampMeshIndex) {
+        } else if (object.mesh == rampMeshIndex) {
             halfExtent = glm::vec3(3.0f, 0.5f, 0.0f);
         }
         object.localBounds = ObjectBounds{.minimum = -halfExtent, .maximum = halfExtent};
@@ -498,6 +469,9 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
     scene->initialCamera.nearZ = 0.1f;
     scene->initialCamera.farZ = 100.0f;
 
+    if (auto finalized = scene->finalize(device); !finalized) {
+        return std::unexpected(uploadFailure(std::move(finalized.error())));
+    }
     return scene;
 }
 

@@ -8,6 +8,7 @@
 #include "App/EditorShell.h"
 #include "App/Model/DirectionalLightRole.h"
 #include "App/Model/EditorRenderDefaults.h"
+#include "App/Model/SceneTableDisplay.h"
 #include "App/Panels/EditorStyle.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
@@ -437,6 +438,14 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                           "do not overlap. Inspect assignments and memory totals in Render Graph.");
             editor_style::endFields();
         }
+        ImGui::SeparatorText("Scene tables");
+        if (editor_style::beginFields("sceneTableFields")) {
+            for (const auto& row : sceneTableFields(context.session.tableStats())) {
+                field(row.label.data());
+                ImGui::TextWrapped("%s", row.value.c_str());
+            }
+            editor_style::endFields();
+        }
     }
 }
 
@@ -508,8 +517,8 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
             session.editObject(index, transform);
             requestCameraCut(context.temporalState);
         }
-        valueRow("Mesh index", std::to_string(object.meshIndex));
-        valueRow("Material index", std::to_string(object.materialIndex));
+        valueRow("Mesh row", std::to_string(object.mesh.slot));
+        valueRow("Material row", std::to_string(object.material.slot));
         editor_style::endFields();
     }
     const bool animated =

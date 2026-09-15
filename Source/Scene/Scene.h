@@ -12,6 +12,9 @@
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/SceneView.h"
+#include "Scene/MaterialRecord.h"
+#include "Scene/SceneIds.h"
+#include "Scene/SceneTableStats.h"
 
 #include <glm/glm.hpp>
 
@@ -36,15 +39,16 @@ struct SceneObject {
     glm::vec3 position{0.f};     ///< World-space translation.
     glm::vec3 eulerDegrees{0.f}; ///< XYZ Euler rotation in degrees.
     glm::vec3 scale{1.f};        ///< Per-axis object scale.
-    uint32_t meshIndex = 0;      ///< Index into `Scene::meshes`.
-    uint32_t materialIndex = 0;  ///< Index into `Scene::materials`.
+    MeshId mesh;                 ///< Scene-owned immutable geometry.
+    MaterialId material;         ///< Scene-owned shared material.
+    InstanceId id;               ///< Stable row identity assigned by addObject().
     /// The model matrix of the previous declared frame, maintained by `Scene::commitFrame()`.
     /// Equal to `modelMatrix()` until the object first moves.
     glm::mat4 previousModel{1.0f};
     /// How this object's motion is produced. `Invalid` marks a draw whose history must not be
     /// reprojected.
     render::MotionClass motionClass = render::MotionClass::Rigid;
-    /// Multiplier `Scene::view()` applies to the material's authored emissive colour, written by
+    /// Multiplier the scene shader applies to the material's authored emissive colour, written by
     /// `Scene::animate()` from an `EmissiveTrack`. Objects with no track keep the default of 1, so
     /// the authored colour passes through unchanged.
     float emissiveStrength = 1.0f;
@@ -70,14 +74,58 @@ render::Camera cameraFromScene(const SceneCamera& sceneCamera);
 /// Owns renderable scene resources, instances, lighting, and initial view state.
 class Scene {
 public:
-    std::string name;                                    ///< User-facing scene name.
-    std::vector<render::Mesh> meshes;                    ///< GPU meshes referenced by objects.
-    std::vector<std::unique_ptr<rhi::Texture>> textures; ///< Material texture ownership.
-    std::vector<render::Material> materials;             ///< texture pointers reach into `textures`
-    std::vector<SceneObject> objects;                    ///< Editable draw instances.
-    render::DirectionalLight lights[3];                  ///< Fixed-size analytic light set.
-    glm::vec4 boundingSphere{0.f};            ///< World-space center in xyz and radius in w.
-    render::Mesh skySphere;                   ///< Geometry used by the sky pass.
+    /// Constructs a distinct identity store; store exhaustion is a contract failure.
+    Scene();
+    /// Releases owned resources; the owner must first wait for all GPU use to retire.
+    ~Scene();
+    /// Transfers ownership and identities; borrowed references remain tied to this store.
+    Scene(Scene&&) noexcept;
+    /// Transfers ownership after the destination's GPU work has retired.
+    Scene& operator=(Scene&&) noexcept;
+    /// Adds immutable CPU geometry before finalize; invalid indices are misuse.
+    MeshId addMesh(render::MeshData data, std::string_view label);
+    /// Takes ownership of a non-null texture and assigns a fresh identity.
+    TextureId addTexture(std::unique_ptr<rhi::Texture> texture);
+    /// Adds shared scene-linear factors, asserting every supplied texture identity resolves.
+    MaterialId addMaterial(MaterialRecord material);
+    /// Adds an instance with valid mesh/material handles and seeds its own previous pose.
+    InstanceId addObject(SceneObject object);
+    /// Removes a live instance, invalidates its handle and preserves later rows.
+    void removeObject(InstanceId id);
+    /// Removes an unreferenced texture; stale or still-referenced identities are misuse.
+    /// Submitted references retain the resource until three paced frames after its last use.
+    void removeTexture(TextureId id);
+    /// Returns the live object or null for stale, foreign or invalid identities.
+    SceneObject* tryObject(InstanceId id);
+    /// Returns the live object or null; the pointer is invalidated by object-list mutations.
+    const SceneObject* tryObject(InstanceId id) const;
+    /// Returns immutable geometry metadata or null for an unresolvable identity.
+    const render::MeshRow* tryMesh(MeshId id) const;
+    /// Returns editable material data or null for an unresolvable identity.
+    MaterialRecord* tryMaterial(MaterialId id);
+    /// Returns material data or null for an unresolvable identity.
+    const MaterialRecord* tryMaterial(MaterialId id) const;
+    /// Returns the owned texture or null for an unresolvable identity.
+    rhi::Texture* tryTexture(TextureId id) const;
+    /// Returns an editable material, asserting the identity resolves.
+    MaterialRecord& material(MaterialId id);
+    /// Returns a material, asserting the identity resolves.
+    const MaterialRecord& material(MaterialId id) const;
+    /// Merges immutable geometry and allocates three paced table slots; returns GPU failures.
+    rhi::Result<void> finalize(rhi::Device& device);
+    /// Updates this frame's retired slot after Device::beginFrame and before any declaration.
+    /// Frame numbers must strictly advance and match the owning device; returns growth failures.
+    rhi::Result<void> prepareFrame(uint64_t frameNumber);
+    /// Reports live counts, allocation capacities and the last preparation's upload work.
+    SceneTableStats tableStats() const;
+    /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
+    /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.
+    render::SceneTables tables() const;
+    std::string name;                   ///< User-facing scene name.
+    std::vector<SceneObject> objects;   ///< Editable draw instances.
+    render::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
+    glm::vec4 boundingSphere{0.f};      ///< World-space center in xyz and radius in w.
+    std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
     std::unique_ptr<rhi::Texture> skyCubemap; ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
     /// (Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain, and
@@ -118,6 +166,11 @@ public:
     /// remain alive through pass declaration and graph execution.
     render::SceneView view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
                            bool wireframe) const;
+
+private:
+    void validateObjects() const;
+    struct Storage;
+    std::unique_ptr<Storage> m_storage;
 };
 
 /// Builds a Scene from the .gltf or .glb file at `path` (absolute, or relative to the working

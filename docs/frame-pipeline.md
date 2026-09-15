@@ -1,17 +1,17 @@
-# Luminex — one frame with native or vendor reconstruction (2026-09-13)
+# Luminex — one frame with shared scene tables and reconstruction (2026-09-15)
 
 Native TAA is the default; explicit vendor reconstruction shares the engine-owned temporal inputs.
-
 ## The frame at a glance
 
-A fresh `RenderGraph` imports targets, persistent histogram/exposure buffers and the drawable.
+A fresh `RenderGraph` imports targets, five scene geometry/table buffers, persistent histogram/exposure buffers and the drawable.
 Renderer composes ShadowStage, SceneStage, ExposureStage, TemporalResolve, BloomStage and
 DisplayStage while retaining the pass order below. Graph declaration, compile/lifetime assignment,
 transition derivation and validation live in separate units;
 `compile()` proves a DAG and culls dead passes, then `execute()` runs the serial schedule with
 RAW, WAR and WAW barriers. TemporalResolve's native/upscale/vendor units share one history owner.
 
-`App/Model/SceneSession` shares activation, camera, playback, views and motion. `Render/FrameDeclaration`
+`App/Model/SceneSession` shares activation, camera, playback, views and motion; its `prepareFrame`
+updates the retired scene-table slot after `beginFrame` and before declaration. `Render/FrameDeclaration`
 rotates the retired slot's pool, declares passes and returns a record for App's FrameRecordRing.
 The editor appends UI/present, joins timings and draws platform windows after present; headless
 exports display and waits per frame. Screenshots start at zero; sequences sample frame/60 with
@@ -19,22 +19,22 @@ warmup; editor playback advances one fixed step only after drawable acquisition.
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
 (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
-`renderScale == 1.0`, byte-identical to M6.2's declaration (below 1.0 the scene pass's render area
-shrinks; see Resources and lifetime for capacity). Auto-exposure, bloom, and temporal are ordinary
+`renderScale == 1.0` (below 1.0 the scene pass's render area shrinks; see Resources and lifetime). Auto-exposure, bloom, and temporal are ordinary
 declared passes either way; toggling one off removes only the declaration reaching a sink.
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
-├─ declare: import shadow map, scene color (HDR), this frame's depth and colour history slots, the
-│           other slot's depth and colour, display color, histogram buffer, exposure buffer
-│           {applied, previous}, swapchain drawable
+├─ SceneSession.prepareFrame(N): write rows dirty for slot N % 3 after its previous reader retired
+├─ declare: import scene vertices/indices/meshes/instances/materials, shadow map, scene color,
+│           both depth/colour history slots, display, histogram, exposure {applied, previous}, drawable
 ├─ 0. lmx.pass.exposure.seed   compute, 1 thread → exposure buffer
 │       shift-and-set: `previous = applied; applied = exp2(manualEV)`, always the CPU-computed
 │       manual exposure, whichever mode is running — including on an auto reset frame, where it is
 │       what restarts the loop from the manual value (spec 9). Manual mode: declared every temporal
 │       frame. Auto mode: only on a reset trigger
 ├─ 1. lmx.pass.shadow      depth-only → shadow map (2048², D32Float, store)
-│       opaque and masked DrawItems, depth bias {-4.0, -32.0} (reversed-Z), light 0 only
+│       CPU indexed opaque/masked draws: selector b1, lightViewProj b2, instances b5/materials b6
+│       depth bias {-4.0, -32.0} (reversed-Z), light 0 only
 │       reversed depth: clears to 0, Greater compare, comparison sampler GreaterEqual
 ├─ 2. lmx.pass.scene       → scene color (RGBA16Float), lmx.render.motion (RG16Float, extra 0),
 │    │  lmx.render.reactive (R8Unorm, extra 1, cleared to 0) + this frame's depth slot, viewport-sized
@@ -43,15 +43,14 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       ├─ opaque/masked DrawItems: GGX metallic-roughness BRDF (direct lights) + diffuse/specular IBL
 │       │    (split-sum reconstruction with Fdez-Agüera multi-scatter compensation) + shadow
 │       │    factor (25-tap Poisson PCF or PCSS) + normal mapping (TBN) + occlusion (image-based
-│       │    terms only) + emissive, summed and pre-exposed; nothing here encodes sRGB. Per-draw
-│       │    per-draw transforms and material fields (b1), bindless vertices (b0), material
-│       │    textures, shadow map and the scene's irradiance/prefiltered/DFG IBL textures
+│       │    terms only) + material emissive × instance emissiveScale, summed and pre-exposed
+│       │    selector b1 reads transforms/flags from instance b5, factors/cutoff from material b6;
+│       │    shared vertices b0, per-draw material textures and shared shadow/IBL textures
 │       ├─ reads the shadow map's written version — the graph derives the barrier from that
 │       │    declaration
 │       ├─ auto-exposure only: binds ScenePassAuto.slang/SkyAuto.slang's pipelines instead of
 │       │    ScenePass.slang/Sky.slang's, reading the exposure buffer directly in place of the
-│       │    manual `preExposure` uniform — two shader files so the manual pipeline's compiled
-│       │    output stays provably identical to pre-M5
+│       │    manual `preExposure` uniform; the exposure twins retain separate compiled pipelines
 │       ├─ motion: `uvCurrent - uvPrevious` from unjittered clip positions (Temporal.h,
 │       │    Motion.slang); an Invalid-class draw writes the +inf sentinel instead. Reactive:
 │       │    `saturate(luminance(emissiveTerm · preExposure) / kReactiveEmissiveScale)`
@@ -109,10 +108,9 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 **Raw** (`reconstruction == Raw`) shares every declaration above except step 3 (the raw commit, not
 the resolve) and that bloom and display read raw scene colour, not a resolved one. Both modes leave
 a real frame in the colour slot, so switching between them derives `HistoryResetReason::None`, not
-a reset. **Temporal off** (`SceneView::temporal.enabled == false`) declares exactly M5.5's frame:
-no manual-mode seed, no motion/reactive attachments, no reproject/resolve/commit/debug-view
-passes, one depth slot imported under its legacy name. Auto-mode reset frames retain the exposure
-seed. Fixed-camera output is byte-identical to M5.5's.
+a reset. **Temporal off** (`SceneView::temporal.enabled == false`) omits the manual seed,
+motion/reactive attachments and temporal passes, using one legacy-named depth slot. Auto reset
+frames retain the exposure seed. It shares the scene tables and ordinary CPU drawing.
 
 **Vendor temporal** (`VendorTemporal`, `--temporal metalfx`) replaces step 3 with two passes:
 
@@ -121,38 +119,35 @@ seed. Fixed-camera output is byte-identical to M5.5's.
 | `lmx.pass.temporal.vendor.pack` | compute, 8×8 over active render extent | Motion, reactive, exposure pair → output-capacity `vendorMotion`/`vendorReactive`, 1×1 `vendorExposure` |
 | `lmx.pass.temporal.vendor` | external | Scene colour, current depth, packed inputs → current colour-history slot |
 
-Packing preserves ordinary UV motion, maps invalid motion to zero with reactive 1, and writes
-`1 / applied` to the R16Float exposure texel. The adapter passes negative render width/height as
-motion scales, `jitterTexelOffset(jitterPixels)` as texel jitter, reversed depth and `preExposure=1`.
-This cancels engine exposure in MetalFX's working domain; measured output stays pre-exposed for
-unchanged bloom/display. The vendor owns private history independently of the engine's slots.
-Switching to or from it derives no engine reset; vendor entry, an engine reset or scaler recreation
-sets its own reset flag. Unsupported or failed creation falls back to Native TAA with status.
-`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation. The editor
-preserves its per-declaration `lastReset` meaning, retaining a separate last-event reason paired
-with its original declared-frame count. Live Inspector timing has its own retired-frame provenance,
-independent of Performance freeze; the controller's last observation is labeled separately.
-Temporal-off presentation reports no active reconstruction/history and full output resolution
-while retaining requests.
+Packing maps invalid motion to zero/reactive one and writes `1 / applied` to the R16Float exposure
+texel. The adapter passes negative render extents as motion scales, texel jitter, reversed depth
+and `preExposure=1`; bloom/display retain pre-exposed output. Vendor history is independent of
+engine slots: entry, engine reset or recreation resets the vendor, while switching modes leaves
+engine history valid. Unsupported or failed creation falls back to Native TAA with explicit status.
+`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation. Inspector
+separately retains the last reset event and live retired-frame timing, independent of panel freeze.
 
-Motion and reprojection-error views remain engine-owned. ReprojectedHistory additionally declares
-`lmx.pass.temporal.reprojectedHistory` using `VendorTemporalHistory.slang`'s reprojection/exposure
-subset without accumulation. Rejection, blend-weight and per-pixel age views are native-only.
-Vendor frames retain conservative `ExternalWrite` for current colour, `ExternalRead` for current
-depth and scene colour, and `ShaderRead` for the other depth; previous colour retains its access
-unless an engine diagnostic samples it. Native terminal-use rows remain unchanged (ADR 0017).
+Motion/reprojection diagnostics stay engine-owned; ReprojectedHistory adds the vendor
+reprojection/exposure subset without accumulation. Rejection, blend-weight and per-pixel age are
+native-only. Vendor frames record `ExternalWrite` for current colour, `ExternalRead` for depth/scene
+colour and `ShaderRead` for other depth; previous colour changes only if sampled (ADR 0017).
 
 Vertex pulling uses `StructuredBuffer<VertexPNTU>` at b0 (48-byte pos/normal/tangent₄/uv) and uint32 indices.
+Scene owns a single immutable pool including sky; indices are rebased at finalize, so indexed draws
+use a mesh row's `firstIndex`/`indexCount` and zero base vertex. `DrawUniforms` is a 16-byte instance
+selector; `InstanceRow` (208 bytes), `MaterialRow` (112) and `MeshRow` (16) have CPU/Slang mirrors.
+Instance rows hold current/previous/normal matrices, mesh/material slots, motion flag and emissive
+scale. Material rows hold UV transform, albedo/emissive, roughness/metallic/occlusion/cutoff and flags.
+Mesh rows currently have no production shader reader; the ABI oracle checks every field and stride.
 
 Masked materials select `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask` (ADR 0018).
 Shared `AlphaMask` discards texture alpha × factor alpha below cutoff, using the same UV transform;
 scene color/depth/motion/reactive share coverage. Two-sided variants reverse back-face shading
-normals. Opaque shaders and uniforms stay separate; ordinary alpha mips can thin distant foliage.
+normals. Cutoff and flags come from the shared material row; the old alpha-mask uniform block is
+retired. Opaque/masked pipelines stay separate; ordinary alpha mips can thin distant foliage.
 
-`Renderer` composes `ShadowStage` and `SceneStage` for the shadow and scene+sky declarations.
-The stages own their opaque/masked pipelines, uniform mirrors, frame-data bindings and draw
-encoding; Renderer keeps targets, frame-wide state, temporal reconstruction, exposure, bloom
-and display orchestration. Stage callbacks borrow frame inputs through graph execution.
+ShadowStage/SceneStage own draw pipelines and bindings; Renderer keeps frame targets and
+reconstruction/exposure/bloom/display ordering. Callbacks borrow inputs through graph execution.
 
 ## The render graph
 
@@ -180,20 +175,13 @@ compatibility includes kind, format, extent, mips, usage, size and alignment. Fo
 create a new heap generation. Disabling pooling gives each transient separate bytes without
 changing the picture. Histogram and exposure buffers remain persistent imports across frames.
 
-Every pass kind is a GPU timing boundary. `Device::passTimings()` returns labels and milliseconds
-for the retired frame named by `passTimingsFrame()`, using Metal counter samples resolved after
-shared-event retirement. The editor retains declaration-time counts, logical image size,
-render/output extents and context alongside each compiled record before joining its timings.
-Performance publishes a coherent 60-retired-frame rolling snapshot four times per second;
-ordered pass-label changes reset its timing window. Freeze/Clear/Resume affect that snapshot,
-including its wall-clock interval plot, independently of scene playback. Timed-pass sum excludes
-presentation, driver and untimed GPU work. Render Graph independently publishes one owned record
-and only its frame-ID-matched timing set at the same 0.25-second interval. These are exact latest
-values for that frame, never rolling averages. First data and Resume publish immediately; later
-updates, including topology changes, wait for the next publication boundary. Freeze latches the
-displayed publication; node labels, details and Dump all use that same record.
-Physical temporal-resource alternation changes frame details without resetting unchanged canvas
-topology or navigation.
+Every pass kind is timed. `Device::passTimings()` publishes the retired frame identified by
+`passTimingsFrame()`. App joins its declaration-time counts/extents/context with those timings.
+Performance shows a coherent 60-retired-frame rolling snapshot at 4 Hz; freeze/clear/resume are
+independent of playback. Timed-pass sum excludes presentation, driver and untimed GPU work.
+Render Graph publishes one owned record and exactly matched timings at 4 Hz; first data/Resume
+publish immediately, later topology changes wait. Freeze latches labels, details and Dump together.
+Physical temporal-resource alternation preserves unchanged canvas identity and navigation.
 
 The editor may append `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and
 `lmx.pass.selection.outline` after the
@@ -206,11 +194,9 @@ holds the soft border and display for UI sampling. Its GPU costs remain visible 
 It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture
 paths do not declare the passes; the Viewport toggle controls the editor cue.
 
-The six-panel shell uses Hierarchy for subjects and File > Open Scene for catalog loading.
-Console is an additive bottom tab beside Performance under workspace schema 2; existing docking
-is retained. Its bounded log ingestion is independent of GPU retirement and all panel freezes.
-Display filters, Clear and Copy visible operate on the retained/displayed messages; detailed
-limits and recovery controls are described in the [GPU debugging guide](guides/gpu-debugging.md).
+The six-panel shell keeps Console beside Performance, preserving workspace schema 2 layouts.
+Log ingestion remains independent of GPU/panel freezes; display filters, Clear and Copy visible
+are described in the [GPU debugging guide](guides/gpu-debugging.md).
 
 Neutral interfaces and capture schema live under `RHI/Include/RHI/`, implementation/validation in
 `RHI/Source/`, and the sole backend in `RHI/Backends/Metal4/Source/`. Optional `RHIMetal4ImGui`
@@ -218,16 +204,20 @@ submission does not make ImGui a core RHI dependency.
 
 ## Resources and lifetime
 
-- **3 frames in flight.** Each in-flight slot owns an argument table, a command allocator, and a
-  growable per-slot frame-data page arena (256 KiB normal pages; a request too large for the
-  active page gets a new page rounded up to that quantum, never a per-draw GPU object).
-  `bindFrameData` is one call: it bump-allocates within the active page at 256-byte alignment (or
-  wider, for an over-aligned type), copies the caller's block to that offset, composes the address
-  as the page's cached GPU base plus the offset, binds it into the argument table, and returns that
-  `GpuAddress` to the caller. `beginFrame` asserts (all builds) that the shared event proves the
-  recycled slot's frame retired before that slot's page cursors reset to reuse their prior
-  high-water capacity. A 12-frame GPU stress test attributes any cross-frame overwrite to its
-  culprit by color.
+- **3 frames in flight.** Each slot owns an argument table, command allocator and growable
+  frame-data arena. `bindFrameData` copies at 256-byte or wider alignment into 256 KiB pages
+  (oversize pages round up to that quantum), returning the GPU address and binding it. `beginFrame`
+  proves retirement before cursor reuse; pages retain their high-water capacity.
+- **Scene tables.** Each kind has three `cpuWrite` buffers. `prepareFrame(N)` compares CPU rows,
+  marks changed rows dirty for every slot and writes only slot `N % 3`; static scenes converge
+  to zero writes. Mesh rows initialize once. Growth doubles capacity and retires old buffers at
+  the previous prepared frame + 3. Handles preserve row slots across removal/reorder and reject
+  stale generations/foreign scenes. A new instance seeds its own previous transform; only accepted
+  frames call `commitFrame`. Five read-only `lmx.scene.*` graph imports need no GPU-write barrier.
+  `Buffer::write` checks permission, source and byte range; the caller proves GPU use retired.
+  Metal4 writes Shared storage directly; device-private placed buffers reject `cpuWrite`.
+  Inspector's Display & Details reports counts/capacities, geometry bytes, writes, slot, growth
+  and pending release buffers. Growth/retirement log at INFO; these counters are not timings.
 - **RHI resources join one residency set** attached to the queue; MetalFX manages its own private resources.
 - **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable on request),
   display color (`BGRA8Unorm`, what the viewport and a screenshot read), `lmx.render.motion`
@@ -246,9 +236,9 @@ submission does not make ImGui a core RHI dependency.
   are frame transients. Each encoded frame slot retains scaler state until retirement. A public
   fence bridges MetalFX's opaque encoders; CPU-readable outputs use creation-time private scratch
   and an in-call copy, included in external timing. Private outputs are written directly.
-- **Scenes are cached for the device's lifetime** (`Scene/SceneLibrary.h`): meshes, materials, textures,
-  and the scene's IBL set build once on first selection. Sponza and Damaged Helmet upload only
-  material-referenced images; decoded CPU image data is dropped before the builder returns.
+- **Scenes are cached for the device's lifetime** (`Scene/SceneLibrary.h`). GPU resources build on
+  first selection; destruction requires retired GPU reads, while removed textures retire after three frames. IDs
+  resolve to per-draw pointers/fallbacks. Only referenced images upload; decoded CPU data is freed.
 - **IBL assets** (`Source/Asset/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered
   specular (64², or 128² for MaterialLab, five mips), and a 64² DFG LUT. Filtering crosses cube
   faces and chooses source mips by GGX footprint. MaterialLab bounds diffuse work with a separate
@@ -261,45 +251,21 @@ submission does not make ImGui a core RHI dependency.
 
 ## The math
 
-- **GGX metallic-roughness BRDF** (`Shaders/Modules/Lighting.slang`): Trowbridge-Reitz D,
-  height-correlated Smith visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and
-  energy-conserving Lambert diffuse. Perceptual roughness floors at 0.045 before squaring.
-- **Image-based lighting**: the split-sum reconstruction (Karis 2013) plus Fdez-Agüera's
-  multiple-scattering compensation, so a white furnace returns its own radiance at every roughness
-  and metallic value rather than losing energy to single-scattering loss as roughness rises.
-  Occlusion attenuates the image-based terms only — the shadow map already answers direct-light
-  visibility, and applying occlusion to both would darken a lit surface twice.
-- **Exposure and display**: every fragment multiplies its linear output by `preExposure` before the
-  scene target sees it, so the scene color holds pre-exposed scene-linear radiance. Manual mode (the
-  default) computes `preExposure = exp2(EV)` from the Render Settings slider on the CPU. Auto mode
-  reads a persistent GPU exposure buffer — `{applied, previous}` — that a one-frame histogram
-  feedback loop maintains (spec 9/7, diagrammed above): the seed shifts and sets the pair on every
-  manual temporal frame and every auto reset frame, and the resolve moves `applied` toward the
-  metered target at a bounded stops-per-second rate (independent up/down rates), shifting the old
-  value into `previous`. The pair is the single source of applied exposure the scene pass, the
-  histogram and the temporal resolve all read the same version of; the resolve multiplies its
-  fetched history by `exposure[0] / exposure[1]` before clipping and blending it, so a manual EV
-  edit or an adaptation step never blends two frames recorded at different brightness uncorrected.
-  `Shaders/DisplayTransform.slang` is the frame's one display boundary: bloom composites in first
-  (pre-exposed luminance), then Khronos PBR Neutral (`Shaders/Modules/Tonemap.slang`, shared with the
-  temporal debug view), then the sRGB encode. The editor's clear color is authored in display space
-  and decoded-then-pre-exposed once, at pass declaration, always at the *manual* exposure value even
-  in auto mode, since auto's value lives only in the GPU-side buffer and every scene with a sky
-  draws over the clear entirely.
-- **Exposure reset mapping.** The temporal history and the exposure buffer each still choose their
-  own reset policy: exposure clears on `SceneChanged`, `ExtentChanged`, and the auto-exposure enable
-  transition (spec 9's triggers, unchanged), and ignores `CameraCut`/`ProjectionChanged`, which the
-  temporal history treats as resets of its own. `App/Model/ExposureReset.h` keeps its policy: unifying the two
-  events was considered and rejected for M6.2, since `sceneGeneration` bumps on any content change
-  and the blend's own exposure correction already absorbs a real exposure reset's discontinuity.
-- **Reversed infinite-far depth**: `Camera::projectionMatrix` maps the near plane to 1 and lets
-  depth fall toward 0 without ever reaching it, concentrating float precision at the far plane
-  instead of the near one. Scene and shadow pipelines clear to 0 and keep the `Greater` fragment;
-  the sky pins every vertex to depth 0 and passes `GreaterEqual`; `fitShadowOrtho` reverses to
-  match, and the shadow comparison sampler is `GreaterEqual`. View-space depth reconstructs from a
-  sampled texel as `viewZ = -nearZ / d`.
-- **Shadows**: light 0 casts through an ortho fit to the scene bounds; 25-tap Poisson PCF or
-  PCSS is selectable. Reversed-Z bias is `{-4.0, -32.0}`. PCSS retains its view/NDC unit mismatch.
+- **GGX metallic-roughness** (`Lighting.slang`): Trowbridge-Reitz D, height-correlated Smith
+  visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and energy-conserving Lambert diffuse.
+  Perceptual roughness floors at 0.045 before squaring. Split-sum IBL uses Fdez-Agüera multiple-
+  scattering compensation; occlusion attenuates image-based terms only.
+- **Exposure/display**: fragments pre-expose linear radiance before the scene target. Manual
+  exposure is `exp2(EV)`; auto uses the persistent `{applied, previous}` pair with bounded histogram
+  adaptation. Temporal history is corrected by `applied / previous` before clipping/blending.
+  DisplayTransform composites bloom, applies PBR Neutral and encodes sRGB. Authored clear colour
+  decodes and pre-exposes once at declaration using manual exposure; a sky draws over that clear.
+- **Reset policy**: exposure clears on scene/extent changes and auto enable, independently of the
+  temporal camera/projection resets. `App/Model/ExposureReset.h` owns that mapping.
+- **Reversed infinite-far depth**: near maps to 1, distance tends toward 0. Scene/shadow clear to
+  zero and compare Greater; sky pins depth zero and compares GreaterEqual. View-space depth is
+  `-nearZ / sampledDepth`. Light 0 casts through the scene-bound ortho fit with reversed bias
+  `{-4.0, -32.0}`. PCF uses 25 Poisson taps; PCSS retains its view/NDC blocker-search mismatch.
 
 ## Scenes
 
@@ -330,7 +296,5 @@ Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear 
 [vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/` holds entries,
 `Shaders/Modules/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
 
-UI density changes are queued and applied before the next backend/ImGui NewFrame calls. Font
-scale and sizes are regenerated from an unscaled base style; panel measurement then reports any
-changed Viewport image extent through the existing debounced, GPU-idle resize path. UI zoom
-never writes camera or render-scale settings and does not rebuild a matching workspace layout.
+UI zoom applies before NewFrame from an unscaled style; changed viewport measurements use the
+existing debounced, GPU-idle resize path. Camera, render scale and matching layouts are preserved.

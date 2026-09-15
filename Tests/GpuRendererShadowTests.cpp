@@ -1,4 +1,11 @@
 #include "GpuRendererTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // Asymmetric receiver probes catch Y mirroring; broad image disagreement proves both PCF and PCSS
@@ -166,10 +173,10 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     REQUIRE(device.has_value());
 
     auto ground =
-        lmx::render::createMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.shadowGround");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.shadowGround");
     INFO(errorOf(ground));
     REQUIRE(ground.has_value());
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.shadowCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.shadowCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -178,7 +185,7 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const std::array<DrawItem, 2> items = {{
+    const std::array<FixtureDrawItem, 2> items = {{
         {.mesh = &*ground,
          .model = glm::mat4{1.0f},
          .material = {.albedo = {1.0f, 1.0f, 1.0f, 1.0f}}},
@@ -189,7 +196,7 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     }};
 
     const glm::vec3 lightDir = glm::normalize(glm::vec3{1.0f, -1.0f, 1.0f});
-    SceneView view;
+    FixtureSceneView view;
     view.items = items;
     view.lights[0] = {.strength = {0.8f, 0.8f, 0.8f}, .direction = lightDir};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
@@ -201,7 +208,8 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     camera.pitch = -0.62f;
 
     CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -345,16 +353,33 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(sampler));
     REQUIRE(sampler.has_value());
 
+    lmx::scene::Scene scene;
+    lmx::render::MeshData geometry;
+    geometry.vertices.assign(quads.begin(), quads.end());
+    for (uint32_t i = 0; i < quads.size(); ++i) {
+        geometry.indices.push_back(i);
+    }
+    const auto mesh = scene.addMesh(std::move(geometry), "lmx.test.depthBias.geometry");
+    const auto material = scene.addMaterial({});
+    const auto instance = scene.addObject({.mesh = mesh, .material = material});
+    REQUIRE(scene.finalize(**device));
+
     CommandList& commands = (*device)->beginFrame();
+    REQUIRE(scene.prepareFrame((*device)->frameNumber()));
+    const auto tables = scene.tables();
+    const auto meshRow = *scene.tryMesh(mesh);
     const auto depthPass = [&](Texture& target, GraphicsPipeline& pipeline) {
         commands.beginRenderPass({.depthTarget = &target,
                                   .clearDepth = 0.0f,
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
-        commands.bindFrameData(kObjectSlot, identity);
-        commands.bindFrameData(kVertexBufferSlot, quads.data(), sizeof(quads));
-        commands.draw(static_cast<uint32_t>(quads.size()));
+        commands.bindFrameData(kObjectSlot, lmx::render::DrawUniforms{instance.slot});
+        commands.bindFrameData(2, identity);
+        commands.bindBuffer(kVertexBufferSlot, *tables.vertices);
+        commands.bindBuffer(lmx::render::kSceneInstancesSlot, *tables.instances);
+        commands.bindBuffer(lmx::render::kSceneMaterialsSlot, *tables.materials);
+        commands.drawIndexed(*tables.indices, meshRow.indexCount, meshRow.firstIndex);
         commands.endRenderPass();
     };
     depthPass(**unbiasedDepth, **unbiasedPipeline);

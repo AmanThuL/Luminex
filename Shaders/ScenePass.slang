@@ -5,7 +5,8 @@
 // the encode.
 //
 // Slots -- resource classes use separate index spaces:
-//   buffers   b0 vertices, b1 per-draw ObjectUniforms, b2 per-pass PassUniforms
+//   buffers   b0 vertices, b1 per-draw DrawUniforms, b2 per-pass PassUniforms
+//             b5 instances, b6 materials
 //   textures  per-draw material set: t0 base colour, t1 normal, t4 metallic-roughness,
 //             t5 occlusion, t6 emissive
 //             per-pass shared set:   t3 shadow map, t7 irradiance, t8 prefiltered environment,
@@ -17,6 +18,7 @@
 // render pass, so the slot is bound there rather than here. This fragment no longer samples the sky
 // directly -- its ad-hoc mirror reflection was replaced by the prefiltered environment on t8.
 import Lighting;
+import SceneTables;
 import Motion;
 import Shadow;
 
@@ -36,37 +38,12 @@ struct Vertex
 [[vk::binding(0, 0)]]
 StructuredBuffer<Vertex> gVertices : register(t0); // → MSL [[buffer(0)]]
 
-// CPU mirrors must match this constant-buffer layout byte-for-byte.
-struct ObjectUniforms
-{
-    float4x4 mvp;
-    float4x4 model;
-    // Inverse transpose of `model`, computed on the CPU once per draw. Declared 4x4 rather than
-    // 3x3 because a constant-buffer float3x3 pads each column to its own 16-byte register, which
-    // makes the CPU mirror's 48 bytes agree with the shader's only by convention; a float4x4 has
-    // one unambiguous layout on every target, and the vertex shader simply uses its upper-left 3x3.
-    float4x4 normalMatrix;
-    float4x4 uvTransform;
-    float4 albedo; // linear; Engine decodes authored sRGB constants once at scene build
-    float roughness;
-    uint flags;
-    float metallic;
-    float occlusionStrength;
-    float3 emissive;
-    // The object-to-world transform of the previous declared frame, read by the motion entry
-    // points alone. Equal to `model` for an object that did not move, which is what makes a still
-    // surface reproject onto itself.
-    float4x4 previousModel;
-};
-
-// Bit 0 enables the texture-slot-1 normal map through a draw-uniform branch.
-static const uint kFlagHasNormalMap = 1u;
-// Bit 1 marks a draw whose motion cannot be derived from `previousModel`; its fragments write
-// Motion.slang's sentinel instead of a reprojection.
-static const uint kFlagMotionInvalid = 2u;
-
 [[vk::binding(1, 0)]]
-ConstantBuffer<ObjectUniforms> gObject : register(b1); // → MSL [[buffer(1)]]
+ConstantBuffer<DrawUniforms> gDraw : register(b1);
+[[vk::binding(5, 0)]]
+StructuredBuffer<InstanceRow> gInstances : register(t5);
+[[vk::binding(6, 0)]]
+StructuredBuffer<MaterialRow> gMaterials : register(t6);
 
 struct PassUniforms
 {
@@ -79,7 +56,7 @@ struct PassUniforms
     int shadowFilter; // Shadow.slang's kShadowFilterPcf / kShadowFilterPcss
     // The motion pair, unjittered on purpose: jitter moves where the frame is sampled, never where
     // the surface is, so a still scene rendered with a moving jitter sequence must still produce
-    // zero motion. Rasterisation uses ObjectUniforms.mvp, which carries the jitter.
+    // zero motion. Rasterisation uses PassUniforms.viewProj, which carries the jitter.
     float4x4 viewProjUnjittered;
     float4x4 previousViewProjUnjittered;
 };
@@ -152,19 +129,21 @@ struct VSOutput
 
 VSOutput shadeVertex(uint vid)
 {
+    InstanceRow instance = gInstances[gDraw.instanceRow];
+    MaterialRow material = gMaterials[instance.materialRow];
     Vertex v = gVertices[vid];
-    float4 positionW = mul(gObject.model, float4(v.position, 1.0));
+    float4 positionW = mul(instance.model, float4(v.position, 1.0));
 
     VSOutput o;
-    o.position = mul(gObject.mvp, float4(v.position, 1.0));
+    o.position = mul(gPass.viewProj, positionW);
     o.positionW = positionW.xyz;
     // The inverse transpose is what keeps a normal perpendicular to its surface under non-uniform
     // scale, where the model matrix alone would shear it off the surface.
-    o.normalW = mul((float3x3)gObject.normalMatrix, v.normal);
+    o.normalW = mul((float3x3)instance.normalMatrix, v.normal);
     // The tangent is a direction *along* the surface, so it transforms by the model matrix itself;
     // the fragment re-orthogonalizes it against the normal.
-    o.tangentW = float4(mul((float3x3)gObject.model, v.tangent.xyz), v.tangent.w);
-    o.uv = mul(gObject.uvTransform, float4(v.uv, 0.0, 1.0)).xy;
+    o.tangentW = float4(mul((float3x3)instance.model, v.tangent.xyz), v.tangent.w);
+    o.uv = mul(material.uvTransform, float4(v.uv, 0.0, 1.0)).xy;
     o.shadowPos = mul(gPass.shadowTransform, positionW);
     return o;
 }
@@ -194,8 +173,10 @@ struct SurfaceShading
 
 SurfaceShading shadeSurfaceDetailed(VSOutput input)
 {
+    InstanceRow instance = gInstances[gDraw.instanceRow];
+    MaterialRow material = gMaterials[instance.materialRow];
     // sRGB sampling decodes base colour before lighting.
-    float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * gObject.albedo;
+    float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * material.albedo;
     float3 baseColor = baseColorSample.rgb;
 
     // glTF 2.0 packing: roughness in G, metallic in B, each scaling its own factor.
@@ -203,16 +184,16 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     // Clamped once, here, so the direct lobe, the prefiltered mip, and the DFG lookup all speak of
     // the same roughness -- the split-sum contract only holds if they agree.
     float perceptualRoughness =
-        clamp(gObject.roughness * metallicRoughness.g, kMinRoughness, 1.0f);
-    float metallic = saturate(gObject.metallic * metallicRoughness.b);
+        clamp(material.roughness * metallicRoughness.g, kMinRoughness, 1.0f);
+    float metallic = saturate(material.metallic * metallicRoughness.b);
     float alpha = AlphaFromRoughness(perceptualRoughness);
     // glTF strength interpolates between no occlusion and the authored map; multiplying by the
     // strength directly would incorrectly black out the environment when strength is zero.
     float occlusion = lerp(1.0f, gOcclusion.Sample(gLinearSampler, input.uv).r,
-                           saturate(gObject.occlusionStrength));
+                           saturate(material.occlusionStrength));
 
     float3 normalW = normalize(input.normalW);
-    if ((gObject.flags & kFlagHasNormalMap) != 0u)
+    if ((material.flags & kMaterialHasNormalMap) != 0u)
     {
         normalW = applyNormalMap(gNormalMap.Sample(gLinearSampler, input.uv).rgb, normalW,
                                  input.tangentW);
@@ -249,7 +230,8 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
 
     // Emissive is radiance the surface produces rather than reflects, so it takes no lighting term
     // and is added last; pre-exposure then applies to the whole sum exactly once.
-    float3 emissiveTerm = gObject.emissive * gEmissive.Sample(gLinearSampler, input.uv).rgb;
+    float3 emissiveTerm =
+        (material.emissive * instance.emissiveScale) * gEmissive.Sample(gLinearSampler, input.uv).rgb;
     litColor += emissiveTerm;
 
     // Pre-exposed, still linear: the display transform is the only thing that leaves this space.
@@ -292,23 +274,25 @@ struct MotionFSOutput
 [shader("vertex")]
 MotionVSOutput vertexMainMotion(uint vid: SV_VertexID)
 {
+    InstanceRow instance = gInstances[gDraw.instanceRow];
     float3 position = gVertices[vid].position;
     MotionVSOutput o;
     o.base = shadeVertex(vid);
-    o.clipCurrent = mul(gPass.viewProjUnjittered, mul(gObject.model, float4(position, 1.0)));
+    o.clipCurrent = mul(gPass.viewProjUnjittered, mul(instance.model, float4(position, 1.0)));
     o.clipPrevious =
-        mul(gPass.previousViewProjUnjittered, mul(gObject.previousModel, float4(position, 1.0)));
+        mul(gPass.previousViewProjUnjittered, mul(instance.previousModel, float4(position, 1.0)));
     return o;
 }
 
 [shader("fragment")]
 MotionFSOutput fragmentMainMotion(MotionVSOutput input)
 {
+    InstanceRow instance = gInstances[gDraw.instanceRow];
     MotionFSOutput o;
     SurfaceShading shaded = shadeSurfaceDetailed(input.base);
     o.color = shaded.color;
     o.reactive = reactiveFromEmissive(shaded.emissive);
-    o.motion = (gObject.flags & kFlagMotionInvalid) != 0u
+    o.motion = (instance.flags & kInstanceMotionInvalid) != 0u
                    ? kMotionInvalid
                    : motionFromClip(input.clipCurrent, input.clipPrevious);
     return o;

@@ -1,4 +1,11 @@
 #include "GpuRendererTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // The exit gate on the reversed projection: not that its matrix has the entries it should, which
@@ -54,9 +61,6 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     REQUIRE(camera.position.z == kMaterialLabCameraDistance);
     camera.position.x = kMaterialLabDepthLaneX;
 
-    std::vector<DrawItem> items;
-    const SceneView view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
-
     // The depth buffer is D32Float, which readback() has no packed texel size for, so the probe
     // pass copies it into a half-float target that does.
     auto probeImage = (*device)->createTexture({.width = kDepthReconstructSize,
@@ -83,7 +87,11 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     REQUIRE(probePipeline.has_value());
 
     CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    std::vector<lmx::render::DrawItem> items;
+    const auto view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
                             TextureUse::ShaderRead);
     commands.beginRenderPass({.colorTarget = probeImage->get(),
@@ -180,7 +188,11 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
 
     // Only the sphere grid: the patches, ramp and depth probes sit outside this frustum anyway, and
     // leaving them out keeps every drawn pixel one of the 25 materials under test.
-    std::vector<DrawItem> items;
+    CommandList& commands = (*device)->beginFrame();
+    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+    std::vector<lmx::render::DrawItem> allItems;
+    const auto sceneView = (*scene)->view(allItems, lmx::render::ShadowFilter::PCF, false);
+    std::vector<lmx::render::DrawItem> items;
     std::vector<glm::vec3> centers;
     std::vector<const lmx::scene::SceneObject*> spheres;
     for (const lmx::scene::SceneObject& object : (*scene)->objects) {
@@ -189,14 +201,14 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
         }
         spheres.push_back(&object);
         centers.push_back(object.position);
-        items.push_back({.mesh = &(*scene)->meshes[object.meshIndex],
-                         .model = object.modelMatrix(),
-                         .material = (*scene)->materials[object.materialIndex]});
+        const size_t index = static_cast<size_t>(&object - (*scene)->objects.data());
+        items.push_back(allItems[index]);
     }
     REQUIRE(items.size() == 25);
 
-    SceneView view;
+    lmx::render::SceneView view;
     view.items = items;
+    view.tables = sceneView.tables;
     for (DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
@@ -211,8 +223,8 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     Camera camera;
     camera.position = {0.0f, 0.0f, 12.0f};
 
-    CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+                        /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -225,7 +237,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     for (size_t i = 0; i < spheres.size(); ++i) {
         const PixelCoord at = projectToPixel(camera, kBrdfProbeSize, centers[i]);
         const glm::vec3 radiance = hdrTexelAt(texels, kBrdfProbeSize, at.x, at.y);
-        const lmx::render::Material& material = (*scene)->materials[spheres[i]->materialIndex];
+        const auto& material = (*scene)->material(spheres[i]->material);
         INFO(spheres[i]->name << ": roughness " << material.roughness << ", metallic "
                               << material.metallic << ", read (" << radiance.r << ", " << radiance.g
                               << ", " << radiance.b << ")");
@@ -265,7 +277,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
     REQUIRE(device.has_value());
 
     auto quad =
-        lmx::render::createMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.brdfProbeQuad");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.brdfProbeQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
@@ -308,7 +320,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
         REQUIRE(glm::dot(normal, toEye) ==
                 Catch::Approx(std::cos(glm::radians(probe.viewAngleDegrees))).margin(1e-5));
 
-        const std::array<DrawItem, 1> items = {{
+        const std::array<FixtureDrawItem, 1> items = {{
             {.mesh = &*quad,
              .model = model,
              .material = {.albedo = glm::vec4(probe.baseColor, 1.0f),
@@ -316,7 +328,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
                           .metallic = probe.metallic}},
         }};
 
-        SceneView view;
+        FixtureSceneView view;
         view.items = items;
         for (DirectionalLight& light : view.lights) {
             light.strength = {0.0f, 0.0f, 0.0f};
@@ -328,7 +340,8 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
         view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
 
         CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+                            /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
 

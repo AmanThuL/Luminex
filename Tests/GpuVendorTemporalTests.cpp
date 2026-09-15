@@ -4,22 +4,29 @@
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
+#include "SceneTableTestSupport.h"
 #include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <functional>
 
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
+
 namespace {
 
 using lmx::render::Camera;
-using lmx::render::DrawItem;
 using lmx::render::HistoryResetReason;
-using lmx::render::Mesh;
 using lmx::render::ReconstructionMode;
 using lmx::render::Renderer;
-using lmx::render::SceneView;
 using lmx::render::TemporalDebugView;
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMesh;
+using lmx::test::FixtureSceneView;
 
 constexpr uint32_t kScenarioWidth = 320;
 constexpr uint32_t kScenarioHeight = 180;
@@ -68,9 +75,10 @@ glm::mat4 facingPlaneModel(float z) {
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
 void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
-                 const SceneView& view) {
+                 const FixtureSceneView& view) {
     lmx::rhi::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, view, /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
+                    /*barrierForSampling=*/false);
     device.endFrame(nullptr);
     device.waitIdle();
 }
@@ -80,9 +88,10 @@ void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& cam
 // resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
 // the shipped loop never performs.
 void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
-                         const SceneView& view) {
+                         const FixtureSceneView& view) {
     lmx::rhi::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, view, /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
+                    /*barrierForSampling=*/false);
     device.endFrame(nullptr);
 }
 
@@ -161,7 +170,7 @@ struct ScenarioFrame {
 
 // Mutates the frame's scene before it is declared: the caller owns the draw list, so an item's
 // model and previousModel are set here rather than rebuilt.
-using PerFrame = std::function<void(uint32_t frame, SceneView& view, Camera& camera)>;
+using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Camera& camera)>;
 
 //======================================================================================================================
 // `frames` declared temporal frames through the shipped path, all in one reconstruction mode, each
@@ -172,12 +181,12 @@ using PerFrame = std::function<void(uint32_t frame, SceneView& view, Camera& cam
 // which is what the scale-change scenarios drive the extent with.
 std::vector<ScenarioFrame> renderSequence(lmx::rhi::Device& device, Renderer& renderer,
                                           uint32_t frames, ReconstructionMode mode,
-                                          const SceneView& base, const Camera& baseCamera,
+                                          const FixtureSceneView& base, const Camera& baseCamera,
                                           TemporalDebugView debugView, const PerFrame& perFrame) {
     std::vector<ScenarioFrame> result;
     result.reserve(frames);
     for (uint32_t frame = 1; frame <= frames; ++frame) {
-        SceneView view = base;
+        FixtureSceneView view = base;
         Camera camera = baseCamera;
         view.temporal.enabled = true;
         view.temporal.jitterEnabled = true;
@@ -239,8 +248,9 @@ Camera scenarioCamera(glm::vec3 position, float pitch) {
 }
 
 //======================================================================================================================
-SceneView scenarioSceneView(std::span<const DrawItem> items, glm::vec3 lightDirection) {
-    SceneView view;
+FixtureSceneView scenarioSceneView(std::span<const FixtureDrawItem> items,
+                                   glm::vec3 lightDirection) {
+    FixtureSceneView view;
     view.items = items;
     view.lights[0] = {.strength = {1.0f, 1.0f, 1.0f}, .direction = lightDirection};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
@@ -261,8 +271,8 @@ glm::mat4 boxModel(glm::vec3 center, glm::vec3 scale) {
 // A draw that did not move: previousModel matched to model, which is what makes the item reproject
 // onto itself. Leaving it at the default would have every static object report the motion of a
 // teleport from the identity transform.
-DrawItem staticItem(const Mesh& mesh, const glm::mat4& model, glm::vec4 albedo) {
-    DrawItem item;
+FixtureDrawItem staticItem(const FixtureMesh& mesh, const glm::mat4& model, glm::vec4 albedo) {
+    FixtureDrawItem item;
     item.mesh = &mesh;
     item.model = model;
     item.previousModel = model;
@@ -273,7 +283,8 @@ DrawItem staticItem(const Mesh& mesh, const glm::mat4& model, glm::vec4 albedo) 
 //======================================================================================================================
 // A receding checkerboard: the bright tiles only, laid over a dark floor plane, so the high spatial
 // frequency near the horizon is what jitter makes shimmer and accumulation is meant to settle.
-void appendCheckerFloor(std::vector<DrawItem>& items, const Mesh& cube, const Mesh& plane) {
+void appendCheckerFloor(std::vector<FixtureDrawItem>& items, const FixtureMesh& cube,
+                        const FixtureMesh& plane) {
     items.push_back(staticItem(plane, glm::mat4{1.0f}, {0.04f, 0.04f, 0.04f, 1.0f}));
     for (int32_t ix = -4; ix < 4; ++ix) {
         for (int32_t iz = -60; iz < 4; ++iz) {
@@ -294,9 +305,9 @@ void appendCheckerFloor(std::vector<DrawItem>& items, const Mesh& cube, const Me
 // whose perspective compresses its high spatial frequency toward the horizon, and five poles two
 // *output* pixels wide -- the width is stated in output pixels at every render scale, because the
 // output extent is what the reconstruction has to resolve them at.
-std::vector<DrawItem> checkerAndPoleItems(const Camera& camera, const Mesh& cube,
-                                          const Mesh& plane) {
-    std::vector<DrawItem> items;
+std::vector<FixtureDrawItem> checkerAndPoleItems(const Camera& camera, const FixtureMesh& cube,
+                                                 const FixtureMesh& plane) {
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, cube, plane);
     const float poleWidth = 2.0f / pixelsPerUnit(camera, 12.0f);
     for (int32_t i = -2; i <= 2; ++i) {
@@ -379,8 +390,9 @@ float movingQuadContrast(const Camera& camera, const std::vector<float>& image, 
 
 //======================================================================================================================
 // The moving-quad scene, with the quad as item 1 so a PerFrame can drive it.
-std::vector<DrawItem> movingQuadItems(const Camera& camera, const Mesh& cube, const Mesh& plane) {
-    std::vector<DrawItem> items;
+std::vector<FixtureDrawItem> movingQuadItems(const Camera& camera, const FixtureMesh& cube,
+                                             const FixtureMesh& plane) {
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(plane, facingPlaneModel(-12.0f), {0.6f, 0.6f, 0.6f, 1.0f}));
     items.push_back(staticItem(cube, movingQuadModel(camera, 1), {0.05f, 0.05f, 0.05f, 1.0f}));
     return items;
@@ -397,14 +409,14 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    const std::vector<DrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
-    SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const std::vector<FixtureDrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
     for (float scale : {0.5f, 1.0f}) {
         CAPTURE(scale);
         base.temporal.renderScale = scale;
@@ -436,7 +448,7 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
         SKIP("The device reports no vendor temporal scaler capability");
     }
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorCoverage");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorCoverage");
     REQUIRE(plane.has_value());
     const Camera camera;
     auto empty = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
@@ -444,11 +456,11 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
     renderFrame(**device, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     std::vector<uint8_t> background(kScenarioPixels * 4);
     (*empty)->colorTarget().readback(background.data(), background.size());
-    const std::array<DrawItem, 1> items = {
+    const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
     for (float scale : {0.5f, 1.0f}) {
         CAPTURE(scale);
-        SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+        FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
         base.temporal.renderScale = scale;
         auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
         REQUIRE(renderer.has_value());
@@ -477,16 +489,16 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorWall");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorWall");
     REQUIRE(plane.has_value());
     const Camera camera = movingQuadCamera();
-    std::vector<DrawItem> items = movingQuadItems(camera, *cube, *plane);
-    SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    std::vector<FixtureDrawItem> items = movingQuadItems(camera, *cube, *plane);
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
     base.temporal.renderScale = 0.5f;
-    const PerFrame animate = [&items, &camera](uint32_t frame, SceneView&, Camera&) {
+    const PerFrame animate = [&items, &camera](uint32_t frame, FixtureSceneView&, Camera&) {
         items[1].model = movingQuadModel(camera, frame);
         items[1].previousModel = movingQuadModel(camera, frame == 1 ? 1 : frame - 1);
     };
@@ -520,18 +532,18 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto plane = lmx::render::createMesh(**device, lmx::render::makePlane(32.0f),
-                                         "lmx.test.vendorSwitchPlane");
+    auto plane = lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f),
+                                        "lmx.test.vendorSwitchPlane");
     REQUIRE(plane.has_value());
     const Camera camera;
     auto empty = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(empty.has_value());
     renderFrame(**device, **empty, camera, scenarioSceneView({}, {0.0f, 0.0f, -1.0f}));
     const auto clear = readHalf4((*empty)->hdrColorTarget());
-    const std::array<DrawItem, 1> items = {
+    const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
-    SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
-    const PerFrame switchMode = [](uint32_t frame, SceneView& view, Camera&) {
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    const PerFrame switchMode = [](uint32_t frame, FixtureSceneView& view, Camera&) {
         view.temporal.reconstruction = frame >= 9 && frame <= 16
                                            ? ReconstructionMode::VendorTemporal
                                            : ReconstructionMode::NativeTaa;
@@ -562,18 +574,18 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
     constexpr uint32_t kStepFrame = 24;
     constexpr uint32_t kFrames = kStepFrame + 7;
-    const PerFrame animate = [](uint32_t frame, SceneView& view, Camera&) {
+    const PerFrame animate = [](uint32_t frame, FixtureSceneView& view, Camera&) {
         view.exposureEv = frame >= kStepFrame ? 2.0f : 0.0f;
     };
     const auto sequence = [&](ReconstructionMode mode) {
@@ -609,7 +621,7 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
     auto renderer = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
     REQUIRE(renderer.has_value());
     const Camera camera;
-    SceneView view = scenarioSceneView({}, {0.0f, 0.0f, -1.0f});
+    FixtureSceneView view = scenarioSceneView({}, {0.0f, 0.0f, -1.0f});
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = ReconstructionMode::VendorTemporal;
@@ -666,11 +678,11 @@ TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][tem
         SKIP("The device reports no vendor temporal scaler capability");
     }
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorOverlap");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorOverlap");
     REQUIRE(plane.has_value());
-    const std::array<DrawItem, 1> items = {
+    const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};
-    SceneView view = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    FixtureSceneView view = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = ReconstructionMode::VendorTemporal;

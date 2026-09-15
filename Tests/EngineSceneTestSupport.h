@@ -238,13 +238,15 @@ inline ProjectedPixel projectScenePixel(const render::Camera& camera, uint32_t s
 namespace {
 
 //======================================================================================================================
-// A device-free Scene whose one object indexes placeholder mesh and material slots: enough for
-// view(), commitFrame() and animate() without a GPU.
+// CPU-owned identities support playback before any GPU allocation.
 inline Scene makeMotionTestScene() {
     Scene scene;
-    scene.meshes.resize(1);
-    scene.materials.resize(1);
-    scene.objects.push_back({.name = "object", .position = glm::vec3(1.0f, 0.0f, 0.0f)});
+    const MeshId mesh = scene.addMesh(render::makeCube(), "lmx.test.motionCube");
+    const MaterialId material = scene.addMaterial({});
+    scene.addObject({.name = "object",
+                     .position = glm::vec3(1.0f, 0.0f, 0.0f),
+                     .mesh = mesh,
+                     .material = material});
     scene.resetMotion();
     return scene;
 }

@@ -1,4 +1,11 @@
 #include "GpuTemporalTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // A camera that moved between two frames over a static surface: every probe texel must carry the
@@ -11,7 +18,7 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -21,9 +28,9 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
 
     constexpr float kPlaneZ = -2.0f;
     const glm::mat4 model = facingPlaneModel(kPlaneZ);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
 
     Camera previousCamera;
@@ -67,7 +74,7 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -81,12 +88,12 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
     const glm::mat4 previousModel = glm::translate(glm::mat4{1.0f}, delta) * model;
 
     const Camera camera;
-    const std::array<DrawItem, 1> first = {
-        DrawItem{.mesh = &*plane, .model = previousModel, .previousModel = previousModel}};
-    const std::array<DrawItem, 1> second = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = previousModel}};
+    const std::array<FixtureDrawItem, 1> first = {
+        FixtureDrawItem{.mesh = &*plane, .model = previousModel, .previousModel = previousModel}};
+    const std::array<FixtureDrawItem, 1> second = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = previousModel}};
 
-    SceneView view = temporalSceneView(first);
+    FixtureSceneView view = temporalSceneView(first);
     view.temporal.enabled = true;
     renderFrame(**device, **renderer, camera, view);
     view.items = second;
@@ -125,7 +132,7 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -134,9 +141,9 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     REQUIRE(renderer.has_value());
 
     const glm::mat4 model = facingPlaneModel(-2.0f);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
 
@@ -167,7 +174,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -176,12 +183,12 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     REQUIRE(renderer.has_value());
 
     const glm::mat4 model = facingPlaneModel(-2.0f);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane,
-                 .model = model,
-                 .previousModel = model,
-                 .motionClass = lmx::render::MotionClass::Invalid}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {
+        FixtureDrawItem{.mesh = &*plane,
+                        .model = model,
+                        .previousModel = model,
+                        .motionClass = lmx::render::MotionClass::Invalid}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
 
     const Camera camera;
@@ -206,7 +213,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -215,9 +222,9 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     REQUIRE(renderer.has_value());
 
     const glm::mat4 model = facingPlaneModel(-2.0f);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
 
@@ -265,7 +272,7 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -296,14 +303,14 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
     const glm::mat4 stat =
         glm::translate(glm::mat4{1.0f}, glm::vec3{seamX + kHalfExtent, 0.0f, 0.0f}) *
         facingPlaneModel(kPlaneZ);
-    const std::array<DrawItem, 2> items = {
-        DrawItem{.mesh = &*plane,
-                 .model = invalid,
-                 .previousModel = invalid,
-                 .motionClass = lmx::render::MotionClass::Invalid},
-        DrawItem{.mesh = &*plane, .model = stat, .previousModel = stat},
+    const std::array<FixtureDrawItem, 2> items = {
+        FixtureDrawItem{.mesh = &*plane,
+                        .model = invalid,
+                        .previousModel = invalid,
+                        .motionClass = lmx::render::MotionClass::Invalid},
+        FixtureDrawItem{.mesh = &*plane, .model = stat, .previousModel = stat},
     };
-    SceneView view = temporalSceneView(items);
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = false; // The mapping under test, without a sub-pixel offset.
     view.temporal.renderScale = kScale;
@@ -408,12 +415,16 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     camera.nearZ = (*scene)->initialCamera.nearZ;
 
     (*scene)->resetMotion();
-    std::vector<DrawItem> items;
+    std::vector<lmx::render::DrawItem> items;
     for (int frame = 0; frame < 2; ++frame) {
-        SceneView view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, /*wireframe=*/false);
+        auto& commands = (*device)->beginFrame();
+        REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
+        auto view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
-        renderFrame(**device, **renderer, camera, view);
+        (*renderer)->render(commands, camera, view, false);
+        (*device)->endFrame(nullptr);
+        (*device)->waitIdle();
         (*scene)->commitFrame();
         (*scene)->advanceAnimation(1.0 / 60.0);
         (*scene)->animate((*scene)->animationTime);
@@ -468,7 +479,7 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -484,17 +495,18 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
                            facingPlaneModel(kPlaneZ);
     const glm::mat4 right = glm::translate(glm::mat4{1.0f}, glm::vec3{kHalfExtent, 0.0f, 0.0f}) *
                             facingPlaneModel(kPlaneZ);
-    const std::array<DrawItem, 2> items = {
-        DrawItem{.mesh = &*plane,
-                 .model = left,
-                 .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}},
-                 .previousModel = left},
-        DrawItem{.mesh = &*plane,
-                 .model = right,
-                 .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}},
-                 .previousModel = right},
+    const std::array<FixtureDrawItem, 2> items = {
+        FixtureDrawItem{
+            .mesh = &*plane,
+            .model = left,
+            .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {4.0f, 4.0f, 4.0f}},
+            .previousModel = left},
+        FixtureDrawItem{.mesh = &*plane,
+                        .model = right,
+                        .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}},
+                        .previousModel = right},
     };
-    SceneView view = temporalSceneView(items);
+    FixtureSceneView view = temporalSceneView(items);
     view.bloomEnabled = false; // bloom would spread the emitter's energy across the split
     view.temporal.enabled = true;
     view.temporal.debugView = lmx::render::TemporalDebugView::ReprojectionError;
@@ -541,7 +553,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
     auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
@@ -550,12 +562,12 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
 
     constexpr float kPlaneZ = -2.0f;
     const glm::mat4 model = facingPlaneModel(kPlaneZ);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane,
-                 .model = model,
-                 .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}},
-                 .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{
+        .mesh = &*plane,
+        .model = model,
+        .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}},
+        .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     for (auto& light : view.lights) {
         light.strength = {};
     }
@@ -607,9 +619,9 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto skySphere = lmx::render::createMesh(
-        **device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
-        "lmx.test.temporalSkySphere");
+    auto skySphere =
+        lmx::test::fixtureMesh(**device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
+                               "lmx.test.temporalSkySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
@@ -628,7 +640,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     REQUIRE(renderer.has_value());
 
     // No items at all: the sky sphere is the frame's only geometry.
-    SceneView view = temporalSceneView({});
+    FixtureSceneView view = temporalSceneView({});
     view.skySphere = &*skySphere;
     view.skyCubemap = skyCubemap->get();
     view.temporal.enabled = true;

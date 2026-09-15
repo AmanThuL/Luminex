@@ -133,6 +133,9 @@ public:
     /// from consumeExposureReset() before declaring the frame's passes.
     render::SceneView sceneView();
 
+    /// Uploads active scene tables after frame pacing and animation, before obtaining the view.
+    rhi::Result<void> prepareSceneFrame(uint64_t frameNumber);
+
     /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
     /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
     /// what turns "a reset happened" into "the next frame's SceneView says so."

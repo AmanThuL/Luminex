@@ -156,42 +156,19 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
 
     // makeGrid rather than render::makePlane: the checker needs the 0..1 UVs only the grid
     // generator authors.
-    auto planeMesh = render::createMesh(
-        device,
+    const MeshId planeMeshIndex = scene->addMesh(
         render::fromGeo(asset::makeGrid(kFloorHalfExtent * 2.0f, kFloorHalfExtent * 2.0f, 2, 2)),
         "TemporalLab.floorMesh");
-    if (!planeMesh) {
-        return std::unexpected(uploadFailure(std::move(planeMesh.error())));
-    }
-    const auto planeMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*planeMesh));
 
-    auto cubeMesh = render::createMesh(device, render::makeCube(), "TemporalLab.cubeMesh");
-    if (!cubeMesh) {
-        return std::unexpected(uploadFailure(std::move(cubeMesh.error())));
-    }
-    const auto cubeMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*cubeMesh));
+    const MeshId cubeMeshIndex = scene->addMesh(render::makeCube(), "TemporalLab.cubeMesh");
 
-    auto sphereMesh =
-        render::createMesh(device, render::fromGeo(asset::makeSphere(kOrbitSphereRadius, 32, 32)),
-                           "TemporalLab.sphereMesh");
-    if (!sphereMesh) {
-        return std::unexpected(uploadFailure(std::move(sphereMesh.error())));
-    }
-    const auto sphereMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*sphereMesh));
+    const MeshId sphereMeshIndex = scene->addMesh(
+        render::fromGeo(asset::makeSphere(kOrbitSphereRadius, 32, 32)), "TemporalLab.sphereMesh");
 
     // A flat quad in the mesh's own XZ plane; the sign object rotates it 90 degrees about X so its
     // +Y face normal becomes +Z, standing it upright to face the camera.
-    auto signMesh =
-        render::createMesh(device, render::fromGeo(asset::makeGrid(kSignSize.x, kSignSize.y, 2, 2)),
-                           "TemporalLab.signMesh");
-    if (!signMesh) {
-        return std::unexpected(uploadFailure(std::move(signMesh.error())));
-    }
-    const auto signMeshIndex = static_cast<uint32_t>(scene->meshes.size());
-    scene->meshes.push_back(std::move(*signMesh));
+    const MeshId signMeshIndex = scene->addMesh(
+        render::fromGeo(asset::makeGrid(kSignSize.x, kSignSize.y, 2, 2)), "TemporalLab.signMesh");
 
     const std::vector<uint8_t> checkerPixels = makeCheckerPixels();
     const asset::BakedMipChain checkerChain =
@@ -206,28 +183,30 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
     if (!checkerTexture) {
         return std::unexpected(uploadFailure(std::move(checkerTexture.error())));
     }
-    rhi::Texture* checkerTexturePtr = checkerTexture->get();
-    scene->textures.push_back(std::move(*checkerTexture));
+    const TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
 
-    const auto addMaterial = [&](const glm::vec3& srgb, float roughness, rhi::Texture* diffuse,
-                                 const glm::vec3& emissive = glm::vec3(0.0f)) -> uint32_t {
-        render::Material material;
+    const auto addMaterial = [&](const glm::vec3& srgb, float roughness,
+                                 std::optional<TextureId> diffuse,
+                                 const glm::vec3& emissive = glm::vec3(0.0f)) -> MaterialId {
+        MaterialRecord material;
         material.albedo = glm::vec4(srgbToLinear(srgb), 1.0f);
         material.roughness = roughness;
         material.metallic = 0.0f;
         material.diffuse = diffuse;
         material.emissive = emissive;
-        const auto index = static_cast<uint32_t>(scene->materials.size());
-        scene->materials.push_back(material);
+        const MaterialId index = scene->addMaterial(material);
         return index;
     };
-    const uint32_t floorMaterial = addMaterial(glm::vec3(1.0f), 0.8f, checkerTexturePtr);
-    const uint32_t rotatingMaterial = addMaterial(glm::vec3(0.85f, 0.25f, 0.2f), 0.5f, nullptr);
-    const uint32_t referenceMaterial = addMaterial(glm::vec3(0.25f, 0.5f, 0.85f), 0.5f, nullptr);
-    const uint32_t orbitMaterial = addMaterial(glm::vec3(0.95f, 0.8f, 0.2f), 0.3f, nullptr);
-    const uint32_t poleMaterial = addMaterial(glm::vec3(0.9f), 0.6f, nullptr);
-    const uint32_t invalidMaterial = addMaterial(glm::vec3(0.5f, 0.15f, 0.6f), 0.5f, nullptr);
-    const uint32_t signMaterial = addMaterial(glm::vec3(0.2f), 0.9f, nullptr, kSignEmissive);
+    const MaterialId floorMaterial = addMaterial(glm::vec3(1.0f), 0.8f, checkerTexturePtr);
+    const MaterialId rotatingMaterial =
+        addMaterial(glm::vec3(0.85f, 0.25f, 0.2f), 0.5f, std::nullopt);
+    const MaterialId referenceMaterial =
+        addMaterial(glm::vec3(0.25f, 0.5f, 0.85f), 0.5f, std::nullopt);
+    const MaterialId orbitMaterial = addMaterial(glm::vec3(0.95f, 0.8f, 0.2f), 0.3f, std::nullopt);
+    const MaterialId poleMaterial = addMaterial(glm::vec3(0.9f), 0.6f, std::nullopt);
+    const MaterialId invalidMaterial =
+        addMaterial(glm::vec3(0.5f, 0.15f, 0.6f), 0.5f, std::nullopt);
+    const MaterialId signMaterial = addMaterial(glm::vec3(0.2f), 0.9f, std::nullopt, kSignEmissive);
 
     glm::vec3 aabbMin{std::numeric_limits<float>::max()};
     glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
@@ -237,15 +216,15 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
     };
 
     const auto addObject = [&](std::string name, const glm::vec3& position, const glm::vec3& scale,
-                               uint32_t meshIndex, uint32_t materialIndex,
+                               MeshId meshIndex, MaterialId materialIndex,
                                render::MotionClass motionClass) -> uint32_t {
         const auto index = static_cast<uint32_t>(scene->objects.size());
-        scene->objects.push_back({.name = std::move(name),
-                                  .position = position,
-                                  .scale = scale,
-                                  .meshIndex = meshIndex,
-                                  .materialIndex = materialIndex,
-                                  .motionClass = motionClass});
+        scene->addObject({.name = std::move(name),
+                          .position = position,
+                          .scale = scale,
+                          .mesh = meshIndex,
+                          .material = materialIndex,
+                          .motionClass = motionClass});
         return index;
     };
 
@@ -286,22 +265,22 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
 
     // The flashing sign: static geometry (no rigid track), driven only by an EmissiveTrack.
     const auto signIndex = static_cast<uint32_t>(scene->objects.size());
-    scene->objects.push_back({.name = "temporal-lab emissive sign",
-                              .position = kSignPosition,
-                              .eulerDegrees = glm::vec3(90.0f, 0.0f, 0.0f),
-                              .scale = glm::vec3(1.0f),
-                              .meshIndex = signMeshIndex,
-                              .materialIndex = signMaterial,
-                              .motionClass = render::MotionClass::Rigid});
+    scene->addObject({.name = "temporal-lab emissive sign",
+                      .position = kSignPosition,
+                      .eulerDegrees = glm::vec3(90.0f, 0.0f, 0.0f),
+                      .scale = glm::vec3(1.0f),
+                      .mesh = signMeshIndex,
+                      .material = signMaterial,
+                      .motionClass = render::MotionClass::Rigid});
     expandAabb(kSignPosition, glm::vec3(kSignSize.x * 0.5f, kSignSize.y * 0.5f, 0.0f));
 
     for (SceneObject& object : scene->objects) {
         glm::vec3 halfExtent(0.5f);
-        if (object.meshIndex == planeMeshIndex) {
+        if (object.mesh == planeMeshIndex) {
             halfExtent = glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent);
-        } else if (object.meshIndex == sphereMeshIndex) {
+        } else if (object.mesh == sphereMeshIndex) {
             halfExtent = glm::vec3(kOrbitSphereRadius);
-        } else if (object.meshIndex == signMeshIndex) {
+        } else if (object.mesh == signMeshIndex) {
             halfExtent = glm::vec3(kSignSize.x * 0.5f, 0.0f, kSignSize.y * 0.5f);
         }
         object.localBounds = ObjectBounds{.minimum = -halfExtent, .maximum = halfExtent};
@@ -373,6 +352,9 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
     scene->initialCamera.nearZ = 0.05f;
     scene->initialCamera.farZ = 200.0f;
 
+    if (auto finalized = scene->finalize(device); !finalized) {
+        return std::unexpected(uploadFailure(std::move(finalized.error())));
+    }
     return scene;
 }
 

@@ -7,8 +7,6 @@
 
 #include "Core/Assert.h"
 #include "RHI/CaptureSchema.h"
-#include "Render/AlphaMaskParams.h"
-#include "Render/Mesh.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -19,20 +17,10 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/ShadowPass.slang's ObjectUniforms.
-struct ShadowObjectUniforms {
-    glm::mat4 mvp;
+struct ShadowPassUniforms {
+    glm::mat4 lightViewProj;
 };
-static_assert(sizeof(ShadowObjectUniforms) == 64, "must match ShadowPass.slang's ObjectUniforms");
-
-struct ShadowMaskObjectUniforms {
-    glm::mat4 mvp;
-    glm::mat4 uvTransform;
-    float albedoAlpha;
-    float padding[3]{};
-};
-static_assert(sizeof(ShadowMaskObjectUniforms) == 144);
-static_assert(offsetof(ShadowMaskObjectUniforms, albedoAlpha) == 128);
+static_assert(sizeof(ShadowPassUniforms) == 64);
 
 // The 25-texel PCF radius needs slope bias across the whole kernel, not one texel. GPU
 // measurements reached the unshadowed reference at 32; 64 provided no further improvement.
@@ -46,7 +34,7 @@ static_assert(offsetof(ShadowMaskObjectUniforms, albedoAlpha) == 128);
 constexpr rhi::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
 
 constexpr uint32_t kVertexBufferSlot = 0;
-constexpr uint32_t kObjectUniformsSlot = 1;
+constexpr uint32_t kPassUniformsSlot = 2;
 constexpr uint32_t kDiffuseTextureSlot = 0;
 constexpr uint32_t kLinearSamplerSlot = 0;
 
@@ -58,22 +46,10 @@ void ShadowStage::registerUniformLayoutsForCapture() {
     CaptureSchema& schema = CaptureSchema::instance();
 
     schema.registerUniformStruct(
-        {.name = "ShadowObjectUniforms",
-         .slot = kObjectUniformsSlot,
-         .sizeBytes = sizeof(ShadowObjectUniforms),
-         .fields = {{"mvp", offsetof(ShadowObjectUniforms, mvp), "float4x4"}}});
-
-    schema.registerUniformStruct(
-        {.name = "ShadowMaskObjectUniforms",
-         .slot = kObjectUniformsSlot,
-         .sizeBytes = sizeof(ShadowMaskObjectUniforms),
-         .fields = {{"mvp", offsetof(ShadowMaskObjectUniforms, mvp), "float4x4"},
-                    {"uvTransform", offsetof(ShadowMaskObjectUniforms, uvTransform), "float4x4"},
-                    {"albedoAlpha", offsetof(ShadowMaskObjectUniforms, albedoAlpha), "float"}}});
-    schema.registerUniformStruct({.name = "AlphaMaskParams",
-                                  .slot = kAlphaMaskParamsSlot,
-                                  .sizeBytes = sizeof(AlphaMaskParams),
-                                  .fields = {{"cutoff", 0, "float"}}});
+        {.name = "ShadowPassUniforms",
+         .slot = kPassUniformsSlot,
+         .sizeBytes = sizeof(ShadowPassUniforms),
+         .fields = {{"lightViewProj", offsetof(ShadowPassUniforms, lightViewProj), "float4x4"}}});
 }
 
 //======================================================================================================================
@@ -186,6 +162,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
                                   const SceneView& view, const ShadowStageInputs& inputs) {
     const GraphTexture shadowMap = inputs.shadowMap;
     PassDesc shadowDesc;
+    shadowDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
     // 0 is the reversed far plane: nothing in the light's frustum is farther, so every caster's
     // Greater test passes against a cleared texel.
     shadowDesc.depth = DepthAttachment{
@@ -194,35 +171,31 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
         "lmx.pass.shadow", std::move(shadowDesc),
         [this, &commands, view, inputs,
          lightViewProj = inputs.lightViewProj](const PassResources&) {
+            if (view.tables.vertices) {
+                commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
+                commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
+                commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+            }
+            commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rhi::GraphicsPipeline* bound = nullptr;
             for (const DrawItem& item : view.items) {
-                LMX_ASSERT(item.mesh != nullptr, "DrawItem.mesh must not be null");
-                const bool masked = item.material.alphaMode == AlphaMode::Mask;
-                auto* pipeline =
-                    masked ? m_maskShadowPipelines[item.material.doubleSided ? 1 : 0].get()
-                           : m_shadowPipeline.get();
+                LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
+                           "draw instance must name a current table row");
+                const bool masked = item.alphaMode == AlphaMode::Mask;
+                auto* pipeline = masked ? m_maskShadowPipelines[item.doubleSided ? 1 : 0].get()
+                                        : m_shadowPipeline.get();
                 if (pipeline != bound) {
                     commands.bindPipeline(*pipeline);
                     bound = pipeline;
                 }
-                commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
+                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{item.instanceRow});
                 if (masked) {
-                    const ShadowMaskObjectUniforms uniforms{.mvp = lightViewProj * item.model,
-                                                            .uvTransform =
-                                                                item.material.uvTransform,
-                                                            .albedoAlpha = item.material.albedo.a};
-                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
-                    commands.bindFrameData(kAlphaMaskParamsSlot,
-                                           AlphaMaskParams{item.material.alphaCutoff});
-                    commands.bindTexture(kDiffuseTextureSlot, item.material.diffuse
-                                                                  ? *item.material.diffuse
-                                                                  : *inputs.whiteTexture);
+                    commands.bindTexture(kDiffuseTextureSlot,
+                                         item.diffuse ? *item.diffuse : *inputs.whiteTexture);
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
-                } else {
-                    const ShadowObjectUniforms uniforms{.mvp = lightViewProj * item.model};
-                    commands.bindFrameData(kObjectUniformsSlot, uniforms);
                 }
-                commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                                     item.mesh.firstIndex);
             }
         });
 

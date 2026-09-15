@@ -91,22 +91,21 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
     // Materials share an uploaded texture only when both source image and color space match.
     // Metal texture formats carry the sRGB decode, so one image used in color and data slots
     // needs two views rather than forcing the normal-map read through an sRGB format.
-    std::vector<rhi::Texture*> uploadedColor(gltfScene.images.size(), nullptr);
-    std::vector<rhi::Texture*> uploadedLinear(gltfScene.images.size(), nullptr);
+    std::vector<std::optional<TextureId>> uploadedColor(gltfScene.images.size());
+    std::vector<std::optional<TextureId>> uploadedLinear(gltfScene.images.size());
     // Set the first time the fallback path below actually runs, so a scene with several unbaked
     // images logs the warning once per build, not once per image.
     bool warnedUnbakedFallback = false;
-    const auto ensureUploaded = [&](int imageIndex,
-                                    bool srgb) -> asset::AssetResult<rhi::Texture*> {
+    const auto ensureUploaded = [&](int imageIndex, bool srgb) -> asset::AssetResult<TextureId> {
         if (imageIndex < 0 || static_cast<size_t>(imageIndex) >= gltfScene.images.size()) {
             return std::unexpected(asset::AssetError{
                 asset::AssetErrorCode::Malformed,
                 std::string(sceneName) + " scene: material image index is out of range"});
         }
         const size_t index = static_cast<size_t>(imageIndex);
-        std::vector<rhi::Texture*>& uploaded = srgb ? uploadedColor : uploadedLinear;
-        if (uploaded[index] != nullptr) {
-            return uploaded[index];
+        std::vector<std::optional<TextureId>>& uploaded = srgb ? uploadedColor : uploadedLinear;
+        if (uploaded[index].has_value()) {
+            return *uploaded[index];
         }
         const std::string label = std::string(sceneName) + ".image" + std::to_string(index) +
                                   (srgb ? ".srgb" : ".linear");
@@ -119,8 +118,7 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
             if (!texture) {
                 return std::unexpected(texture.error());
             }
-            rhi::Texture* ptr = texture->get();
-            scene->textures.push_back(std::move(*texture));
+            const TextureId ptr = scene->addTexture(std::move(*texture));
             uploaded[index] = ptr;
             return ptr;
         }
@@ -164,15 +162,15 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
         if (!texture) {
             return std::unexpected(uploadFailure(std::move(texture.error())));
         }
-        rhi::Texture* ptr = texture->get();
-        scene->textures.push_back(std::move(*texture));
+        const TextureId ptr = scene->addTexture(std::move(*texture));
         uploaded[index] = ptr;
         return ptr;
     };
 
-    scene->materials.reserve(gltfScene.materials.size());
+    std::vector<MaterialId> materialIds;
+    materialIds.reserve(gltfScene.materials.size());
     for (const asset::GltfMaterial& src : gltfScene.materials) {
-        render::Material material;
+        MaterialRecord material;
         // glTF factors are linear; texture color-space conversion happens in the texture view.
         material.albedo = src.baseColorFactor;
         material.alphaMode = src.alphaMode == asset::GltfAlphaMode::Mask
@@ -224,28 +222,25 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
             }
             material.emissiveMap = *texture;
         }
-        scene->materials.push_back(material);
+        materialIds.push_back(scene->addMaterial(material));
     }
 
     // Release decoded CPU images as soon as all referenced textures are resident.
     gltfScene.images.clear();
     gltfScene.images.shrink_to_fit();
 
-    scene->meshes.reserve(gltfScene.meshes.size());
+    std::vector<MeshId> meshIds;
+    meshIds.reserve(gltfScene.meshes.size());
     for (size_t i = 0; i < gltfScene.meshes.size(); ++i) {
-        auto mesh = render::createMesh(device, render::fromGeo(gltfScene.meshes[i]),
-                                       std::string(sceneName) + ".mesh" + std::to_string(i));
-        if (!mesh) {
-            return std::unexpected(uploadFailure(std::move(mesh.error())));
-        }
-        scene->meshes.push_back(std::move(*mesh));
+        meshIds.push_back(scene->addMesh(render::fromGeo(gltfScene.meshes[i]),
+                                         std::string(sceneName) + ".mesh" + std::to_string(i)));
     }
 
     scene->objects.reserve(gltfScene.instances.size());
     for (size_t i = 0; i < gltfScene.instances.size(); ++i) {
         const asset::GltfInstance& instance = gltfScene.instances[i];
         if (instance.meshIndex >= gltfScene.meshes.size() ||
-            instance.materialIndex >= scene->materials.size()) {
+            instance.materialIndex >= materialIds.size()) {
             return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                      std::string(sceneName) +
                                                          " scene: instance index is out of range"});
@@ -258,12 +253,12 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
                     " scene: a node's world transform could not be decomposed into "
                     "position/rotation/scale"});
         }
-        scene->objects.push_back({.name = instance.sourceName,
-                                  .position = decomposed->position,
-                                  .eulerDegrees = decomposed->eulerDegrees,
-                                  .scale = decomposed->scale,
-                                  .meshIndex = instance.meshIndex,
-                                  .materialIndex = instance.materialIndex});
+        scene->addObject({.name = instance.sourceName,
+                          .position = decomposed->position,
+                          .eulerDegrees = decomposed->eulerDegrees,
+                          .scale = decomposed->scale,
+                          .mesh = meshIds[instance.meshIndex],
+                          .material = materialIds[instance.materialIndex]});
         SceneObject& object = scene->objects.back();
         object.sourceName = instance.sourceName;
         object.materialQualifier = instance.materialQualifier;
@@ -309,7 +304,7 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
     glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
     for (const SceneObject& object : scene->objects) {
         const glm::mat4 model = object.modelMatrix();
-        const asset::GeoData& mesh = gltfScene.meshes[object.meshIndex];
+        const asset::GeoData& mesh = gltfScene.meshes[object.mesh.slot];
         for (const asset::VertexPNTU& v : mesh.vertices) {
             const glm::vec3 world = glm::vec3(model * glm::vec4(v.px, v.py, v.pz, 1.0f));
             aabbMin = glm::min(aabbMin, world);
@@ -329,6 +324,9 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
         return std::unexpected(sky.error());
     }
 
+    if (auto finalized = scene->finalize(device); !finalized) {
+        return std::unexpected(uploadFailure(std::move(finalized.error())));
+    }
     return scene;
 }
 
@@ -392,30 +390,43 @@ void Scene::followCameraTrack(render::Camera& camera) const {
 //======================================================================================================================
 render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
                               bool wireframe) const {
+    validateObjects();
     items.clear();
     items.reserve(objects.size());
     for (const SceneObject& object : objects) {
-        LMX_ASSERT(object.meshIndex < meshes.size(), "SceneObject.meshIndex out of range");
-        LMX_ASSERT(object.materialIndex < materials.size(),
-                   "SceneObject.materialIndex out of range");
-        render::Material material = materials[object.materialIndex];
-        material.emissive *= object.emissiveStrength;
-        items.push_back({.mesh = &meshes[object.meshIndex],
-                         .model = object.modelMatrix(),
-                         .material = material,
-                         .previousModel = object.previousModel,
-                         .motionClass = object.motionClass});
+        const auto* mesh = tryMesh(object.mesh);
+        LMX_ASSERT(mesh, "SceneObject mesh identity is invalid");
+        const MaterialRecord& factors = material(object.material);
+        const auto texture = [this](std::optional<TextureId> id) -> rhi::Texture* {
+            if (!id) {
+                return nullptr;
+            }
+            rhi::Texture* resolved = tryTexture(*id);
+            LMX_ASSERT(resolved, "material texture identity is invalid");
+            return resolved;
+        };
+        items.push_back({.instanceRow = object.id.slot,
+                         .mesh = *mesh,
+                         .diffuse = texture(factors.diffuse),
+                         .normalMap = texture(factors.normalMap),
+                         .metallicRoughness = texture(factors.metallicRoughness),
+                         .occlusion = texture(factors.occlusion),
+                         .emissiveMap = texture(factors.emissiveMap),
+                         .alphaMode = factors.alphaMode,
+                         .doubleSided = factors.doubleSided});
     }
 
     render::SceneView sceneView;
     sceneView.items = items;
+    sceneView.tables = tables();
     for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
         sceneView.lights[i] = lights[i];
     }
     sceneView.boundingSphere = boundingSphere;
     // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
     if (skyCubemap != nullptr) {
-        sceneView.skySphere = &skySphere;
+        LMX_ASSERT(skySphere && tryMesh(*skySphere), "sky mesh identity is invalid");
+        sceneView.skySphere = *tryMesh(*skySphere);
         sceneView.skyCubemap = skyCubemap.get();
     }
     // The IBL set is generated from that same sky and published with it, so a scene that shows a

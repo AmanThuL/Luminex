@@ -125,6 +125,12 @@ Escalate in this order:
 5. Add a narrow engine-side diagnostic or inspect the capture in Xcode when the dump cannot establish
    command order or binding state.
 
+Metal4 argument tables clear texture slots at each render/compute pass before binding the
+resources that pass uses. This prevents unused slots from naming retired transient textures
+when Xcode enumerates bindings. Draw/dispatch snapshots preserve earlier work. On Xcode 26.6,
+use **Bound** resources for inspection; **Accessed** mode is unavailable for Metal4. Scene draws
+show shared geometry at b0, the 16-byte draw selector at b1, instances at b5 and materials at b6.
+
 Keep captures and dump directories outside the repository. A postmortem records only the durable
 symptom, evidence, root cause, correction, and prevention.
 

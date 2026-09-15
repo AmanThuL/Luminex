@@ -1,4 +1,11 @@
 #include "GpuTemporalTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // The picture an upscaled frame presents covers the whole output extent. The scene fills the view,
@@ -13,7 +20,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -32,9 +39,9 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(renderer.has_value());
 
     const glm::mat4 model = facingPlaneModel(-2.0f);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
     view.temporal.reconstruction = lmx::render::ReconstructionMode::Raw;
@@ -92,7 +99,7 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -101,12 +108,12 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     REQUIRE(renderer.has_value());
 
     const glm::mat4 model = facingPlaneModel(-2.0f);
-    const std::array<DrawItem, 1> items = {
-        DrawItem{.mesh = &*plane,
-                 .model = model,
-                 .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}},
-                 .previousModel = model}};
-    SceneView view = temporalSceneView(items);
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{
+        .mesh = &*plane,
+        .model = model,
+        .material = {.albedo = {0.0f, 0.0f, 0.0f, 1.0f}, .emissive = {0.5f, 0.5f, 0.5f}},
+        .previousModel = model}};
+    FixtureSceneView view = temporalSceneView(items);
     for (auto& light : view.lights) {
         light.strength = {};
     }
@@ -160,7 +167,7 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -175,12 +182,12 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     const glm::mat4 previousModel = glm::translate(glm::mat4{1.0f}, delta) * model;
 
     const Camera camera;
-    const std::array<DrawItem, 1> first = {
-        DrawItem{.mesh = &*plane, .model = previousModel, .previousModel = previousModel}};
-    const std::array<DrawItem, 1> second = {
-        DrawItem{.mesh = &*plane, .model = model, .previousModel = previousModel}};
+    const std::array<FixtureDrawItem, 1> first = {
+        FixtureDrawItem{.mesh = &*plane, .model = previousModel, .previousModel = previousModel}};
+    const std::array<FixtureDrawItem, 1> second = {
+        FixtureDrawItem{.mesh = &*plane, .model = model, .previousModel = previousModel}};
 
-    SceneView view = temporalSceneView(first);
+    FixtureSceneView view = temporalSceneView(first);
     view.temporal.enabled = true;
     view.temporal.renderScale = 0.5f;
     renderFrame(**device, **renderer, camera, view);
@@ -227,15 +234,15 @@ TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][tempor
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    const std::vector<DrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
-    SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const std::vector<FixtureDrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
     base.temporal.renderScale = 0.5f;
 
     auto rawRenderer =
@@ -279,20 +286,20 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    const std::vector<DrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
-    SceneView upscaledBase = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const std::vector<FixtureDrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
+    FixtureSceneView upscaledBase = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
     upscaledBase.temporal.renderScale = 0.5f;
-    SceneView nativeBase = upscaledBase;
+    FixtureSceneView nativeBase = upscaledBase;
     nativeBase.temporal.renderScale = 1.0f;
 
-    const auto sequence = [&](const SceneView& base, ReconstructionMode mode) {
+    const auto sequence = [&](const FixtureSceneView& base, ReconstructionMode mode) {
         auto renderer =
             Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
@@ -325,17 +332,17 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     // The M6.2 thin-geometry framing: the poles stand on the floor and entirely below the horizon,
     // so an uncovered sample reprojects onto real geometry rather than onto empty background.
     const Camera camera = scenarioCamera({0.0f, 2.0f, 4.0f}, -0.16f);
     const float poleWidth = 2.0f / pixelsPerUnit(camera, 14.0f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(*plane, glm::mat4{1.0f}, {0.30f, 0.30f, 0.30f, 1.0f}));
     for (int32_t i = -2; i <= 2; ++i) {
         items.push_back(staticItem(
@@ -345,12 +352,12 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
     }
     // Travelling -Z: the poles' camera-facing sides take the light and the floor's upward normal
     // takes none of it, so a pole pixel is the only thing a luminance threshold can find.
-    SceneView upscaledBase = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    FixtureSceneView upscaledBase = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
     upscaledBase.temporal.renderScale = 0.5f;
-    SceneView nativeBase = upscaledBase;
+    FixtureSceneView nativeBase = upscaledBase;
     nativeBase.temporal.renderScale = 1.0f;
 
-    const auto sequence = [&](const SceneView& base, ReconstructionMode mode) {
+    const auto sequence = [&](const FixtureSceneView& base, ReconstructionMode mode) {
         auto renderer =
             Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
@@ -407,21 +414,21 @@ TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();
-    const std::vector<DrawItem> items = movingQuadItems(camera, *cube, *plane);
+    const std::vector<FixtureDrawItem> items = movingQuadItems(camera, *cube, *plane);
     // Facing the camera, so both the quad and the backdrop take the light and the two differ by
     // albedo alone -- which is what makes the luminance contrast a number the tolerance can scale.
-    SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
     base.temporal.renderScale = 0.5f;
 
-    const PerFrame animate = [&camera](uint32_t frame, SceneView& view, Camera&) {
-        auto* drawn = const_cast<DrawItem*>(view.items.data());
+    const PerFrame animate = [&camera](uint32_t frame, FixtureSceneView& view, Camera&) {
+        auto* drawn = const_cast<FixtureDrawItem*>(view.items.data());
         drawn[1].model = movingQuadModel(camera, frame);
         drawn[1].previousModel = movingQuadModel(camera, frame == 1 ? 1 : frame - 1);
     };
@@ -500,16 +507,16 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     constexpr uint32_t kFirstStepFrame = 17;
     constexpr uint32_t kLastStepFrame = 27;
@@ -522,7 +529,7 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
         const uint32_t step = std::min(frame, uint32_t{kLastStepFrame}) - uint32_t{kFirstStepFrame};
         return std::max(0.5f, 1.0f - 0.05f * static_cast<float>(step));
     };
-    const PerFrame animate = [&scaleForFrame](uint32_t frame, SceneView& view, Camera&) {
+    const PerFrame animate = [&scaleForFrame](uint32_t frame, FixtureSceneView& view, Camera&) {
         view.temporal.renderScale = scaleForFrame(frame);
     };
 
@@ -566,7 +573,7 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
 
     // A frame with temporal off rasterises at the output extent whatever the scale field says, and
     // has no history to have survived anything, so it must not be recorded as a scale change.
-    SceneView off = base;
+    FixtureSceneView off = base;
     off.temporal.enabled = false;
     off.temporal.renderScale = 0.5f;
     renderFrame(**device, **renderer, camera, off);
@@ -591,22 +598,23 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();
-    std::vector<DrawItem> items = movingQuadItems(camera, *cube, *plane);
-    SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    std::vector<FixtureDrawItem> items = movingQuadItems(camera, *cube, *plane);
+    FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     constexpr uint32_t kFrames = 32;
     // Odd frames at half scale, even frames at full: the extent changes on every single frame.
     const auto scaleForFrame = [](uint32_t frame) { return frame % 2 == 1 ? 0.5f : 1.0f; };
-    const PerFrame animate = [&camera, &scaleForFrame](uint32_t frame, SceneView& view, Camera&) {
+    const PerFrame animate = [&camera, &scaleForFrame](uint32_t frame, FixtureSceneView& view,
+                                                       Camera&) {
         view.temporal.renderScale = scaleForFrame(frame);
-        auto* drawn = const_cast<DrawItem*>(view.items.data());
+        auto* drawn = const_cast<FixtureDrawItem*>(view.items.data());
         drawn[1].model = movingQuadModel(camera, frame);
         drawn[1].previousModel = movingQuadModel(camera, frame == 1 ? 1 : frame - 1);
     };
@@ -628,7 +636,7 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
     taau.reserve(kFrames);
     heapBytes.reserve(kFrames);
     for (uint32_t frame = 1; frame <= kFrames; ++frame) {
-        SceneView view = base;
+        FixtureSceneView view = base;
         Camera frameCamera = camera;
         view.temporal.enabled = true;
         view.temporal.jitterEnabled = true;
@@ -640,7 +648,9 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
         transients.beginFrame();
         lmx::render::RenderGraph graph(transients);
         const lmx::render::GraphTexture display =
-            (*taauRenderer)->declarePasses(graph, commands, frameCamera, view);
+            (*taauRenderer)
+                ->declarePasses(graph, commands, frameCamera,
+                                lmx::test::prepareSceneView(view, device));
         graph.exportTexture(display);
         const lmx::render::CompiledFrameRecord record =
             graph.execute(commands, (*device)->frameNumber());

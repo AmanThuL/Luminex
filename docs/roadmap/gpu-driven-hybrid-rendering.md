@@ -9,7 +9,8 @@ shipped capabilities. Numerical order alone does not determine when an area may 
 
 ## Entry from the rendering foundation
 
-The next rendering slice is M7.1; [Editor Experience](editor-experience.md#placement-and-ownership)
+M7.1 is implemented and owner-accepted; [its record](../milestones/m7.1.md) retains evidence and
+limits. [Editor Experience](editor-experience.md#placement-and-ownership)
 owns the accepted UX1-before-M7.1 delivery order, and
 [Neural and Learned Rendering](neural-rendering.md#placement-and-ownership) owns the accepted
 order after M7: N1 → M9 → M8 → M10 → M11. That order sets priority; the gates below are unchanged.
@@ -19,19 +20,20 @@ approves entry in its [2026-09-13 review](../milestones/interface-gate-b.md), af
 The review verifies ADR 0010 conformance and the temporal, root-data, binding, synchronization
 and capability contracts; [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) records the
 minimal scene-identity/update semantics the first consumers must implement. M6.5 closure and EDR
-DEFER did not by themselves pass the review. M7.1 still requires its own implementation plan.
+DEFER did not by themselves pass the review. M7.1 implementation and validation, including Xcode
+Replay, are complete. On 2026-09-15 the owner accepted the result after manual verification,
+including the scoped MetalFX profile (15/15); original image criteria remain 11/15.
+[Its record](../milestones/m7.1.md) owns both results and limits. The executor plan is closed;
+the owner approved main integration on 2026-09-15 and M7.2 remains inactive.
 
-The present `SceneView` borrows a frame-local span of `DrawItem`s with mesh/texture references,
-copied materials, current/previous transforms and a per-item motion class; masked materials select
-dedicated pipelines by alpha mode, cutoff and double-sided flag. The renderer binds per-object
-frame data and encodes indexed draws inside the `ShadowStage`/`SceneStage` owners and shared
-`FrameDeclaration` that [R1.4](codebase-refactoring.md#r14--renderer-seams-for-m7) created; the
-scene exposes three directional lights and no point or spot light. The RHI already offers compute
-passes, buffer barriers and indirect draws/dispatches over RHI-owned argument layouts, yet no
-frustum culling exists on either processor. M7.1 therefore first makes the retained CPU draw path
-consume shared GPU identities/tables inside those stages. M7.2 adds the CPU visibility reference
-and the indirect-draw baseline that M7.3's GPU visibility is measured against; M7.5 adds the
-point/spot light model before clustered assignment.
+The current implementation supplies shared scene identities and paced GPU tables to the retained
+CPU draw path. `SceneView` borrows row selectors, mesh ranges and resolved texture pointers;
+instance/material rows carry transforms, motion and material factors. ShadowStage and SceneStage
+retain one indexed command and texture binding set per object, with shared geometry and table
+bindings. The [architecture](../architecture/overview.md) owns the current implementation details.
+No frustum culling exists on either processor. M7.2 adds the CPU visibility reference and indirect
+baseline against which M7.3 measures GPU visibility; M7.5 adds point/spot lights before clustered
+assignment. Existing three-directional-light semantics and temporal inputs remain the reference.
 
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).
 M5.6 does not establish a production speedup or select ICB. The M6.4 manual/capture checks and
