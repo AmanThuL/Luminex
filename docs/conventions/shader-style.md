@@ -10,7 +10,8 @@
   and unresolved imports in local policy and CI, ignoring commented-out examples.
 - Globals: `gPascalCase` resources, `kPascalCase` constants. Explicit flat binding indices map 1:1
   to `MTL4ArgumentTable` slots in the current API; any replacement binding model or D3D12 lowering
-  must update this convention with its shader ABI.
+  must update this convention with its shader ABI. The shared buffer namespace has 16 slots;
+  texture and sampler namespaces retain 16 and 8 slots respectively.
 - Build: Slang → MSL source → `xcrun metal -std=metal4.0` → `.metallib` (two-step; see ADR 0003).
   Generated `.metal` stays in the build tree for debugging — read it when a shader misbehaves.
   `xmake/shaders.lua` passes the module search directory and tracks all `.slang` sources recursively;

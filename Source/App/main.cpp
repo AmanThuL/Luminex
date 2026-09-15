@@ -336,6 +336,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         lmx::render::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(),
                                             view, shell->poolingEnabled());
+        shell->retireVisibility(**renderer);
         shell->observeDeclaration(**renderer, (*device)->frameNumber());
         lmx::render::RenderGraph& graph = frame.graph();
         const lmx::render::GraphTexture displayColor =
@@ -386,8 +387,11 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                                               .count(),
                                           measuredRecord->record);
         }
-        if (shell->measurementNeedsRetirementWait())
+        if (shell->measurementNeedsRetirementWait()) {
             (*device)->waitIdle();
+            (*renderer)->drainVisibilityAfterIdle();
+            shell->retireVisibility(**renderer);
+        }
         ++presentedFrames;
 
         // Platform viewports follow the present because the ImGui backend renders each extra window
@@ -434,6 +438,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
     // Establish one explicit idle boundary before dependent resources unwind.
     (*device)->waitIdle();
+    (*renderer)->drainVisibilityAfterIdle();
+    shell->retireVisibility(**renderer);
 
     LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,
                  skippedFrames, frameIndex);
@@ -503,7 +509,8 @@ int main(int argc, char** argv) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
                                        options->frames, options->temporal, options->temporalView,
                                        options->renderScale, options->visibilityEnabled,
-                                       options->submission, options->labInstances);
+                                       options->submission, options->labInstances,
+                                       options->classifyMode, options->classifyCheck);
     }
     if (options->mode == lmx::app::RunMode::CaptureSequence) {
         return lmx::app::runCaptureSequence(*options);

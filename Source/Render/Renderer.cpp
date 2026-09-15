@@ -7,6 +7,7 @@
 #include "Render/BloomStage.h"
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"
+#include "Render/GpuVisibility.h"
 #include "Render/VendorTemporalScaler.h"
 #include <chrono>
 
@@ -74,6 +75,7 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createZeroDfgTexture(rhi::Device& dev
 void registerUniformLayoutsForCapture() {
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
+    registerVisibilityLayoutsForCapture();
     SceneStage::registerPassLayoutsForCapture();
 }
 
@@ -481,28 +483,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
 
-    const auto classifyBegin = std::chrono::steady_clock::now();
     const auto planes = extractFrustumPlanes(temporalEnabled ? cameraState.viewProjectionJittered
                                                              : cameraState.viewProjection);
-    m_visibilityStatus.frameNumber = m_device.frameNumber();
-    m_visibilityStatus.sceneGeneration = view.temporal.sceneGeneration;
-    m_visibilityStatus.scene =
-        classifyView(planes, view.items, view.tables, view.visibilityEnabled);
-    m_visibilityStatus.shadow =
-        classifyView(planes, view.items, view.tables, view.visibilityEnabled, true);
-    const auto prepareBegin = std::chrono::steady_clock::now();
-    m_visibilityStatus.classifyMs =
-        std::chrono::duration<double, std::milli>(prepareBegin - classifyBegin).count();
-    const auto prepared = m_drawSubmission.prepare(
-        m_device.frameNumber(), view, m_visibilityStatus.scene, m_visibilityStatus.shadow);
-    LMX_ASSERT(prepared.has_value(), prepared.error().message);
-    m_visibilityStatus.prepareMs =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prepareBegin)
-            .count();
-    m_visibilityStatus.submission = m_drawSubmission.stats();
-    const auto drawRows = graph.importBuffer(*m_drawSubmission.scene().rows, "lmx.draw.rows");
-    const auto drawArguments =
-        graph.importBuffer(*m_drawSubmission.scene().arguments, "lmx.draw.args");
+    const auto drawBuffers = prepareVisibility(graph, commands, view, planes, sceneBuffers);
+    const auto drawRows = drawBuffers[0];
+    const auto drawArguments = drawBuffers[1];
 
     const GraphTexture shadowRead =
         m_shadowStage->declare(graph, commands, view,

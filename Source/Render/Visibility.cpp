@@ -53,7 +53,12 @@ InstanceVisibility classifyInstance(const FrustumPlanes& planes, const InstanceR
         const glm::vec3 positive{plane.x >= 0 ? row.worldBoundsMax.x : row.worldBoundsMin.x,
                                  plane.y >= 0 ? row.worldBoundsMax.y : row.worldBoundsMin.y,
                                  plane.z >= 0 ? row.worldBoundsMax.z : row.worldBoundsMin.z};
-        if (glm::dot(glm::vec3(plane), positive) + plane.w < 0) {
+        const float x = plane.x * positive.x;
+        const float y = plane.y * positive.y;
+        const float z = plane.z * positive.z;
+        const float xy = x + y;
+        const float xyz = xy + z;
+        if (xyz + plane.w < 0) {
             result.state = VisibilityState::Rejected;
             break;
         }

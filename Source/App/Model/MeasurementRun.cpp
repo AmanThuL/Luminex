@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/MeasurementRun.h"
 
-#include "Core/Json.h"
+#include "App/Model/VisibilityDiagnostics.h"
 
 #include <algorithm>
 #include <cmath>
@@ -14,22 +14,6 @@
 
 namespace lmx::app {
 namespace {
-
-//======================================================================================================================
-std::string quote(std::string_view value) {
-    return "\"" + jsonEscape(value) + "\"";
-}
-
-//======================================================================================================================
-std::string pairsJson(const std::vector<std::pair<std::string, std::string>>& pairs) {
-    std::string out = "{";
-    for (size_t i = 0; i < pairs.size(); ++i) {
-        if (i)
-            out += ',';
-        out += quote(pairs[i].first) + ':' + quote(pairs[i].second);
-    }
-    return out + '}';
-}
 
 //======================================================================================================================
 bool validTime(double value) {
@@ -57,6 +41,7 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     m_samples.clear();
     m_failure.clear();
     m_submitted = 0;
+    m_firstFrameId = 0;
     m_lastFrameId = 0;
     if (m_plan.measuredFrames == 0 || m_plan.width == 0 || m_plan.height == 0 ||
         uint64_t{m_plan.warmupFrames} + m_plan.measuredFrames >
@@ -69,6 +54,16 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     if (!m_plan.interactive && !m_plan.unscored &&
         measurementEnvironmentInstrumented(m_provenance)) {
         cancel("Scored measurement refuses validation/capture instrumentation; use --unscored");
+        return false;
+    }
+    if (m_plan.classify != "cpu" && m_plan.classify != "gpu") {
+        cancel("Unknown measurement classifier");
+        return false;
+    }
+    if ((m_plan.classify == "gpu" && m_plan.submission == "direct") ||
+        (m_plan.classifyCheck && m_plan.classify != "gpu") ||
+        (m_plan.classifyCheck && !m_plan.interactive && !m_plan.unscored)) {
+        cancel("Invalid classifier/submission or scored check-mode plan");
         return false;
     }
     const auto validHash = [](std::string_view hash) {
@@ -112,13 +107,29 @@ bool MeasurementRun::recordCpu(MeasurementCpuSample sample) {
         (m_lastFrameId != 0 && sample.frameId != m_lastFrameId + 1) ||
         !validTime(sample.classifyMs) || !validTime(sample.prepareMs) ||
         !validTime(sample.encodeMs) || !validTime(sample.slotWaitMs) ||
-        sample.visible + uint64_t{sample.rejected} != sample.candidates) {
+        classifyModeName(sample.classifyMode) != m_plan.classify ||
+        (sample.classifyMode == render::ClassifyMode::Cpu &&
+         sample.visible + uint64_t{sample.rejected} != sample.candidates)) {
         cancel("Missing, unordered, or invalid CPU measurement frame");
         return false;
     }
+    if (m_firstFrameId == 0)
+        m_firstFrameId = sample.frameId;
     m_lastFrameId = sample.frameId;
-    if (next->ordinal)
+    if (sample.vendorFallback != 0) {
+        cancel("Requested reconstruction fell back during measurement");
+        return false;
+    }
+    if (next->ordinal) {
         m_samples.push_back({.cpu = sample});
+        if (sample.classifyMode == render::ClassifyMode::Cpu) {
+            render::VisibilityStatus status;
+            status.frameNumber = sample.frameId;
+            status.sceneCounters = sample.sceneCounters;
+            status.shadowCounters = sample.shadowCounters;
+            m_samples.back().visibility = std::move(status);
+        }
+    }
     ++m_submitted;
     m_state =
         m_submitted < m_plan.warmupFrames ? MeasurementState::Warmup : MeasurementState::Measuring;
@@ -172,9 +183,59 @@ bool MeasurementRun::retire(uint64_t frameId, std::span<const rhi::PassTiming> p
 }
 
 //======================================================================================================================
+bool MeasurementRun::retireVisibility(const render::VisibilityStatus& status) {
+    if (!active())
+        return false;
+    if (m_firstFrameId == 0 || status.frameNumber < m_firstFrameId)
+        return true;
+    if (status.frameNumber > m_lastFrameId) {
+        cancel("GPU visibility publication has no matching submitted measurement frame");
+        return false;
+    }
+    const auto found = std::ranges::find_if(
+        m_samples, [&](const auto& sample) { return sample.cpu.frameId == status.frameNumber; });
+    if (found == m_samples.end()) {
+        if (const auto failure = visibilityFailure(status); !failure.empty()) {
+            cancel(failure);
+            return false;
+        }
+        return true;
+    }
+    if (status.classifyMode != found->cpu.classifyMode || !status.isRetired ||
+        status.checkEnabled != m_plan.classifyCheck) {
+        cancel("GPU visibility publication differs from the declared classifier");
+        return false;
+    }
+    if (const auto failure = visibilityFailure(status); !failure.empty()) {
+        found->visibility = status;
+        cancel(failure);
+        return false;
+    }
+    if (status.sceneCounters.candidates != found->cpu.candidates) {
+        cancel("GPU visibility candidate count differs from declaration");
+        return false;
+    }
+    if (found->visibility &&
+        visibilityDiagnosticsJson(*found->visibility) != visibilityDiagnosticsJson(status)) {
+        cancel("Conflicting duplicate GPU visibility publication");
+        return false;
+    }
+    found->visibility = status;
+    found->cpu.listBytes = status.submission.listBytes;
+    // Reports need counters, not potentially million-entry diagnostic arrays.
+    found->visibility->scene = {};
+    found->visibility->shadow = {};
+    completeIfReady();
+    return true;
+}
+
+//======================================================================================================================
 void MeasurementRun::completeIfReady() {
     if (m_state == MeasurementState::Draining && m_samples.size() == m_plan.measuredFrames &&
-        std::ranges::all_of(m_samples, &MeasurementSample::retired))
+        std::ranges::all_of(m_samples, [](const auto& sample) {
+            return sample.retired && (sample.cpu.classifyMode == render::ClassifyMode::Cpu ||
+                                      sample.visibility.has_value());
+        }))
         m_state = MeasurementState::Complete;
 }
 
@@ -195,61 +256,4 @@ void MeasurementRun::cancel(std::string reason) {
     m_state = MeasurementState::Cancelled;
 }
 
-//======================================================================================================================
-std::string MeasurementRun::json() const {
-    const bool complete = m_state == MeasurementState::Complete;
-    std::string out = std::format(
-        "{{\"schemaVersion\":1,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
-        complete, complete && !m_plan.interactive && !m_plan.unscored, m_plan.interactive,
-        quote(m_failure));
-    out += "\"pacing\":\"serialized-retirement\",\"timingScope\":{\"encodeMs\":\"after beginFrame "
-           "through endFrame commit; excludes slot wait and post-submit retirement "
-           "wait\",\"slotWaitMs\":\"beginFrame including timing publication\",\"gpuSumMs\":\"sum "
-           "of timed passes; excludes presentation, driver and untimed work; not throughput\"},";
-    out += std::format(
-        "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
-        "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"
-        "},\"cameraTrack\":{},\"renderScale\":{},\"stepSeconds\":0.016666666666666666}},",
-        m_plan.warmupFrames, m_plan.measuredFrames, m_plan.width, m_plan.height,
-        m_plan.labInstances, quote(m_plan.scene), quote(m_plan.temporal), quote(m_plan.submission),
-        m_plan.visibilityEnabled, m_plan.cameraTrack, m_plan.renderScale);
-    out += "\"provenance\":{\"device\":" + quote(m_provenance.device) +
-           ",\"os\":" + quote(m_provenance.os) + ",\"buildMode\":" + quote(m_provenance.buildMode) +
-           ",\"executableHash\":" + quote(m_provenance.executableHash) +
-           ",\"shaderHashes\":" + pairsJson(m_provenance.shaderHashes) +
-           ",\"environment\":" + pairsJson(m_provenance.environment) + "},\"samples\":[";
-    for (size_t i = 0; i < m_samples.size(); ++i) {
-        if (i)
-            out += ',';
-        const auto& sample = m_samples[i];
-        const auto& c = sample.cpu;
-        out += std::format(
-            "{{\"ordinal\":{},\"frameId\":{},\"sequenceFrame\":{},\"classifyMs\":{},\"prepareMs\":{"
-            "},\"encodeMs\":{},\"slotWaitMs\":{},\"candidates\":{},\"visible\":{},\"rejected\":{},"
-            "\"sceneCommands\":{},\"shadowCommands\":{},\"tableBytes\":{},\"listBytes\":{},"
-            "\"argumentBytes\":{},\"transientBytes\":{},\"retired\":{},\"gpuSumMs\":",
-            i, c.frameId, c.sequenceFrame, c.classifyMs, c.prepareMs, c.encodeMs, c.slotWaitMs,
-            c.candidates, c.visible, c.rejected, c.sceneCommands, c.shadowCommands, c.tableBytes,
-            c.listBytes, c.argumentBytes, c.transientBytes, sample.retired);
-        // Actual reconstruction extents may differ from requested scale under vendor clamps.
-        double sum = 0;
-        for (const auto& pass : sample.passes)
-            sum += pass.gpuMilliseconds;
-        out += sample.retired ? std::format("{}", sum) : "null";
-        out += std::format(
-            ",\"renderWidth\":{},\"renderHeight\":{},\"outputWidth\":{},\"outputHeight\":{},"
-            "\"effectiveScale\":{},\"effectiveReconstruction\":{},\"vendorFallback\":{}",
-            c.renderWidth, c.renderHeight, c.outputWidth, c.outputHeight, c.effectiveScale,
-            c.effectiveReconstruction, c.vendorFallback);
-        out += ",\"passes\":[";
-        for (size_t j = 0; j < sample.passes.size(); ++j) {
-            if (j)
-                out += ',';
-            out += std::format("{{\"label\":{},\"gpuMs\":{}}}", quote(sample.passes[j].label),
-                               sample.passes[j].gpuMilliseconds);
-        }
-        out += "]}";
-    }
-    return out + "]}\n";
-}
 } // namespace lmx::app

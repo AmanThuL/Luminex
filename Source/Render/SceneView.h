@@ -127,6 +127,8 @@ struct TemporalStatus {
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
 struct SceneView {
+    ClassifyMode classifyMode = ClassifyMode::Cpu; ///< CPU default or fixed-slot GPU classifier.
+    bool classifyCheck = false;    ///< Compare retired GPU output against the CPU oracle.
     bool visibilityEnabled = true; ///< Conservatively cull camera candidates.
     SubmissionMode submission = SubmissionMode::Indirect; ///< CPU command preparation mode.
     SceneTables tables;              ///< Borrowed geometry and paced row buffers for this frame.

@@ -617,7 +617,7 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                                .selection = m_selection,
                                                .filter = m_sceneFilter,
                                                .visibilityDisplay = m_visibilityDisplay,
-                                               .visibilityStatus = renderer.visibilityStatus(),
+                                               .visibilityStatus = m_visibilityDisplay.status(),
                                                .sceneGeneration = m_temporalState.sceneGeneration});
         setPanelVisible(EditorPanel::Scene, open);
     }
@@ -746,6 +746,8 @@ void EditorShell::primeTemporal(const AppOptions& options) {
     m_labInstances = options.labInstances;
     m_settings.visibilityEnabled = options.visibilityEnabled;
     m_settings.submission = options.submission;
+    m_settings.classifyMode = options.classifyMode;
+    m_settings.classifyCheck = options.classifyCheck;
 }
 
 //======================================================================================================================
@@ -761,6 +763,8 @@ render::SceneView EditorShell::sceneView() {
     // described itself -- the same way the wireframe and shadow-filter settings are.
     view.visibilityEnabled = m_settings.visibilityEnabled;
     view.submission = m_settings.submission;
+    view.classifyMode = m_settings.classifyMode;
+    view.classifyCheck = m_settings.classifyCheck;
     view.exposureEv = m_settings.exposureEv;
     view.autoExposureEnabled = m_settings.autoExposureEnabled;
     // exposureReset is left at SceneView's default (false); main.cpp sets it from
@@ -803,6 +807,7 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
     }
     const auto& result = renderer.visibilityStatus().scene;
     const bool visible =
+        m_settings.classifyMode == render::ClassifyMode::Gpu ||
         m_selection.index >= result.candidates.size() ||
         result.candidates[m_selection.index].state != render::VisibilityState::Rejected;
     return m_selectionOutline->declare(graph, commands, display, m_session.camera(), view,
@@ -837,7 +842,9 @@ void EditorShell::advanceFrameAnimation() {
 //======================================================================================================================
 uint64_t EditorShell::metricsContextEpoch() {
     const uint64_t key =
-        m_temporalState.sceneGeneration * 128 + static_cast<uint64_t>(m_settings.submission) * 16 +
+        m_temporalState.sceneGeneration * 512 +
+        static_cast<uint64_t>(m_settings.classifyMode) * 128 +
+        (m_settings.classifyCheck ? 256 : 0) + static_cast<uint64_t>(m_settings.submission) * 16 +
         (m_settings.visibilityEnabled ? 8 : 0) +
         static_cast<uint64_t>(m_settings.reconstruction) * 2 + (m_settings.temporalEnabled ? 1 : 0);
     return m_metricsContextRevision.observe(key);
@@ -861,21 +868,6 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
         .renderPixelHeight = m_settings.temporalEnabled ? extents.renderHeight : renderer.height(),
         .outputPixelWidth = renderer.width(),
         .outputPixelHeight = renderer.height()};
-}
-
-//======================================================================================================================
-void EditorShell::observeDeclaration(const render::Renderer& renderer, uint64_t frameId) {
-    observeDeclaredTemporal(m_temporalState, m_settings, renderer.temporalStatus(), frameId);
-    m_visibilityDisplay.observe(m_session.scene(), renderer.visibilityStatus());
-    if (m_measurement.active()) {
-        m_measurementVisibility = renderer.visibilityStatus();
-        m_measurementTemporal = renderer.temporalStatus();
-        if (renderer.width() != m_measurement.plan().width ||
-            renderer.height() != m_measurement.plan().height ||
-            m_settings.visibilityEnabled != m_measurement.plan().visibilityEnabled) {
-            m_measurement.cancel("Viewport or rendering settings changed during measurement");
-        }
-    }
 }
 
 //======================================================================================================================

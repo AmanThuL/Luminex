@@ -107,3 +107,11 @@ Incorrect motion, jitter, exposure or reset can cause real reconstruction defect
 input/sequence evidence when diagnosing differences; do not infer their cause solely from final
 8-bit images. See [exposureTexture](https://developer.apple.com/documentation/metalfx/mtlfxtemporalscalerbase/exposuretexture)
 and [Bring your game to Mac, Part 3](https://developer.apple.com/videos/play/wwdc2023/10125/).
+
+## GPU classification comparisons
+
+Under each submission layout, the GPU/CPU fifteen-image matrix requires exact BMP SHA-256
+equality. Sequence/state/argument equality is a separate gate. CPU default versus parent keeps
+the previously accepted strict and scoped vendor criteria; no new tolerance follows from GPU
+classification. Retain each failed image with its measured differences. The
+[GPU visibility guide](gpu-visibility.md) explains diagnostic mode, overflow and final-frame drains.

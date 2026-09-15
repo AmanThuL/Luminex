@@ -14,6 +14,8 @@ namespace lmx::app {
 /// from becoming two parallel settings.
 struct EditorRenderSettings {
     bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
+    render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.
+    bool classifyCheck = false; ///< Compare retired GPU work against the CPU oracle.
     render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
     bool wireframe = false; ///< Draws the scene in wireframe.
     /// Shadow filtering kernel, applied by the scene pass.
