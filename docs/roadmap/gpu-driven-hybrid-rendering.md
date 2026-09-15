@@ -91,7 +91,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.2 — CPU visibility reference and indirect baseline
 
-**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 remains inactive.
+**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 is authorized for execution under its active implementation plan.
 
 **Outcome:** A maintained CPU frustum-visibility oracle and a competent indirect-draw production baseline over the shared tables give M7.3 a measured reference.
 
