@@ -24,15 +24,15 @@ DEFER did not by themselves pass the review. M7.1 implementation and validation,
 Replay, are complete. On 2026-09-15 the owner accepted the result after manual verification,
 including the scoped MetalFX profile (15/15); original image criteria remain 11/15.
 [Its record](../milestones/m7.1.md) owns both results and limits. The executor plan is closed;
-the owner approved main integration on 2026-09-15 and M7.2 remains inactive.
+the owner approved main integration on 2026-09-15. [M7.2 acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) also authorizes integration after manual review on that date, retaining original/revised failed image gates (13/15 and 9/15); its plan is closed.
 
 The current implementation supplies shared scene identities and paced GPU tables to the retained
 CPU draw path. `SceneView` borrows row selectors, mesh ranges and resolved texture pointers;
 instance/material rows carry transforms, motion and material factors. ShadowStage and SceneStage
 retain one indexed command and texture binding set per object, with shared geometry and table
 bindings. The [architecture](../architecture/overview.md) owns the current implementation details.
-No frustum culling exists on either processor. M7.2 adds the CPU visibility reference and indirect
-baseline against which M7.3 measures GPU visibility; M7.5 adds point/spot lights before clustered
+M7.2 implements the CPU visibility reference and indirect baseline, owner-accepted for integration; GPU frustum classification
+remains M7.3 scope and measures against that reference; M7.5 adds point/spot lights before clustered
 assignment. Existing three-directional-light semantics and temporal inputs remain the reference.
 
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).
@@ -90,6 +90,8 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 **Defer:** Visibility to M7.2–M7.3, occlusion to M7.4 and local lighting to M7.5; general scene/residency systems remain out of scope.
 
 ## M7.2 — CPU visibility reference and indirect baseline
+
+**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 remains inactive.
 
 **Outcome:** A maintained CPU frustum-visibility oracle and a competent indirect-draw production baseline over the shared tables give M7.3 a measured reference.
 

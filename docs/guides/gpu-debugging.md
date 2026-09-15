@@ -2,23 +2,24 @@
 
 **Status**: Implemented
 
-Use a capture when rendered output is wrong, a timing trace when the question is performance, and a
-render-graph dump when the question is what the frame declared. All three depend on meaningful GPU
-object and pass labels.
+Use a capture for wrong rendered output, a timing trace for performance, and a render-graph dump for frame declarations. All three depend on meaningful GPU object and pass labels.
 
 Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using
 collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
 tips while disabled controls retain visible reasons. The Inspector’s Rendering subject has a
-read-only Display details section: output domain, encoded-space
-SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping. A resize may
-briefly stretch the prior image while debounce settles. PNG screenshots preserve the display
-domain and frame facts in metadata; BMP remains available for exact historical parity.
+read-only Display details section: output domain, encoded-space SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping.
+A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
+
+## Editor playback
+
+The top toolbar selects Scene or Measure and owns one Play/Pause button that switches icons with state, plus separate Stop and Step icons; options hold Follow camera rail.
+Scenes load Stopped. Scene Play captures the current camera/time and animation-owned object poses/emissive strength on first entry; Pause retains the frame, and Step advances 1/60 s and pauses.
+Stop restores that captured preview state and resets motion, temporal and exposure history. Switching scenes first stops/restores the old run. Static scenes still support camera preview; unavailable camera-rail options explain their disabled state.
+The preview shares the scene: rendering settings and unrelated scene edits are outside restoration. Playback, metric freeze and graph freeze remain independent. See [Measure](#measure-visibility-and-submission) for fixed runs.
 
 ## Restore editor settings
 
-Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose
-and lens and stops camera-rail following. Light Reset restores authored direction and scene-linear
-radiance. Object Reset restores its authored transform or samples that object's animated transform
+Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose/lens and stops camera-rail following. Light Reset restores authored direction and scene-linear radiance. Object Reset restores its authored transform or samples that object's animated transform
 at the current playback time, preserving other object edits. Pause scene to retain a manual edit
 to an animated transform; playback replaces it on the next track sample.
 
@@ -62,8 +63,8 @@ Reveal controls. This text dump still contains graph declarations, not GPU timin
 
 ## Console and editor selection diagnostics
 
-Window > Console opens the bounded read-only log viewer. Its default tab sits beside Performance;
-workspace schema 2 adds Console visibility without rebuilding existing saved docking. The store
+Window > Console opens the bounded read-only log viewer, alone in the default bottom dock. Performance and Render Graph use detached native windows, both closed by default; Window > Performance toggles its window.
+Workspace schema 3 restores visibility and geometry. Schema 2 migrates to default topology while preserving valid UI scale; Reset Default Layout closes Performance/Graph and resets Performance's next-open bounds. The store
 retains at most 2,000 messages and 2 MiB of payload, truncating each message at 16 KiB on a UTF-8
 boundary. UTC timestamps, Trace/Debug/Info/Warning/Error/Critical levels, and eviction/truncation
 counts remain visible. Minimum severity and case-insensitive message search filter only display.
@@ -129,7 +130,9 @@ Metal4 argument tables clear texture slots at each render/compute pass before bi
 resources that pass uses. This prevents unused slots from naming retired transient textures
 when Xcode enumerates bindings. Draw/dispatch snapshots preserve earlier work. On Xcode 26.6,
 use **Bound** resources for inspection; **Accessed** mode is unavailable for Metal4. Scene draws
-show shared geometry at b0, the 16-byte draw selector at b1, instances at b5 and materials at b6.
+show vertices at b0, the 16-byte firstEntry selector at b1, visible instance-row indices at b4,
+240-byte instances at b5 and 112-byte materials at b6. Indirect commands use firstInstance as the
+absolute list offset; batched argument indices differ from list offsets. Mesh rows are 48 bytes.
 
 Keep captures and dump directories outside the repository. A postmortem records only the durable
 symptom, evidence, root cause, correction, and prevention.
@@ -198,13 +201,50 @@ The profiler wraps Instruments export and reports encoder-granularity intervals.
 build mode, resolution, validation state, scene, sample count, and cold/warm classification with any
 performance claim. A missing optimized-away empty encoder is not a zero-duration measurement.
 
+## Measure visibility and submission
+
+Rendering > Visibility defaults to culling and indirect submission; direct/batched remain selectable.
+Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
+CPU classify/prepare time. Hierarchy badges and selected-object world bounds name the same retained
+frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
+The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
+Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
+
+Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`.
+VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
+that option requires `--scene visibility-lab`. Its seeded grid and 12-second camera rail are fixed.
+
+```sh
+xmake run App --scene visibility-lab --lab-instances 1024 --visibility cull --submission indirect
+xmake run App --scene visibility-lab --measure /absolute/new-run.json --warmup 32 --frames 256
+python3 Tools/Bench/visibility_paired.py --binary /absolute/frozen/App --out /absolute/new-evidence
+```
+
+Omit `--windowed` for maximized fullscreen-windowed editor validation. Selecting Measure mode does not open a window.
+Play starts deterministic W/N, opens/focuses the detached Performance window once and expands Measure; Stop cancels and Pause is disabled for the uninterrupted plan. Closing the window leaves the run active.
+Performance > Measure retains warmup/frame counts, results and Export; toolbar options > Show measurement opens/focuses this section anytime, including during a run. Window > Performance is a normal visibility toggle.
+Completion or Stop restores preview state and retains the report without reopening Performance. Editor reports remain interactive/unscored; disable dynamic resolution first.
+CLI behavior is unchanged: `--measure` conflicts with screenshot/sequence output; `--measure-camera initial|track` chooses authored camera or rail. Scored headless output refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
+
+Both front ends wait for GPU retirement after each submitted frame because RHI exposes only the
+newest retired timing set. Editor still renders and presents each frame; measurement pacing reduces
+overlap. JSON discloses `serialized-retirement`, joins every sample by frame ID, records actual
+extents/reconstruction and executable/shader/environment provenance, and separates beginFrame wait
+from encode time. The post-submit retirement wait is excluded; these are not realtime throughput
+measurements. Timed GPU sums exclude presentation, driver and untimed work.
+
+The paired driver uses fresh processes, alternating AB/BA, 12 pairs, W32/N256 and a seeded 10,000-draw
+95% bootstrap interval. Cull/off, indirect/direct and batched/direct cover lab N1024/16384/65536,
+Sponza, San Miguel and TemporalLab; Sponza/San Miguel use initial cameras, the labs their rails.
+Failures remain in the output directory; no adoption rule is applied. Use `--selftest` for protocol checks.
+
 ## Automated tool tests
 
 ```bash
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session.
+These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 
@@ -249,9 +289,9 @@ image (no full-screen white, no NaN speckle) rather than asserting a specific di
 Use the main bar's minus/percentage/plus buttons or Layout > UI Scale to change fonts and
 controls together (75–150%). Click the percentage or press Cmd+0 for 100%; Cmd+- shrinks and
 Cmd++ / Cmd+= grows. Text editing, active widget drags and popups suppress these shortcuts.
-The detached graph shares this preference, while its canvas zoom remains independent.
-`UiScalePercent` persists in the existing workspace section of `imgui.ini`; old files default
-to 100% without redocking. Reset Default Layout keeps the UI-scale preference.
+Detached Performance and Render Graph share this preference; graph canvas zoom remains independent.
+`UiScalePercent` persists in the workspace section of `imgui.ini`; missing values default to 100%.
+Schema 2 layout migration and Reset Default Layout preserve valid UI-scale preferences.
 
 The editor uses bundled Inter Regular (16 logical points at 100%, 12 at 75%), with fixed-width
 digits for stable diagnostic columns. `xmake setup` fetches the pinned Inter 4.1 TrueType source

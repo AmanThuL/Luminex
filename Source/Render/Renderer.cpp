@@ -8,6 +8,7 @@
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"
 #include "Render/VendorTemporalScaler.h"
+#include <chrono>
 
 #include "Core/Assert.h"
 
@@ -80,7 +81,8 @@ void registerUniformLayoutsForCapture() {
 Renderer::Renderer(rhi::Device& device, bool cpuReadback)
     : m_device(device), m_transientPool(device), m_exposureStage(std::make_unique<ExposureStage>()),
       m_bloomStage(std::make_unique<BloomStage>()),
-      m_displayStage(std::make_unique<DisplayStage>()), m_cpuReadback(cpuReadback) {}
+      m_displayStage(std::make_unique<DisplayStage>()), m_drawSubmission(device),
+      m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
 Renderer::~Renderer() = default;
@@ -479,16 +481,45 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
 
+    const auto classifyBegin = std::chrono::steady_clock::now();
+    const auto planes = extractFrustumPlanes(temporalEnabled ? cameraState.viewProjectionJittered
+                                                             : cameraState.viewProjection);
+    m_visibilityStatus.frameNumber = m_device.frameNumber();
+    m_visibilityStatus.sceneGeneration = view.temporal.sceneGeneration;
+    m_visibilityStatus.scene =
+        classifyView(planes, view.items, view.tables, view.visibilityEnabled);
+    m_visibilityStatus.shadow =
+        classifyView(planes, view.items, view.tables, view.visibilityEnabled, true);
+    const auto prepareBegin = std::chrono::steady_clock::now();
+    m_visibilityStatus.classifyMs =
+        std::chrono::duration<double, std::milli>(prepareBegin - classifyBegin).count();
+    const auto prepared = m_drawSubmission.prepare(
+        m_device.frameNumber(), view, m_visibilityStatus.scene, m_visibilityStatus.shadow);
+    LMX_ASSERT(prepared.has_value(), prepared.error().message);
+    m_visibilityStatus.prepareMs =
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prepareBegin)
+            .count();
+    m_visibilityStatus.submission = m_drawSubmission.stats();
+    const auto drawRows = graph.importBuffer(*m_drawSubmission.scene().rows, "lmx.draw.rows");
+    const auto drawArguments =
+        graph.importBuffer(*m_drawSubmission.scene().arguments, "lmx.draw.args");
+
     const GraphTexture shadowRead =
         m_shadowStage->declare(graph, commands, view,
-                               {.sceneBuffers = sceneBuffers,
+                               {.draws = m_drawSubmission.shadow(),
+                                .drawRows = drawRows,
+                                .drawArguments = drawArguments,
+                                .sceneBuffers = sceneBuffers,
                                 .shadowMap = shadowMap,
                                 .lightViewProj = shadow.viewProj,
                                 .whiteTexture = m_whiteTexture.get(),
                                 .linearSampler = m_linearSampler.get()});
     const GraphTexture sceneColorRead = m_sceneStage->declare(
         graph, commands, view,
-        {.sceneBuffers = sceneBuffers,
+        {.draws = m_drawSubmission.scene(),
+         .drawRows = drawRows,
+         .drawArguments = drawArguments,
+         .sceneBuffers = sceneBuffers,
          .sceneColor = sceneColor,
          .sceneDepth = sceneDepth,
          .shadowRead = shadowRead,

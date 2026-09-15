@@ -129,7 +129,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"normalMatrix\"") != std::string::npos);
     REQUIRE(json.find("\"fresnelR0\"") == std::string::npos);
     REQUIRE(json.find("\"previousModel\"") != std::string::npos);
-    REQUIRE(json.find("\"sizeBytes\": 208") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 240") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 112") != std::string::npos);
     REQUIRE(json.find("\"sizeBytes\": 16") != std::string::npos);
     REQUIRE(json.find("ObjectUniforms") == std::string::npos);
@@ -150,15 +150,17 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                                                 offset)) != std::string::npos);
             }
         };
-    requireLayout("DrawUniforms", 1, 16, {{"instanceRow", 0}});
-    requireLayout("InstanceRow", 5, 208,
+    requireLayout("DrawUniforms", 1, 16, {{"firstEntry", 0}});
+    requireLayout("InstanceRow", 5, 240,
                   {{"model", 0},
                    {"previousModel", 64},
                    {"normalMatrix", 128},
                    {"meshRow", 192},
                    {"materialRow", 196},
                    {"flags", 200},
-                   {"emissiveScale", 204}});
+                   {"emissiveScale", 204},
+                   {"worldBoundsMin", 208},
+                   {"worldBoundsMax", 224}});
     requireLayout("MaterialRow", 6, 112,
                   {{"uvTransform", 0},
                    {"albedo", 64},
@@ -168,6 +170,11 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"occlusionStrength", 100},
                    {"alphaCutoff", 104},
                    {"flags", 108}});
-    requireLayout("MeshRow", 7, 16,
-                  {{"firstIndex", 0}, {"indexCount", 4}, {"firstVertex", 8}, {"vertexCount", 12}});
+    requireLayout("MeshRow", 7, 48,
+                  {{"firstIndex", 0},
+                   {"indexCount", 4},
+                   {"firstVertex", 8},
+                   {"vertexCount", 12},
+                   {"boundsMin", 16},
+                   {"boundsMax", 32}});
 }

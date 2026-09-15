@@ -35,16 +35,16 @@ enum class EditorPanel {
     Console,     ///< Bounded project log viewer.
 };
 
-/// One app-owned visibility value per panel, with spec section 3's defaults (every panel open
-/// except Render Graph). A Window-menu checkbox and a panel's window close button both read and
+/// One app-owned visibility value per panel. Performance and Render Graph start closed; the
+/// docked panels start open. A Window-menu checkbox and a panel's window close button both read and
 /// write the same storage through `isVisible`/`setVisible`, so close, reopen, and menu toggle
 /// cannot disagree.
 struct WorkspaceVisibility {
     bool scene = true;        ///< `EditorPanel::Scene`.
     bool viewport = true;     ///< `EditorPanel::Viewport`.
     bool inspector = true;    ///< `EditorPanel::Inspector`.
-    bool performance = true;  ///< `EditorPanel::Performance`.
-    bool console = true;      ///< `EditorPanel::Console`; a bottom tab beside Performance.
+    bool performance = false; ///< `EditorPanel::Performance`; a detached diagnostic window.
+    bool console = true;      ///< `EditorPanel::Console`; the bottom dock's only default panel.
     bool renderGraph = false; ///< `EditorPanel::RenderGraph`.
 
     /// Reads the stored value for `panel`.
@@ -59,13 +59,11 @@ struct WorkspaceVisibility {
 /// workspace contract or the required default topology changes -- never for cosmetic spacing or
 /// labels.
 ///
-/// Version 2 is that kind of change: the Render Graph panel left the dockspace for a window of its
-/// own, so a version 1 ini's dock data still carries a node holding it. Restoring that data would
-/// bring the panel back as a tab, and dock data is only ever restored wholesale, so every version
-/// 1 ini is legacy and rebuilds the default layout once.
-/// Console visibility and UI scale are additive optional keys; missing keys use defaults without
-/// redocking.
-inline constexpr uint32_t kWorkspaceSchemaVersion = 2;
+/// Version 3 detaches Performance as well as Render Graph, leaving Console alone in the bottom
+/// dock. A version 2 workspace rebuilds its default layout and visibility once, preserving its
+/// valid UI scale. Older, invalid and future schemas reset every preference to defaults.
+/// Visibility and UI scale keys remain optional within the current schema.
+inline constexpr uint32_t kWorkspaceSchemaVersion = 3;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
 /// non-negative integer.
@@ -113,7 +111,7 @@ struct WorkspaceDecision {
     /// See `WorkspaceDecisionKind`.
     WorkspaceDecisionKind kind = WorkspaceDecisionKind::BuildDefault;
     WorkspaceVisibility visibility; ///< Visibility to apply either way.
-    /// Restored scale; default for legacy schema.
+    /// Restored scale for the current schema or known version 2 migration; default otherwise.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
 };
 
@@ -121,11 +119,10 @@ struct WorkspaceDecision {
 /// the ini had no Luminex workspace section at all -- a clean run, or an M5.2-era ini with no such
 /// section, are both legacy (spec section 4).
 ///
-/// A schema that does not exactly equal `kWorkspaceSchemaVersion` -- absent, unparseable, older, or
-/// newer -- is also legacy. Migration never guesses how stored visibility fits a topology that does
-/// not match the current schema, so every `BuildDefault` result carries default visibility rather
-/// than whatever a legacy section happened to contain. Only an exact schema match restores the
-/// parsed visibility and normalized scale. Legacy schemas also reset scale to its default.
+/// Only an exact schema match restores parsed visibility and normalized scale. Every other schema
+/// rebuilds default topology and visibility, so old dock data cannot reattach a detached panel.
+/// The known version 2 migration retains normalized UI scale; absent, unparseable, older and future
+/// schemas reset scale to its default as well.
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed);
 
 /// The default visibility (spec section 3), used both for `WorkspaceDecision::BuildDefault` and to

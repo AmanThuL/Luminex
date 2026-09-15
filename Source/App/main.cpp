@@ -5,6 +5,7 @@
 
 #include "App/ConsoleLogSink.h"
 #include "App/EditorShell.h"
+#include "App/Measurement.h"
 #include "App/Model/AppOptions.h"
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
@@ -24,6 +25,7 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -98,7 +100,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::scene::SceneLibrary sceneLibrary(**device);
+    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;
@@ -303,7 +305,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
+        const auto measurementWaitStart = std::chrono::steady_clock::now();
         lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        const auto measurementEncodeStart = std::chrono::steady_clock::now();
+        shell->retireMeasurement((*device)->passTimingsFrame(), (*device)->passTimings());
         // The dynamic-resolution controller's attribution is by frame number, so this frame's
         // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
         shell->controllerDeclared((*device)->frameNumber());
@@ -370,6 +375,19 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // is why the join is by number rather than by position.
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         (*device)->endFrame(swapchain->get());
+        const auto measurementEncodeEnd = std::chrono::steady_clock::now();
+        if (const auto* measuredRecord = frameRecords.find((*device)->frameNumber())) {
+            shell->recordMeasurementFrame((*device)->frameNumber(),
+                                          std::chrono::duration<double, std::milli>(
+                                              measurementEncodeStart - measurementWaitStart)
+                                              .count(),
+                                          std::chrono::duration<double, std::milli>(
+                                              measurementEncodeEnd - measurementEncodeStart)
+                                              .count(),
+                                          measuredRecord->record);
+        }
+        if (shell->measurementNeedsRetirementWait())
+            (*device)->waitIdle();
         ++presentedFrames;
 
         // Platform viewports follow the present because the ImGui backend renders each extra window
@@ -484,10 +502,14 @@ int main(int argc, char** argv) {
     if (options->mode == lmx::app::RunMode::Screenshot) {
         return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
                                        options->frames, options->temporal, options->temporalView,
-                                       options->renderScale);
+                                       options->renderScale, options->visibilityEnabled,
+                                       options->submission, options->labInstances);
     }
     if (options->mode == lmx::app::RunMode::CaptureSequence) {
         return lmx::app::runCaptureSequence(*options);
+    }
+    if (options->mode == lmx::app::RunMode::Measure) {
+        return lmx::app::runMeasurement(*options);
     }
     return runWindowed(*options, consoleLog);
 }

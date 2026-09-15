@@ -1,6 +1,7 @@
 #include "GpuTestSupport.h"
 
 #include "Render/FrameDeclaration.h"
+#include "Render/GraphDump.h"
 #include "Render/SelectionOutline.h"
 
 #include "SceneTableTestSupport.h"
@@ -58,7 +59,7 @@ FixtureDrawItem outlineItem(const FixtureMesh& mesh) {
 //======================================================================================================================
 OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& renderer,
                           SelectionOutline* outline, const FixtureSceneView& view,
-                          float backingScale = 1.0f) {
+                          float backingScale = 1.0f, bool visible = true) {
     Camera camera;
     camera.position = {0, 0, 4};
     camera.fovY = glm::half_pi<float>();
@@ -66,7 +67,7 @@ OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& rendere
     const auto prepared = view.prepare(device);
     FrameDeclaration frame(pool, renderer, commands, camera, prepared, true);
     const auto output = outline ? outline->declare(frame.graph(), commands, frame.displayColor(),
-                                                   camera, prepared, 0, backingScale)
+                                                   camera, prepared, 0, backingScale, visible)
                                 : frame.displayColor();
     frame.graph().exportTexture(output);
     OutlineFrame result;
@@ -365,4 +366,34 @@ TEST_CASE(
         REQUIRE((*renderer)->temporalStatus().historyAge ==
                 (*reference)->temporalStatus().historyAge);
     }
+}
+
+//======================================================================================================================
+TEST_CASE("rejected selection refreshes its UI target without a stale outline",
+          "[gpu][selection-outline][visibility]") {
+    auto device = createDevice();
+    REQUIRE(device);
+    TransientPool pool(**device);
+    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    REQUIRE(renderer);
+    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    REQUIRE(outline);
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.rejectedQuad");
+    REQUIRE(mesh);
+    auto item = outlineItem(*mesh);
+    const auto view = outlineView(std::span{&item, 1});
+    const auto highlighted = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(highlighted.outlined != highlighted.display);
+    item.model[3].x = 100;
+    const auto rejected =
+        outlineFrame(**device, pool, **renderer, outline->get(), view, 1.0f, false);
+    REQUIRE(rejected.outlined == rejected.display);
+    REQUIRE(rejected.outlined != highlighted.outlined);
+    const auto dump = dumpCompiledFrame(rejected.record);
+    REQUIRE(dump.find("lmx.pass.selection.passthrough") != std::string::npos);
+    REQUIRE(dump.find("lmx.pass.selection.coverage") == std::string::npos);
+    REQUIRE(dump.find("lmx.pass.selection.visibility") == std::string::npos);
+    item.model[3].x = 0;
+    const auto returned = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(returned.outlined == highlighted.outlined);
 }

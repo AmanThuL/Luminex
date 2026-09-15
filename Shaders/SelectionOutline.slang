@@ -61,3 +61,10 @@ float4 fragmentMain(VSOutput input): SV_Target
     // Warm, restrained UI color; filled interiors keep their exact display bytes.
     return float4(lerp(scene.rgb, float3(1.0, 0.76, 0.38), edge * 0.72), scene.a);
 }
+
+// Rejected selections still refresh the texture the UI selected before frame declaration.
+[shader("fragment")]
+float4 fragmentCopy(VSOutput input): SV_Target
+{
+    return gDisplay.Load(int3(int2(input.position.xy), 0));
+}

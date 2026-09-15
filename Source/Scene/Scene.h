@@ -9,6 +9,7 @@
 #include "Asset/SceneAnimation.h"
 #include "Asset/Transform.h"
 #include "RHI/RHI.h"
+#include "Render/Bounds.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/SceneView.h"
@@ -26,12 +27,6 @@
 #include <vector>
 
 namespace lmx::scene {
-
-/// Axis-aligned bounds in the coordinate space named by the containing field or function.
-struct ObjectBounds {
-    glm::vec3 minimum{0.0f}; ///< Inclusive minimum XYZ coordinates.
-    glm::vec3 maximum{0.0f}; ///< Inclusive maximum XYZ coordinates.
-};
 
 /// Editable scene instance referencing one mesh and material.
 struct SceneObject {
@@ -52,9 +47,6 @@ struct SceneObject {
     /// `Scene::animate()` from an `EmissiveTrack`. Objects with no track keep the default of 1, so
     /// the authored colour passes through unchanged.
     float emissiveStrength = 1.0f;
-    /// Conservative mesh-local bounds from loaded vertices or generated geometry; absent when
-    /// reliable geometry bounds are unavailable. Editor diagnostics only; no GPU identity implied.
-    std::optional<ObjectBounds> localBounds;
     std::string sourceName;        ///< Exact authored node/mesh name, empty for generated objects.
     std::string materialQualifier; ///< Authored primitive material qualifier, empty when unneeded.
 
@@ -101,6 +93,8 @@ public:
     const SceneObject* tryObject(InstanceId id) const;
     /// Returns immutable geometry metadata or null for an unresolvable identity.
     const render::MeshRow* tryMesh(MeshId id) const;
+    /// Returns reliable mesh-local bounds, or none for invalid identities or degenerate geometry.
+    std::optional<render::Aabb> meshBounds(MeshId id) const;
     /// Returns editable material data or null for an unresolvable identity.
     MaterialRecord* tryMaterial(MaterialId id);
     /// Returns material data or null for an unresolvable identity.
@@ -208,5 +202,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
 /// San Miguel's pinned realtime variant with masked foliage and a looping camera rail. Optional
 /// assets are fetched by `xmake setup --san-miguel`; missing assets return NotFound with that hint.
 asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& device);
+
+/// Builds a seeded repeated-geometry visibility lab with exactly instanceCount candidates.
+/// Counts from 1 through 1,048,576 include up to five initial-camera boundary probes.
+asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& device,
+                                                                  uint32_t instanceCount = 4096);
 
 } // namespace lmx::scene

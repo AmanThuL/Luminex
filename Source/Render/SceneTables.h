@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 
 namespace lmx::rhi {
 class Buffer;
@@ -20,6 +21,10 @@ namespace lmx::render {
 
 /// Motion cannot be derived from the instance's previous transform.
 constexpr uint32_t kInstanceMotionInvalid = 1u;
+/// Bounds cannot safely reject this instance.
+constexpr uint32_t kInstanceBoundsUnreliable = 2u;
+/// Visible instance-row list binding in scene and shadow entries.
+constexpr uint32_t kVisibleRowsSlot = 4;
 /// Material samples the resolved normal texture.
 constexpr uint32_t kMaterialHasNormalMap = 1u;
 /// Material applies alpha-test coverage.
@@ -37,15 +42,19 @@ constexpr uint32_t kDrawUniformsSlot = 1;
 
 /// Stable instance slot contents; matrices use column-major object-to-world transforms.
 struct alignas(16) InstanceRow {
-    glm::mat4 model{1.0f};         ///< Current object-to-world transform.
-    glm::mat4 previousModel{1.0f}; ///< Last accepted frame's object-to-world transform.
-    glm::mat4 normalMatrix{1.0f};  ///< Inverse transpose of the current linear transform.
-    uint32_t meshRow = 0;          ///< Stable geometry slot.
-    uint32_t materialRow = 0;      ///< Stable material slot.
-    uint32_t flags = 0;            ///< Instance motion flags.
-    float emissiveScale = 1.0f;    ///< Multiplier of scene-linear material emissive radiance.
+    glm::mat4 model{1.0f};          ///< Current object-to-world transform.
+    glm::mat4 previousModel{1.0f};  ///< Last accepted frame's object-to-world transform.
+    glm::mat4 normalMatrix{1.0f};   ///< Inverse transpose of the current linear transform.
+    uint32_t meshRow = 0;           ///< Stable geometry slot.
+    uint32_t materialRow = 0;       ///< Stable material slot.
+    uint32_t flags = 0;             ///< Instance motion flags.
+    float emissiveScale = 1.0f;     ///< Multiplier of scene-linear material emissive radiance.
+    glm::vec3 worldBoundsMin{0.0f}; ///< World-space minimum, valid unless bounds flag is set.
+    uint32_t boundsPadding0 = 0;    ///< Explicit ABI padding.
+    glm::vec3 worldBoundsMax{0.0f}; ///< World-space maximum, valid unless bounds flag is set.
+    uint32_t boundsPadding1 = 0;    ///< Explicit ABI padding.
 };
-static_assert(sizeof(InstanceRow) == 208);
+static_assert(sizeof(InstanceRow) == 240);
 static_assert(offsetof(InstanceRow, model) == 0);
 static_assert(offsetof(InstanceRow, previousModel) == 64);
 static_assert(offsetof(InstanceRow, normalMatrix) == 128);
@@ -53,6 +62,10 @@ static_assert(offsetof(InstanceRow, meshRow) == 192);
 static_assert(offsetof(InstanceRow, materialRow) == 196);
 static_assert(offsetof(InstanceRow, flags) == 200);
 static_assert(offsetof(InstanceRow, emissiveScale) == 204);
+static_assert(offsetof(InstanceRow, worldBoundsMin) == 208);
+static_assert(offsetof(InstanceRow, boundsPadding0) == 220);
+static_assert(offsetof(InstanceRow, worldBoundsMax) == 224);
+static_assert(offsetof(InstanceRow, boundsPadding1) == 236);
 
 /// Stable material slot contents; factors are scene-linear and textures remain per draw.
 struct alignas(16) MaterialRow {
@@ -76,27 +89,36 @@ static_assert(offsetof(MaterialRow, alphaCutoff) == 104);
 static_assert(offsetof(MaterialRow, flags) == 108);
 
 /// Indexed range in the scene geometry pool; indices are rebased and base vertex is zero.
-struct MeshRow {
-    uint32_t firstIndex = 0;  ///< First uint32 index in the shared index buffer.
-    uint32_t indexCount = 0;  ///< Number of indices in this mesh.
-    uint32_t firstVertex = 0; ///< First vertex in the shared vertex buffer.
-    uint32_t vertexCount = 0; ///< Number of vertices in this mesh.
+struct alignas(16) MeshRow {
+    uint32_t firstIndex = 0;     ///< First uint32 index in the shared index buffer.
+    uint32_t indexCount = 0;     ///< Number of indices in this mesh.
+    uint32_t firstVertex = 0;    ///< First vertex in the shared vertex buffer.
+    uint32_t vertexCount = 0;    ///< Number of vertices in this mesh.
+    glm::vec3 boundsMin{1.0f};   ///< Mesh-local minimum; inverted for unreliable geometry.
+    uint32_t boundsPadding0 = 0; ///< Explicit ABI padding.
+    glm::vec3 boundsMax{-1.0f};  ///< Mesh-local maximum; inverted for unreliable geometry.
+    uint32_t boundsPadding1 = 0; ///< Explicit ABI padding.
 };
-static_assert(sizeof(MeshRow) == 16);
+static_assert(sizeof(MeshRow) == 48);
 static_assert(offsetof(MeshRow, firstIndex) == 0);
 static_assert(offsetof(MeshRow, indexCount) == 4);
 static_assert(offsetof(MeshRow, firstVertex) == 8);
 static_assert(offsetof(MeshRow, vertexCount) == 12);
+static_assert(offsetof(MeshRow, boundsMin) == 16);
+static_assert(offsetof(MeshRow, boundsPadding0) == 28);
+static_assert(offsetof(MeshRow, boundsMax) == 32);
+static_assert(offsetof(MeshRow, boundsPadding1) == 44);
 
 /// Per-draw selector into the paced instance table; padding is always zero.
 struct DrawUniforms {
-    uint32_t instanceRow = 0; ///< Stable instance slot selected for this draw.
-    uint32_t padding[3]{};    ///< Explicit constant-buffer tail padding.
+    uint32_t firstEntry = 0; ///< First entry in the visible instance-row list.
+    uint32_t padding[3]{};   ///< Explicit constant-buffer tail padding.
 };
 static_assert(sizeof(DrawUniforms) == 16);
-static_assert(offsetof(DrawUniforms, instanceRow) == 0);
+static_assert(offsetof(DrawUniforms, firstEntry) == 0);
 
 /// Non-owning frame bindings; Scene owns all buffers until submitted readers have retired.
+/// CPU rows may be consumed only before the next scene preparation or object-table mutation.
 struct SceneTables {
     rhi::Buffer* vertices = nullptr;  ///< Immutable packed geometry vertices.
     rhi::Buffer* indices = nullptr;   ///< Immutable rebased uint32 geometry indices.
@@ -106,6 +128,8 @@ struct SceneTables {
     uint32_t meshCount = 0;           ///< Number of addressable mesh slots.
     uint32_t instanceCount = 0;       ///< Number of addressable instance slots, including holes.
     uint32_t materialCount = 0;       ///< Number of addressable material slots, including holes.
+    std::span<const InstanceRow> instanceRows; ///< CPU rows exactly matching the prepared GPU slot.
+    uint32_t instanceCapacity = 0; ///< Allocated instance slots; draw buffers grow with this count.
 };
 
 } // namespace lmx::render

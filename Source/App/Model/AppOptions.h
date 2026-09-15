@@ -22,6 +22,7 @@ enum class RunMode {
     Windowed,        ///< Interactive editor window.
     Screenshot,      ///< Offscreen render written to disk.
     CaptureSequence, ///< Every post-warmup offscreen frame and its metadata written to a directory.
+    Measure,         ///< Offscreen deterministic measurement report.
 };
 
 /// Startup reconstruction selected by `--temporal <off|raw|taa|metalfx>` in both run modes.
@@ -68,6 +69,12 @@ struct AppOptions {
     /// by `--render-scale <value>`; conflicts with `--temporal off` like a debug view, since a
     /// scale below 1 has nothing to reconstruct without the temporal path running.
     float renderScale = 1.0f;
+    bool visibilityEnabled = true; ///< Conservative CPU camera culling; shadows remain unculled.
+    render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
+    uint32_t labInstances = 4096; ///< Total VisibilityLab instances, including its boundary lane.
+    std::filesystem::path measurementPath; ///< New JSON report destination for --measure.
+    bool unscored = false;        ///< Explicitly permits instrumentation in a headless measurement.
+    bool measurementTrack = true; ///< Follow the camera rail; --measure-camera initial freezes it.
 };
 
 /// Reports an invalid command-line option with user-facing context.

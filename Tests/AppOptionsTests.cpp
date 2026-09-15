@@ -89,7 +89,7 @@ TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet, milk-truck, "
-            "material-lab, temporal-lab, san-miguel");
+            "material-lab, temporal-lab, san-miguel, visibility-lab");
 }
 
 //======================================================================================================================
@@ -104,9 +104,10 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
     REQUIRE(screenshotResult.error().message ==
             "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
     REQUIRE_FALSE(sceneResult);
-    REQUIRE(sceneResult.error().message ==
-            "--scene needs an ID: App --scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel>");
+    REQUIRE(
+        sceneResult.error().message ==
+        "--scene needs an ID: App --scene "
+        "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab>");
 }
 
 //======================================================================================================================
@@ -117,11 +118,14 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel>] [--windowed] "
+            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab>"
+            "] [--windowed] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
             "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
-            "--capture-format <png|bmp>] "
+            "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
+            "[--visibility <cull|off>] [--submission <direct|indirect|batched>] "
+            "[--lab-instances <1..1048576>] [--measure-camera <track|initial>] "
             "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
             "after W unsaved warmup frames)");
 }
@@ -392,8 +396,9 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 // The CLI text is generated from the catalog (Source/App/Model/AppOptions.cpp's sceneIdList), not a
 // second hardcoded list -- this pins the catalog's own order/content so the two cannot drift.
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
-    const std::array<std::string_view, 6> expected = {
-        "sponza", "damaged-helmet", "milk-truck", "material-lab", "temporal-lab", "san-miguel"};
+    const std::array<std::string_view, 7> expected = {
+        "sponza",       "damaged-helmet", "milk-truck",    "material-lab",
+        "temporal-lab", "san-miguel",     "visibility-lab"};
     const std::span<const std::string_view> ids = lmx::scene::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());

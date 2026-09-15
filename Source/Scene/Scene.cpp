@@ -267,21 +267,6 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
                               ? instance.materialQualifier
                               : instance.sourceName + " / " + instance.materialQualifier;
         }
-        ObjectBounds bounds{.minimum = glm::vec3(std::numeric_limits<float>::max()),
-                            .maximum = glm::vec3(std::numeric_limits<float>::lowest())};
-        bool finiteBounds = true;
-        for (const auto& vertex : gltfScene.meshes[instance.meshIndex].vertices) {
-            const glm::vec3 point(vertex.px, vertex.py, vertex.pz);
-            if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) {
-                finiteBounds = false;
-                break;
-            }
-            bounds.minimum = glm::min(bounds.minimum, point);
-            bounds.maximum = glm::max(bounds.maximum, point);
-        }
-        if (finiteBounds && !gltfScene.meshes[instance.meshIndex].vertices.empty()) {
-            scene->objects.back().localBounds = bounds;
-        }
     }
 
     scene->animation.tracks.reserve(gltfScene.tracks.size());

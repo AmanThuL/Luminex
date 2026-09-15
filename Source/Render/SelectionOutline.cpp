@@ -93,6 +93,15 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
         return std::unexpected(outline.error());
     }
     self->m_outlinePipeline = std::move(*outline);
+    auto passthrough = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
+                                                      .vertexEntry = "vertexMain",
+                                                      .fragmentEntry = "fragmentCopy",
+                                                      .colorFormat = rhi::Format::BGRA8Unorm,
+                                                      .cullMode = rhi::CullMode::None,
+                                                      .label = "lmx.selection.passthrough"});
+    if (!passthrough)
+        return std::unexpected(passthrough.error());
+    self->m_passthroughPipeline = std::move(*passthrough);
     auto sampler =
         device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"});
     if (!sampler) {
@@ -137,8 +146,27 @@ rhi::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
 GraphTexture SelectionOutline::declare(RenderGraph& graph, rhi::CommandList& commands,
                                        GraphTexture display, const Camera& camera,
                                        const SceneView& view, uint32_t selectedDraw,
-                                       float backingScale) {
+                                       float backingScale, bool visible) {
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
+    if (!visible) {
+        const auto output = graph.importTexture(*m_target, rhi::Format::BGRA8Unorm,
+                                                "selectionDisplay", rhi::TextureUse::ShaderRead);
+        PassDesc passthrough;
+        passthrough.textureReads = {display};
+        passthrough.color = ColorAttachment{.handle = output};
+        // The UI has already chosen this target. Refresh it while keeping display's terminal
+        // shader-read state consistent with both ordinary outline frames and the next import.
+        graph.addPass("lmx.pass.selection.passthrough", std::move(passthrough),
+                      [this, &commands, display](const PassResources& resources) {
+                          const auto source = resources.texture(display);
+                          LMX_ASSERT(source.has_value(),
+                                     "selection display source must be declared");
+                          commands.bindPipeline(*m_passthroughPipeline);
+                          commands.bindTexture(0, **source);
+                          commands.draw(3);
+                      });
+        return nextVersion(output);
+    }
     const uint32_t width = m_target->width();
     const uint32_t height = m_target->height();
     const GraphTexture mask = graph.createTexture({.width = width,
