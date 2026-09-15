@@ -487,6 +487,7 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     buildMainMenu();
+    buildPlaybackTransport(device, renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
@@ -707,11 +708,9 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         }
         MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
                                             m_measurementExportPath, m_measurementFeedback};
+        measurement.reveal = m_revealMeasurement;
+        m_revealMeasurement = false;
         drawPerformancePanel(open, m_performanceModel, &measurement);
-        if (measurement.action == MeasurementAction::Start)
-            startMeasurement(device, renderer);
-        if (measurement.action == MeasurementAction::Cancel)
-            m_measurement.cancel();
         if (measurement.action == MeasurementAction::Export)
             exportMeasurement();
         setPanelVisible(EditorPanel::Performance, open);
@@ -845,8 +844,8 @@ void EditorShell::advanceFrameAnimation() {
             m_session.prepareSequenceFrame(frame->sequenceFrame);
         return;
     }
-    m_session.advanceEditorFrame(m_settings.animationPlaying, m_settings.followCameraTrack,
-                                 m_looking);
+    m_session.advanceEditorFrame(m_playback.playing(),
+                                 m_playback.active() && m_settings.followCameraTrack, m_looking);
 }
 
 //======================================================================================================================
@@ -927,10 +926,11 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         m_sceneLoading.fail(id, scene.error().message);
         return false;
     }
-    m_activeSceneId = id;
-    m_visibilityDisplay.clear();
     if (m_measurement.active())
         m_measurement.cancel("Scene changed during measurement");
+    stopPlayback();
+    m_activeSceneId = id;
+    m_visibilityDisplay.clear();
     m_session.activate(**scene, SceneActivationMotion::Reset);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset

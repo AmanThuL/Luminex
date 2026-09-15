@@ -12,11 +12,14 @@
 namespace lmx::app {
 //======================================================================================================================
 void drawMeasurementSection(MeasurementPanelContext& context) {
+    if (context.reveal)
+        ImGui::SetNextItemOpen(true);
     if (!ImGui::CollapsingHeader("Measure"))
         return;
     const auto& run = context.run;
     editor_style::message("Interactive / unscored. Live viewport, UI and presentation; each frame "
                           "waits for retirement.");
+    editor_style::message("Choose Measure in the top toolbar, then Play. Stop cancels the run.");
     ImGui::BeginDisabled(run.active());
     if (editor_style::beginFields("measurePlan")) {
         int warmup = static_cast<int>(context.warmup);
@@ -29,13 +32,6 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
             context.frames = std::clamp(frames, 1, 10000);
         editor_style::endFields();
     }
-    if (ImGui::Button("Start measurement"))
-        context.action = MeasurementAction::Start;
-    ImGui::EndDisabled();
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!run.active());
-    if (ImGui::Button("Cancel measurement"))
-        context.action = MeasurementAction::Cancel;
     ImGui::EndDisabled();
     const std::array<const char*, 6> names{"Idle",     "Warmup",   "Measuring",
                                            "Draining", "Complete", "Cancelled"};

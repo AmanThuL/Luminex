@@ -8,6 +8,7 @@
 #include "App/Model/ConsoleModel.h"
 #include "App/Model/DynamicResolution.h"
 #include "App/Model/EditorActions.h"
+#include "App/Model/EditorPlayback.h"
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
@@ -148,13 +149,13 @@ public:
     /// frame will actually be declared (drawable acquired) -- a skipped frame calls neither this
     /// nor commitFrame().
     ///
-    /// When `EditorRenderSettings::animationPlaying` is set and the active scene has rigid or
+    /// When the top transport is Playing and the active scene has rigid or
     /// camera tracks, steps `Scene::animationTime` by a fixed 1/60 s and resamples every track at
     /// the new time (`Scene::advanceAnimation` + `Scene::animate`). Independently, when
-    /// `followCameraTrack` is set, the scene has a camera track, and the user is not mid fly-camera
-    /// look (holding the right mouse button), overwrites the fly camera's position/yaw/pitch from
-    /// `sampleCameraTrack` at the (possibly just-advanced) animation time -- fovY/nearZ/farZ are
-    /// left alone, since the track carries no lens state.
+    /// the preview is active, `followCameraTrack` is set, the scene has a camera track, and the
+    /// user is not mid fly-camera look (holding the right mouse button), overwrites the fly
+    /// camera's position/yaw/pitch from `sampleCameraTrack` at the (possibly just-advanced)
+    /// animation time -- fovY/nearZ/farZ are left alone, since the track carries no lens state.
     void advanceFrameAnimation();
 
     /// Promotes the active scene's motion to "previous" for next frame's reprojection
@@ -221,6 +222,9 @@ private:
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
     void buildMainMenu();
+    void buildPlaybackTransport(rhi::Device& device, const render::Renderer& renderer);
+    void stopPlayback();
+    void finishMeasurementPlayback();
     // Queues a bounded UI-density preference for the next frame and persistence.
     void setUiScale(uint32_t percent);
     // Global shortcuts exclude text editing, active widgets, popups and camera look.
@@ -252,6 +256,10 @@ private:
     scene::SceneId m_activeSceneId = scene::defaultSceneId();
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
     SceneSession m_session;
+    EditorPlayback m_playback;
+    bool m_measureOnPlay = false;
+    bool m_measurementOwnsPlayback = false;
+    bool m_revealMeasurement = false;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at

@@ -8,11 +8,11 @@ histogram/exposure buffers and the drawable. Renderer composes the stages below;
 validates the DAG, culls dead passes and derives RAW/WAR/WAW barriers before serial execution.
 TemporalResolve's native/upscale/vendor units share one history owner.
 
-`App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired
-scene-table slot after `beginFrame`. `Render/FrameDeclaration` rotates the pool, declares/executes
-passes and returns App's retained record. Editor adds UI/present and then platform windows;
-headless exports display and waits per frame. Screenshots start at zero, sequences sample frame/60
-with warmup, and editor playback advances one fixed step after drawable acquisition.
+`App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
+`Render/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
+Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
+First Play captures camera/time and animation-owned object poses/emissive strength; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
+Toolbar Measure Play runs deterministic W/N with Pause disabled; Stop or completion restores preview state and keeps results in Performance. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
 (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at

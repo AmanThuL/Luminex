@@ -121,9 +121,9 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   GPU cases; docs-only changes (`docs/`, README, AGENTS/CLAUDE.md, LICENSE) run the policy job alone; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
 - Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
-  `Camera help` explains controls; text entry suppresses camera/capture keys. Viewport owns scene
-  Play/Pause, Step 1/60 s (also pauses), Reset time and camera-rail follow. Playback, metric freeze
-  and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow.
+  `Camera help` explains controls; text entry suppresses camera/capture keys. Top Scene/Measure toolbar owns Play/Pause/Stop/Step and camera-rail follow options; scenes load Stopped. First Scene Play captures camera/time and animation-owned object poses/emissive strength; Step advances 1/60 s and pauses.
+  Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Measure Play starts fixed W/N; Pause is disabled, Stop cancels, and completion/Stop restores preview state. Performance retains plan/results/export; CLI is unchanged.
+  Playback, metric freeze and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow; static scenes allow camera preview; unavailable camera-rail options explain their disabled state.
   Hierarchy has compact search, collapsible subjects and keyboard navigation; File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
@@ -211,7 +211,7 @@ thread-safe logging and filtered/frozen display) →
 Render Graph remains detached. `EditorStyle.h` shares responsive fields/tips; Inspector separates
 requested/effective/available reconstruction, live timing and controller observations. Temporal
 off shows Off/N/A and full resolution while retaining requests. `DiagnosticLegend` supplies
-shader-derived legends and Raw placeholder notes; Viewport owns playback/framing. App alone declares
+shader-derived legends and Raw placeholder notes; Viewport owns framing, the top toolbar playback. App alone declares
 `Render/SelectionOutline` silhouette/scene-depth/composite passes into a separate SDR target; graph costs remain
 visible, while ordinary Renderer/offscreen paths and temporal histories are untouched.
 `EditorActions`/`ActionFeedback` share capability-aware results while the frame loop executes

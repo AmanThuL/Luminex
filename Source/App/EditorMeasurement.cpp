@@ -63,6 +63,8 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
         m_measurementFeedback = m_measurement.failure();
         return;
     }
+    m_playback.play(m_session, m_settings.followCameraTrack);
+    m_measurementOwnsPlayback = true;
     m_session.camera() = scene::cameraFromScene(m_session.scene().initialCamera);
     m_session.rewindAnimation();
     requestCameraCut(m_temporalState);
@@ -79,6 +81,7 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
 void EditorShell::retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
     if (m_measurement.active())
         m_measurement.retire(frameId, timings);
+    finishMeasurementPlayback();
 }
 //======================================================================================================================
 void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double encodeMs,

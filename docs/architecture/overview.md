@@ -165,14 +165,14 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   bounded Console storage/presentation, visibility formatting and the `MeasurementRun` state machine.
   The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
   its own C++ sources only. The shared scene session borrows library-owned scenes, owns its camera,
-  prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion. It captures authored transform
-  and light defaults once per scene on first activation; returning to a cached scene never replaces
+  prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion.
+  `EditorPlayback` owns Stopped/Playing/Paused and captures camera/time plus animation-owned object poses/emissive strength on first Play. Stop restores these and resets motion; the shell resets temporal/exposure. Activation starts Stopped after restoring the old run.
+  This preview shares the scene; it does not restore rendering settings or unrelated edits. Authored transform and light defaults are captured once per scene on first activation; returning to a cached scene never replaces
   those defaults with edited values. An animated object's default samples only that object's rigid
   track at the current playback time. Editing/resetting one transform collapses only its previous
   transform; the editor separately raises its temporal discontinuity latch. Activation resets
   editor motion but preserves headless loader state, matching each path's first-frame contract.
-  Graph models and
-  FrameRecordRing include the compiled record rather than the builder. Each application loop uses
+  Graph models and FrameRecordRing include the compiled record rather than the builder. Each application loop uses
   Render's shared frame declaration, retains its accepted record, appends its own output sink and
   owns scheduling and GPU waits.
   Declaration-time counts, logical image size, render/output extents and context epoch travel with
@@ -194,7 +194,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   Editor and headless measurement serialize GPU retirement after each submitted frame because RHI
   publishes only the newest retired timing set. Reports disclose this pacing, separate beginFrame
   wait from encoding, and exclude the post-submit wait; they do not measure realtime throughput.
-  Editor runs remain interactive/unscored; headless scored runs refuse validation/capture flags.
+  Editor runs remain interactive/unscored. Toolbar Measure Play starts the fixed plan; Stop cancels, Pause is disabled, and completion/cancellation restores preview state while retaining results. Performance owns plan/results/export. Headless scored runs refuse validation/capture flags.
   The [debugging guide](../guides/gpu-debugging.md#measure-visibility-and-submission) owns commands.
 - **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
   panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
@@ -245,8 +245,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   each editable group has scoped Reset and changed-from-default state. File > Open Scene owns
   catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
   groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
-  selection remains explicit and can clear its filter in Inspector. Viewport owns
-  camera help, scene playback/step/reset, camera-rail following and Frame selected. `SelectionBounds`
+  selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.
+  The top Scene/Measure toolbar owns Play/Pause/Stop/Step and camera-rail follow options. `SelectionBounds`
   frames shared reliable world bounds; a rejected selection produces no outline. `Render/SelectionOutline` supplies an editor-only utility that
   App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
   preserve the true silhouette, reading the same instance/material tables and masked alpha. A soft 1.5-logical-point border is

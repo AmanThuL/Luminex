@@ -14,7 +14,6 @@ TEST_CASE("rendering resets stay within their named scope and preserve playback"
     settings.dynamicResolutionEnabled = true;
     settings.temporalEnabled = false;
     settings.reconstruction = lmx::render::ReconstructionMode::Raw;
-    settings.animationPlaying = false;
     settings.followCameraTrack = false;
     CHECK(renderingGroupChanged(settings, EditorRenderGroup::Exposure));
     resetRenderingGroup(settings, EditorRenderGroup::Exposure);
@@ -31,7 +30,6 @@ TEST_CASE("rendering resets stay within their named scope and preserve playback"
     CHECK(settings.renderScale == 1.0f);
     CHECK_FALSE(settings.dynamicResolutionEnabled);
     CHECK(settings.bloomIntensity == 0.8f);
-    CHECK_FALSE(settings.animationPlaying);
     CHECK_FALSE(settings.followCameraTrack);
 }
 

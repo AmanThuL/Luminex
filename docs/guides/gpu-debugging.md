@@ -2,23 +2,24 @@
 
 **Status**: Implemented
 
-Use a capture when rendered output is wrong, a timing trace when the question is performance, and a
-render-graph dump when the question is what the frame declared. All three depend on meaningful GPU
-object and pass labels.
+Use a capture for wrong rendered output, a timing trace for performance, and a render-graph dump for frame declarations. All three depend on meaningful GPU object and pass labels.
 
 Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using
 collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
 tips while disabled controls retain visible reasons. The Inspector’s Rendering subject has a
-read-only Display details section: output domain, encoded-space
-SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping. A resize may
-briefly stretch the prior image while debounce settles. PNG screenshots preserve the display
-domain and frame facts in metadata; BMP remains available for exact historical parity.
+read-only Display details section: output domain, encoded-space SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping.
+A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
+
+## Editor playback
+
+The top toolbar selects Scene or Measure and owns Play, Pause, Stop and Step icons; options hold Follow camera rail.
+Scenes load Stopped. Scene Play captures the current camera/time and animation-owned object poses/emissive strength on first entry; Pause retains the frame, and Step advances 1/60 s and pauses.
+Stop restores that captured preview state and resets motion, temporal and exposure history. Switching scenes first stops/restores the old run. Static scenes still support camera preview; unavailable camera-rail options explain their disabled state.
+The preview shares the scene: rendering settings and unrelated scene edits are outside restoration. Playback, metric freeze and graph freeze remain independent. See [Measure](#measure-visibility-and-submission) for fixed runs.
 
 ## Restore editor settings
 
-Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose
-and lens and stops camera-rail following. Light Reset restores authored direction and scene-linear
-radiance. Object Reset restores its authored transform or samples that object's animated transform
+Inspector Reset actions affect the named group. Camera Reset restores the scene's initial pose/lens and stops camera-rail following. Light Reset restores authored direction and scene-linear radiance. Object Reset restores its authored transform or samples that object's animated transform
 at the current playback time, preserving other object edits. Pause scene to retain a manual edit
 to an animated transform; playback replaces it on the next track sample.
 
@@ -203,8 +204,7 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 ## Measure visibility and submission
 
 Rendering > Visibility defaults to culling and indirect submission; direct/batched remain selectable.
-Counts retain scene
-and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
+Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
 CPU classify/prepare time. Hierarchy badges and selected-object world bounds name the same retained
 frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
 The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
@@ -220,11 +220,11 @@ xmake run App --scene visibility-lab --measure /absolute/new-run.json --warmup 3
 python3 Tools/Bench/visibility_paired.py --binary /absolute/frozen/App --out /absolute/new-evidence
 ```
 
-Omit `--windowed` for maximized fullscreen-windowed editor validation. Performance > Measure starts,
-cancels and exports a live viewport run; editor reports are always interactive/unscored. Disable
-dynamic resolution first. `--measure` conflicts with screenshot/sequence output. The option
-`--measure-camera initial|track` chooses authored camera or rail. Scored headless output
-refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
+Omit `--windowed` for maximized fullscreen-windowed editor validation. Select Measure in the top toolbar:
+Play starts the deterministic W/N live viewport run; Stop cancels it and Pause is disabled for the uninterrupted plan.
+Performance > Measure retains warmup/frame counts, results and Export, with no separate Start/Cancel buttons.
+Completion or Stop restores the prior preview state while retaining the report. Editor reports remain interactive/unscored; disable dynamic resolution first.
+CLI behavior is unchanged: `--measure` conflicts with screenshot/sequence output; `--measure-camera initial|track` chooses authored camera or rail. Scored headless output refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
 
 Both front ends wait for GPU retirement after each submitted frame because RHI exposes only the
 newest retired timing set. Editor still renders and presents each frame; measurement pacing reduces

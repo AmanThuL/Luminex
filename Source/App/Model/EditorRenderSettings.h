@@ -55,12 +55,9 @@ struct EditorRenderSettings {
     render::ReconstructionMode reconstruction = render::ReconstructionMode::NativeTaa;
     /// Diagnostic drawn over the display transform's own output.
     render::TemporalDebugView temporalDebugView = render::TemporalDebugView::Off;
-    /// Whether the scene clock advances each frame. True by default so a scene with tracks plays
-    /// on load, matching the pre-temporal frame loop's always-on behavior for a static scene.
-    bool animationPlaying = true;
     /// Whether the fly camera is overridden by the scene's camera track when one exists. Has no
     /// effect while the right mouse button is held (the fly-camera latch takes over) or while the
-    /// active scene has no camera track.
+    /// active scene has no camera track or the top transport is Stopped.
     bool followCameraTrack = true;
 
     /// Fraction of the output extent the scene rasterises at, within [kMinRenderScale, 1]. Edited
