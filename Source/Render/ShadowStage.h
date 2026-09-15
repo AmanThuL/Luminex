@@ -13,6 +13,7 @@
 
 #include <array>
 #include <memory>
+#include <vector>
 
 namespace lmx::render {
 
@@ -42,10 +43,11 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 /// Borrowed resources and copied light transform for one shadow declaration.
 /// The textures, sampler and SceneView referents must survive graph execution.
 struct ShadowStageInputs {
-    GraphTexture shadowMap;      ///< D32Float attachment version to write.
-    glm::mat4 lightViewProj;     ///< World-to-light clip transform, reversed depth.
-    rhi::Texture* whiteTexture;  ///< Non-null neutral diffuse fallback owned by Renderer.
-    rhi::Sampler* linearSampler; ///< Non-null material sampler owned by Renderer.
+    std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
+    GraphTexture shadowMap;                ///< D32Float attachment version to write.
+    glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
+    rhi::Texture* whiteTexture;            ///< Non-null neutral diffuse fallback owned by Renderer.
+    rhi::Sampler* linearSampler;           ///< Non-null material sampler owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.
@@ -54,7 +56,7 @@ public:
     /// Creates all opaque and masked variants; propagates library or pipeline creation errors.
     static rhi::Result<std::unique_ptr<ShadowStage>> create(rhi::Device& device);
 
-    /// Registers shadow and shared alpha-cutoff capture layouts idempotently, without a device.
+    /// Registers the shared shadow-pass capture layout idempotently, without a device.
     static void registerUniformLayoutsForCapture();
 
     /// Declares the depth pass and returns its written version. Copies frame values; borrows

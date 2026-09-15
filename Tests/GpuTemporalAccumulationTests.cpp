@@ -1,4 +1,11 @@
 #include "GpuTemporalTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // Static stability (spec 11): a checker floor and five poles, camera still, jitter on, 32 frames.
@@ -12,16 +19,16 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
     const float poleWidth = 2.0f / pixelsPerUnit(camera, 12.0f);
     for (int32_t i = -2; i <= 2; ++i) {
@@ -30,7 +37,7 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
             boxModel({static_cast<float>(i) * 1.5f, 1.5f, -8.0f}, {poleWidth, 3.0f, poleWidth}),
             {1.0f, 1.0f, 1.0f, 1.0f}));
     }
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     auto rawRenderer =
         Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
@@ -71,11 +78,11 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -85,7 +92,7 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     // would leave -- which the disocclusion test must reject, and rightly does.
     const Camera camera = scenarioCamera({0.0f, 2.0f, 4.0f}, -0.16f);
     const float poleWidth = 2.0f / pixelsPerUnit(camera, 14.0f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(*plane, glm::mat4{1.0f}, {0.30f, 0.30f, 0.30f, 1.0f}));
     for (int32_t i = -2; i <= 2; ++i) {
         items.push_back(staticItem(
@@ -95,7 +102,7 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     }
     // Travelling -Z: the poles' camera-facing sides take the light and the floor's upward normal
     // takes none of it, so a pole pixel is the only thing a luminance threshold can find.
-    const SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     auto rawRenderer =
         Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
@@ -154,10 +161,10 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
@@ -168,7 +175,7 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
     constexpr float kStartX = -3.0f;
     const float stepX = 4.0f / pixelsPerUnit(camera, kQuadDistance);
 
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(*plane, facingPlaneModel(-12.0f), {0.6f, 0.6f, 0.6f, 1.0f}));
     items.push_back(staticItem(*cube, boxModel({kStartX, 0.0f, -6.0f}, {2.0f, 2.0f, 0.1f}),
                                {0.05f, 0.05f, 0.05f, 1.0f}));
@@ -176,15 +183,15 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
     const auto quadCenterX = [&](uint32_t frame) {
         return kStartX + stepX * static_cast<float>(frame - 1);
     };
-    const PerFrame animate = [&](uint32_t frame, SceneView& view, Camera&) {
-        auto* drawn = const_cast<DrawItem*>(view.items.data());
+    const PerFrame animate = [&](uint32_t frame, FixtureSceneView& view, Camera&) {
+        auto* drawn = const_cast<FixtureDrawItem*>(view.items.data());
         drawn[1].model = boxModel({quadCenterX(frame), 0.0f, -6.0f}, {2.0f, 2.0f, 0.1f});
         drawn[1].previousModel =
             boxModel({quadCenterX(frame == 1 ? 1 : frame - 1), 0.0f, -6.0f}, {2.0f, 2.0f, 0.1f});
     };
     // Facing the camera, so both the quad and the backdrop take the light and the two differ by
     // albedo alone -- which is what makes the luminance contrast a number the tolerance can scale.
-    const SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     constexpr uint32_t kFrames = 28;
     auto rawRenderer =
@@ -282,24 +289,24 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(*plane, facingPlaneModel(-12.0f), {0.4f, 0.4f, 0.4f, 1.0f}));
     items.push_back(staticItem(*cube, boxModel({0.0f, 0.0f, -6.0f}, {2.0f, 2.0f, 0.1f}),
                                {0.05f, 0.05f, 0.05f, 1.0f}));
 
     constexpr uint32_t kStepFrame = 24;
-    const PerFrame animate = [](uint32_t frame, SceneView& view, Camera&) {
-        auto* drawn = const_cast<DrawItem*>(view.items.data());
+    const PerFrame animate = [](uint32_t frame, FixtureSceneView& view, Camera&) {
+        auto* drawn = const_cast<FixtureDrawItem*>(view.items.data());
         drawn[1].material.emissive = frame >= kStepFrame ? glm::vec3{4.0f} : glm::vec3{0.0f};
     };
-    const SceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, 0.0f, -1.0f});
 
     auto rawRenderer =
         Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
@@ -372,19 +379,19 @@ TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     constexpr uint32_t kStepFrame = 24;
-    const PerFrame animate = [](uint32_t frame, SceneView& view, Camera&) {
+    const PerFrame animate = [](uint32_t frame, FixtureSceneView& view, Camera&) {
         view.exposureEv = frame >= kStepFrame ? 2.0f : 0.0f;
     };
 
@@ -421,20 +428,20 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     constexpr uint32_t kCutFrame = 20;
     constexpr uint32_t kFrames = kCutFrame + lmx::render::kTemporalWarmupFrames;
-    const PerFrame animate = [](uint32_t frame, SceneView& view, Camera&) {
+    const PerFrame animate = [](uint32_t frame, FixtureSceneView& view, Camera&) {
         view.temporal.cameraCut = frame == kCutFrame;
     };
 
@@ -481,16 +488,16 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    SceneView view = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    FixtureSceneView view = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = true;
 
@@ -537,22 +544,22 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::render::createMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::render::createMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
-    std::vector<DrawItem> items;
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, *cube, *plane);
-    const SceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
+    const FixtureSceneView base = scenarioSceneView(items, {0.0f, -1.0f, -0.4f});
 
     const auto capture = [&](bool temporal) {
         auto renderer =
             Renderer::create(**device, kScenarioWidth, kScenarioHeight, /*cpuReadback=*/true);
         REQUIRE(renderer.has_value());
-        SceneView view = base;
+        FixtureSceneView view = base;
         view.temporal.enabled = temporal;
         view.temporal.jitterEnabled = false;
         view.temporal.reconstruction = ReconstructionMode::Raw;

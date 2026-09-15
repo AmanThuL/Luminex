@@ -14,15 +14,17 @@
 
 #include <array>
 #include <memory>
+#include <vector>
 
 namespace lmx::render {
 
 /// Frame values and Renderer-owned resources borrowed by the scene and sky pass.
 /// Graph handles belong to this frame; every pointer is non-null and survives graph execution.
 struct SceneStageInputs {
-    GraphTexture sceneColor; ///< Scene-linear color attachment version to write.
-    GraphTexture sceneDepth; ///< Reversed D32Float depth attachment version to write.
-    GraphTexture shadowRead; ///< Written shadow-map version to sample.
+    std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
+    GraphTexture sceneColor;               ///< Scene-linear color attachment version to write.
+    GraphTexture sceneDepth;               ///< Reversed D32Float depth attachment version to write.
+    GraphTexture shadowRead;               ///< Written shadow-map version to sample.
     GraphTexture motion;     ///< Motion attachment; required only with temporal enabled.
     GraphTexture reactive;   ///< Reactive attachment; required only with temporal enabled.
     GraphBuffer exposure;    ///< Applied/previous pair; sampled by auto-exposure shading only.
@@ -51,8 +53,9 @@ public:
     static rhi::Result<std::unique_ptr<SceneStage>> create(rhi::Device& device,
                                                            rhi::Format sceneColorFormat);
 
-    /// Registers object bytes independently to retain the capture schema's serialized ordering.
-    static void registerObjectLayoutForCapture();
+    /// Registers draw and shared table layouts independently to retain the capture schema's
+    /// serialized ordering.
+    static void registerSceneTableLayoutsForCapture();
     /// Registers pass and sky layouts idempotently, without a device.
     static void registerPassLayoutsForCapture();
 

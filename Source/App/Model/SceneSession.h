@@ -68,6 +68,12 @@ public:
     /// consume that latch or follow the camera track before the owner's ordinary frame preparation.
     void rewindAnimation();
 
+    /// Uploads this frame's changed scene rows after Device::beginFrame has paced the slot.
+    rhi::Result<void> prepareFrame(uint64_t frameNumber);
+
+    /// Read-only diagnostics for the active scene's most recently prepared table slot.
+    scene::SceneTableStats tableStats() const;
+
     /// Fills caller-owned items and borrows them in the returned view. The view, items, camera, and
     /// scene resources must stay alive and unmodified through pass declaration and graph execution.
     /// Render settings and one-shot exposure/temporal state remain the caller's responsibility.

@@ -75,22 +75,24 @@ TEST_CASE("cameraFromScene copies authored pose and lens while keeping the defau
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::commitFrame promotes the current model and view reports both", "[scene]") {
+TEST_CASE("Scene::commitFrame promotes the current model while preserving the stable draw row",
+          "[scene]") {
     Scene scene = makeMotionTestScene();
     std::vector<render::DrawItem> items;
 
     scene.view(items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
-    REQUIRE(matricesNear(items[0].model, items[0].previousModel, 1e-6f));
+    REQUIRE(items[0].instanceRow == scene.objects[0].id.slot);
+    REQUIRE(matricesNear(scene.objects[0].modelMatrix(), scene.objects[0].previousModel, 1e-6f));
 
     const glm::mat4 first = scene.objects[0].modelMatrix();
     scene.commitFrame();
     scene.objects[0].position = glm::vec3(4.0f, 0.0f, 0.0f);
 
     scene.view(items, render::ShadowFilter::PCF, false);
-    REQUIRE(matricesNear(items[0].previousModel, first, 1e-6f));
-    REQUIRE(near3(glm::vec3(items[0].model[3]), glm::vec3(4.0f, 0.0f, 0.0f)));
-    REQUIRE(items[0].motionClass == render::MotionClass::Rigid);
+    REQUIRE(matricesNear(scene.objects[0].previousModel, first, 1e-6f));
+    REQUIRE(near3(glm::vec3(scene.objects[0].modelMatrix()[3]), glm::vec3(4.0f, 0.0f, 0.0f)));
+    REQUIRE(scene.objects[0].motionClass == render::MotionClass::Rigid);
 }
 
 //======================================================================================================================
@@ -101,18 +103,18 @@ TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose",
 
     std::vector<render::DrawItem> items;
     scene.view(items, render::ShadowFilter::PCF, false);
-    REQUIRE(matricesNear(items[0].model, items[0].previousModel, 1e-6f));
-    REQUIRE(near3(glm::vec3(items[0].previousModel[3]), glm::vec3(9.0f, 0.0f, 0.0f)));
+    REQUIRE(matricesNear(scene.objects[0].modelMatrix(), scene.objects[0].previousModel, 1e-6f));
+    REQUIRE(near3(glm::vec3(scene.objects[0].previousModel[3]), glm::vec3(9.0f, 0.0f, 0.0f)));
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::view forwards an object's declared motion class", "[scene]") {
+TEST_CASE("Scene keeps an object's declared motion class beside its stable identity", "[scene]") {
     Scene scene = makeMotionTestScene();
     scene.objects[0].motionClass = render::MotionClass::Invalid;
 
     std::vector<render::DrawItem> items;
     scene.view(items, render::ShadowFilter::PCF, false);
-    REQUIRE(items[0].motionClass == render::MotionClass::Invalid);
+    REQUIRE(scene.objects[0].motionClass == render::MotionClass::Invalid);
 }
 
 //======================================================================================================================
@@ -158,11 +160,11 @@ TEST_CASE("Scene::animate writes each track's sampled pose into its object", "[s
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::animate writes an object's sampled emissive strength, and view() multiplies it "
-          "into the draw item's authored emissive colour",
+TEST_CASE("Scene::animate writes an object's sampled emissive strength independently of its "
+          "shared authored emissive colour",
           "[scene]") {
     Scene scene = makeMotionTestScene();
-    scene.materials[0].emissive = glm::vec3(1.0f, 0.8f, 0.3f);
+    scene.material(scene.objects[0].material).emissive = glm::vec3(1.0f, 0.8f, 0.3f);
 
     EmissiveTrack track;
     track.objectIndex = 0;
@@ -175,10 +177,12 @@ TEST_CASE("Scene::animate writes an object's sampled emissive strength, and view
 
     std::vector<render::DrawItem> items;
     scene.view(items, render::ShadowFilter::PCF, false);
-    REQUIRE(near3(items[0].material.emissive, glm::vec3(4.0f, 3.2f, 1.2f)));
+    REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
+                      scene.objects[0].emissiveStrength,
+                  glm::vec3(4.0f, 3.2f, 1.2f)));
 
     // The authored colour on the material itself is never overwritten.
-    REQUIRE(near3(scene.materials[0].emissive, glm::vec3(1.0f, 0.8f, 0.3f)));
+    REQUIRE(near3(scene.material(scene.objects[0].material).emissive, glm::vec3(1.0f, 0.8f, 0.3f)));
 }
 
 //======================================================================================================================
@@ -201,13 +205,15 @@ TEST_CASE("an emissive-only clip participates in automatic playback", "[scene]")
 }
 
 //======================================================================================================================
-TEST_CASE("Scene::view leaves emissive untouched when an object has no emissive track", "[scene]") {
+TEST_CASE("Scene leaves emissive untouched when an object has no emissive track", "[scene]") {
     Scene scene = makeMotionTestScene();
-    scene.materials[0].emissive = glm::vec3(0.5f, 0.5f, 0.5f);
+    scene.material(scene.objects[0].material).emissive = glm::vec3(0.5f, 0.5f, 0.5f);
 
     std::vector<render::DrawItem> items;
     scene.view(items, render::ShadowFilter::PCF, false);
-    REQUIRE(near3(items[0].material.emissive, glm::vec3(0.5f, 0.5f, 0.5f)));
+    REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
+                      scene.objects[0].emissiveStrength,
+                  glm::vec3(0.5f, 0.5f, 0.5f)));
 }
 
 //======================================================================================================================

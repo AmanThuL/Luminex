@@ -23,12 +23,19 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 
+#include "SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
 #include <span>
 #include <vector>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 namespace {
 
@@ -764,7 +771,7 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = createMesh(**device, makeCube(), "lmx.test.exposurePairCube");
+    auto cube = fixtureMesh(**device, makeCube(), "lmx.test.exposurePairCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -775,8 +782,8 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     Camera camera;
     camera.position = {0.0f, 0.0f, 5.0f};
 
-    const std::array<DrawItem, 1> items = {DrawItem{.mesh = &*cube}};
-    SceneView view;
+    const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};
+    FixtureSceneView view;
     view.items = items;
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
     view.temporal.enabled = true;
@@ -785,7 +792,8 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
         view.exposureEv = exposureEv;
         view.temporal.enabled = temporalEnabled;
         CommandList& commands = (*device)->beginFrame();
-        (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+        (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
+                            /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
 

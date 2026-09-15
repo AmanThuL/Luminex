@@ -8,8 +8,6 @@
 #include "Core/Assert.h"
 #include "Core/Color.h"
 #include "RHI/CaptureSchema.h"
-#include "Render/AlphaMaskParams.h"
-#include "Render/Mesh.h"
 #include "Render/TemporalResolve.h"
 
 #include <cmath>
@@ -21,25 +19,6 @@
 
 namespace lmx::render {
 namespace {
-
-// Mirrors Shaders/ScenePass.slang's ObjectUniforms.
-struct ObjectUniforms {
-    glm::mat4 mvp;           // 0
-    glm::mat4 model;         // 64
-    glm::mat4 normalMatrix;  // 128 -- inverse transpose of model; 4x4 for one unambiguous layout
-    glm::mat4 uvTransform;   // 192
-    glm::vec4 albedo;        // 256
-    float roughness;         // 272
-    uint32_t flags;          // 276
-    float metallic;          // 280
-    float occlusionStrength; // 284 -- fills the register before emissive's 16-byte alignment
-    glm::vec3 emissive;      // 288
-    float emissivePadding;   // 300 -- the float3's tail
-    // Append-only growth for the motion entry points (spec 5). Every frame uploads it, temporal
-    // on or off, so nothing branches on the temporal state to decide what a draw's bytes are.
-    glm::mat4 previousModel; // 304
-};
-static_assert(sizeof(ObjectUniforms) == 368, "must match ScenePass.slang's ObjectUniforms");
 
 // Mirrors Shaders/Modules/Lighting.slang's DirLight.
 struct DirLightUniform {
@@ -62,7 +41,7 @@ struct PassUniforms {
     DirLightUniform lights[3]; // 160
     int32_t shadowFilter;      // 256
     int32_t tailPadding[3];    // 260
-    // The motion pair, unjittered: rasterisation carries the jitter in ObjectUniforms.mvp, and
+    // The motion pair, unjittered: rasterisation carries the jitter in PassUniforms.viewProj, and
     // motion must not, or a still scene would move by the jitter delta every frame.
     glm::mat4 viewProjUnjittered;         // 272
     glm::mat4 previousViewProjUnjittered; // 336
@@ -86,16 +65,11 @@ struct SkyUniforms {
 };
 static_assert(sizeof(SkyUniforms) == 176, "must match Sky.slang's SkyUniforms");
 
-// ScenePass.slang's kFlagHasNormalMap and kFlagMotionInvalid.
-constexpr uint32_t kFlagHasNormalMap = 1u;
-constexpr uint32_t kFlagMotionInvalid = 2u;
-
 // Shaders/Modules/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
 constexpr int32_t kShadowFilterPcf = 0;
 constexpr int32_t kShadowFilterPcss = 1;
 
 constexpr uint32_t kVertexBufferSlot = 0;
-constexpr uint32_t kObjectUniformsSlot = 1;
 constexpr uint32_t kPassUniformsSlot = 2;
 // The persistent exposure buffer (spec 9), read by ScenePassAuto.slang/SkyAuto.slang's fragment
 // shaders -- the pipelines SceneStage selects only while auto-exposure is on. Bound via
@@ -135,25 +109,46 @@ DirLightUniform toUniform(const DirectionalLight& light) {
 } // namespace
 
 //======================================================================================================================
-void SceneStage::registerObjectLayoutForCapture() {
+void SceneStage::registerSceneTableLayoutsForCapture() {
     using rhi::debug::CaptureSchema;
     CaptureSchema& schema = CaptureSchema::instance();
 
     schema.registerUniformStruct(
-        {.name = "ObjectUniforms",
-         .slot = kObjectUniformsSlot,
-         .sizeBytes = sizeof(ObjectUniforms),
-         .fields = {{"mvp", offsetof(ObjectUniforms, mvp), "float4x4"},
-                    {"model", offsetof(ObjectUniforms, model), "float4x4"},
-                    {"normalMatrix", offsetof(ObjectUniforms, normalMatrix), "float4x4"},
-                    {"uvTransform", offsetof(ObjectUniforms, uvTransform), "float4x4"},
-                    {"albedo", offsetof(ObjectUniforms, albedo), "float4"},
-                    {"roughness", offsetof(ObjectUniforms, roughness), "float"},
-                    {"flags", offsetof(ObjectUniforms, flags), "uint"},
-                    {"metallic", offsetof(ObjectUniforms, metallic), "float"},
-                    {"occlusionStrength", offsetof(ObjectUniforms, occlusionStrength), "float"},
-                    {"emissive", offsetof(ObjectUniforms, emissive), "float3"},
-                    {"previousModel", offsetof(ObjectUniforms, previousModel), "float4x4"}}});
+        {.name = "DrawUniforms",
+         .slot = kDrawUniformsSlot,
+         .sizeBytes = sizeof(DrawUniforms),
+         .fields = {{"instanceRow", offsetof(DrawUniforms, instanceRow), "uint"}}});
+    schema.registerUniformStruct(
+        {.name = "InstanceRow",
+         .slot = kSceneInstancesSlot,
+         .sizeBytes = sizeof(InstanceRow),
+         .fields = {{"model", offsetof(InstanceRow, model), "float4x4"},
+                    {"previousModel", offsetof(InstanceRow, previousModel), "float4x4"},
+                    {"normalMatrix", offsetof(InstanceRow, normalMatrix), "float4x4"},
+                    {"meshRow", offsetof(InstanceRow, meshRow), "uint"},
+                    {"materialRow", offsetof(InstanceRow, materialRow), "uint"},
+                    {"flags", offsetof(InstanceRow, flags), "uint"},
+                    {"emissiveScale", offsetof(InstanceRow, emissiveScale), "float"}}});
+    schema.registerUniformStruct(
+        {.name = "MaterialRow",
+         .slot = kSceneMaterialsSlot,
+         .sizeBytes = sizeof(MaterialRow),
+         .fields = {{"uvTransform", offsetof(MaterialRow, uvTransform), "float4x4"},
+                    {"albedo", offsetof(MaterialRow, albedo), "float4"},
+                    {"emissive", offsetof(MaterialRow, emissive), "float3"},
+                    {"roughness", offsetof(MaterialRow, roughness), "float"},
+                    {"metallic", offsetof(MaterialRow, metallic), "float"},
+                    {"occlusionStrength", offsetof(MaterialRow, occlusionStrength), "float"},
+                    {"alphaCutoff", offsetof(MaterialRow, alphaCutoff), "float"},
+                    {"flags", offsetof(MaterialRow, flags), "uint"}}});
+    schema.registerUniformStruct(
+        {.name = "MeshRow",
+         .slot = kSceneMeshesSlot,
+         .sizeBytes = sizeof(MeshRow),
+         .fields = {{"firstIndex", offsetof(MeshRow, firstIndex), "uint"},
+                    {"indexCount", offsetof(MeshRow, indexCount), "uint"},
+                    {"firstVertex", offsetof(MeshRow, firstVertex), "uint"},
+                    {"vertexCount", offsetof(MeshRow, vertexCount), "uint"}}});
 }
 
 //======================================================================================================================
@@ -491,6 +486,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
 
     PassDesc sceneDesc;
     sceneDesc.textureReads.push_back(shadowRead);
+    sceneDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
     // Declared only in auto mode: manual mode's shading never reads the feedback buffer (spec 9),
     // so declaring the read here always would be a lie about what the pass depends on.
     if (view.autoExposureEnabled) {
@@ -537,8 +533,8 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                               2.0f * jitterPixels.y / static_cast<float>(extents.renderHeight)};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
-        [this, &commands, view, inputs, passUniforms, viewProj, shadowRead, exposureCurrent,
-         temporalEnabled, cameraState, previousCamera, jitterNdc](const PassResources& resources) {
+        [this, &commands, view, inputs, passUniforms, shadowRead, exposureCurrent, temporalEnabled,
+         cameraState, previousCamera, jitterNdc](const PassResources& resources) {
             // Resolved rather than captured: the graph hands over the shadow map only because this
             // pass declared reading it, which is what ordered it after the pass that wrote it.
             const GraphResult<rhi::Texture*> shadowMapTexture = resources.texture(shadowRead);
@@ -587,11 +583,15 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 commands.bindBuffer(kExposureOverrideSlot, **exposureOverride);
             }
             commands.bindFrameData(kPassUniformsSlot, passUniforms);
+            if (view.tables.vertices) {
+                commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
+                commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
+                commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+            }
 
             for (const DrawItem& item : view.items) {
-                const Material& material = item.material;
-                const bool masked = material.alphaMode == AlphaMode::Mask;
-                const uint32_t maskIndex = (material.doubleSided ? 8u : 0u) +
+                const bool masked = item.alphaMode == AlphaMode::Mask;
+                const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
                                            (view.autoExposureEnabled ? 4u : 0u) +
                                            (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
                 auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
@@ -599,61 +599,33 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                     commands.bindPipeline(*pipeline);
                     boundScenePipeline = pipeline;
                 }
-                if (masked) {
-                    LMX_ASSERT(std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f,
-                               "MASK cutoff must be finite and nonnegative");
-                    commands.bindFrameData(kAlphaMaskParamsSlot,
-                                           AlphaMaskParams{material.alphaCutoff});
-                }
-                ObjectUniforms uniforms{};
-                uniforms.mvp = viewProj * item.model;
-                uniforms.model = item.model;
-                // The inverse transpose, computed here rather than in the vertex shader because it
-                // is one value per draw and inverting a matrix per vertex would pay for it tens of
-                // thousands of times over. Taken on the 3x3 linear part: translation does not act
-                // on a direction, and inverting the full 4x4 would only divide it back out again.
-                uniforms.normalMatrix =
-                    glm::mat4(glm::transpose(glm::inverse(glm::mat3(item.model))));
-                uniforms.uvTransform = material.uvTransform;
-                uniforms.albedo = material.albedo;
-                uniforms.roughness = material.roughness;
-                uniforms.flags = material.normalMap != nullptr ? kFlagHasNormalMap : 0u;
-                uniforms.metallic = material.metallic;
-                uniforms.occlusionStrength = material.occlusionStrength;
-                uniforms.emissive = material.emissive;
-                uniforms.previousModel = item.previousModel;
-                if (item.motionClass == MotionClass::Invalid) {
-                    uniforms.flags |= kFlagMotionInvalid;
-                }
-
-                commands.bindTexture(kDiffuseTextureSlot, material.diffuse != nullptr
-                                                              ? *material.diffuse
+                LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
+                           "draw instance must name a current table row");
+                commands.bindTexture(kDiffuseTextureSlot, item.diffuse != nullptr
+                                                              ? *item.diffuse
                                                               : *inputs.whiteTexture);
-                commands.bindTexture(kNormalTextureSlot, material.normalMap != nullptr
-                                                             ? *material.normalMap
+                commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
+                                                             ? *item.normalMap
                                                              : *inputs.flatNormalTexture);
                 // The shared white fallback lets each factor pass through unchanged when a
                 // material carries no map -- white is the identity for all three.
                 commands.bindTexture(kMetallicRoughnessTextureSlot,
-                                     material.metallicRoughness != nullptr
-                                         ? *material.metallicRoughness
-                                         : *inputs.whiteTexture);
-                commands.bindTexture(kOcclusionTextureSlot, material.occlusion != nullptr
-                                                                ? *material.occlusion
+                                     item.metallicRoughness != nullptr ? *item.metallicRoughness
+                                                                       : *inputs.whiteTexture);
+                commands.bindTexture(kOcclusionTextureSlot, item.occlusion != nullptr
+                                                                ? *item.occlusion
                                                                 : *inputs.whiteTexture);
-                commands.bindTexture(kEmissiveTextureSlot, material.emissiveMap != nullptr
-                                                               ? *material.emissiveMap
+                commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
+                                                               ? *item.emissiveMap
                                                                : *inputs.whiteTexture);
-                commands.bindBuffer(kVertexBufferSlot, *item.mesh->vertexBuffer);
-                // bindFrameData copies into frame-owned memory before the next draw rebinds the
-                // slot.
-                commands.bindFrameData(kObjectUniformsSlot, uniforms);
-                commands.drawIndexed(*item.mesh->indexBuffer, item.mesh->indexCount);
+                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{item.instanceRow});
+                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                                     item.mesh.firstIndex);
             }
 
             // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
             // clear.
-            if (view.skySphere != nullptr && view.skyCubemap != nullptr) {
+            if (view.skySphere.has_value() && view.skyCubemap != nullptr) {
                 // Unjittered, unlike the scene draws' mvp: the sky's vertex entry point applies
                 // jitterNdc itself so its motion pair stays unjittered. Off the temporal path the
                 // jitter is zero and this is the same matrix the scene rasterised with.
@@ -678,9 +650,9 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 // Shaders/Sky.slang/SkyAuto.slang are the only readers of this slot, so it is
                 // bound here rather than with the pass's shared set.
                 commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
-                commands.bindBuffer(kVertexBufferSlot, *view.skySphere->vertexBuffer);
                 commands.bindFrameData(kPassUniformsSlot, sky);
-                commands.drawIndexed(*view.skySphere->indexBuffer, view.skySphere->indexCount);
+                commands.drawIndexed(*view.tables.indices, view.skySphere->indexCount,
+                                     view.skySphere->firstIndex);
             }
         });
 

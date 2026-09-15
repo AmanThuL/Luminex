@@ -23,15 +23,21 @@ TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[
     REQUIRE(result.has_value());
     const auto& scene = **result;
     REQUIRE_FALSE(scene.objects.empty());
-    REQUIRE(std::ranges::any_of(scene.materials, [](const auto& material) {
+    REQUIRE(std::ranges::any_of(scene.objects, [&scene](const auto& object) {
+        const auto& material = scene.material(object.material);
         return material.alphaMode == lmx::render::AlphaMode::Mask && material.doubleSided &&
-               material.diffuse != nullptr;
+               material.diffuse.has_value();
     }));
-    REQUIRE(std::ranges::any_of(
-        scene.materials, [](const auto& material) { return material.normalMap != nullptr; }));
+    REQUIRE(std::ranges::any_of(scene.objects, [&scene](const auto& object) {
+        return scene.material(object.material).normalMap.has_value();
+    }));
     uint64_t triangles = 0;
-    for (const auto& mesh : scene.meshes) {
-        triangles += mesh.indexCount / 3;
+    std::vector<uint32_t> countedMeshes;
+    for (const auto& object : scene.objects) {
+        if (std::ranges::find(countedMeshes, object.mesh.slot) == countedMeshes.end()) {
+            triangles += scene.tryMesh(object.mesh)->indexCount / 3;
+            countedMeshes.push_back(object.mesh.slot);
+        }
     }
     REQUIRE(triangles > 100000);
     REQUIRE(scene.animation.tracks.empty());

@@ -3,9 +3,16 @@
 #include "App/Model/FrameRecordRing.h"
 #include "Render/FrameDeclaration.h"
 
+#include "SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
 #include <vector>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-selected sink",
@@ -23,16 +30,16 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     auto shared = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(shared));
     REQUIRE(shared.has_value());
-    auto cube = createMesh(**device, makeCube(), "lmx.test.frameDeclaration.cube");
+    auto cube = fixtureMesh(**device, makeCube(), "lmx.test.frameDeclaration.cube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
     Camera camera;
     camera.position = {0.0f, 0.0f, 5.0f};
-    const std::array<DrawItem, 1> items = {{
+    const std::array<FixtureDrawItem, 1> items = {{
         {.mesh = &*cube, .material = {.albedo = {0.4f, 0.6f, 0.8f, 1.0f}}},
     }};
-    SceneView view;
+    FixtureSceneView view;
     view.items = items;
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 4.0f};
     view.lights[0] = {.strength = {2.0f, 2.0f, 2.0f}, .direction = {0.0f, 0.0f, -1.0f}};
@@ -44,7 +51,9 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     // More than three frames reuses every transient slot; toggling pooling also replaces heaps.
     for (uint32_t index = 0; index < 5; ++index) {
         CommandList& referenceCommands = (*device)->beginFrame();
-        (*reference)->render(referenceCommands, camera, view, /*barrierForSampling=*/false);
+        (*reference)
+            ->render(referenceCommands, camera, lmx::test::prepareSceneView(view, device),
+                     /*barrierForSampling=*/false);
         (*device)->endFrame(nullptr);
         (*device)->waitIdle();
         std::vector<uint8_t> expected(size_t{kSize} * kSize * 4);
@@ -56,7 +65,9 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
             firstSharedFrame = frameId;
         }
         const bool poolingEnabled = index % 2 == 0;
-        lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, view, poolingEnabled);
+        const auto prepared = view.prepare(**device);
+        lmx::render::FrameDeclaration frame(pool, **shared, commands, camera, prepared,
+                                            poolingEnabled);
         frame.graph().exportTexture(frame.displayColor());
         records.retain(frame.execute());
         (*device)->endFrame(nullptr);

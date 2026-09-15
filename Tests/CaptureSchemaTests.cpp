@@ -2,6 +2,7 @@
 #include "Render/Renderer.h"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <sstream>
 
@@ -103,8 +104,7 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     schema.resetForTest();
     lmx::render::registerUniformLayoutsForCapture();
     const std::string json = writeAndRead(schema);
-    for (const char* name :
-         {"PassUniforms", "ObjectUniforms", "ShadowObjectUniforms", "SkyUniforms"}) {
+    for (const char* name : {"PassUniforms", "DrawUniforms", "ShadowPassUniforms", "SkyUniforms"}) {
         INFO(name);
         REQUIRE(json.find(name) != std::string::npos);
     }
@@ -123,14 +123,51 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
     REQUIRE(json.find("\"sizeBytes\": 176") != std::string::npos);
     REQUIRE(json.find("\"previousViewProj\"") != std::string::npos);
     REQUIRE(json.find("\"previousEyePos\"") != std::string::npos);
-    // ObjectUniforms traded fresnelR0 (16 bytes, now derived in-shader from albedo and metallic)
-    // for a 64-byte inverse-transpose normal matrix: 256 bytes to 304.
     REQUIRE(json.find("\"metallic\"") != std::string::npos);
     REQUIRE(json.find("\"occlusionStrength\"") != std::string::npos);
     REQUIRE(json.find("\"emissive\"") != std::string::npos);
     REQUIRE(json.find("\"normalMatrix\"") != std::string::npos);
     REQUIRE(json.find("\"fresnelR0\"") == std::string::npos);
-    // The previous frame's transform, appended for motion, took it from 304 to 368.
     REQUIRE(json.find("\"previousModel\"") != std::string::npos);
-    REQUIRE(json.find("\"sizeBytes\": 368") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 208") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 112") != std::string::npos);
+    REQUIRE(json.find("\"sizeBytes\": 16") != std::string::npos);
+    REQUIRE(json.find("ObjectUniforms") == std::string::npos);
+    REQUIRE(json.find("AlphaMaskParams") == std::string::npos);
+
+    const auto requireLayout =
+        [&](std::string_view name, uint32_t slot, uint32_t size,
+            std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
+            const auto start = json.find(
+                std::format("\"name\": \"{}\", \"slot\": {}, \"sizeBytes\": {}", name, slot, size));
+            REQUIRE(start != std::string::npos);
+            const auto end = json.find("\n    ]}", start);
+            REQUIRE(end != std::string::npos);
+            const auto layout = json.substr(start, end - start);
+            for (const auto& [field, offset] : fields) {
+                INFO(field);
+                REQUIRE(layout.find(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field,
+                                                offset)) != std::string::npos);
+            }
+        };
+    requireLayout("DrawUniforms", 1, 16, {{"instanceRow", 0}});
+    requireLayout("InstanceRow", 5, 208,
+                  {{"model", 0},
+                   {"previousModel", 64},
+                   {"normalMatrix", 128},
+                   {"meshRow", 192},
+                   {"materialRow", 196},
+                   {"flags", 200},
+                   {"emissiveScale", 204}});
+    requireLayout("MaterialRow", 6, 112,
+                  {{"uvTransform", 0},
+                   {"albedo", 64},
+                   {"emissive", 80},
+                   {"roughness", 92},
+                   {"metallic", 96},
+                   {"occlusionStrength", 100},
+                   {"alphaCutoff", 104},
+                   {"flags", 108}});
+    requireLayout("MeshRow", 7, 16,
+                  {{"firstIndex", 0}, {"indexCount", 4}, {"firstVertex", 8}, {"vertexCount", 12}});
 }

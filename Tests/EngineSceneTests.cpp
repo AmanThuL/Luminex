@@ -1,4 +1,23 @@
 #include "EngineSceneTestSupport.h"
+#include "SceneTableTestSupport.h"
+
+#include <set>
+
+namespace {
+
+//======================================================================================================================
+std::vector<render::InstanceRow> readSceneInstances(Scene& scene, rhi::Device& device) {
+    device.beginFrame();
+    REQUIRE(scene.prepareFrame(device.frameNumber()));
+    const auto tables = scene.tables();
+    device.endFrame(nullptr);
+    device.waitIdle();
+    std::vector<render::InstanceRow> rows(tables.instanceCount);
+    tables.instances->readback(rows.data(), rows.size() * sizeof(render::InstanceRow));
+    return rows;
+}
+
+} // namespace
 
 //======================================================================================================================
 TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
@@ -17,13 +36,26 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
 
     // The converter emits one primitive per MTL material.
     REQUIRE((*scene)->objects.size() == 25);
-    REQUIRE((*scene)->materials.size() == 25);
+    REQUIRE((*scene)->tableStats().materialCount == 25);
 
-    REQUIRE((*scene)->textures.size() == 24);
+    std::set<rhi::Texture*> textures;
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        for (const auto id : {material.diffuse, material.normalMap, material.metallicRoughness,
+                              material.occlusion, material.emissiveMap}) {
+            if (id) {
+                auto* texture = (*scene)->tryTexture(*id);
+                REQUIRE(texture != nullptr);
+                textures.insert(texture);
+            }
+        }
+    }
+    REQUIRE(textures.size() == 24);
 
     size_t normalMapped = 0;
-    for (const render::Material& material : (*scene)->materials) {
-        if (material.normalMap != nullptr) {
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        if (material.normalMap.has_value()) {
             ++normalMapped;
         }
     }
@@ -58,14 +90,15 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
     bool foundMetallicRoughness = false;
     bool foundOcclusion = false;
     bool foundEmissive = false;
-    for (const render::Material& material : (*scene)->materials) {
-        if (material.metallicRoughness != nullptr) {
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        if (material.metallicRoughness.has_value()) {
             foundMetallicRoughness = true;
         }
-        if (material.occlusion != nullptr) {
+        if (material.occlusion.has_value()) {
             foundOcclusion = true;
         }
-        if (material.emissiveMap != nullptr) {
+        if (material.emissiveMap.has_value()) {
             foundEmissive = true;
         }
     }
@@ -104,7 +137,8 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     rhi::Texture* bakedDiffuse =
-        (*bakedScene)->materials[(*bakedScene)->objects[0].materialIndex].diffuse;
+        (*bakedScene)
+            ->tryTexture(*(*bakedScene)->material((*bakedScene)->objects[0].material).diffuse);
     REQUIRE(bakedDiffuse != nullptr);
     const std::vector<uint8_t> bakedMip1 = readMipLevel1(**device, *bakedDiffuse);
 
@@ -115,7 +149,9 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         rhi::Texture* fallbackDiffuse =
-            (*fallbackScene)->materials[(*fallbackScene)->objects[0].materialIndex].diffuse;
+            (*fallbackScene)
+                ->tryTexture(
+                    *(*fallbackScene)->material((*fallbackScene)->objects[0].material).diffuse);
         REQUIRE(fallbackDiffuse != nullptr);
         fallbackMip1 = readMipLevel1(**device, *fallbackDiffuse);
     }
@@ -158,12 +194,13 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     camera.nearZ = (*scene)->initialCamera.nearZ;
     camera.farZ = (*scene)->initialCamera.farZ;
 
+    rhi::CommandList& commands = (*device)->beginFrame();
+    REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<render::DrawItem> items;
     const render::SceneView view =
         (*scene)->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
-    rhi::CommandList& commands = (*device)->beginFrame();
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
@@ -205,14 +242,17 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
     // Sample up to eight textures so at least one pair exposes a per-draw binding collision.
     std::vector<rhi::Texture*> distinctDiffuse;
-    for (const render::Material& material : (*scene)->materials) {
-        if (material.diffuse == nullptr) {
+    for (const auto& object : (*scene)->objects) {
+        const auto& material = (*scene)->material(object.material);
+        if (!material.diffuse) {
             continue;
         }
+        rhi::Texture* diffuse = (*scene)->tryTexture(*material.diffuse);
+        REQUIRE(diffuse != nullptr);
         const bool alreadySeen = std::find(distinctDiffuse.begin(), distinctDiffuse.end(),
-                                           material.diffuse) != distinctDiffuse.end();
+                                           diffuse) != distinctDiffuse.end();
         if (!alreadySeen) {
-            distinctDiffuse.push_back(material.diffuse);
+            distinctDiffuse.push_back(diffuse);
         }
         if (distinctDiffuse.size() == 8) {
             break;
@@ -220,7 +260,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     }
     REQUIRE(distinctDiffuse.size() >= 2);
 
-    auto quad = render::createMesh(**device, makeUvQuad(0.45f), "lmx.test.sponzaDiffuseQuad");
+    auto quad = lmx::test::fixtureMesh(**device, makeUvQuad(0.45f), "lmx.test.sponzaDiffuseQuad");
     INFO(describeSceneError(quad));
     REQUIRE(quad.has_value());
 
@@ -237,19 +277,20 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     const float halfWidth = -startX + 0.45f;
     camera.position = {0.0f, 0.0f, 1.2f * halfWidth / glm::tan(camera.fovY * 0.5f)};
     std::vector<glm::vec3> centers;
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::test::FixtureDrawItem> items;
     items.reserve(distinctDiffuse.size());
     for (size_t i = 0; i < distinctDiffuse.size(); ++i) {
         const glm::vec3 center{startX + spacing * static_cast<float>(i), 0.0f, 0.0f};
         centers.push_back(center);
-        render::Material material; // default albedo/roughness/metallic; only diffuse differs
+        lmx::test::FixtureMaterial
+            material; // default albedo/roughness/metallic; only diffuse differs
         material.diffuse = distinctDiffuse[i];
         items.push_back({.mesh = &*quad,
                          .model = glm::translate(glm::mat4(1.0f), center),
                          .material = material});
     }
 
-    render::SceneView view;
+    lmx::test::FixtureSceneView view;
     view.items = items;
     // One head-on light, no environment. Every quad is coplanar and shares a normal, so each sees
     // the same N.L, the same N.V and the same BRDF -- which isolates texture differences from
@@ -263,7 +304,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
     rhi::CommandList& commands = (*device)->beginFrame();
-    (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
+    (*renderer)->render(commands, camera, view.prepare(**device), /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 
@@ -420,25 +461,29 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 
     // Nothing has moved yet, so every draw reprojects onto itself.
     std::vector<render::DrawItem> items;
+    const auto rows = readSceneInstances(**scene, **device);
     (*scene)->view(items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == (*scene)->objects.size());
     for (const render::DrawItem& item : items) {
-        REQUIRE(matricesNear(item.model, item.previousModel, 1e-6f));
-        REQUIRE(item.motionClass == render::MotionClass::Rigid);
+        const auto& row = rows[item.instanceRow];
+        REQUIRE(matricesNear(row.model, row.previousModel, 1e-6f));
+        REQUIRE((row.flags & render::kInstanceMotionInvalid) == 0);
     }
 
     // Playing the clip moves the wheels and leaves the rest of the truck exactly where it was.
-    const glm::mat4 bodyBefore = items[0].model;
+    const glm::mat4 bodyBefore = rows[items[0].instanceRow].model;
     (*scene)->commitFrame();
     (*scene)->advanceAnimation(1.0 / 60.0);
     (*scene)->animate((*scene)->animationTime);
+    const auto movedRows = readSceneInstances(**scene, **device);
     (*scene)->view(items, render::ShadowFilter::PCF, false);
     bool anyMoved = false;
     for (const render::DrawItem& item : items) {
-        anyMoved = anyMoved || !matricesNear(item.model, item.previousModel, 1e-6f);
+        const auto& row = movedRows[item.instanceRow];
+        anyMoved = anyMoved || !matricesNear(row.model, row.previousModel, 1e-6f);
     }
     REQUIRE(anyMoved);
-    REQUIRE(matricesNear(items[0].model, bodyBefore, 1e-6f));
+    REQUIRE(matricesNear(movedRows[items[0].instanceRow].model, bodyBefore, 1e-6f));
 }
 
 //======================================================================================================================
@@ -465,12 +510,14 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
     REQUIRE(near3(glm::vec3(clipAtZero[3]), glm::vec3(0.0f)));
 
     std::vector<render::DrawItem> items;
+    const auto rows = readSceneInstances(**scene, **device);
     (*scene)->view(items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
-    REQUIRE(matricesNear(items[0].model, clipAtZero, 1e-4f));
-    REQUIRE(matricesNear(items[0].previousModel, items[0].model, 1e-6f));
+    const auto& row = rows[items[0].instanceRow];
+    REQUIRE(matricesNear(row.model, clipAtZero, 1e-4f));
+    REQUIRE(matricesNear(row.previousModel, row.model, 1e-6f));
     // The authored rest pose, which the scene must *not* be left at.
-    REQUIRE_FALSE(near3(glm::vec3(items[0].model[3]), glm::vec3(10.0f, 0.0f, 0.0f)));
+    REQUIRE_FALSE(near3(glm::vec3(row.model[3]), glm::vec3(10.0f, 0.0f, 0.0f)));
 
     // The bounds describe the posed geometry: the quad spans x in [-1, 1] about the clip's origin,
     // not about the authored (10, 0, 0).

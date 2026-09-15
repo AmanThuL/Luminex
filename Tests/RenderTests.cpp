@@ -284,7 +284,7 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
         REQUIRE(glm::dot(geometric, {a.nx, a.ny, a.nz}) > 0.99f);
     }
     // The PNTU tail. These two procedural meshes carry no texture and never get a normal map --
-    // the scene shader's normal-map branch is off for them (ObjectUniforms flags bit0 clear) --
+    // the scene shader's normal-map branch is off for them (MaterialRow normal-map flag clear) --
     // so the tangent is a fixed placeholder rather than a per-face frame, and the uv is 0.
     // Pinned so that a future generator change has to say so out loud.
     for (const Vertex& v : cube.vertices) {

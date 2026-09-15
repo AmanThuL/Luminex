@@ -3,8 +3,15 @@
 #include "Render/FrameDeclaration.h"
 #include "Render/SelectionOutline.h"
 
+#include "SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
+
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
 
 namespace {
 using namespace lmx::render;
@@ -28,8 +35,8 @@ struct OutlineFrame {
 };
 
 //======================================================================================================================
-SceneView outlineView(std::span<const DrawItem> items) {
-    SceneView view;
+FixtureSceneView outlineView(std::span<const FixtureDrawItem> items) {
+    FixtureSceneView view;
     view.items = items;
     view.boundingSphere = {0, 0, 0, 8};
     for (auto& light : view.lights) {
@@ -40,8 +47,8 @@ SceneView outlineView(std::span<const DrawItem> items) {
 }
 
 //======================================================================================================================
-DrawItem outlineItem(const Mesh& mesh) {
-    DrawItem item;
+FixtureDrawItem outlineItem(const FixtureMesh& mesh) {
+    FixtureDrawItem item;
     item.mesh = &mesh;
     item.material.albedo = {0, 0, 0, 1};
     item.material.emissive = {0.1f, 0.25f, 0.4f};
@@ -50,15 +57,16 @@ DrawItem outlineItem(const Mesh& mesh) {
 
 //======================================================================================================================
 OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& renderer,
-                          SelectionOutline* outline, const SceneView& view,
+                          SelectionOutline* outline, const FixtureSceneView& view,
                           float backingScale = 1.0f) {
     Camera camera;
     camera.position = {0, 0, 4};
     camera.fovY = glm::half_pi<float>();
     auto& commands = device.beginFrame();
-    FrameDeclaration frame(pool, renderer, commands, camera, view, true);
+    const auto prepared = view.prepare(device);
+    FrameDeclaration frame(pool, renderer, commands, camera, prepared, true);
     const auto output = outline ? outline->declare(frame.graph(), commands, frame.displayColor(),
-                                                   camera, view, 0, backingScale)
+                                                   camera, prepared, 0, backingScale)
                                 : frame.displayColor();
     frame.graph().exportTexture(output);
     OutlineFrame result;
@@ -143,7 +151,7 @@ TEST_CASE(
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.quad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.quad");
     REQUIRE(mesh);
     const auto item = outlineItem(*mesh);
     const auto view = outlineView(std::span{&item, 1});
@@ -173,7 +181,7 @@ TEST_CASE("selection outline respects full and partial foreground occlusion",
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.occlusionQuad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.occlusionQuad");
     REQUIRE(mesh);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     items[1].model = glm::translate(glm::mat4{1}, glm::vec3{0, 0, 1}) *
@@ -204,7 +212,7 @@ TEST_CASE("selection outline never traces or paints a thin foreground rod",
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.rodQuad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.rodQuad");
     REQUIRE(mesh);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
     // At z=1 this projects to [31,33) x [16,48): a two-pixel rod crossing both natural borders.
@@ -240,7 +248,7 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.maskedForegroundQuad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.maskedForegroundQuad");
     REQUIRE(mesh);
     auto texture = outlineCutout(**device);
     std::array items{outlineItem(*mesh), outlineItem(*mesh)};
@@ -291,7 +299,7 @@ TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.maskQuad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.maskQuad");
     REQUIRE(mesh);
     auto texture = outlineCutout(**device);
     auto item = outlineItem(*mesh);
@@ -336,7 +344,7 @@ TEST_CASE(
     auto outline = SelectionOutline::create(**device, kSize, kSize, true);
     INFO(errorOf(outline));
     REQUIRE(outline);
-    auto mesh = createMesh(**device, outlineQuad(), "lmx.test.selection.historyQuad");
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.historyQuad");
     REQUIRE(mesh);
     auto item = outlineItem(*mesh);
     auto view = outlineView(std::span{&item, 1});

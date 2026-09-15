@@ -74,6 +74,16 @@ void SceneSession::rewindAnimation() {
 }
 
 //======================================================================================================================
+rhi::Result<void> SceneSession::prepareFrame(uint64_t frameNumber) {
+    return scene().prepareFrame(frameNumber);
+}
+
+//======================================================================================================================
+scene::SceneTableStats SceneSession::tableStats() const {
+    return scene().tableStats();
+}
+
+//======================================================================================================================
 render::SceneView SceneSession::view(std::vector<render::DrawItem>& items,
                                      render::ShadowFilter filter, bool wireframe) const {
     return scene().view(items, filter, wireframe);

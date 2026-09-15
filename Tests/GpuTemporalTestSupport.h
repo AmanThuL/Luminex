@@ -12,18 +12,25 @@
 
 #include <catch2/catch_approx.hpp>
 
+#include "SceneTableTestSupport.h"
 #include <cmath>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMaterial;
+using lmx::test::FixtureMesh;
+using lmx::test::fixtureMesh;
+using lmx::test::FixtureSceneView;
+
 namespace {
 
 using lmx::render::Camera;
-using lmx::render::DrawItem;
-using lmx::render::Mesh;
 using lmx::render::Renderer;
-using lmx::render::SceneView;
+using lmx::test::FixtureDrawItem;
+using lmx::test::FixtureMesh;
+using lmx::test::FixtureSceneView;
 
 // TemporalLab's deliberately static object, at the position Tests/SceneTemporalLabTests.cpp pins.
 [[maybe_unused]] constexpr glm::vec3 kReferenceCubeCenter{3.0f, 1.0f, 0.0f};
@@ -36,8 +43,8 @@ inline Camera temporalCamera() {
 }
 
 //======================================================================================================================
-inline SceneView temporalSceneView(std::span<const DrawItem> items) {
-    SceneView view;
+inline FixtureSceneView temporalSceneView(std::span<const FixtureDrawItem> items) {
+    FixtureSceneView view;
     view.items = items;
     view.lights[0] = {.strength = {0.5f, 0.5f, 0.5f}, .direction = {0.0f, 0.0f, -1.0f}};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
@@ -121,9 +128,10 @@ inline glm::mat4 facingPlaneModel(float z) {
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
 inline void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
-                        const SceneView& view) {
+                        const FixtureSceneView& view) {
     lmx::rhi::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, view, /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
+                    /*barrierForSampling=*/false);
     device.endFrame(nullptr);
     device.waitIdle();
 }
@@ -133,9 +141,10 @@ inline void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Came
 // resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
 // the shipped loop never performs.
 inline void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
-                                const SceneView& view) {
+                                const FixtureSceneView& view) {
     lmx::rhi::CommandList& commands = device.beginFrame();
-    renderer.render(commands, camera, view, /*barrierForSampling=*/false);
+    renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
+                    /*barrierForSampling=*/false);
     device.endFrame(nullptr);
 }
 
@@ -269,7 +278,7 @@ struct ScenarioFrame {
 
 // Mutates the frame's scene before it is declared: the caller owns the draw list, so an item's
 // model and previousModel are set here rather than rebuilt.
-using PerFrame = std::function<void(uint32_t frame, SceneView& view, Camera& camera)>;
+using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Camera& camera)>;
 
 //======================================================================================================================
 // `frames` declared temporal frames through the shipped path, all in one reconstruction mode, each
@@ -278,15 +287,14 @@ using PerFrame = std::function<void(uint32_t frame, SceneView& view, Camera& cam
 // The render scale is not one of the fixed fields: `base.temporal.renderScale` carries a whole
 // sequence's scale and a PerFrame may set `view.temporal.renderScale` to change it per frame,
 // which is what the scale-change scenarios drive the extent with.
-inline std::vector<ScenarioFrame> renderSequence(lmx::rhi::Device& device, Renderer& renderer,
-                                                 uint32_t frames, ReconstructionMode mode,
-                                                 const SceneView& base, const Camera& baseCamera,
-                                                 TemporalDebugView debugView,
-                                                 const PerFrame& perFrame) {
+inline std::vector<ScenarioFrame>
+renderSequence(lmx::rhi::Device& device, Renderer& renderer, uint32_t frames,
+               ReconstructionMode mode, const FixtureSceneView& base, const Camera& baseCamera,
+               TemporalDebugView debugView, const PerFrame& perFrame) {
     std::vector<ScenarioFrame> result;
     result.reserve(frames);
     for (uint32_t frame = 1; frame <= frames; ++frame) {
-        SceneView view = base;
+        FixtureSceneView view = base;
         Camera camera = baseCamera;
         view.temporal.enabled = true;
         view.temporal.jitterEnabled = true;
@@ -378,8 +386,9 @@ inline Camera scenarioCamera(glm::vec3 position, float pitch) {
 }
 
 //======================================================================================================================
-inline SceneView scenarioSceneView(std::span<const DrawItem> items, glm::vec3 lightDirection) {
-    SceneView view;
+inline FixtureSceneView scenarioSceneView(std::span<const FixtureDrawItem> items,
+                                          glm::vec3 lightDirection) {
+    FixtureSceneView view;
     view.items = items;
     view.lights[0] = {.strength = {1.0f, 1.0f, 1.0f}, .direction = lightDirection};
     view.lights[1].strength = {0.0f, 0.0f, 0.0f};
@@ -400,8 +409,9 @@ inline glm::mat4 boxModel(glm::vec3 center, glm::vec3 scale) {
 // A draw that did not move: previousModel matched to model, which is what makes the item reproject
 // onto itself. Leaving it at the default would have every static object report the motion of a
 // teleport from the identity transform.
-inline DrawItem staticItem(const Mesh& mesh, const glm::mat4& model, glm::vec4 albedo) {
-    DrawItem item;
+inline FixtureDrawItem staticItem(const FixtureMesh& mesh, const glm::mat4& model,
+                                  glm::vec4 albedo) {
+    FixtureDrawItem item;
     item.mesh = &mesh;
     item.model = model;
     item.previousModel = model;
@@ -412,7 +422,8 @@ inline DrawItem staticItem(const Mesh& mesh, const glm::mat4& model, glm::vec4 a
 //======================================================================================================================
 // A receding checkerboard: the bright tiles only, laid over a dark floor plane, so the high spatial
 // frequency near the horizon is what jitter makes shimmer and accumulation is meant to settle.
-inline void appendCheckerFloor(std::vector<DrawItem>& items, const Mesh& cube, const Mesh& plane) {
+inline void appendCheckerFloor(std::vector<FixtureDrawItem>& items, const FixtureMesh& cube,
+                               const FixtureMesh& plane) {
     items.push_back(staticItem(plane, glm::mat4{1.0f}, {0.04f, 0.04f, 0.04f, 1.0f}));
     for (int32_t ix = -4; ix < 4; ++ix) {
         for (int32_t iz = -60; iz < 4; ++iz) {
@@ -449,9 +460,9 @@ inline float meanOverWindow(const std::vector<ScenarioFrame>& frames,
 // whose perspective compresses its high spatial frequency toward the horizon, and five poles two
 // *output* pixels wide -- the width is stated in output pixels at every render scale, because the
 // output extent is what the reconstruction has to resolve them at.
-inline std::vector<DrawItem> checkerAndPoleItems(const Camera& camera, const Mesh& cube,
-                                                 const Mesh& plane) {
-    std::vector<DrawItem> items;
+inline std::vector<FixtureDrawItem>
+checkerAndPoleItems(const Camera& camera, const FixtureMesh& cube, const FixtureMesh& plane) {
+    std::vector<FixtureDrawItem> items;
     appendCheckerFloor(items, cube, plane);
     const float poleWidth = 2.0f / pixelsPerUnit(camera, 12.0f);
     for (int32_t i = -2; i <= 2; ++i) {
@@ -535,9 +546,9 @@ inline float movingQuadContrast(const Camera& camera, const std::vector<float>& 
 
 //======================================================================================================================
 // The moving-quad scene, with the quad as item 1 so a PerFrame can drive it.
-inline std::vector<DrawItem> movingQuadItems(const Camera& camera, const Mesh& cube,
-                                             const Mesh& plane) {
-    std::vector<DrawItem> items;
+inline std::vector<FixtureDrawItem> movingQuadItems(const Camera& camera, const FixtureMesh& cube,
+                                                    const FixtureMesh& plane) {
+    std::vector<FixtureDrawItem> items;
     items.push_back(staticItem(plane, facingPlaneModel(-12.0f), {0.6f, 0.6f, 0.6f, 1.0f}));
     items.push_back(staticItem(cube, movingQuadModel(camera, 1), {0.05f, 0.05f, 0.05f, 1.0f}));
     return items;
