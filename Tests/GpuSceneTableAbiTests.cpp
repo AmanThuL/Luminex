@@ -99,6 +99,10 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
         instance.materialRow = 0xB2345000u + row;
         instance.flags = 0xC3456000u + row;
         instance.emissiveScale = 1.125f + static_cast<float>(row);
+        instance.worldBoundsMin = glm::vec3(-12.5f, -6.25f, -3.125f) - float(row);
+        instance.worldBoundsMax = glm::vec3(7.25f, 9.5f, 13.75f) + float(row);
+        instance.boundsPadding0 = 0x12345678u + row;
+        instance.boundsPadding1 = 0x23456789u + row;
         material.albedo = glm::vec4(0.125f, 0.375f, 0.625f, 0.875f) + float(row);
         material.emissive = glm::vec3(-0.25f, 0.5f, 1.75f) + float(row);
         material.roughness = 0.3125f + float(row);
@@ -109,7 +113,11 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
         meshes[row] = {.firstIndex = 17 + row,
                        .indexCount = 31 + row,
                        .firstVertex = 47 + row,
-                       .vertexCount = 61 + row};
+                       .vertexCount = 61 + row,
+                       .boundsMin = glm::vec3(-1.25f, -2.5f, -3.75f) - float(row),
+                       .boundsPadding0 = 0x34567890u + row,
+                       .boundsMax = glm::vec3(4.125f, 5.25f, 6.5f) + float(row),
+                       .boundsPadding1 = 0x45678901u + row};
     }
     auto instanceBuffer = (*device)->createBuffer(
         {.size = sizeof(instances), .label = "lmx.test.sceneTableAbi.instances"}, instances.data());

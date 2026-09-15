@@ -12,11 +12,13 @@
 #include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
 #include "App/Model/FrameRecordRing.h"
+#include "App/Model/MeasurementRun.h"
 #include "App/Model/MetricsContextRevision.h"
 #include "App/Model/PerformanceModel.h"
 #include "App/Model/SceneLoadState.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
+#include "App/Model/VisibilityDisplay.h"
 #include "App/Model/WorkspaceModel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "Render/Camera.h"
@@ -173,6 +175,14 @@ public:
     /// Captures declaration-time dimensions and counts for the exact frame retained by the loop.
     FrameMetricsMetadata frameMetrics(const render::Renderer& renderer);
 
+    /// Joins exact retired GPU timings to a pending interactive measurement.
+    void retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    /// Records the just-submitted frame using its exact declaration and CPU timing scopes.
+    void recordMeasurementFrame(uint64_t frameId, double waitMs, double encodeMs,
+                                const render::CompiledFrameRecord& record);
+    /// Measurement frames serialize retirement to preserve every GPU sample.
+    bool measurementNeedsRetirementWait() const;
+
     /// Returns the camera currently controlled by the editor viewport.
     const render::Camera& camera() const { return m_session.camera(); }
 
@@ -234,6 +244,8 @@ private:
     bool selectScene(rhi::Device& device, scene::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
+    void startMeasurement(rhi::Device& device, const render::Renderer& renderer);
+    void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
     scene::SceneLibrary& m_library;
@@ -259,6 +271,15 @@ private:
     // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
     // switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
+    VisibilityDisplay m_visibilityDisplay;
+    MeasurementRun m_measurement;
+    uint32_t m_measurementWarmup = 32;
+    uint32_t m_measurementFrames = 256;
+    std::string m_measurementExportPath;
+    std::string m_measurementFeedback;
+    render::VisibilityStatus m_measurementVisibility;
+    render::TemporalStatus m_measurementTemporal;
+    uint32_t m_labInstances = 4096;
     // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
     // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
     // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline

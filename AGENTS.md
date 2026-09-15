@@ -4,18 +4,21 @@ Metal 4-first rendering playground / portfolio (macOS 26+, Apple Silicon), with 
 one backend. Direction: graph-scheduled GPU-driven hybrid rendering with shared scene/material/
 light/temporal semantics, visible quality and reproducible evidence. Future scope and prerequisites
 live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
-
+## Luminex development journal
+At session start, read `~/Documents/Obsidian_我的笔记/Projects/Renderers/Luminex Dev Journal/AGENTS.md`
+and that directory's `Luminex · 开发日记.md`, including in worktrees. For journal changes, update
+its index in the same task and follow its Context, Chinese prose/English terms, debugging evidence,
+real editor screenshots and editable-diagram standard. Report unavailable vault access honestly.
 ## Golden sources
-- Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (decisions D1–D10 are binding)
-- Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
-- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap entry: `docs/roadmap.md`
+- Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
+- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), `docs/roadmap/editor-experience.md` (UX1 before M7.1), and
   `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
 - Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
-  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is inactive.
+  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is implemented with exact-image failures and owner review pending (`docs/milestones/m7.2-validation.md`); M7.3 is inactive.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order; transparency belongs to M8, cluster LOD
   to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
@@ -32,7 +35,6 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5.6.md`.
   Verified raw bundles are GitHub Release attachments; local originals were deleted. Restore:
   `docs/guides/gpu-submission-archive.md`. Baseline remained M5.5; M6 was unblocked.
-
 ## Commands
 - Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
   slang, Dear ImGui docking-branch commit, imgui-node-editor, Inter 4.1 font/license), Damaged Helmet, the CC0 Studio
@@ -92,6 +94,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   stays the default and reference. Running the binary directly requires CWD = its
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
+- Visibility: `--visibility cull|off`, `--submission direct|indirect|batched` (defaults cull/indirect); lab-only `--lab-instances N` defaults 4096. `--measure out.json --warmup W --frames N` records isolated frame costs; `--unscored` permits instrumentation. `Tools/Bench/visibility_paired.py` runs frozen paired diagnostics; see GPU debugging guide.
 - Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered PNGs (or `--capture-format bmp`) after W
   unsaved frames at 60 Hz, plus a v2 camera/settings/status/display/container/UI manifest, into a new or empty directory.
   It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
@@ -143,7 +146,6 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   `LMX_GRAPH_DUMP=/tmp/out.txt xmake run App` writes the first compiled frame once; paths must be
   absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
   parity checks: `docs/guides/gpu-debugging.md`.
-
 ## Architecture
 `Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) → root `RHI/` component (`RHI/Include/RHI`: public `lmx::rhi`
 interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
@@ -167,7 +169,7 @@ dead-pass culling from declared sinks only, conservative aliasing of lifetime-di
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
 as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
-`SceneView.h` owns row selectors/mesh ranges/resolved textures plus five borrowed table/geometry buffers; 16-byte `DrawUniforms` selects instance b5/material b6, vertices b0; shaders compose transforms; CPU indexed draws and per-draw textures remain. `Renderer` imports five read-only `lmx.scene.*` buffers and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
+`SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five GPU buffers; 240 B instances/48 B meshes carry world/local AABBs. CPU five-plane visibility feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. `Renderer` imports five read-only `lmx.scene.*` buffers plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -190,19 +192,19 @@ engine history stays valid across native/vendor switches. `lmx.pass.temporal.ven
 GeometryGenerator, deterministic environment/IBL generation, texture baking and SHA-256,
 repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
 RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
-DDS/cubemap/IBL uploads, environment rig, labs, source names, local object bounds, initial camera,
+DDS/cubemap/IBL uploads, environment rig, labs, source names, shared mesh bounds/world-row updates, initial camera,
 playback and previous transforms; generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` reject stale/foreign handles; add/finalize builds one immutable rebased vertex/index pool including sky. Stable row slots survive removal/reorder; three paced table buffers per kind update only dirty rows. Growth doubles capacity and retires old buffers at lastFrame+3; new instances seed their previous pose;
-six catalog scenes include optional San Miguel with a deterministic 12-second camera rail) →
+seven catalog scenes include VisibilityLab and optional San Miguel with a deterministic 12-second camera rail) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
 first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats Inspector Display & Details counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
-independent rendering reset scopes; `SelectionBounds` transforms reliable local geometry bounds
+independent rendering reset scopes; `SelectionBounds` uses shared Render AABB transforms on mesh bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
 paired with declared-frame counts, and compatible live retired timing. Renderer’s
 per-frame reset field retains its original meaning. `DynamicResolutionState::lastObservedFrame`
 is the consumed/skipped publication cursor; `lastMeasurementFrame` pairs with the last controller
-measurement. `FrameRecordRing` retains declaration-time counts/extents/context with compiled
+measurement. `MeasurementRun` shares exact frame/GPU joins with serialized-retirement headless and unscored interactive runs. `FrameRecordRing` retains declaration-time counts/extents/context with compiled
 records; `GraphSnapshot` owns live/frozen 4 Hz copies. `ConsoleLog`/`ConsoleModel` own bounded
 thread-safe logging and filtered/frozen display) →
 `Source/App` (SDL3 six-panel editor: Hierarchy/Viewport/Inspector/Performance/Console dock together;
@@ -227,7 +229,6 @@ DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUp
 SelectionMask and SelectionOutline (editor-only).
 `Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
 MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
-
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.
@@ -245,6 +246,5 @@ MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI 
   rendering behavior and uses plain feature themes for future work. It never exposes milestone
   numbers, task/plan status, or an unimplemented backend as a current capability. `CLAUDE.md`
   imports this file, so the same rule applies to Codex and Claude Code.
-
 ## Update policy
 Refresh this file whenever a command, architecture contract, or hard rule changes.

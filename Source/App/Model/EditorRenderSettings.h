@@ -13,6 +13,8 @@ namespace lmx::app {
 /// borrow it to edit the same values, which is what keeps a viewport shortcut and an Inspector row
 /// from becoming two parallel settings.
 struct EditorRenderSettings {
+    bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
+    render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
     bool wireframe = false; ///< Draws the scene in wireframe.
     /// Shadow filtering kernel, applied by the scene pass.
     render::ShadowFilter shadowFilter = render::ShadowFilter::PCF;

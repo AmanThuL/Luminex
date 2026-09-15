@@ -6,6 +6,7 @@
 #pragma once
 
 #include "RHI/RHI.h"
+#include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
 
@@ -43,6 +44,9 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 /// Borrowed resources and copied light transform for one shadow declaration.
 /// The textures, sampler and SceneView referents must survive graph execution.
 struct ShadowStageInputs {
+    DrawList draws;                        ///< Prepared commands and paced buffers for this view.
+    GraphBuffer drawRows;                  ///< Read-only visible-row import.
+    GraphBuffer drawArguments;             ///< Indirect-argument import.
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.

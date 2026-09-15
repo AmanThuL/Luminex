@@ -129,7 +129,9 @@ Metal4 argument tables clear texture slots at each render/compute pass before bi
 resources that pass uses. This prevents unused slots from naming retired transient textures
 when Xcode enumerates bindings. Draw/dispatch snapshots preserve earlier work. On Xcode 26.6,
 use **Bound** resources for inspection; **Accessed** mode is unavailable for Metal4. Scene draws
-show shared geometry at b0, the 16-byte draw selector at b1, instances at b5 and materials at b6.
+show vertices at b0, the 16-byte firstEntry selector at b1, visible instance-row indices at b4,
+240-byte instances at b5 and 112-byte materials at b6. Indirect commands use firstInstance as the
+absolute list offset; batched argument indices differ from list offsets. Mesh rows are 48 bytes.
 
 Keep captures and dump directories outside the repository. A postmortem records only the durable
 symptom, evidence, root cause, correction, and prevention.
@@ -197,6 +199,44 @@ python3 Tools/GpuDebug/profile.py --help
 The profiler wraps Instruments export and reports encoder-granularity intervals. Record device, OS,
 build mode, resolution, validation state, scene, sample count, and cold/warm classification with any
 performance claim. A missing optimized-away empty encoder is not a zero-duration measurement.
+
+## Measure visibility and submission
+
+Rendering > Visibility defaults to culling and indirect submission; direct/batched remain selectable.
+Counts retain scene
+and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
+CPU classify/prepare time. Hierarchy badges and selected-object world bounds name the same retained
+frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
+The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
+Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
+
+Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`.
+VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
+that option requires `--scene visibility-lab`. Its seeded grid and 12-second camera rail are fixed.
+
+```sh
+xmake run App --scene visibility-lab --lab-instances 1024 --visibility cull --submission indirect
+xmake run App --scene visibility-lab --measure /absolute/new-run.json --warmup 32 --frames 256
+python3 Tools/Bench/visibility_paired.py --binary /absolute/frozen/App --out /absolute/new-evidence
+```
+
+Omit `--windowed` for maximized fullscreen-windowed editor validation. Performance > Measure starts,
+cancels and exports a live viewport run; editor reports are always interactive/unscored. Disable
+dynamic resolution first. `--measure` conflicts with screenshot/sequence output. The option
+`--measure-camera initial|track` chooses authored camera or rail. Scored headless output
+refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
+
+Both front ends wait for GPU retirement after each submitted frame because RHI exposes only the
+newest retired timing set. Editor still renders and presents each frame; measurement pacing reduces
+overlap. JSON discloses `serialized-retirement`, joins every sample by frame ID, records actual
+extents/reconstruction and executable/shader/environment provenance, and separates beginFrame wait
+from encode time. The post-submit retirement wait is excluded; these are not realtime throughput
+measurements. Timed GPU sums exclude presentation, driver and untimed work.
+
+The paired driver uses fresh processes, alternating AB/BA, 12 pairs, W32/N256 and a seeded 10,000-draw
+95% bootstrap interval. Cull/off, indirect/direct and batched/direct cover lab N1024/16384/65536,
+Sponza, San Miguel and TemporalLab; Sponza/San Miguel use initial cameras, the labs their rails.
+Failures remain in the output directory; no adoption rule is applied. Use `--selftest` for protocol checks.
 
 ## Automated tool tests
 

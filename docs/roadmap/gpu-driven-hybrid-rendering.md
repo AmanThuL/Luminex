@@ -24,15 +24,15 @@ DEFER did not by themselves pass the review. M7.1 implementation and validation,
 Replay, are complete. On 2026-09-15 the owner accepted the result after manual verification,
 including the scoped MetalFX profile (15/15); original image criteria remain 11/15.
 [Its record](../milestones/m7.1.md) owns both results and limits. The executor plan is closed;
-the owner approved main integration on 2026-09-15 and M7.2 remains inactive.
+the owner approved main integration on 2026-09-15 and [M7.2 implementation](../milestones/m7.2-validation.md) awaits owner review and exact-image failure disposition.
 
 The current implementation supplies shared scene identities and paced GPU tables to the retained
 CPU draw path. `SceneView` borrows row selectors, mesh ranges and resolved texture pointers;
 instance/material rows carry transforms, motion and material factors. ShadowStage and SceneStage
 retain one indexed command and texture binding set per object, with shared geometry and table
 bindings. The [architecture](../architecture/overview.md) owns the current implementation details.
-No frustum culling exists on either processor. M7.2 adds the CPU visibility reference and indirect
-baseline against which M7.3 measures GPU visibility; M7.5 adds point/spot lights before clustered
+M7.2 implements the CPU visibility reference and indirect baseline, pending owner review; GPU frustum classification
+remains M7.3 scope and measures against that reference; M7.5 adds point/spot lights before clustered
 assignment. Existing three-directional-light semantics and temporal inputs remain the reference.
 
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).

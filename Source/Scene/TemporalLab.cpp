@@ -274,18 +274,6 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
                       .motionClass = render::MotionClass::Rigid});
     expandAabb(kSignPosition, glm::vec3(kSignSize.x * 0.5f, kSignSize.y * 0.5f, 0.0f));
 
-    for (SceneObject& object : scene->objects) {
-        glm::vec3 halfExtent(0.5f);
-        if (object.mesh == planeMeshIndex) {
-            halfExtent = glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent);
-        } else if (object.mesh == sphereMeshIndex) {
-            halfExtent = glm::vec3(kOrbitSphereRadius);
-        } else if (object.mesh == signMeshIndex) {
-            halfExtent = glm::vec3(kSignSize.x * 0.5f, 0.0f, kSignSize.y * 0.5f);
-        }
-        object.localBounds = ObjectBounds{.minimum = -halfExtent, .maximum = halfExtent};
-    }
-
     scene->animation.tracks.push_back(makeTrack(rotatingCube, [](double time) {
         return asset::RigidKey{
             .translation = kRotatingCubePosition,

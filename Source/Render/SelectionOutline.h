@@ -26,9 +26,10 @@ public:
     /// Declares selected coverage, scene visibility and a depth-tested border for an in-range draw.
     /// Foreground occlusion cuts never become silhouette edges. Scene inputs are
     /// borrowed through execution. Thickness is 1.5 logical points at the supplied backing scale.
+    /// When visible is false, refreshes the UI target with unmodified display texels.
     GraphTexture declare(RenderGraph& graph, rhi::CommandList& commands, GraphTexture display,
                          const Camera& camera, const SceneView& view, uint32_t selectedDraw,
-                         float backingScale);
+                         float backingScale, bool visible = true);
 
 private:
     explicit SelectionOutline(rhi::Device& device, bool readback);
@@ -41,6 +42,7 @@ private:
     std::unique_ptr<rhi::GraphicsPipeline> m_depthPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_doubleSidedDepthPipeline;
     std::unique_ptr<rhi::GraphicsPipeline> m_outlinePipeline;
+    std::unique_ptr<rhi::GraphicsPipeline> m_passthroughPipeline;
     std::unique_ptr<rhi::Sampler> m_sampler;
     std::unique_ptr<rhi::Texture> m_white;
     std::unique_ptr<rhi::Texture> m_target;

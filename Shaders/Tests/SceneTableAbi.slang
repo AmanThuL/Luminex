@@ -16,7 +16,7 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     InstanceRow instance = gInstances[tid.x];
     MaterialRow material = gMaterials[tid.x];
     MeshRow mesh = gMeshes[tid.x];
-    uint base = tid.x * 84;
+    uint base = tid.x * 100;
     for (uint column = 0; column < 4; ++column)
     {
         for (uint row = 0; row < 4; ++row)
@@ -25,24 +25,34 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
             gOutput[base + offset] = asuint(instance.model[row][column]);
             gOutput[base + 16 + offset] = asuint(instance.previousModel[row][column]);
             gOutput[base + 32 + offset] = asuint(instance.normalMatrix[row][column]);
-            gOutput[base + 52 + offset] = asuint(material.uvTransform[row][column]);
+            gOutput[base + 60 + offset] = asuint(material.uvTransform[row][column]);
         }
     }
     gOutput[base + 48] = instance.meshRow;
     gOutput[base + 49] = instance.materialRow;
     gOutput[base + 50] = instance.flags;
     gOutput[base + 51] = asuint(instance.emissiveScale);
+    for (uint component = 0; component < 3; ++component) {
+        gOutput[base + 52 + component] = asuint(instance.worldBoundsMin[component]);
+        gOutput[base + 56 + component] = asuint(instance.worldBoundsMax[component]);
+        gOutput[base + 92 + component] = asuint(mesh.boundsMin[component]);
+        gOutput[base + 96 + component] = asuint(mesh.boundsMax[component]);
+    }
+    gOutput[base + 55] = instance.boundsPadding0;
+    gOutput[base + 59] = instance.boundsPadding1;
+    gOutput[base + 95] = mesh.boundsPadding0;
+    gOutput[base + 99] = mesh.boundsPadding1;
     for (uint component = 0; component < 4; ++component)
-        gOutput[base + 68 + component] = asuint(material.albedo[component]);
+        gOutput[base + 76 + component] = asuint(material.albedo[component]);
     for (uint component = 0; component < 3; ++component)
-        gOutput[base + 72 + component] = asuint(material.emissive[component]);
-    gOutput[base + 75] = asuint(material.roughness);
-    gOutput[base + 76] = asuint(material.metallic);
-    gOutput[base + 77] = asuint(material.occlusionStrength);
-    gOutput[base + 78] = asuint(material.alphaCutoff);
-    gOutput[base + 79] = material.flags;
-    gOutput[base + 80] = mesh.firstIndex;
-    gOutput[base + 81] = mesh.indexCount;
-    gOutput[base + 82] = mesh.firstVertex;
-    gOutput[base + 83] = mesh.vertexCount;
+        gOutput[base + 80 + component] = asuint(material.emissive[component]);
+    gOutput[base + 83] = asuint(material.roughness);
+    gOutput[base + 84] = asuint(material.metallic);
+    gOutput[base + 85] = asuint(material.occlusionStrength);
+    gOutput[base + 86] = asuint(material.alphaCutoff);
+    gOutput[base + 87] = material.flags;
+    gOutput[base + 88] = mesh.firstIndex;
+    gOutput[base + 89] = mesh.indexCount;
+    gOutput[base + 90] = mesh.firstVertex;
+    gOutput[base + 91] = mesh.vertexCount;
 }

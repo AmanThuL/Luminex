@@ -46,12 +46,26 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
         ImGuiTreeNodeFlags_SpanAvailWidth |
         (isRowSelected(row, context.selection) ? ImGuiTreeNodeFlags_Selected : 0);
-    ImGui::TreeNodeEx("subject", flags, "%s", row.displayLabel.c_str());
+    std::string label = row.displayLabel;
+    std::string visibilityTip;
+    if (row.subject == EditorSubject::Object && row.index < context.activeScene.objects.size()) {
+        const auto* state =
+            context.visibilityDisplay.find(context.activeScene.objects[row.index].id,
+                                           context.visibilityStatus, context.sceneGeneration);
+        label = std::format("{} {}", state ? visibilityBadge(state->state) : "[?]", label);
+        visibilityTip = state ? std::format("\n{}: {}", visibilityStateName(state->state),
+                                            state->state == render::VisibilityState::Rejected
+                                                ? "Outside camera frustum"
+                                                : visibilityReasonName(state->reason))
+                              : "\nAwaiting this object's rendered frame";
+    }
+    ImGui::TreeNodeEx("subject", flags, "%s", label.c_str());
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         selectRow(context.selection, context.activeSceneId, row);
     }
     const std::string& fullName = row.detailLabel.empty() ? row.displayLabel : row.detailLabel;
-    editorTooltip(fullName.c_str());
+    const std::string tip = fullName + visibilityTip;
+    editorTooltip(tip.c_str());
     if (ImGui::BeginPopupContextItem("SubjectActions")) {
         if (ImGui::MenuItem("Copy full name")) {
             ImGui::SetClipboardText(fullName.c_str());
@@ -240,7 +254,7 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         }
         ImGui::TextDisabled("%s", count.c_str());
         editorTooltip("Matching / total selectable subjects, including camera, rendering, lights "
-                      "and objects.");
+                      "and objects. Badges: V visible, R rejected, B bypassed, ? pending.");
         if (selectionHiddenByFilter(context.activeScene, context.selection, context.filter)) {
             editor_style::message("Selection hidden by search; Inspector keeps it selected.", true);
         }

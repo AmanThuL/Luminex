@@ -38,7 +38,7 @@ the row says otherwise.
 | 3 | [Interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation) | I | PASS 2026-09-13 | R1 |
 | 4 | [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics) editor usability | IV | Implemented, owner-accepted | Gate B |
 | 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Implemented, owner-accepted 2026-09-15 | UX1 |
-| 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Inactive | M7.1 |
+| 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Implemented; review pending | M7.1 |
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Inactive | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Inactive | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Inactive | M7.1; may run before steps 6–8 |
@@ -65,7 +65,7 @@ composition work while preserving every M-slice gate.
 M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
 and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
 profile passes 15/15. [The record](milestones/m7.1.md) retains both results and limits. Its executor
-plan is closed; no milestone is currently in execution. Gate B is preserved.
+plan is closed; [M7.2 implementation](milestones/m7.2-validation.md) awaits owner review and exact-image failure disposition. Gate B is preserved.
 
 ## Current baseline
 
@@ -106,7 +106,7 @@ The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the
 after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
 is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
 paced scene tables through retained CPU drawing; its [record](milestones/m7.1.md) owns evidence
-and retained evidence limits. M7.2 and GPU visibility remain inactive.
+and retained evidence limits. M7.2 CPU visibility and indirect submission are implemented pending owner review; GPU visibility remains inactive.
 
 ## Project direction and delivery
 

@@ -5,6 +5,7 @@
 
 #pragma once
 #include "App/Model/PerformanceModel.h"
+#include "App/Panels/MeasurementPanel.h"
 
 namespace lmx::app {
 
@@ -15,6 +16,7 @@ inline constexpr const char* kPerformancePanelWindowName = "Performance";
 /// Draws coherent, responsive metrics with sortable GPU timing rows and a labeled wall-clock
 /// interval plot. Freeze, Resume and Clear change the model before the snapshot is read; selection
 /// and sorting affect presentation only. `open` follows the ImGui window close button.
-void drawPerformancePanel(bool& open, PerformanceModel& model);
+void drawPerformancePanel(bool& open, PerformanceModel& model,
+                          MeasurementPanelContext* measurement = nullptr);
 
 } // namespace lmx::app

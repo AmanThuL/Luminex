@@ -26,7 +26,10 @@ namespace lmx::app {
 /// enabled with the corresponding `render::ReconstructionMode` and jitter on. `renderScale` is
 /// copied verbatim onto `render::SceneView::temporal.renderScale`.
 int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale);
+                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
+                  bool visibilityEnabled = true,
+                  render::SubmissionMode submission = render::SubmissionMode::Indirect,
+                  uint32_t labInstances = 4096);
 
 /// Captures options.frames post-warmup frames at exactly 60 Hz into a new or empty directory.
 /// Writes numbered PNGs or BMPs and a settings/camera/status manifest. A vendor fallback, flat

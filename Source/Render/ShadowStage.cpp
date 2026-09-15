@@ -163,6 +163,8 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
     const GraphTexture shadowMap = inputs.shadowMap;
     PassDesc shadowDesc;
     shadowDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
+    shadowDesc.bufferReads.push_back(inputs.drawRows);
+    shadowDesc.indirectBufferReads.push_back(inputs.drawArguments);
     // 0 is the reversed far plane: nothing in the light's frustum is farther, so every caster's
     // Greater test passes against a cleared texel.
     shadowDesc.depth = DepthAttachment{
@@ -178,7 +180,11 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rhi::GraphicsPipeline* bound = nullptr;
-            for (const DrawItem& item : view.items) {
+            commands.bindBuffer(kVisibleRowsSlot, *inputs.draws.rows);
+            if (inputs.draws.mode != SubmissionMode::Direct)
+                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{0});
+            for (const auto& run : inputs.draws.runs) {
+                const DrawItem& item = view.items[run.itemIndex];
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                            "draw instance must name a current table row");
                 const bool masked = item.alphaMode == AlphaMode::Mask;
@@ -188,14 +194,21 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
                     commands.bindPipeline(*pipeline);
                     bound = pipeline;
                 }
-                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{item.instanceRow});
+
                 if (masked) {
                     commands.bindTexture(kDiffuseTextureSlot,
                                          item.diffuse ? *item.diffuse : *inputs.whiteTexture);
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
                 }
-                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
-                                     item.mesh.firstIndex);
+                if (inputs.draws.mode == SubmissionMode::Direct) {
+                    commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{run.firstEntry});
+                    commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                                         item.mesh.firstIndex);
+                } else {
+                    commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
+                                                 uint64_t{run.argumentIndex} *
+                                                     sizeof(rhi::DrawIndexedIndirectArgs));
+                }
             }
         });
 

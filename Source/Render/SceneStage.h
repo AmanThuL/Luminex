@@ -6,6 +6,7 @@
 #pragma once
 
 #include "RHI/RHI.h"
+#include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
 #include "Render/TemporalHistory.h"
@@ -21,6 +22,9 @@ namespace lmx::render {
 /// Frame values and Renderer-owned resources borrowed by the scene and sky pass.
 /// Graph handles belong to this frame; every pointer is non-null and survives graph execution.
 struct SceneStageInputs {
+    DrawList draws;                        ///< Prepared commands and paced buffers for this view.
+    GraphBuffer drawRows;                  ///< Read-only visible-row import.
+    GraphBuffer drawArguments;             ///< Indirect-argument import.
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture sceneColor;               ///< Scene-linear color attachment version to write.
     GraphTexture sceneDepth;               ///< Reversed D32Float depth attachment version to write.

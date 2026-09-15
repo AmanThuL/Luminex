@@ -96,6 +96,14 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode) {
 
 //======================================================================================================================
 AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
+    std::string_view measurementPath;
+    bool unscored = false;
+    bool measurementTrack = true;
+    bool measurementCameraSpecified = false;
+    bool visibilityEnabled = true;
+    render::SubmissionMode submission = render::SubmissionMode::Indirect;
+    uint32_t labInstances = 4096;
+    bool labInstancesSpecified = false;
     std::string_view screenshotPath;
     std::string_view captureSequencePath;
     uint32_t warmup = 0;
@@ -114,7 +122,42 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         if (argument == "--") {
             continue;
         }
-        if (argument == "--screenshot") {
+        if (argument == "--measure") {
+            if (++i >= arguments.size() || arguments[i].empty() || !looksLikeValue(arguments[i])) {
+                return fail("--measure needs a non-empty output JSON path");
+            }
+            measurementPath = arguments[i];
+        } else if (argument == "--unscored") {
+            unscored = true;
+        } else if (argument == "--measure-camera") {
+            if (++i >= arguments.size() || (arguments[i] != "track" && arguments[i] != "initial")) {
+                return fail("--measure-camera needs track|initial");
+            }
+            measurementTrack = arguments[i] == "track";
+            measurementCameraSpecified = true;
+        } else if (argument == "--visibility") {
+            if (++i >= arguments.size() || (arguments[i] != "cull" && arguments[i] != "off")) {
+                return fail("--visibility needs cull|off");
+            }
+            visibilityEnabled = arguments[i] == "cull";
+        } else if (argument == "--submission") {
+            if (++i >= arguments.size())
+                return fail("--submission needs direct|indirect|batched");
+            if (arguments[i] == "direct")
+                submission = render::SubmissionMode::Direct;
+            else if (arguments[i] == "indirect")
+                submission = render::SubmissionMode::Indirect;
+            else if (arguments[i] == "batched")
+                submission = render::SubmissionMode::Batched;
+            else
+                return fail("--submission needs direct|indirect|batched");
+        } else if (argument == "--lab-instances") {
+            if (++i >= arguments.size() || !parseNumber(arguments[i], labInstances) ||
+                labInstances < 1 || labInstances > 1048576) {
+                return fail("--lab-instances needs an integer in [1, 1048576]");
+            }
+            labInstancesSpecified = true;
+        } else if (argument == "--screenshot") {
             if (++i >= arguments.size()) {
                 return fail(
                     "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
@@ -229,12 +272,23 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 ">] [--windowed] [--frames <N>] [--temporal <off|raw|taa|metalfx>] "
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
                 "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
-                "--capture-format <png|bmp>] "
+                "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
+                "[--visibility <cull|off>] [--submission <direct|indirect|batched>] "
+                "[--lab-instances <1..1048576>] [--measure-camera <track|initial>] "
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
                 "after W unsaved warmup frames)");
         }
     }
 
+    if (!measurementPath.empty() && (!captureSequencePath.empty() || !screenshotPath.empty())) {
+        return fail("--measure conflicts with --screenshot and --capture-sequence");
+    }
+    if ((unscored || measurementCameraSpecified) && measurementPath.empty()) {
+        return fail("--unscored and --measure-camera require --measure");
+    }
+    if (labInstancesSpecified && sceneName != "visibility-lab") {
+        return fail("--lab-instances requires --scene visibility-lab");
+    }
     if (!captureSequencePath.empty() && !screenshotPath.empty()) {
         return fail("--capture-sequence conflicts with --screenshot");
     }
@@ -248,8 +302,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     if (captureFormatSpecified && captureSequencePath.empty()) {
         return fail("--capture-format requires --capture-sequence");
     }
-    if (warmupSpecified && captureSequencePath.empty()) {
-        return fail("--warmup requires --capture-sequence");
+    if (warmupSpecified && captureSequencePath.empty() && measurementPath.empty()) {
+        return fail("--warmup requires --capture-sequence or --measure");
     }
     if (uint64_t{warmup} + frames > std::numeric_limits<uint32_t>::max()) {
         return fail("--warmup plus --frames exceeds the supported frame count");
@@ -281,6 +335,12 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     }
 
     AppOptions options;
+    options.measurementPath = measurementPath;
+    options.unscored = unscored;
+    options.measurementTrack = measurementTrack;
+    options.visibilityEnabled = visibilityEnabled;
+    options.submission = submission;
+    options.labInstances = labInstances;
     options.initialScene = *sceneId;
     options.maximized = maximized;
     options.frames = frames;
@@ -297,6 +357,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     if (!captureSequencePath.empty()) {
         options.mode = RunMode::CaptureSequence;
     }
+    if (!measurementPath.empty())
+        options.mode = RunMode::Measure;
     return options;
 }
 

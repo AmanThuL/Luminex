@@ -9,6 +9,7 @@
 #include "Render/SceneTables.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
+#include "Render/Visibility.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
@@ -126,6 +127,8 @@ struct TemporalStatus {
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
 struct SceneView {
+    bool visibilityEnabled = true; ///< Conservatively cull camera candidates.
+    SubmissionMode submission = SubmissionMode::Indirect; ///< CPU command preparation mode.
     SceneTables tables;              ///< Borrowed geometry and paced row buffers for this frame.
     std::span<const DrawItem> items; ///< Borrowed draw list for the current render call.
     /// Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor

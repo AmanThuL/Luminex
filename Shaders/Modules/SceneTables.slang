@@ -1,5 +1,7 @@
 // Shared CPU/Slang scene-row ABI. Entries own resources and binding declarations.
 static const uint kInstanceMotionInvalid = 1u;
+static const uint kInstanceBoundsUnreliable = 2u;
+static const uint kVisibleRowsSlot = 4u;
 static const uint kMaterialHasNormalMap = 1u;
 static const uint kMaterialMasked = 2u;
 static const uint kMaterialDoubleSided = 4u;
@@ -17,6 +19,10 @@ struct InstanceRow
     uint materialRow;
     uint flags;
     float emissiveScale;
+    float3 worldBoundsMin;
+    uint boundsPadding0;
+    float3 worldBoundsMax;
+    uint boundsPadding1;
 };
 
 struct MaterialRow
@@ -37,11 +43,15 @@ struct MeshRow
     uint indexCount;
     uint firstVertex;
     uint vertexCount;
+    float3 boundsMin;
+    uint boundsPadding0;
+    float3 boundsMax;
+    uint boundsPadding1;
 };
 
 struct DrawUniforms
 {
-    uint instanceRow;
+    uint firstEntry;
     uint padding0;
     uint padding1;
     uint padding2;

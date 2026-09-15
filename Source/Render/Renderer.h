@@ -7,6 +7,7 @@
 #include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/DisplayDomain.h"
+#include "Render/DrawSubmission.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneStage.h"
@@ -137,6 +138,9 @@ public:
     /// describes the frame just declared rather than the one about to be.
     TemporalStatus temporalStatus() const { return m_temporalStatus; }
 
+    /// Owned camera/shadow visibility and command statistics for the last declared frame.
+    const VisibilityStatus& visibilityStatus() const { return m_visibilityStatus; }
+
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
@@ -243,6 +247,8 @@ private:
     uint32_t m_currentSlot = 0;
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
+    DrawSubmission m_drawSubmission;
+    VisibilityStatus m_visibilityStatus;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

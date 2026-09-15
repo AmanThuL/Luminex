@@ -15,10 +15,12 @@ resources
   r12 buffer "lmx.scene.meshes"
   r13 buffer "lmx.scene.instances"
   r14 buffer "lmx.scene.materials"
-  r15 texture "lmx.render.temporalDiagnostic" RGBA16Float
-  r16 buffer "lmx.render.histogramBuffer"
-  r17 texture "lmx.render.bloomChain" RGBA16Float
-  r18 texture "lmx.render.bloomBlur" RGBA16Float
+  r15 buffer "lmx.draw.rows"
+  r16 buffer "lmx.draw.args"
+  r17 texture "lmx.render.temporalDiagnostic" RGBA16Float
+  r18 buffer "lmx.render.histogramBuffer"
+  r19 texture "lmx.render.bloomChain" RGBA16Float
+  r20 texture "lmx.render.bloomBlur" RGBA16Float
 sinks
   export r9 v1
   export r7 v1
@@ -32,6 +34,8 @@ passes
     read r12 v0
     read r13 v0
     read r14 v0
+    read r15 v0
+    indirect argument r16 v0
     depth attachment r0 v0 mips[0..] layers[0..]
   p2 raster "lmx.pass.scene"
     read r0 v1 mips[0..] layers[0..]
@@ -40,6 +44,8 @@ passes
     read r12 v0
     read r13 v0
     read r14 v0
+    read r15 v0
+    indirect argument r16 v0
     color attachment r1 v0 mips[0..] layers[0..]
     color attachment[1] r4 v0 mips[0..] layers[0..]
     color attachment[2] r5 v0 mips[0..] layers[0..]
@@ -50,38 +56,38 @@ passes
     write r7 v0 mips[0..] layers[0..]
   p9 compute "lmx.pass.bloom.threshold"
     shader read r7 v1 mips[0..] layers[0..]
-    write r17 v0 mips[0..0] layers[0..]
+    write r19 v0 mips[0..0] layers[0..]
   p10 compute "lmx.pass.bloom.downsample0"
-    read r17 v1 mips[0..0] layers[0..]
-    write r17 v1 mips[1..1] layers[0..]
+    read r19 v1 mips[0..0] layers[0..]
+    write r19 v1 mips[1..1] layers[0..]
   p11 compute "lmx.pass.bloom.downsample1"
-    read r17 v2 mips[1..1] layers[0..]
-    write r17 v2 mips[2..2] layers[0..]
+    read r19 v2 mips[1..1] layers[0..]
+    write r19 v2 mips[2..2] layers[0..]
   p12 compute "lmx.pass.bloom.downsample2"
-    read r17 v3 mips[2..2] layers[0..]
-    write r17 v3 mips[3..3] layers[0..]
+    read r19 v3 mips[2..2] layers[0..]
+    write r19 v3 mips[3..3] layers[0..]
   p13 compute "lmx.pass.bloom.downsample3"
-    read r17 v4 mips[3..3] layers[0..]
-    write r17 v4 mips[4..4] layers[0..]
+    read r19 v4 mips[3..3] layers[0..]
+    write r19 v4 mips[4..4] layers[0..]
   p14 compute "lmx.pass.bloom.upsample3"
-    read r17 v5 mips[3..3] layers[0..]
-    read r17 v5 mips[4..4] layers[0..]
-    write r18 v0 mips[3..3] layers[0..]
+    read r19 v5 mips[3..3] layers[0..]
+    read r19 v5 mips[4..4] layers[0..]
+    write r20 v0 mips[3..3] layers[0..]
   p15 compute "lmx.pass.bloom.upsample2"
-    read r17 v5 mips[2..2] layers[0..]
-    read r18 v1 mips[3..3] layers[0..]
-    write r18 v1 mips[2..2] layers[0..]
+    read r19 v5 mips[2..2] layers[0..]
+    read r20 v1 mips[3..3] layers[0..]
+    write r20 v1 mips[2..2] layers[0..]
   p16 compute "lmx.pass.bloom.upsample1"
-    read r17 v5 mips[1..1] layers[0..]
-    read r18 v2 mips[2..2] layers[0..]
-    write r18 v2 mips[1..1] layers[0..]
+    read r19 v5 mips[1..1] layers[0..]
+    read r20 v2 mips[2..2] layers[0..]
+    write r20 v2 mips[1..1] layers[0..]
   p17 compute "lmx.pass.bloom.upsample0"
-    read r17 v5 mips[0..0] layers[0..]
-    read r18 v3 mips[1..1] layers[0..]
-    write r18 v3 mips[0..0] layers[0..]
+    read r19 v5 mips[0..0] layers[0..]
+    read r20 v3 mips[1..1] layers[0..]
+    write r20 v3 mips[0..0] layers[0..]
   p18 raster "lmx.pass.display"
     read r7 v1 mips[0..] layers[0..]
-    read r18 v4 mips[0..0] layers[0..]
+    read r20 v4 mips[0..0] layers[0..]
     color attachment r2 v0 mips[0..] layers[0..]
   p5 raster "lmx.pass.temporal.debugView"
     read r4 v1 mips[0..] layers[0..]
@@ -91,15 +97,15 @@ culled
     shader read r8 v0 mips[0..] layers[0..]
     shader read r1 v1 mips[0..] layers[0..]
     shader read r4 v1 mips[0..] layers[0..]
-    write r15 v0 mips[0..] layers[0..]
+    write r17 v0 mips[0..] layers[0..]
   p6 copy "lmx.pass.exposure.clearHistogram" no-sink-reaches-it
-    copy destination r16 v0
+    copy destination r18 v0
   p7 compute "lmx.pass.exposure.histogram" no-sink-reaches-it
     shader read r1 v1 mips[0..] layers[0..]
     shader read r9 v1
-    write r16 v1
+    write r18 v1
   p8 compute "lmx.pass.exposure.resolve" no-sink-reaches-it
-    read r16 v2
+    read r18 v2
     write r9 v1
 transitions
   before p0 buffer r9 StorageWrite -> StorageWrite
@@ -112,22 +118,22 @@ transitions
   before p4 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p4 texture r7 mips[0..] layers[0..] CopyDestination -> StorageWrite
   before p9 texture r7 mips[0..] layers[0..] StorageWrite -> ShaderRead
-  before p10 texture r17 mips[0..0] layers[0..] StorageWrite -> StorageRead
-  before p11 texture r17 mips[1..1] layers[0..] StorageWrite -> StorageRead
-  before p12 texture r17 mips[2..2] layers[0..] StorageWrite -> StorageRead
-  before p13 texture r17 mips[3..3] layers[0..] StorageWrite -> StorageRead
-  before p14 texture r17 mips[4..] layers[0..] StorageWrite -> StorageRead
-  before p15 texture r18 mips[3..] layers[0..] StorageWrite -> StorageRead
-  before p16 texture r18 mips[2..2] layers[0..] StorageWrite -> StorageRead
-  before p17 texture r18 mips[1..1] layers[0..] StorageWrite -> StorageRead
+  before p10 texture r19 mips[0..0] layers[0..] StorageWrite -> StorageRead
+  before p11 texture r19 mips[1..1] layers[0..] StorageWrite -> StorageRead
+  before p12 texture r19 mips[2..2] layers[0..] StorageWrite -> StorageRead
+  before p13 texture r19 mips[3..3] layers[0..] StorageWrite -> StorageRead
+  before p14 texture r19 mips[4..] layers[0..] StorageWrite -> StorageRead
+  before p15 texture r20 mips[3..] layers[0..] StorageWrite -> StorageRead
+  before p16 texture r20 mips[2..2] layers[0..] StorageWrite -> StorageRead
+  before p17 texture r20 mips[1..1] layers[0..] StorageWrite -> StorageRead
   before p18 texture r7 mips[0..] layers[0..] StorageWrite -> ShaderRead
-  before p18 texture r18 mips[0..0] layers[0..] StorageWrite -> ShaderRead
+  before p18 texture r20 mips[0..0] layers[0..] StorageWrite -> ShaderRead
   before p18 texture r2 mips[0..] layers[0..] ShaderRead -> RenderTarget
   before p5 texture r4 mips[0..] layers[0..] RenderTarget -> ShaderRead
   before p5 texture r2 mips[0..] layers[0..] RenderTarget -> RenderTarget
 transients
-  r15 unused
-  r17 passes p9..p17 offset 0 size 11136 align 128
-  r18 passes p14..p18 offset 11136 size 11136 align 128
+  r17 unused
+  r19 passes p9..p17 offset 0 size 11136 align 128
+  r20 passes p14..p18 offset 11136 size 11136 align 128
 memory
   pooling on requested 22272 high-water 22272 saved 0

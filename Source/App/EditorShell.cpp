@@ -608,6 +608,7 @@ void EditorShell::buildMainMenu() {
 //======================================================================================================================
 void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
@@ -615,7 +616,10 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
                                                .activeScene = m_session.scene(),
                                                .selection = m_selection,
-                                               .filter = m_sceneFilter});
+                                               .filter = m_sceneFilter,
+                                               .visibilityDisplay = m_visibilityDisplay,
+                                               .visibilityStatus = renderer.visibilityStatus(),
+                                               .sceneGeneration = m_temporalState.sceneGeneration});
         setPanelVisible(EditorPanel::Scene, open);
     }
 
@@ -688,10 +692,12 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .viewportVisible = viewportUsable,
                                         .selectionHiddenByFilter = selectionHiddenByFilter(
                                             m_session.scene(), m_selection, m_sceneFilter),
+                                        .visibilityDisplay = &m_visibilityDisplay,
                                         .sceneFilter = &m_sceneFilter});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
+    ImGui::EndDisabled();
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
         m_performanceModel.setContextEpoch(metricsContextEpoch());
@@ -699,7 +705,15 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
             ImGui::SetNextWindowFocus();
             m_focusDefaultPerformance = false;
         }
-        drawPerformancePanel(open, m_performanceModel);
+        MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
+                                            m_measurementExportPath, m_measurementFeedback};
+        drawPerformancePanel(open, m_performanceModel, &measurement);
+        if (measurement.action == MeasurementAction::Start)
+            startMeasurement(device, renderer);
+        if (measurement.action == MeasurementAction::Cancel)
+            m_measurement.cancel();
+        if (measurement.action == MeasurementAction::Export)
+            exportMeasurement();
         setPanelVisible(EditorPanel::Performance, open);
     }
 
@@ -744,6 +758,9 @@ void EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.reconstruction = temporalReconstructionMode(options.temporal);
     m_settings.temporalDebugView = options.temporalView;
     m_settings.renderScale = options.renderScale;
+    m_labInstances = options.labInstances;
+    m_settings.visibilityEnabled = options.visibilityEnabled;
+    m_settings.submission = options.submission;
 }
 
 //======================================================================================================================
@@ -757,6 +774,8 @@ render::SceneView EditorShell::sceneView() {
         m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
+    view.visibilityEnabled = m_settings.visibilityEnabled;
+    view.submission = m_settings.submission;
     view.exposureEv = m_settings.exposureEv;
     view.autoExposureEnabled = m_settings.autoExposureEnabled;
     // exposureReset is left at SceneView's default (false); main.cpp sets it from
@@ -797,8 +816,12 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
         m_selection.index >= view.items.size()) {
         return display;
     }
+    const auto& result = renderer.visibilityStatus().scene;
+    const bool visible =
+        m_selection.index >= result.candidates.size() ||
+        result.candidates[m_selection.index].state != render::VisibilityState::Rejected;
     return m_selectionOutline->declare(graph, commands, display, m_session.camera(), view,
-                                       m_selection.index, m_viewportBackingScale);
+                                       m_selection.index, m_viewportBackingScale, visible);
 }
 
 //======================================================================================================================
@@ -817,15 +840,21 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
+    if (m_measurement.active()) {
+        if (const auto frame = m_measurement.nextFrame())
+            m_session.prepareSequenceFrame(frame->sequenceFrame);
+        return;
+    }
     m_session.advanceEditorFrame(m_settings.animationPlaying, m_settings.followCameraTrack,
                                  m_looking);
 }
 
 //======================================================================================================================
 uint64_t EditorShell::metricsContextEpoch() {
-    const uint64_t key = m_temporalState.sceneGeneration * 16 +
-                         static_cast<uint64_t>(m_settings.reconstruction) * 2 +
-                         (m_settings.temporalEnabled ? 1 : 0);
+    const uint64_t key =
+        m_temporalState.sceneGeneration * 128 + static_cast<uint64_t>(m_settings.submission) * 16 +
+        (m_settings.visibilityEnabled ? 8 : 0) +
+        static_cast<uint64_t>(m_settings.reconstruction) * 2 + (m_settings.temporalEnabled ? 1 : 0);
     return m_metricsContextRevision.observe(key);
 }
 
@@ -836,7 +865,9 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
     return {
         .contextEpoch = metricsContextEpoch(),
         .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
-        .drawCount = static_cast<uint32_t>(m_drawItems.size()),
+        .drawCount = renderer.visibilityStatus().submission.sceneCommands +
+                     renderer.visibilityStatus().submission.shadowCommands +
+                     (m_session.scene().skySphere && m_session.scene().skyCubemap ? 1u : 0u),
         .viewportLogicalWidth =
             static_cast<uint32_t>(m_viewportWidth / std::max(io.DisplayFramebufferScale.x, 1.0f)),
         .viewportLogicalHeight =
@@ -850,6 +881,16 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
 //======================================================================================================================
 void EditorShell::observeDeclaration(const render::Renderer& renderer, uint64_t frameId) {
     observeDeclaredTemporal(m_temporalState, m_settings, renderer.temporalStatus(), frameId);
+    m_visibilityDisplay.observe(m_session.scene(), renderer.visibilityStatus());
+    if (m_measurement.active()) {
+        m_measurementVisibility = renderer.visibilityStatus();
+        m_measurementTemporal = renderer.temporalStatus();
+        if (renderer.width() != m_measurement.plan().width ||
+            renderer.height() != m_measurement.plan().height ||
+            m_settings.visibilityEnabled != m_measurement.plan().visibilityEnabled) {
+            m_measurement.cancel("Viewport or rendering settings changed during measurement");
+        }
+    }
 }
 
 //======================================================================================================================
@@ -887,6 +928,9 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         return false;
     }
     m_activeSceneId = id;
+    m_visibilityDisplay.clear();
+    if (m_measurement.active())
+        m_measurement.cancel("Scene changed during measurement");
     m_session.activate(**scene, SceneActivationMotion::Reset);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
@@ -907,6 +951,10 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
 
 //======================================================================================================================
 void EditorShell::updateCameraInput(float deltaSeconds) {
+    if (m_measurement.active()) {
+        endMouseLook();
+        return;
+    }
     // Drain SDL motion every frame so pre-look cursor travel cannot accumulate into a jump.
     float relativeX = 0.0f;
     float relativeY = 0.0f;

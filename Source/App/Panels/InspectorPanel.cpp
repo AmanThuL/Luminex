@@ -342,6 +342,29 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     if (!presentation.fallbackReason.empty()) {
         editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
     }
+    if (ImGui::CollapsingHeader("Visibility", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled);
+        editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
+        if (editor_style::beginFields("visibilityControls")) {
+            editor_style::field("Submission");
+            int mode = static_cast<int>(settings.submission);
+            if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {
+                settings.submission = static_cast<render::SubmissionMode>(mode);
+            }
+            editorTooltip(
+                "Indirect issues one command per retained object; Batched groups shared "
+                "pipeline, material and mesh. Neither choice implies a measured speedup.");
+            const auto& visibility = renderer.visibilityStatus();
+            if (visibility.frameNumber != 0 &&
+                visibility.sceneGeneration == context.temporalState.sceneGeneration) {
+                for (const auto& field : visibilityFields(visibility))
+                    valueRow(field.label.c_str(), field.value);
+            } else {
+                valueRow("Visibility", "Waiting for this scene's rendered frame");
+            }
+            editor_style::endFields();
+        }
+    }
     if (ImGui::CollapsingHeader("Exposure")) {
         drawRenderingReset(context, EditorRenderGroup::Exposure);
         if (editor_style::beginFields("exposureFields")) {
@@ -519,6 +542,13 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
         }
         valueRow("Mesh row", std::to_string(object.mesh.slot));
         valueRow("Material row", std::to_string(object.material.slot));
+        const auto* visibility =
+            context.visibilityDisplay == nullptr
+                ? nullptr
+                : context.visibilityDisplay->find(object.id, context.renderer.visibilityStatus(),
+                                                  context.temporalState.sceneGeneration);
+        for (const auto& field : objectVisibilityFields(visibility))
+            valueRow(field.label.c_str(), field.value);
         editor_style::endFields();
     }
     const bool animated =

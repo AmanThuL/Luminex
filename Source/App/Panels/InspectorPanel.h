@@ -10,6 +10,7 @@
 #include "App/Model/ExposureReset.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
+#include "App/Model/VisibilityDisplay.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
@@ -50,6 +51,7 @@ struct InspectorPanelContext {
     uint32_t viewportHeight = 0;          ///< Measured image backing height in pixels.
     bool viewportVisible = false;         ///< Whether the image was measured this frame.
     bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
+    const VisibilityDisplay* visibilityDisplay = nullptr; ///< Last rendered object identity map.
     std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.
 };
 

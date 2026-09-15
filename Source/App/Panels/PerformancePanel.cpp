@@ -243,7 +243,8 @@ const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, floa
 } // namespace
 
 //======================================================================================================================
-void drawPerformancePanel(bool& open, PerformanceModel& model) {
+void drawPerformancePanel(bool& open, PerformanceModel& model,
+                          MeasurementPanelContext* measurement) {
     if (!ImGui::Begin(kPerformancePanelWindowName, &open)) {
         ImGui::End();
         return;
@@ -272,6 +273,8 @@ void drawPerformancePanel(bool& open, PerformanceModel& model) {
     ImGui::Checkbox("Schedule order", &scheduleOrder);
     editorTooltip("Show declared pass schedule order. Turn off to use the numeric column sort; "
                   "click a column header to change it.");
+    if (measurement != nullptr)
+        drawMeasurementSection(*measurement);
     const PerformanceSnapshot& snapshot = model.snapshot();
     ImGui::TextWrapped(
         "%s | frame %llu | %.2f s | %zu / %zu samples | %.0f updates/s",

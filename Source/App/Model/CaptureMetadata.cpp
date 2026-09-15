@@ -46,6 +46,18 @@ std::string_view captureModeName(TemporalMode mode) {
     return "unknown";
 }
 
+//======================================================================================================================
+std::string_view submissionName(render::SubmissionMode mode) {
+    switch (mode) {
+    case render::SubmissionMode::Direct:
+        return "direct";
+    case render::SubmissionMode::Indirect:
+        return "indirect";
+    case render::SubmissionMode::Batched:
+        return "batched";
+    }
+    return "unknown";
+}
 } // namespace
 
 //======================================================================================================================
@@ -63,6 +75,9 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
          << ",\"width\":" << width << ",\"height\":" << height
          << ",\"fps\":60,\"warmup\":" << options.warmup << ",\"frameCount\":" << options.frames
          << ",\"renderScale\":" << options.renderScale
+         << ",\"visibilityEnabled\":" << (options.visibilityEnabled ? "true" : "false")
+         << ",\"submission\":" << jsonString(submissionName(options.submission))
+         << ",\"labInstances\":" << options.labInstances
          << ",\"debugView\":" << static_cast<int>(options.temporalView)
          << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
          << ",\"display\":" << render::toJson(display)
@@ -105,6 +120,8 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
         << ",\"lastResetReason\":" << jsonString(render::historyResetReasonName(status.lastReset))
         << ",\"lastResetFrame\":" << status.lastResetFrame
         << ",\"vendorReset\":" << (status.vendorReset ? "true" : "false")
+        << ",\"visibilityEnabled\":" << (view.visibilityEnabled ? "true" : "false")
+        << ",\"submission\":" << jsonString(submissionName(view.submission))
         << ",\"exposureEv\":" << view.exposureEv
         << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")
         << ",\"bloom\":" << (view.bloomEnabled ? "true" : "false")
@@ -117,8 +134,9 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
 std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      uint32_t simulationFrame, TemporalMode requested,
                                      render::TemporalDebugView debugView, float renderScale,
-                                     const render::TemporalStatus& status,
-                                     std::string_view device) {
+                                     const render::TemporalStatus& status, std::string_view device,
+                                     bool visibilityEnabled, render::SubmissionMode submission,
+                                     uint32_t labInstances) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"scene\":" << jsonString(scene::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
@@ -130,7 +148,9 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                                                                        : "raw")
         << ",\"fallback\":" << static_cast<int>(status.vendorFallback)
         << ",\"renderScale\":" << renderScale << ",\"debugView\":" << static_cast<int>(debugView)
-        << ",\"device\":" << jsonString(device) << "}";
+        << ",\"visibilityEnabled\":" << (visibilityEnabled ? "true" : "false")
+        << ",\"submission\":" << jsonString(submissionName(submission))
+        << ",\"labInstances\":" << labInstances << ",\"device\":" << jsonString(device) << "}";
     return out.str();
 }
 
