@@ -346,18 +346,45 @@ void drawRenderingSection(const InspectorPanelContext& context) {
         ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled);
         editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
         if (editor_style::beginFields("visibilityControls")) {
+            editor_style::field("Classifier");
+            int classifier = static_cast<int>(settings.classifyMode);
+            if (ImGui::Combo("##classifier", &classifier, "CPU\0GPU\0")) {
+                settings.classifyMode = static_cast<render::ClassifyMode>(classifier);
+                if (settings.classifyMode == render::ClassifyMode::Gpu &&
+                    settings.submission == render::SubmissionMode::Direct)
+                    settings.submission = render::SubmissionMode::Indirect;
+                if (settings.classifyMode == render::ClassifyMode::Cpu)
+                    settings.classifyCheck = false;
+            }
+            editorTooltip(
+                "GPU results arrive after retirement. CPU remains the default reference.");
+            if (settings.classifyMode == render::ClassifyMode::Gpu) {
+                editor_style::field("CPU oracle check");
+                ImGui::Checkbox("##classifyCheck", &settings.classifyCheck);
+                editorTooltip("Compares retired states, ordered rows, counts and arguments; "
+                              "unscored diagnostics.");
+            }
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
             if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {
                 settings.submission = static_cast<render::SubmissionMode>(mode);
+                if (settings.submission == render::SubmissionMode::Direct) {
+                    settings.classifyMode = render::ClassifyMode::Cpu;
+                    settings.classifyCheck = false;
+                }
             }
             editorTooltip(
-                "Indirect issues one command per retained object; Batched groups shared "
-                "pipeline, material and mesh. Neither choice implies a measured speedup.");
-            const auto& visibility = renderer.visibilityStatus();
+                "CPU indirect issues one command per retained object. GPU indirect issues one "
+                "command per candidate slot; GPU batched issues one per run, including empty "
+                "runs.");
+            const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+                                                               : renderer.visibilityStatus();
             if (visibility.frameNumber != 0 &&
                 visibility.sceneGeneration == context.temporalState.sceneGeneration) {
-                for (const auto& field : visibilityFields(visibility))
+                for (const auto& field :
+                     visibilityFields(visibility, context.visibilityDisplay
+                                                      ? context.visibilityDisplay->timings()
+                                                      : std::span<const rhi::PassTiming>{}))
                     valueRow(field.label.c_str(), field.value);
             } else {
                 valueRow("Visibility", "Waiting for this scene's rendered frame");
@@ -542,12 +569,11 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
         }
         valueRow("Mesh row", std::to_string(object.mesh.slot));
         valueRow("Material row", std::to_string(object.material.slot));
-        const auto* visibility =
-            context.visibilityDisplay == nullptr
-                ? nullptr
-                : context.visibilityDisplay->find(object.id, context.renderer.visibilityStatus(),
-                                                  context.temporalState.sceneGeneration);
-        for (const auto& field : objectVisibilityFields(visibility))
+        const auto visibilityFields = context.visibilityDisplay == nullptr
+                                          ? objectVisibilityFields(nullptr)
+                                          : context.visibilityDisplay->objectFields(
+                                                object.id, context.temporalState.sceneGeneration);
+        for (const auto& field : visibilityFields)
             valueRow(field.label.c_str(), field.value);
         editor_style::endFields();
     }

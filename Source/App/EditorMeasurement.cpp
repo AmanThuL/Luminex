@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/EditorShell.h"
 #include "App/Measurement.h"
+#include "App/Model/VisibilityDiagnostics.h"
 
 #include <chrono>
 #include <filesystem>
@@ -55,6 +56,8 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
     plan.scene = scene::sceneIdString(m_activeSceneId);
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
+    plan.classify = classifyModeName(m_settings.classifyMode);
+    plan.classifyCheck = m_settings.classifyCheck;
     plan.visibilityEnabled = m_settings.visibilityEnabled;
     plan.renderScale = m_settings.renderScale;
     plan.interactive = true;
@@ -79,6 +82,7 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
 }
 //======================================================================================================================
 void EditorShell::retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
+    m_visibilityDisplay.observeTimings(frameId, timings);
     if (m_measurement.active())
         m_measurement.retire(frameId, timings);
     finishMeasurementPlayback();
@@ -91,6 +95,8 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
         return;
     if (frameId != record.frameId || frameId != m_measurementVisibility.frameNumber ||
         m_measurement.plan().submission != submissionName(m_settings.submission) ||
+        m_measurement.plan().classify != classifyModeName(m_settings.classifyMode) ||
+        m_measurement.plan().classifyCheck != m_settings.classifyCheck ||
         m_measurement.plan().temporal != temporalName(m_settings) ||
         m_measurement.plan().renderScale != m_settings.renderScale ||
         m_settings.dynamicResolutionEnabled) {

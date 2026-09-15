@@ -210,7 +210,7 @@ frame; rejected selection has no outline. Invalid bounds/transforms bypass conse
 The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
 Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
 
-Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`.
+Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, retired counters and schema 2: [GPU visibility guide](gpu-visibility.md).
 VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
 that option requires `--scene visibility-lab`. Its seeded grid and 12-second camera rail are fixed.
 

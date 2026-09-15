@@ -102,6 +102,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool measurementCameraSpecified = false;
     bool visibilityEnabled = true;
     render::SubmissionMode submission = render::SubmissionMode::Indirect;
+    render::ClassifyMode classifyMode = render::ClassifyMode::Cpu;
+    bool classifyCheck = false;
     uint32_t labInstances = 4096;
     bool labInstancesSpecified = false;
     std::string_view screenshotPath;
@@ -140,6 +142,13 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--visibility needs cull|off");
             }
             visibilityEnabled = arguments[i] == "cull";
+        } else if (argument == "--classify") {
+            if (++i >= arguments.size() || (arguments[i] != "cpu" && arguments[i] != "gpu"))
+                return fail("--classify needs cpu|gpu");
+            classifyMode =
+                arguments[i] == "gpu" ? render::ClassifyMode::Gpu : render::ClassifyMode::Cpu;
+        } else if (argument == "--classify-check") {
+            classifyCheck = true;
         } else if (argument == "--submission") {
             if (++i >= arguments.size())
                 return fail("--submission needs direct|indirect|batched");
@@ -273,13 +282,20 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
                 "[--render-scale <0.5..1.0>] [--capture-sequence <directory> --warmup <N> "
                 "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
-                "[--visibility <cull|off>] [--submission <direct|indirect|batched>] "
+                "[--visibility <cull|off>] [--classify <cpu|gpu>] [--classify-check] [--submission "
+                "<direct|indirect|batched>] "
                 "[--lab-instances <1..1048576>] [--measure-camera <track|initial>] "
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
                 "after W unsaved warmup frames)");
         }
     }
 
+    if (classifyMode == render::ClassifyMode::Gpu && submission == render::SubmissionMode::Direct)
+        return fail("--classify gpu conflicts with --submission direct");
+    if (classifyCheck && classifyMode != render::ClassifyMode::Gpu)
+        return fail("--classify-check requires --classify gpu");
+    if (classifyCheck && !measurementPath.empty() && !unscored)
+        return fail("--classify-check measurement requires --unscored");
     if (!measurementPath.empty() && (!captureSequencePath.empty() || !screenshotPath.empty())) {
         return fail("--measure conflicts with --screenshot and --capture-sequence");
     }
@@ -340,6 +356,8 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.measurementTrack = measurementTrack;
     options.visibilityEnabled = visibilityEnabled;
     options.submission = submission;
+    options.classifyMode = classifyMode;
+    options.classifyCheck = classifyCheck;
     options.labInstances = labInstances;
     options.initialScene = *sceneId;
     options.maximized = maximized;

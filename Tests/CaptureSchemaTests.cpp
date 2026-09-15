@@ -178,3 +178,60 @@ TEST_CASE("renderer registers the four uniform struct layouts") {
                    {"boundsMin", 16},
                    {"boundsMax", 32}});
 }
+
+//======================================================================================================================
+TEST_CASE("capture schema pins GPU visibility storage and frame parameter records") {
+    auto& schema = CaptureSchema::instance();
+    schema.resetForTest();
+    lmx::render::registerUniformLayoutsForCapture();
+    const auto json = writeAndRead(schema);
+    const auto requireLayout =
+        [&](std::string_view name, uint32_t slot, uint32_t size,
+            std::initializer_list<std::pair<std::string_view, uint32_t>> fields) {
+            CAPTURE(name);
+            const auto start = json.find(
+                std::format("\"name\": \"{}\", \"slot\": {}, \"sizeBytes\": {}", name, slot, size));
+            REQUIRE(start != std::string::npos);
+            const auto end = json.find("\n    ]}", start);
+            REQUIRE(end != std::string::npos);
+            const auto layout = json.substr(start, end - start);
+            for (const auto& [field, offset] : fields)
+                REQUIRE(layout.find(std::format("\"name\": \"{}\", \"offsetBytes\": {}", field,
+                                                offset)) != std::string::npos);
+        };
+    requireLayout("CandidateRecord", 0, 8, {{"instanceRow", 0}, {"run", 4}});
+    requireLayout(
+        "RunRecord", 1, 16,
+        {{"firstCandidate", 0}, {"candidateCount", 4}, {"firstSlot", 8}, {"argumentIndex", 12}});
+    requireLayout("ChunkRecord", 2, 16,
+                  {{"run", 0}, {"firstCandidate", 4}, {"candidateCount", 8}, {"padding", 12}});
+    requireLayout("VisibilityViewParams", 5, 112,
+                  {{"planes", 0},
+                   {"flags", 80},
+                   {"firstCandidate", 84},
+                   {"candidateCount", 88},
+                   {"firstRun", 92},
+                   {"runCount", 96},
+                   {"firstChunk", 100},
+                   {"chunkCount", 104}});
+    requireLayout("VisibilityParams", 6, 32,
+                  {{"layout", 0},
+                   {"rowCapacity", 4},
+                   {"argumentCapacity", 8},
+                   {"stateCapacity", 12},
+                   {"candidateCount", 16},
+                   {"viewCount", 20}});
+    requireLayout("VisibilityCounterWords", 8, 48,
+                  {{"candidates", 0},
+                   {"visible", 4},
+                   {"rejected", 8},
+                   {"disabled", 12},
+                   {"unculled", 16},
+                   {"unreliable", 20},
+                   {"nonfinite", 24},
+                   {"emittedRows", 28},
+                   {"emittedCommands", 32},
+                   {"overflowedRows", 36},
+                   {"overflowedCommands", 40},
+                   {"padding", 44}});
+}

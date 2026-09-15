@@ -15,6 +15,22 @@ namespace lmx::render {
 struct DrawItem;
 /// Outward distance added to each normalized clipping half-space, in world units.
 constexpr float kVisibilityGuardWorldUnits = 1e-3f;
+/// Device that classifies candidate bounds.
+enum class ClassifyMode {
+    Cpu, ///< Maintained CPU oracle and default.
+    Gpu  ///< Fixed-slot GPU visibility and work generation.
+};
+/// Retired per-view counts; bypass index zero is unused.
+struct VisibilityCounters {
+    uint32_t candidates = 0;            ///< Number of input candidates.
+    uint32_t visible = 0;               ///< Tested retained candidates.
+    uint32_t rejected = 0;              ///< Tested rejected candidates.
+    std::array<uint32_t, 5> bypassed{}; ///< Counts indexed by VisibilityReason.
+    uint32_t emittedRows = 0;           ///< Rows that fit all capacities.
+    uint32_t emittedCommands = 0;       ///< Nonempty commands that fit.
+    uint32_t overflowedRows = 0;        ///< Retained rows dropped by capacity.
+    uint32_t overflowedCommands = 0;    ///< Nonempty commands dropped by capacity.
+};
 /// CPU command preparation path; all paths consume the same visible-row shader contract.
 enum class SubmissionMode {
     Direct,   ///< One direct indexed command per retained instance.
@@ -65,10 +81,30 @@ struct SubmissionStats {
     uint64_t allocatedListBytes = 0;     ///< All three active slot allocations.
     uint64_t allocatedArgumentBytes = 0; ///< All three active slot allocations.
     uint32_t pendingReleaseBuffers = 0;  ///< Replaced buffers awaiting retirement.
+    uint64_t candidateBytes = 0;         ///< Logical candidate table bytes.
+    uint64_t runBytes = 0;               ///< Logical run table bytes.
+    uint64_t chunkBytes = 0;             ///< Logical chunk table bytes.
+    uint64_t stateBytes = 0;             ///< State storage bytes.
+    uint64_t counterBytes = 0;           ///< Counter storage bytes.
     uint32_t growthEvents = 0;           ///< Cumulative paired slot growth count.
 };
 /// Renderer-owned diagnostics for the last declared frame.
 struct VisibilityStatus {
+    ClassifyMode classifyMode = ClassifyMode::Cpu; ///< Requested classifier.
+    bool isRetired = false;            ///< GPU results have completed and been read back.
+    bool overflow = false;             ///< At least one output capacity dropped work.
+    bool checkEnabled = false;         ///< Declaration captured CPU oracle expectations.
+    uint32_t stateMismatches = 0;      ///< Candidate state or reason differences.
+    uint32_t rowMismatches = 0;        ///< Valid row sequence differences.
+    uint32_t argumentMismatches = 0;   ///< Defined argument word differences.
+    uint32_t counterMismatches = 0;    ///< Counter reconciliation differences.
+    VisibilityCounters sceneCounters;  ///< Retired scene-view counters.
+    VisibilityCounters shadowCounters; ///< Retired shadow-view counters.
+    /// Whether every enabled diagnostic comparison matched.
+    bool checkPassed() const {
+        return stateMismatches == 0 && rowMismatches == 0 && argumentMismatches == 0 &&
+               counterMismatches == 0;
+    }
     uint64_t frameNumber = 0;     ///< Device frame that owns the results.
     uint64_t sceneGeneration = 0; ///< Caller scene identity generation.
     VisibilityResult scene;       ///< Camera candidate classification.

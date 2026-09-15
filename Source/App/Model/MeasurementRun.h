@@ -5,6 +5,7 @@
 #pragma once
 
 #include "RHI/Device.h"
+#include "Render/Visibility.h"
 
 #include <cstdint>
 #include <optional>
@@ -35,6 +36,8 @@ struct MeasurementPlan {
     std::string scene;                   ///< Catalog stable identifier.
     std::string temporal = "taa";        ///< Requested reconstruction.
     std::string submission = "indirect"; ///< Draw submission mode.
+    std::string classify = "cpu";        ///< Requested classifier, cpu or gpu.
+    bool classifyCheck = false;          ///< CPU-oracle diagnostic, never scored.
     bool visibilityEnabled = true;       ///< Camera culling request.
     bool cameraTrack = true;             ///< Follow authored camera rail at 60 Hz.
     float renderScale = 1.0f;            ///< Requested reconstruction input scale.
@@ -79,17 +82,29 @@ struct MeasurementCpuSample {
     uint32_t sceneCommands = 0;           ///< Issued scene commands, including sky where present.
     uint32_t shadowCommands = 0;          ///< Issued shadow commands.
     uint64_t tableBytes = 0;              ///< Allocated scene-table bytes across the three slots.
-    uint64_t listBytes = 0;               ///< Visible-row payload bytes for this frame.
-    uint64_t argumentBytes = 0;           ///< Indirect-argument payload bytes for this frame.
-    uint64_t transientBytes = 0;          ///< Compiled transient physical bytes for this frame.
+    uint64_t reservedListBytes = 0;  ///< Declaration row reservation; unaffected by retirement.
+    uint64_t listBytes = 0;          ///< Valid row payload; GPU value resolves on exact retirement.
+    uint64_t argumentBytes = 0;      ///< Indirect-argument payload bytes for this frame.
+    uint64_t allocatedListBytes = 0; ///< Active list allocation across slots.
+    uint64_t allocatedArgumentBytes = 0; ///< Active argument allocation across slots.
+    uint64_t candidateBytes = 0;         ///< Candidate preparation bytes.
+    uint64_t runBytes = 0;               ///< Run preparation bytes.
+    uint64_t chunkBytes = 0;             ///< Chunk preparation bytes.
+    uint64_t stateBytes = 0;             ///< GPU state storage bytes.
+    uint64_t counterBytes = 0;           ///< GPU counter storage bytes.
+    render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Effective classifier.
+    render::VisibilityCounters sceneCounters;  ///< Immediate CPU scene counts; GPU joins later.
+    render::VisibilityCounters shadowCounters; ///< Immediate CPU shadow counts; GPU joins later.
+    uint64_t transientBytes = 0; ///< Compiled transient physical bytes for this frame.
     std::vector<std::string>
         expectedPasses; ///< Scheduled pass labels required in retirement order.
 };
 
 /// A sample becomes reportable only after matching nonempty GPU timings arrive.
 struct MeasurementSample {
-    MeasurementCpuSample cpu;            ///< Immutable declaration-time values.
+    MeasurementCpuSample cpu; ///< Declaration metrics; GPU list payload resolves on retirement.
     std::vector<rhi::PassTiming> passes; ///< Retired timings joined by exact frame id.
+    std::optional<render::VisibilityStatus> visibility; ///< Exact-frame retired GPU counters.
     bool retired = false; ///< Distinguishes absent timings from zero-duration timings.
 };
 
@@ -111,6 +126,8 @@ public:
     bool recordCpu(MeasurementCpuSample sample);
     /// Joins a retired RHI publication; repeated identical publications are harmless.
     bool retire(uint64_t frameId, std::span<const rhi::PassTiming> passes);
+    /// Joins GPU classifier counters by exact submitted frame, independently of timings.
+    bool retireVisibility(const render::VisibilityStatus& status);
     /// Called once all submitted work has retired; any missing join invalidates the run.
     bool finishDrain();
     /// Cancels a run while retaining its partial evidence and explicit reason.
@@ -121,7 +138,7 @@ public:
     std::span<const MeasurementSample> samples() const { return m_samples; }
     /// Empty on success, otherwise the first terminal failure or cancellation reason.
     const std::string& failure() const { return m_failure; }
-    /// Schema-1 JSON, including partial evidence, exact scopes, provenance and completion status.
+    /// Schema-2 JSON, including partial evidence, exact scopes, provenance and completion status.
     std::string json() const;
 
 private:
@@ -130,6 +147,7 @@ private:
     MeasurementPlan m_plan;
     MeasurementProvenance m_provenance;
     uint32_t m_submitted = 0;
+    uint64_t m_firstFrameId = 0;
     uint64_t m_lastFrameId = 0;
     std::vector<MeasurementSample> m_samples;
     std::string m_failure;
