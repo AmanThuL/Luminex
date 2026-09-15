@@ -18,8 +18,8 @@
 // the encode.
 //
 // Slots -- resource classes use separate index spaces:
-//   buffers   b0 vertices, b1 per-draw DrawUniforms, b2 per-pass PassUniforms
-//             b5 instances, b6 materials, b3 the persistent
+//   buffers   b0 vertices, b1 first-entry DrawUniforms, b2 per-pass PassUniforms
+//             b4 visible rows, b5 instances, b6 materials, b3 the persistent
 //             exposure buffer (spec 9) -- this variant's one difference from ScenePass.slang
 //   textures  per-draw material set: t0 base colour, t1 normal, t4 metallic-roughness,
 //             t5 occlusion, t6 emissive
@@ -56,6 +56,8 @@ StructuredBuffer<Vertex> gVertices : register(t0); // → MSL [[buffer(0)]]
 
 [[vk::binding(1, 0)]]
 ConstantBuffer<DrawUniforms> gDraw : register(b1);
+[[vk::binding(4, 0)]]
+StructuredBuffer<uint> gVisibleRows : register(t4);
 [[vk::binding(5, 0)]]
 StructuredBuffer<InstanceRow> gInstances : register(t5);
 [[vk::binding(6, 0)]]
@@ -139,6 +141,7 @@ float3 applyNormalMap(float3 mapSample, float3 unitNormalW, float4 tangentW)
 
 struct VSOutput
 {
+    nointerpolation uint instanceRow : TEXCOORD3;
     float4 position : SV_Position;
     float3 positionW : POSITION0;
     float3 normalW : NORMAL0;
@@ -148,14 +151,15 @@ struct VSOutput
     float4 shadowPos : POSITION1;
 };
 
-VSOutput shadeVertex(uint vid)
+VSOutput shadeVertex(uint vid, uint instanceRow)
 {
-    InstanceRow instance = gInstances[gDraw.instanceRow];
+    InstanceRow instance = gInstances[instanceRow];
     MaterialRow material = gMaterials[instance.materialRow];
     Vertex v = gVertices[vid];
     float4 positionW = mul(instance.model, float4(v.position, 1.0));
 
     VSOutput o;
+    o.instanceRow = instanceRow;
     o.position = mul(gPass.viewProj, positionW);
     o.positionW = positionW.xyz;
     // The inverse transpose is what keeps a normal perpendicular to its surface under non-uniform
@@ -194,7 +198,7 @@ struct SurfaceShading
 
 SurfaceShading shadeSurfaceDetailed(VSOutput input, bool frontFace)
 {
-    InstanceRow instance = gInstances[gDraw.instanceRow];
+    InstanceRow instance = gInstances[input.instanceRow];
     MaterialRow material = gMaterials[instance.materialRow];
     // sRGB sampling decodes base colour before lighting.
     float4 baseColorSample = gDiffuse.Sample(gLinearSampler, input.uv) * material.albedo;
@@ -268,9 +272,9 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input, bool frontFace)
 }
 
 [shader("vertex")]
-VSOutput vertexMain(uint vid: SV_VertexID)
+VSOutput vertexMain(uint vid: SV_VertexID, uint instanceIndex: SV_InstanceID)
 {
-    return shadeVertex(vid);
+    return shadeVertex(vid, gVisibleRows[gDraw.firstEntry + instanceIndex]);
 }
 
 [shader("fragment")]
@@ -298,12 +302,12 @@ struct MotionFSOutput
 };
 
 [shader("vertex")]
-MotionVSOutput vertexMainMotion(uint vid: SV_VertexID)
+MotionVSOutput vertexMainMotion(uint vid: SV_VertexID, uint instanceIndex: SV_InstanceID)
 {
-    InstanceRow instance = gInstances[gDraw.instanceRow];
+    InstanceRow instance = gInstances[gVisibleRows[gDraw.firstEntry + instanceIndex]];
     float3 position = gVertices[vid].position;
     MotionVSOutput o;
-    o.base = shadeVertex(vid);
+    o.base = shadeVertex(vid, gVisibleRows[gDraw.firstEntry + instanceIndex]);
     o.clipCurrent = mul(gPass.viewProjUnjittered, mul(instance.model, float4(position, 1.0)));
     o.clipPrevious =
         mul(gPass.previousViewProjUnjittered, mul(instance.previousModel, float4(position, 1.0)));
@@ -313,7 +317,7 @@ MotionVSOutput vertexMainMotion(uint vid: SV_VertexID)
 [shader("fragment")]
 MotionFSOutput fragmentMainMotion(MotionVSOutput input, bool frontFace: SV_IsFrontFace)
 {
-    InstanceRow instance = gInstances[gDraw.instanceRow];
+    InstanceRow instance = gInstances[input.base.instanceRow];
     MotionFSOutput o;
     SurfaceShading shaded = shadeSurfaceDetailed(input.base, frontFace);
     o.color = shaded.color;

@@ -445,16 +445,6 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
                       .material = checkerMaterialIndex});
     expandAabb(mipProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
-    for (SceneObject& object : scene->objects) {
-        glm::vec3 halfExtent(0.5f);
-        if (object.mesh == unitQuadMeshIndex) {
-            halfExtent = glm::vec3(0.5f, 0.5f, 0.0f);
-        } else if (object.mesh == rampMeshIndex) {
-            halfExtent = glm::vec3(3.0f, 0.5f, 0.0f);
-        }
-        object.localBounds = ObjectBounds{.minimum = -halfExtent, .maximum = halfExtent};
-    }
-
     const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
     scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
 

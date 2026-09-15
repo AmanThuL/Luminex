@@ -350,7 +350,7 @@ TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 6);
+    REQUIRE(library.entries().size() == 7);
     REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");

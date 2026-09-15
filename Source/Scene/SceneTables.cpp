@@ -40,17 +40,19 @@ uint16_t nextStore() {
 }
 
 //======================================================================================================================
-uint32_t allocateIdentity(std::vector<IdentitySlot>& slots) {
-    for (uint32_t i = 0; i < slots.size(); ++i) {
+uint32_t allocateIdentity(std::vector<IdentitySlot>& slots, uint32_t& searchStart) {
+    for (uint32_t i = searchStart; i < slots.size(); ++i) {
         if (!slots[i].live && slots[i].generation != std::numeric_limits<uint16_t>::max()) {
             slots[i].live = true;
+            searchStart = i + 1;
             return i;
         }
     }
     LMX_ASSERT(slots.size() < std::numeric_limits<uint32_t>::max(),
                "scene row identities exhausted");
     slots.push_back({});
-    return static_cast<uint32_t>(slots.size() - 1);
+    searchStart = static_cast<uint32_t>(slots.size());
+    return searchStart - 1;
 }
 
 //======================================================================================================================
@@ -150,6 +152,8 @@ struct Scene::Storage {
     uint16_t store = nextStore();
     std::vector<IdentitySlot> instances;
     std::vector<IdentitySlot> textureIds;
+    uint32_t instanceSearchStart = 0;
+    uint32_t textureSearchStart = 0;
     std::vector<render::MeshData> meshData;
     std::vector<render::MeshRow> meshRows;
     std::vector<MaterialRecord> materials;
@@ -205,6 +209,30 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
     }
     row.vertexCount = static_cast<uint32_t>(data.vertices.size());
     row.indexCount = static_cast<uint32_t>(data.indices.size());
+    render::Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
+                        glm::vec3(std::numeric_limits<float>::lowest())};
+    bool finite = true;
+    for (const auto& vertex : data.vertices) {
+        const glm::vec3 point(vertex.px, vertex.py, vertex.pz);
+        finite = finite && render::isFinite(point);
+        bounds.minimum = glm::min(bounds.minimum, point);
+        bounds.maximum = glm::max(bounds.maximum, point);
+    }
+    bool hasSurface = false;
+    for (size_t i = 0; i + 2 < data.indices.size(); i += 3) {
+        const auto position = [&](uint32_t index) {
+            const auto& vertex = data.vertices[index];
+            return glm::dvec3(vertex.px, vertex.py, vertex.pz);
+        };
+        const glm::dvec3 area =
+            glm::cross(position(data.indices[i + 1]) - position(data.indices[i]),
+                       position(data.indices[i + 2]) - position(data.indices[i]));
+        hasSurface = hasSurface || glm::dot(area, area) > 0.0;
+    }
+    if (finite && hasSurface && render::isValidAabb(bounds)) {
+        row.boundsMin = bounds.minimum;
+        row.boundsMax = bounds.maximum;
+    }
     m_storage->meshRows.push_back(row);
     m_storage->meshData.push_back(std::move(data));
     return {count, 1, m_storage->store};
@@ -213,7 +241,7 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
 //======================================================================================================================
 TextureId Scene::addTexture(std::unique_ptr<rhi::Texture> texture) {
     LMX_ASSERT(texture != nullptr, "scene texture must not be null");
-    const uint32_t slot = allocateIdentity(m_storage->textureIds);
+    const uint32_t slot = allocateIdentity(m_storage->textureIds, m_storage->textureSearchStart);
     m_storage->textures.resize(m_storage->textureIds.size());
     m_storage->textures[slot] = std::move(texture);
     return {slot, m_storage->textureIds[slot].generation, m_storage->store};
@@ -236,7 +264,7 @@ MaterialId Scene::addMaterial(MaterialRecord material) {
 InstanceId Scene::addObject(SceneObject object) {
     LMX_ASSERT(tryMesh(object.mesh), "instance mesh identity is invalid");
     LMX_ASSERT(tryMaterial(object.material), "instance material identity is invalid");
-    const uint32_t slot = allocateIdentity(m_storage->instances);
+    const uint32_t slot = allocateIdentity(m_storage->instances, m_storage->instanceSearchStart);
     object.id = {slot, m_storage->instances[slot].generation, m_storage->store};
     object.previousModel = object.modelMatrix();
     objects.push_back(std::move(object));
@@ -250,6 +278,7 @@ void Scene::removeObject(InstanceId id) {
     const auto index = static_cast<uint32_t>(found - objects.begin());
     objects.erase(found);
     auto& slot = m_storage->instances[id.slot];
+    m_storage->instanceSearchStart = std::min(m_storage->instanceSearchStart, id.slot);
     slot.live = false;
     if (slot.generation != std::numeric_limits<uint16_t>::max()) {
         ++slot.generation;
@@ -281,6 +310,7 @@ void Scene::removeTexture(TextureId id) {
     m_storage->retiringTextures.emplace_back(m_storage->lastFrame + kSlots,
                                              std::move(m_storage->textures[id.slot]));
     auto& slot = m_storage->textureIds[id.slot];
+    m_storage->textureSearchStart = std::min(m_storage->textureSearchStart, id.slot);
     slot.live = false;
     if (slot.generation != std::numeric_limits<uint16_t>::max()) {
         ++slot.generation;
@@ -307,6 +337,15 @@ const render::MeshRow* Scene::tryMesh(MeshId id) const {
                    id.slot < m_storage->meshRows.size()
                ? &m_storage->meshRows[id.slot]
                : nullptr;
+}
+
+//======================================================================================================================
+std::optional<render::Aabb> Scene::meshBounds(MeshId id) const {
+    const auto* row = tryMesh(id);
+    if (!row || !render::isValidAabb({row->boundsMin, row->boundsMax})) {
+        return std::nullopt;
+    }
+    return render::Aabb{row->boundsMin, row->boundsMax};
 }
 
 //======================================================================================================================
@@ -469,6 +508,15 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         row.flags =
             object.motionClass == render::MotionClass::Invalid ? render::kInstanceMotionInvalid : 0;
         row.emissiveScale = object.emissiveStrength;
+        const auto localBounds = meshBounds(object.mesh);
+        const auto worldBounds =
+            localBounds ? render::transformAabb(row.model, *localBounds) : std::nullopt;
+        if (worldBounds) {
+            row.worldBoundsMin = worldBounds->minimum;
+            row.worldBoundsMax = worldBounds->maximum;
+        } else {
+            row.flags |= render::kInstanceBoundsUnreliable;
+        }
         updateRow(storage.instanceTable, object.id.slot, row);
     }
     for (uint32_t i = 0; i < storage.instances.size(); ++i) {
@@ -537,7 +585,9 @@ render::SceneTables Scene::tables() const {
             .materials = storage.materialTable.buffers[slot].get(),
             .meshCount = static_cast<uint32_t>(storage.meshRows.size()),
             .instanceCount = static_cast<uint32_t>(storage.instances.size()),
-            .materialCount = static_cast<uint32_t>(storage.materials.size())};
+            .materialCount = static_cast<uint32_t>(storage.materials.size()),
+            .instanceRows = storage.instanceTable.shadow,
+            .instanceCapacity = storage.instanceTable.capacity};
 }
 
 } // namespace lmx::scene

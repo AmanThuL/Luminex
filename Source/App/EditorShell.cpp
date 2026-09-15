@@ -43,7 +43,7 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 constexpr float kLookRadiansPerPixel = 0.0025f;
 
 // The default topology's share of the work area: Scene and Inspector flank a central column whose
-// lower quarter holds Performance, and the Viewport takes what remains.
+// lower quarter holds Console, and the Viewport takes what remains.
 
 // The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
@@ -115,7 +115,7 @@ void workspaceSettingsWriteAll(ImGuiContext*, ImGuiSettingsHandler* handler,
 struct DefaultLayoutExtents {
     float sceneWidth = 0.0f;
     float inspectorWidth = 0.0f;
-    float performanceHeight = 0.0f;
+    float consoleHeight = 0.0f;
 };
 
 //======================================================================================================================
@@ -131,7 +131,7 @@ DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
     DefaultLayoutExtents extents;
     extents.sceneWidth = workWidth >= 1500.0f ? 240.0f : kMinSceneWidthPoints;
     extents.inspectorWidth = workWidth >= 1500.0f ? 340.0f : kMinInspectorWidthPoints;
-    extents.performanceHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
+    extents.consoleHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
 
     const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);
     const float sideWanted = extents.sceneWidth + extents.inspectorWidth;
@@ -140,8 +140,8 @@ DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
         extents.sceneWidth *= scale;
         extents.inspectorWidth *= scale;
     }
-    extents.performanceHeight =
-        std::min(extents.performanceHeight, std::max(workHeight - kMinViewportHeightPoints, 0.0f));
+    extents.consoleHeight =
+        std::min(extents.consoleHeight, std::max(workHeight - kMinViewportHeightPoints, 0.0f));
     return extents;
 }
 
@@ -156,9 +156,8 @@ float splitFraction(float extent, float available) {
 }
 
 //======================================================================================================================
-// Builds the four docked panels of the default topology: Scene left, Inspector right, Performance
-// below the Viewport, and the Viewport in what remains. The fifth panel, Render Graph, is never
-// docked -- it lives in its own OS window.
+// Builds Scene/Inspector beside the Viewport and Console across the bottom.
+// Performance and Render Graph live in independent native windows.
 void buildDefaultLayout(ImGuiID dockspaceId) {
     const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
     const DefaultLayoutExtents extents = defaultLayoutExtents(work.x, work.y);
@@ -173,9 +172,9 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 
     // Each ratio is a share of the node being split, and that node shrinks as the splits proceed.
     ImGuiID centerId = dockspaceId;
-    ImGuiID performanceId = 0;
+    ImGuiID consoleId = 0;
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Down,
-                                splitFraction(extents.performanceHeight, work.y), &performanceId,
+                                splitFraction(extents.consoleHeight, work.y), &consoleId,
                                 &centerId);
     ImGuiID sceneId = 0;
     ImGui::DockBuilderSplitNode(centerId, ImGuiDir_Left, splitFraction(extents.sceneWidth, work.x),
@@ -187,10 +186,9 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 
     ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
-    ImGui::DockBuilderDockWindow(kPerformancePanelWindowName, performanceId);
-    ImGui::DockBuilderDockWindow(kConsolePanelWindowName, performanceId);
-    // Render Graph is deliberately absent: its window class forbids docking into an unclassed
-    // node, so it always owns its own OS window and there is no dock node to place it in.
+    ImGui::DockBuilderDockWindow(kConsolePanelWindowName, consoleId);
+    // Performance and Render Graph are deliberately absent: their window classes forbid docking
+    // into an unclassed node, so each owns its own OS window and has no default dock node.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
     ImGui::DockBuilderFinish(dockspaceId);
 }
@@ -487,12 +485,13 @@ void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
     buildMainMenu();
+    buildPlaybackTransport(device, renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
-        m_focusDefaultPerformance = true;
+        m_performancePanel.resetPlacement = true;
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
@@ -608,6 +607,7 @@ void EditorShell::buildMainMenu() {
 //======================================================================================================================
 void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
@@ -615,7 +615,10 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
                                                .activeScene = m_session.scene(),
                                                .selection = m_selection,
-                                               .filter = m_sceneFilter});
+                                               .filter = m_sceneFilter,
+                                               .visibilityDisplay = m_visibilityDisplay,
+                                               .visibilityStatus = renderer.visibilityStatus(),
+                                               .sceneGeneration = m_temporalState.sceneGeneration});
         setPanelVisible(EditorPanel::Scene, open);
     }
 
@@ -688,32 +691,26 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .viewportVisible = viewportUsable,
                                         .selectionHiddenByFilter = selectionHiddenByFilter(
                                             m_session.scene(), m_selection, m_sceneFilter),
+                                        .visibilityDisplay = &m_visibilityDisplay,
                                         .sceneFilter = &m_sceneFilter});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
+    ImGui::EndDisabled();
     if (m_workspace.visibility.isVisible(EditorPanel::Performance)) {
         bool open = true;
         m_performanceModel.setContextEpoch(metricsContextEpoch());
-        if (m_focusDefaultPerformance) {
-            ImGui::SetNextWindowFocus();
-            m_focusDefaultPerformance = false;
-        }
-        drawPerformancePanel(open, m_performanceModel);
+        MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
+                                            m_measurementExportPath, m_measurementFeedback};
+        measurement.reveal = m_revealMeasurement;
+        drawPerformancePanel(open, m_performanceModel, m_performancePanel, &measurement);
+        m_revealMeasurement = measurement.reveal;
+        if (measurement.action == MeasurementAction::Export)
+            exportMeasurement();
         setPanelVisible(EditorPanel::Performance, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Console)) {
-        // Add only the new tab to an existing workspace. Existing dock nodes and selected tabs
-        // remain untouched; a previously saved Console position wins over this first-use hint.
-        if (const auto* settings =
-                ImGui::FindWindowSettingsByID(ImHashStr(kPerformancePanelWindowName));
-            settings != nullptr && settings->DockId != 0) {
-            ImGui::SetNextWindowDockID(settings->DockId, ImGuiCond_FirstUseEver);
-        } else if (const auto* performance = ImGui::FindWindowByName(kPerformancePanelWindowName);
-                   performance != nullptr && performance->DockId != 0) {
-            ImGui::SetNextWindowDockID(performance->DockId, ImGuiCond_FirstUseEver);
-        }
         bool open = true;
         drawConsolePanel(open, m_consoleModel);
         setPanelVisible(EditorPanel::Console, open);
@@ -732,6 +729,8 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
         return;
     }
     m_workspace.visibility.setVisible(panel, visible);
+    if (panel == EditorPanel::Performance)
+        m_performancePanel.requestFocus = visible;
     // Nothing moved a window, so ImGui has no reason of its own to rewrite the ini; without this
     // the new visibility would be lost on exit.
     ImGui::MarkIniSettingsDirty();
@@ -744,6 +743,9 @@ void EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.reconstruction = temporalReconstructionMode(options.temporal);
     m_settings.temporalDebugView = options.temporalView;
     m_settings.renderScale = options.renderScale;
+    m_labInstances = options.labInstances;
+    m_settings.visibilityEnabled = options.visibilityEnabled;
+    m_settings.submission = options.submission;
 }
 
 //======================================================================================================================
@@ -757,6 +759,8 @@ render::SceneView EditorShell::sceneView() {
         m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
+    view.visibilityEnabled = m_settings.visibilityEnabled;
+    view.submission = m_settings.submission;
     view.exposureEv = m_settings.exposureEv;
     view.autoExposureEnabled = m_settings.autoExposureEnabled;
     // exposureReset is left at SceneView's default (false); main.cpp sets it from
@@ -797,8 +801,12 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
         m_selection.index >= view.items.size()) {
         return display;
     }
+    const auto& result = renderer.visibilityStatus().scene;
+    const bool visible =
+        m_selection.index >= result.candidates.size() ||
+        result.candidates[m_selection.index].state != render::VisibilityState::Rejected;
     return m_selectionOutline->declare(graph, commands, display, m_session.camera(), view,
-                                       m_selection.index, m_viewportBackingScale);
+                                       m_selection.index, m_viewportBackingScale, visible);
 }
 
 //======================================================================================================================
@@ -817,15 +825,21 @@ void EditorShell::controllerDeclared(uint64_t frame) {
 
 //======================================================================================================================
 void EditorShell::advanceFrameAnimation() {
-    m_session.advanceEditorFrame(m_settings.animationPlaying, m_settings.followCameraTrack,
-                                 m_looking);
+    if (m_measurement.active()) {
+        if (const auto frame = m_measurement.nextFrame())
+            m_session.prepareSequenceFrame(frame->sequenceFrame);
+        return;
+    }
+    m_session.advanceEditorFrame(m_playback.playing(),
+                                 m_playback.active() && m_settings.followCameraTrack, m_looking);
 }
 
 //======================================================================================================================
 uint64_t EditorShell::metricsContextEpoch() {
-    const uint64_t key = m_temporalState.sceneGeneration * 16 +
-                         static_cast<uint64_t>(m_settings.reconstruction) * 2 +
-                         (m_settings.temporalEnabled ? 1 : 0);
+    const uint64_t key =
+        m_temporalState.sceneGeneration * 128 + static_cast<uint64_t>(m_settings.submission) * 16 +
+        (m_settings.visibilityEnabled ? 8 : 0) +
+        static_cast<uint64_t>(m_settings.reconstruction) * 2 + (m_settings.temporalEnabled ? 1 : 0);
     return m_metricsContextRevision.observe(key);
 }
 
@@ -836,7 +850,9 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
     return {
         .contextEpoch = metricsContextEpoch(),
         .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
-        .drawCount = static_cast<uint32_t>(m_drawItems.size()),
+        .drawCount = renderer.visibilityStatus().submission.sceneCommands +
+                     renderer.visibilityStatus().submission.shadowCommands +
+                     (m_session.scene().skySphere && m_session.scene().skyCubemap ? 1u : 0u),
         .viewportLogicalWidth =
             static_cast<uint32_t>(m_viewportWidth / std::max(io.DisplayFramebufferScale.x, 1.0f)),
         .viewportLogicalHeight =
@@ -850,6 +866,16 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
 //======================================================================================================================
 void EditorShell::observeDeclaration(const render::Renderer& renderer, uint64_t frameId) {
     observeDeclaredTemporal(m_temporalState, m_settings, renderer.temporalStatus(), frameId);
+    m_visibilityDisplay.observe(m_session.scene(), renderer.visibilityStatus());
+    if (m_measurement.active()) {
+        m_measurementVisibility = renderer.visibilityStatus();
+        m_measurementTemporal = renderer.temporalStatus();
+        if (renderer.width() != m_measurement.plan().width ||
+            renderer.height() != m_measurement.plan().height ||
+            m_settings.visibilityEnabled != m_measurement.plan().visibilityEnabled) {
+            m_measurement.cancel("Viewport or rendering settings changed during measurement");
+        }
+    }
 }
 
 //======================================================================================================================
@@ -886,7 +912,11 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
         m_sceneLoading.fail(id, scene.error().message);
         return false;
     }
+    if (m_measurement.active())
+        m_measurement.cancel("Scene changed during measurement");
+    stopPlayback();
     m_activeSceneId = id;
+    m_visibilityDisplay.clear();
     m_session.activate(**scene, SceneActivationMotion::Reset);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
@@ -907,6 +937,10 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
 
 //======================================================================================================================
 void EditorShell::updateCameraInput(float deltaSeconds) {
+    if (m_measurement.active()) {
+        endMouseLook();
+        return;
+    }
     // Drain SDL motion every frame so pre-look cursor travel cannot accumulate into a jump.
     float relativeX = 0.0f;
     float relativeY = 0.0f;

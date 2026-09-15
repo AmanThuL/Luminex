@@ -35,6 +35,39 @@ Add `--sequence` for exactly three paired TemporalLab frames. This path checks m
 manifests, settings and per-frame state and rejects vendor fallback. The manifest reconstruction
 mode selects the per-image profile; Native/Raw/Off retain strict comparison.
 
+## Compare visibility and submission modes
+
+Culling and indirect submission are the defaults. Screenshot and sequence commands accept
+`--visibility cull|off` and `--submission direct|indirect|batched`, so replay each frozen case with
+only the tested switch changed. Preserve its scene, camera track, frame count, reconstruction,
+scale, dimensions and other settings. Keep `reference.json` and the strict hash runner unchanged.
+
+```sh
+xmake run App --scene temporal-lab --frames 32 --visibility cull --submission indirect \
+  --screenshot /absolute/cull-indirect.bmp
+xmake run App --scene temporal-lab --frames 32 --visibility off --submission indirect \
+  --screenshot /absolute/off-indirect.bmp
+cmp /absolute/cull-indirect.bmp /absolute/off-indirect.bmp
+```
+
+For the [CPU visibility/indirect verification](../milestones/m7.2.md#output-preservation-and-comparison-rule),
+culled versus unculled and indirect versus direct require exact bytes in all fifteen cases; a
+passing tolerant comparison does not satisfy those gates. Compare matching BMP bytes/hashes and
+retain each result. Batched versus direct uses `strict`, because sorting can change depth ties.
+Parent versus candidate retains strict results and the explicitly scoped MetalFX profile; Native
+TAA sequence frames retain strict comparison. The milestone record owns outcomes and pending
+review. Commands here do not claim a passing matrix or owner acceptance.
+
+The [first-principles reassessment](../milestones/m7.2-visibility-followup.md) preserves that
+failure: exact pre-temporal fixtures passed, but a separately frozen empirical-range experiment
+failed its independent holdout. Its [verifier procedure](visibility-image-validation.md) remains
+experimental and does not supersede the original gate.
+
+For additional workload inspection, `--scene visibility-lab --lab-instances 1024` uses a deterministic
+grid and camera rail. N includes boundary probes; the lab is additional coverage and does not
+replace any case in the fixed fifteen-image matrix. Image parity and timing are separate checks;
+see [measurement scopes](gpu-debugging.md#measure-visibility-and-submission).
+
 ## Optional vendor quantization profile
 
 `vendor-quantization-v1` requires all three conditions independently for each MetalFX image:

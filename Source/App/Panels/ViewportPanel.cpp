@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file ViewportPanel.cpp
-/// @brief Draws the scene image, editor selection, diagnostic legend and playback transport.
+/// @brief Draws the scene image, editor selection, camera tools and diagnostic legend.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Panels/ViewportPanel.h"
@@ -150,41 +150,6 @@ void drawLegend(const ViewportPanelContext& context) {
     }
 }
 
-//======================================================================================================================
-void drawTransport(const ViewportPanelContext& context) {
-    const bool animated = !context.scene.animation.tracks.empty() ||
-                          !context.scene.animation.emissiveTracks.empty() ||
-                          !context.scene.animation.cameraTrack.empty();
-    ImGui::BeginDisabled(!animated);
-    if (ImGui::Button(context.settings.animationPlaying ? "Pause scene" : "Play scene")) {
-        context.settings.animationPlaying = !context.settings.animationPlaying;
-    }
-    editorTooltip("Pause or resume scene animation. Rendering and diagnostic sampling continue.");
-    nextToolbarItem(ImGui::CalcTextSize("Step 1/60 s").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Step 1/60 s")) {
-        context.settings.animationPlaying = false;
-        context.session.stepAnimation();
-    }
-    editorTooltip("Advance animation exactly 1/60 second and leave playback paused.");
-    nextToolbarItem(ImGui::CalcTextSize("Reset time").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Reset time")) {
-        context.session.rewindAnimation();
-        requestCameraCut(context.temporalState);
-    }
-    editorTooltip("Return animation to time zero and reset temporal history; keep playback mode.");
-    ImGui::EndDisabled();
-    ImGui::TextWrapped("%s | Time %.3f s | Rendering continues",
-                       !animated                           ? "No scene animation"
-                       : context.settings.animationPlaying ? "Playing"
-                                                           : "Paused",
-                       context.scene.animationTime);
-    if (!context.scene.animation.cameraTrack.empty()) {
-        ImGui::Checkbox("Follow camera rail", &context.settings.followCameraTrack);
-        editorTooltip("Use the scene's authored camera path at the animation time; manual RMB look "
-                      "temporarily takes control.");
-    }
-}
-
 } // namespace
 
 //======================================================================================================================
@@ -195,25 +160,8 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         drawLegend(context);
         ImGui::Separator();
         const auto available = ImGui::GetContentRegionAvail();
-        float transportRows = 1.0f;
-        float usedWidth = 0.0f;
-        for (const char* label : {"Pause scene", "Step 1/60 s", "Reset time"}) {
-            const float width = ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2;
-            if (usedWidth > 0 && usedWidth + width > available.x) {
-                transportRows += 1.0f;
-                usedWidth = 0.0f;
-            }
-            usedWidth += width + ImGui::GetStyle().ItemSpacing.x;
-        }
-        if (!context.scene.animation.cameraTrack.empty()) {
-            transportRows += 1.0f;
-        }
-        const float timeRows = available.x < editor_style::scaled(400.0f) ? 2.0f : 1.0f;
-        const float transportHeight = ImGui::GetFrameHeightWithSpacing() * transportRows +
-                                      ImGui::GetTextLineHeightWithSpacing() * timeRows +
-                                      editor_style::scaled(8.0f);
-        const ImVec2 imageSize(available.x, std::max(available.y - transportHeight, 1.0f));
-        result.measured = imageSize.x > 0.0f && available.y > transportHeight;
+        const ImVec2 imageSize(available.x, std::max(available.y, 1.0f));
+        result.measured = available.x > 0.0f && available.y > 0.0f;
         result.focused = ImGui::IsWindowFocused();
         if (result.measured) {
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
@@ -230,8 +178,6 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
             result.width = toPixels(imageSize.x, scale.x);
             result.height = toPixels(imageSize.y, scale.y);
         }
-        ImGui::Separator();
-        drawTransport(context);
     }
     ImGui::End();
     return result;

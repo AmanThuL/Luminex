@@ -48,6 +48,8 @@ constexpr std::array kSceneDescriptors{
     SceneDescriptor{"san-miguel", "San Miguel", SceneRole::Showcase,
                     "Optional San Miguel realtime archive",
                     "Assets/Fetched/SanMiguel/SanMiguel.gltf", false, &loadSanMiguelScene},
+    SceneDescriptor{"visibility-lab", "VisibilityLab", SceneRole::Diagnostic, "", "", false,
+                    nullptr},
 };
 
 static_assert([] {
@@ -106,7 +108,8 @@ std::span<const std::string_view> sceneStableIds() {
 }
 
 //======================================================================================================================
-SceneLibrary::SceneLibrary(rhi::Device& device) : m_device(device) {
+SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances)
+    : m_device(device), m_labInstances(labInstances) {
     m_entries.reserve(kSceneDescriptors.size());
     m_scenes.resize(kSceneDescriptors.size());
     for (size_t i = 0; i < kSceneDescriptors.size(); ++i) {
@@ -149,7 +152,9 @@ asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
                 std::string(m_entries[index].assetRequirement) + "; run `xmake setup`"});
     }
 
-    auto built = kSceneDescriptors[index].build(m_device);
+    auto built = kSceneDescriptors[index].stableId == "visibility-lab"
+                     ? loadVisibilityLabScene(m_device, m_labInstances)
+                     : kSceneDescriptors[index].build(m_device);
     if (!built) {
         return std::unexpected(built.error());
     }

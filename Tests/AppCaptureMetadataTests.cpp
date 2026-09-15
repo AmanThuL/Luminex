@@ -19,6 +19,7 @@ TEST_CASE("capture manifest v2 preserves run fields and declares display, contai
         "\"failure\":\"bad \\\"frame\\\"\\u000a\",\"device\":\"test GPU\","
         "\"requestedMode\":\"metalfx\",\"width\":1280,\"height\":720,"
         "\"fps\":60,\"warmup\":32,\"frameCount\":2,\"renderScale\":0.75,"
+        "\"visibilityEnabled\":true,\"submission\":\"indirect\",\"labInstances\":4096,"
         "\"debugView\":0,\"cameraTrack\":true,\"display\":" +
         render::toJson(render::kSdrDisplayDomain) +
         ",\"container\":\"png\",\"ui\":{\"composited\":false},"
@@ -43,10 +44,16 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
                                      "test GPU") ==
             R"({"scene":"sponza","frameCount":32,"simulationFrame":31,)"
             R"("requestedMode":"metalfx","effectiveMode":"taa","fallback":1,)"
-            R"("renderScale":0.5,"debugView":1,"device":"test GPU"})");
+            R"("renderScale":0.5,"debugView":1,"visibilityEnabled":true,)"
+            R"("submission":"indirect","labInstances":4096,"device":"test GPU"})");
     const auto off = captureFrameMetadataJson(scene::defaultSceneId(), 1, 0, TemporalMode::Off,
                                               render::TemporalDebugView::Off, 1, status, "GPU");
     REQUIRE(off.contains(R"("effectiveMode":"off")"));
+    const auto configured = captureFrameMetadataJson(
+        scene::defaultSceneId(), 1, 0, TemporalMode::Off, render::TemporalDebugView::Off, 1, status,
+        "GPU", false, render::SubmissionMode::Batched, 1024);
+    REQUIRE(configured.contains(
+        R"("visibilityEnabled":false,"submission":"batched","labInstances":1024)"));
 }
 
 //======================================================================================================================
