@@ -58,6 +58,11 @@ Parent versus candidate retains strict results and the explicitly scoped MetalFX
 TAA sequence frames retain strict comparison. The milestone record owns outcomes and pending
 review. Commands here do not claim a passing matrix or owner acceptance.
 
+The [first-principles reassessment](../milestones/m7.2-visibility-followup.md) preserves that
+failure: exact pre-temporal fixtures passed, but a separately frozen empirical-range experiment
+failed its independent holdout. Its [verifier procedure](visibility-image-validation.md) remains
+experimental and does not supersede the original gate.
+
 For additional workload inspection, `--scene visibility-lab --lab-instances 1024` uses a deterministic
 grid and camera rail. N includes boundary probes; the lab is additional coverage and does not
 replace any case in the fixed fifteen-image matrix. Image parity and timing are separate checks;
