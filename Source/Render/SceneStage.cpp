@@ -117,7 +117,7 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
         {.name = "DrawUniforms",
          .slot = kDrawUniformsSlot,
          .sizeBytes = sizeof(DrawUniforms),
-         .fields = {{"instanceRow", offsetof(DrawUniforms, instanceRow), "uint"}}});
+         .fields = {{"firstEntry", offsetof(DrawUniforms, firstEntry), "uint"}}});
     schema.registerUniformStruct(
         {.name = "InstanceRow",
          .slot = kSceneInstancesSlot,
@@ -128,7 +128,9 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"meshRow", offsetof(InstanceRow, meshRow), "uint"},
                     {"materialRow", offsetof(InstanceRow, materialRow), "uint"},
                     {"flags", offsetof(InstanceRow, flags), "uint"},
-                    {"emissiveScale", offsetof(InstanceRow, emissiveScale), "float"}}});
+                    {"emissiveScale", offsetof(InstanceRow, emissiveScale), "float"},
+                    {"worldBoundsMin", offsetof(InstanceRow, worldBoundsMin), "float3"},
+                    {"worldBoundsMax", offsetof(InstanceRow, worldBoundsMax), "float3"}}});
     schema.registerUniformStruct(
         {.name = "MaterialRow",
          .slot = kSceneMaterialsSlot,
@@ -148,7 +150,9 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
          .fields = {{"firstIndex", offsetof(MeshRow, firstIndex), "uint"},
                     {"indexCount", offsetof(MeshRow, indexCount), "uint"},
                     {"firstVertex", offsetof(MeshRow, firstVertex), "uint"},
-                    {"vertexCount", offsetof(MeshRow, vertexCount), "uint"}}});
+                    {"vertexCount", offsetof(MeshRow, vertexCount), "uint"},
+                    {"boundsMin", offsetof(MeshRow, boundsMin), "float3"},
+                    {"boundsMax", offsetof(MeshRow, boundsMax), "float3"}}});
 }
 
 //======================================================================================================================
@@ -487,6 +491,8 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
     PassDesc sceneDesc;
     sceneDesc.textureReads.push_back(shadowRead);
     sceneDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
+    sceneDesc.bufferReads.push_back(inputs.drawRows);
+    sceneDesc.indirectBufferReads.push_back(inputs.drawArguments);
     // Declared only in auto mode: manual mode's shading never reads the feedback buffer (spec 9),
     // so declaring the read here always would be a lie about what the pass depends on.
     if (view.autoExposureEnabled) {
@@ -589,7 +595,11 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
             }
 
-            for (const DrawItem& item : view.items) {
+            commands.bindBuffer(kVisibleRowsSlot, *inputs.draws.rows);
+            if (inputs.draws.mode != SubmissionMode::Direct)
+                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{0});
+            for (const auto& run : inputs.draws.runs) {
+                const DrawItem& item = view.items[run.itemIndex];
                 const bool masked = item.alphaMode == AlphaMode::Mask;
                 const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
                                            (view.autoExposureEnabled ? 4u : 0u) +
@@ -618,9 +628,16 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
                                                                ? *item.emissiveMap
                                                                : *inputs.whiteTexture);
-                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{item.instanceRow});
-                commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
-                                     item.mesh.firstIndex);
+
+                if (inputs.draws.mode == SubmissionMode::Direct) {
+                    commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{run.firstEntry});
+                    commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
+                                         item.mesh.firstIndex);
+                } else {
+                    commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
+                                                 uint64_t{run.argumentIndex} *
+                                                     sizeof(rhi::DrawIndexedIndirectArgs));
+                }
             }
 
             // Draw the solid sky last so opaque geometry rejects covered fragments at the depth

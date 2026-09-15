@@ -216,7 +216,8 @@
         "Source/App/Panels/ViewportPanel.h",
         "Source/App/Screenshot.h",
         "Source/App/Panels/ActionFeedback.h",
-        "Source/App/Panels/EditorStyle.h"
+        "Source/App/Panels/EditorStyle.h",
+        "Source/App/Measurement.h"
       ]
     },
     "tests": {

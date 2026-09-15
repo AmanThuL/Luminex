@@ -17,9 +17,9 @@ xmake run App --scene san-miguel
 
 The scene uses the archive's realtime variant, imported at its authored metre scale, with diffuse
 alpha cutouts, two-sided foliage, tangent-space normal maps and a deterministic 12-second camera
-rail. In the Viewport transport, use Play scene and Follow camera rail for repeatable movement.
-Pause scene fixes playback time; Step 1/60 s pauses and advances one step, while Reset time rewinds
-the scene. Freeze metrics and Freeze graph leave playback independent. In Rendering >
+rail. Select Scene in the top toolbar, enable Follow camera rail in its options and use Play for repeatable movement.
+Pause fixes playback time; Step advances 1/60 s and pauses. Stop restores camera/time and animation-owned object poses/emissive strength captured before Play, resetting motion/temporal/exposure history; scenes load Stopped.
+See [editor playback](gpu-debugging.md#editor-playback) for restoration scope. Freeze metrics and Freeze graph leave playback independent. In Rendering >
 Reconstruction, select Raw, Native TAA or MetalFX Temporal and verify the effective algorithm and
 any fallback reason. In Resolution, compare the same render scale; scale 0.5 makes reconstruction
 work easier to inspect. Keep dynamic resolution off for a controlled comparison. Active diagnostic

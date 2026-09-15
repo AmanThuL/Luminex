@@ -63,14 +63,24 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
   validation have separate implementation units with private shared range helpers. `Renderer`
   composes `ShadowStage` and `SceneStage`, which own
-  opaque/masked pipelines and retained CPU indexed draws. `SceneTables.h` and its Slang module
-  mirror the 208-byte instance, 112-byte material and 16-byte mesh rows. Each draw uploads a
-  16-byte `DrawUniforms` selector at b1; shaders read instance/material rows at b5/b6 and compose
-  current/previous transforms there. Vertices at b0 and the rebased index pool are shared per pass.
-  Five named read-only `lmx.scene.*` imports expose vertices, indices, meshes, instances and
-  materials in the graph. Mesh rows have only an ABI-oracle shader reader. SceneStage draws sky
-  last from a mesh row in that same geometry pool. Private `ExposureStage`, `BloomStage` and `DisplayStage` owners hold
-  their pipelines/resources and declare their passes; Renderer keeps frame ordering and targets.
+  opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns
+  finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
+  240-byte instance, 112-byte material and 48-byte mesh rows, including local/world bounds.
+  `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
+  jittered raster view-projection, with a 1e-3 world-unit guard and no far plane. Rejected rows keep
+  their identity and motion; disabled, shadow-view, unreliable-bounds and nonfinite-transform
+  bypasses remain inspectable. Shadow candidates are unculled.
+  Renderer owns `DrawSubmission`: three paced, growable row/argument buffer pairs, retained on
+  replacement until the last prepared frame + 3. Scene entries precede shadow entries. The default
+  indirect mode issues one command per retained object; batched mode stably sorts pipeline,
+  material and mesh keys and issues one instanced command per run. Direct remains selectable.
+  The 16-byte b1 `DrawUniforms.firstEntry` and shader instance index select a b4 visible-list entry,
+  then instance/material rows at b5/b6; vertices at b0 and the rebased index pool are shared per pass.
+  Five read-only `lmx.scene.*` imports expose vertices, indices, meshes, instances and materials;
+  `lmx.draw.rows` and `lmx.draw.args` declare list and indirect-argument reads. CPU-only production
+  leaves both submission buffers without GPU writers. Mesh rows have an ABI-oracle shader reader.
+  SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
+  and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
   `Render/FrameDeclaration` shares graph construction and execution across
   application loops and returns the accepted record for App-side retention. Render also owns
   camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Modules/Motion.slang`): the previous
@@ -129,18 +139,22 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
 - **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` handles,
   the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL
   uploads, the scene catalog, initial camera mapping,
-  source-derived object names, optional local geometry bounds, and previous transforms
+  source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms
   (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
-  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The six-scene catalog also includes optional `san-miguel`, imported at authored
+  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The seven-scene catalog also includes optional `san-miguel`, imported at authored
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
   pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
+  Always-available VisibilityLab adds a seeded cube/icosphere grid, four materials, five initial
+  camera boundary probes and a 12-second rail. Its configurable total N includes the probes.
   `addMesh`/`addTexture`/`addMaterial`/`addObject` build a scene, and `finalize` merges geometry
   including sky with rebased indices and allocates three table slots. Slot indices remain stable
   across draw-list removal/reorder; stale generations and foreign stores fail checked queries.
   `prepareFrame(frameNumber)` follows `Device::beginFrame`, updating only rows dirty for that
-  retired slot. Changes mark all three slots dirty; static scenes converge to zero writes.
+  retired slot, recomputing world bounds with the shared corner transform. `Scene::meshBounds`
+  also supplies selection framing; no per-object local bounds remain. Borrowed CPU instance rows
+  match the prepared GPU slot. Changes mark all slots dirty; static scenes converge to zero writes.
   Growth doubles capacity and retains old buffers until `lastFrame + 3`; texture removal invalidates
   the handle immediately and defers allocation release the same way. Scene destruction requires retired GPU reads. New instances seed their own previous
   pose; `commitFrame` promotes transforms only when the caller accepts the rendered frame.
@@ -148,17 +162,17 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
 - **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
   options, capture metadata, selection, workspace schema, actions, performance/graph models,
   timing history, frame-record retention, dynamic-resolution policy, temporal/exposure state and
-  bounded Console storage/presentation.
+  bounded Console storage/presentation, visibility formatting and the `MeasurementRun` state machine.
   The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
   its own C++ sources only. The shared scene session borrows library-owned scenes, owns its camera,
-  prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion. It captures authored transform
-  and light defaults once per scene on first activation; returning to a cached scene never replaces
+  prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion.
+  `EditorPlayback` owns Stopped/Playing/Paused and captures camera/time plus animation-owned object poses/emissive strength on first Play. Stop restores these and resets motion; the shell resets temporal/exposure. Activation starts Stopped after restoring the old run.
+  This preview shares the scene; it does not restore rendering settings or unrelated edits. Authored transform and light defaults are captured once per scene on first activation; returning to a cached scene never replaces
   those defaults with edited values. An animated object's default samples only that object's rigid
   track at the current playback time. Editing/resetting one transform collapses only its previous
   transform; the editor separately raises its temporal discontinuity latch. Activation resets
   editor motion but preserves headless loader state, matching each path's first-frame contract.
-  Graph models and
-  FrameRecordRing include the compiled record rather than the builder. Each application loop uses
+  Graph models and FrameRecordRing include the compiled record rather than the builder. Each application loop uses
   Render's shared frame declaration, retains its accepted record, appends its own output sink and
   owns scheduling and GPU waits.
   Declaration-time counts, logical image size, render/output extents and context epoch travel with
@@ -174,14 +188,22 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
   `SceneTableDisplay` formats live scene counts/capacities, geometry bytes, writes, slot, growth
   events and pending release buffers for Inspector's read-only Scene tables block in Display & Details.
+  `VisibilityDisplay` retains full object identity and frame-scoped classifications for Inspector
+  diagnostics and Hierarchy badges. `MeasurementRun` joins declared CPU samples to retired GPU
+  timings by frame ID, validates the pass inventory and completes only after every sample retires.
+  Editor and headless measurement serialize GPU retirement after each submitted frame because RHI
+  publishes only the newest retired timing set. Reports disclose this pacing, separate beginFrame
+  wait from encoding, and exclude the post-submit wait; they do not measure realtime throughput.
+  Editor runs remain interactive/unscored. Toolbar Measure Play starts the fixed plan; Stop cancels, Pause is disabled, and completion/cancellation restores preview state while retaining results. Performance owns plan/results/export in a detached native window. Measure mode selection has no window side effect; Play opens/focuses Measure once, while closing the window leaves the run active. Completion/cancellation never reopens it; explicit Show measurement opens/focuses it anytime. Headless scored runs refuse validation/capture flags.
+  The [debugging guide](../guides/gpu-debugging.md#measure-visibility-and-submission) owns commands.
 - **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
   panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
-  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport,
-  Inspector, Performance and Console dock together, with Console beside Performance; Render Graph
-  is submitted with its own `ImGuiWindowClass`
-  (docking with unclassed windows disallowed, auto-merge overridden off) under Dear ImGui platform
-  viewports (`ImGuiConfigFlags_ViewportsEnable`), so it always owns a separate OS window and the
-  dock builder never places it. Selection (`EditorSelection.h`), panel visibility and the workspace
+  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport and
+  Inspector dock together, with Console alone below. Performance and Render Graph each own a
+  detached native window with an `ImGuiWindowClass` that disallows unclassed docking and overrides
+  auto-merge off under Dear ImGui platform viewports (`ImGuiConfigFlags_ViewportsEnable`).
+  The dock builder places neither; both start closed, and Window menu toggles remain explicit.
+  Selection (`EditorSelection.h`), panel visibility and the workspace
   persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised action intents
   (`EditorActions.h`), the Performance panel's coherent snapshot (`PerformanceModel.h`), the Render
   Graph panel's node shaping (`GraphNodeModel.h`, deriving nodes, edges, a culled band, and alias
@@ -199,13 +221,15 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   Reset layout remain explicit actions; narrow graph windows stack canvas and details. A registered
   ImGui settings handler persists
   the workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
-  ImGui's own docking and viewport data. Schema 2 remains current: Console visibility is additive,
-  absent keys default visible, and its first-use tab joins Performance without rebuilding existing
-  dock nodes. Hierarchy keeps the original `Scene` window ID for saved layouts. Menu drawing and keyboard shortcuts only raise action
+  ImGui's own docking and viewport data. Schema 3 restores panel visibility and detached geometry;
+  schema 2 migrates to default topology while preserving valid UI scale. Reset Default Layout
+  closes Performance/Graph and resets Performance's next-open bounds. Hierarchy retains its `Scene` window ID. Menu drawing and keyboard shortcuts only raise action
   intents; the frame loop consumes quit and capture at the boundary that already owns each
   operation, calls `ImGui::UpdatePlatformWindows()`/`RenderPlatformWindowsDefault()` after each
   presented frame so the vendored Metal 4 ImGui backend renders any detached window with its own
-  command buffer and per-slot event, and the shell consumes a layout-reset intent at the start of
+  command buffer and per-slot event. The maintained backend patch quarantines uploaded vertex/index
+  buffers in per-slot `usedBuffers` until slot revisit; platform events and App's main-frame pacing precede reuse/eviction, preventing same-frame window uploads from overwriting GPU reads.
+  Explicit Performance focus resolves ImGui's SDL3 `PlatformHandle` as an `SDL_WindowID` and restores only minimized windows. The shell consumes a layout-reset intent at the start of
   the next frame. `EditorRenderSettings` carries the temporal toggles (enable, jitter, debug view,
   animation play, camera-track follow). `TemporalEditorState` tracks scene generation and the
   camera-cut latch, retains the last non-None reset reason with its original declared-frame count,
@@ -223,9 +247,9 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   each editable group has scoped Reset and changed-from-default state. File > Open Scene owns
   catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
   groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
-  selection remains explicit and can clear its filter in Inspector. Viewport owns
-  camera help, scene playback/step/reset, camera-rail following and Frame selected. `SelectionBounds`
-  frames reliable world bounds. `Render/SelectionOutline` supplies an editor-only utility that
+  selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.
+  The top Scene/Measure toolbar owns one state-switching Play/Pause button, separate Stop/Step and camera-rail follow options. `SelectionBounds`
+  frames shared reliable world bounds; a rejected selection produces no outline. `Render/SelectionOutline` supplies an editor-only utility that
   App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
   preserve the true silhouette, reading the same instance/material tables and masked alpha. A soft 1.5-logical-point border is
   depth-tested at source and destination before compositing into its own SDR target, so foreground
@@ -268,8 +292,8 @@ backend; Vulkan remains research evidence rather than a planned target.
 `EditorFont` loads bundled Inter Regular before the first frame, with fixed-width digits and an
 embedded fallback. App stages the pinned font/license beside its executable during build.
 The shell applies persisted UI zoom before ImGui NewFrame, deriving font/control sizes from an
-unscaled base style. Schema 2's optional `UiScalePercent` defaults to 100% without changing dock
-restoration. Top-bar controls and Layout presets cover 75–150%; Cmd zoom shortcuts account for
+unscaled base style. Optional `UiScalePercent` defaults to 100%; schema-2 migration preserves valid
+values while rebuilding topology. Top-bar controls and Layout presets cover 75–150%; Cmd zoom shortcuts account for
 ImGui's macOS modifier mapping and exclude text editing, active widgets, popups and camera look.
 Shared panel measurements scale with the preference. Graph cards remeasure once when it changes,
 preserving selected identity, frozen data and the canvas's separate navigation state.

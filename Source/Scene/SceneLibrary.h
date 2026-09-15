@@ -58,7 +58,8 @@ std::span<const std::string_view> sceneStableIds();
 class SceneLibrary {
 public:
     /// Creates a catalog whose loaded scenes use `device` for their full lifetime.
-    explicit SceneLibrary(rhi::Device& device);
+    /// labInstances sets the total VisibilityLab population; its builder validates 1..1,048,576.
+    explicit SceneLibrary(rhi::Device& device, uint32_t labInstances = 4096);
 
     /// Returns every catalog entry in stable display order.
     std::span<const SceneEntry> entries() const;
@@ -69,6 +70,7 @@ public:
 
 private:
     rhi::Device& m_device;
+    uint32_t m_labInstances;
     std::vector<SceneEntry> m_entries;
     std::vector<std::unique_ptr<Scene>> m_scenes;
 };

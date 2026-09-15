@@ -7,6 +7,7 @@
 
 #include "App/Panels/EditorStyle.h"
 
+#include <SDL3/SDL.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -23,6 +24,48 @@ namespace {
 
 constexpr float kTargetIntervalMs = 1000.0f / 60.0f;
 constexpr double kBytesPerMiB = 1024.0 * 1024.0;
+
+//======================================================================================================================
+bool beginPerformanceWindow(bool& open, PerformancePanelState& state) {
+    static const ImGuiWindowClass windowClass = [] {
+        ImGuiWindowClass created;
+        created.ClassId =
+            0x6C6D7870u; // 'lmxp'; independent of Render Graph and the main dockspace.
+        created.DockingAllowUnclassed = false;
+        created.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoAutoMerge;
+        created.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoDecoration;
+        return created;
+    }();
+    ImGui::SetNextWindowClass(&windowClass);
+    const auto* main = ImGui::GetMainViewport();
+    const ImVec2 size{std::min(1100.0f, main->WorkSize.x), std::min(760.0f, main->WorkSize.y)};
+    const auto condition = state.resetPlacement ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
+    ImGui::SetNextWindowPos({main->WorkPos.x + (main->WorkSize.x - size.x) * 0.5f,
+                             main->WorkPos.y + (main->WorkSize.y - size.y) * 0.5f},
+                            condition);
+    ImGui::SetNextWindowSize(size, condition);
+    state.resetPlacement = false;
+    if (state.requestFocus)
+        ImGui::SetNextWindowFocus();
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoDocking;
+    if (state.ownsPlatformWindow)
+        flags |= ImGuiWindowFlags_NoTitleBar;
+    const bool visible = ImGui::Begin(kPerformancePanelWindowName, &open, flags);
+    auto* viewport = ImGui::GetWindowViewport();
+    state.ownsPlatformWindow = viewport != main;
+    if (state.requestFocus && state.ownsPlatformWindow && viewport->PlatformHandle) {
+        // Explicit Show/Play also recovers a minimized window. Ordinary updates never raise it.
+        const auto windowId =
+            static_cast<SDL_WindowID>(reinterpret_cast<uintptr_t>(viewport->PlatformHandle));
+        if (auto* window = SDL_GetWindowFromID(windowId)) {
+            if (SDL_GetWindowFlags(window) & SDL_WINDOW_MINIMIZED)
+                SDL_RestoreWindow(window);
+            SDL_RaiseWindow(window);
+        }
+        state.requestFocus = false;
+    }
+    return visible;
+}
 
 //======================================================================================================================
 void summary(const char* label, const char* value) {
@@ -243,8 +286,9 @@ const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, floa
 } // namespace
 
 //======================================================================================================================
-void drawPerformancePanel(bool& open, PerformanceModel& model) {
-    if (!ImGui::Begin(kPerformancePanelWindowName, &open)) {
+void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelState& state,
+                          MeasurementPanelContext* measurement) {
+    if (!beginPerformanceWindow(open, state)) {
         ImGui::End();
         return;
     }
@@ -272,6 +316,8 @@ void drawPerformancePanel(bool& open, PerformanceModel& model) {
     ImGui::Checkbox("Schedule order", &scheduleOrder);
     editorTooltip("Show declared pass schedule order. Turn off to use the numeric column sort; "
                   "click a column header to change it.");
+    if (measurement != nullptr)
+        drawMeasurementSection(*measurement);
     const PerformanceSnapshot& snapshot = model.snapshot();
     ImGui::TextWrapped(
         "%s | frame %llu | %.2f s | %zu / %zu samples | %.0f updates/s",

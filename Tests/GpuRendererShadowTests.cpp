@@ -368,13 +368,18 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     REQUIRE(scene.prepareFrame((*device)->frameNumber()));
     const auto tables = scene.tables();
     const auto meshRow = *scene.tryMesh(mesh);
+    auto visibleRows = (*device)->createBuffer(
+        {.size = sizeof(uint32_t), .storageRead = true, .label = "lmx.test.depthBias.visibleRows"},
+        &instance.slot);
+    REQUIRE(visibleRows.has_value());
     const auto depthPass = [&](Texture& target, GraphicsPipeline& pipeline) {
         commands.beginRenderPass({.depthTarget = &target,
                                   .clearDepth = 0.0f,
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
-        commands.bindFrameData(kObjectSlot, lmx::render::DrawUniforms{instance.slot});
+        commands.bindFrameData(kObjectSlot, lmx::render::DrawUniforms{0});
+        commands.bindBuffer(lmx::render::kVisibleRowsSlot, **visibleRows);
         commands.bindFrameData(2, identity);
         commands.bindBuffer(kVertexBufferSlot, *tables.vertices);
         commands.bindBuffer(lmx::render::kSceneInstancesSlot, *tables.instances);

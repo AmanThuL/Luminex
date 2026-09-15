@@ -13,6 +13,8 @@ namespace lmx::app {
 /// borrow it to edit the same values, which is what keeps a viewport shortcut and an Inspector row
 /// from becoming two parallel settings.
 struct EditorRenderSettings {
+    bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
+    render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
     bool wireframe = false; ///< Draws the scene in wireframe.
     /// Shadow filtering kernel, applied by the scene pass.
     render::ShadowFilter shadowFilter = render::ShadowFilter::PCF;
@@ -53,12 +55,9 @@ struct EditorRenderSettings {
     render::ReconstructionMode reconstruction = render::ReconstructionMode::NativeTaa;
     /// Diagnostic drawn over the display transform's own output.
     render::TemporalDebugView temporalDebugView = render::TemporalDebugView::Off;
-    /// Whether the scene clock advances each frame. True by default so a scene with tracks plays
-    /// on load, matching the pre-temporal frame loop's always-on behavior for a static scene.
-    bool animationPlaying = true;
     /// Whether the fly camera is overridden by the scene's camera track when one exists. Has no
     /// effect while the right mouse button is held (the fly-camera latch takes over) or while the
-    /// active scene has no camera track.
+    /// active scene has no camera track or the top transport is Stopped.
     bool followCameraTrack = true;
 
     /// Fraction of the output extent the scene rasterises at, within [kMinRenderScale, 1]. Edited
