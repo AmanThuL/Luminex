@@ -122,7 +122,7 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context)
         const float available = ImGui::GetContentRegionAvail().x;
         const float modeWidth = editor_style::scaled(104.0f);
         const float timeWidth = editor_style::scaled(96.0f);
-        const float fixedWidth = modeWidth + timeWidth + buttonHeight * 5.0f + spacing * 7.0f;
+        const float fixedWidth = modeWidth + timeWidth + buttonHeight * 4.0f + spacing * 6.0f;
         const float statusWidth =
             std::clamp(available - fixedWidth, 0.0f, editor_style::scaled(160.0f));
         const float groupWidth = fixedWidth + statusWidth;
@@ -144,8 +144,9 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context)
                     ? "Run mode is locked until Stop."
                     : "Scene plays the scene. Measure starts the plan configured in Performance.");
         ImGui::SameLine();
-        const bool playEnabled = !context.playing && !context.measurementActive &&
-                                 (!context.measureOnPlay || context.canMeasure);
+        const bool showPause = context.playing || context.measurementActive;
+        const bool toggleEnabled =
+            !context.measurementActive && (!context.measureOnPlay || context.canMeasure);
         const std::string_view playHelp =
             context.measureOnPlay
                 ? (!context.canMeasure && !context.disabledReason.empty()
@@ -153,19 +154,15 @@ PlaybackToolbarAction drawPlaybackToolbar(const PlaybackToolbarContext& context)
                        : "Play: start the measurement plan configured in Performance.")
                 : "Play: start or resume scene playback, including camera preview in a static "
                   "scene.";
-        if (iconButton("##Play", TransportIcon::Play, playEnabled,
-                       context.playing || context.measurementActive, playHelp)) {
-            action = PlaybackToolbarAction::Play;
-        }
-        ImGui::SameLine();
-        if (iconButton("##Pause", TransportIcon::Pause,
-                       context.playing && !context.measurementActive,
-                       context.active && !context.playing && !context.measurementActive,
-                       context.measureOnPlay || context.measurementActive
-                           ? "Pause unavailable in Measure mode: measurements use a fixed, "
-                             "uninterrupted sequence. Use Stop to cancel an active measurement."
-                           : "Pause: hold scene time and retain the starting state for Stop.")) {
-            action = PlaybackToolbarAction::Pause;
+        const std::string_view toggleHelp =
+            context.measurementActive
+                ? "Pause unavailable in Measure mode: measurements use a fixed, uninterrupted "
+                  "sequence. Use Stop to cancel an active measurement."
+            : showPause ? "Pause: hold scene time and retain the starting state for Stop."
+                        : playHelp;
+        if (iconButton("##PlayPause", showPause ? TransportIcon::Pause : TransportIcon::Play,
+                       toggleEnabled, showPause, toggleHelp)) {
+            action = showPause ? PlaybackToolbarAction::Pause : PlaybackToolbarAction::Play;
         }
         ImGui::SameLine();
         if (iconButton("##Stop", TransportIcon::Stop, context.active || context.measurementActive,

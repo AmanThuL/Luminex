@@ -246,7 +246,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
   groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
   selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.
-  The top Scene/Measure toolbar owns Play/Pause/Stop/Step and camera-rail follow options. `SelectionBounds`
+  The top Scene/Measure toolbar owns one state-switching Play/Pause button, separate Stop/Step and camera-rail follow options. `SelectionBounds`
   frames shared reliable world bounds; a rejected selection produces no outline. `Render/SelectionOutline` supplies an editor-only utility that
   App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
   preserve the true silhouette, reading the same instance/material tables and masked alpha. A soft 1.5-logical-point border is

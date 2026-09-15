@@ -12,7 +12,7 @@ A resize may briefly stretch the prior image while debounce settles. PNG screens
 
 ## Editor playback
 
-The top toolbar selects Scene or Measure and owns Play, Pause, Stop and Step icons; options hold Follow camera rail.
+The top toolbar selects Scene or Measure and owns one Play/Pause button that switches icons with state, plus separate Stop and Step icons; options hold Follow camera rail.
 Scenes load Stopped. Scene Play captures the current camera/time and animation-owned object poses/emissive strength on first entry; Pause retains the frame, and Step advances 1/60 s and pauses.
 Stop restores that captured preview state and resets motion, temporal and exposure history. Switching scenes first stops/restores the old run. Static scenes still support camera preview; unavailable camera-rail options explain their disabled state.
 The preview shares the scene: rendering settings and unrelated scene edits are outside restoration. Playback, metric freeze and graph freeze remain independent. See [Measure](#measure-visibility-and-submission) for fixed runs.
