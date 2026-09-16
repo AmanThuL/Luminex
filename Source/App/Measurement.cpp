@@ -6,6 +6,7 @@
 
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
+#include "App/Model/VisibilityDiagnostics.h"
 #include "Asset/TextureBake.h"
 #include "Core/File.h"
 #include "Core/Log.h"
@@ -125,8 +126,19 @@ MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs,
         .sceneCommands = visibility.submission.sceneCommands + (hasSky ? 1u : 0u),
         .shadowCommands = visibility.submission.shadowCommands,
         .tableBytes = measurementTableBytes(tables),
+        .reservedListBytes = visibility.submission.listBytes,
         .listBytes = visibility.submission.listBytes,
         .argumentBytes = visibility.submission.argumentBytes,
+        .allocatedListBytes = visibility.submission.allocatedListBytes,
+        .allocatedArgumentBytes = visibility.submission.allocatedArgumentBytes,
+        .candidateBytes = visibility.submission.candidateBytes,
+        .runBytes = visibility.submission.runBytes,
+        .chunkBytes = visibility.submission.chunkBytes,
+        .stateBytes = visibility.submission.stateBytes,
+        .counterBytes = visibility.submission.counterBytes,
+        .classifyMode = visibility.classifyMode,
+        .sceneCounters = visibility.sceneCounters,
+        .shadowCounters = visibility.shadowCounters,
         .transientBytes = record.debug.memory.highWater};
     for (uint32_t index : record.debug.schedule.passes)
         sample.expectedPasses.push_back(record.debug.passes[index].label);
@@ -150,6 +162,8 @@ int runMeasurement(const AppOptions& options) {
     plan.scene = scene::sceneIdString(options.initialScene);
     plan.labInstances = options.labInstances;
     plan.visibilityEnabled = options.visibilityEnabled;
+    plan.classify = classifyModeName(options.classifyMode);
+    plan.classifyCheck = options.classifyCheck;
     plan.submission = options.submission == render::SubmissionMode::Direct    ? "direct"
                       : options.submission == render::SubmissionMode::Batched ? "batched"
                                                                               : "indirect";
@@ -205,6 +219,8 @@ int runMeasurement(const AppOptions& options) {
         auto view = session.view(items, render::ShadowFilter::PCF, false);
         view.visibilityEnabled = options.visibilityEnabled;
         view.submission = options.submission;
+        view.classifyMode = options.classifyMode;
+        view.classifyCheck = options.classifyCheck;
         view.temporal.enabled = options.temporal != TemporalMode::Off;
         view.temporal.jitterEnabled = view.temporal.enabled;
         view.temporal.reconstruction = temporalReconstructionMode(options.temporal);
@@ -229,6 +245,10 @@ int runMeasurement(const AppOptions& options) {
         // The RHI publishes only its newest retired frame. Explicit serialization is required to
         // preserve every frame's timestamps; report this pacing, and exclude it from CPU encoding.
         (*device)->waitIdle();
+        (*renderer)->drainVisibilityAfterIdle();
+        for (const auto& status : (*renderer)->takeRetiredVisibility())
+            if (run.active())
+                run.retireVisibility(status);
     }
     if (run.state() == MeasurementState::Draining) {
         (*device)->beginFrame();

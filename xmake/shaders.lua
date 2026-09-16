@@ -35,8 +35,11 @@ rule("slang2metallib")
         local slangc = path.join(os.projectdir(), "ThirdParty/slang/bin/slangc")
         batchcmds:mkdir(outdir)
         batchcmds:show_progress(opt.progress, "${color.build.object}slang %s", sourcefile)
-        batchcmds:vrunv(slangc, {sourcefile, "-I", path.join(os.projectdir(), "Shaders/Modules"),
-                                   "-target", "metal", "-o", msl})
+        local slangargs = {sourcefile, "-I", path.join(os.projectdir(), "Shaders/Modules"),
+                           "-target", "metal", "-o", msl}
+        local visibility = name:startswith("Visibility")
+        if visibility then table.join2(slangargs, {"-fp-mode", "precise"}) end
+        batchcmds:vrunv(slangc, slangargs)
         -- Offline metallib precompile is optional because Command Line Tools installations may
         -- not include the Metal toolchain; the runtime can compile the emitted MSL instead.
         local has_metal = try {function ()
@@ -44,8 +47,10 @@ rule("slang2metallib")
         end}
         if has_metal then
             local lib = path.join(outdir, name .. ".metallib")
-            batchcmds:vrunv("xcrun", {"-sdk", "macosx", "metal", "-std=metal4.0",
-                                      "-frecord-sources", "-gline-tables-only", "-o", lib, msl})
+            local metalargs = {"-sdk", "macosx", "metal", "-std=metal4.0",
+                               "-frecord-sources", "-gline-tables-only", "-o", lib, msl}
+            if visibility then table.join2(metalargs, {"-fno-fast-math", "-ffp-contract=off"}) end
+            batchcmds:vrunv("xcrun", metalargs)
         end
         -- Every .slang source, not just this one, and deliberately so: `import Shadow;` makes
         -- ShadowSmoke.slang depend on Shadow.slang, and nothing here can see that edge --

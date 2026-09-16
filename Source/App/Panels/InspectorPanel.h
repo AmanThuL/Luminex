@@ -39,7 +39,7 @@ struct InspectorPanelContext {
     /// loop rather than by this panel.
     bool& exposureResetPending;
     /// The scene generation counter, camera-cut latch, and TemporalLab defaults the shell keeps
-    /// (TemporalEditorState.h). The Temporal block's "Camera cut" button raises the latch here.
+    /// (TemporalEditorState.h). The Temporal block's "Reset history" button raises the latch here.
     TemporalEditorState& temporalState;
     /// The dynamic-resolution controller's last-observed frame GPU time (DynamicResolution.h),
     /// for the Temporal block's "Frame GPU time" status row. Read-only here -- the shell's

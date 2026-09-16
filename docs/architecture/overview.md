@@ -78,7 +78,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   then instance/material rows at b5/b6; vertices at b0 and the rebased index pool are shared per pass.
   Five read-only `lmx.scene.*` imports expose vertices, indices, meshes, instances and materials;
   `lmx.draw.rows` and `lmx.draw.args` declare list and indirect-argument reads. CPU-only production
-  leaves both submission buffers without GPU writers. Mesh rows have an ABI-oracle shader reader.
+  leaves both buffers without GPU writers. Opt-in `GpuVisibility` adds reset/classify/scan/emit,
+  deterministic fixed slots and frame-keyed retired diagnostics; [contracts](../guides/gpu-visibility.md).
   SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
   and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
   `Render/FrameDeclaration` shares graph construction and execution across

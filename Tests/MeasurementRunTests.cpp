@@ -42,7 +42,7 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.state() == MeasurementState::Complete);
     REQUIRE(run.finishDrain());
     REQUIRE(run.samples().size() == 2);
-    REQUIRE(run.json().find("\"schemaVersion\":1") != std::string::npos);
+    REQUIRE(run.json().find("\"schemaVersion\":2") != std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
 }
