@@ -18,6 +18,8 @@ xmake run App --scene visibility-lab --classify gpu --submission batched --class
 The editor opens maximized to usable display bounds. Omit `--windowed` for fullscreen-windowed
 visual validation. Rendering Inspector > Visibility selects the classifier, culling and submission.
 The compact summary shows kept/culled counts, its declared/retired frame and enabled check result.
+Hierarchy dims only frustum-rejected objects; visible, bypassed and pending names stay normal.
+Names have no status prefixes. Selected rows use normal text for contrast; hover and Inspector retain reasons.
 Counters, work & timings retains every detailed field; hover headings and controls for explanations.
 Overflow, check failures and fallback reasons remain visible even when details are collapsed.
 GPU classification requires indirect or batched; direct uses a CPU-known per-draw selector.

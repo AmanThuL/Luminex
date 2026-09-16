@@ -21,8 +21,6 @@ struct VisibilityField {
 };
 /// Human-readable classification or pending state.
 std::string_view visibilityStateName(render::VisibilityState state);
-/// Compact status badge that remains visible before a long object name.
-std::string_view visibilityBadge(render::VisibilityState state);
 /// Human-readable bypass cause; None means an ordinary frustum test.
 std::string_view visibilityReasonName(render::VisibilityReason reason);
 /// Formats counts, commands, memory and matched CPU/GPU scopes from one frame.

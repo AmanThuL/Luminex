@@ -51,9 +51,6 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
     REQUIRE(details[1].value == "Unreliable bounds");
     REQUIRE(details[2].value == "-1.000, -2.000, -3.000");
     REQUIRE(app::objectVisibilityFields(nullptr).size() == 1);
-    REQUIRE(app::visibilityBadge(render::VisibilityState::Visible) == "[V]");
-    REQUIRE(app::visibilityBadge(render::VisibilityState::Rejected) == "[R]");
-    REQUIRE(app::visibilityBadge(render::VisibilityState::Bypassed) == "[B]");
     object.state = render::VisibilityState::Rejected;
     REQUIRE(app::objectVisibilityFields(&object)[1].value == "Outside camera frustum");
 }

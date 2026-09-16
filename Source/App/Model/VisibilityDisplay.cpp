@@ -23,18 +23,6 @@ std::string_view visibilityStateName(render::VisibilityState state) {
     return "Unknown";
 }
 //======================================================================================================================
-std::string_view visibilityBadge(render::VisibilityState state) {
-    switch (state) {
-    case render::VisibilityState::Visible:
-        return "[V]";
-    case render::VisibilityState::Rejected:
-        return "[R]";
-    case render::VisibilityState::Bypassed:
-        return "[B]";
-    }
-    return "[?]";
-}
-//======================================================================================================================
 std::string_view visibilityReasonName(render::VisibilityReason reason) {
     switch (reason) {
     case render::VisibilityReason::None:

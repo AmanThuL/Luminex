@@ -205,7 +205,7 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 
 Rendering > Visibility defaults to culling and indirect submission; direct/batched remain selectable.
 Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
-CPU classify/prepare time. Hierarchy badges and selected-object world bounds name the same retained
+CPU classify/prepare time. Hierarchy dims frustum-rejected names without disabling selection; hover status and Inspector bounds use the same retained
 frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
 The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
 Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
