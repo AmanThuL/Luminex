@@ -91,7 +91,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.2 — CPU visibility reference and indirect baseline
 
-**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 implementation is awaiting owner review.
+**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 is owner-accepted for integration on 2026-09-16.
 
 **Outcome:** A maintained CPU frustum-visibility oracle and a competent indirect-draw production baseline over the shared tables give M7.3 a measured reference.
 
@@ -103,7 +103,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.3 — GPU visibility and work generation
 
-**Implementation state:** Implemented; owner review and integration pending. The [validation record](../milestones/m7.3-validation.md) retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. CPU/indirect remains the default.
+**Implementation state:** Implemented; [owner-accepted for integration](../milestones/m7.3-validation.md#owner-acceptance-and-integration) on 2026-09-16. The [validation record](../milestones/m7.3-validation.md) retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. CPU/indirect remains the default.
 
 **Outcome:** GPU frustum visibility and work generation have a validated production path measured against the M7.2 reference.
 
