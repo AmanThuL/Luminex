@@ -28,6 +28,8 @@ namespace lmx::render {
 
 /// Owns the renderer's persistent exposure feedback and metering passes.
 class ExposureStage;
+/// Owns GPU visibility passes and frame-keyed retirement.
+class GpuVisibility;
 /// Owns the renderer's bloom pipelines and transient pass declarations.
 class BloomStage;
 /// Owns the renderer's display transform and disabled-bloom fallback.
@@ -140,6 +142,10 @@ public:
 
     /// Owned camera/shadow visibility and command statistics for the last declared frame.
     const VisibilityStatus& visibilityStatus() const { return m_visibilityStatus; }
+    /// Takes exact-frame GPU results retired by the most recent declaration or explicit drain.
+    std::vector<VisibilityStatus> takeRetiredVisibility();
+    /// Reads all submitted visibility results after the caller has completed Device::waitIdle.
+    void drainVisibilityAfterIdle();
 
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
@@ -176,6 +182,9 @@ public:
 
 private:
     Renderer(rhi::Device& device, bool cpuReadback);
+    std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rhi::CommandList& commands,
+                                                 const SceneView& view, const FrustumPlanes& planes,
+                                                 std::span<const GraphBuffer> sceneBuffers);
 
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
@@ -248,6 +257,7 @@ private:
     uint64_t m_declaredFrames = 0;
     TemporalStatus m_temporalStatus;
     DrawSubmission m_drawSubmission;
+    std::unique_ptr<GpuVisibility> m_gpuVisibility;
     VisibilityStatus m_visibilityStatus;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

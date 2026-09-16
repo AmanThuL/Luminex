@@ -6,7 +6,7 @@ Native TAA, CPU culling and indirect submission are defaults; vendor reconstruct
 A fresh `RenderGraph` imports targets, five scene buffers, two submission buffers, persistent
 histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
 validates the DAG, culls dead passes and derives RAW/WAR/WAW barriers before serial execution.
-TemporalResolve's native/upscale/vendor units share one history owner.
+Opt-in [GPU visibility](guides/gpu-visibility.md) adds reset/classify/scan/emit before draw consumers; temporal modes share one history owner.
 
 `App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
 `Render/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.

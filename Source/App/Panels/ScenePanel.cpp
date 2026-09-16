@@ -46,20 +46,25 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
         ImGuiTreeNodeFlags_SpanAvailWidth |
         (isRowSelected(row, context.selection) ? ImGuiTreeNodeFlags_Selected : 0);
-    std::string label = row.displayLabel;
+    bool culled = false;
     std::string visibilityTip;
     if (row.subject == EditorSubject::Object && row.index < context.activeScene.objects.size()) {
         const auto* state =
             context.visibilityDisplay.find(context.activeScene.objects[row.index].id,
                                            context.visibilityStatus, context.sceneGeneration);
-        label = std::format("{} {}", state ? visibilityBadge(state->state) : "[?]", label);
+        culled = state && state->state == render::VisibilityState::Rejected;
         visibilityTip = state ? std::format("\n{}: {}", visibilityStateName(state->state),
                                             state->state == render::VisibilityState::Rejected
                                                 ? "Outside camera frustum"
                                                 : visibilityReasonName(state->reason))
                               : "\nAwaiting this object's rendered frame";
     }
-    ImGui::TreeNodeEx("subject", flags, "%s", label.c_str());
+    const bool dimmed = culled && !isRowSelected(row, context.selection);
+    if (dimmed)
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TreeNodeEx("subject", flags, "%s", row.displayLabel.c_str());
+    if (dimmed)
+        ImGui::PopStyleColor();
     if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         selectRow(context.selection, context.activeSceneId, row);
     }
@@ -254,7 +259,8 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         }
         ImGui::TextDisabled("%s", count.c_str());
         editorTooltip("Matching / total selectable subjects, including camera, rendering, lights "
-                      "and objects. Badges: V visible, R rejected, B bypassed, ? pending.");
+                      "and objects. Dimmed names are outside the camera frustum, not disabled. "
+                      "They remain selectable; hover a name for its visibility status.");
         if (selectionHiddenByFilter(context.activeScene, context.selection, context.filter)) {
             editor_style::message("Selection hidden by search; Inspector keeps it selected.", true);
         }

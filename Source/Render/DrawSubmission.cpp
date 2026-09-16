@@ -64,7 +64,16 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
                "submission preparation requires a newly paced device frame");
     std::erase_if(m_retiring,
                   [frameNumber](const auto& entry) { return frameNumber >= entry.releaseFrame; });
-    auto prepared = buildDrawSubmission(view, scene, shadow, view.submission);
+    VisibilityResult all;
+    if (view.classifyMode == ClassifyMode::Gpu) {
+        LMX_ASSERT(view.submission != SubmissionMode::Direct,
+                   "GPU classification requires indirect submission");
+        for (uint32_t i = 0; i < view.items.size(); ++i)
+            all.visibleItems.push_back(i);
+    }
+    auto prepared = view.classifyMode == ClassifyMode::Gpu
+                        ? buildDrawSubmission(view, all, all, view.submission)
+                        : buildDrawSubmission(view, scene, shadow, view.submission);
     const uint64_t required = std::max<uint64_t>(
         1, std::max<uint64_t>(prepared.rows.size(), uint64_t{view.tables.instanceCapacity} * 2));
     LMX_ASSERT(required <= std::numeric_limits<uint32_t>::max(), "submission capacity exhausted");
@@ -80,6 +89,7 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
             const auto suffix = std::to_string(i);
             auto rows = m_device.createBuffer({.size = uint64_t{capacity} * sizeof(uint32_t),
                                                .storageRead = true,
+                                               .storageWrite = true,
                                                .cpuReadback = true,
                                                .cpuWrite = true,
                                                .label = "lmx.draw.rows." + suffix},
@@ -88,6 +98,7 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
                 return std::unexpected(rows.error());
             auto args = m_device.createBuffer(
                 {.size = uint64_t{capacity} * sizeof(rhi::DrawIndexedIndirectArgs),
+                 .storageWrite = true,
                  .cpuReadback = true,
                  .cpuWrite = true,
                  .label = "lmx.draw.args." + suffix},
@@ -104,9 +115,9 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
         ++m_stats.growthEvents;
     }
     auto& slot = m_slots[frameNumber % m_slots.size()];
-    if (!prepared.rows.empty())
+    if (view.classifyMode == ClassifyMode::Cpu && !prepared.rows.empty())
         slot.rows->write(0, prepared.rows.data(), prepared.rows.size() * sizeof(uint32_t));
-    if (!prepared.arguments.empty())
+    if (view.classifyMode == ClassifyMode::Cpu && !prepared.arguments.empty())
         slot.arguments->write(0, prepared.arguments.data(),
                               prepared.arguments.size() * sizeof(rhi::DrawIndexedIndirectArgs));
     prepared.scene.rows = prepared.shadow.rows = slot.rows.get();
@@ -128,5 +139,12 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
     m_prepared = std::move(prepared);
     m_lastFrame = frameNumber;
     return {};
+}
+//======================================================================================================================
+void DrawSubmission::recordUses() {
+    auto& slot = m_slots[m_lastFrame % 3];
+    // Both stages declare these reads even when their command list is empty.
+    slot.rowUse = rhi::BufferUse::ShaderRead;
+    slot.argumentUse = rhi::BufferUse::IndirectArgument;
 }
 } // namespace lmx::render

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/CaptureMetadata.h"
+#include "App/Model/VisibilityDiagnostics.h"
 
 #include "Asset/SceneAnimation.h"
 
@@ -77,6 +78,8 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
          << ",\"renderScale\":" << options.renderScale
          << ",\"visibilityEnabled\":" << (options.visibilityEnabled ? "true" : "false")
          << ",\"submission\":" << jsonString(submissionName(options.submission))
+         << ",\"classify\":" << jsonString(classifyModeName(options.classifyMode))
+         << ",\"classifyCheck\":" << (options.classifyCheck ? "true" : "false")
          << ",\"labInstances\":" << options.labInstances
          << ",\"debugView\":" << static_cast<int>(options.temporalView)
          << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
@@ -95,7 +98,8 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
 //======================================================================================================================
 std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
                               const render::SceneView& view, const render::TemporalStatus& status,
-                              std::string_view filename, TemporalMode requested) {
+                              std::string_view filename, TemporalMode requested,
+                              const render::VisibilityStatus* visibility) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"ordinal\":" << ordinal << ",\"simulationFrame\":" << frame
         << ",\"timeSeconds\":" << static_cast<double>(frame) / asset::kAnimationBakeRate
@@ -122,6 +126,9 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
         << ",\"vendorReset\":" << (status.vendorReset ? "true" : "false")
         << ",\"visibilityEnabled\":" << (view.visibilityEnabled ? "true" : "false")
         << ",\"submission\":" << jsonString(submissionName(view.submission))
+        << ",\"classify\":" << jsonString(classifyModeName(view.classifyMode))
+        << ",\"classifyCheck\":" << (view.classifyCheck ? "true" : "false")
+        << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
         << ",\"exposureEv\":" << view.exposureEv
         << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")
         << ",\"bloom\":" << (view.bloomEnabled ? "true" : "false")
@@ -136,7 +143,9 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      render::TemporalDebugView debugView, float renderScale,
                                      const render::TemporalStatus& status, std::string_view device,
                                      bool visibilityEnabled, render::SubmissionMode submission,
-                                     uint32_t labInstances) {
+                                     uint32_t labInstances, render::ClassifyMode classifyMode,
+                                     bool classifyCheck,
+                                     const render::VisibilityStatus* visibility) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"scene\":" << jsonString(scene::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
@@ -150,6 +159,9 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
         << ",\"renderScale\":" << renderScale << ",\"debugView\":" << static_cast<int>(debugView)
         << ",\"visibilityEnabled\":" << (visibilityEnabled ? "true" : "false")
         << ",\"submission\":" << jsonString(submissionName(submission))
+        << ",\"classify\":" << jsonString(classifyModeName(classifyMode))
+        << ",\"classifyCheck\":" << (classifyCheck ? "true" : "false")
+        << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
         << ",\"labInstances\":" << labInstances << ",\"device\":" << jsonString(device) << "}";
     return out.str();
 }

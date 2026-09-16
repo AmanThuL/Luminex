@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Collect fresh-process CPU visibility/submission controls with strict frame joins.
+"""Collect fresh-process CPU/GPU visibility/submission controls with strict frame joins.
 
 The frozen 12-pair AB/BA protocol uses W32/N256, Native TAA, 1280x720, scale 1,
 10,000 paired-median bootstrap resamples and seed 0x4C4D5836. Positive relative
@@ -29,26 +29,47 @@ WORKLOADS = {
     "temporal-lab": ("temporal-lab", 4096, True),
 }
 CONTROLS = {
-    "cull-off": ((False, "indirect"), (True, "indirect")),
-    "indirect-direct": ((True, "direct"), (True, "indirect")),
-    "batched-direct": ((True, "direct"), (True, "batched")),
+    "cull-off": ((False, "indirect", "cpu"), (True, "indirect", "cpu")),
+    "indirect-direct": ((True, "direct", "cpu"), (True, "indirect", "cpu")),
+    "batched-direct": ((True, "direct", "cpu"), (True, "batched", "cpu")),
 }
-METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs")
+CONTROLS.update({
+    "gpu-cpu-indirect": ((True, "indirect", "cpu"), (True, "indirect", "gpu")),
+    "gpu-cpu-batched": ((True, "batched", "cpu"), (True, "batched", "gpu")),
+})
+METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs", "visibilityGpuMs")
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def analyze_pairs(pairs):
-    """Median paired relative change and two-sided 95% percentile bootstrap interval."""
-    if not pairs or any(not math.isfinite(a) or not math.isfinite(b) or a <= 0 or b < 0
+    """Absolute costs/deltas always retain valid zero baselines; available means relative %."""
+    if not pairs or any(not math.isfinite(a) or not math.isfinite(b) or a < 0 or b < 0
                         for a, b in pairs):
-        return {"available": False, "reason": "missing, nonfinite or zero baseline measurement"}
+        reason = "missing, nonfinite or negative measurement"
+        return {"available": False, "reason": reason,
+                "absolute": {"available": False, "reason": reason}}
+
+    def interval(deltas):
+        rng = random.Random(SEED)
+        estimates = sorted(statistics.median([deltas[rng.randrange(len(deltas))] for _ in deltas])
+                           for _ in range(RESAMPLES))
+        return [estimates[250], estimates[9749]]
+
+    deltas_ms = [a - b for a, b in pairs]
+    result = {"available": False, "pairs": pairs, "pairCount": len(pairs),
+              "absolute": {"available": True,
+                           "baselineMedianMs": statistics.median(a for a, _ in pairs),
+                           "candidateMedianMs": statistics.median(b for _, b in pairs),
+                           "pairedDeltasMs": deltas_ms,
+                           "medianDeltaMs": statistics.median(deltas_ms),
+                           "ci95Ms": interval(deltas_ms)}}
+    if any(a == 0 for a, _ in pairs):
+        result["reason"] = "relative change unavailable with zero baseline measurement"
+        return result
     deltas = [(a - b) / a * 100 for a, b in pairs]
-    rng = random.Random(SEED)
-    estimates = sorted(statistics.median([deltas[rng.randrange(len(deltas))] for _ in deltas])
-                       for _ in range(RESAMPLES))
-    return {"available": True, "pairs": pairs, "pairedDeltasPct": deltas,
-            "medianDeltaPct": statistics.median(deltas),
-            "ci95Pct": [estimates[250], estimates[9749]], "pairCount": len(pairs)}
+    result.update(available=True, pairedDeltasPct=deltas,
+                  medianDeltaPct=statistics.median(deltas), ci95Pct=interval(deltas))
+    return result
 
 
 def validate_report(report, expected, scored):
@@ -67,7 +88,7 @@ def validate_report(report, expected, scored):
             raise ValueError("invalid measurement: " + name)
 
     require_dict(report, "report")
-    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] != 1 or report.get("complete") is not True:
+    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] != 2 or report.get("complete") is not True:
         raise ValueError("incomplete or unsupported report")
     if report.get("interactive") is not False or report.get("scored") is not scored:
         raise ValueError("scoring/frontend mismatch")
@@ -105,8 +126,9 @@ def validate_report(report, expected, scored):
         require_dict(sample, "sample")
         for key in ("ordinal", "frameId", "sequenceFrame", "renderWidth", "renderHeight", "outputWidth",
                     "outputHeight", "effectiveReconstruction", "vendorFallback", "candidates", "visible",
-                    "rejected", "sceneCommands", "shadowCommands", "tableBytes", "listBytes", "argumentBytes",
-                    "transientBytes"):
+                    "rejected", "sceneCommands", "shadowCommands", "tableBytes", "listBytes", "reservedListBytes", "argumentBytes",
+                    "transientBytes", "allocatedListBytes", "allocatedArgumentBytes", "candidateBytes",
+                    "runBytes", "chunkBytes", "stateBytes", "counterBytes"):
             nonnegative_integer(sample.get(key), key)
         if sample["ordinal"] != ordinal or sample["sequenceFrame"] != expected["warmupFrames"] + ordinal:
             raise ValueError("missing or unordered plan frame")
@@ -134,6 +156,45 @@ def validate_report(report, expected, scored):
             nonnegative_number(timing.get("gpuMs"), "pass GPU timing")
         if not math.isclose(sum(p["gpuMs"] for p in passes), sample["gpuSumMs"], rel_tol=1e-12, abs_tol=1e-12):
             raise ValueError("GPU sum differs from joined passes")
+        if sample.get("effectiveSubmission") != expected["submission"]:
+            raise ValueError("effective submission differs from request")
+        if sample.get("effectiveClassify") != expected["classify"]:
+            raise ValueError("effective classifier differs from request")
+        visibility = require_dict(sample.get("visibility"), "visibility")
+        if visibility.get("frameId") != frame_id or visibility.get("classify") != expected["classify"]:
+            raise ValueError("visibility retirement frame/classifier mismatch")
+        if expected["classify"] == "gpu" and visibility.get("retired") is not True:
+            raise ValueError("missing retired GPU visibility join")
+        if visibility.get("overflow") is not False or visibility.get("checkEnabled") is not False:
+            raise ValueError("overflow or diagnostic check invalidates production measurement")
+        for key in ("stateMismatches", "rowMismatches", "argumentMismatches", "counterMismatches"):
+            nonnegative_integer(visibility.get(key), key)
+            if visibility[key]:
+                raise ValueError("visibility diagnostic mismatch")
+        for view in ("scene", "shadow"):
+            counters = require_dict(visibility.get(view), view + " counters")
+            for key in ("candidates", "visible", "rejected", "emittedRows", "emittedCommands",
+                        "overflowedRows", "overflowedCommands"):
+                nonnegative_integer(counters.get(key), key)
+            bypassed = counters.get("bypassed")
+            if not isinstance(bypassed, list) or len(bypassed) != 4:
+                raise ValueError("missing bypass reason counters")
+            for value in bypassed:
+                nonnegative_integer(value, "bypass counter")
+            retained = counters["visible"] + sum(bypassed)
+            if (counters["candidates"] != retained + counters["rejected"] or
+                    counters["emittedRows"] != retained or counters["overflowedRows"] or
+                    counters["overflowedCommands"]):
+                raise ValueError("visibility counters do not reconcile without overflow")
+        if visibility["scene"]["candidates"] != sample["candidates"]:
+            raise ValueError("retired candidate count differs from declaration")
+        if expected["classify"] == "gpu":
+            payload = sum(visibility[view]["emittedRows"] for view in ("scene", "shadow")) * 4
+            if sample["listBytes"] != payload or sample["reservedListBytes"] < payload:
+                raise ValueError("retired valid row payload differs from emitted counters")
+        visibility_sum = sum(p["gpuMs"] for p in passes if p["label"].startswith("lmx.pass.visibility."))
+        if not math.isclose(visibility_sum, sample["visibilityGpuMs"], rel_tol=1e-12, abs_tol=1e-12):
+            raise ValueError("visibility GPU scope differs from joined passes")
         if sample["candidates"] != sample["visible"] + sample["rejected"]:
             raise ValueError("visibility count mismatch")
     return provenance
@@ -151,10 +212,11 @@ def unique_selection(text, allowed, label):
 
 def expected_plan(workload, mode, warmup, frames):
     scene, count, track = WORKLOADS[workload]
-    visibility, submission = mode
+    visibility, submission, classify = mode
     return dict(warmupFrames=warmup, measuredFrames=frames, width=1280, height=720,
                 labInstances=count, scene=scene, temporal="taa", submission=submission,
                 visibilityEnabled=visibility, cameraTrack=track, renderScale=1,
+                classify=classify, classifyCheck=False,
                 stepSeconds=1 / 60)
 
 
@@ -162,7 +224,7 @@ def run_side(binary, report_path, plan, unscored, timeout):
     cmd = [str(binary), "--measure", str(report_path), "--scene", plan["scene"],
            "--frames", str(plan["measuredFrames"]), "--warmup", str(plan["warmupFrames"]),
            "--visibility", "cull" if plan["visibilityEnabled"] else "off",
-           "--submission", plan["submission"], "--temporal", "taa", "--render-scale", "1",
+           "--classify", plan["classify"], "--submission", plan["submission"], "--temporal", "taa", "--render-scale", "1",
            "--measure-camera", "track" if plan["cameraTrack"] else "initial"]
     if plan["scene"] == "visibility-lab":
         cmd += ["--lab-instances", str(plan["labInstances"])]
@@ -229,9 +291,22 @@ def collect_cell(args, workload, control, output):
 def selftest():
     assert analyze_pairs([[100, 80]] * 12)["ci95Pct"] == [20, 20]
     assert analyze_pairs([[100, 108]] * 12)["ci95Pct"] == [-8, -8]
-    assert not analyze_pairs([[0, 1]])["available"]
+    zero = analyze_pairs([[0, 0.25]] * 12)
+    assert not zero["available"] and "zero baseline" in zero["reason"]
+    assert zero["absolute"] == dict(available=True, baselineMedianMs=0,
+                                    candidateMedianMs=0.25, pairedDeltasMs=[-0.25] * 12,
+                                    medianDeltaMs=-0.25, ci95Ms=[-0.25, -0.25])
+    mixed = analyze_pairs([[0, 1], [2, 1]] * 6)
+    assert not mixed["available"]
+    assert mixed["absolute"]["baselineMedianMs"] == mixed["absolute"]["candidateMedianMs"] == 1
+    assert mixed["absolute"]["medianDeltaMs"] == 0
+    assert mixed["absolute"]["ci95Ms"] == [-1, 1]
+    assert analyze_pairs([[0, 0]] * 12)["absolute"]["ci95Ms"] == [0, 0]
+    for invalid in ([], [[-1, 0]], [[1, float("nan")]]):
+        assert not analyze_pairs(invalid)["absolute"]["available"]
     varied = [[100, 100 - delta] for delta in (3, -3, 2, -2, 1, -1, 0, 4, -4, 2, -2, 0)]
     assert analyze_pairs(varied)["ci95Pct"] == [-2.0, 2.0]
+    assert analyze_pairs(varied)["absolute"]["ci95Ms"] == [-2, 2]
     plan = expected_plan("sponza", CONTROLS["cull-off"][0], 0, 1)
     provenance = dict(device="gpu", os="os", buildMode="release", executableHash="a" * 64,
                       shaderHashes={"scene": "b" * 64}, environment={
@@ -241,9 +316,19 @@ def selftest():
                   passes=[dict(label="scene", gpuMs=1)], renderWidth=1280, renderHeight=720,
                   outputWidth=1280, outputHeight=720, effectiveScale=1, vendorFallback=0,
                   effectiveReconstruction=1, sceneCommands=1, shadowCommands=2, tableBytes=1024,
-                  listBytes=12, argumentBytes=60, transientBytes=4096,
+                  listBytes=8, reservedListBytes=8, argumentBytes=60, transientBytes=4096,
                   **{key: 1 for key in METRICS})
-    report = dict(schemaVersion=1, complete=True, scored=True, interactive=False,
+    sample.update(visibilityGpuMs=0, effectiveClassify="cpu", effectiveSubmission="indirect", allocatedListBytes=24,
+                  allocatedArgumentBytes=120, candidateBytes=0, runBytes=0, chunkBytes=0,
+                  stateBytes=0, counterBytes=0,
+                  visibility=dict(frameId=1, classify="cpu", retired=False, overflow=False,
+                                  checkEnabled=False, stateMismatches=0, rowMismatches=0,
+                                  argumentMismatches=0, counterMismatches=0))
+    for view in ("scene", "shadow"):
+        sample["visibility"][view] = dict(candidates=2, visible=1, rejected=1,
+                                        bypassed=[0, 0, 0, 0], emittedRows=1,
+                                        emittedCommands=1, overflowedRows=0, overflowedCommands=0)
+    report = dict(schemaVersion=2, complete=True, scored=True, interactive=False,
                   pacing="serialized-retirement", plan=plan, provenance=provenance, samples=[sample])
     validate_report(report, plan, True)
     for mutation in (lambda r: r["samples"].clear(), lambda r: r["samples"][0].update(frameId=0),
@@ -258,9 +343,16 @@ def selftest():
                      lambda r: r["provenance"].update(environment=[]),
                      lambda r: r["samples"][0].pop("sceneCommands"),
                      lambda r: r["samples"][0].update(argumentBytes=-1),
+                     lambda r: r["samples"][0].pop("reservedListBytes"),
                      lambda r: r["samples"][0].update(tableBytes=True),
                      lambda r: r["samples"].__setitem__(0, []),
-                     lambda r: r["samples"][0].update(passes=[[]])):
+                     lambda r: r["samples"][0].update(passes=[[]]),
+                     lambda r: r["samples"][0]["visibility"].update(frameId=9),
+                     lambda r: r["samples"][0]["visibility"].update(overflow=True),
+                     lambda r: r["samples"][0]["visibility"].update(checkEnabled=True),
+                     lambda r: r["samples"][0]["visibility"].update(rowMismatches=1),
+                     lambda r: r["samples"][0]["visibility"]["scene"].update(emittedRows=9)):
+
         bad = copy.deepcopy(report)
         mutation(bad)
         try:
@@ -269,7 +361,32 @@ def selftest():
             pass
         else:
             raise AssertionError("invalid report accepted")
-    assert expected_plan("san-miguel", (True, "direct"), 32, 256)["cameraTrack"] is False
+    for control in ("gpu-cpu-indirect", "gpu-cpu-batched"):
+        gpu_plan = expected_plan("sponza", CONTROLS[control][1], 0, 1)
+        gpu = copy.deepcopy(report)
+        gpu["plan"] = gpu_plan
+        gpu_sample = gpu["samples"][0]
+        gpu_sample.update(effectiveClassify="gpu", effectiveSubmission=gpu_plan["submission"],
+                          visibilityGpuMs=0.25, gpuSumMs=1.25, reservedListBytes=16)
+        gpu_sample["passes"].append(dict(label="lmx.pass.visibility.classify", gpuMs=0.25))
+        gpu_sample["visibility"].update(classify="gpu", retired=True)
+        validate_report(gpu, gpu_plan, True)
+        malformed = copy.deepcopy(gpu)
+        malformed["samples"][0]["listBytes"] = 16
+        try:
+            validate_report(malformed, gpu_plan, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("candidate reservation accepted as valid row payload")
+        gpu_sample["visibility"]["retired"] = False
+        try:
+            validate_report(gpu, gpu_plan, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("pending GPU counters accepted")
+    assert expected_plan("san-miguel", (True, "direct", "cpu"), 32, 256)["cameraTrack"] is False
     assert [((0, 1) if rep % 2 == 0 else (1, 0)) for rep in range(4)] == [(0, 1), (1, 0), (0, 1), (1, 0)]
     for text, allowed in (("sponza,sponza", WORKLOADS), ("cull-off,cull-off", CONTROLS)):
         try:
@@ -317,11 +434,12 @@ def main():
     raw.mkdir()
     args.binary_hash = hashlib.sha256(args.binary.read_bytes()).hexdigest()
     args.frozen_provenance = None
-    collection = dict(schemaVersion=1, scoredProtocol=frozen and not args.unscored,
+    collection = dict(schemaVersion=2, scoredProtocol=frozen and not args.unscored,
                       binary=str(args.binary), binarySha256=args.binary_hash,
                       seed=SEED, resamples=RESAMPLES, confidence=0.95,
                       direction="positive means candidate costs less", adoptionRule=None,
                       pacing="serialized-retirement; does not measure throughput",
+                      cpuCommandScope="GPU indirect: one command per candidate slot; GPU batched: one per run, including empty slots/runs",
                       repetitions=args.repetitions, warmup=args.warmup, frames=args.frames,
                       environment={k: v for k, v in os.environ.items() if k.startswith(("MTL_", "METAL_", "DYLD_", "LMX_"))},
                       cells={})

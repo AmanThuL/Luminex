@@ -39,7 +39,7 @@ the row says otherwise.
 | 4 | [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics) editor usability | IV | Implemented, owner-accepted | Gate B |
 | 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Implemented, owner-accepted 2026-09-15 | UX1 |
 | 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Owner-accepted for integration 2026-09-15; image gates failed | M7.1 |
-| 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Inactive | M7.2 |
+| 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Inactive | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Inactive | M7.1; may run before steps 6–8 |
 | 10 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | M7 complete; technically gate B |
@@ -106,7 +106,7 @@ The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the
 after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
 is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
 paced scene tables through retained CPU drawing; its [record](milestones/m7.1.md) owns evidence
-and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; GPU visibility remains inactive.
+and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
 
 ## Project direction and delivery
 

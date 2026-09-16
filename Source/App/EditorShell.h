@@ -179,6 +179,9 @@ public:
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
     void retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    /// Publishes queued GPU visibility using saved declaration identities and exact measurement
+    /// joins.
+    void retireVisibility(render::Renderer& renderer);
     /// Records the just-submitted frame using its exact declaration and CPU timing scopes.
     void recordMeasurementFrame(uint64_t frameId, double waitMs, double encodeMs,
                                 const render::CompiledFrameRecord& record);
@@ -282,6 +285,7 @@ private:
     // switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
+    bool m_visibilityFailureLogged = false;
     MeasurementRun m_measurement;
     uint32_t m_measurementWarmup = 32;
     uint32_t m_measurementFrames = 256;

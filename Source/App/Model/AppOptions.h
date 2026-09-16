@@ -71,6 +71,8 @@ struct AppOptions {
     float renderScale = 1.0f;
     bool visibilityEnabled = true; ///< Conservative CPU camera culling; shadows remain unculled.
     render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
+    render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.
+    bool classifyCheck = false;   ///< GPU-only CPU-oracle diagnostic, always unscored.
     uint32_t labInstances = 4096; ///< Total VisibilityLab instances, including its boundary lane.
     std::filesystem::path measurementPath; ///< New JSON report destination for --measure.
     bool unscored = false;        ///< Explicitly permits instrumentation in a headless measurement.
