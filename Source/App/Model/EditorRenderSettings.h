@@ -15,7 +15,11 @@ namespace lmx::app {
 struct EditorRenderSettings {
     bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.
-    bool classifyCheck = false; ///< Compare retired GPU work against the CPU oracle.
+    bool occlusionEnabled = false;    ///< Previous-frame HZB rejection; GPU culling only.
+    bool occlusionCheck = false;      ///< Independent reference raster, always unscored.
+    int32_t hzbDebugLevel = -1;       ///< Current HZB level diagnostic; -1 returns to Final.
+    bool showOcclusionBounds = false; ///< Editor-only rejected bounds, capped at 128.
+    bool classifyCheck = false;       ///< Compare retired GPU work against the CPU oracle.
     render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
     bool wireframe = false; ///< Draws the scene in wireframe.
     /// Shadow filtering kernel, applied by the scene pass.

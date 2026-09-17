@@ -5,6 +5,9 @@
 #pragma once
 
 #include "Render/Bounds.h"
+#include "Render/Occlusion.h"
+#include "Render/OcclusionCheck.h"
+#include "Render/OcclusionHistory.h"
 #include "Render/SceneTables.h"
 #include <array>
 #include <span>
@@ -22,6 +25,12 @@ enum class ClassifyMode {
 };
 /// Retired per-view counts; bypass index zero is unused.
 struct VisibilityCounters {
+    uint32_t occluded = 0;              ///< Candidates rejected by previous-frame depth.
+    uint32_t occlusionTested = 0;       ///< Valid-history candidates evaluated for depth rejection.
+    uint32_t historyInvalid = 0;        ///< Candidates retained because depth evidence was invalid.
+    uint32_t nearCrossing = 0;          ///< Candidates retained at the source near plane.
+    uint32_t outsideSource = 0;         ///< Candidates whose guarded rectangle leaves the source.
+    uint32_t rectTooLarge = 0;          ///< Candidates without a sufficiently coarse mip.
     uint32_t candidates = 0;            ///< Number of input candidates.
     uint32_t visible = 0;               ///< Tested retained candidates.
     uint32_t rejected = 0;              ///< Tested rejected candidates.
@@ -45,11 +54,12 @@ enum class VisibilityState {
 };
 /// Why the conservative oracle did not reject-test a candidate.
 enum class VisibilityReason {
-    None,              ///< Ordinary tested candidate.
-    Disabled,          ///< User disabled camera culling.
-    ViewUnculled,      ///< This view intentionally retains every candidate.
-    UnreliableBounds,  ///< Bounds or clipping planes cannot be tested reliably.
-    NonFiniteTransform ///< Object transform contains a nonfinite component.
+    None,               ///< Ordinary tested candidate.
+    Disabled,           ///< User disabled camera culling.
+    ViewUnculled,       ///< This view intentionally retains every candidate.
+    UnreliableBounds,   ///< Bounds or clipping planes cannot be tested reliably.
+    NonFiniteTransform, ///< Object transform contains a nonfinite component.
+    Occluded            ///< Rejected using the previous-frame HZB.
 };
 /// Five inward normalized half-spaces; reversed infinite projection has no far plane.
 struct FrustumPlanes {
@@ -58,7 +68,9 @@ struct FrustumPlanes {
 };
 /// An owned candidate record, independent of future scene object order.
 struct InstanceVisibility {
-    uint32_t instanceRow = 0; ///< Stable table row in the retained scene generation.
+    uint64_t instanceIdentity = 0; ///< Opaque complete generational identity from declaration.
+    OcclusionProjection occlusion; ///< Retired source-space projection and outcome.
+    uint32_t instanceRow = 0;      ///< Stable table row in the retained scene generation.
     VisibilityState state = VisibilityState::Visible; ///< Classification for this frame.
     VisibilityReason reason = VisibilityReason::None; ///< Bypass cause, otherwise None.
     Aabb worldBounds;                                 ///< Exact bounds supplied to the oracle.
@@ -90,6 +102,14 @@ struct SubmissionStats {
 };
 /// Renderer-owned diagnostics for the last declared frame.
 struct VisibilityStatus {
+    OcclusionCheckResult occlusionCheck; ///< Independent retired reference result.
+    bool occlusionEnabled = false;       ///< Declaration requested previous-frame rejection.
+    bool occlusionCheckEnabled = false;  ///< Independent direct reference requested.
+    /// Global validity of the declared source evidence.
+    OcclusionInvalidReason occlusionInvalidReason = OcclusionInvalidReason::Disabled;
+    uint64_t occlusionSourceFrame = 0; ///< Frame that rasterized the evidence.
+    uint64_t pyramidBytes = 0;         ///< Both allocated depth pyramids.
+    OcclusionParams occlusionParams;   ///< Source projection retained with this declaration.
     ClassifyMode classifyMode = ClassifyMode::Cpu; ///< Requested classifier.
     bool isRetired = false;            ///< GPU results have completed and been read back.
     bool overflow = false;             ///< At least one output capacity dropped work.

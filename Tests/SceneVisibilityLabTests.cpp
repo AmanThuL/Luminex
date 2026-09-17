@@ -88,3 +88,73 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
         }
     }
 }
+
+//======================================================================================================================
+TEST_CASE("visibility lab occluders append deterministic slabs without altering the default grid",
+          "[gpu][scene][visibility][occlusion]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device);
+    REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 32, 1025));
+    auto baseline = scene::loadVisibilityLabScene(**device, 32);
+    auto explicitZero = scene::loadVisibilityLabScene(**device, 32, 0);
+    auto occluded = scene::loadVisibilityLabScene(**device, 32, 4);
+    auto repeated = scene::loadVisibilityLabScene(**device, 32, 4);
+    REQUIRE(baseline);
+    REQUIRE(explicitZero);
+    REQUIRE(occluded);
+    REQUIRE(repeated);
+    REQUIRE((*occluded)->objects.size() == 36);
+    REQUIRE((*occluded)->tableStats().materialCount == 6);
+    REQUIRE((*occluded)->animation.tracks.empty());
+    REQUIRE((*occluded)->animation.emissiveTracks.empty());
+    for (size_t i = 0; i < 32; ++i) {
+        const auto& original = (*baseline)->objects[i];
+        const auto& zero = (*explicitZero)->objects[i];
+        const auto& augmented = (*occluded)->objects[i];
+        REQUIRE(original.name == zero.name);
+        REQUIRE(original.modelMatrix() == zero.modelMatrix());
+        REQUIRE(original.modelMatrix() == augmented.modelMatrix());
+        REQUIRE(original.mesh.slot == augmented.mesh.slot);
+        REQUIRE(original.material.slot == augmented.material.slot);
+    }
+    REQUIRE((*baseline)->boundingSphere == (*explicitZero)->boundingSphere);
+    REQUIRE((*baseline)->animation.cameraTrack.size() ==
+            (*explicitZero)->animation.cameraTrack.size());
+    for (size_t i = 0; i < (*baseline)->animation.cameraTrack.size(); ++i) {
+        const auto& a = (*baseline)->animation.cameraTrack[i];
+        const auto& b = (*explicitZero)->animation.cameraTrack[i];
+        REQUIRE(a.time == b.time);
+        REQUIRE(a.position == b.position);
+        REQUIRE(a.yaw == b.yaw);
+        REQUIRE(a.pitch == b.pitch);
+    }
+    for (size_t i = 32; i < 36; ++i) {
+        const auto& slab = (*occluded)->objects[i];
+        const auto& repeatedSlab = (*repeated)->objects[i];
+        REQUIRE(slab.modelMatrix() == repeatedSlab.modelMatrix());
+        REQUIRE(slab.scale.x > 1.0f);
+        REQUIRE(slab.scale.y >= 8.0f);
+        const auto& material = (*occluded)->material(slab.material);
+        REQUIRE(material.alphaMode ==
+                (i == 32 ? render::AlphaMode::Mask : render::AlphaMode::Opaque));
+        if (i == 32) {
+            REQUIRE(material.diffuse);
+            REQUIRE(material.doubleSided);
+        }
+        if (i > 32) {
+            const auto& previous = (*occluded)->objects[i - 1];
+            REQUIRE(slab.position.x - slab.scale.x * 0.5f >
+                    previous.position.x + previous.scale.x * 0.5f);
+        }
+    }
+    (*device)->beginFrame();
+    REQUIRE((*baseline)->prepareFrame((*device)->frameNumber()));
+    REQUIRE((*explicitZero)->prepareFrame((*device)->frameNumber()));
+    const auto a = (*baseline)->tables();
+    const auto b = (*explicitZero)->tables();
+    REQUIRE(a.instanceRows.size() == b.instanceRows.size());
+    REQUIRE(std::memcmp(a.instanceRows.data(), b.instanceRows.data(),
+                        a.instanceRows.size() * sizeof(render::InstanceRow)) == 0);
+    (*device)->endFrame(nullptr);
+    (*device)->waitIdle();
+}

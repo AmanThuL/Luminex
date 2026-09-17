@@ -126,7 +126,9 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
             "[--visibility <cull|off>] [--classify <cpu|gpu>] [--classify-check] "
             "[--submission <direct|indirect|batched>] "
-            "[--lab-instances <1..1048576>] [--measure-camera <track|initial>] "
+            "[--lab-instances <1..1048576>] [--lab-occluders <0..1024>] "
+            "[--occlusion <on|off>] [--occlusion-check] [--hzb-level <k>] "
+            "[--measure-camera <track|initial>] "
             "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
             "after W unsaved warmup frames)");
 }

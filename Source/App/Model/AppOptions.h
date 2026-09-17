@@ -72,8 +72,12 @@ struct AppOptions {
     bool visibilityEnabled = true; ///< Conservative CPU camera culling; shadows remain unculled.
     render::SubmissionMode submission = render::SubmissionMode::Indirect; ///< Draw encoding mode.
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.
-    bool classifyCheck = false;   ///< GPU-only CPU-oracle diagnostic, always unscored.
-    uint32_t labInstances = 4096; ///< Total VisibilityLab instances, including its boundary lane.
+    bool classifyCheck = false;    ///< GPU-only CPU-oracle diagnostic, always unscored.
+    bool occlusionEnabled = false; ///< Previous-frame HZB rejection, GPU culling only.
+    bool occlusionCheck = false;   ///< Independent visibility reference, always unscored.
+    int32_t hzbDebugLevel = -1;    ///< Pyramid diagnostic mip; -1 shows the final image.
+    uint32_t labOccluders = 0;     ///< Optional VisibilityLab slabs, 0..1,024.
+    uint32_t labInstances = 4096;  ///< Total VisibilityLab instances, including its boundary lane.
     std::filesystem::path measurementPath; ///< New JSON report destination for --measure.
     bool unscored = false;        ///< Explicitly permits instrumentation in a headless measurement.
     bool measurementTrack = true; ///< Follow the camera rail; --measure-camera initial freezes it.

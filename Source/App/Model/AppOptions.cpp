@@ -104,6 +104,11 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     render::SubmissionMode submission = render::SubmissionMode::Indirect;
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu;
     bool classifyCheck = false;
+    bool occlusionEnabled = false;
+    bool occlusionCheck = false;
+    int32_t hzbDebugLevel = -1;
+    uint32_t labOccluders = 0;
+    bool labOccludersSpecified = false;
     uint32_t labInstances = 4096;
     bool labInstancesSpecified = false;
     std::string_view screenshotPath;
@@ -149,6 +154,21 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 arguments[i] == "gpu" ? render::ClassifyMode::Gpu : render::ClassifyMode::Cpu;
         } else if (argument == "--classify-check") {
             classifyCheck = true;
+        } else if (argument == "--occlusion") {
+            if (++i >= arguments.size() || (arguments[i] != "on" && arguments[i] != "off"))
+                return fail("--occlusion needs on|off");
+            occlusionEnabled = arguments[i] == "on";
+        } else if (argument == "--occlusion-check") {
+            occlusionCheck = true;
+        } else if (argument == "--hzb-level") {
+            if (++i >= arguments.size() || !parseNumber(arguments[i], hzbDebugLevel) ||
+                hzbDebugLevel < 0 || hzbDebugLevel > 30)
+                return fail("--hzb-level needs an integer in [0, 30]");
+        } else if (argument == "--lab-occluders") {
+            if (++i >= arguments.size() || !parseNumber(arguments[i], labOccluders) ||
+                labOccluders > 1024)
+                return fail("--lab-occluders needs an integer in [0, 1024]");
+            labOccludersSpecified = true;
         } else if (argument == "--submission") {
             if (++i >= arguments.size())
                 return fail("--submission needs direct|indirect|batched");
@@ -284,12 +304,28 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 "--capture-format <png|bmp>] [--measure <out.json> --unscored] "
                 "[--visibility <cull|off>] [--classify <cpu|gpu>] [--classify-check] [--submission "
                 "<direct|indirect|batched>] "
-                "[--lab-instances <1..1048576>] [--measure-camera <track|initial>] "
+                "[--lab-instances <1..1048576>] [--lab-occluders <0..1024>] "
+                "[--occlusion <on|off>] [--occlusion-check] [--hzb-level <k>] "
+                "[--measure-camera <track|initial>] "
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
                 "after W unsaved warmup frames)");
         }
     }
 
+    if (occlusionEnabled && (classifyMode != render::ClassifyMode::Gpu || !visibilityEnabled))
+        return fail("--occlusion on requires --classify gpu and --visibility cull");
+    if (occlusionCheck && !occlusionEnabled)
+        return fail("--occlusion-check requires --occlusion on");
+    if (occlusionCheck && !measurementPath.empty() && !unscored)
+        return fail("--occlusion-check measurement requires --unscored");
+    if (hzbDebugLevel >= 0 && !occlusionEnabled)
+        return fail("--hzb-level requires --occlusion on");
+    if (hzbDebugLevel >= 0 && temporalView != render::TemporalDebugView::Off)
+        return fail("--hzb-level conflicts with --temporal-view");
+    if (hzbDebugLevel >= 0 && !measurementPath.empty() && !unscored)
+        return fail("--hzb-level measurement requires --unscored");
+    if (labOccludersSpecified && sceneName != "visibility-lab")
+        return fail("--lab-occluders requires --scene visibility-lab");
     if (classifyMode == render::ClassifyMode::Gpu && submission == render::SubmissionMode::Direct)
         return fail("--classify gpu conflicts with --submission direct");
     if (classifyCheck && classifyMode != render::ClassifyMode::Gpu)
@@ -358,6 +394,10 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.submission = submission;
     options.classifyMode = classifyMode;
     options.classifyCheck = classifyCheck;
+    options.occlusionEnabled = occlusionEnabled;
+    options.occlusionCheck = occlusionCheck;
+    options.hzbDebugLevel = hzbDebugLevel;
+    options.labOccluders = labOccluders;
     options.labInstances = labInstances;
     options.initialScene = *sceneId;
     options.maximized = maximized;

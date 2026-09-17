@@ -115,7 +115,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.4 — Conservative occlusion
 
-**Implementation state:** Design [proposed](../milestones/m7.4.md) on 2026-09-18; execution is not yet authorized. Occlusion is opt-in and off by default.
+**Implementation state:** [Implemented](../milestones/m7.4.md); verification and owner review remain pending. The [validation record](../milestones/m7.4-validation.md) retains the failed 13/15 exact-image gate and mixed performance costs. Occlusion is opt-in and off by default; no integration approval follows.
 
 **Outcome:** A conservative HZB and spatial occlusion test reject work hidden in the previous frame; temporal validity is approximate, strict where view and coverage are unchanged or invalidated, and bounded by a recovery deadline under continuous camera motion.
 

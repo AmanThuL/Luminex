@@ -17,7 +17,7 @@ uint viewForCandidate(uint candidate)
 void count(uint view, uint word, uint value)
 {
     uint ignored;
-    InterlockedAdd(gCounters[view * 12u + word], value, ignored);
+    InterlockedAdd(gCounters[view * 20u + word], value, ignored);
 }
 [shader("compute")]
 [numthreads(256, 1, 1)]

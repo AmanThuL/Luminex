@@ -221,7 +221,7 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"stateCapacity", 12},
                    {"candidateCount", 16},
                    {"viewCount", 20}});
-    requireLayout("VisibilityCounterWords", 8, 48,
+    requireLayout("VisibilityCounterWords", 8, 80,
                   {{"candidates", 0},
                    {"visible", 4},
                    {"rejected", 8},
@@ -233,5 +233,20 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"emittedCommands", 32},
                    {"overflowedRows", 36},
                    {"overflowedCommands", 40},
-                   {"padding", 44}});
+                   {"occluded", 44},
+                   {"tested", 48},
+                   {"historyInvalid", 52},
+                   {"nearCrossing", 56},
+                   {"outsideSource", 60},
+                   {"rectTooLarge", 64},
+                   {"padding", 68}});
+    requireLayout("OcclusionParams", 13, 96,
+                  {{"sourceRows", 0},
+                   {"sourceWidth", 64},
+                   {"sourceHeight", 68},
+                   {"levelCount", 72},
+                   {"flags", 76},
+                   {"nearGuard", 80},
+                   {"depthGuard", 84},
+                   {"padding", 88}});
 }

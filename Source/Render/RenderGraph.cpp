@@ -87,6 +87,8 @@ std::string_view formatName(rhi::Format format) {
         return "RGBA16Float";
     case rhi::Format::R16Float:
         return "R16Float";
+    case rhi::Format::R32Float:
+        return "R32Float";
     case rhi::Format::RG16Float:
         return "RG16Float";
     case rhi::Format::R8Unorm:

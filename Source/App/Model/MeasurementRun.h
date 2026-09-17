@@ -32,11 +32,15 @@ struct MeasurementPlan {
     uint32_t measuredFrames = 256;       ///< Required fully joined samples.
     uint32_t width = 1280;               ///< Output pixels.
     uint32_t height = 720;               ///< Output pixels.
+    uint32_t labOccluders = 0;           ///< Optional static slab count.
     uint32_t labInstances = 4096;        ///< Configured diagnostic workload size.
     std::string scene;                   ///< Catalog stable identifier.
     std::string temporal = "taa";        ///< Requested reconstruction.
     std::string submission = "indirect"; ///< Draw submission mode.
     std::string classify = "cpu";        ///< Requested classifier, cpu or gpu.
+    bool occlusionEnabled = false;       ///< Previous-frame HZB rejection request.
+    bool occlusionCheck = false;         ///< Independent reference; never scored.
+    int32_t hzbDebugLevel = -1;          ///< Diagnostic pyramid mip; -1 means final.
     bool classifyCheck = false;          ///< CPU-oracle diagnostic, never scored.
     bool visibilityEnabled = true;       ///< Camera culling request.
     bool cameraTrack = true;             ///< Follow authored camera rail at 60 Hz.
@@ -138,7 +142,7 @@ public:
     std::span<const MeasurementSample> samples() const { return m_samples; }
     /// Empty on success, otherwise the first terminal failure or cancellation reason.
     const std::string& failure() const { return m_failure; }
-    /// Schema-2 JSON, including partial evidence, exact scopes, provenance and completion status.
+    /// Schema-3 JSON, including partial evidence, exact scopes, provenance and completion status.
     std::string json() const;
 
 private:
@@ -151,6 +155,7 @@ private:
     uint64_t m_lastFrameId = 0;
     std::vector<MeasurementSample> m_samples;
     std::string m_failure;
+    std::string m_referenceFailure;
 };
 
 } // namespace lmx::app
