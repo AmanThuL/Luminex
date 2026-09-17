@@ -115,13 +115,15 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.4 — Conservative occlusion
 
-**Outcome:** Conservative temporal occlusion rejects hidden work without losing newly visible geometry.
+**Implementation state:** Design [proposed](../milestones/m7.4.md) on 2026-09-18; execution is not yet authorized. Occlusion is opt-in and off by default.
 
-**Deliver:** Current/previous HZB and conservative temporal occlusion on fixed geometry; first validate each pyramid mip, then consume it for rejection in VisibilityLab.
+**Outcome:** A conservative HZB and spatial occlusion test reject work hidden in the previous frame; temporal validity is approximate, strict where view and coverage are unchanged or invalidated, and bounded by a recovery deadline under continuous camera motion.
 
-**Exit gate:** Reduction is conservative under reversed-Z; camera cuts, teleports, new objects and moving occluders do not lose visible geometry; rejected bounds and bypass reasons are inspectable against an unculled reference.
+**Deliver:** Current/previous HZB and previous-view occlusion on fixed geometry; first validate each pyramid mip, then consume it for rejection in VisibilityLab. An independent unculled ID reference measures falsely rejected visible instances, affected pixels and consecutive missing frames.
 
-**Defer:** Cluster LOD to M9, and two-phase occlusion optimization beyond M7.
+**Exit gate:** Reported separately: every pyramid level is conservative under reversed-Z; a static camera, camera cuts, teleports, new objects and moved, removed or coverage-changed occluders lose no visible geometry, with occluder changes invalidating the affected history; under continuous camera motion a reference-visible instance is drawn within the declared recovery deadline, and persistent omissions fail; rejected bounds and bypass reasons are inspectable against the unculled reference; paired performance is reported without adopting a default.
+
+**Defer:** Cluster LOD to M9. Two-phase occlusion, the mechanism that recovers newly visible geometry within the current frame, stays beyond M7, so disocclusion latency during continuous motion is accepted and disclosed.
 
 ## M7.5 — Clustered local lighting
 
