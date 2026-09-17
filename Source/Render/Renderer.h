@@ -8,6 +8,7 @@
 #include "Render/Camera.h"
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
+#include "Render/HzbStage.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneStage.h"
@@ -30,6 +31,8 @@ namespace lmx::render {
 class ExposureStage;
 /// Owns GPU visibility passes and frame-keyed retirement.
 class GpuVisibility;
+/// Owns independent direct ID visibility validation.
+class OcclusionReference;
 /// Owns the renderer's bloom pipelines and transient pass declarations.
 class BloomStage;
 /// Owns the renderer's display transform and disabled-bloom fallback.
@@ -151,6 +154,8 @@ public:
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
     rhi::Texture* motionTarget() { return m_motion.get(); }
+    /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
+    rhi::Texture* reactiveTarget() { return m_reactive.get(); }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
@@ -186,6 +191,10 @@ private:
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
 
+    GraphTexture prepareOcclusion(RenderGraph& graph, const Camera& camera, const SceneView& view,
+                                  const FrameExtents& extents, const CameraFrameState& cameraState);
+    void declareOcclusion(RenderGraph& graph, rhi::CommandList& commands, const SceneView& view,
+                          GraphTexture depth, GraphTexture& display);
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
     // exist for every frame whether or not it declares the temporal path.
@@ -258,6 +267,18 @@ private:
     TemporalStatus m_temporalStatus;
     DrawSubmission m_drawSubmission;
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
+    std::unique_ptr<HzbStage> m_hzbStage;
+    std::unique_ptr<OcclusionReference> m_occlusionReference;
+    std::unique_ptr<rhi::ShaderLibrary> m_hzbDebugLibrary;
+    std::unique_ptr<rhi::GraphicsPipeline> m_hzbDebugPipeline;
+    HzbSource m_occlusionSource;
+    HzbSource m_currentOcclusionSource;
+    OcclusionParams m_occlusionParams;
+    OcclusionInvalidReason m_occlusionReason = OcclusionInvalidReason::Disabled;
+    GraphTexture m_previousPyramid;
+    bool m_occlusionPreviouslyEnabled = false;
+    bool m_occlusionStrictView = false;
+    std::optional<glm::mat4> m_previousOcclusionViewProjection;
     VisibilityStatus m_visibilityStatus;
     uint32_t m_width = 0;
     uint32_t m_height = 0;

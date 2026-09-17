@@ -294,6 +294,7 @@ private:
     render::VisibilityStatus m_measurementVisibility;
     render::TemporalStatus m_measurementTemporal;
     uint32_t m_labInstances = 4096;
+    uint32_t m_labOccluders = 0;
     // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
     // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
     // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline

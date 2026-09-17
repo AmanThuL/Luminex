@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 
 namespace lmx::app {
 namespace {
@@ -130,6 +131,26 @@ void drawToolbar(const ViewportPanelContext& context) {
 
 //======================================================================================================================
 void drawLegend(const ViewportPanelContext& context) {
+    if (context.settings.hzbDebugLevel >= 0) {
+        uint32_t width = (context.renderer.width() + 1) / 2;
+        uint32_t height = (context.renderer.height() + 1) / 2;
+        int32_t top = 0;
+        while (width > 16 || height > 16) {
+            width = (width + 1) / 2;
+            height = (height + 1) / 2;
+            ++top;
+        }
+        const auto effectiveLevel = std::min(context.settings.hzbDebugLevel, top);
+        ImGui::Text("HZB level %d: farthest reversed depth (black is uncovered)", effectiveLevel);
+        if (effectiveLevel != context.settings.hzbDebugLevel)
+            ImGui::Text("Requested level %d clamped to available level %d",
+                        context.settings.hzbDebugLevel, effectiveLevel);
+        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
+                        ImGui::GetStyle().FramePadding.x * 2);
+        if (ImGui::Button("Return to Final"))
+            context.settings.hzbDebugLevel = -1;
+        return;
+    }
     if (!context.settings.temporalEnabled ||
         context.settings.temporalDebugView == render::TemporalDebugView::Off) {
         return;
@@ -148,6 +169,79 @@ void drawLegend(const ViewportPanelContext& context) {
     if (!note.empty()) {
         ImGui::TextWrapped("%.*s", static_cast<int>(note.size()), note.data());
     }
+}
+
+//======================================================================================================================
+void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, ImVec2 size) {
+    if (!context.settings.occlusionEnabled || !context.visibilityDisplay)
+        return;
+    const auto& display = *context.visibilityDisplay;
+    const auto& status = display.status();
+    const auto& params = status.occlusionParams;
+    if (!status.isRetired || status.sceneGeneration != context.temporalState.sceneGeneration ||
+        !params.sourceWidth || !params.sourceHeight)
+        return;
+    auto* draw = ImGui::GetWindowDrawList();
+    draw->PushClipRect(origin, ImVec2(origin.x + size.x, origin.y + size.y), true);
+    const auto pixel = [&](float x, float y) {
+        return ImVec2(origin.x + x / params.sourceWidth * size.x,
+                      origin.y + y / params.sourceHeight * size.y);
+    };
+    const auto bounds = [&](const render::InstanceVisibility& candidate, ImU32 color) {
+        std::array<ImVec2, 8> points{};
+        for (uint32_t corner = 0; corner < 8; ++corner) {
+            const auto& box = candidate.worldBounds;
+            const glm::vec4 p{corner & 1 ? box.maximum.x : box.minimum.x,
+                              corner & 2 ? box.maximum.y : box.minimum.y,
+                              corner & 4 ? box.maximum.z : box.minimum.z, 1.0f};
+            const float w = glm::dot(params.sourceRows[3], p);
+            if (!std::isfinite(w) || w <= render::kOcclusionNearGuard)
+                return;
+            const float x = glm::dot(params.sourceRows[0], p) / w;
+            const float y = glm::dot(params.sourceRows[1], p) / w;
+            if (!std::isfinite(x) || !std::isfinite(y))
+                return;
+            points[corner] = pixel((x * 0.5f + 0.5f) * params.sourceWidth,
+                                   (0.5f - y * 0.5f) * params.sourceHeight);
+        }
+        for (uint32_t corner = 0; corner < 8; ++corner)
+            for (uint32_t bit : {1u, 2u, 4u})
+                if ((corner & bit) == 0)
+                    draw->AddLine(points[corner], points[corner | bit], color);
+    };
+    uint32_t rejected = 0;
+    if (context.settings.showOcclusionBounds) {
+        for (const auto& candidate : status.scene.candidates) {
+            if (candidate.reason != render::VisibilityReason::Occluded)
+                continue;
+            if (rejected == 128)
+                break;
+            bounds(candidate, IM_COL32(255, 105, 80, 150));
+            ++rejected;
+        }
+    }
+    bool selected = false;
+    if (context.selection.subject == EditorSubject::Object &&
+        context.selection.index < context.scene.objects.size()) {
+        const auto id = context.scene.objects[context.selection.index].id;
+        if (const auto* candidate =
+                display.find(id, status, context.temporalState.sceneGeneration)) {
+            selected = true;
+            bounds(*candidate, IM_COL32(255, 220, 80, 230));
+            const auto& rectangle = candidate->occlusion.rectangle;
+            if (rectangle[2] > rectangle[0] && rectangle[3] > rectangle[1])
+                draw->AddRect(pixel(rectangle[0], rectangle[1]), pixel(rectangle[2], rectangle[3]),
+                              IM_COL32(70, 220, 255, 240), 0, 0, 2.0f);
+        }
+    }
+    if (selected || context.settings.showOcclusionBounds) {
+        const auto label = std::format(
+            "HZB source frame {}: yellow bounds / cyan test rectangle; rejected {} / 128",
+            status.occlusionSourceFrame, rejected);
+        draw->AddText(ImVec2(origin.x + 8, origin.y + 8), IM_COL32(255, 240, 180, 255),
+                      label.c_str());
+    }
+    draw->PopClipRect();
 }
 
 } // namespace
@@ -173,6 +267,7 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                                                          : context.renderer.colorTarget()),
                          imageSize);
             result.hovered = ImGui::IsItemHovered();
+            drawOcclusionOverlay(context, ImGui::GetItemRectMin(), imageSize);
             const auto scale = ImGui::GetWindowViewport()->FramebufferScale;
             result.backingScale = scale.x;
             result.width = toPixels(imageSize.x, scale.x);

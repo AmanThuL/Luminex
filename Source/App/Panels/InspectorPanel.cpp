@@ -400,7 +400,12 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                         "Skip objects outside the camera view. Choose where classification runs "
                         "and how draws are submitted.",
                         true)) {
-        ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled);
+        if (ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled) &&
+            !settings.visibilityEnabled) {
+            settings.occlusionEnabled = false;
+            settings.occlusionCheck = false;
+            settings.hzbDebugLevel = -1;
+        }
         editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
         if (editor_style::beginFields("visibilityControls")) {
             editor_style::field("Classifier");
@@ -410,8 +415,12 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 if (settings.classifyMode == render::ClassifyMode::Gpu &&
                     settings.submission == render::SubmissionMode::Direct)
                     settings.submission = render::SubmissionMode::Indirect;
-                if (settings.classifyMode == render::ClassifyMode::Cpu)
+                if (settings.classifyMode == render::ClassifyMode::Cpu) {
                     settings.classifyCheck = false;
+                    settings.occlusionEnabled = false;
+                    settings.occlusionCheck = false;
+                    settings.hzbDebugLevel = -1;
+                }
             }
             editorTooltip(
                 "GPU results arrive after retirement. CPU remains the default reference.");
@@ -421,6 +430,50 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                     "CPU oracle check: compare GPU states, ordered rows, counts and arguments "
                     "with the CPU reference. Diagnostic runs are unscored.");
             }
+            const bool occlusionAvailable =
+                settings.classifyMode == render::ClassifyMode::Gpu && settings.visibilityEnabled;
+            ImGui::BeginDisabled(!occlusionAvailable);
+            checkbox("Occlusion", "##occlusion", &settings.occlusionEnabled);
+            ImGui::EndDisabled();
+            editorTooltip(occlusionAvailable ? "Previous-frame depth evidence; camera motion can "
+                                               "delay newly visible geometry by one frame. "
+                                               "Any coverage change retains all candidates."
+                                             : "Requires GPU classification and frustum culling.");
+            if (!settings.occlusionEnabled) {
+                settings.occlusionCheck = false;
+                settings.hzbDebugLevel = -1;
+            } else {
+                checkbox("Independent ID check", "##occlusionCheck", &settings.occlusionCheck);
+                editorTooltip("Draw all candidates independently and check missing visible "
+                              "instances. Unscored.");
+                editor_style::field("HZB view");
+                const std::string preview = settings.hzbDebugLevel < 0
+                                                ? "Final"
+                                                : std::format("Level {}", settings.hzbDebugLevel);
+                if (ImGui::BeginCombo("##hzbLevel", preview.c_str())) {
+                    if (ImGui::Selectable("Final", settings.hzbDebugLevel < 0))
+                        settings.hzbDebugLevel = -1;
+                    uint32_t width = (renderer.width() + 1) / 2;
+                    uint32_t height = (renderer.height() + 1) / 2;
+                    uint32_t levels = 1;
+                    while (width > 16 || height > 16) {
+                        width = (width + 1) / 2;
+                        height = (height + 1) / 2;
+                        ++levels;
+                    }
+                    for (uint32_t level = 0; level < levels; ++level) {
+                        if (ImGui::Selectable(std::format("Level {}", level).c_str(),
+                                              settings.hzbDebugLevel ==
+                                                  static_cast<int32_t>(level))) {
+                            settings.hzbDebugLevel = static_cast<int32_t>(level);
+                            settings.temporalDebugView = render::TemporalDebugView::Off;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                checkbox("Rejected bounds (max 128)", "##occlusionBounds",
+                         &settings.showOcclusionBounds);
+            }
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
             if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {
@@ -428,6 +481,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 if (settings.submission == render::SubmissionMode::Direct) {
                     settings.classifyMode = render::ClassifyMode::Cpu;
                     settings.classifyCheck = false;
+                    settings.occlusionEnabled = false;
+                    settings.occlusionCheck = false;
+                    settings.hzbDebugLevel = -1;
                 }
             }
             editorTooltip(
@@ -444,7 +500,8 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                                static_cast<unsigned long long>(kept), counts.candidates,
                                counts.rejected);
             editorTooltip("Kept includes visible objects and conservative bypasses. Culled means "
-                          "outside the camera frustum; shadows stay unculled. The detail rows "
+                          "outside the camera frustum or rejected by previous-frame depth; shadows "
+                          "stay unculled. The detail rows "
                           "describe the same declared or retired frame as this summary.");
             editor_style::message(
                 std::format("{} frame {}{}", visibility.isRetired ? "GPU retired" : "CPU declared",

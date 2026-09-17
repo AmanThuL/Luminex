@@ -43,6 +43,7 @@ bool isColorRenderableFormat(rhi::Format format) {
     case rhi::Format::R8Unorm:
         return true;
     case rhi::Format::R16Float:
+    case rhi::Format::R32Float:
     case rhi::Format::Unknown:
     case rhi::Format::BC1Unorm:
     case rhi::Format::BC1Unorm_sRGB:

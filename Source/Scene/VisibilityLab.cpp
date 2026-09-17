@@ -78,11 +78,15 @@ float jitter(uint32_t& state) {
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& device,
-                                                                  uint32_t instanceCount) {
+asset::AssetResult<std::unique_ptr<Scene>>
+loadVisibilityLabScene(rhi::Device& device, uint32_t instanceCount, uint32_t occluderCount) {
     if (instanceCount == 0 || instanceCount > 1048576) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "VisibilityLab instances must be 1..1048576"});
+    }
+    if (occluderCount > 1024) {
+        return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
+                                                 "VisibilityLab occluders must be 0..1024"});
     }
     auto scene = std::make_unique<Scene>();
     scene->name = "VisibilityLab";
@@ -156,6 +160,36 @@ asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& d
         const float jitterZ = jitter(seed) * 0.2f;
         const glm::vec3 offset(jitterX, jitterY, jitterZ);
         add("Grid " + std::to_string(grid), glm::vec3(x, y, z) + offset, 1.0f, i);
+    }
+    if (occluderCount != 0) {
+        MaterialRecord opaque;
+        opaque.albedo = srgbToLinear(glm::vec4(0.28f, 0.32f, 0.38f, 1.0f));
+        opaque.roughness = 0.9f;
+        const auto opaqueId = scene->addMaterial(opaque);
+        auto masked = opaque;
+        masked.alphaMode = render::AlphaMode::Mask;
+        masked.diffuse = maskId;
+        masked.doubleSided = true;
+        const auto maskedId = scene->addMaterial(masked);
+        // The initial camera faces -Z through these slabs into the grid. Their horizontal gaps
+        // and the first slab's two broad alpha windows stay many pixels wide in the lab matrix.
+        // Adding them after the seeded grid leaves every original instance and material intact.
+        const float span = std::max(12.0f, bounds.maximum.x - bounds.minimum.x);
+        const float height = std::max(8.0f, bounds.maximum.y - bounds.minimum.y);
+        const float spacing = span / static_cast<float>(occluderCount);
+        const float width = spacing * 0.75f;
+        for (uint32_t i = 0; i < occluderCount; ++i) {
+            const glm::vec3 position{(static_cast<float>(i) + 0.5f) * spacing - span * 0.5f, 0.0f,
+                                     -5.0f};
+            const glm::vec3 scale{width, height, 0.2f};
+            scene->addObject({.name = "Occluder " + std::to_string(i),
+                              .position = position,
+                              .scale = scale,
+                              .mesh = meshes[0],
+                              .material = i == 0 ? maskedId : opaqueId});
+            bounds.minimum = glm::min(bounds.minimum, position - scale * 0.5f);
+            bounds.maximum = glm::max(bounds.maximum, position + scale * 0.5f);
+        }
     }
     const glm::vec3 center = (bounds.minimum + bounds.maximum) * 0.5f;
     const float radius = glm::length(bounds.maximum - center);

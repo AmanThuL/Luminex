@@ -40,6 +40,7 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
     m_provenance = std::move(provenance);
     m_samples.clear();
     m_failure.clear();
+    m_referenceFailure.clear();
     m_submitted = 0;
     m_firstFrameId = 0;
     m_lastFrameId = 0;
@@ -64,6 +65,14 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
         (m_plan.classifyCheck && m_plan.classify != "gpu") ||
         (m_plan.classifyCheck && !m_plan.interactive && !m_plan.unscored)) {
         cancel("Invalid classifier/submission or scored check-mode plan");
+        return false;
+    }
+    if ((m_plan.occlusionEnabled && (m_plan.classify != "gpu" || !m_plan.visibilityEnabled)) ||
+        (m_plan.occlusionCheck && !m_plan.occlusionEnabled) ||
+        (m_plan.hzbDebugLevel >= 0 && !m_plan.occlusionEnabled) ||
+        ((m_plan.occlusionCheck || m_plan.hzbDebugLevel >= 0) && !m_plan.interactive &&
+         !m_plan.unscored)) {
+        cancel("Invalid occlusion settings or scored diagnostic-mode plan");
         return false;
     }
     const auto validHash = [](std::string_view hash) {
@@ -195,18 +204,27 @@ bool MeasurementRun::retireVisibility(const render::VisibilityStatus& status) {
     const auto found = std::ranges::find_if(
         m_samples, [&](const auto& sample) { return sample.cpu.frameId == status.frameNumber; });
     if (found == m_samples.end()) {
-        if (const auto failure = visibilityFailure(status); !failure.empty()) {
+        if (status.occlusionCheckEnabled && !status.occlusionCheck.passed() &&
+            m_referenceFailure.empty())
+            m_referenceFailure = visibilityFailure(status);
+        if (const auto failure = visibilityFailure(status, false); !failure.empty()) {
             cancel(failure);
             return false;
         }
         return true;
     }
     if (status.classifyMode != found->cpu.classifyMode || !status.isRetired ||
-        status.checkEnabled != m_plan.classifyCheck) {
+        status.checkEnabled != m_plan.classifyCheck ||
+        status.occlusionEnabled != m_plan.occlusionEnabled ||
+        status.occlusionCheckEnabled != m_plan.occlusionCheck) {
         cancel("GPU visibility publication differs from the declared classifier");
         return false;
     }
-    if (const auto failure = visibilityFailure(status); !failure.empty()) {
+    if (status.occlusionCheckEnabled &&
+        (!status.occlusionCheck.enabled || !status.occlusionCheck.passed()) &&
+        m_referenceFailure.empty())
+        m_referenceFailure = visibilityFailure(status);
+    if (const auto failure = visibilityFailure(status, false); !failure.empty()) {
         found->visibility = status;
         cancel(failure);
         return false;
@@ -235,8 +253,12 @@ void MeasurementRun::completeIfReady() {
         std::ranges::all_of(m_samples, [](const auto& sample) {
             return sample.retired && (sample.cpu.classifyMode == render::ClassifyMode::Cpu ||
                                       sample.visibility.has_value());
-        }))
-        m_state = MeasurementState::Complete;
+        })) {
+        if (m_referenceFailure.empty())
+            m_state = MeasurementState::Complete;
+        else
+            cancel(m_referenceFailure);
+    }
 }
 
 //======================================================================================================================

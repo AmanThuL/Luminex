@@ -108,8 +108,8 @@ std::span<const std::string_view> sceneStableIds() {
 }
 
 //======================================================================================================================
-SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances)
-    : m_device(device), m_labInstances(labInstances) {
+SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances, uint32_t labOccluders)
+    : m_device(device), m_labInstances(labInstances), m_labOccluders(labOccluders) {
     m_entries.reserve(kSceneDescriptors.size());
     m_scenes.resize(kSceneDescriptors.size());
     for (size_t i = 0; i < kSceneDescriptors.size(); ++i) {
@@ -153,7 +153,7 @@ asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
     }
 
     auto built = kSceneDescriptors[index].stableId == "visibility-lab"
-                     ? loadVisibilityLabScene(m_device, m_labInstances)
+                     ? loadVisibilityLabScene(m_device, m_labInstances, m_labOccluders)
                      : kSceneDescriptors[index].build(m_device);
     if (!built) {
         return std::unexpected(built.error());

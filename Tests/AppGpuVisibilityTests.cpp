@@ -144,7 +144,7 @@ TEST_CASE("GPU measurement needs independent exact visibility and timing retirem
     SECTION("last visibility result is drained without a new declaration") {
         REQUIRE(run.retireVisibility(retiredStatus(11)));
         REQUIRE(run.finishDrain());
-        REQUIRE(run.json().contains("\"schemaVersion\":2"));
+        REQUIRE(run.json().contains("\"schemaVersion\":3"));
         REQUIRE(run.json().contains("\"visibilityGpuMs\":0.25"));
         REQUIRE(run.json().contains("\"effectiveClassify\":\"gpu\""));
         REQUIRE(run.samples()[0].cpu.visible == 0);

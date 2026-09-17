@@ -29,6 +29,8 @@ namespace lmx::render {
 /// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive
 /// execution.
 struct DrawItem {
+    /// Opaque full generational identity; zero for hand-built views.
+    uint64_t instanceIdentity = 0;
     uint32_t instanceRow = 0;          ///< Stable instance slot; independent of draw-list position.
     MeshRow mesh;                      ///< Range in the scene geometry pool.
     rhi::Texture* diffuse = nullptr;   ///< Null selects the white fallback.
@@ -127,6 +129,10 @@ struct TemporalStatus {
 
 /// Non-owning, frame-local view of all scene data consumed by the renderer.
 struct SceneView {
+    uint64_t coverageEpoch = 0;    ///< Changes whenever any instance or masked coverage changes.
+    bool occlusionEnabled = false; ///< Previous-view HZB rejection; requires GPU culling.
+    bool occlusionCheck = false;   ///< Independent direct ID reference; unscored diagnostics.
+    int32_t hzbDebugLevel = -1; ///< Negative disables visualization; otherwise active pyramid mip.
     ClassifyMode classifyMode = ClassifyMode::Cpu; ///< CPU default or fixed-slot GPU classifier.
     bool classifyCheck = false;    ///< Compare retired GPU output against the CPU oracle.
     bool visibilityEnabled = true; ///< Conservatively cull camera candidates.

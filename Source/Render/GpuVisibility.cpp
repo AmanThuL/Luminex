@@ -13,7 +13,7 @@ namespace lmx::render {
 rhi::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rhi::Device& device) {
     std::unique_ptr<GpuVisibility> self(new GpuVisibility(device));
     constexpr std::array names{"VisibilityClassify", "VisibilityScan", "VisibilityEmit",
-                               "VisibilityEmitSparse"};
+                               "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
     for (uint32_t i = 0; i < names.size(); ++i) {
         auto library = device.loadShaderLibrary("Shaders/" + std::string(names[i]));
         if (!library)
@@ -82,7 +82,7 @@ rhi::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
         result = allocate(replacement.states, uint64_t{capacity} * 4, "lmx.draw.states", true);
         if (!result)
             return result;
-        result = allocate(replacement.counters, 96, "lmx.draw.counters", true);
+        result = allocate(replacement.counters, 160, "lmx.draw.counters", true);
         if (!result)
             return result;
         replacement.capacity = capacity;
@@ -111,7 +111,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
                                             const PreparedSubmission& submission,
                                             GraphBuffer instances, GraphBuffer meshes,
                                             GraphBuffer rows, GraphBuffer arguments,
-                                            VisibilityStatus& status) {
+                                            VisibilityStatus& status, GraphTexture pyramid,
+                                            OcclusionParams occlusion) {
     auto tables = buildVisibilityTables(view, submission, planes);
     auto& slot = m_slots[m_device.frameNumber() % 3];
     const auto prepared = prepareSlot(slot, tables);
@@ -131,7 +132,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
     status.submission.runBytes = tables.runs.size() * sizeof(RunRecord);
     status.submission.chunkBytes = tables.chunks.size() * sizeof(ChunkRecord);
     status.submission.stateBytes = uint64_t{slot.capacity} * 4;
-    status.submission.counterBytes = 96;
+    status.submission.counterBytes = 160;
     Pending pending{.status = status,
                     .tables = tables,
                     .params = params,
@@ -169,7 +170,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
     reset.bufferDestinations.push_back(counters);
     graph.addCopyPass("lmx.pass.visibility.reset", std::move(reset),
                       [&commands, counters](const PassResources& resources) {
-                          commands.fillBuffer(**resources.buffer(counters), 0, 96, 0);
+                          commands.fillBuffer(**resources.buffer(counters), 0, 160, 0);
                       });
     auto bindRead = [&commands](const PassResources& resources, uint32_t index,
                                 GraphBuffer handle) {
@@ -185,22 +186,28 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
     }
     ComputePassDesc classify;
     classify.shaderBufferReads = {candidates, chunks, instances, views};
+    if (view.occlusionEnabled)
+        classify.shaderTextureReads.push_back(pyramid);
     classify.bufferWrites = {states, nextVersion(counters), counts};
     const auto chunkCount = static_cast<uint32_t>(tables.chunks.size());
-    graph.addComputePass("lmx.pass.visibility.classify", std::move(classify),
-                         [=, this, &commands](const PassResources& resources) {
-                             commands.bindComputePipeline(*m_pipelines[0]);
-                             bindRead(resources, 0, candidates);
-                             bindRead(resources, 2, chunks);
-                             bindRead(resources, 3, instances);
-                             bindRead(resources, 5, views);
-                             commands.bindFrameData(6, params);
-                             bindStorage(resources, 7, states, rhi::StorageAccess::Write);
-                             bindStorage(resources, 8, nextVersion(counters),
-                                         rhi::StorageAccess::ReadWrite);
-                             bindStorage(resources, 9, counts, rhi::StorageAccess::Write);
-                             commands.dispatch(std::max(1u, chunkCount), 1, 1);
-                         });
+    graph.addComputePass(
+        "lmx.pass.visibility.classify", std::move(classify),
+        [=, this, &commands](const PassResources& resources) {
+            commands.bindComputePipeline(*m_pipelines[view.occlusionEnabled ? 4 : 0]);
+            if (view.occlusionEnabled) {
+                commands.bindFrameData(13, occlusion);
+                commands.bindTexture(0, **resources.texture(pyramid));
+            }
+            bindRead(resources, 0, candidates);
+            bindRead(resources, 2, chunks);
+            bindRead(resources, 3, instances);
+            bindRead(resources, 5, views);
+            commands.bindFrameData(6, params);
+            bindStorage(resources, 7, states, rhi::StorageAccess::Write);
+            bindStorage(resources, 8, nextVersion(counters), rhi::StorageAccess::ReadWrite);
+            bindStorage(resources, 9, counts, rhi::StorageAccess::Write);
+            commands.dispatch(std::max(1u, chunkCount), 1, 1);
+        });
     if (params.layout) {
         ComputePassDesc scan;
         scan.shaderBufferReads = {runs, chunks, views};

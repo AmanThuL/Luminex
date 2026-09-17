@@ -1,12 +1,16 @@
-# Luminex — one frame with visibility, submission and reconstruction (2026-09-15)
+# Luminex — one frame with visibility, submission and reconstruction (2026-09-18)
 
 Native TAA, CPU culling and indirect submission are defaults; vendor reconstruction shares temporal inputs.
 ## The frame at a glance
 
-A fresh `RenderGraph` imports targets, five scene buffers, two submission buffers, persistent
-histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
+A fresh `RenderGraph` imports targets, five scene buffers, two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
 validates the DAG, culls dead passes and derives RAW/WAR/WAW barriers before serial execution.
-Opt-in [GPU visibility](guides/gpu-visibility.md) adds reset/classify/scan/emit before draw consumers; temporal modes share one history owner.
+Opt-in [GPU visibility](guides/gpu-visibility.md) adds reset/classify/scan/emit before draws.
+Occlusion reads the preceding declared frame's HZB using that frame's matrix, jitter and active extent.
+After temporal consumers, current depth builds half-resolution R32Float minima, one pass per mip;
+publication reads all mips. Two output-capacity pyramids alternate independently of temporal slots.
+Invalid source/camera/coverage history or wireframe retains globally; shadows remain unculled.
+Independent direct ID/depth checks copy into paced readback and join by frame and instance identity.
 
 `App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
 `Render/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
@@ -14,14 +18,13 @@ Screenshots start at zero and sequences sample frame/60 with warmup. Editor load
 First Play captures camera/time and animation-owned object poses/emissive strength; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
 Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
 
-Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa`
-(`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
+Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa` (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
 `renderScale == 1.0` (below 1.0 the scene pass's render area shrinks; see Resources and lifetime). Auto-exposure, bloom, and temporal are ordinary
 declared passes either way; toggling one off removes only the declaration reaching a sink.
 
 ```
 beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-cursor recycle invariant asserted)
-├─ SceneSession.prepareFrame(N): recompute world bounds and write rows dirty for retired slot N % 3
+├─ SceneSession.prepareFrame(N): recompute bounds/coverageEpoch and write rows dirty for retired slot N % 3
 ├─ CPU visibility: jittered five-plane oracle; prepare scene/shadow row lists and draw arguments
 ├─ declare: import scene vertices/indices/meshes/instances/materials, shadow map, scene color,
 │           both depth/colour history slots, display, histogram, exposure {applied, previous}, drawable
@@ -131,13 +134,10 @@ native-only. Vendor frames record `ExternalWrite` for current colour, `ExternalR
 colour and `ShaderRead` for other depth; previous colour changes only if sampled (ADR 0017).
 
 Vertex pulling uses 48-byte vertices at b0 and the scene's rebased uint32 index pool (base vertex 0).
-Shared CPU/Slang rows are `InstanceRow` 240 bytes, `MaterialRow` 112 and `MeshRow` 48. Instances
-hold current/previous/normal matrices, identity selectors, motion/bounds flags, emissive scale and
+Shared CPU/Slang rows are `InstanceRow` 240 bytes, `MaterialRow` 112 and `MeshRow` 48. Instances hold current/previous/normal matrices, identity selectors, motion/bounds flags, emissive scale and
 world bounds; meshes hold ranges and local bounds. `Scene::meshBounds` also feeds selection framing.
-The CPU oracle reads uploaded rows: five jittered VP planes, 1e-3 world margin, no far plane.
-Unreliable/nonfinite inputs bypass; rejected table rows retain identity and motion.
-Renderer owns three paced `DrawSubmission` pairs, retired on growth at last prepared frame + 3.
-Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
+The CPU oracle reads uploaded rows: five jittered VP planes, 1e-3 world margin, no far plane. Unreliable/nonfinite inputs bypass; rejected table rows retain identity and motion.
+Renderer owns three paced `DrawSubmission` pairs, retired on growth at last prepared frame + 3. Scene rows precede unculled shadows; `lmx.draw.rows`/`lmx.draw.args` expose graph reads.
 Scene/shadow shaders select `gVisibleRows[gDraw.firstEntry + instanceIndex]` at b4, then b5/b6.
 Direct binds a 16-byte firstEntry selector per object; indirect binds zero once and uses firstInstance
 in each 20-byte argument. Batched stably sorts pipeline/material/mesh keys and draws one run per

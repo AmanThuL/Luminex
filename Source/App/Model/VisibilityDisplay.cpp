@@ -33,6 +33,8 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
         return "Shadow view unculled";
     case render::VisibilityReason::UnreliableBounds:
         return "Unreliable bounds";
+    case render::VisibilityReason::Occluded:
+        return "Occluded (previous-frame HZB)";
     case render::VisibilityReason::NonFiniteTransform:
         return "Nonfinite transform";
     }
@@ -62,6 +64,31 @@ std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& st
     };
     append("Scene", status.scene);
     append("Shadow", status.shadow);
+    if (status.occlusionEnabled) {
+        fields.push_back({"Occlusion history",
+                          render::occlusionInvalidReasonName(status.occlusionInvalidReason)});
+        fields.push_back({"HZB source frame", std::to_string(status.occlusionSourceFrame)});
+        fields.push_back({"Pyramid allocation", std::format("{} B", status.pyramidBytes)});
+        const auto& c = status.sceneCounters;
+        fields.push_back(
+            {"Occluded / tested", std::format("{} / {}", c.occluded, c.occlusionTested)});
+        fields.push_back({"History-invalid retained", std::to_string(c.historyInvalid)});
+        fields.push_back(
+            {"Near / outside source / too large",
+             std::format("{} / {} / {}", c.nearCrossing, c.outsideSource, c.rectTooLarge)});
+        if (status.occlusionCheckEnabled) {
+            const auto& check = status.occlusionCheck;
+            fields.push_back({"Independent ID check", !check.enabled   ? "Awaiting reference"
+                                                      : check.passed() ? "Passed"
+                                                                       : "FAILED"});
+            fields.push_back(
+                {"Reference rule", check.strict ? "Strict visibility" : "One-frame recovery"});
+            fields.push_back(
+                {"Missing instances / pixels / streak",
+                 std::format("{} / {} / {}", check.falselyRejectedInstances,
+                             check.falselyRejectedPixels, check.maximumMissingStreak)});
+        }
+    }
     const auto& s = status.submission;
     fields.push_back(
         {"Scene / shadow commands", std::format("{} / {}", s.sceneCommands, s.shadowCommands)});
@@ -97,7 +124,8 @@ std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& st
                              status.argumentMismatches, status.counterMismatches)});
         bool hasTiming = false;
         for (const auto& timing : timings) {
-            if (timing.label.starts_with("lmx.pass.visibility.")) {
+            if (timing.label.starts_with("lmx.pass.visibility.") ||
+                timing.label.starts_with("lmx.pass.hzb.")) {
                 fields.push_back({timing.label, std::format("{:.3f} ms", timing.gpuMilliseconds)});
                 hasTiming = true;
             }
@@ -112,14 +140,29 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
     if (visibility == nullptr)
         return {{"Visibility", "Awaiting this object's rendered frame"}};
     const auto& b = visibility->worldBounds;
-    return {{"Visibility", std::string(visibilityStateName(visibility->state))},
-            {"Reason", visibility->state == render::VisibilityState::Rejected
-                           ? "Outside camera frustum"
-                           : std::string(visibilityReasonName(visibility->reason))},
-            {"World minimum",
-             std::format("{:.3f}, {:.3f}, {:.3f}", b.minimum.x, b.minimum.y, b.minimum.z)},
-            {"World maximum",
-             std::format("{:.3f}, {:.3f}, {:.3f}", b.maximum.x, b.maximum.y, b.maximum.z)}};
+    std::vector<VisibilityField> fields{
+        {"Visibility", std::string(visibilityStateName(visibility->state))},
+        {"Reason", visibility->state == render::VisibilityState::Rejected &&
+                           visibility->reason != render::VisibilityReason::Occluded
+                       ? "Outside camera frustum"
+                       : std::string(visibilityReasonName(visibility->reason))},
+        {"World minimum",
+         std::format("{:.3f}, {:.3f}, {:.3f}", b.minimum.x, b.minimum.y, b.minimum.z)},
+        {"World maximum",
+         std::format("{:.3f}, {:.3f}, {:.3f}", b.maximum.x, b.maximum.y, b.maximum.z)}};
+    const auto& projection = visibility->occlusion;
+    if (projection.outcome != render::OcclusionOutcome::NotTested || projection.occluded) {
+        fields.push_back(
+            {"Occlusion outcome",
+             projection.occluded ? "Occluded" : render::occlusionOutcomeName(projection.outcome)});
+        fields.push_back(
+            {"Source rectangle [min, max)",
+             std::format("({}, {}) to ({}, {})", projection.rectangle[0], projection.rectangle[1],
+                         projection.rectangle[2], projection.rectangle[3])});
+        fields.push_back({"HZB level / nearest depth",
+                          std::format("{} / {:.8f}", projection.level, projection.zBox)});
+    }
+    return fields;
 }
 //======================================================================================================================
 void VisibilityDisplay::observe(const scene::Scene& scene, const render::VisibilityStatus& status) {

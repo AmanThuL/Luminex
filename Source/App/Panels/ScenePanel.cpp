@@ -53,11 +53,13 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
             context.visibilityDisplay.find(context.activeScene.objects[row.index].id,
                                            context.visibilityStatus, context.sceneGeneration);
         culled = state && state->state == render::VisibilityState::Rejected;
-        visibilityTip = state ? std::format("\n{}: {}", visibilityStateName(state->state),
-                                            state->state == render::VisibilityState::Rejected
-                                                ? "Outside camera frustum"
-                                                : visibilityReasonName(state->reason))
-                              : "\nAwaiting this object's rendered frame";
+        visibilityTip =
+            state ? std::format("\n{}: {}", visibilityStateName(state->state),
+                                state->state == render::VisibilityState::Rejected &&
+                                        state->reason != render::VisibilityReason::Occluded
+                                    ? "Outside camera frustum"
+                                    : visibilityReasonName(state->reason))
+                  : "\nAwaiting this object's rendered frame";
     }
     const bool dimmed = culled && !isRowSelected(row, context.selection);
     if (dimmed)

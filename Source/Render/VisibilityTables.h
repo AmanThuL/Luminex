@@ -7,6 +7,8 @@
 #include <cstddef>
 
 namespace lmx::render {
+/// Counter storage per view, including three padding words.
+inline constexpr uint32_t kVisibilityCounterWords = 20;
 /// One threadgroup's maximum candidate count.
 inline constexpr uint32_t kVisibilityChunkSize = 256;
 /// Stable instance row and absolute run index.

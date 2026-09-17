@@ -62,8 +62,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract,
   independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
   validation have separate implementation units with private shared range helpers. `Renderer`
-  composes `ShadowStage` and `SceneStage`, which own
-  opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns
+  composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns
   finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
   240-byte instance, 112-byte material and 48-byte mesh rows, including local/world bounds.
   `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
@@ -79,11 +78,15 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   Five read-only `lmx.scene.*` imports expose vertices, indices, meshes, instances and materials;
   `lmx.draw.rows` and `lmx.draw.args` declare list and indirect-argument reads. CPU-only production
   leaves both buffers without GPU writers. Opt-in `GpuVisibility` adds reset/classify/scan/emit,
-  deterministic fixed slots and frame-keyed retired diagnostics; [contracts](../guides/gpu-visibility.md).
+  deterministic fixed slots and retired diagnostics. Opt-in `HzbStage` owns two output-capacity
+  R32Float pyramids: half-resolution minima, one pass per mip, then a publication read of all mips.
+  GPU `Occlusion` tests use the preceding declared frame's matrix, jitter and active extent;
+  `OcclusionHistory` globally retains on invalid source/camera/coverage evidence or wireframe.
+  `OcclusionReference` draws every candidate directly into private ID/depth targets and joins
+  generational missing-frame streaks at retirement; [contracts](../guides/gpu-visibility.md).
   SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
   and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
-  `Render/FrameDeclaration` shares graph construction and execution across
-  application loops and returns the accepted record for App-side retention. Render also owns
+  `Render/FrameDeclaration` shares graph construction/execution across application loops and returns the accepted record for App-side retention. Render also owns
   camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Modules/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
@@ -138,22 +141,19 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   decomposition, repository discovery and the asset error domain. The glTF loader carries its own
   MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 - **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` handles,
-  the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL
-  uploads, the scene catalog, initial camera mapping,
+  the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL uploads, the scene catalog, initial camera mapping,
   source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms
   (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
   the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The seven-scene catalog also includes optional `san-miguel`, imported at authored
-  metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its
-  pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
+  metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
   Always-available VisibilityLab adds a seeded cube/icosphere grid, four materials, five initial
   camera boundary probes and a 12-second rail. Its configurable total N includes the probes.
   `addMesh`/`addTexture`/`addMaterial`/`addObject` build a scene, and `finalize` merges geometry
   including sky with rebased indices and allocates three table slots. Slot indices remain stable
   across draw-list removal/reorder; stale generations and foreign stores fail checked queries.
-  `prepareFrame(frameNumber)` follows `Device::beginFrame`, updating only rows dirty for that
-  retired slot, recomputing world bounds with the shared corner transform. `Scene::meshBounds`
+  `prepareFrame(frameNumber)` follows `Device::beginFrame`, updating only rows dirty for that retired slot and recomputing world bounds with the shared corner transform. It advances `coverageEpoch` for geometry/mask edits, excluding previous-pose and emissive-only changes. `Scene::meshBounds`
   also supplies selection framing; no per-object local bounds remain. Borrowed CPU instance rows
   match the prepared GPU slot. Changes mark all slots dirty; static scenes converge to zero writes.
   Growth doubles capacity and retains old buffers until `lastFrame + 3`; texture removal invalidates

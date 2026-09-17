@@ -18,7 +18,7 @@ xmake run App --scene visibility-lab --classify gpu --submission batched --class
 The editor opens maximized to usable display bounds. Omit `--windowed` for fullscreen-windowed
 visual validation. Rendering Inspector > Visibility selects the classifier, culling and submission.
 The compact summary shows kept/culled counts, its declared/retired frame and enabled check result.
-Hierarchy dims only frustum-rejected objects; visible, bypassed and pending names stay normal.
+Hierarchy dims frustum-rejected and occluded objects; visible, bypassed and pending names stay normal.
 Names have no status prefixes. Selected rows use normal text for contrast; hover and Inspector retain reasons.
 Counters, work & timings retains every detailed field; hover headings and controls for explanations.
 Overflow, check failures and fallback reasons remain visible even when details are collapsed.
@@ -52,7 +52,7 @@ rows at its beginning, and retain geometry/firstInstance even when instanceCount
 The graph sees CPU-written candidates/runs/chunks, GPU-written states/counters/rows/arguments,
 transient counts/offsets, shader reads and indirect reads separately. Physical submission buffers
 retain their terminal uses across classifier switches. The existing shared RHI buffer namespace
-has sixteen slots; visibility entries use slots 0–12 without changing scene shader bindings.
+has sixteen slots; visibility entries use slots 0–12, with source-space occlusion parameters in slot 13.
 
 Every frame uses one of three paced slots. Draw rows/arguments grow together and keep replaced
 allocations through last prepared frame + 3. Visibility input/state storage doubles only in the
@@ -99,7 +99,7 @@ MTL_DEBUG_LAYER=1 xmake run App --scene visibility-lab --classify gpu \
 ```
 
 Scored headless measurement refuses validation/capture instrumentation and check mode; editor
-measurement remains unscored. Schema 2 separates declaration CPU metrics from exact frame-keyed
+measurement remains unscored. Schema 3 separates declaration CPU metrics from exact frame-keyed
 retired GPU visibility and timings. A post-waitIdle drain joins final results without rendering
 three invented frames. Measurement retains the existing serialized-retirement pacing, which
 measures isolated frame costs rather than overlapped throughput.
@@ -117,3 +117,68 @@ ICB submission is unavailable in this implementation. The pinned
 [ICB spike](../research/2026-09-15-m7.3-icb-runtime-spike.md) passed native execution, texture parity
 and 900-frame reliability, but its required labelled capture gate remains unresolved. That result
 neither proves ICB impossible nor enables a production adapter or default switch.
+
+## Previous-frame occlusion
+
+Enable occlusion only with GPU classification and culling; direct submission remains unavailable:
+
+```sh
+xmake run App --scene visibility-lab --lab-instances 16384 --lab-occluders 8 \
+  --classify gpu --submission batched --occlusion on
+MTL_DEBUG_LAYER=1 xmake run App --scene visibility-lab --lab-occluders 8 \
+  --classify gpu --occlusion on --occlusion-check --classify-check --unscored \
+  --measure /absolute/evidence/check.json --warmup 0 --frames 720
+xmake run App --classify gpu --occlusion on --hzb-level 2
+```
+
+The default stays off. `--lab-occluders` defaults to zero and only accepts VisibilityLab; positive
+counts append deterministic slabs with gaps and masked coverage. Existing workloads keep their
+original geometry when it is zero. `--hzb-level` requires occlusion, selects a nearest-expanded
+raw reversed-depth view, and clamps to the available last level at the current output extent.
+White is near and black far; low reversed depth naturally looks dark. Inspector offers the actual
+available levels. Diagnostic views and ID checks require unscored measurement.
+
+Each frame builds a half-resolution R32Float minimum pyramid after scene depth. Odd active
+extents use ceil coverage; padded allocation depends only on output extent. Each level is a
+separate compute pass; a small `lmx.pass.hzb.publish` read preserves every level and leaves a
+sampled terminal state. `hzbGpuMs` includes reductions and publication, excludes visualization,
+and remains separate from `visibilityGpuMs`. The two pyramids alternate independently of
+reconstruction and consume the preceding device frame without CPU readback.
+
+The box test uses the source frame's jittered matrix and active extent. It rounds outward with a
+one-source-texel guard and reads at most four integer mip texels. Near-plane crossings, rectangles
+outside source coverage and rectangles too large for the top level are retained. The fixed depth
+guard biases toward retention. The shadow view always stays unculled.
+
+History invalidates globally on missing/nonadjacent sources, toggles, scene/output changes,
+camera-cut events, per-frame movement above 1 m or 10 degrees, and any coverageEpoch change.
+Coverage includes instance identity/transform/mesh/material assignment and masked alpha, texture,
+UV, cutoff and sidedness. Previous-pose refresh and emissive-only edits do not invalidate it.
+Wireframe never rejects by occlusion. A continuously animated scene therefore retains all
+candidates while its coverage changes. Projection and render-scale changes use the stored source
+projection instead of resetting evidence.
+
+Inspector shows source frame, validity/reason, counters, memory, check results and matched HZB
+pass timings. Selected-object fields describe the retired source rectangle, mip and nearest box
+depth. Viewport outlines use that source view, with a disclosed cap for rejected bounds; the
+source-frame label matters when the current camera has moved. Hierarchy's occlusion tip reads
+"Occluded (previous-frame HZB)".
+
+`--occlusion-check` renders all candidates through independent direct ID draws with private depth
+and shared masked coverage. It joins exact retired frame IDs and full generational instance
+identities. Reports retain visible false rejections, affected pixels, and per-instance missing
+streaks. An unchanged view requires zero false rejections; continuous camera motion allows one
+missing frame and fails at two. Geometry recovery does not imply immediate temporal image recovery.
+Check data never controls rejection. A failed capture sequence is incomplete; diagnostic
+measurements retain the full requested interval and report the first reference failure at drain.
+
+The paired collector adds `occlusion-on-off-indirect` and `occlusion-on-off-batched` controls and
+occluded lab workloads at 1,024, 16,384 and 65,536 instances. Its original six workloads and
+12 repetitions / 32 warmup / 256 measured-frame protocol remain unchanged. Every attempt and
+confidence interval is evidence; no control automatically selects a default.
+
+For explicit offscreen validation only, set both `LMX_OCCLUSION_SCALE_CHANGE_FRAME` (zero-based
+simulation frame) and `LMX_OCCLUSION_SCALE_CHANGE_VALUE` (0.5–1.0) to step the active scale during
+a rail. Temporal reconstruction must be enabled and measurements must be unscored. Reports keep
+these environment values and actual frame extents. This scripted step exercises source-extent
+handling; it is not a dynamic-resolution controller performance result.

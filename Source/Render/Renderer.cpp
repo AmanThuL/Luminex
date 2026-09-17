@@ -8,6 +8,7 @@
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"
 #include "Render/GpuVisibility.h"
+#include "Render/OcclusionReference.h"
 #include "Render/VendorTemporalScaler.h"
 #include <chrono>
 
@@ -279,6 +280,10 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     if (auto slots = m_temporalResolve->resize(width, height); !slots) {
         return std::unexpected(slots.error());
     }
+    if (m_hzbStage) {
+        if (auto result = m_hzbStage->resize(width, height); !result)
+            return std::unexpected(result.error());
+    }
     return {};
 }
 
@@ -485,6 +490,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     const auto planes = extractFrustumPlanes(temporalEnabled ? cameraState.viewProjectionJittered
                                                              : cameraState.viewProjection);
+    m_previousPyramid = prepareOcclusion(graph, camera, view, extents, cameraState);
     const auto drawBuffers = prepareVisibility(graph, commands, view, planes, sceneBuffers);
     const auto drawRows = drawBuffers[0];
     const auto drawArguments = drawBuffers[1];
@@ -577,6 +583,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 
     m_displayStage->declare(graph, commands, displayInput, bloomResult, displayColor,
                             view.bloomEnabled, view.bloomIntensity);
+
+    // HZB follows every temporal depth consumer in the stable graph schedule.
+    declareOcclusion(graph, commands, view, nextVersion(sceneDepth), displayResult);
 
     // The frame just declared becomes the previous one. A frame the caller abandoned before
     // declaring never reaches here, so it never becomes anyone's predecessor.

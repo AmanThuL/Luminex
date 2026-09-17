@@ -3,6 +3,6 @@
 target("Render")
     set_kind("static")
     add_files("*.cpp")
-    add_files("Visibility.cpp", {cxflags = "-ffp-contract=off"})
+    add_files("Visibility.cpp", "Occlusion.cpp", {cxflags = "-ffp-contract=off"})
     add_deps("Core", "RHI")
     add_packages("glm", {public = true})

@@ -20,7 +20,8 @@ TEST_CASE("capture manifest v2 preserves run fields and declares display, contai
         "\"requestedMode\":\"metalfx\",\"width\":1280,\"height\":720,"
         "\"fps\":60,\"warmup\":32,\"frameCount\":2,\"renderScale\":0.75,"
         "\"visibilityEnabled\":true,\"submission\":\"indirect\",\"classify\":\"cpu\","
-        "\"classifyCheck\":false,\"labInstances\":4096,"
+        "\"classifyCheck\":false,\"occlusionEnabled\":false,\"occlusionCheck\":false,"
+        "\"hzbDebugLevel\":-1,\"labOccluders\":0,\"labInstances\":4096,"
         "\"debugView\":0,\"cameraTrack\":true,\"display\":" +
         render::toJson(render::kSdrDisplayDomain) +
         ",\"container\":\"png\",\"ui\":{\"composited\":false},"

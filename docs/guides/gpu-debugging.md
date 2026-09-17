@@ -207,10 +207,10 @@ Rendering > Visibility defaults to culling and indirect submission; direct/batch
 Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
 CPU classify/prepare time. Hierarchy dims frustum-rejected names without disabling selection; hover status and Inspector bounds use the same retained
 frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
-The graph imports `lmx.draw.rows` and `lmx.draw.args`; both are CPU-written, with scene/shadow reads.
+The graph imports `lmx.draw.rows` and `lmx.draw.args` with scene/shadow reads; the default CPU path uploads them, while GPU classification declares compute writes.
 Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
 
-Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, retired counters and schema 2: [GPU visibility guide](gpu-visibility.md).
+Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, previous-frame occlusion, retired counters and measurement schema 3: [GPU visibility guide](gpu-visibility.md).
 VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
 that option requires `--scene visibility-lab`. Its seeded grid and 12-second camera rail are fixed.
 

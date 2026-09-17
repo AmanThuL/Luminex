@@ -53,11 +53,15 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
     plan.width = renderer.width();
     plan.height = renderer.height();
     plan.labInstances = m_labInstances;
+    plan.labOccluders = m_labOccluders;
     plan.scene = scene::sceneIdString(m_activeSceneId);
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
     plan.classify = classifyModeName(m_settings.classifyMode);
     plan.classifyCheck = m_settings.classifyCheck;
+    plan.occlusionEnabled = m_settings.occlusionEnabled;
+    plan.occlusionCheck = m_settings.occlusionCheck;
+    plan.hzbDebugLevel = m_settings.hzbDebugLevel;
     plan.visibilityEnabled = m_settings.visibilityEnabled;
     plan.renderScale = m_settings.renderScale;
     plan.interactive = true;
@@ -97,6 +101,9 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
         m_measurement.plan().submission != submissionName(m_settings.submission) ||
         m_measurement.plan().classify != classifyModeName(m_settings.classifyMode) ||
         m_measurement.plan().classifyCheck != m_settings.classifyCheck ||
+        m_measurement.plan().occlusionEnabled != m_settings.occlusionEnabled ||
+        m_measurement.plan().occlusionCheck != m_settings.occlusionCheck ||
+        m_measurement.plan().hzbDebugLevel != m_settings.hzbDebugLevel ||
         m_measurement.plan().temporal != temporalName(m_settings) ||
         m_measurement.plan().renderScale != m_settings.renderScale ||
         m_settings.dynamicResolutionEnabled) {
