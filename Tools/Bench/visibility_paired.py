@@ -28,6 +28,12 @@ WORKLOADS = {
     "san-miguel": ("san-miguel", 4096, False),
     "temporal-lab": ("temporal-lab", 4096, True),
 }
+DEFAULT_WORKLOADS = tuple(WORKLOADS)
+WORKLOADS.update({
+    "occluded-1024": ("visibility-lab", 1024, True),
+    "occluded-16384": ("visibility-lab", 16384, True),
+    "occluded-65536": ("visibility-lab", 65536, True),
+})
 CONTROLS = {
     "cull-off": ((False, "indirect", "cpu"), (True, "indirect", "cpu")),
     "indirect-direct": ((True, "direct", "cpu"), (True, "indirect", "cpu")),
@@ -37,7 +43,13 @@ CONTROLS.update({
     "gpu-cpu-indirect": ((True, "indirect", "cpu"), (True, "indirect", "gpu")),
     "gpu-cpu-batched": ((True, "batched", "cpu"), (True, "batched", "gpu")),
 })
-METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs", "visibilityGpuMs")
+DEFAULT_CONTROLS = tuple(CONTROLS)
+CONTROLS.update({
+    "occlusion-on-off-indirect": ((True, "indirect", "gpu", False), (True, "indirect", "gpu", True)),
+    "occlusion-on-off-batched": ((True, "batched", "gpu", False), (True, "batched", "gpu", True)),
+})
+METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs", "visibilityGpuMs",
+           "hzbGpuMs", "sceneGpuMs", "shadowGpuMs")
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -88,13 +100,20 @@ def validate_report(report, expected, scored):
             raise ValueError("invalid measurement: " + name)
 
     require_dict(report, "report")
-    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] != 2 or report.get("complete") is not True:
+    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] not in (2, 3) or report.get("complete") is not True:
         raise ValueError("incomplete or unsupported report")
+    legacy = report["schemaVersion"] == 2
+    if legacy and (expected["occlusionEnabled"] or expected["occlusionCheck"] or
+                   expected["labOccluders"] or expected["hzbDebugLevel"] >= 0):
+        raise ValueError("schema 2 cannot report occlusion workloads")
     if report.get("interactive") is not False or report.get("scored") is not scored:
         raise ValueError("scoring/frontend mismatch")
     if report.get("pacing") != "serialized-retirement":
         raise ValueError("unexpected retirement pacing")
-    if report.get("plan") != expected:
+    actual_plan = report.get("plan")
+    comparison = {k: v for k, v in expected.items() if not legacy or k not in
+                  ("occlusionEnabled", "occlusionCheck", "hzbDebugLevel", "labOccluders")}
+    if actual_plan != comparison:
         raise ValueError("run plan differs from requested invocation")
     provenance = require_dict(report.get("provenance"), "provenance")
     for key in ("device", "os", "buildMode", "executableHash"):
@@ -147,6 +166,14 @@ def validate_report(report, expected, scored):
         # Render/Temporal.h orders Raw=0, NativeTaa=1, VendorTemporal=2.
         if sample["effectiveScale"] != 1 or sample["vendorFallback"] != 0 or sample["effectiveReconstruction"] != 1:
             raise ValueError("effective reconstruction differs from frozen Native TAA plan")
+        if legacy:
+            # Compatibility is derived from the immutable raw pass list; files stay untouched.
+            for metric, prefix in (("hzbGpuMs", "lmx.pass.hzb."),
+                                   ("sceneGpuMs", "lmx.pass.scene"),
+                                   ("shadowGpuMs", "lmx.pass.shadow")):
+                sample[metric] = sum(p.get("gpuMs", 0) for p in passes
+                                     if isinstance(p, dict) and p.get("label", "").startswith(prefix)
+                                     and p.get("label") != "lmx.pass.hzb.debug")
         for metric in METRICS:
             nonnegative_number(sample.get(metric), metric)
         for timing in passes:
@@ -171,10 +198,25 @@ def validate_report(report, expected, scored):
             nonnegative_integer(visibility.get(key), key)
             if visibility[key]:
                 raise ValueError("visibility diagnostic mismatch")
+        if legacy:
+            visibility.update(occlusionEnabled=False, occlusionCheckEnabled=False,
+                              occlusionHistoryValid=False, occlusionInvalidReason="Disabled",
+                              occlusionSourceFrame=0, pyramidBytes=0)
+        if (visibility.get("occlusionEnabled") is not expected["occlusionEnabled"] or
+                visibility.get("occlusionCheckEnabled") is not False):
+            raise ValueError("occlusion request or diagnostic mode differs")
+        if not isinstance(visibility.get("occlusionHistoryValid"), bool) or not isinstance(visibility.get("occlusionInvalidReason"), str):
+            raise ValueError("missing occlusion history facts")
+        for key in ("occlusionSourceFrame", "pyramidBytes"):
+            nonnegative_integer(visibility.get(key), key)
         for view in ("scene", "shadow"):
             counters = require_dict(visibility.get(view), view + " counters")
+            if legacy:
+                counters.update(occluded=0, occlusionTested=0, historyInvalid=0,
+                                nearCrossing=0, outsideSource=0, rectTooLarge=0)
             for key in ("candidates", "visible", "rejected", "emittedRows", "emittedCommands",
-                        "overflowedRows", "overflowedCommands"):
+                        "overflowedRows", "overflowedCommands", "occluded", "occlusionTested",
+                        "historyInvalid", "nearCrossing", "outsideSource", "rectTooLarge"):
                 nonnegative_integer(counters.get(key), key)
             bypassed = counters.get("bypassed")
             if not isinstance(bypassed, list) or len(bypassed) != 4:
@@ -186,6 +228,10 @@ def validate_report(report, expected, scored):
                     counters["emittedRows"] != retained or counters["overflowedRows"] or
                     counters["overflowedCommands"]):
                 raise ValueError("visibility counters do not reconcile without overflow")
+            if (counters["occluded"] > counters["rejected"] or
+                    counters["occlusionTested"] < sum(counters[k] for k in
+                        ("occluded", "nearCrossing", "outsideSource", "rectTooLarge"))):
+                raise ValueError("occlusion counters do not reconcile")
         if visibility["scene"]["candidates"] != sample["candidates"]:
             raise ValueError("retired candidate count differs from declaration")
         if expected["classify"] == "gpu":
@@ -195,6 +241,13 @@ def validate_report(report, expected, scored):
         visibility_sum = sum(p["gpuMs"] for p in passes if p["label"].startswith("lmx.pass.visibility."))
         if not math.isclose(visibility_sum, sample["visibilityGpuMs"], rel_tol=1e-12, abs_tol=1e-12):
             raise ValueError("visibility GPU scope differs from joined passes")
+        for metric, prefix in (("hzbGpuMs", "lmx.pass.hzb."),
+                               ("sceneGpuMs", "lmx.pass.scene"),
+                               ("shadowGpuMs", "lmx.pass.shadow")):
+            scope = sum(p["gpuMs"] for p in passes if p["label"].startswith(prefix)
+                        and p["label"] != "lmx.pass.hzb.debug")
+            if not math.isclose(scope, sample[metric], rel_tol=1e-12, abs_tol=1e-12):
+                raise ValueError(metric + " differs from joined passes")
         if sample["candidates"] != sample["visible"] + sample["rejected"]:
             raise ValueError("visibility count mismatch")
     return provenance
@@ -212,11 +265,14 @@ def unique_selection(text, allowed, label):
 
 def expected_plan(workload, mode, warmup, frames):
     scene, count, track = WORKLOADS[workload]
-    visibility, submission, classify = mode
+    visibility, submission, classify = mode[:3]
+    occlusion = mode[3] if len(mode) == 4 else False
     return dict(warmupFrames=warmup, measuredFrames=frames, width=1280, height=720,
                 labInstances=count, scene=scene, temporal="taa", submission=submission,
                 visibilityEnabled=visibility, cameraTrack=track, renderScale=1,
-                classify=classify, classifyCheck=False,
+                classify=classify, classifyCheck=False, occlusionEnabled=occlusion,
+                occlusionCheck=False, hzbDebugLevel=-1,
+                labOccluders=8 if workload.startswith("occluded-") else 0,
                 stepSeconds=1 / 60)
 
 
@@ -228,6 +284,10 @@ def run_side(binary, report_path, plan, unscored, timeout):
            "--measure-camera", "track" if plan["cameraTrack"] else "initial"]
     if plan["scene"] == "visibility-lab":
         cmd += ["--lab-instances", str(plan["labInstances"])]
+        if plan["labOccluders"]:
+            cmd += ["--lab-occluders", str(plan["labOccluders"])]
+    if plan["occlusionEnabled"]:
+        cmd += ["--occlusion", "on"]
     if unscored:
         cmd += ["--unscored"]
     attempt = {"command": cmd}
@@ -253,6 +313,7 @@ def run_side(binary, report_path, plan, unscored, timeout):
 def collect_cell(args, workload, control, output):
     pairs = {metric: [] for metric in METRICS}
     failures = []
+    observations = {"occluded": [], "rejected": [], "pyramidBytes": []}
     frozen_provenance = None
     for repetition in range(args.repetitions):
         order = (0, 1) if repetition % 2 == 0 else (1, 0)
@@ -281,11 +342,22 @@ def collect_cell(args, workload, control, output):
         for metric in METRICS:
             pairs[metric].append([statistics.median(sample[metric] for sample in reports[side]["samples"])
                                   for side in (0, 1)])
+        for name in observations:
+            observations[name].append([
+                statistics.median(sample["visibility"]["scene"][name] if name != "pyramidBytes"
+                                  else sample["visibility"][name] for sample in reports[side]["samples"])
+                for side in (0, 1)])
         print(f"{workload}/{control} pair {repetition + 1}/{args.repetitions} order={order}", flush=True)
     complete = all(len(values) == args.repetitions for values in pairs.values())
     return {"complete": complete, "failures": failures, "provenance": frozen_provenance,
             "analysis": {metric: analyze_pairs(values) for metric, values in pairs.items()} if complete else {},
-            "retainedPairs": pairs}
+            "retainedPairs": pairs,
+            "observations": {name: {
+                "unit": "bytes" if name == "pyramidBytes" else "instances",
+                "pairs": values,
+                "absolute": {key.removesuffix("Ms"): value for key, value in
+                             analyze_pairs(values)["absolute"].items()}}
+                for name, values in observations.items()}}
 
 
 def selftest():
@@ -318,19 +390,28 @@ def selftest():
                   effectiveReconstruction=1, sceneCommands=1, shadowCommands=2, tableBytes=1024,
                   listBytes=8, reservedListBytes=8, argumentBytes=60, transientBytes=4096,
                   **{key: 1 for key in METRICS})
-    sample.update(visibilityGpuMs=0, effectiveClassify="cpu", effectiveSubmission="indirect", allocatedListBytes=24,
+    sample.update(visibilityGpuMs=0, hzbGpuMs=0, sceneGpuMs=0, shadowGpuMs=0, effectiveClassify="cpu", effectiveSubmission="indirect", allocatedListBytes=24,
                   allocatedArgumentBytes=120, candidateBytes=0, runBytes=0, chunkBytes=0,
                   stateBytes=0, counterBytes=0,
                   visibility=dict(frameId=1, classify="cpu", retired=False, overflow=False,
                                   checkEnabled=False, stateMismatches=0, rowMismatches=0,
-                                  argumentMismatches=0, counterMismatches=0))
+                                  argumentMismatches=0, counterMismatches=0, occlusionEnabled=False,
+                                  occlusionCheckEnabled=False, occlusionHistoryValid=False,
+                                  occlusionInvalidReason="Disabled", occlusionSourceFrame=0, pyramidBytes=0))
     for view in ("scene", "shadow"):
         sample["visibility"][view] = dict(candidates=2, visible=1, rejected=1,
                                         bypassed=[0, 0, 0, 0], emittedRows=1,
-                                        emittedCommands=1, overflowedRows=0, overflowedCommands=0)
-    report = dict(schemaVersion=2, complete=True, scored=True, interactive=False,
+                                        emittedCommands=1, overflowedRows=0, overflowedCommands=0,
+                                        occluded=0, occlusionTested=0, historyInvalid=0,
+                                        nearCrossing=0, outsideSource=0, rectTooLarge=0)
+    report = dict(schemaVersion=3, complete=True, scored=True, interactive=False,
                   pacing="serialized-retirement", plan=plan, provenance=provenance, samples=[sample])
     validate_report(report, plan, True)
+    legacy = copy.deepcopy(report)
+    legacy["schemaVersion"] = 2
+    for key in ("occlusionEnabled", "occlusionCheck", "hzbDebugLevel", "labOccluders"):
+        del legacy["plan"][key]
+    validate_report(legacy, plan, True)
     for mutation in (lambda r: r["samples"].clear(), lambda r: r["samples"][0].update(frameId=0),
                      lambda r: r["samples"][0].update(sequenceFrame=3),
                      lambda r: r["samples"][0].update(gpuSumMs=float("nan")),
@@ -386,6 +467,23 @@ def selftest():
             pass
         else:
             raise AssertionError("pending GPU counters accepted")
+    assert len(DEFAULT_WORKLOADS) == 6
+    assert expected_plan("sponza", CONTROLS["cull-off"][0], 32, 256)["labOccluders"] == 0
+    for control in ("occlusion-on-off-indirect", "occlusion-on-off-batched"):
+        before = expected_plan("occluded-1024", CONTROLS[control][0], 32, 256)
+        after = expected_plan("occluded-1024", CONTROLS[control][1], 32, 256)
+        assert before["labOccluders"] == after["labOccluders"] == 8
+        assert before["occlusionEnabled"] is False and after["occlusionEnabled"] is True
+        assert before["classify"] == after["classify"] == "gpu"
+    for key in ("hzbGpuMs", "sceneGpuMs", "shadowGpuMs"):
+        bad = copy.deepcopy(report)
+        bad["samples"][0][key] = 0.5
+        try:
+            validate_report(bad, plan, True)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unmatched independent GPU scope accepted")
     assert expected_plan("san-miguel", (True, "direct", "cpu"), 32, 256)["cameraTrack"] is False
     assert [((0, 1) if rep % 2 == 0 else (1, 0)) for rep in range(4)] == [(0, 1), (1, 0), (0, 1), (1, 0)]
     for text, allowed in (("sponza,sponza", WORKLOADS), ("cull-off,cull-off", CONTROLS)):
@@ -409,8 +507,8 @@ def main():
     parser.add_argument("--repetitions", default=12, type=int)
     parser.add_argument("--warmup", default=32, type=int)
     parser.add_argument("--frames", default=256, type=int)
-    parser.add_argument("--workloads", default=",".join(WORKLOADS))
-    parser.add_argument("--controls", default=",".join(CONTROLS))
+    parser.add_argument("--workloads", default=",".join(DEFAULT_WORKLOADS))
+    parser.add_argument("--controls", default=",".join(DEFAULT_CONTROLS))
     parser.add_argument("--unscored", action="store_true")
     parser.add_argument("--timeout", default=1200, type=int)
     args = parser.parse_args()
@@ -434,7 +532,7 @@ def main():
     raw.mkdir()
     args.binary_hash = hashlib.sha256(args.binary.read_bytes()).hexdigest()
     args.frozen_provenance = None
-    collection = dict(schemaVersion=2, scoredProtocol=frozen and not args.unscored,
+    collection = dict(schemaVersion=3, scoredProtocol=frozen and not args.unscored,
                       binary=str(args.binary), binarySha256=args.binary_hash,
                       seed=SEED, resamples=RESAMPLES, confidence=0.95,
                       direction="positive means candidate costs less", adoptionRule=None,

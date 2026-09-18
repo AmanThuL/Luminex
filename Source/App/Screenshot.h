@@ -31,7 +31,9 @@ int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, 
                   render::SubmissionMode submission = render::SubmissionMode::Indirect,
                   uint32_t labInstances = 4096,
                   render::ClassifyMode classifyMode = render::ClassifyMode::Cpu,
-                  bool classifyCheck = false);
+                  bool classifyCheck = false, bool occlusionEnabled = false,
+                  bool occlusionCheck = false, int32_t hzbDebugLevel = -1,
+                  uint32_t labOccluders = 0);
 
 /// Captures options.frames post-warmup frames at exactly 60 Hz into a new or empty directory.
 /// Writes numbered PNGs or BMPs and a settings/camera/status manifest. A vendor fallback, flat

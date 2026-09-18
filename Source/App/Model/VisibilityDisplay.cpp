@@ -3,6 +3,7 @@
 /// @brief Formats visibility diagnostics and validates retained candidate identities.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/VisibilityDisplay.h"
+#include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include <algorithm>
@@ -33,6 +34,8 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
         return "Shadow view unculled";
     case render::VisibilityReason::UnreliableBounds:
         return "Unreliable bounds";
+    case render::VisibilityReason::Occluded:
+        return "Occluded (previous-frame HZB)";
     case render::VisibilityReason::NonFiniteTransform:
         return "Nonfinite transform";
     }
@@ -42,68 +45,123 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
 std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& status,
                                               std::span<const rhi::PassTiming> timings) {
     std::vector<VisibilityField> fields;
-    fields.push_back({"Classifier", std::string(classifyModeName(status.classifyMode))});
+    fields.push_back({"Classifier", std::string(classifyModeName(status.classifyMode)),
+                      VisibilityFieldGroup::Frame});
     fields.push_back({status.isRetired ? "Retired frame" : "Declared frame",
-                      std::to_string(status.frameNumber)});
+                      std::to_string(status.frameNumber), VisibilityFieldGroup::Frame});
     if (status.classifyMode == render::ClassifyMode::Gpu && !status.isRetired) {
-        fields.push_back({"GPU classification", "Awaiting retired frame"});
+        fields.push_back(
+            {"GPU classification", "Awaiting retired frame", VisibilityFieldGroup::Frame});
         return fields;
     }
     const auto append = [&fields](std::string_view name, const render::VisibilityResult& result) {
-        fields.push_back({std::format("{} candidates / visible / rejected", name),
-                          std::format("{} / {} / {}", result.candidates.size(), result.visible,
-                                      result.rejected)});
+        fields.push_back(
+            {std::format("{} candidates / visible / rejected", name),
+             std::format("{} / {} / {}", result.candidates.size(), result.visible, result.rejected),
+             VisibilityFieldGroup::Visibility});
         for (size_t i = 1; i < result.bypassed.size(); ++i) {
             fields.push_back(
                 {std::format("{}: {}", name,
                              visibilityReasonName(static_cast<render::VisibilityReason>(i))),
-                 std::to_string(result.bypassed[i])});
+                 std::to_string(result.bypassed[i]), VisibilityFieldGroup::Visibility});
         }
     };
     append("Scene", status.scene);
     append("Shadow", status.shadow);
+    if (status.occlusionEnabled) {
+        fields.push_back({"Occlusion history",
+                          render::occlusionInvalidReasonName(status.occlusionInvalidReason),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"HZB source frame", std::to_string(status.occlusionSourceFrame),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"Pyramid allocation", std::format("{} B", status.pyramidBytes),
+                          VisibilityFieldGroup::Occlusion});
+        const auto& c = status.sceneCounters;
+        fields.push_back({"Occluded / tested",
+                          std::format("{} / {}", c.occluded, c.occlusionTested),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"History-invalid retained", std::to_string(c.historyInvalid),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back(
+            {"Near / outside source / too large",
+             std::format("{} / {} / {}", c.nearCrossing, c.outsideSource, c.rectTooLarge),
+             VisibilityFieldGroup::Occlusion});
+        if (status.occlusionCheckEnabled) {
+            const auto& check = status.occlusionCheck;
+            fields.push_back({"Independent ID check",
+                              !check.enabled   ? "Awaiting reference"
+                              : check.passed() ? "Passed"
+                                               : "FAILED",
+                              VisibilityFieldGroup::Occlusion});
+            fields.push_back({"Reference rule",
+                              check.strict ? "Strict visibility" : "One-frame recovery",
+                              VisibilityFieldGroup::Occlusion});
+            fields.push_back({"Missing instances / pixels / streak",
+                              std::format("{} / {} / {}", check.falselyRejectedInstances,
+                                          check.falselyRejectedPixels, check.maximumMissingStreak),
+                              VisibilityFieldGroup::Occlusion});
+        }
+    }
     const auto& s = status.submission;
+    fields.push_back({"Scene / shadow commands",
+                      std::format("{} / {}", s.sceneCommands, s.shadowCommands),
+                      VisibilityFieldGroup::Submission});
     fields.push_back(
-        {"Scene / shadow commands", std::format("{} / {}", s.sceneCommands, s.shadowCommands)});
-    fields.push_back({"Instanced runs", std::to_string(s.instancedRuns)});
-    fields.push_back(
-        {"Valid row / argument payload", std::format("{} / {} B", s.listBytes, s.argumentBytes)});
+        {"Instanced runs", std::to_string(s.instancedRuns), VisibilityFieldGroup::Submission});
+    fields.push_back({"Valid row / argument payload",
+                      std::format("{} / {} B", s.listBytes, s.argumentBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"List / argument allocation",
-                      std::format("{} / {} B", s.allocatedListBytes, s.allocatedArgumentBytes)});
+                      std::format("{} / {} B", s.allocatedListBytes, s.allocatedArgumentBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"CPU classify / prepare",
-                      std::format("{:.3f} / {:.3f} ms", status.classifyMs, status.prepareMs)});
+                      std::format("{:.3f} / {:.3f} ms", status.classifyMs, status.prepareMs),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"Candidate / run / chunk preparation",
-                      std::format("{} / {} / {} B", s.candidateBytes, s.runBytes, s.chunkBytes)});
+                      std::format("{} / {} / {} B", s.candidateBytes, s.runBytes, s.chunkBytes),
+                      VisibilityFieldGroup::Submission});
+    fields.push_back({"State / counter storage",
+                      std::format("{} / {} B", s.stateBytes, s.counterBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back(
-        {"State / counter storage", std::format("{} / {} B", s.stateBytes, s.counterBytes)});
-    fields.push_back({"Overflow", status.overflow ? "Work dropped" : "None"});
+        {"Overflow", status.overflow ? "Work dropped" : "None", VisibilityFieldGroup::Submission});
     if (status.classifyMode == render::ClassifyMode::Gpu) {
         const auto counters = [&fields](std::string_view name,
                                         const render::VisibilityCounters& c) {
             fields.push_back({std::format("{} emitted rows / commands", name),
-                              std::format("{} / {}", c.emittedRows, c.emittedCommands)});
+                              std::format("{} / {}", c.emittedRows, c.emittedCommands),
+                              VisibilityFieldGroup::Submission});
             fields.push_back({std::format("{} overflow rows / commands", name),
-                              std::format("{} / {}", c.overflowedRows, c.overflowedCommands)});
+                              std::format("{} / {}", c.overflowedRows, c.overflowedCommands),
+                              VisibilityFieldGroup::Submission});
         };
         counters("Scene", status.sceneCounters);
         counters("Shadow", status.shadowCounters);
-        fields.push_back({"CPU oracle check", !status.checkEnabled   ? "Off"
-                                              : status.checkPassed() ? "Passed"
-                                                                     : "FAILED"});
+        fields.push_back({"CPU oracle check",
+                          !status.checkEnabled   ? "Off"
+                          : status.checkPassed() ? "Passed"
+                                                 : "FAILED",
+                          VisibilityFieldGroup::Visibility});
         if (status.checkEnabled)
             fields.push_back(
                 {"State / row / argument / counter mismatches",
                  std::format("{} / {} / {} / {}", status.stateMismatches, status.rowMismatches,
-                             status.argumentMismatches, status.counterMismatches)});
+                             status.argumentMismatches, status.counterMismatches),
+                 VisibilityFieldGroup::Visibility});
         bool hasTiming = false;
         for (const auto& timing : timings) {
-            if (timing.label.starts_with("lmx.pass.visibility.")) {
-                fields.push_back({timing.label, std::format("{:.3f} ms", timing.gpuMilliseconds)});
+            if (timing.label.starts_with("lmx.pass.visibility.") ||
+                timing.label.starts_with("lmx.pass.hzb.")) {
+                fields.push_back({timing.label, std::format("{:.3f} ms", timing.gpuMilliseconds),
+                                  timing.label.starts_with("lmx.pass.hzb.")
+                                      ? VisibilityFieldGroup::Occlusion
+                                      : VisibilityFieldGroup::Submission});
                 hasTiming = true;
             }
         }
         if (!hasTiming)
-            fields.push_back({"GPU visibility timings", "Awaiting matching frame"});
+            fields.push_back({"GPU visibility timings", "Awaiting matching frame",
+                              VisibilityFieldGroup::Submission});
     }
     return fields;
 }
@@ -112,14 +170,29 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
     if (visibility == nullptr)
         return {{"Visibility", "Awaiting this object's rendered frame"}};
     const auto& b = visibility->worldBounds;
-    return {{"Visibility", std::string(visibilityStateName(visibility->state))},
-            {"Reason", visibility->state == render::VisibilityState::Rejected
-                           ? "Outside camera frustum"
-                           : std::string(visibilityReasonName(visibility->reason))},
-            {"World minimum",
-             std::format("{:.3f}, {:.3f}, {:.3f}", b.minimum.x, b.minimum.y, b.minimum.z)},
-            {"World maximum",
-             std::format("{:.3f}, {:.3f}, {:.3f}", b.maximum.x, b.maximum.y, b.maximum.z)}};
+    std::vector<VisibilityField> fields{
+        {"Visibility", std::string(visibilityStateName(visibility->state))},
+        {"Reason", visibility->state == render::VisibilityState::Rejected &&
+                           visibility->reason != render::VisibilityReason::Occluded
+                       ? "Outside camera frustum"
+                       : std::string(visibilityReasonName(visibility->reason))},
+        {"World minimum",
+         std::format("{:.3f}, {:.3f}, {:.3f}", b.minimum.x, b.minimum.y, b.minimum.z)},
+        {"World maximum",
+         std::format("{:.3f}, {:.3f}, {:.3f}", b.maximum.x, b.maximum.y, b.maximum.z)}};
+    const auto& projection = visibility->occlusion;
+    if (projection.outcome != render::OcclusionOutcome::NotTested || projection.occluded) {
+        fields.push_back(
+            {"Occlusion outcome",
+             projection.occluded ? "Occluded" : render::occlusionOutcomeName(projection.outcome)});
+        fields.push_back(
+            {"Source rectangle [min, max)",
+             std::format("({}, {}) to ({}, {})", projection.rectangle[0], projection.rectangle[1],
+                         projection.rectangle[2], projection.rectangle[3])});
+        fields.push_back({"HZB level / nearest depth",
+                          std::format("{} / {:.8f}", projection.level, projection.zBox)});
+    }
+    return fields;
 }
 //======================================================================================================================
 void VisibilityDisplay::observe(const scene::Scene& scene, const render::VisibilityStatus& status) {
@@ -187,6 +260,18 @@ std::span<const rhi::PassTiming> VisibilityDisplay::timings() const {
     return found == m_timings.end() ? std::span<const rhi::PassTiming>{} : found->passes;
 }
 //======================================================================================================================
+void VisibilityDisplay::publishReadings(double nowSeconds) {
+    const bool becameReady = !m_readingsStatus.isRetired && m_status.isRetired;
+    const bool classifierChanged = m_readingsStatus.classifyMode != m_status.classifyMode;
+    if (m_readingsStatus.frameNumber != 0 && !becameReady && !classifierChanged &&
+        nowSeconds < m_nextReadingsSeconds)
+        return;
+    m_readingsStatus = m_status;
+    const auto matched = timings();
+    m_readingsTimings.assign(matched.begin(), matched.end());
+    m_nextReadingsSeconds = nowSeconds + kDiagnosticRefreshIntervalSeconds;
+}
+//======================================================================================================================
 std::vector<VisibilityField> VisibilityDisplay::objectFields(scene::InstanceId id,
                                                              uint64_t sceneGeneration) const {
     const auto* candidate = find(id, m_status, sceneGeneration);
@@ -205,6 +290,9 @@ void VisibilityDisplay::clear() {
     m_pending.clear();
     m_timings.clear();
     m_status = {};
+    m_readingsStatus = {};
+    m_readingsTimings.clear();
+    m_nextReadingsSeconds = 0.0;
     m_frame = m_generation = 0;
 }
 //======================================================================================================================

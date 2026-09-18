@@ -80,6 +80,10 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
          << ",\"submission\":" << jsonString(submissionName(options.submission))
          << ",\"classify\":" << jsonString(classifyModeName(options.classifyMode))
          << ",\"classifyCheck\":" << (options.classifyCheck ? "true" : "false")
+         << ",\"occlusionEnabled\":" << (options.occlusionEnabled ? "true" : "false")
+         << ",\"occlusionCheck\":" << (options.occlusionCheck ? "true" : "false")
+         << ",\"hzbDebugLevel\":" << options.hzbDebugLevel
+         << ",\"labOccluders\":" << options.labOccluders
          << ",\"labInstances\":" << options.labInstances
          << ",\"debugView\":" << static_cast<int>(options.temporalView)
          << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
@@ -128,6 +132,9 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
         << ",\"submission\":" << jsonString(submissionName(view.submission))
         << ",\"classify\":" << jsonString(classifyModeName(view.classifyMode))
         << ",\"classifyCheck\":" << (view.classifyCheck ? "true" : "false")
+        << ",\"occlusionEnabled\":" << (view.occlusionEnabled ? "true" : "false")
+        << ",\"occlusionCheck\":" << (view.occlusionCheck ? "true" : "false")
+        << ",\"hzbDebugLevel\":" << view.hzbDebugLevel
         << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
         << ",\"exposureEv\":" << view.exposureEv
         << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")

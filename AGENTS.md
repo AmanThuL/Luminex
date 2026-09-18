@@ -1,5 +1,4 @@
 # Luminex
-
 Metal 4-first rendering playground / portfolio (macOS 26+, Apple Silicon), with a thin RHI and
 one backend. Direction: graph-scheduled GPU-driven hybrid rendering with shared scene/material/
 light/temporal semantics, visible quality and reproducible evidence. Future scope and prerequisites
@@ -11,14 +10,14 @@ its index in the same task and follow its Context, Chinese prose/English terms, 
 real editor screenshots and editable-diagram standard. Report unavailable vault access honestly.
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
-- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
+- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md` · Evidence storage/recovery: `docs/guides/evidence-archive.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), `docs/roadmap/editor-experience.md` (UX1 before M7.1), and
   `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
 - Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
-  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged.
+  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged. M7.4 is implemented and owner-accepted for integration on 2026-09-18; `docs/milestones/m7.4-validation.md` retains its 13/15 failed exact-image gate and mixed costs. Occlusion stays off; its executor plan is closed.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order; transparency belongs to M8, cluster LOD
   to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
@@ -94,7 +93,8 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   stays the default and reference. Running the binary directly requires CWD = its
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
-- Visibility: `--classify cpu|gpu` (CPU default), GPU-only `--classify-check`, `--visibility cull|off`, `--submission direct|indirect|batched` (cull/indirect defaults; GPU forbids direct). Lab-only `--lab-instances N` defaults 4096. `--measure out.json --warmup W --frames N` records schema 2 isolated costs; `--unscored` permits instrumentation/check mode. Paired controls and retired diagnostics: `docs/guides/gpu-visibility.md`.
+- Visibility: `--classify cpu|gpu` (CPU default), GPU-only `--classify-check`, `--visibility cull|off`, `--submission direct|indirect|batched` (cull/indirect defaults; GPU forbids direct). Lab-only `--lab-instances N` defaults 4096. `--occlusion on` adds previous-frame HZB under GPU/cull; `--occlusion-check` uses an independent ID oracle;
+  `--hzb-level K` visualizes a mip; `--lab-occluders N` is lab-only. `--measure out.json --warmup W --frames N` records schema 3 costs; `--unscored` permits instrumentation/check mode. Paired controls and retired diagnostics: `docs/guides/gpu-visibility.md`.
 - Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered PNGs (or `--capture-format bmp`) after W
   unsaved frames at 60 Hz, plus a v2 camera/settings/status/display/container/UI manifest, into a new or empty directory.
   It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
@@ -127,7 +127,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Hierarchy has compact search, collapsible subjects and keyboard navigation; frustum-rejected names are dimmed but remain selectable, with reasons on hover/in Inspector. File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Inspector shows Reconstruction/Resolution before Visibility; Exposure/Bloom/Shadows start collapsed. Visibility counters, temporal diagnostics and resolution timings expand on demand; fallback and failure warnings remain visible.
+  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles. Visibility/Occlusion/Submission readings publish coherent frames every 250 ms; fallback and failure warnings remain immediate.
   Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
   File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.
@@ -161,7 +161,7 @@ placement heaps whose resources are created at explicit offsets, and up to `kMax
 a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral temporal-scaler
 capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
 between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
-output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
+output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `R32Float` supports sampled/storage/CPU-readable HZB texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
 `RHIMetal4ImGui`: optional ImGui glue target; maintained backend patch quarantines each slot's used vertex/index buffers until its next paced visit, preventing native-window uploads from overwriting main-window GPU reads) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
@@ -169,7 +169,7 @@ dead-pass culling from declared sinks only, conservative aliasing of lifetime-di
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
 as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
-`SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five GPU buffers; 240 B instances/48 B meshes carry world/local AABBs. CPU-default five-plane visibility or opt-in `GpuVisibility` reset/classify/scan/emit feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. `Renderer` imports five read-only `lmx.scene.*` buffers plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
+`SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five GPU buffers; 240 B instances/48 B meshes carry world/local AABBs. CPU-default five-plane visibility or opt-in `GpuVisibility` reset/classify/scan/emit feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. Opt-in `HzbStage`/`Occlusion` consume previous source-space depth with global coverage invalidation; `OcclusionReference` checks direct IDs and recovery at retirement. `Renderer` imports five read-only `lmx.scene.*` buffers plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -198,7 +198,7 @@ seven catalog scenes include VisibilityLab and optional San Miguel with a determ
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
-first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats Inspector Display & Details counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
+first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats the Scene tables topic counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
 independent rendering reset scopes; `SelectionBounds` uses shared Render AABB transforms on mesh bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
 paired with declared-frame counts, and compatible live retired timing. Renderer’s

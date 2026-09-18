@@ -10,6 +10,7 @@
 #include "App/Model/ExposureReset.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
+#include "App/Model/VisibilityDisplay.h"
 #include "Render/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
@@ -62,6 +63,8 @@ struct ViewportPanelContext {
     EditorSelection selection; ///< Resolved selected subject for editor-only framing and bounds.
     EditorActions& actions;    ///< Shared capture status and action intent.
     scene::SceneId sceneId;    ///< Catalog identity for concise lab context.
+    const VisibilityDisplay* visibilityDisplay =
+        nullptr; ///< Matched retired bounds and source view.
 };
 
 /// Draws the Viewport panel: a compact toolbar (active scene, Reset Camera, and quick toggles for

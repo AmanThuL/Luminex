@@ -141,11 +141,12 @@ void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup 
 }
 
 //======================================================================================================================
-bool renderingHeader(const char* label, const char* explanation, bool defaultOpen = false) {
-    const bool open = ImGui::CollapsingHeader(label, defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen
-                                                                 : ImGuiTreeNodeFlags_None);
-    editorTooltip(explanation);
-    return open;
+bool beginReadings(const char* id) {
+    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp))
+        return false;
+    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, 0.48f);
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.52f);
+    return true;
 }
 
 //======================================================================================================================
@@ -155,12 +156,10 @@ void drawTemporalSection(const InspectorPanelContext& context) {
     const auto presentation =
         temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
                              context.renderer.width(), context.renderer.height());
-    if (renderingHeader(
-            "Reconstruction",
-            "Combine frame history to smooth edges and rebuild a smaller render at output size.",
-            true)) {
+    const auto category = static_cast<RenderingCategory>(context.selection.index);
+    if (category == RenderingCategory::Reconstruction) {
         drawRenderingReset(context, EditorRenderGroup::Reconstruction);
-        if (editor_style::beginFields("reconstructionFields")) {
+        if (editor_style::beginFields("reconstructionFields", 300.0f)) {
             checkbox("Temporal inputs", "##temporal", &settings.temporalEnabled);
             editorTooltip("Enable motion and history inputs for reconstruction and diagnostics. "
                           "Turning this off renders at full resolution; the algorithm, scale and "
@@ -196,11 +195,11 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             editor_style::message("Off: full resolution; temporal settings are retained.");
         if (settings.temporalEnabled &&
             settings.temporalDebugView != render::TemporalDebugView::Off)
-            editor_style::message(
-                "Diagnostic image active. Choose Final in Advanced & diagnostics.");
-        if (ImGui::TreeNode("Advanced & diagnostics")) {
+            editor_style::message("Diagnostic image active. Choose Final below.");
+        {
+            ImGui::SeparatorText("Advanced & diagnostics");
             ImGui::BeginDisabled(!settings.temporalEnabled);
-            if (editor_style::beginFields("temporalDiagnostics")) {
+            if (editor_style::beginFields("temporalDiagnostics", 300.0f)) {
                 checkbox("Jitter", "##jitter", &settings.jitterEnabled);
                 editorTooltip(
                     "Offset raster samples each frame for temporal reconstruction. Motion "
@@ -239,10 +238,10 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             }
             editorTooltip("Discard temporal history on the next frame without moving the camera. "
                           "Use after a camera teleport or to inspect history warmup.");
-            ImGui::TreePop();
         }
-        if (ImGui::TreeNode("History & vendor details")) {
-            if (editor_style::beginFields("historyFields")) {
+        {
+            ImGui::SeparatorText("History & vendor details");
+            if (beginReadings("historyFields")) {
                 valueRow("Declared device frame",
                          std::to_string(context.temporalState.declaredFrameId));
                 valueRow("History", !presentation.temporalActive ? "N/A"
@@ -283,15 +282,11 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             }
             editor_style::message("Motion = current UV - previous UV, unjittered render-extent UV, "
                                   "+Y down; infinity marks invalid motion.");
-            ImGui::TreePop();
         }
     }
-    if (renderingHeader("Resolution",
-                        "Trade rendered pixel count for GPU cost. Dynamic resolution adjusts this "
-                        "scale automatically.",
-                        true)) {
+    if (category == RenderingCategory::Resolution) {
         drawRenderingReset(context, EditorRenderGroup::Resolution);
-        if (editor_style::beginFields("resolutionFields")) {
+        if (editor_style::beginFields("resolutionFields", 300.0f)) {
             ImGui::BeginDisabled(!settings.temporalEnabled || settings.dynamicResolutionEnabled);
             slider("Render scale", "##scale", &settings.renderScale, render::kMinRenderScale, 1.0f);
             editorTooltip("Scale the render width and height relative to output; 0.50 uses one "
@@ -316,8 +311,9 @@ void drawTemporalSection(const InspectorPanelContext& context) {
         }
         if (settings.temporalEnabled && settings.dynamicResolutionEnabled)
             editor_style::message("Scale adjusts automatically to the GPU budget.");
-        if (ImGui::TreeNode("Timing & scale details")) {
-            if (editor_style::beginFields("resolutionDetails")) {
+        {
+            ImGui::SeparatorText("Timing & scale details");
+            if (beginReadings("resolutionDetails")) {
                 valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
                 valueRow("Live GPU passes",
                          context.temporalState.liveTimedPassSumMilliseconds &&
@@ -343,7 +339,6 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             }
             editor_style::message("GPU pass sum excludes presentation, driver and untimed work. "
                                   "These readings stay live when Performance is frozen.");
-            ImGui::TreePop();
         }
     }
 }
@@ -365,24 +360,33 @@ void drawDisplaySection(const InspectorPanelContext& context) {
 
 //======================================================================================================================
 void drawRenderingSection(const InspectorPanelContext& context) {
+    const auto category = static_cast<RenderingCategory>(context.selection.index);
     auto& settings = context.settings;
     auto& renderer = context.renderer;
     const auto status = renderer.temporalStatus();
+    const auto effectiveMode = render::resolveReconstruction(
+                                   settings.reconstruction, context.temporalSupport,
+                                   status.vendorFallback == render::VendorFallback::CreationFailed)
+                                   .mode;
+    settings.temporalDebugView = clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
     const auto presentation =
         temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
                              renderer.width(), renderer.height());
-    ImGui::TextColored(editor_style::kAccent, "%s · %.0f%%",
-                       std::string(presentation.effectiveName).c_str(),
-                       presentation.effectiveScale * 100.0f);
-    ImGui::TextWrapped("Render %u × %u px  /  Output %u × %u px", presentation.extents.renderWidth,
-                       presentation.extents.renderHeight, presentation.extents.outputWidth,
-                       presentation.extents.outputHeight);
+    if (category == RenderingCategory::Overview || category == RenderingCategory::Reconstruction ||
+        category == RenderingCategory::Resolution) {
+        ImGui::TextColored(editor_style::kAccent, "%s · %.0f%%",
+                           std::string(presentation.effectiveName).c_str(),
+                           presentation.effectiveScale * 100.0f);
+        ImGui::TextWrapped("Render %u × %u px  /  Output %u × %u px",
+                           presentation.extents.renderWidth, presentation.extents.renderHeight,
+                           presentation.extents.outputWidth, presentation.extents.outputHeight);
+    }
     if (presentation.requestedName != presentation.effectiveName)
         ImGui::TextWrapped("Requested: %s", std::string(presentation.requestedName).c_str());
     if (!presentation.fallbackReason.empty()) {
         editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
     }
-    const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+    const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->readingsStatus()
                                                        : renderer.visibilityStatus();
     const bool currentVisibility =
         visibility.frameNumber != 0 &&
@@ -390,19 +394,36 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     const bool visibilityReady =
         currentVisibility &&
         (visibility.classifyMode == render::ClassifyMode::Cpu || visibility.isRetired);
-    if (visibilityReady) {
-        const auto failure = visibilityFailure(visibility);
+    const auto& latestVisibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+                                                             : renderer.visibilityStatus();
+    if (latestVisibility.frameNumber != 0 &&
+        latestVisibility.sceneGeneration == context.temporalState.sceneGeneration &&
+        (latestVisibility.classifyMode == render::ClassifyMode::Cpu ||
+         latestVisibility.isRetired)) {
+        const auto failure = visibilityFailure(latestVisibility);
         if (!failure.empty())
             editor_style::message(failure.c_str(), true);
     }
+    if (category == RenderingCategory::Overview) {
+        editor_style::message("Select a topic to tune its controls and watch its live readings.");
+        ImGui::SeparatorText("Rendering topics");
+        for (size_t index = 1; index < static_cast<size_t>(RenderingCategory::Count); ++index) {
+            const auto topic = static_cast<RenderingCategory>(index);
+            if (ImGui::Selectable(renderingCategoryLabel(topic).data()))
+                context.selection.index = index;
+        }
+        return;
+    }
     drawTemporalSection(context);
-    if (renderingHeader("Visibility",
-                        "Skip objects outside the camera view. Choose where classification runs "
-                        "and how draws are submitted.",
-                        true)) {
-        ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled);
+    if (category == RenderingCategory::Visibility) {
+        if (ImGui::Checkbox("Frustum culling", &settings.visibilityEnabled) &&
+            !settings.visibilityEnabled) {
+            settings.occlusionEnabled = false;
+            settings.occlusionCheck = false;
+            settings.hzbDebugLevel = -1;
+        }
         editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
-        if (editor_style::beginFields("visibilityControls")) {
+        if (editor_style::beginFields("visibilityControls", 300.0f)) {
             editor_style::field("Classifier");
             int classifier = static_cast<int>(settings.classifyMode);
             if (ImGui::Combo("##classifier", &classifier, "CPU\0GPU\0")) {
@@ -410,8 +431,12 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 if (settings.classifyMode == render::ClassifyMode::Gpu &&
                     settings.submission == render::SubmissionMode::Direct)
                     settings.submission = render::SubmissionMode::Indirect;
-                if (settings.classifyMode == render::ClassifyMode::Cpu)
+                if (settings.classifyMode == render::ClassifyMode::Cpu) {
                     settings.classifyCheck = false;
+                    settings.occlusionEnabled = false;
+                    settings.occlusionCheck = false;
+                    settings.hzbDebugLevel = -1;
+                }
             }
             editorTooltip(
                 "GPU results arrive after retirement. CPU remains the default reference.");
@@ -421,6 +446,62 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                     "CPU oracle check: compare GPU states, ordered rows, counts and arguments "
                     "with the CPU reference. Diagnostic runs are unscored.");
             }
+            editor_style::endFields();
+        }
+    }
+    if (category == RenderingCategory::Occlusion) {
+        if (editor_style::beginFields("occlusionControls", 300.0f)) {
+            const bool occlusionAvailable =
+                settings.classifyMode == render::ClassifyMode::Gpu && settings.visibilityEnabled;
+            ImGui::BeginDisabled(!occlusionAvailable);
+            checkbox("Occlusion", "##occlusion", &settings.occlusionEnabled);
+            ImGui::EndDisabled();
+            editorTooltip(occlusionAvailable ? "Previous-frame depth evidence; camera motion can "
+                                               "delay newly visible geometry by one frame. "
+                                               "Any coverage change retains all candidates."
+                                             : "Requires GPU classification and frustum culling.");
+            if (!settings.occlusionEnabled) {
+                settings.occlusionCheck = false;
+                settings.hzbDebugLevel = -1;
+            } else {
+                checkbox("Independent ID check", "##occlusionCheck", &settings.occlusionCheck);
+                editorTooltip("Draw all candidates independently and check missing visible "
+                              "instances. Unscored.");
+                editor_style::field("HZB view");
+                const std::string preview = settings.hzbDebugLevel < 0
+                                                ? "Final"
+                                                : std::format("Level {}", settings.hzbDebugLevel);
+                if (ImGui::BeginCombo("##hzbLevel", preview.c_str())) {
+                    if (ImGui::Selectable("Final", settings.hzbDebugLevel < 0))
+                        settings.hzbDebugLevel = -1;
+                    uint32_t width = (renderer.width() + 1) / 2;
+                    uint32_t height = (renderer.height() + 1) / 2;
+                    uint32_t levels = 1;
+                    while (width > 16 || height > 16) {
+                        width = (width + 1) / 2;
+                        height = (height + 1) / 2;
+                        ++levels;
+                    }
+                    for (uint32_t level = 0; level < levels; ++level) {
+                        if (ImGui::Selectable(std::format("Level {}", level).c_str(),
+                                              settings.hzbDebugLevel ==
+                                                  static_cast<int32_t>(level))) {
+                            settings.hzbDebugLevel = static_cast<int32_t>(level);
+                            settings.temporalDebugView = render::TemporalDebugView::Off;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                checkbox("Rejected bounds (max 128)", "##occlusionBounds",
+                         &settings.showOcclusionBounds);
+            }
+            editor_style::endFields();
+        }
+        if (settings.classifyMode != render::ClassifyMode::Gpu || !settings.visibilityEnabled)
+            editor_style::message("Enable GPU classification and frustum culling in Visibility.");
+    }
+    if (category == RenderingCategory::Submission) {
+        if (editor_style::beginFields("submissionControls", 300.0f)) {
             editor_style::field("Submission");
             int mode = static_cast<int>(settings.submission);
             if (ImGui::Combo("##submission", &mode, "Direct\0Indirect\0Batched\0")) {
@@ -428,6 +509,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 if (settings.submission == render::SubmissionMode::Direct) {
                     settings.classifyMode = render::ClassifyMode::Cpu;
                     settings.classifyCheck = false;
+                    settings.occlusionEnabled = false;
+                    settings.occlusionCheck = false;
+                    settings.hzbDebugLevel = -1;
                 }
             }
             editorTooltip(
@@ -436,6 +520,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 "runs.");
             editor_style::endFields();
         }
+    }
+    if (category == RenderingCategory::Visibility || category == RenderingCategory::Occlusion ||
+        category == RenderingCategory::Submission) {
         if (visibilityReady) {
             const auto& counts = visibility.sceneCounters;
             const uint64_t kept = uint64_t{counts.visible} + counts.bypassed[1] +
@@ -444,7 +531,8 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                                static_cast<unsigned long long>(kept), counts.candidates,
                                counts.rejected);
             editorTooltip("Kept includes visible objects and conservative bypasses. Culled means "
-                          "outside the camera frustum; shadows stay unculled. The detail rows "
+                          "outside the camera frustum or rejected by previous-frame depth; shadows "
+                          "stay unculled. The detail rows "
                           "describe the same declared or retired frame as this summary.");
             editor_style::message(
                 std::format("{} frame {}{}", visibility.isRetired ? "GPU retired" : "CPU declared",
@@ -456,40 +544,40 @@ void drawRenderingSection(const InspectorPanelContext& context) {
         } else {
             editor_style::message("Waiting for this scene's visibility result.");
         }
-        if (ImGui::TreeNode("Counters, work & timings")) {
-            editor_style::message(
-                "Candidates are tested objects; commands are CPU-issued draws. "
-                "Rows select scene instances. GPU results arrive after retirement.");
-            if (editor_style::beginFields("visibilityDetails")) {
-                if (currentVisibility) {
-                    for (const auto& row :
-                         visibilityFields(visibility, context.visibilityDisplay
-                                                          ? context.visibilityDisplay->timings()
-                                                          : std::span<const rhi::PassTiming>{})) {
-                        if (row.label.starts_with("lmx.pass.visibility.")) {
-                            valueRow(
-                                std::format("GPU {}",
-                                            row.label.substr(
-                                                std::string_view("lmx.pass.visibility.").size()))
-                                    .c_str(),
-                                row.value);
-                            editorTooltip(row.label.c_str());
-                        } else {
-                            valueRow(row.label.c_str(), row.value);
-                        }
+        ImGui::SeparatorText("Live readings");
+        editorTooltip(
+            "Updates every 250 ms. Counters and GPU times belong to the displayed frame.");
+        if (beginReadings("visibilityDetails")) {
+            if (currentVisibility) {
+                const auto group =
+                    category == RenderingCategory::Occlusion    ? VisibilityFieldGroup::Occlusion
+                    : category == RenderingCategory::Submission ? VisibilityFieldGroup::Submission
+                                                                : VisibilityFieldGroup::Visibility;
+                for (const auto& row :
+                     visibilityFields(visibility, context.visibilityDisplay
+                                                      ? context.visibilityDisplay->readingsTimings()
+                                                      : std::span<const rhi::PassTiming>{})) {
+                    if (row.group != group &&
+                        (visibilityReady || row.group != VisibilityFieldGroup::Frame))
+                        continue;
+                    std::string label = row.label;
+                    for (const std::string_view prefix :
+                         {"lmx.pass.visibility.", "lmx.pass.hzb."}) {
+                        if (label.starts_with(prefix))
+                            label = std::format("GPU {}", label.substr(prefix.size()));
                     }
-                } else {
-                    valueRow("Visibility", "Waiting for this scene's rendered frame");
+                    valueRow(label.c_str(), row.value);
+                    editorTooltip(row.label.c_str());
                 }
-                editor_style::endFields();
+            } else {
+                valueRow("Visibility", "Waiting for this scene's rendered frame");
             }
-            ImGui::TreePop();
+            editor_style::endFields();
         }
     }
-    if (renderingHeader("Exposure",
-                        "Set scene brightness manually or adapt it to measured luminance.")) {
+    if (category == RenderingCategory::Exposure) {
         drawRenderingReset(context, EditorRenderGroup::Exposure);
-        if (editor_style::beginFields("exposureFields")) {
+        if (editor_style::beginFields("exposureFields", 300.0f)) {
             slider("Manual exposure (EV)", "##exposure", &settings.exposureEv, -6.0f, 6.0f);
             editorTooltip("Each +1 EV doubles manual exposure. With auto exposure enabled, this "
                           "value seeds exposure when it resets; Compensation adjusts metering.");
@@ -502,9 +590,10 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                           "Enabling starts from Manual exposure, then adapts toward the target.");
             editor_style::endFields();
         }
-        if (ImGui::TreeNode("Metering details")) {
+        {
+            ImGui::SeparatorText("Metering details");
             ImGui::BeginDisabled(!settings.autoExposureEnabled);
-            if (editor_style::beginFields("meteringFields")) {
+            if (editor_style::beginFields("meteringFields", 300.0f)) {
                 slider("Low percentile (%)", "##low", &settings.exposureLowPercentile, 0.0f,
                        settings.exposureHighPercentile - kMinExposurePercentileGap, "%.0f");
                 editorTooltip(
@@ -540,12 +629,11 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             ImGui::EndDisabled();
             if (!settings.autoExposureEnabled)
                 editor_style::message("Enable auto exposure to edit metering and adaptation.");
-            ImGui::TreePop();
         }
     }
-    if (renderingHeader("Bloom", "Spread bright highlights into a soft glow.")) {
+    if (category == RenderingCategory::Bloom) {
         drawRenderingReset(context, EditorRenderGroup::Bloom);
-        if (editor_style::beginFields("bloomFields")) {
+        if (editor_style::beginFields("bloomFields", 300.0f)) {
             checkbox("Bloom", "##bloom", &settings.bloomEnabled);
             ImGui::BeginDisabled(!settings.bloomEnabled);
             slider("Threshold (linear)", "##threshold", &settings.bloomThreshold, 0.0f, 10.0f);
@@ -558,9 +646,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
         if (!settings.bloomEnabled)
             editor_style::message("Enable bloom to edit its threshold and intensity.");
     }
-    if (renderingHeader("Shadows", "Choose the filtering used at shadow edges.")) {
+    if (category == RenderingCategory::Shadows) {
         drawRenderingReset(context, EditorRenderGroup::Shadows);
-        if (editor_style::beginFields("shadowFields")) {
+        if (editor_style::beginFields("shadowFields", 300.0f)) {
             field("Shadow filter");
             int filter = static_cast<int>(settings.shadowFilter);
             constexpr const char* kFilterNames[] = {"PCF", "PCSS"};
@@ -569,11 +657,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             editor_style::endFields();
         }
     }
-    if (renderingHeader(
-            "Display & Details",
-            "Display options, scene table storage and output color-space information.")) {
+    if (category == RenderingCategory::Display) {
         drawRenderingReset(context, EditorRenderGroup::Display);
-        if (editor_style::beginFields("displayEditFields")) {
+        if (editor_style::beginFields("displayEditFields", 300.0f)) {
             field("Clear color (sRGB)");
             ImGui::ColorEdit4("##clearColor", renderer.clearColor);
             checkbox("Wireframe", "##wireframe", &settings.wireframe);
@@ -584,18 +670,14 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                           "do not overlap. Inspect assignments and memory totals in Render Graph.");
             editor_style::endFields();
         }
-        if (ImGui::TreeNode("Scene table details")) {
-            if (editor_style::beginFields("sceneTableFields")) {
-                for (const auto& row : sceneTableFields(context.session.tableStats())) {
-                    valueRow(row.label.data(), row.value);
-                }
-                editor_style::endFields();
-            }
-            ImGui::TreePop();
-        }
-        if (ImGui::TreeNode("Display details")) {
-            drawDisplaySection(context);
-            ImGui::TreePop();
+        drawDisplaySection(context);
+    }
+    if (category == RenderingCategory::SceneTables) {
+        editor_style::message("Current scene storage and the most recent table upload.");
+        if (beginReadings("sceneTableFields")) {
+            for (const auto& row : sceneTableFields(context.session.tableStats()))
+                valueRow(row.label.data(), row.value);
+            editor_style::endFields();
         }
     }
 }
@@ -689,7 +771,9 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
         } else if (subject == EditorSubject::Camera) {
             ImGui::TextUnformatted("Editor Camera");
         } else if (subject == EditorSubject::Rendering) {
-            ImGui::TextUnformatted("Rendering");
+            ImGui::TextUnformatted(
+                renderingCategoryLabel(static_cast<RenderingCategory>(context.selection.index))
+                    .data());
         }
         if (context.selectionHiddenByFilter) {
             editor_style::message("Selection is hidden by the Scene search filter. Clear the "
@@ -700,7 +784,16 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             }
         }
         ImGui::Separator();
+        const ImGuiID previousKey = ImGui::GetID("PreviousInspectorSubject");
+        ImGuiStorage* storage = ImGui::GetStateStorage();
+        ImGui::PushID(static_cast<int>(subject));
+        ImGui::PushID(static_cast<int>(context.selection.index));
+        const ImGuiID page = ImGui::GetID("InspectorFields");
+        const bool changed = storage->GetInt(previousKey, -1) != static_cast<int>(page);
+        storage->SetInt(previousKey, static_cast<int>(page));
         if (ImGui::BeginChild("InspectorFields", ImVec2(0, 0))) {
+            if (changed)
+                ImGui::SetScrollY(0.0f);
             switch (subject) {
             case EditorSubject::None:
                 editor_style::message(
@@ -721,6 +814,8 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             }
         }
         ImGui::EndChild();
+        ImGui::PopID();
+        ImGui::PopID();
     }
     ImGui::End();
 }

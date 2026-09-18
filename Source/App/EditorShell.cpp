@@ -607,6 +607,7 @@ void EditorShell::buildMainMenu() {
 //======================================================================================================================
 void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    m_visibilityDisplay.publishReadings(ImGui::GetTime());
     ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
@@ -641,7 +642,8 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                        .temporalState = m_temporalState,
                                        .selection = m_selection,
                                        .actions = m_actions,
-                                       .sceneId = m_activeSceneId});
+                                       .sceneId = m_activeSceneId,
+                                       .visibilityDisplay = &m_visibilityDisplay});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
         m_viewportFocused = result.focused;
@@ -744,10 +746,14 @@ void EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.temporalDebugView = options.temporalView;
     m_settings.renderScale = options.renderScale;
     m_labInstances = options.labInstances;
+    m_labOccluders = options.labOccluders;
     m_settings.visibilityEnabled = options.visibilityEnabled;
     m_settings.submission = options.submission;
     m_settings.classifyMode = options.classifyMode;
     m_settings.classifyCheck = options.classifyCheck;
+    m_settings.occlusionEnabled = options.occlusionEnabled;
+    m_settings.occlusionCheck = options.occlusionCheck;
+    m_settings.hzbDebugLevel = options.hzbDebugLevel;
 }
 
 //======================================================================================================================
@@ -765,6 +771,9 @@ render::SceneView EditorShell::sceneView() {
     view.submission = m_settings.submission;
     view.classifyMode = m_settings.classifyMode;
     view.classifyCheck = m_settings.classifyCheck;
+    view.occlusionEnabled = m_settings.occlusionEnabled;
+    view.occlusionCheck = m_settings.occlusionCheck;
+    view.hzbDebugLevel = m_settings.hzbDebugLevel;
     view.exposureEv = m_settings.exposureEv;
     view.autoExposureEnabled = m_settings.autoExposureEnabled;
     // exposureReset is left at SceneView's default (false); main.cpp sets it from
@@ -842,7 +851,9 @@ void EditorShell::advanceFrameAnimation() {
 //======================================================================================================================
 uint64_t EditorShell::metricsContextEpoch() {
     const uint64_t key =
-        m_temporalState.sceneGeneration * 512 +
+        m_temporalState.sceneGeneration * 65536 + (m_settings.occlusionEnabled ? 512 : 0) +
+        (m_settings.occlusionCheck ? 1024 : 0) +
+        static_cast<uint64_t>(m_settings.hzbDebugLevel + 1) * 2048 +
         static_cast<uint64_t>(m_settings.classifyMode) * 128 +
         (m_settings.classifyCheck ? 256 : 0) + static_cast<uint64_t>(m_settings.submission) * 16 +
         (m_settings.visibilityEnabled ? 8 : 0) +

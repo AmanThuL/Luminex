@@ -62,6 +62,18 @@ bool resolves(Id id, uint16_t store, const std::vector<IdentitySlot>& slots) {
            slots[id.slot].generation == id.generation;
 }
 
+struct MaterialCoverage {
+    std::optional<TextureId> diffuse;
+    glm::mat4 uvTransform{1.0f};
+    float alpha = 1.0f;
+    float cutoff = 0.5f;
+    render::AlphaMode mode = render::AlphaMode::Opaque;
+    bool doubleSided = false;
+
+    //==================================================================================================================
+    bool operator==(const MaterialCoverage&) const = default;
+};
+
 struct RetiringBuffer {
     std::unique_ptr<rhi::Buffer> buffer;
     uint64_t releaseAtFrame = 0;
@@ -167,6 +179,8 @@ struct Scene::Storage {
     std::vector<std::pair<uint64_t, std::unique_ptr<rhi::Texture>>> retiringTextures;
     rhi::Device* device = nullptr;
     uint64_t lastFrame = 0;
+    uint64_t coverageEpoch = 0;
+    std::vector<MaterialCoverage> materialCoverage;
     bool prepared = false;
     SceneTableStats stats;
 };
@@ -268,6 +282,9 @@ InstanceId Scene::addObject(SceneObject object) {
     object.id = {slot, m_storage->instances[slot].generation, m_storage->store};
     object.previousModel = object.modelMatrix();
     objects.push_back(std::move(object));
+    LMX_ASSERT(m_storage->coverageEpoch < std::numeric_limits<uint64_t>::max(),
+               "scene coverage epoch exhausted");
+    ++m_storage->coverageEpoch;
     return objects.back().id;
 }
 
@@ -277,6 +294,9 @@ void Scene::removeObject(InstanceId id) {
     const auto found = std::ranges::find(objects, id, &SceneObject::id);
     const auto index = static_cast<uint32_t>(found - objects.begin());
     objects.erase(found);
+    LMX_ASSERT(m_storage->coverageEpoch < std::numeric_limits<uint64_t>::max(),
+               "scene coverage epoch exhausted");
+    ++m_storage->coverageEpoch;
     auto& slot = m_storage->instances[id.slot];
     m_storage->instanceSearchStart = std::min(m_storage->instanceSearchStart, id.slot);
     slot.live = false;
@@ -496,6 +516,7 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     }
     std::erase_if(storage.retiringTextures,
                   [frameNumber](const auto& texture) { return frameNumber >= texture.first; });
+    bool coverageChanged = false;
     for (const auto& object : objects) {
         LMX_ASSERT(tryMesh(object.mesh) && tryMaterial(object.material),
                    "object contains an invalid resource identity");
@@ -517,6 +538,13 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         } else {
             row.flags |= render::kInstanceBoundsUnreliable;
         }
+        if (object.id.slot >= storage.instanceTable.shadow.size()) {
+            coverageChanged = true;
+        } else {
+            const auto& previous = storage.instanceTable.shadow[object.id.slot];
+            coverageChanged |= previous.model != row.model || previous.meshRow != row.meshRow ||
+                               previous.materialRow != row.materialRow;
+        }
         updateRow(storage.instanceTable, object.id.slot, row);
     }
     for (uint32_t i = 0; i < storage.instances.size(); ++i) {
@@ -533,6 +561,19 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         LMX_ASSERT(material.alphaMode != render::AlphaMode::Mask ||
                        (std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f),
                    "masked material alpha cutoff must be finite and nonnegative");
+        const MaterialCoverage coverage{.diffuse = material.diffuse,
+                                        .uvTransform = material.uvTransform,
+                                        .alpha = material.albedo.a,
+                                        .cutoff = material.alphaCutoff,
+                                        .mode = material.alphaMode,
+                                        .doubleSided = material.doubleSided};
+        if (i >= storage.materialCoverage.size()) {
+            storage.materialCoverage.push_back(coverage);
+            coverageChanged = true;
+        } else if (storage.materialCoverage[i] != coverage) {
+            storage.materialCoverage[i] = coverage;
+            coverageChanged = true;
+        }
         render::MaterialRow row{};
         row.uvTransform = material.uvTransform;
         row.albedo = material.albedo;
@@ -546,6 +587,11 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
                     (material.doubleSided ? render::kMaterialDoubleSided : 0);
         updateRow(storage.materialTable, i, row);
     }
+    if (coverageChanged) {
+        LMX_ASSERT(storage.coverageEpoch < std::numeric_limits<uint64_t>::max(),
+                   "scene coverage epoch exhausted");
+        ++storage.coverageEpoch;
+    }
     storage.stats.rowsWritten = 0;
     storage.stats.bytesWritten = 0;
     storage.stats.slot = static_cast<uint32_t>(frameNumber % kSlots);
@@ -554,6 +600,11 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     storage.lastFrame = frameNumber;
     storage.prepared = true;
     return {};
+}
+
+//======================================================================================================================
+uint64_t Scene::coverageEpoch() const {
+    return m_storage->coverageEpoch;
 }
 
 //======================================================================================================================

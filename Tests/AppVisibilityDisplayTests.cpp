@@ -5,6 +5,9 @@
 #include "App/Model/VisibilityDisplay.h"
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+
 using namespace lmx;
 //======================================================================================================================
 TEST_CASE("Visibility display rejects stale identities and frame mismatches", "[app][visibility]") {
@@ -93,4 +96,123 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     REQUIRE(display.objectFields(object.id, 10).size() == 1);
     display.clear();
     REQUIRE(display.objectFields(object.id, 9).size() == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("Visibility categories preserve failure diagnostics and separate pyramid costs",
+          "[app][visibility]") {
+    using Group = app::VisibilityFieldGroup;
+    render::VisibilityStatus status;
+    status.classifyMode = render::ClassifyMode::Gpu;
+    const auto pending = app::visibilityFields(status);
+    REQUIRE(pending.size() == 3);
+    REQUIRE(std::ranges::all_of(pending,
+                                [](const auto& field) { return field.group == Group::Frame; }));
+
+    status.isRetired = true;
+    status.occlusionEnabled = true;
+    status.occlusionCheckEnabled = true;
+    status.checkEnabled = true;
+    status.rowMismatches = 1;
+    status.overflow = true;
+    const std::array<rhi::PassTiming, 3> timings = {{{"lmx.pass.visibility.classify", 0.25},
+                                                     {"lmx.pass.hzb.level0", 0.125},
+                                                     {"lmx.pass.scene", 2.0}}};
+    const auto fields = app::visibilityFields(status, timings);
+    std::array<size_t, 4> counts{};
+    for (const auto& field : fields) {
+        const auto group = static_cast<size_t>(field.group);
+        REQUIRE(group < counts.size());
+        ++counts[group];
+    }
+    REQUIRE(std::ranges::all_of(counts, [](size_t count) { return count > 0; }));
+    const auto requireField = [&](std::string_view label, std::string_view value, Group group) {
+        const auto found = std::ranges::find(fields, label, &app::VisibilityField::label);
+        REQUIRE(found != fields.end());
+        REQUIRE(found->value == value);
+        REQUIRE(found->group == group);
+    };
+    requireField("CPU oracle check", "FAILED", Group::Visibility);
+    requireField("State / row / argument / counter mismatches", "0 / 1 / 0 / 0", Group::Visibility);
+    requireField("Independent ID check", "Awaiting reference", Group::Occlusion);
+    requireField("Overflow", "Work dropped", Group::Submission);
+    requireField("lmx.pass.visibility.classify", "0.250 ms", Group::Submission);
+    requireField("lmx.pass.hzb.level0", "0.125 ms", Group::Occlusion);
+    REQUIRE(std::ranges::none_of(
+        fields, [](const auto& field) { return field.label == "lmx.pass.scene"; }));
+}
+
+//======================================================================================================================
+TEST_CASE("Inspector visibility readings publish coherent owned frames at four Hz",
+          "[app][visibility]") {
+    scene::Scene scene;
+    app::VisibilityDisplay display;
+    render::VisibilityStatus status;
+    status.frameNumber = 1;
+    status.sceneGeneration = 9;
+    status.classifyMode = render::ClassifyMode::Gpu;
+    display.observe(scene, status);
+    display.publishReadings(0.0);
+    REQUIRE_FALSE(display.readingsStatus().isRetired);
+    REQUIRE(display.readingsTimings().empty());
+
+    status.isRetired = true;
+    status.sceneCounters.visible = 5;
+    display.retire(status);
+    std::array<rhi::PassTiming, 1> timings = {{{"lmx.pass.hzb.level0", 0.125}}};
+    display.observeTimings(1, timings);
+    display.publishReadings(0.01);
+    REQUIRE(display.readingsStatus().isRetired);
+    REQUIRE(display.readingsStatus().frameNumber == 1);
+    REQUIRE(display.readingsTimings()[0].gpuMilliseconds == 0.125);
+
+    // New live frames and errors remain available immediately, but cannot overwrite the owned
+    // Inspector publication or evict its timings while the reader is looking at it.
+    for (uint64_t frame = 2; frame <= 12; ++frame) {
+        status.frameNumber = frame;
+        status.isRetired = false;
+        display.observe(scene, status);
+        status.isRetired = true;
+        status.sceneCounters.visible = 7;
+        status.overflow = true;
+        display.retire(status);
+        timings[0].gpuMilliseconds = 0.25;
+        display.observeTimings(frame, timings);
+        display.publishReadings(0.02 + frame * 0.01);
+    }
+    REQUIRE(display.status().frameNumber == 12);
+    REQUIRE(display.status().overflow);
+    REQUIRE(display.readingsStatus().frameNumber == 1);
+    REQUIRE(display.readingsStatus().sceneCounters.visible == 5);
+    REQUIRE(display.readingsTimings()[0].gpuMilliseconds == 0.125);
+    display.publishReadings(0.26);
+    REQUIRE(display.readingsStatus().frameNumber == 12);
+    REQUIRE(display.readingsStatus().sceneCounters.visible == 7);
+    REQUIRE(display.readingsTimings()[0].gpuMilliseconds == 0.25);
+
+    status.frameNumber = 13;
+    status.isRetired = false;
+    display.observe(scene, status);
+    status.isRetired = true;
+    display.retire(status);
+    display.publishReadings(0.51);
+    REQUIRE(display.readingsStatus().frameNumber == 13);
+    REQUIRE(display.readingsTimings().empty());
+
+    status.classifyMode = render::ClassifyMode::Cpu;
+    status.isRetired = false;
+    status.frameNumber = 14;
+    display.observe(scene, status);
+    display.publishReadings(0.52);
+    REQUIRE(display.readingsStatus().classifyMode == render::ClassifyMode::Cpu);
+    REQUIRE(display.readingsStatus().frameNumber == 14);
+    ++status.sceneGeneration;
+    status.frameNumber = 15;
+    display.observe(scene, status);
+    REQUIRE(display.readingsStatus().frameNumber == 0);
+    display.publishReadings(0.53);
+    REQUIRE(display.readingsStatus().sceneGeneration == 10);
+    REQUIRE(display.readingsTimings().empty());
+    display.clear();
+    REQUIRE(display.readingsStatus().frameNumber == 0);
 }

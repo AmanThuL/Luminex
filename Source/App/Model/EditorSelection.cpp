@@ -37,13 +37,12 @@ bool containsCaseInsensitive(std::string_view haystack, std::string_view needleL
 }
 
 //======================================================================================================================
-// `index` is meaningful only for DirectionalLight/Object rows; other subjects match on kind alone
-// so a Camera/Rendering/None selection is never rejected over an index it does not use.
 bool matchesRow(const EditorSelectionRow& row, const EditorSelection& selection) {
     if (row.subject != selection.subject) {
         return false;
     }
-    if (row.subject == EditorSubject::DirectionalLight || row.subject == EditorSubject::Object) {
+    if (row.subject == EditorSubject::Rendering || row.subject == EditorSubject::DirectionalLight ||
+        row.subject == EditorSubject::Object) {
         return row.index == selection.index;
     }
     return true;
@@ -61,6 +60,37 @@ std::optional<size_t> visibleRowIndex(std::span<const EditorSelectionRow> rows,
 }
 
 } // namespace
+
+//======================================================================================================================
+std::string_view renderingCategoryLabel(RenderingCategory category) {
+    switch (category) {
+    case RenderingCategory::Overview:
+        return "Rendering";
+    case RenderingCategory::Reconstruction:
+        return "Reconstruction";
+    case RenderingCategory::Resolution:
+        return "Resolution";
+    case RenderingCategory::Visibility:
+        return "Visibility";
+    case RenderingCategory::Occlusion:
+        return "Occlusion";
+    case RenderingCategory::Submission:
+        return "Submission";
+    case RenderingCategory::Exposure:
+        return "Exposure";
+    case RenderingCategory::Bloom:
+        return "Bloom";
+    case RenderingCategory::Shadows:
+        return "Shadows";
+    case RenderingCategory::Display:
+        return "Display";
+    case RenderingCategory::SceneTables:
+        return "Scene tables";
+    case RenderingCategory::Count:
+        break;
+    }
+    return "Unavailable";
+}
 
 //======================================================================================================================
 EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
@@ -83,9 +113,13 @@ EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId 
             return healed;
         }
         break;
+    case EditorSubject::Rendering:
+        if (current.index >= static_cast<size_t>(RenderingCategory::Count)) {
+            return healed;
+        }
+        break;
     case EditorSubject::None:
     case EditorSubject::Camera:
-    case EditorSubject::Rendering:
         break;
     }
 
@@ -136,7 +170,8 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
         label = "Editor Camera";
         break;
     case EditorSubject::Rendering:
-        label = "Rendering";
+        label = renderingCategoryLabel(static_cast<RenderingCategory>(selection.index));
+        compact = "Rendering";
         break;
     case EditorSubject::DirectionalLight:
         label = std::format("Light {}", selection.index);
@@ -168,16 +203,20 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
-    rows.reserve(2 + std::size(scene.lights) + scene.objects.size());
+    rows.reserve(1 + static_cast<size_t>(RenderingCategory::Count) + std::size(scene.lights) +
+                 scene.objects.size());
 
     rows.push_back({.subject = EditorSubject::Camera,
                     .index = 0,
                     .displayLabel = "Editor Camera",
                     .group = EditorSelectionGroup::Workspace});
-    rows.push_back({.subject = EditorSubject::Rendering,
-                    .index = 0,
-                    .displayLabel = "Rendering",
-                    .group = EditorSelectionGroup::Workspace});
+    for (size_t i = 0; i < static_cast<size_t>(RenderingCategory::Count); ++i) {
+        rows.push_back(
+            {.subject = EditorSubject::Rendering,
+             .index = i,
+             .displayLabel = std::string(renderingCategoryLabel(static_cast<RenderingCategory>(i))),
+             .group = EditorSelectionGroup::Workspace});
+    }
 
     for (size_t i = 0; i < std::size(scene.lights); ++i) {
         rows.push_back({.subject = EditorSubject::DirectionalLight,
@@ -225,6 +264,10 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scen
 
     const std::string needleLower = toLower(filter);
     std::erase_if(rows, [&](const EditorSelectionRow& row) {
+        if (row.subject == EditorSubject::Rendering &&
+            containsCaseInsensitive("Rendering", needleLower)) {
+            return false;
+        }
         return !containsCaseInsensitive(row.displayLabel, needleLower) &&
                !containsCaseInsensitive(row.detailLabel, needleLower);
     });

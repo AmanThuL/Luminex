@@ -59,7 +59,9 @@ class SceneLibrary {
 public:
     /// Creates a catalog whose loaded scenes use `device` for their full lifetime.
     /// labInstances sets the total VisibilityLab population; its builder validates 1..1,048,576.
-    explicit SceneLibrary(rhi::Device& device, uint32_t labInstances = 4096);
+    /// labOccluders adds 0..1,024 optional slabs without changing the default lab.
+    explicit SceneLibrary(rhi::Device& device, uint32_t labInstances = 4096,
+                          uint32_t labOccluders = 0);
 
     /// Returns every catalog entry in stable display order.
     std::span<const SceneEntry> entries() const;
@@ -71,6 +73,7 @@ public:
 private:
     rhi::Device& m_device;
     uint32_t m_labInstances;
+    uint32_t m_labOccluders;
     std::vector<SceneEntry> m_entries;
     std::vector<std::unique_ptr<Scene>> m_scenes;
 };

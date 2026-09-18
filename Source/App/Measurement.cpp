@@ -7,6 +7,7 @@
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
+#include "App/OcclusionValidation.h"
 #include "Asset/TextureBake.h"
 #include "Core/File.h"
 #include "Core/Log.h"
@@ -160,10 +161,20 @@ int runMeasurement(const AppOptions& options) {
     plan.warmupFrames = options.warmup;
     plan.measuredFrames = options.frames;
     plan.scene = scene::sceneIdString(options.initialScene);
+    const auto scaleStep =
+        readOcclusionScaleStep(options.unscored, options.temporal != TemporalMode::Off);
+    if (!scaleStep) {
+        LMX_LOG_ERROR("{}", scaleStep.error());
+        return 1;
+    }
     plan.labInstances = options.labInstances;
+    plan.labOccluders = options.labOccluders;
     plan.visibilityEnabled = options.visibilityEnabled;
     plan.classify = classifyModeName(options.classifyMode);
     plan.classifyCheck = options.classifyCheck;
+    plan.occlusionEnabled = options.occlusionEnabled;
+    plan.occlusionCheck = options.occlusionCheck;
+    plan.hzbDebugLevel = options.hzbDebugLevel;
     plan.submission = options.submission == render::SubmissionMode::Direct    ? "direct"
                       : options.submission == render::SubmissionMode::Batched ? "batched"
                                                                               : "indirect";
@@ -180,7 +191,7 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    scene::SceneLibrary library(**device, options.labInstances);
+    scene::SceneLibrary library(**device, options.labInstances, options.labOccluders);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
         run.cancel(loaded.error().message);
@@ -221,11 +232,16 @@ int runMeasurement(const AppOptions& options) {
         view.submission = options.submission;
         view.classifyMode = options.classifyMode;
         view.classifyCheck = options.classifyCheck;
+        view.occlusionEnabled = options.occlusionEnabled;
+        view.occlusionCheck = options.occlusionCheck;
+        view.hzbDebugLevel = options.hzbDebugLevel;
         view.temporal.enabled = options.temporal != TemporalMode::Off;
         view.temporal.jitterEnabled = view.temporal.enabled;
         view.temporal.reconstruction = temporalReconstructionMode(options.temporal);
         view.temporal.debugView = options.temporalView;
-        view.temporal.renderScale = options.renderScale;
+        view.temporal.renderScale = *scaleStep && frame.sequenceFrame >= (**scaleStep).frame
+                                        ? (**scaleStep).scale
+                                        : options.renderScale;
         render::FrameDeclaration declaration(pool, **renderer, commands, session.camera(), view,
                                              true);
         declaration.graph().exportTexture(declaration.displayColor());

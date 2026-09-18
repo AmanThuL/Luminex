@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MeasurementReport.cpp
-/// @brief Serializes schema-2 measurement scopes and exact-frame retired diagnostics.
+/// @brief Serializes schema-3 measurement scopes and exact-frame retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/VisibilityDiagnostics.h"
@@ -32,14 +32,15 @@ std::string pairsJson(const std::vector<std::pair<std::string, std::string>>& pa
 std::string MeasurementRun::json() const {
     const bool complete = m_state == MeasurementState::Complete;
     std::string out = std::format(
-        "{{\"schemaVersion\":2,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
+        "{{\"schemaVersion\":3,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
         complete, complete && !m_plan.interactive && !m_plan.unscored, m_plan.interactive,
         quote(m_failure));
     out += "\"pacing\":\"serialized-retirement\",\"timingScope\":{\"encodeMs\":\"after beginFrame "
            "through endFrame commit; excludes slot wait and post-submit retirement "
            "wait\",\"slotWaitMs\":\"beginFrame including timing publication\",\"gpuSumMs\":\"sum "
            "of timed passes; excludes presentation, driver and untimed work; not throughput\","
-           "\"visibilityGpuMs\":\"sum of matched lmx.pass.visibility.* timings; GPU preparation\"},"
+           "\"visibilityGpuMs\":\"sum of matched lmx.pass.visibility.* timings; GPU preparation\","
+           "\"hzbGpuMs\":\"sum of lmx.pass.hzb.* reduction/publication timings; excludes debug\"},"
            "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
            "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
            "\"allocatedListBytes\":\"active list storage across three slots\"},";
@@ -47,11 +48,13 @@ std::string MeasurementRun::json() const {
         "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
         "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"
         "},\"cameraTrack\":{},\"renderScale\":{},\"stepSeconds\":0.016666666666666666,"
-        "\"classify\":{},\"classifyCheck\":{}}},",
+        "\"classify\":{},\"classifyCheck\":{},\"occlusionEnabled\":{},\"occlusionCheck\":{},"
+        "\"hzbDebugLevel\":{},\"labOccluders\":{}}},",
         m_plan.warmupFrames, m_plan.measuredFrames, m_plan.width, m_plan.height,
         m_plan.labInstances, quote(m_plan.scene), quote(m_plan.temporal), quote(m_plan.submission),
         m_plan.visibilityEnabled, m_plan.cameraTrack, m_plan.renderScale, quote(m_plan.classify),
-        m_plan.classifyCheck);
+        m_plan.classifyCheck, m_plan.occlusionEnabled, m_plan.occlusionCheck, m_plan.hzbDebugLevel,
+        m_plan.labOccluders);
     out += "\"provenance\":{\"device\":" + quote(m_provenance.device) +
            ",\"os\":" + quote(m_provenance.os) + ",\"buildMode\":" + quote(m_provenance.buildMode) +
            ",\"executableHash\":" + quote(m_provenance.executableHash) +
@@ -88,9 +91,23 @@ std::string MeasurementRun::json() const {
             c.renderWidth, c.renderHeight, c.outputWidth, c.outputHeight, c.effectiveScale,
             c.effectiveReconstruction, c.vendorFallback);
         double visibilityGpuMs = 0;
+        double hzbGpuMs = 0;
         for (const auto& pass : sample.passes)
             if (pass.label.starts_with("lmx.pass.visibility."))
                 visibilityGpuMs += pass.gpuMilliseconds;
+        for (const auto& pass : sample.passes)
+            if (pass.label.starts_with("lmx.pass.hzb.") && pass.label != "lmx.pass.hzb.debug")
+                hzbGpuMs += pass.gpuMilliseconds;
+        double sceneGpuMs = 0;
+        double shadowGpuMs = 0;
+        for (const auto& pass : sample.passes) {
+            if (pass.label.starts_with("lmx.pass.scene"))
+                sceneGpuMs += pass.gpuMilliseconds;
+            if (pass.label.starts_with("lmx.pass.shadow"))
+                shadowGpuMs += pass.gpuMilliseconds;
+        }
+        out += std::format(",\"hzbGpuMs\":{},\"sceneGpuMs\":{},\"shadowGpuMs\":{}", hzbGpuMs,
+                           sceneGpuMs, shadowGpuMs);
         out +=
             std::format(",\"effectiveSubmission\":{},\"effectiveClassify\":{},\"visibilityGpuMs\":{"
                         "},\"allocatedListBytes\":{},"
