@@ -127,7 +127,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Hierarchy has compact search, collapsible subjects and keyboard navigation; frustum-rejected names are dimmed but remain selectable, with reasons on hover/in Inspector. File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles; fallback and failure warnings remain visible.
+  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles. Visibility/Occlusion/Submission readings publish coherent frames every 250 ms; fallback and failure warnings remain immediate.
   Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
   File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.

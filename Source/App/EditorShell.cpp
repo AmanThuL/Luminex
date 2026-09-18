@@ -607,6 +607,7 @@ void EditorShell::buildMainMenu() {
 //======================================================================================================================
 void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
+    m_visibilityDisplay.publishReadings(ImGui::GetTime());
     ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.

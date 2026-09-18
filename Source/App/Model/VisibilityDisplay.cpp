@@ -3,6 +3,7 @@
 /// @brief Formats visibility diagnostics and validates retained candidate identities.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/VisibilityDisplay.h"
+#include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include <algorithm>
@@ -259,6 +260,18 @@ std::span<const rhi::PassTiming> VisibilityDisplay::timings() const {
     return found == m_timings.end() ? std::span<const rhi::PassTiming>{} : found->passes;
 }
 //======================================================================================================================
+void VisibilityDisplay::publishReadings(double nowSeconds) {
+    const bool becameReady = !m_readingsStatus.isRetired && m_status.isRetired;
+    const bool classifierChanged = m_readingsStatus.classifyMode != m_status.classifyMode;
+    if (m_readingsStatus.frameNumber != 0 && !becameReady && !classifierChanged &&
+        nowSeconds < m_nextReadingsSeconds)
+        return;
+    m_readingsStatus = m_status;
+    const auto matched = timings();
+    m_readingsTimings.assign(matched.begin(), matched.end());
+    m_nextReadingsSeconds = nowSeconds + kDiagnosticRefreshIntervalSeconds;
+}
+//======================================================================================================================
 std::vector<VisibilityField> VisibilityDisplay::objectFields(scene::InstanceId id,
                                                              uint64_t sceneGeneration) const {
     const auto* candidate = find(id, m_status, sceneGeneration);
@@ -277,6 +290,9 @@ void VisibilityDisplay::clear() {
     m_pending.clear();
     m_timings.clear();
     m_status = {};
+    m_readingsStatus = {};
+    m_readingsTimings.clear();
+    m_nextReadingsSeconds = 0.0;
     m_frame = m_generation = 0;
 }
 //======================================================================================================================

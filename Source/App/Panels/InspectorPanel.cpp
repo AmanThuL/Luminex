@@ -386,7 +386,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     if (!presentation.fallbackReason.empty()) {
         editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
     }
-    const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+    const auto& visibility = context.visibilityDisplay ? context.visibilityDisplay->readingsStatus()
                                                        : renderer.visibilityStatus();
     const bool currentVisibility =
         visibility.frameNumber != 0 &&
@@ -394,8 +394,13 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     const bool visibilityReady =
         currentVisibility &&
         (visibility.classifyMode == render::ClassifyMode::Cpu || visibility.isRetired);
-    if (visibilityReady) {
-        const auto failure = visibilityFailure(visibility);
+    const auto& latestVisibility = context.visibilityDisplay ? context.visibilityDisplay->status()
+                                                             : renderer.visibilityStatus();
+    if (latestVisibility.frameNumber != 0 &&
+        latestVisibility.sceneGeneration == context.temporalState.sceneGeneration &&
+        (latestVisibility.classifyMode == render::ClassifyMode::Cpu ||
+         latestVisibility.isRetired)) {
+        const auto failure = visibilityFailure(latestVisibility);
         if (!failure.empty())
             editor_style::message(failure.c_str(), true);
     }
@@ -540,6 +545,8 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             editor_style::message("Waiting for this scene's visibility result.");
         }
         ImGui::SeparatorText("Live readings");
+        editorTooltip(
+            "Updates every 250 ms. Counters and GPU times belong to the displayed frame.");
         if (beginReadings("visibilityDetails")) {
             if (currentVisibility) {
                 const auto group =
@@ -548,7 +555,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                                                                 : VisibilityFieldGroup::Visibility;
                 for (const auto& row :
                      visibilityFields(visibility, context.visibilityDisplay
-                                                      ? context.visibilityDisplay->timings()
+                                                      ? context.visibilityDisplay->readingsTimings()
                                                       : std::span<const rhi::PassTiming>{})) {
                     if (row.group != group &&
                         (visibilityReady || row.group != VisibilityFieldGroup::Frame))
