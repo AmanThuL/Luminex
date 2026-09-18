@@ -100,7 +100,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances);
+    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;
@@ -506,11 +506,12 @@ int main(int argc, char** argv) {
 
     // Offscreen capture does not initialize SDL or create a window.
     if (options->mode == lmx::app::RunMode::Screenshot) {
-        return lmx::app::runScreenshot(options->screenshotPath, options->initialScene,
-                                       options->frames, options->temporal, options->temporalView,
-                                       options->renderScale, options->visibilityEnabled,
-                                       options->submission, options->labInstances,
-                                       options->classifyMode, options->classifyCheck);
+        return lmx::app::runScreenshot(
+            options->screenshotPath, options->initialScene, options->frames, options->temporal,
+            options->temporalView, options->renderScale, options->visibilityEnabled,
+            options->submission, options->labInstances, options->classifyMode,
+            options->classifyCheck, options->occlusionEnabled, options->occlusionCheck,
+            options->hzbDebugLevel, options->labOccluders);
     }
     if (options->mode == lmx::app::RunMode::CaptureSequence) {
         return lmx::app::runCaptureSequence(*options);

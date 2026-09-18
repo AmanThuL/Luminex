@@ -26,11 +26,10 @@ inline constexpr const char* kInspectorPanelWindowName = "Inspector";
 /// The editor state the Inspector draws and edits, borrowed for the duration of one draw call.
 ///
 /// Every reference names storage the shell owns, so the panel edits the shell's values in place and
-/// holds nothing past the call that resolved them. `selection` is the one exception: it is a value
-/// the shell already resolved this frame (spec section 5), not a reference, so the Inspector never
-/// caches a pointer into the active scene that a scene switch or vector mutation could dangle.
+/// holds nothing past the call that resolved them. Selection is a resolved editor-local value;
+/// overview links may change its rendering category, without borrowing any scene row.
 struct InspectorPanelContext {
-    EditorSelection selection;      ///< The resolved subject to draw; `None` shows the empty state.
+    EditorSelection& selection;     ///< Resolved subject; overview links select a rendering topic.
     SceneSession& session;          ///< Borrowed active scene, camera, and playback operations.
     render::Renderer& renderer;     ///< Borrowed for clear color and read-only display status.
     EditorRenderSettings& settings; ///< Editor-owned render knobs.

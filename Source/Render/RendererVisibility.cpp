@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Assert.h"
 #include "Render/GpuVisibility.h"
+#include "Render/OcclusionReference.h"
 #include "Render/Renderer.h"
 #include <chrono>
 #include <limits>
@@ -32,6 +33,13 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
     if (m_gpuVisibility && frame >= 3)
         m_gpuVisibility->retireThrough(frame - 3);
     m_visibilityStatus = {};
+    m_visibilityStatus.occlusionEnabled = view.occlusionEnabled;
+    m_visibilityStatus.occlusionCheckEnabled = view.occlusionCheck;
+    m_visibilityStatus.occlusionInvalidReason = m_occlusionReason;
+    m_visibilityStatus.occlusionSourceFrame = m_occlusionSource.frameNumber;
+    m_visibilityStatus.occlusionParams = m_occlusionParams;
+    m_visibilityStatus.pyramidBytes =
+        m_hzbStage && view.occlusionEnabled ? m_hzbStage->layout().bytes : 0;
     m_visibilityStatus.classifyMode = view.classifyMode;
     m_visibilityStatus.checkEnabled = view.classifyCheck;
     m_visibilityStatus.frameNumber = frame;
@@ -49,7 +57,8 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
                        "visibility requires canonical instance rows");
             const auto& row = view.tables.instanceRows[item.instanceRow];
             m_visibilityStatus.scene.candidates.push_back(
-                {.instanceRow = item.instanceRow,
+                {.instanceIdentity = item.instanceIdentity,
+                 .instanceRow = item.instanceRow,
                  .worldBounds = {row.worldBoundsMin, row.worldBoundsMax}});
         }
         m_visibilityStatus.shadow.candidates = m_visibilityStatus.scene.candidates;
@@ -75,11 +84,11 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
     auto arguments = import(*m_drawSubmission.scene().arguments, "lmx.draw.args",
                             m_drawSubmission.argumentUse());
     if (view.classifyMode == ClassifyMode::Gpu) {
-        const auto output =
-            m_gpuVisibility->declare(graph, commands, view, planes, m_drawSubmission.prepared(),
-                                     sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[3],
-                                     sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[2], rows,
-                                     arguments, m_visibilityStatus);
+        const auto output = m_gpuVisibility->declare(
+            graph, commands, view, planes, m_drawSubmission.prepared(),
+            sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[3],
+            sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[2], rows, arguments,
+            m_visibilityStatus, m_previousPyramid, m_occlusionParams);
         rows = output.rows;
         arguments = output.arguments;
     } else {
@@ -102,11 +111,25 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
 
 //======================================================================================================================
 std::vector<VisibilityStatus> Renderer::takeRetiredVisibility() {
-    return m_gpuVisibility ? m_gpuVisibility->takeRetired() : std::vector<VisibilityStatus>{};
+    auto results =
+        m_gpuVisibility ? m_gpuVisibility->takeRetired() : std::vector<VisibilityStatus>{};
+    if (m_occlusionReference) {
+        for (auto& result : results) {
+            m_occlusionReference->retireThrough(result.frameNumber);
+            auto checked = m_occlusionReference->check(result);
+            LMX_ASSERT(checked || !result.occlusionCheckEnabled,
+                       "enabled occlusion reference must join its retired frame");
+            if (checked)
+                result.occlusionCheck = std::move(*checked);
+        }
+    }
+    return results;
 }
 
 //======================================================================================================================
 void Renderer::drainVisibilityAfterIdle() {
+    if (m_occlusionReference)
+        m_occlusionReference->retireThrough(std::numeric_limits<uint64_t>::max());
     if (m_gpuVisibility)
         m_gpuVisibility->retireThrough(std::numeric_limits<uint64_t>::max());
 }

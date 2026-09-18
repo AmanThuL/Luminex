@@ -14,5 +14,6 @@ std::string_view classifyModeName(render::ClassifyMode mode);
 /// Retired counter/check fields, preserving their frame identity; pending GPU counts are null.
 std::string visibilityDiagnosticsJson(const render::VisibilityStatus& status);
 /// Empty for valid results; otherwise an actionable frame-labelled failure.
-std::string visibilityFailure(const render::VisibilityStatus& status);
+std::string visibilityFailure(const render::VisibilityStatus& status,
+                              bool includeOcclusionReference = true);
 } // namespace lmx::app

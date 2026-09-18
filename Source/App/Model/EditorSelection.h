@@ -20,25 +20,44 @@ namespace lmx::app {
 enum class EditorSubject {
     None,             ///< Nothing selected -- also the healed value for a stale reference.
     Camera,           ///< The scene's one editor camera.
-    Rendering,        ///< The rendering-settings context; carries no scene data of its own.
+    Rendering,        ///< A rendering category, named by `EditorSelection::index`.
     DirectionalLight, ///< One of `Scene::lights`, named by `EditorSelection::index`.
     Object,           ///< One of `Scene::objects`, named by `EditorSelection::index`.
 };
 
+/// Inspector topics under Rendering; Overview preserves the root selection at index zero.
+enum class RenderingCategory {
+    Overview,       ///< Summary and navigation for rendering settings.
+    Reconstruction, ///< Temporal reconstruction controls and diagnostics.
+    Resolution,     ///< Render scale and dynamic-resolution feedback.
+    Visibility,     ///< Frustum classification and visible-instance counts.
+    Occlusion,      ///< Previous-frame occlusion controls and validation.
+    Submission,     ///< Draw submission and batching counts.
+    Exposure,       ///< Exposure controls and adaptation feedback.
+    Bloom,          ///< Bloom controls.
+    Shadows,        ///< Shadow controls and status.
+    Display,        ///< Display and output-domain information.
+    SceneTables,    ///< Scene-table allocation and update information.
+    Count,          ///< Exclusive upper bound; not a selectable category.
+};
+
+/// Stable visible topic label; Overview is `Rendering`, invalid values return `Unavailable`.
+std::string_view renderingCategoryLabel(RenderingCategory category);
+
 /// The editor's single selected subject: a value, not an owning or borrowed pointer, so it survives
 /// scene switches and vector mutation without dangling. `index` is meaningful only for
-/// `DirectionalLight` and `Object`; other subjects ignore it. Editor-local navigation state --
-/// never serialized, never passed to Render or the RHI (spec section 5).
+/// `Rendering`, `DirectionalLight` and `Object`; other subjects ignore it. Editor-local navigation
+/// state -- never serialized, never passed to Render or the RHI (spec section 5).
 struct EditorSelection {
     scene::SceneId sceneId;                      ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
-    size_t index = 0;                            ///< Row index for DirectionalLight/Object only.
+    size_t index = 0;                            ///< Category or DirectionalLight/Object row index.
 };
 
 /// Compares `current` against `activeScene`/`scene` and returns the value the caller should store:
 /// `current` unchanged if it still resolves, or a healed `{activeScene, EditorSubject::None, 0}` if
-/// `current.sceneId` no longer names the active scene, or its `DirectionalLight`/`Object` index is
-/// out of range for `scene`. `Camera`, `Rendering`, and `None` never fail range validation. Call
+/// `current.sceneId` no longer names the active scene, or its category, `DirectionalLight` or
+/// `Object` index is out of range. `Camera` and `None` never fail range validation. Call
 /// this on every use before drawing the Inspector; it never mutates `scene`, and the caller stores
 /// the returned value rather than caching the argument.
 EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
@@ -73,7 +92,7 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activ
 /// Presentational grouping the Scene panel draws as separate headers. Does not alter scene ordering
 /// or introduce a tree into Scene (spec section 6).
 enum class EditorSelectionGroup {
-    Workspace,         ///< Editor Camera, Rendering.
+    Workspace,         ///< Editor Camera and Rendering categories.
     DirectionalLights, ///< The three fixed lights, in index order.
     Objects,           ///< `Scene::objects`, in scene order.
 };
@@ -82,8 +101,8 @@ enum class EditorSelectionGroup {
 /// and a label; it borrows nothing from `Scene`, so it outlives the call that built it.
 struct EditorSelectionRow {
     EditorSubject subject = EditorSubject::None; ///< What selecting this row selects.
-    size_t index = 0;                            ///< DirectionalLight/Object index; else 0.
-    std::string displayLabel;                    ///< Text the panel draws for the row.
+    size_t index = 0;         ///< Rendering category or DirectionalLight/Object index.
+    std::string displayLabel; ///< Text the panel draws for the row.
     EditorSelectionGroup group = EditorSelectionGroup::Workspace; ///< Which header it draws under.
     /// Full source-qualified name for search, hover and copy; empty when the short label suffices.
     std::string detailLabel;
@@ -99,9 +118,9 @@ std::string sceneObjectLabel(const scene::Scene& scene, size_t index);
 bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& selection,
                              std::string_view filter);
 
-/// Builds the Scene panel's rows for `scene` in the spec's fixed order -- Editor Camera, Rendering,
-/// the three directional lights in index order, then `scene.objects` in scene order -- then drops
-/// rows whose visible or full source-qualified label does not contain `filter` case-insensitively.
+/// Builds rows in fixed order: Editor Camera, Rendering categories in enum order, three lights,
+/// then scene objects. Filters visible/full source names case-insensitively; matching `Rendering`
+/// retains every category. Unmatched navigation parents are not included in selectable rows.
 /// An empty `filter` keeps every row; a filter matching nothing returns an empty vector rather than
 /// an error state. Duplicate object names still produce distinct rows: subject kind plus index, not
 /// label text, identifies a row. Never mutates `scene`.

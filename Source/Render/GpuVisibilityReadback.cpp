@@ -18,6 +18,12 @@ VisibilityCounters decodeCounters(const uint32_t* words) {
     result.emittedCommands = words[8];
     result.overflowedRows = words[9];
     result.overflowedCommands = words[10];
+    result.occluded = words[11];
+    result.occlusionTested = words[12];
+    result.historyInvalid = words[13];
+    result.nearCrossing = words[14];
+    result.outsideSource = words[15];
+    result.rectTooLarge = words[16];
     return result;
 }
 //======================================================================================================================
@@ -31,10 +37,10 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     auto result = std::move(pending.status);
     result.isRetired = true;
     const auto& params = pending.params;
-    std::array<uint32_t, 24> rawCounters{};
+    std::array<uint32_t, 40> rawCounters{};
     pending.counters->readback(rawCounters.data(), sizeof(rawCounters));
     result.sceneCounters = decodeCounters(rawCounters.data());
-    result.shadowCounters = decodeCounters(rawCounters.data() + 12);
+    result.shadowCounters = decodeCounters(rawCounters.data() + 20);
     result.submission.listBytes =
         (uint64_t{result.sceneCounters.emittedRows} + result.shadowCounters.emittedRows) *
         sizeof(uint32_t);
@@ -76,14 +82,24 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
             auto found = view.candidates.begin() + item->second;
             const uint32_t state = states[absolute];
             found->state = static_cast<VisibilityState>(state & 3);
-            found->reason = static_cast<VisibilityReason>(state >> 2);
+            found->reason = static_cast<VisibilityReason>((state >> 2) & 63u);
+            found->occlusion = projectOcclusionBounds(found->worldBounds, result.occlusionParams);
+            found->occlusion.outcome = static_cast<OcclusionOutcome>((state >> 8) & 15u);
+            found->occlusion.occluded = found->reason == VisibilityReason::Occluded;
             if (found->state != VisibilityState::Rejected)
                 view.visibleItems.push_back(static_cast<uint32_t>(found - view.candidates.begin()));
             if (result.checkEnabled) {
-                const auto& expected = pending.expected[absolute];
-                result.stateMismatches +=
-                    difference(state, static_cast<uint32_t>(expected.state) |
-                                          (static_cast<uint32_t>(expected.reason) << 2));
+                auto& expected = pending.expected[absolute];
+                if (found->reason == VisibilityReason::Occluded) {
+                    result.stateMismatches += expected.state != VisibilityState::Visible ||
+                                              found->state != VisibilityState::Rejected;
+                    expected.state = VisibilityState::Rejected;
+                    expected.reason = VisibilityReason::Occluded;
+                } else {
+                    result.stateMismatches +=
+                        difference(state & 255u, static_cast<uint32_t>(expected.state) |
+                                                     (static_cast<uint32_t>(expected.reason) << 2));
+                }
             }
         }
         std::sort(view.visibleItems.begin(), view.visibleItems.end());
@@ -93,6 +109,23 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
             difference(counts.candidates, counts.visible + counts.rejected + bypassed);
         result.counterMismatches +=
             difference(counts.emittedRows + counts.overflowedRows, counts.visible + bypassed);
+        uint32_t occluded = 0, tested = 0, invalid = 0, near = 0, outside = 0, large = 0;
+        for (const auto& candidate : view.candidates) {
+            occluded += candidate.occlusion.occluded;
+            const auto outcome = candidate.occlusion.outcome;
+            invalid += outcome == OcclusionOutcome::HistoryInvalid;
+            near += outcome == OcclusionOutcome::NearCrossing;
+            outside += outcome == OcclusionOutcome::OutsideSource;
+            large += outcome == OcclusionOutcome::RectTooLarge;
+            tested += candidate.occlusion.occluded || (outcome != OcclusionOutcome::NotTested &&
+                                                       outcome != OcclusionOutcome::HistoryInvalid);
+        }
+        result.counterMismatches += difference(counts.occluded, occluded);
+        result.counterMismatches += difference(counts.occlusionTested, tested);
+        result.counterMismatches += difference(counts.historyInvalid, invalid);
+        result.counterMismatches += difference(counts.nearCrossing, near);
+        result.counterMismatches += difference(counts.outsideSource, outside);
+        result.counterMismatches += difference(counts.rectTooLarge, large);
         if (!result.checkEnabled)
             continue;
         VisibilityCounters expectedCounters;

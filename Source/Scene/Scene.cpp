@@ -399,11 +399,14 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
                          .emissiveMap = texture(factors.emissiveMap),
                          .alphaMode = factors.alphaMode,
                          .doubleSided = factors.doubleSided});
+        items.back().instanceIdentity =
+            uint64_t{object.id.store} << 48 | uint64_t{object.id.generation} << 32 | object.id.slot;
     }
 
     render::SceneView sceneView;
     sceneView.items = items;
     sceneView.tables = tables();
+    sceneView.coverageEpoch = coverageEpoch();
     for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
         sceneView.lights[i] = lights[i];
     }

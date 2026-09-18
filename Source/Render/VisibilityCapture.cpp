@@ -55,10 +55,21 @@ void registerVisibilityLayoutsForCapture() {
                     {"candidateCount", offsetof(VisibilityParams, candidateCount), "uint"},
                     {"viewCount", offsetof(VisibilityParams, viewCount), "uint"},
                     {"padding", offsetof(VisibilityParams, padding), "uint2"}}});
+    schema.registerUniformStruct({.name = "OcclusionParams",
+                                  .slot = 13,
+                                  .sizeBytes = sizeof(OcclusionParams),
+                                  .fields = {{"sourceRows", 0, "float4[4]"},
+                                             {"sourceWidth", 64, "uint"},
+                                             {"sourceHeight", 68, "uint"},
+                                             {"levelCount", 72, "uint"},
+                                             {"flags", 76, "uint"},
+                                             {"nearGuard", 80, "float"},
+                                             {"depthGuard", 84, "float"},
+                                             {"padding", 88, "uint2"}}});
     // GPU counters use four bypass words; the decoded status has an extra None array entry.
     schema.registerUniformStruct({.name = "VisibilityCounterWords",
                                   .slot = 8,
-                                  .sizeBytes = 48,
+                                  .sizeBytes = 80,
                                   .fields = {{"candidates", 0, "uint"},
                                              {"visible", 4, "uint"},
                                              {"rejected", 8, "uint"},
@@ -70,6 +81,12 @@ void registerVisibilityLayoutsForCapture() {
                                              {"emittedCommands", 32, "uint"},
                                              {"overflowedRows", 36, "uint"},
                                              {"overflowedCommands", 40, "uint"},
-                                             {"padding", 44, "uint"}}});
+                                             {"occluded", 44, "uint"},
+                                             {"tested", 48, "uint"},
+                                             {"historyInvalid", 52, "uint"},
+                                             {"nearCrossing", 56, "uint"},
+                                             {"outsideSource", 60, "uint"},
+                                             {"rectTooLarge", 64, "uint"},
+                                             {"padding", 68, "uint3"}}});
 }
 } // namespace lmx::render

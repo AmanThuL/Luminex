@@ -112,6 +112,9 @@ public:
     rhi::Result<void> prepareFrame(uint64_t frameNumber);
     /// Reports live counts, allocation capacities and the last preparation's upload work.
     SceneTableStats tableStats() const;
+    /// Monotonic coverage revision, refreshed for public object/material edits by prepareFrame.
+    /// Add/remove identities advance it immediately; motion history and lighting edits do not.
+    uint64_t coverageEpoch() const;
     /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
     /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.
     render::SceneTables tables() const;
@@ -205,7 +208,9 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& devic
 
 /// Builds a seeded repeated-geometry visibility lab with exactly instanceCount candidates.
 /// Counts from 1 through 1,048,576 include up to five initial-camera boundary probes.
+/// Adds occluderCount slabs (0..1,024) with wide gaps; zero preserves the original scene bytes.
 asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& device,
-                                                                  uint32_t instanceCount = 4096);
+                                                                  uint32_t instanceCount = 4096,
+                                                                  uint32_t occluderCount = 0);
 
 } // namespace lmx::scene

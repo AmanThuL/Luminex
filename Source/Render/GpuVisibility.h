@@ -22,7 +22,8 @@ public:
                                  const SceneView& view, const FrustumPlanes& planes,
                                  const PreparedSubmission& submission, GraphBuffer instances,
                                  GraphBuffer meshes, GraphBuffer rows, GraphBuffer arguments,
-                                 VisibilityStatus& status);
+                                 VisibilityStatus& status, GraphTexture pyramid = {},
+                                 OcclusionParams occlusion = {});
     /// Copies final declaration metrics after graph preparation completes.
     void recordDeclarationStatus(const VisibilityStatus& status) {
         m_pending.back().status = status;
@@ -55,8 +56,8 @@ private:
     rhi::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
     rhi::Device& m_device;
-    std::array<std::unique_ptr<rhi::ShaderLibrary>, 4> m_libraries;
-    std::array<std::unique_ptr<rhi::ComputePipeline>, 4> m_pipelines;
+    std::array<std::unique_ptr<rhi::ShaderLibrary>, 5> m_libraries;
+    std::array<std::unique_ptr<rhi::ComputePipeline>, 5> m_pipelines;
     std::unique_ptr<rhi::Buffer> m_emptyInstances, m_emptyMeshes;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;

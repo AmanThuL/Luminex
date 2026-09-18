@@ -37,7 +37,7 @@ rule("slang2metallib")
         batchcmds:show_progress(opt.progress, "${color.build.object}slang %s", sourcefile)
         local slangargs = {sourcefile, "-I", path.join(os.projectdir(), "Shaders/Modules"),
                            "-target", "metal", "-o", msl}
-        local visibility = name:startswith("Visibility")
+        local visibility = name:startswith("Visibility") or (name:startswith("Occlusion") and name ~= "OcclusionReference") or name:startswith("Hzb")
         if visibility then table.join2(slangargs, {"-fp-mode", "precise"}) end
         batchcmds:vrunv(slangc, slangargs)
         -- Offline metallib precompile is optional because Command Line Tools installations may

@@ -26,7 +26,8 @@ constexpr ImGuiTreeNodeFlags kGroupFlags =
 
 //======================================================================================================================
 bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selection) {
-    return row.subject == selection.subject && ((row.subject != EditorSubject::DirectionalLight &&
+    return row.subject == selection.subject && ((row.subject != EditorSubject::Rendering &&
+                                                 row.subject != EditorSubject::DirectionalLight &&
                                                  row.subject != EditorSubject::Object) ||
                                                 row.index == selection.index);
 }
@@ -53,11 +54,13 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
             context.visibilityDisplay.find(context.activeScene.objects[row.index].id,
                                            context.visibilityStatus, context.sceneGeneration);
         culled = state && state->state == render::VisibilityState::Rejected;
-        visibilityTip = state ? std::format("\n{}: {}", visibilityStateName(state->state),
-                                            state->state == render::VisibilityState::Rejected
-                                                ? "Outside camera frustum"
-                                                : visibilityReasonName(state->reason))
-                              : "\nAwaiting this object's rendered frame";
+        visibilityTip =
+            state ? std::format("\n{}: {}", visibilityStateName(state->state),
+                                state->state == render::VisibilityState::Rejected &&
+                                        state->reason != render::VisibilityReason::Occluded
+                                    ? "Outside camera frustum"
+                                    : visibilityReasonName(state->reason))
+                  : "\nAwaiting this object's rendered frame";
     }
     const bool dimmed = culled && !isRowSelected(row, context.selection);
     if (dimmed)
@@ -98,6 +101,63 @@ void drawLeaves(std::span<const EditorSelectionRow> rows, EditorSelectionGroup g
 }
 
 //======================================================================================================================
+void drawWorkspace(std::span<const EditorSelectionRow> rows, const ScenePanelContext& context,
+                   std::vector<EditorSelectionRow>& visibleLeaves) {
+    const EditorSelectionRow* rendering = nullptr;
+    bool hasRendering = false;
+    for (const auto& row : rows) {
+        if (row.subject == EditorSubject::Camera) {
+            drawLeaf(row, context, visibleLeaves);
+        } else if (row.subject == EditorSubject::Rendering) {
+            hasRendering = true;
+            if (row.index == static_cast<size_t>(RenderingCategory::Overview)) {
+                rendering = &row;
+            }
+        }
+    }
+    if (!hasRendering) {
+        return;
+    }
+    const bool keyboard = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+                          !ImGui::GetIO().WantTextInput;
+    if (!context.filter.empty()) {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    } else if (keyboard && context.selection.subject == EditorSubject::Rendering) {
+        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
+            if (rendering && context.selection.index != rendering->index) {
+                selectRow(context.selection, context.activeSceneId, *rendering);
+            } else {
+                ImGui::SetNextItemOpen(false, ImGuiCond_Always);
+            }
+        } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        }
+    }
+    const ImGuiTreeNodeFlags flags =
+        kGroupFlags |
+        (rendering && isRowSelected(*rendering, context.selection) ? ImGuiTreeNodeFlags_Selected
+                                                                   : 0);
+    const bool open = ImGui::TreeNodeEx("rendering", flags, "Rendering");
+    if (rendering) {
+        visibleLeaves.push_back(*rendering);
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
+            selectRow(context.selection, context.activeSceneId, *rendering);
+        }
+    }
+    editorTooltip(rendering ? "Rendering overview. Expand for controls and data by topic."
+                            : "Rendering topics matching search. Clear search for the overview.");
+    if (open) {
+        for (const auto& row : rows) {
+            if (row.subject == EditorSubject::Rendering &&
+                row.index != static_cast<size_t>(RenderingCategory::Overview)) {
+                drawLeaf(row, context, visibleLeaves);
+            }
+        }
+        ImGui::TreePop();
+    }
+}
+
+//======================================================================================================================
 void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelContext& context,
                    std::vector<EditorSelectionRow>& visibleLeaves) {
     if (rows.empty()) {
@@ -105,9 +165,12 @@ void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelCon
         return;
     }
     const size_t workspaceCount = groupCount(rows, EditorSelectionGroup::Workspace);
+    if (workspaceCount > 0 && !context.filter.empty()) {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+    }
     if (workspaceCount > 0 &&
         ImGui::TreeNodeEx("workspace", kGroupFlags, "Workspace (%zu)", workspaceCount)) {
-        drawLeaves(rows, EditorSelectionGroup::Workspace, context, visibleLeaves);
+        drawWorkspace(rows, context, visibleLeaves);
         ImGui::TreePop();
     }
     const size_t lightCount = groupCount(rows, EditorSelectionGroup::DirectionalLights);
@@ -243,24 +306,26 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
             context.filter.assign(buffer);
         }
         editorTooltip("Filter subject and full source names without changing selection. Up/Down "
-                      "traverses visible leaves.");
+                      "traverses visible subjects. Left/Right collapses or expands Rendering.");
         if (ImGui::SmallButton("Clear search")) {
             context.filter.clear();
         }
         editorTooltip("Show all subjects. The selected subject stays selected.");
         const auto rows = buildSceneSelectionRows(context.activeScene, context.filter);
-        const std::string count = std::format("{} / {}", rows.size(),
-                                              size_t{2} + std::size(context.activeScene.lights) +
-                                                  context.activeScene.objects.size());
+        const std::string count = std::format(
+            "{} / {}", rows.size(),
+            size_t{1} + static_cast<size_t>(RenderingCategory::Count) +
+                std::size(context.activeScene.lights) + context.activeScene.objects.size());
         const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
         if (right - ImGui::GetItemRectMax().x >=
             ImGui::CalcTextSize(count.c_str()).x + ImGui::GetStyle().ItemSpacing.x) {
             ImGui::SameLine();
         }
         ImGui::TextDisabled("%s", count.c_str());
-        editorTooltip("Matching / total selectable subjects, including camera, rendering, lights "
-                      "and objects. Dimmed names are outside the camera frustum, not disabled. "
-                      "They remain selectable; hover a name for its visibility status.");
+        editorTooltip(
+            "Matching / total selectable subjects, including camera, rendering topics, lights "
+            "and objects. Dimmed names are outside the camera frustum, not disabled. "
+            "They remain selectable; hover a name for its visibility status.");
         if (selectionHiddenByFilter(context.activeScene, context.selection, context.filter)) {
             editor_style::message("Selection hidden by search; Inspector keeps it selected.", true);
         }
