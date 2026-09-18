@@ -49,6 +49,14 @@ public:
     const render::VisibilityStatus& status() const { return m_status; }
     /// Timings only when their frame matches the displayed publication.
     std::span<const rhi::PassTiming> timings() const;
+    /// Publishes Inspector counters and exact-frame timings together at the shared 250 ms cadence.
+    /// First data, pending-to-ready and classifier changes publish immediately; scene clears reset
+    /// the publication. The caller supplies a nonnegative monotonic clock in seconds.
+    void publishReadings(double nowSeconds);
+    /// Owned Inspector publication, independent of immediate object lookup and failure reporting.
+    const render::VisibilityStatus& readingsStatus() const { return m_readingsStatus; }
+    /// Owned timings matching readingsStatus(); empty when no exact-frame join was available.
+    std::span<const rhi::PassTiming> readingsTimings() const { return m_readingsTimings; }
     /// Formats the selected object's matching result and frame; missing identities stay pending.
     std::vector<VisibilityField> objectFields(scene::InstanceId id, uint64_t sceneGeneration) const;
     /// Clears identity mapping on a scene switch.
@@ -75,6 +83,9 @@ private:
     std::deque<Snapshot> m_pending;
     std::deque<Timings> m_timings;
     render::VisibilityStatus m_status;
+    render::VisibilityStatus m_readingsStatus;
+    std::vector<rhi::PassTiming> m_readingsTimings;
+    double m_nextReadingsSeconds = 0.0;
     std::vector<Entry> m_entries;
     uint64_t m_frame = 0;
     uint64_t m_generation = 0;

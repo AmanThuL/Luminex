@@ -183,3 +183,8 @@ simulation frame) and `LMX_OCCLUSION_SCALE_CHANGE_VALUE` (0.5–1.0) to step the
 a rail. Temporal reconstruction must be enabled and measurements must be unscored. Reports keep
 these environment values and actual frame extents. This scripted step exercises source-extent
 handling; it is not a dynamic-resolution controller performance result.
+
+Inspector Visibility, Occlusion and Submission readings refresh together every 250 ms, matching
+Performance and Render Graph. Each publication owns one frame's counters and exact joined GPU
+times; these are sampled latest values, not rolling averages. Object lookup, renderer checks and
+measurement collection still run at their original rate, and failure warnings use the latest result.
