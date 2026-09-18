@@ -6,9 +6,9 @@ Use a capture for wrong rendered output, a timing trace for performance, and a r
 
 Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using
 collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
-tips while disabled controls retain visible reasons. The Inspector’s Rendering subject has a
-Display & Details > Display details section: output domain, encoded-space SDR UI rule, framebuffer scale, display target extent and current 1:1 image mapping.
-A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
+tips while disabled controls retain visible reasons. Expand Rendering in Hierarchy to choose a topic; each Inspector page keeps its controls and live readings together.
+Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables each have a page. The overview also links to each topic. At 80% UI scale all pages fit the validated fullscreen-windowed layout; smaller layouts can scroll.
+Display includes the output domain, encoded-space SDR UI rule, framebuffer scale, target extent and 1:1 image mapping. A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
 
 ## Editor playback
 
@@ -32,7 +32,7 @@ Rendering groups restore these editor defaults without resetting playback or ano
 | Shadows | PCF |
 | Reconstruction | Temporal inputs and jitter enabled; Native TAA; Final diagnostic view |
 | Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
-| Display & Details | Encoded sRGB clear RGBA (0.05, 0.07, 0.10, 1); wireframe off; transient pooling on |
+| Display | Encoded sRGB clear RGBA (0.05, 0.07, 0.10, 1); wireframe off; transient pooling on |
 
 ## Dump the compiled frame
 
@@ -203,7 +203,7 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 
 ## Measure visibility and submission
 
-Rendering > Visibility defaults to culling and indirect submission; direct/batched remain selectable.
+Rendering > Visibility owns culling/classification; Submission selects direct/indirect/batched and shows work, memory and timings. Defaults remain CPU classification, culling and indirect submission.
 Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
 CPU classify/prepare time. Hierarchy dims frustum-rejected names without disabling selection; hover status and Inspector bounds use the same retained
 frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.

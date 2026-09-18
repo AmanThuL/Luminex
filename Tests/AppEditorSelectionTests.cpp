@@ -4,6 +4,7 @@
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,6 +29,9 @@ scene::Scene sceneWithObjects(std::vector<std::string> objectNames) {
 
 const scene::SceneId kSceneA{0};
 const scene::SceneId kSceneB{1};
+constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
+constexpr size_t kFirstLightRow = 1 + kRenderingCategoryCount;
+constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
 
 } // namespace
 
@@ -166,7 +170,7 @@ TEST_CASE("scene selection rows follow the spec's fixed group and item order", "
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
 
-    REQUIRE(rows.size() == 2 + 3 + 2);
+    REQUIRE(rows.size() == kFirstObjectRow + 2);
     REQUIRE(rows[0].subject == EditorSubject::Camera);
     REQUIRE(rows[0].displayLabel == "Editor Camera");
     REQUIRE(rows[0].group == EditorSelectionGroup::Workspace);
@@ -175,19 +179,107 @@ TEST_CASE("scene selection rows follow the spec's fixed group and item order", "
     REQUIRE(rows[1].group == EditorSelectionGroup::Workspace);
 
     for (size_t i = 0; i < 3; ++i) {
-        const EditorSelectionRow& row = rows[2 + i];
+        const EditorSelectionRow& row = rows[kFirstLightRow + i];
         REQUIRE(row.subject == EditorSubject::DirectionalLight);
         REQUIRE(row.index == i);
         REQUIRE(row.group == EditorSelectionGroup::DirectionalLights);
     }
 
-    REQUIRE(rows[5].subject == EditorSubject::Object);
-    REQUIRE(rows[5].index == 0);
-    REQUIRE(rows[5].displayLabel == "Crate");
-    REQUIRE(rows[5].group == EditorSelectionGroup::Objects);
-    REQUIRE(rows[6].subject == EditorSubject::Object);
-    REQUIRE(rows[6].index == 1);
-    REQUIRE(rows[6].displayLabel == "Barrel");
+    REQUIRE(rows[kFirstObjectRow].subject == EditorSubject::Object);
+    REQUIRE(rows[kFirstObjectRow].index == 0);
+    REQUIRE(rows[kFirstObjectRow].displayLabel == "Crate");
+    REQUIRE(rows[kFirstObjectRow].group == EditorSelectionGroup::Objects);
+    REQUIRE(rows[kFirstObjectRow + 1].subject == EditorSubject::Object);
+    REQUIRE(rows[kFirstObjectRow + 1].index == 1);
+    REQUIRE(rows[kFirstObjectRow + 1].displayLabel == "Barrel");
+}
+
+//======================================================================================================================
+TEST_CASE("rendering topics have stable category identities and independent labels", "[app]") {
+    const auto scene = sceneWithObjects({});
+    const auto rows = buildSceneSelectionRows(scene, "rendering");
+    constexpr std::array<std::string_view, kRenderingCategoryCount> labels{
+        "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion",   "Submission",
+        "Exposure",  "Bloom",          "Shadows",    "Display",    "Scene tables"};
+    REQUIRE(rows.size() == labels.size());
+    for (size_t i = 0; i < labels.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(rows[i].subject == EditorSubject::Rendering);
+        REQUIRE(rows[i].index == i);
+        REQUIRE(rows[i].displayLabel == labels[i]);
+        REQUIRE(renderingCategoryLabel(static_cast<RenderingCategory>(i)) == labels[i]);
+        const EditorSelection selected{
+            .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = i};
+        REQUIRE(resolveSelection(selected, kSceneA, scene).index == i);
+        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, labels[i]));
+        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, "rEnDeR"));
+    }
+    REQUIRE(renderingCategoryLabel(RenderingCategory::Count) == "Unavailable");
+}
+
+//======================================================================================================================
+TEST_CASE("rendering category searches do not invent selectable parent matches", "[app]") {
+    const auto scene = sceneWithObjects({});
+    const auto rows = buildSceneSelectionRows(scene, "oCcLuS");
+    REQUIRE(rows.size() == 1);
+    REQUIRE(rows.front().subject == EditorSubject::Rendering);
+    REQUIRE(rows.front().index == static_cast<size_t>(RenderingCategory::Occlusion));
+    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
+    const EditorSelection occlusion{.sceneId = kSceneA,
+                                    .subject = EditorSubject::Rendering,
+                                    .index = static_cast<size_t>(RenderingCategory::Occlusion)};
+    REQUIRE(selectionHiddenByFilter(scene, overview, "occlus"));
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, occlusion, "occlus"));
+    REQUIRE(selectionHiddenByFilter(scene, occlusion, "bloom"));
+    REQUIRE(nextVisibleRow(rows, overview)->index == occlusion.index);
+    REQUIRE(previousVisibleRow(rows, occlusion)->index == occlusion.index);
+    REQUIRE(buildSceneSelectionRows(scene, "scene tables").size() == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("rendering navigation follows expanded topics and skips collapsed descendants", "[app]") {
+    const auto scene = sceneWithObjects({});
+    const auto rows = buildSceneSelectionRows(scene, "");
+    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
+    const EditorSelection firstTopic{.sceneId = kSceneA,
+                                     .subject = EditorSubject::Rendering,
+                                     .index =
+                                         static_cast<size_t>(RenderingCategory::Reconstruction)};
+    const EditorSelection lastTopic{.sceneId = kSceneA,
+                                    .subject = EditorSubject::Rendering,
+                                    .index = static_cast<size_t>(RenderingCategory::SceneTables)};
+    REQUIRE(nextVisibleRow(rows, overview)->index == firstTopic.index);
+    REQUIRE(previousVisibleRow(rows, firstTopic)->index == 0);
+    REQUIRE(previousVisibleRow(rows, firstTopic)->subject == EditorSubject::Rendering);
+    REQUIRE(nextVisibleRow(rows, lastTopic)->subject == EditorSubject::DirectionalLight);
+    const std::vector<EditorSelectionRow> collapsed{rows[0], rows[1], rows[kFirstLightRow]};
+    REQUIRE(nextVisibleRow(collapsed, overview)->subject == EditorSubject::DirectionalLight);
+    REQUIRE(previousVisibleRow(collapsed, overview)->subject == EditorSubject::Camera);
+    REQUIRE(nextVisibleRow(collapsed, firstTopic)->subject == EditorSubject::Camera);
+    REQUIRE(resolveSelection(firstTopic, kSceneA, scene).index == firstTopic.index);
+}
+
+//======================================================================================================================
+TEST_CASE("rendering category validation and scene switches preserve selection policy", "[app]") {
+    const auto scene = sceneWithObjects({});
+    const EditorSelection invalid{
+        .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = kRenderingCategoryCount};
+    REQUIRE(resolveSelection(invalid, kSceneA, scene).subject == EditorSubject::None);
+    const EditorSelection selected{.sceneId = kSceneA,
+                                   .subject = EditorSubject::Rendering,
+                                   .index = static_cast<size_t>(RenderingCategory::Occlusion)};
+    const auto failed = sceneSwitchOutcome(false, kSceneA, kSceneB, selected, "Occlusion");
+    REQUIRE(failed.selection.index == selected.index);
+    REQUIRE(failed.selection.subject == EditorSubject::Rendering);
+    REQUIRE(failed.filter == "Occlusion");
+    const auto same = sceneSwitchOutcome(true, kSceneA, kSceneA, selected, "Occlusion");
+    REQUIRE(same.selection.index == selected.index);
+    REQUIRE(same.filter == "Occlusion");
+    const auto switched = sceneSwitchOutcome(true, kSceneA, kSceneB, selected, "Occlusion");
+    REQUIRE(switched.selection.subject == EditorSubject::Camera);
+    REQUIRE(switched.selection.sceneId == kSceneB);
+    REQUIRE(switched.filter.empty());
+    REQUIRE(resolveSelection(selected, kSceneB, scene).subject == EditorSubject::None);
 }
 
 //======================================================================================================================
@@ -313,7 +405,7 @@ TEST_CASE("navigation over an empty row list finds nothing", "[app]") {
 TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local identity", "[app]") {
     const scene::Scene scene = sceneWithObjects({"", "Arch", "Arch"});
     const auto rows = buildSceneSelectionRows(scene, "");
-    REQUIRE(rows[5].displayLabel == "Unnamed object [0]");
+    REQUIRE(rows[kFirstObjectRow].displayLabel == "Unnamed object [0]");
     REQUIRE(sceneObjectLabel(scene, 1) == "Arch [object 1]");
     REQUIRE(sceneObjectLabel(scene, 2) == "Arch [object 2]");
     const EditorSelection selection{
@@ -335,10 +427,10 @@ TEST_CASE("primitive qualifiers are compact but full source names remain searcha
     scene.objects[2].sourceName = "Courtyard";
     scene.objects[2].materialQualifier = "arch";
     const auto all = buildSceneSelectionRows(scene, "");
-    REQUIRE(all[5].displayLabel == "arch [object 0]");
-    REQUIRE(all[5].detailLabel == "Sponza / arch");
-    REQUIRE(all[6].displayLabel == "leaf");
-    REQUIRE(all[7].displayLabel == "arch [object 2]");
+    REQUIRE(all[kFirstObjectRow].displayLabel == "arch [object 0]");
+    REQUIRE(all[kFirstObjectRow].detailLabel == "Sponza / arch");
+    REQUIRE(all[kFirstObjectRow + 1].displayLabel == "leaf");
+    REQUIRE(all[kFirstObjectRow + 2].displayLabel == "arch [object 2]");
     REQUIRE(buildSceneSelectionRows(scene, "Sponza").size() == 2);
     REQUIRE(buildSceneSelectionRows(scene, "leaf").size() == 1);
     REQUIRE(sceneObjectLabel(scene, 2) == "Courtyard / arch");
@@ -385,7 +477,7 @@ TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses
     const auto all = buildSceneSelectionRows(scene, "");
     // The panel submits only leaves whose ancestors are expanded; closing the first source group
     // removes Arch and Leaf from navigation without changing the selected scene-local identity.
-    const std::vector<EditorSelectionRow> drawn{all[0], all[1], all[7]};
+    const std::vector<EditorSelectionRow> drawn{all[0], all[1], all[kFirstObjectRow + 2]};
     const EditorSelection rendering{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
     REQUIRE(nextVisibleRow(drawn, rendering)->index == 2);
     REQUIRE(nextVisibleRow(drawn, rendering)->subject == EditorSubject::Object);
