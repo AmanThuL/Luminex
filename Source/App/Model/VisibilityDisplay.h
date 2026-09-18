@@ -14,10 +14,18 @@
 #include <vector>
 
 namespace lmx::app {
+/// Inspector category owning a formatted diagnostic field.
+enum class VisibilityFieldGroup {
+    Frame,      ///< Classification source and publication identity shared by diagnostic categories.
+    Visibility, ///< Frustum decisions and CPU-oracle comparisons.
+    Occlusion,  ///< Previous-frame history, pyramid and independent visibility reference.
+    Submission, ///< Draw preparation, payload storage and classifier timings.
+};
 /// Read-only formatted diagnostic field.
 struct VisibilityField {
     std::string label; ///< User-facing field name.
     std::string value; ///< Complete value for the retained frame.
+    VisibilityFieldGroup group = VisibilityFieldGroup::Visibility; ///< Owning Inspector category.
 };
 /// Human-readable classification or pending state.
 std::string_view visibilityStateName(render::VisibilityState state);

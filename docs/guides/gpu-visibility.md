@@ -16,12 +16,13 @@ xmake run App --scene visibility-lab --classify gpu --submission batched --class
 ```
 
 The editor opens maximized to usable display bounds. Omit `--windowed` for fullscreen-windowed
-visual validation. Rendering Inspector > Visibility selects the classifier, culling and submission.
+visual validation. Expand Rendering in Hierarchy: Visibility selects classifier/culling, Occlusion
+keeps HZB controls and readings together, and Submission selects draws beside work/cost counters.
 The compact summary shows kept/culled counts, its declared/retired frame and enabled check result.
 Hierarchy dims frustum-rejected and occluded objects; visible, bypassed and pending names stay normal.
 Names have no status prefixes. Selected rows use normal text for contrast; hover and Inspector retain reasons.
-Counters, work & timings retains every detailed field; hover headings and controls for explanations.
-Overflow, check failures and fallback reasons remain visible even when details are collapsed.
+Each topic exposes its detailed fields in compact label/value rows; hover controls for explanations.
+Overflow, check failures and fallback reasons remain visible across Rendering topics.
 GPU classification requires indirect or batched; direct uses a CPU-known per-draw selector.
 `--visibility off` still executes the GPU kernels and records Disabled bypasses.
 `--classify-check` requires GPU classification and retains a CPU oracle snapshot for diagnostics.
@@ -158,7 +159,7 @@ Wireframe never rejects by occlusion. A continuously animated scene therefore re
 candidates while its coverage changes. Projection and render-scale changes use the stored source
 projection instead of resetting evidence.
 
-Inspector shows source frame, validity/reason, counters, memory, check results and matched HZB
+The Occlusion topic shows source frame, validity/reason, counters, memory, check results and matched HZB
 pass timings. Selected-object fields describe the retired source rectangle, mip and nearest box
 depth. Viewport outlines use that source view, with a disclosed cap for rejected bounds; the
 source-frame label matters when the current camera has moved. Hierarchy's occlusion tip reads

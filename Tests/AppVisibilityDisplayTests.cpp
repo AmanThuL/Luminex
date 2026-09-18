@@ -5,6 +5,9 @@
 #include "App/Model/VisibilityDisplay.h"
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
+
 using namespace lmx;
 //======================================================================================================================
 TEST_CASE("Visibility display rejects stale identities and frame mismatches", "[app][visibility]") {
@@ -93,4 +96,48 @@ TEST_CASE("Selected object labels the matching declared or retired frame only",
     REQUIRE(display.objectFields(object.id, 10).size() == 1);
     display.clear();
     REQUIRE(display.objectFields(object.id, 9).size() == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("Visibility categories preserve failure diagnostics and separate pyramid costs",
+          "[app][visibility]") {
+    using Group = app::VisibilityFieldGroup;
+    render::VisibilityStatus status;
+    status.classifyMode = render::ClassifyMode::Gpu;
+    const auto pending = app::visibilityFields(status);
+    REQUIRE(pending.size() == 3);
+    REQUIRE(std::ranges::all_of(pending,
+                                [](const auto& field) { return field.group == Group::Frame; }));
+
+    status.isRetired = true;
+    status.occlusionEnabled = true;
+    status.occlusionCheckEnabled = true;
+    status.checkEnabled = true;
+    status.rowMismatches = 1;
+    status.overflow = true;
+    const std::array<rhi::PassTiming, 3> timings = {{{"lmx.pass.visibility.classify", 0.25},
+                                                     {"lmx.pass.hzb.level0", 0.125},
+                                                     {"lmx.pass.scene", 2.0}}};
+    const auto fields = app::visibilityFields(status, timings);
+    std::array<size_t, 4> counts{};
+    for (const auto& field : fields) {
+        const auto group = static_cast<size_t>(field.group);
+        REQUIRE(group < counts.size());
+        ++counts[group];
+    }
+    REQUIRE(std::ranges::all_of(counts, [](size_t count) { return count > 0; }));
+    const auto requireField = [&](std::string_view label, std::string_view value, Group group) {
+        const auto found = std::ranges::find(fields, label, &app::VisibilityField::label);
+        REQUIRE(found != fields.end());
+        REQUIRE(found->value == value);
+        REQUIRE(found->group == group);
+    };
+    requireField("CPU oracle check", "FAILED", Group::Visibility);
+    requireField("State / row / argument / counter mismatches", "0 / 1 / 0 / 0", Group::Visibility);
+    requireField("Independent ID check", "Awaiting reference", Group::Occlusion);
+    requireField("Overflow", "Work dropped", Group::Submission);
+    requireField("lmx.pass.visibility.classify", "0.250 ms", Group::Submission);
+    requireField("lmx.pass.hzb.level0", "0.125 ms", Group::Occlusion);
+    REQUIRE(std::ranges::none_of(
+        fields, [](const auto& field) { return field.label == "lmx.pass.scene"; }));
 }

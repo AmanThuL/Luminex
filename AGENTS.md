@@ -127,7 +127,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Hierarchy has compact search, collapsible subjects and keyboard navigation; frustum-rejected names are dimmed but remain selectable, with reasons on hover/in Inspector. File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Inspector shows Reconstruction/Resolution before Visibility; Exposure/Bloom/Shadows start collapsed. Visibility counters, temporal diagnostics and resolution timings expand on demand; fallback and failure warnings remain visible.
+  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles; fallback and failure warnings remain visible.
   Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
   File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.
@@ -198,7 +198,7 @@ seven catalog scenes include VisibilityLab and optional San Miguel with a determ
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
-first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats Inspector Display & Details counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
+first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats the Scene tables topic counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
 independent rendering reset scopes; `SelectionBounds` uses shared Render AABB transforms on mesh bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
 paired with declared-frame counts, and compatible live retired timing. Renderer’s

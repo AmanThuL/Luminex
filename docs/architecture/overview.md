@@ -188,7 +188,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   ingestion/snapshot/clear, limiting storage to 2,000 messages and 2 MiB of payload with a 16 KiB
   per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
   `SceneTableDisplay` formats live scene counts/capacities, geometry bytes, writes, slot, growth
-  events and pending release buffers for Inspector's read-only Scene tables block in Display & Details.
+  events and pending release buffers for Inspector's read-only Scene tables topic.
   `VisibilityDisplay` retains full object identity and frame-scoped classifications for Inspector
   diagnostics and Hierarchy badges. `MeasurementRun` joins declared CPU samples to retired GPU
   timings by frame ID, validates the pass inventory and completes only after every sample retires.
@@ -244,8 +244,8 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   idle frame with an older measurement. Native TAA remains the default; device reconstruction
   explains native-only diagnostic availability.
   `EditorStyle.h` shares responsive fields and delayed contextual tooltips; Inspector keeps a selected-subject heading above its
-  scrolling fields. Exposure/Bloom/Shadows start collapsed, Reconstruction/Resolution expanded;
-  each editable group has scoped Reset and changed-from-default state. File > Open Scene owns
+  scrolling fields. Rendering expands into category subjects; each page pairs controls with compact live readings, without nested detail toggles. Category selection participates in filtering and
+  keyboard navigation; changing pages resets scroll. Editable reset groups keep scoped defaults. File > Open Scene owns
   catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
   groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
   selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.

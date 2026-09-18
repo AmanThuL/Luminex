@@ -44,94 +44,123 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
 std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& status,
                                               std::span<const rhi::PassTiming> timings) {
     std::vector<VisibilityField> fields;
-    fields.push_back({"Classifier", std::string(classifyModeName(status.classifyMode))});
+    fields.push_back({"Classifier", std::string(classifyModeName(status.classifyMode)),
+                      VisibilityFieldGroup::Frame});
     fields.push_back({status.isRetired ? "Retired frame" : "Declared frame",
-                      std::to_string(status.frameNumber)});
+                      std::to_string(status.frameNumber), VisibilityFieldGroup::Frame});
     if (status.classifyMode == render::ClassifyMode::Gpu && !status.isRetired) {
-        fields.push_back({"GPU classification", "Awaiting retired frame"});
+        fields.push_back(
+            {"GPU classification", "Awaiting retired frame", VisibilityFieldGroup::Frame});
         return fields;
     }
     const auto append = [&fields](std::string_view name, const render::VisibilityResult& result) {
-        fields.push_back({std::format("{} candidates / visible / rejected", name),
-                          std::format("{} / {} / {}", result.candidates.size(), result.visible,
-                                      result.rejected)});
+        fields.push_back(
+            {std::format("{} candidates / visible / rejected", name),
+             std::format("{} / {} / {}", result.candidates.size(), result.visible, result.rejected),
+             VisibilityFieldGroup::Visibility});
         for (size_t i = 1; i < result.bypassed.size(); ++i) {
             fields.push_back(
                 {std::format("{}: {}", name,
                              visibilityReasonName(static_cast<render::VisibilityReason>(i))),
-                 std::to_string(result.bypassed[i])});
+                 std::to_string(result.bypassed[i]), VisibilityFieldGroup::Visibility});
         }
     };
     append("Scene", status.scene);
     append("Shadow", status.shadow);
     if (status.occlusionEnabled) {
         fields.push_back({"Occlusion history",
-                          render::occlusionInvalidReasonName(status.occlusionInvalidReason)});
-        fields.push_back({"HZB source frame", std::to_string(status.occlusionSourceFrame)});
-        fields.push_back({"Pyramid allocation", std::format("{} B", status.pyramidBytes)});
+                          render::occlusionInvalidReasonName(status.occlusionInvalidReason),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"HZB source frame", std::to_string(status.occlusionSourceFrame),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"Pyramid allocation", std::format("{} B", status.pyramidBytes),
+                          VisibilityFieldGroup::Occlusion});
         const auto& c = status.sceneCounters;
-        fields.push_back(
-            {"Occluded / tested", std::format("{} / {}", c.occluded, c.occlusionTested)});
-        fields.push_back({"History-invalid retained", std::to_string(c.historyInvalid)});
+        fields.push_back({"Occluded / tested",
+                          std::format("{} / {}", c.occluded, c.occlusionTested),
+                          VisibilityFieldGroup::Occlusion});
+        fields.push_back({"History-invalid retained", std::to_string(c.historyInvalid),
+                          VisibilityFieldGroup::Occlusion});
         fields.push_back(
             {"Near / outside source / too large",
-             std::format("{} / {} / {}", c.nearCrossing, c.outsideSource, c.rectTooLarge)});
+             std::format("{} / {} / {}", c.nearCrossing, c.outsideSource, c.rectTooLarge),
+             VisibilityFieldGroup::Occlusion});
         if (status.occlusionCheckEnabled) {
             const auto& check = status.occlusionCheck;
-            fields.push_back({"Independent ID check", !check.enabled   ? "Awaiting reference"
-                                                      : check.passed() ? "Passed"
-                                                                       : "FAILED"});
-            fields.push_back(
-                {"Reference rule", check.strict ? "Strict visibility" : "One-frame recovery"});
-            fields.push_back(
-                {"Missing instances / pixels / streak",
-                 std::format("{} / {} / {}", check.falselyRejectedInstances,
-                             check.falselyRejectedPixels, check.maximumMissingStreak)});
+            fields.push_back({"Independent ID check",
+                              !check.enabled   ? "Awaiting reference"
+                              : check.passed() ? "Passed"
+                                               : "FAILED",
+                              VisibilityFieldGroup::Occlusion});
+            fields.push_back({"Reference rule",
+                              check.strict ? "Strict visibility" : "One-frame recovery",
+                              VisibilityFieldGroup::Occlusion});
+            fields.push_back({"Missing instances / pixels / streak",
+                              std::format("{} / {} / {}", check.falselyRejectedInstances,
+                                          check.falselyRejectedPixels, check.maximumMissingStreak),
+                              VisibilityFieldGroup::Occlusion});
         }
     }
     const auto& s = status.submission;
+    fields.push_back({"Scene / shadow commands",
+                      std::format("{} / {}", s.sceneCommands, s.shadowCommands),
+                      VisibilityFieldGroup::Submission});
     fields.push_back(
-        {"Scene / shadow commands", std::format("{} / {}", s.sceneCommands, s.shadowCommands)});
-    fields.push_back({"Instanced runs", std::to_string(s.instancedRuns)});
-    fields.push_back(
-        {"Valid row / argument payload", std::format("{} / {} B", s.listBytes, s.argumentBytes)});
+        {"Instanced runs", std::to_string(s.instancedRuns), VisibilityFieldGroup::Submission});
+    fields.push_back({"Valid row / argument payload",
+                      std::format("{} / {} B", s.listBytes, s.argumentBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"List / argument allocation",
-                      std::format("{} / {} B", s.allocatedListBytes, s.allocatedArgumentBytes)});
+                      std::format("{} / {} B", s.allocatedListBytes, s.allocatedArgumentBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"CPU classify / prepare",
-                      std::format("{:.3f} / {:.3f} ms", status.classifyMs, status.prepareMs)});
+                      std::format("{:.3f} / {:.3f} ms", status.classifyMs, status.prepareMs),
+                      VisibilityFieldGroup::Submission});
     fields.push_back({"Candidate / run / chunk preparation",
-                      std::format("{} / {} / {} B", s.candidateBytes, s.runBytes, s.chunkBytes)});
+                      std::format("{} / {} / {} B", s.candidateBytes, s.runBytes, s.chunkBytes),
+                      VisibilityFieldGroup::Submission});
+    fields.push_back({"State / counter storage",
+                      std::format("{} / {} B", s.stateBytes, s.counterBytes),
+                      VisibilityFieldGroup::Submission});
     fields.push_back(
-        {"State / counter storage", std::format("{} / {} B", s.stateBytes, s.counterBytes)});
-    fields.push_back({"Overflow", status.overflow ? "Work dropped" : "None"});
+        {"Overflow", status.overflow ? "Work dropped" : "None", VisibilityFieldGroup::Submission});
     if (status.classifyMode == render::ClassifyMode::Gpu) {
         const auto counters = [&fields](std::string_view name,
                                         const render::VisibilityCounters& c) {
             fields.push_back({std::format("{} emitted rows / commands", name),
-                              std::format("{} / {}", c.emittedRows, c.emittedCommands)});
+                              std::format("{} / {}", c.emittedRows, c.emittedCommands),
+                              VisibilityFieldGroup::Submission});
             fields.push_back({std::format("{} overflow rows / commands", name),
-                              std::format("{} / {}", c.overflowedRows, c.overflowedCommands)});
+                              std::format("{} / {}", c.overflowedRows, c.overflowedCommands),
+                              VisibilityFieldGroup::Submission});
         };
         counters("Scene", status.sceneCounters);
         counters("Shadow", status.shadowCounters);
-        fields.push_back({"CPU oracle check", !status.checkEnabled   ? "Off"
-                                              : status.checkPassed() ? "Passed"
-                                                                     : "FAILED"});
+        fields.push_back({"CPU oracle check",
+                          !status.checkEnabled   ? "Off"
+                          : status.checkPassed() ? "Passed"
+                                                 : "FAILED",
+                          VisibilityFieldGroup::Visibility});
         if (status.checkEnabled)
             fields.push_back(
                 {"State / row / argument / counter mismatches",
                  std::format("{} / {} / {} / {}", status.stateMismatches, status.rowMismatches,
-                             status.argumentMismatches, status.counterMismatches)});
+                             status.argumentMismatches, status.counterMismatches),
+                 VisibilityFieldGroup::Visibility});
         bool hasTiming = false;
         for (const auto& timing : timings) {
             if (timing.label.starts_with("lmx.pass.visibility.") ||
                 timing.label.starts_with("lmx.pass.hzb.")) {
-                fields.push_back({timing.label, std::format("{:.3f} ms", timing.gpuMilliseconds)});
+                fields.push_back({timing.label, std::format("{:.3f} ms", timing.gpuMilliseconds),
+                                  timing.label.starts_with("lmx.pass.hzb.")
+                                      ? VisibilityFieldGroup::Occlusion
+                                      : VisibilityFieldGroup::Submission});
                 hasTiming = true;
             }
         }
         if (!hasTiming)
-            fields.push_back({"GPU visibility timings", "Awaiting matching frame"});
+            fields.push_back({"GPU visibility timings", "Awaiting matching frame",
+                              VisibilityFieldGroup::Submission});
     }
     return fields;
 }

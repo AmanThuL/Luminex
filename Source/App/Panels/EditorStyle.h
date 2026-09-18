@@ -31,9 +31,10 @@ inline float scaled(float points) {
     return points * ImGui::GetStyle().FontScaleMain;
 }
 
-/// Begins a responsive field table; call endFields only when this returns true.
-inline bool beginFields(const char* id) {
-    const bool wide = ImGui::GetContentRegionAvail().x >= scaled(360.0f);
+/// Begins a responsive field table; call endFields only when this returns true. The optional
+/// two-column threshold is in base UI points; narrower tables stack labels above controls.
+inline bool beginFields(const char* id, float twoColumnWidth = 360.0f) {
+    const bool wide = ImGui::GetContentRegionAvail().x >= scaled(twoColumnWidth);
     if (!ImGui::BeginTable(id, wide ? 2 : 1, ImGuiTableFlags_SizingStretchProp)) {
         return false;
     }
