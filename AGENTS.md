@@ -11,7 +11,7 @@ its index in the same task and follow its Context, Chinese prose/English terms, 
 real editor screenshots and editable-diagram standard. Report unavailable vault access honestly.
 ## Golden sources
 - Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
-- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md`
+- ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md` · Evidence storage/recovery: `docs/guides/evidence-archive.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-refactoring.md` (R1 structural refactoring before gate B), `docs/roadmap/editor-experience.md` (UX1 before M7.1), and
   `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
