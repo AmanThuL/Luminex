@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Check repository documentation, identity, and change-message policy."""
+"""Check repository documentation, identity, and change-message policy.
+
+Every path is relative to the component root, and every git call runs there, so the answers are
+the same inside a host checkout and in the component's own repository.
+"""
 
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import subprocess
 import sys
@@ -19,18 +22,7 @@ STATUS_DIRS = {
     "architecture", "conventions", "decisions", "guides", "milestones", "plans",
     "postmortems", "research", "roadmap", "specs",
 }
-LINE_BUDGETS = {
-    "AGENTS.md": 250,
-    "README.md": 250,
-    "docs/architecture/": 300,
-    "docs/conventions/": 300,
-    "docs/guides/": 300,
-    "docs/milestones/": 300,
-    "docs/plans/": 300,
-    "docs/postmortems/": 300,
-    "docs/roadmap.md": 300,
-    "docs/roadmap/": 300,
-}
+LINE_BUDGETS = {"AGENTS.md": 250, "README.md": 250, "docs/": 300}
 HOME_PATH = re.compile(
     r"(?i)(?:/" + r"Users/[^/\s`]+|/" + r"home/[^/\s`]+|[A-Z]:\\Users\\[^\\\s`]+)"
 )
@@ -47,7 +39,9 @@ PROCESS_PATTERNS = (
     re.compile(r"(?i)\b(?:work[- ]item|plan[- ](?:checkbox|completion|amendment))\b"),
     re.compile(r"(?i)\b(?:as requested|per the prompt|controller resolution)\b"),
 )
-PROCESS_ROOTS = ("xmake/", "Source/", "Shaders/", "Tests/", "Tools/GpuDebug/", "Tools/Bench/", "Benchmarks/")
+PROCESS_ROOTS = (
+    "xmake/", "Include/", "Source/", "Backends/", "Shaders/", "Tests/", "Tools/ImGuiBufferProbe/",
+)
 COMMIT_SUBJECT = re.compile(
     r"^(?:rhi|metal|render|shader|scene|asset|engine|editor|app|core|tool|build|ci|docs|test|spike): "
     r"[a-z0-9]"
@@ -272,9 +266,9 @@ def check_public_copy(files: list[Path], errors: list[str]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    # No range means no commit is checked, so history imported from elsewhere is never judged.
     parser.add_argument(
         "--commits",
-        default=os.environ.get("POLICY_COMMIT_RANGE"),
         help="git revision or range whose message text is checked; author fields are ignored",
     )
     return parser.parse_args()
@@ -285,6 +279,8 @@ def main() -> int:
     errors: list[str] = []
     try:
         files = repository_files()
+        if not files:
+            errors.append("no repository files found")
         check_identity(files, errors)
         check_commit_messages(args.commits, errors)
         check_markdown(files, errors)
