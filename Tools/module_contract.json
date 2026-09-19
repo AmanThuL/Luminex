@@ -247,8 +247,7 @@
           "rojoRHI/Metal4/Metal4ImGui.h"
         ],
         "tests": [
-          "*",
-          "RojoRHI/Tests/RhiGpuTestSupport.h"
+          "*"
         ],
         "texture-bake": [
           "rojoRHI/Format.h",
