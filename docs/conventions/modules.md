@@ -157,7 +157,10 @@ adapter remain shared with that permitted consumer. Core, Asset and RHI's export
 no private entries. Public Renderer uses incomplete stage owners with out-of-line destruction.
 
 Root `xmake.lua` includes unit-local target definitions; reusable shader rules, dependency setup
-and maintenance tasks live under `xmake/`. Slang entry points stay at `Shaders/`, reusable modules
+and maintenance tasks live under `xmake/`. The RHI component keeps the same shape one level down:
+`RHI/xmake.lua` carries root settings for a standalone configure, `RHI/xmake/targets.lua` is the
+one file the repository root includes, and `RHI/xmake/` owns the component's own shader rule and
+dependency setup. Slang entry points stay at `Shaders/`, reusable modules
 at `Shaders/Modules/` and oracles at `Shaders/Tests/`; the RHI component owns a second tree of its
 own smoke shaders at `RHI/Shaders/Tests/`. `check_shader_imports.py` enforces each tree's import
 boundary and basename uniqueness. These paths do not change runtime shader basenames.

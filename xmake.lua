@@ -11,8 +11,15 @@ add_requires("libsdl3", "glm", "spdlog", "catch2 3.x", "cgltf", "stb")
 -- Reusable rules/tasks and pinned third-party definitions are owned by these includes.
 includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/dependencies.lua")
 
+-- The RHI component configures from its own root too, so it owns one includable targets file and
+-- reads where its vendored dependencies and the Dear ImGui target live from this root. Its own
+-- RHI/xmake.lua carries root settings for a standalone configure and is deliberately not included.
+rhi_thirdparty = path.join(os.scriptdir(), "ThirdParty")
+rhi_imgui_target = "ImGui"
+includes("RHI/xmake/shaders.lua", "RHI/xmake/targets.lua")
+
 -- First-party targets keep source membership and dependency declarations beside their units.
-includes("Source/Core/xmake.lua", "RHI/xmake.lua", "Source/Render/xmake.lua",
+includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",
          "Source/Asset/xmake.lua", "Source/Scene/xmake.lua", "Source/App/Model/xmake.lua",
-         "Source/App/xmake.lua", "Tests/xmake.lua", "RHI/Tests/xmake.lua",
+         "Source/App/xmake.lua", "Tests/xmake.lua",
          "Tools/TextureBake/xmake.lua", "Benchmarks/FrameData/xmake.lua")
