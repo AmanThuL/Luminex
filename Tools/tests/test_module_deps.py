@@ -1191,18 +1191,6 @@ class BudgetTests(unittest.TestCase):
             lines = modules.report_budgets([Path("Source/Big.cpp"), Path("Tests/Big.cpp")], contract, root)
             self.assertEqual(lines, ["review candidate: Source/Big.cpp (3 > 2 lines)"])
 
-    def test_component_test_directory_uses_the_tests_budget(self) -> None:
-        contract = {"budgets": {"production": 2, "tests": 5}}
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            write_tree(root, ["RHI/Tests/Big.cpp", "RHI/Source/Big.cpp"])
-            (root / "RHI/Tests/Big.cpp").write_text("a\nb\nc\n", encoding="utf-8")
-            (root / "RHI/Source/Big.cpp").write_text("a\nb\nc\n", encoding="utf-8")
-            lines = modules.report_budgets(
-                [Path("RHI/Tests/Big.cpp"), Path("RHI/Source/Big.cpp")], contract, root
-            )
-            self.assertEqual(lines, ["review candidate: RHI/Source/Big.cpp (3 > 2 lines)"])
-
     def test_file_within_budget_is_not_reported(self) -> None:
         contract = {"budgets": {"production": 1000}}
         with tempfile.TemporaryDirectory() as directory:

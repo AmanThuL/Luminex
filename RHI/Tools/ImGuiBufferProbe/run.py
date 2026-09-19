@@ -12,7 +12,8 @@ import subprocess
 import tempfile
 
 
-# RHI/Tools/ImGuiBufferProbe/run.py, so the repository root is three levels above the component.
+# RHI/Tools/ImGuiBufferProbe/run.py, so the host repository root is one level above the
+# component directory (RHI/); parents[3] counts up from this file to reach it.
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -26,9 +27,9 @@ def main() -> int:
     args = parser.parse_args()
     backend = ROOT / "ThirdParty/imgui/backends/imgui_impl_metal4.mm"
     if not backend.is_file():
-        parser.error(f"{backend} not found; run this from Luminex's RHI/ (needs ThirdParty/imgui)")
+        parser.error(f"{backend} not found; the probe needs a host checkout providing ThirdParty/imgui")
     if not args.archive.is_file():
-        parser.error("Build App/ImGui first; the probe reuses the existing libImGui.a")
+        parser.error(f"{args.archive} not found; the probe needs a host checkout with a built libImGui.a")
     with tempfile.TemporaryDirectory(prefix="lmx-imgui-buffer-") as directory:
         output = Path(directory)
 
