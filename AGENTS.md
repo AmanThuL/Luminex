@@ -55,9 +55,10 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
 - **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits. GPU regression uses `[gpu]~[.]`; hidden replay diagnostics require their explicit filter.
   `xmake test` rebuilds; before running Tests directly, run `xmake build Tests` to avoid stale passes.
-- Frozen portability-checkpoint-A subset (ADR 0009): `xmake build Tests && cd
-  build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
-  must pass this filter unchanged; the working directory must be the Tests build directory (shaders resolve relative to CWD).
+- Frozen portability-checkpoint-A subset (ADR 0009), split over both binaries (16 RHI, 3 graph):
+  `xmake build Tests && xmake build RHITests && (cd build/macosx/arm64/release/rhi-test && MTL_DEBUG_LAYER=1
+  ./RHITests "[checkpoint-a]") && (cd build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests
+  "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD).
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
@@ -227,8 +228,7 @@ ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassM
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
 SelectionMask and SelectionOutline (editor-only).
-`Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
-MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI oracles. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
+`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.

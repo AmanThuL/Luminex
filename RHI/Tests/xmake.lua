@@ -8,13 +8,12 @@ target("RHITests")
     add_deps("RHI")
     add_packages("catch2", "glm")
     -- GPU cases load shaders relative to the test binary, so this target compiles its own smoke
-    -- shaders. The six under Shaders/Tests are still shared with the Tests target; the copy
-    -- commit gives this component its own tree and drops the reach outside RHI/.
+    -- shaders out of the component's own tree. Six of them are byte-identical copies of oracles the
+    -- Tests target still owns: duplicated deliberately, so nothing under RHI/ reaches outside it.
+    -- The non-recursive pattern keeps Modules/ off the entry-point list.
     add_rules("slang2metallib")
+    set_values("slang.moduledir", "RHI/Shaders/Tests/Modules")
     add_files("../Shaders/Tests/*.slang")
-    add_files("../../Shaders/Tests/BufferHazardSmoke.slang", "../../Shaders/Tests/ComputeImageSmoke.slang",
-              "../../Shaders/Tests/FullscreenSample.slang", "../../Shaders/Tests/MrtSmoke.slang",
-              "../../Shaders/Tests/SamplerSmoke.slang", "../../Shaders/Tests/ShadowSmoke.slang")
     add_tests("unit", {runargs = {"~[gpu]"}})
     -- Hidden diagnostics have explicit reproduction commands and are not ordinary regression gates.
     add_tests("gpu", {runargs = {"[gpu]~[.]"}})
