@@ -2,10 +2,6 @@
   "schemaVersion": 1,
   "roots": [
     "Source",
-    "RHI/Include",
-    "RHI/Source",
-    "RHI/Backends",
-    "RHI/Tests",
     "Tests",
     "Tools/TextureBake",
     "Benchmarks"
@@ -36,67 +32,6 @@
       ],
       "privateHeaders": []
     },
-    "rhi-public": {
-      "paths": [
-        "RHI/Include"
-      ],
-      "targets": [
-        "RHI"
-      ],
-      "units": [],
-      "thirdParty": [],
-      "privateHeaders": []
-    },
-    "rhi-impl": {
-      "paths": [
-        "RHI/Source"
-      ],
-      "targets": [
-        "RHI"
-      ],
-      "units": [
-        "rhi-public"
-      ],
-      "thirdParty": [],
-      "privateHeaders": []
-    },
-    "metal4-backend": {
-      "paths": [
-        "RHI/Backends/Metal4/Source"
-      ],
-      "targets": [
-        "RHI"
-      ],
-      "units": [
-        "rhi-public",
-        "rhi-impl"
-      ],
-      "thirdParty": [
-        "metal-cpp"
-      ],
-      "privateHeaders": [
-        "RHI/Backends/Metal4/Source/Metal4DevicePrivate.h",
-        "RHI/Backends/Metal4/Source/Metal4TemporalScaler.h"
-      ]
-    },
-    "imgui-adapter": {
-      "paths": [
-        "RHI/Backends/Metal4/ImGui"
-      ],
-      "targets": [
-        "RHIMetal4ImGui"
-      ],
-      "units": [
-        "rhi-public",
-        "rhi-impl",
-        "metal4-backend"
-      ],
-      "thirdParty": [
-        "metal-cpp",
-        "imgui"
-      ],
-      "privateHeaders": []
-    },
     "asset": {
       "paths": [
         "Source/Asset"
@@ -106,10 +41,6 @@
       ],
       "units": [
         "core"
-      ],
-      "headers": [
-        "RHI/Format.h",
-        "RHI/TextureDesc.h"
       ],
       "thirdParty": [
         "glm",
@@ -126,8 +57,7 @@
         "Render"
       ],
       "units": [
-        "core",
-        "rhi-public"
+        "core"
       ],
       "thirdParty": [
         "glm"
@@ -149,7 +79,6 @@
       ],
       "units": [
         "core",
-        "rhi-public",
         "asset",
         "render"
       ],
@@ -169,7 +98,6 @@
       ],
       "units": [
         "core",
-        "rhi-public",
         "asset",
         "scene",
         "render"
@@ -191,10 +119,6 @@
       ],
       "units": [
         "core",
-        "rhi-public",
-        "rhi-impl",
-        "metal4-backend",
-        "imgui-adapter",
         "asset",
         "render",
         "scene",
@@ -231,12 +155,10 @@
       ],
       "units": [
         "core",
-        "rhi-public",
         "render",
         "asset",
         "scene",
-        "app-model",
-        "rhi-tests"
+        "app-model"
       ],
       "thirdParty": [
         "glm",
@@ -254,24 +176,6 @@
         "Tests/RenderGraphTestSupport.h"
       ]
     },
-    "rhi-tests": {
-      "paths": [
-        "RHI/Tests"
-      ],
-      "targets": [
-        "RHITests"
-      ],
-      "units": [
-        "rhi-public"
-      ],
-      "thirdParty": [
-        "catch2",
-        "glm"
-      ],
-      "privateHeaders": [
-        "RHI/Tests/RHIValidateTestSupport.h"
-      ]
-    },
     "texture-bake": {
       "paths": [
         "Tools/TextureBake"
@@ -287,10 +191,6 @@
         "glm",
         "stb"
       ],
-      "headers": [
-        "RHI/Format.h",
-        "RHI/TextureDesc.h"
-      ],
       "privateHeaders": []
     },
     "benchmarks": {
@@ -301,8 +201,7 @@
         "FrameDataBench"
       ],
       "units": [
-        "core",
-        "rhi-public"
+        "core"
       ],
       "thirdParty": [
         "glm"
@@ -313,6 +212,52 @@
         "Benchmarks/FrameData/Runner.h",
         "Benchmarks/FrameData/Workload.h"
       ]
+    }
+  },
+  "externals": {
+    "rhi": {
+      "kind": "external",
+      "paths": [
+        "RHI"
+      ],
+      "targets": [
+        "RHI",
+        "RHIMetal4ImGui",
+        "RHITests"
+      ],
+      "includeRoots": [
+        "RHI/Include"
+      ],
+      "consumers": {
+        "asset": [
+          "RHI/Format.h",
+          "RHI/TextureDesc.h"
+        ],
+        "render": [
+          "*"
+        ],
+        "scene": [
+          "*"
+        ],
+        "app-model": [
+          "*"
+        ],
+        "app-shell": [
+          "*",
+          "RHI/Metal4/Metal4ImGui.h"
+        ],
+        "tests": [
+          "*",
+          "RHI/Tests/RhiGpuTestSupport.h"
+        ],
+        "texture-bake": [
+          "RHI/Format.h",
+          "RHI/TextureDesc.h"
+        ],
+        "benchmarks": [
+          "*"
+        ]
+      }
     }
   },
   "targets": {

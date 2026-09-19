@@ -23,6 +23,9 @@ SCHEMA_VERSION = 1
 SOURCE_SUFFIXES = (".h", ".cpp", ".mm")
 COMPILED_SUFFIXES = (".cpp", ".mm")
 UNIT_LIST_FIELDS = ("paths", "targets", "units", "headers", "forbidHeaders", "privateHeaders", "thirdParty")
+EXTERNAL_LIST_FIELDS = ("paths", "targets", "includeRoots")
+EXTERNAL_KIND = "external"
+EXTERNAL_WILDCARD = "*"
 INCLUDE_FLAGS = ("-I", "-isystem", "-iframework")
 INCLUDE_PATTERN = re.compile(r'^[ \t]*#[ \t]*include[ \t]*(?:"([^"]+)"|<([^>]+)>)', re.MULTILINE)
 THIRD_PARTY_DIR = "ThirdParty"
@@ -47,7 +50,7 @@ class ModuleContractError(RuntimeError):
 class Resolved:
     """One include directive after resolution: a project file, a named package, or a system header."""
 
-    kind: str  # project | third-party | system
+    kind: str  # project | external | third-party | system
     unit: str | None
     name: str | None
     path: Path | None
@@ -90,8 +93,84 @@ def canonical_private_header(root: Path, relative: Path) -> bool:
     return True
 
 
+def under(text: str, base: str) -> bool:
+    """True when a repository-relative path names `base` itself or something inside it."""
+    return text == base or text.startswith(f"{base}/")
+
+
+def external_of(path: Path, contract: dict) -> str | None:
+    """Name the external component owning a repository-relative path, or None for Luminex's own."""
+    text = path.as_posix()
+    for name, entry in contract.get("externals", {}).items():
+        if any(under(text, entry_path) for entry_path in entry["paths"]):
+            return name
+    return None
+
+
+def load_externals(contract: dict, root: Path, claimed: dict[str, str]) -> None:
+    """Validate the external components: foreign libraries Luminex consumes but does not police.
+
+    An entry owns repository paths that no unit may claim, declares the include roots its `"*"`
+    allowance covers, and maps each consuming unit to the headers it may include.
+    """
+    externals = contract.setdefault("externals", {})
+    if not isinstance(externals, dict):
+        raise ModuleContractError("externals must hold an object of components")
+    units = contract["units"]
+    unit_targets = {target for unit in units.values() for target in unit["targets"]}
+    for name, entry in externals.items():
+        if not isinstance(entry, dict):
+            raise ModuleContractError(f"external {name} must hold an object")
+        if entry.get("kind") != EXTERNAL_KIND:
+            raise ModuleContractError(f"external {name} must declare kind {EXTERNAL_KIND!r}")
+        for field in EXTERNAL_LIST_FIELDS:
+            value = entry.setdefault(field, [])
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ModuleContractError(f"external {name} field {field} must hold a list of strings")
+        if not entry["paths"]:
+            raise ModuleContractError(f"external {name} must own at least one path")
+        for entry_path in entry["paths"]:
+            if not (root / entry_path).exists():
+                raise ModuleContractError(f"external {name} owns {entry_path}, which does not exist")
+            owner = claimed.setdefault(entry_path, name)
+            if owner != name:
+                raise ModuleContractError(f"{entry_path} is owned by both {owner} and {name}")
+        for include_root in entry["includeRoots"]:
+            if not (root / include_root).is_dir():
+                raise ModuleContractError(
+                    f"external {name} include root {include_root} must name an existing directory"
+                )
+            if not any(under(include_root, entry_path) for entry_path in entry["paths"]):
+                raise ModuleContractError(
+                    f"external {name} include root {include_root} lies outside the component"
+                )
+        for target in entry["targets"]:
+            if target in unit_targets:
+                raise ModuleContractError(f"external {name} target {target} is also a unit target")
+        consumers = entry.setdefault("consumers", {})
+        if not isinstance(consumers, dict):
+            raise ModuleContractError(f"external {name} consumers must hold an object")
+        for consumer, allowed in consumers.items():
+            if consumer not in units:
+                raise ModuleContractError(f"external {name} lists unknown consumer {consumer}")
+            if not isinstance(allowed, list) or not allowed or not all(
+                isinstance(item, str) for item in allowed
+            ):
+                raise ModuleContractError(
+                    f"external {name} consumer {consumer} must list the headers it may include"
+                )
+
+    for name, unit in units.items():
+        for entry_path in unit["paths"]:
+            owner = external_of(Path(entry_path), contract)
+            if owner is not None:
+                raise ModuleContractError(
+                    f"unit {name} owns {entry_path}, which lies inside external component {owner}"
+                )
+
+
 def load_contract(path: Path, root: Path | None = None) -> dict:
-    """Load and validate the contract: schema, unit references, target section, existing paths."""
+    """Load and validate the contract: schema, units, external components, targets, existing paths."""
     root = root or path.resolve().parents[1]
     contract = read_json(path)
     if not isinstance(contract, dict):
@@ -143,6 +222,8 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
                 )
             if owner_of(Path(header), contract) != name:
                 raise ModuleContractError(f"unit {name} does not own private header {header}")
+
+    load_externals(contract, root, claimed)
 
     roots = contract.setdefault("roots", [])
     if not isinstance(roots, list) or not roots:
@@ -335,7 +416,7 @@ def owner_of(path: Path, contract: dict) -> str | None:
     best: tuple[int, str] | None = None
     for name, unit in contract["units"].items():
         for entry in unit["paths"]:
-            if text != entry and not text.startswith(f"{entry}/"):
+            if not under(text, entry):
                 continue
             depth = len(entry.split("/"))
             if best is None or depth > best[0]:
@@ -344,15 +425,22 @@ def owner_of(path: Path, contract: dict) -> str | None:
 
 
 def project_files(root: Path, contract: dict) -> list[Path]:
-    """Every header and source under the contract's roots, repository-relative and sorted."""
+    """Every header and source under the contract's roots, repository-relative and sorted.
+
+    Files inside an external component are excluded wherever a root happens to reach them: the
+    component's insides are its own concern, not Luminex's.
+    """
     files: set[Path] = set()
     for name in contract["roots"]:
         base = root / name
         if not base.is_dir():
             continue
         for path in base.rglob("*"):
-            if path.is_file() and path.suffix in SOURCE_SUFFIXES:
-                files.add(path.relative_to(root))
+            if not path.is_file() or path.suffix not in SOURCE_SUFFIXES:
+                continue
+            relative = path.relative_to(root)
+            if external_of(relative, contract) is None:
+                files.add(relative)
     return sorted(files, key=lambda path: path.as_posix())
 
 
@@ -383,6 +471,23 @@ def shared_source_allowed(file: str, names: list[str], allowlist: list[dict]) ->
         and allow(entry)
         for entry in allowlist
     )
+
+
+def external_header_allowed(entry: dict, allowed: list[str], reached: str) -> bool:
+    """Match one component header against a consumer's allowance.
+
+    `"*"` covers every header under the entry's declared include roots and nothing else, so the
+    component's private files stay unreachable. Every other item is a header spelling as an
+    `#include` writes it, matched against the tail of the repository path it resolved to.
+    """
+    for name in allowed:
+        if name == EXTERNAL_WILDCARD:
+            if any(under(reached, include_root) for include_root in entry["includeRoots"]):
+                return True
+            continue
+        if reached == name or reached.endswith(f"/{name}"):
+            return True
+    return False
 
 
 def include_allowed(file: str, reaches: str, allowlist: list[dict]) -> bool:
@@ -422,6 +527,8 @@ def check_ownership(
     owners = compiling_targets(targets, contract)
     for path in sorted(set(files) | {Path(file) for file in owners}):
         text = path.as_posix()
+        if external_of(path, contract) is not None:
+            continue  # a foreign component builds its own sources into its own targets
         unit = owner_of(path, contract)
         if unit is None:
             errors.append(f"{text}: no unit owns this file; add it to Tools/module_contract.json")
@@ -491,6 +598,9 @@ def resolve_include(
         except ValueError:
             relative = None
         if relative is not None and not relative.as_posix().startswith(".."):
+            component = external_of(relative, contract)
+            if component is not None:
+                return Resolved("external", None, component, relative)
             unit = owner_of(relative, contract)
             if unit is not None:
                 return Resolved("project", unit, None, relative)
@@ -534,7 +644,8 @@ def check_includes(
     errors: list[str],
     root: Path,
 ) -> None:
-    """Charge every direct package include and every transitively reached unit against the unit table."""
+    """Charge every direct package include, every transitively reached unit and every external
+    component header against the unit table and the external consumer entries."""
     contexts: dict[str, list[Path]] = {}
     resolved: dict[str, list[Resolved]] = {}
     identities = project_file_identities(root, contract)
@@ -587,11 +698,39 @@ def check_includes(
             reported_packages.add(name)
             errors.append(f"{text}: {unit} includes {name} directly")
         reported: set[str] = set()
+        components: set[str] = set()
         chains: dict[str, list[str]] = {text: [text]}
         queue = [path]
         while queue:
             current = queue.pop(0)
             for include in includes_of(current):
+                if include.kind == "external" and include.path is not None:
+                    reached = include.path.as_posix()
+                    if reached in chains:
+                        continue
+                    # The component is foreign: charge the edge, but never walk into it, so a
+                    # consumer does not inherit reach from what a component header includes.
+                    chains[reached] = chains[current.as_posix()] + [reached]
+                    name = include.name or ""
+                    entry = contract["externals"][name]
+                    allowed = entry["consumers"].get(unit)
+                    if allowed is None:
+                        if name in components or include_allowed(text, name, allowlist):
+                            components.add(name)
+                            continue
+                        components.add(name)
+                        errors.append(
+                            f"{text}: {unit} is not a consumer of {name}, reaching {reached} via "
+                            f"{' -> '.join(chains[reached])}"
+                        )
+                    elif not external_header_allowed(entry, allowed, reached):
+                        if include_allowed(text, name, allowlist):
+                            continue
+                        errors.append(
+                            f"{text}: {unit} may not include {name} header {reached} via "
+                            f"{' -> '.join(chains[reached])}"
+                        )
+                    continue
                 if include.kind != "project" or include.path is None:
                     continue
                 reached = include.path.as_posix()
@@ -810,7 +949,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {error}", file=sys.stderr)
         print(f"module policy failed with {len(errors)} error(s)", file=sys.stderr)
         return 1
-    print(f"module policy passed ({len(files)} files, {len(contract['units'])} units)")
+    components = len(contract["externals"])
+    print(
+        f"module policy passed ({len(files)} files, {len(contract['units'])} units, "
+        f"{components} external component{'' if components == 1 else 's'})"
+    )
     return 0
 
 
