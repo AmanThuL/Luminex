@@ -16,7 +16,7 @@ owns the accepted UX1-before-M7.1 delivery order, and
 order after M7: N1 → M9 → M8 → M10 → M11. That order sets priority; the gates below are unchanged.
 [Interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation) explicitly
 approves entry in its [2026-09-13 review](../milestones/interface-gate-b.md), after the structural
-[R1](codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) milestone.
+[R1](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations) milestone.
 The review verifies ADR 0010 conformance and the temporal, root-data, binding, synchronization
 and capability contracts; [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) records the
 minimal scene-identity/update semantics the first consumers must implement. M6.5 closure and EDR
@@ -51,8 +51,8 @@ editor work is defined only in [Part IV](editor-experience.md#placement-and-owne
 | Area | Required foundation | Independent ordering |
 |---|---|---|
 | M7 scene, visibility and lighting | Gate B → M7.1; M7.2 → M7.3 → M7.4 | M7.5 can follow M7.1 before the visibility slices |
-| M8 shadows and composition | M7 scene/lighting, M6 temporal; depth/HZB and surface guides for screen-space effects | M8.1 → M8.2; M8.3 and M8.4 need only M7; M8.5 follows M8.4; a page-cached (VSM-style) atlas is eligible inside M8.2 |
 | M9 geometry and surface paths | M7 scene/visibility/Forward+, M6 temporal | Cluster LOD and cluster culling first; M8 is not a prerequisite and follows M9 in the accepted order |
+| M8 shadows and composition | M7 scene/lighting, M6 temporal; depth/HZB and surface guides for screen-space effects | M8.1 → M8.2; M8.3 and M8.4 need only M7; M8.5 follows M8.4; a page-cached (VSM-style) atlas is eligible inside M8.2 |
 | M10 query and transport reference | M7 scene/light data, M6 temporal/capture | Query/reference work need not wait for M9 or all of M8 |
 | M10 real-time reflections | Query/reference gates, then M8 SSR/probe fallback | Budget tracing, denoising and composition together |
 | M11 GI | M10 query/reference/denoising and shared temporal/light contracts | Accepted separately from content residency |
@@ -137,6 +137,21 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 **Defer:** Local shadows and basic transparency to M8; area lights to the independent light-model extension; stochastic direct lighting (ReSTIR-DI/MegaLights-class) to the independent study below, which uses this clustered path as its reference.
 
+## M9 — Geometry LOD and surface-path experiments
+
+Sections follow the accepted delivery order, so M9 precedes M8. Identifiers are names and do not
+change; the [execution sequence](../roadmap.md#execution-sequence) carries the order.
+
+**Outcome:** cluster geometry with GPU cluster culling and a measured opaque-path choice improve representative workloads on native Metal, with published measurements, while ordinary raster and shared material semantics remain a reliable reference.
+
+**Deliver:** offline cluster LOD through a maintained clusterization library (meshlets, bounds/cones, hierarchical simplification) with runtime selection/transition; GPU cluster culling and ordinary indirect cluster raster over the M7 visibility path; optional mesh-shader execution on M3/A17 Pro and later with the vertex/compute cluster path as the fallback and reference; separately compare compact/tile-local deferred and visibility-buffer material reconstruction/classification. Use required attachment/load-store/tile support only for the measured path, with materialized fallbacks. Extend MipLab and VisibilityLab for derivatives, alpha coverage, LOD and tiny geometry. Publish a native-Metal measurement table for cluster culling and raster on the frozen device and workloads; such numbers are nearly absent from the public corpus.
+
+**Prerequisites:** M7 scene/visibility (M7.1–M7.4) and Forward+ (M7.5) plus M6 temporal contracts. M8 is not a prerequisite and follows M9 in the accepted order; its screen-space consumers later pressure-test the retained surface outputs. GTAO and SSR/probes belong to M8 and do not depend on an opaque-path experiment winning.
+
+**Exit gate:** cluster LOD selection and transitions meet declared error/stability limits; supported surface paths agree on material references; the mesh-shader path, when built, matches the fallback path's visible set and image. Measure cull/raster/resolve/shading and downstream cost, memory, overdraw and available bandwidth/tile/occupancy counters; mark unavailable metrics explicitly. Record adopt/retain/defer per platform/workload, retain the Forward+ oracle, and rerun the suite on representative Windows hardware once D3D12 exists.
+
+**Defer:** Nanite-class virtualized geometry streaming and software rasterization, mandatory mesh shaders, general asset tooling, scene-query implementation and GI; those separate work areas do not wait for M9 to select an opaque winner.
+
 ## M8 — Shadows, indirect-lighting floor and environment
 
 **Outcome:** dependable shadows, screen-space/probe lighting, atmosphere and transparent composition extend the shared frame with visible quality gains and bounded costs. M8 finishes when the five slices below pass.
@@ -205,18 +220,6 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 **Exit gate:** Fog composition agrees across surfaces; froxel history exposes rejection and coverage; atmosphere output respects scene-linear pre-exposure and the display transform.
 
 **Defer:** Clouds/weather; volumetric shadows beyond froxel transmittance.
-
-## M9 — Geometry LOD and surface-path experiments
-
-**Outcome:** cluster geometry with GPU cluster culling and a measured opaque-path choice improve representative workloads on native Metal, with published measurements, while ordinary raster and shared material semantics remain a reliable reference.
-
-**Deliver:** offline cluster LOD through a maintained clusterization library (meshlets, bounds/cones, hierarchical simplification) with runtime selection/transition; GPU cluster culling and ordinary indirect cluster raster over the M7 visibility path; optional mesh-shader execution on M3/A17 Pro and later with the vertex/compute cluster path as the fallback and reference; separately compare compact/tile-local deferred and visibility-buffer material reconstruction/classification. Use required attachment/load-store/tile support only for the measured path, with materialized fallbacks. Extend MipLab and VisibilityLab for derivatives, alpha coverage, LOD and tiny geometry. Publish a native-Metal measurement table for cluster culling and raster on the frozen device and workloads; such numbers are nearly absent from the public corpus.
-
-**Prerequisites:** M7 scene/visibility (M7.1–M7.4) and Forward+ (M7.5) plus M6 temporal contracts. M8 is not a prerequisite and follows M9 in the accepted order; its screen-space consumers later pressure-test the retained surface outputs. GTAO and SSR/probes belong to M8 and do not depend on an opaque-path experiment winning.
-
-**Exit gate:** cluster LOD selection and transitions meet declared error/stability limits; supported surface paths agree on material references; the mesh-shader path, when built, matches the fallback path's visible set and image. Measure cull/raster/resolve/shading and downstream cost, memory, overdraw and available bandwidth/tile/occupancy counters; mark unavailable metrics explicitly. Record adopt/retain/defer per platform/workload, retain the Forward+ oracle, and rerun the suite on representative Windows hardware once D3D12 exists.
-
-**Defer:** Nanite-class virtualized geometry streaming and software rasterization, mandatory mesh shaders, general asset tooling, scene-query implementation and GI; those separate work areas do not wait for M9 to select an opaque winner.
 
 ## M10 — Hybrid scene query and reference transport
 

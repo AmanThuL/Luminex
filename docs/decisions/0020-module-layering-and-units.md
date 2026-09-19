@@ -92,7 +92,7 @@ gate reviews.
 ## Cross-references
 
 - [Module contract](../conventions/modules.md) — the enforceable form of this decision.
-- [Codebase refactoring roadmap](../roadmap/codebase-refactoring.md) — slice order and exit gates.
+- [Codebase refactoring roadmap](../roadmap/codebase-module-boundaries.md) — slice order and exit gates.
 - [Architecture overview](../architecture/overview.md) — current structure, updated as units move.
 - [ADR 0018](0018-masked-material-coverage.md) — the glTF alpha-mode contract the loader keeps
   when `AlphaMode` moves to its own leaf header.
