@@ -1200,5 +1200,263 @@ class BudgetTests(unittest.TestCase):
             self.assertEqual(modules.report_budgets([Path("Source/Small.cpp")], contract, root), [])
 
 
+EXTERNAL_CONTRACT = {
+    "schemaVersion": 1,
+    "roots": ["Source"],
+    "budgets": {"production": 1000},
+    "units": {
+        "core": {"paths": ["Source/Core"], "targets": ["Core"], "units": [], "thirdParty": ["spdlog"]},
+        "asset": {"paths": ["Source/Asset"], "targets": ["Asset"], "units": ["core"], "thirdParty": []},
+        "model": {"paths": ["Source/Model"], "targets": ["Model"], "units": ["core"], "thirdParty": []},
+        "shell": {"paths": ["Source/App"], "targets": ["App"], "units": ["core"], "thirdParty": []},
+        "stray": {"paths": ["Source/Stray"], "targets": ["Stray"], "units": [], "thirdParty": []},
+    },
+    "externals": {
+        "rhi": {
+            "kind": "external",
+            "paths": ["RHI"],
+            "targets": ["RHI", "RHIMetal4ImGui", "RHITests"],
+            "includeRoots": ["RHI/Include"],
+            "consumers": {
+                "asset": ["RHI/Format.h"],
+                "model": ["*"],
+                "shell": ["*", "RHI/Metal4/Metal4ImGui.h", "RHI/Tests/RhiGpuTestSupport.h"],
+            },
+        }
+    },
+    "targets": {
+        "Core": {"deps": []},
+        "Asset": {"deps": ["Core"]},
+        "Model": {"deps": ["Core"]},
+        "App": {"deps": ["Core", "RHI"]},
+        "Stray": {"deps": []},
+        "RHI": {"deps": []},
+        "RHIMetal4ImGui": {"deps": ["RHI", "ImGui"]},
+        "RHITests": {"deps": ["RHI"]},
+    },
+    "thirdPartyTargets": ["ImGui"],
+}
+
+EXTERNAL_TREE = {
+    "RHI/Include/RHI/Format.h": "",
+    "RHI/Include/RHI/Device.h": "",
+    "RHI/Include/RHI/RHI.h": '#include "RHI/Device.h"\n#include "RHI/Source/Base/Log.h"\n',
+    "RHI/Source/Base/Log.h": "",
+    "RHI/Source/Validate.cpp": "",
+    "RHI/Backends/Metal4/Source/Metal4Device.h": "",
+    "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h": "",
+    "RHI/Tests/RhiGpuTestSupport.h": "",
+    "Source/Core/Log.h": "",
+    "Source/Core/Log.cpp": "",
+    "Source/Asset/Allowed.h": '#include "RHI/Format.h"\n',
+    "Source/Asset/Forbidden.h": '#include "RHI/Device.h"\n',
+    "Source/Model/Wildcard.h": '#include "RHI/RHI.h"\n',
+    "Source/Model/Adapter.h": '#include "RHI/Metal4/Metal4ImGui.h"\n',
+    "Source/App/Shell.h": '#include "RHI/Metal4/Metal4ImGui.h"\n#include "RHI/RHI.h"\n',
+    "Source/App/Private.h": '#include "RHI/Source/Base/Log.h"\n',
+    "Source/App/Backend.h": '#include "RHI/Backends/Metal4/Source/Metal4Device.h"\n',
+    "Source/Stray/Stray.h": '#include "RHI/Format.h"\n',
+}
+
+# The repository root is an include directory here so that a component-private path is resolvable
+# and the wildcard has something to reject; in the real build no such directory is on the line.
+EXTERNAL_DIRS = [".", "Source", "RHI/Include", "RHI/Backends/Metal4/ImGui/Include"]
+
+
+def external_entry(root: Path, file: str) -> dict:
+    arguments = ["clang++", "-c", "-std=c++23"]
+    for name in EXTERNAL_DIRS:
+        arguments.append(f"-I{name}")
+    arguments.extend(["-o", "out.o", file])
+    return {"directory": str(root), "arguments": arguments, "file": file}
+
+
+def external_db(root: Path) -> dict[str, dict]:
+    """One compiled source per unit, so every consumer header has a compilation context."""
+    compiled = ["Source/Core/Log.cpp", "Source/Asset/Asset.cpp", "Source/Model/Model.cpp",
+                "Source/App/App.cpp", "Source/Stray/Stray.cpp"]
+    return {file: external_entry(root, file) for file in compiled}
+
+
+class ExternalComponentTests(unittest.TestCase):
+    """The RHI is a foreign library: Luminex polices what it includes, not what is inside it."""
+
+    def setUp(self) -> None:
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = Path(self.directory.name).resolve()
+        for name, body in EXTERNAL_TREE.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+
+    def load(self, mutate=None) -> dict:
+        contract = json.loads(json.dumps(EXTERNAL_CONTRACT))
+        if mutate is not None:
+            mutate(contract)
+        return modules.load_contract(write_contract(self.root, contract), self.root)
+
+    def check(self, names: list[str], allowlist: list[dict] | None = None) -> list[str]:
+        contract = self.load()
+        errors: list[str] = []
+        modules.check_includes(
+            [Path(name) for name in names], {}, external_db(self.root), contract,
+            allowlist or [], errors, self.root,
+        )
+        return errors
+
+    def test_include_under_the_entry_paths_resolves_to_that_entry(self) -> None:
+        contract = self.load()
+        dirs = modules.include_dirs(external_entry(self.root, "x.cpp"))
+        resolved = modules.resolve_include(
+            Path("Source/Model/Wildcard.h"), "RHI/RHI.h", True, dirs, self.root, contract
+        )
+        self.assertEqual(
+            resolved, modules.Resolved("external", None, "rhi", Path("RHI/Include/RHI/RHI.h"))
+        )
+
+    def test_a_unit_that_is_not_a_consumer_cannot_include_the_component(self) -> None:
+        self.assertEqual(
+            self.check(["Source/Stray/Stray.h"]),
+            [
+                "Source/Stray/Stray.h: stray is not a consumer of rhi, reaching "
+                "RHI/Include/RHI/Format.h via Source/Stray/Stray.h -> RHI/Include/RHI/Format.h"
+            ],
+        )
+
+    def test_a_listed_consumer_including_an_unlisted_header_fails(self) -> None:
+        self.assertEqual(self.check(["Source/Asset/Allowed.h"]), [])
+        self.assertEqual(
+            self.check(["Source/Asset/Forbidden.h"]),
+            [
+                "Source/Asset/Forbidden.h: asset may not include rhi header RHI/Include/RHI/Device.h "
+                "via Source/Asset/Forbidden.h -> RHI/Include/RHI/Device.h"
+            ],
+        )
+
+    def test_a_wildcard_consumer_reaches_the_public_include_roots(self) -> None:
+        self.assertEqual(self.check(["Source/Model/Wildcard.h"]), [])
+        self.assertEqual(self.check(["Source/App/Shell.h"]), [])
+
+    def test_the_wildcard_does_not_reach_the_components_private_files(self) -> None:
+        for name, reached in (
+            ("Source/App/Private.h", "RHI/Source/Base/Log.h"),
+            ("Source/App/Backend.h", "RHI/Backends/Metal4/Source/Metal4Device.h"),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    self.check([name]),
+                    [f"{name}: shell may not include rhi header {reached} via {name} -> {reached}"],
+                )
+
+    def test_the_wildcard_does_not_reach_a_second_include_root_unless_it_is_named(self) -> None:
+        adapter = "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h"
+        self.assertEqual(
+            self.check(["Source/Model/Adapter.h"]),
+            [
+                f"Source/Model/Adapter.h: model may not include rhi header {adapter} "
+                f"via Source/Model/Adapter.h -> {adapter}"
+            ],
+        )
+
+    def test_reach_stops_at_the_component_boundary(self) -> None:
+        """`RHI/RHI.h` includes a component-private header; the consumer does not inherit it."""
+        self.assertEqual(self.check(["Source/Model/Wildcard.h"]), [])
+
+    def test_an_include_allowance_suppresses_one_external_edge(self) -> None:
+        allowlist = [
+            {"kind": "include", "file": "Source/Stray/Stray.h", "reaches": "rhi",
+             "reason": "the stray still names a format", "until": "R2.3"}
+        ]
+        self.assertEqual(self.check(["Source/Stray/Stray.h"], allowlist), [])
+        self.assertTrue(allowlist[0].get("used"))
+
+    def test_files_under_the_entry_paths_are_not_checked_for_unit_reach_or_ownership(self) -> None:
+        contract = self.load()
+        targets = {"RHI": {"files": ["RHI/Source/Validate.cpp"], "deps": [], "packages": [],
+                           "frameworks": []}}
+        errors: list[str] = []
+        modules.check_ownership([], targets, contract, [], errors)
+        self.assertEqual(errors, [])
+        self.assertEqual(modules.project_files(self.root, contract), [
+            Path("Source/App/Backend.h"), Path("Source/App/Private.h"), Path("Source/App/Shell.h"),
+            Path("Source/Asset/Allowed.h"), Path("Source/Asset/Forbidden.h"),
+            Path("Source/Core/Log.cpp"), Path("Source/Core/Log.h"),
+            Path("Source/Model/Adapter.h"), Path("Source/Model/Wildcard.h"),
+            Path("Source/Stray/Stray.h"),
+        ])
+
+    def test_a_walked_root_inside_the_component_contributes_no_files(self) -> None:
+        contract = self.load(lambda c: c["roots"].append("RHI/Include"))
+        self.assertNotIn(Path("RHI/Include/RHI/RHI.h"), modules.project_files(self.root, contract))
+
+    def test_a_component_target_may_not_depend_on_a_luminex_target(self) -> None:
+        contract = self.load()
+        targets = {
+            "Core": {"deps": []},
+            "RHI": {"deps": []},
+            "RHITests": {"deps": ["RHI", "Core"]},
+        }
+        errors: list[str] = []
+        modules.check_target_closure(targets, contract, [], errors)
+        self.assertEqual(errors, ["RHITests: depends on Core outside its allowed set"])
+
+    def test_an_entry_must_declare_the_external_kind(self) -> None:
+        with self.assertRaisesRegex(modules.ModuleContractError, "kind"):
+            self.load(lambda c: c["externals"]["rhi"].__setitem__("kind", "unit"))
+
+    def test_an_entry_path_that_does_not_exist_is_an_error(self) -> None:
+        with self.assertRaisesRegex(modules.ModuleContractError, "Absent"):
+            self.load(lambda c: c["externals"]["rhi"].__setitem__("paths", ["Absent"]))
+
+    def test_a_unit_may_not_own_a_path_inside_the_component(self) -> None:
+        with self.assertRaisesRegex(modules.ModuleContractError, "RHI/Include"):
+            self.load(lambda c: c["units"]["core"]["paths"].append("RHI/Include"))
+
+    def test_an_include_root_must_be_a_directory_inside_the_component(self) -> None:
+        for roots in (["RHI/Absent"], ["Source"], ["RHI/Include/RHI/RHI.h"]):
+            with self.subTest(roots=roots):
+                with self.assertRaises(modules.ModuleContractError):
+                    self.load(lambda c, r=roots: c["externals"]["rhi"].__setitem__("includeRoots", r))
+
+    def test_a_consumer_must_name_a_known_unit_and_list_its_headers(self) -> None:
+        with self.assertRaisesRegex(modules.ModuleContractError, "ghost"):
+            self.load(lambda c: c["externals"]["rhi"]["consumers"].__setitem__("ghost", ["*"]))
+        with self.assertRaisesRegex(modules.ModuleContractError, "asset"):
+            self.load(lambda c: c["externals"]["rhi"]["consumers"].__setitem__("asset", []))
+
+    def test_a_component_target_may_not_also_be_a_unit_target(self) -> None:
+        with self.assertRaisesRegex(modules.ModuleContractError, "RHI"):
+            self.load(lambda c: c["units"]["core"]["targets"].append("RHI"))
+
+
+class RepositoryContractTests(unittest.TestCase):
+    """Pins about the checked-in contract itself, so a new directory cannot fall through it."""
+
+    def setUp(self) -> None:
+        self.root = modules.ROOT
+        self.contract = modules.load_contract(modules.CONTRACT_PATH, self.root)
+
+    def test_every_source_file_under_the_rhi_component_is_covered_by_one_entry(self) -> None:
+        component = self.root / "RHI"
+        if not component.is_dir():
+            self.skipTest("the RHI component is no longer in the repository")
+        uncovered = [
+            path.relative_to(self.root).as_posix()
+            for path in sorted(component.rglob("*"))
+            if path.is_file() and path.suffix in modules.SOURCE_SUFFIXES
+            and modules.external_of(path.relative_to(self.root), self.contract) is None
+            and modules.owner_of(path.relative_to(self.root), self.contract) is None
+        ]
+        self.assertEqual(uncovered, [])
+
+    def test_the_component_owns_no_luminex_unit_and_no_unit_owns_its_targets(self) -> None:
+        self.assertEqual(sorted(self.contract["externals"]), ["rhi"])
+        entry = self.contract["externals"]["rhi"]
+        self.assertEqual(entry["paths"], ["RHI"])
+        self.assertEqual(sorted(entry["targets"]), ["RHI", "RHIMetal4ImGui", "RHITests"])
+        self.assertNotIn("rhi-public", self.contract["units"])
+
+
 if __name__ == "__main__":
     unittest.main()

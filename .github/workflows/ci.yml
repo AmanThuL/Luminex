@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**', 'RHI/Tools/Patches/**') }}
 
       - name: Cache xmake packages
         uses: actions/cache@v5
@@ -117,17 +117,27 @@ jobs:
         run: python3 Tools/check_module_deps.py --link
 
       - name: Unit tests
-        run: xmake test Tests/unit
+        run: |
+          xmake test Tests/unit
+          xmake test RHITests/unit
 
       # GitHub's hosted macOS runner exposes an Apple Paravirtual device without Metal 4.
       # Compile and inventory the suite here; run it on Metal 4 hardware before merge.
       - name: Confirm GPU suite is discoverable
         run: |
           xmake build Tests
+          xmake build RHITests
           gpu_count=$(./build/macosx/arm64/release/test/Tests --list-tests "[gpu]" | \
             sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
           test -n "$gpu_count" && test "$gpu_count" -gt 0
-          echo "$gpu_count Metal 4 GPU cases compiled"
+          echo "$gpu_count Metal 4 GPU cases compiled in Tests"
+          rhi_gpu_count=$(./build/macosx/arm64/release/rhi-test/RHITests --list-tests "[gpu]" | \
+            sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
+          test -n "$rhi_gpu_count" && test "$rhi_gpu_count" -gt 0
+          echo "$rhi_gpu_count Metal 4 GPU cases compiled in RHITests"
+
+      - name: Checkpoint A inventory
+        run: python3 Tools/check_checkpoint_a.py
 
       - name: Format check
         run: xmake format --check
@@ -149,7 +159,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ThirdParty
-          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**') }}
+          key: ${{ runner.os }}-thirdparty-${{ hashFiles('xmake.lua', 'xmake/setup.lua', 'Tools/Patches/**', 'RHI/Tools/Patches/**') }}
       - name: Cache xmake packages
         uses: actions/cache@v5
         with:

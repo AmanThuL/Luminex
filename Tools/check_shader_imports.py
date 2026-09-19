@@ -15,6 +15,10 @@ IMPORT = re.compile(r"\bimport\b([^;]*)(?:;|$)")
 MODULE_NAME = re.compile(r"[A-Za-z_]\w*(?:(?:::|\.)[A-Za-z_]\w*)*")
 ENTRY = re.compile(r'\[\s*shader\s*\(')
 INCLUDE = re.compile(r"^\s*#\s*include\b", re.MULTILINE)
+# Each Slang tree, paired with the directory holding its shared modules. The repository tree serves
+# App, Tests and the benchmark; the RHI component owns a second, self-contained tree so its test
+# target compiles without reaching outside RHI/.
+TREES = (("Shaders", "Modules"), ("RHI/Shaders", "Tests/Modules"))
 
 
 def without_comments(text: str) -> str:
@@ -26,7 +30,26 @@ def without_comments(text: str) -> str:
 
 
 def check_shaders(root: Path) -> tuple[list[str], int, int]:
-    shaders = root / "Shaders"
+    """Check every Slang tree in the repository, each in its own namespace.
+
+    A tree is a shader root paired with the directory its shared modules live in. The trees are
+    deliberately independent: each compiles into its own target directory, so two trees may own the
+    same output basename, and neither may import the other's modules.
+    """
+    errors: list[str] = []
+    files = imports = 0
+    for tree, modules in TREES:
+        shaders = root / tree
+        if not shaders.is_dir():
+            continue
+        tree_errors, tree_files, tree_imports = check_tree(root, shaders, modules)
+        errors += tree_errors
+        files += tree_files
+        imports += tree_imports
+    return errors, files, imports
+
+
+def check_tree(root: Path, shaders: Path, modules_dir: str) -> tuple[list[str], int, int]:
     files = sorted(shaders.rglob("*.slang"))
     errors: list[str] = []
     names: dict[str, Path] = {}
@@ -40,8 +63,8 @@ def check_shaders(root: Path) -> tuple[list[str], int, int]:
                 f"also owned by {names[key].relative_to(root)}"
             )
         names[key] = path
-        if relative.parts[0] == "Modules":
-            name = ".".join(relative.with_suffix("").parts[1:])
+        if relative.is_relative_to(modules_dir):
+            name = ".".join(relative.relative_to(modules_dir).with_suffix("").parts)
             modules[name] = path
 
     imports = 0
@@ -53,7 +76,7 @@ def check_shaders(root: Path) -> tuple[list[str], int, int]:
         masked = re.sub(
             r'"(?:\\.|[^"\\])*"', lambda match: re.sub(r"[^\n]", "?", match.group()), text
         )
-        if path.relative_to(shaders).parts[0] == "Modules" and ENTRY.search(masked):
+        if path.relative_to(shaders).is_relative_to(modules_dir) and ENTRY.search(masked):
             errors.append(f"{relative}: shared modules cannot declare shader entry points")
         for match in INCLUDE.finditer(masked):
             line = text.count("\n", 0, match.start()) + 1
@@ -69,10 +92,11 @@ def check_shaders(root: Path) -> tuple[list[str], int, int]:
             if name in modules:
                 continue
             other = names.get(name.split(".")[-1].casefold())
-            if other is not None and "Modules" not in other.relative_to(shaders).parts[:-1]:
+            if other is not None and not other.relative_to(shaders).is_relative_to(modules_dir):
                 errors.append(
                     f"{relative}:{line}: import '{name}' reaches entry point "
-                    f"{other.relative_to(root)}; imports may target Shaders/Modules only"
+                    f"{other.relative_to(root)}; imports may target "
+                    f"{(shaders / modules_dir).relative_to(root)} only"
                 )
             else:
                 errors.append(f"{relative}:{line}: unresolved module import '{name}'")

@@ -7,7 +7,7 @@ Populated by `xmake setup` — see xmake.lua. Never committed.
 - `slang` — shader-slang/slang, pinned release (see `slang_pin` in `xmake.lua`). Apache License
   2.0 with LLVM exception.
 - `imgui` — ocornut/imgui, pinned docking-branch commit (see `imgui_pin` in `xmake.lua`), patched
-  for the Metal 4 backend (`Tools/Patches/imgui-metal4-remove-texture.patch`). That patch carries
+  for the Metal 4 backend (`RHI/Tools/Patches/imgui-metal4-remove-texture.patch`). That patch carries
   three changes: the texture-removal entry point the RHI needs; a fix giving the backend's
   per-frame-slot shared events one pending value each — the upstream single counter deadlocks
   `ImGui_ImplMetal4_NewFrame` as soon as a platform window renders; and an autorelease pool plus

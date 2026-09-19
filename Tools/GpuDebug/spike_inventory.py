@@ -24,7 +24,7 @@ BLOB_U64_FIELDS = [(16, "kind"), (24, "pixelFormat"), (32, "width"), (40, "heigh
 
 
 def pattern_bytes(w, h):
-    """The spike test's pattern, byte-for-byte (Tests/CaptureTests.cpp spikePatternBytes)."""
+    """The spike test's pattern, byte-for-byte (RHI/Tests/CaptureTests.cpp spikePatternBytes)."""
     return bytes(((i * 31) + (i >> 8)) & 0xFF for i in range(w * h * 4))
 
 

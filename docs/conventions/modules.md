@@ -16,30 +16,69 @@ and AppModel static target.
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
 | `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing and dispatch division | — | spdlog, glm |
-| `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
-| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
-| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
-| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
-| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, CPU geometry vocabulary and shared scene-table rows/bindings, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts | `core`, `rhi-public` | glm |
-| `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
-| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
-| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
+| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, CPU geometry vocabulary and shared scene-table rows/bindings, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core` | glm |
+| `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `asset`, `render` | glm |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `scene`, `render` | glm |
+| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
-| `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core`, `rhi-public` | glm |
+| `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core` | glm |
 
-`app-shell` reaches the backend and the adapter because it creates the device and the editor's
-ImGui bridge; no other unit above `rhi-public` may name a backend or adapter header, where "backend
-header" means any header under `RHI/Backends`. The Metal 4 extension headers
-`RHI/Include/RHI/Metal4/Metal4Capture.h` and `RHI/Include/RHI/Metal4/Metal4FrameData.h` are
-`rhi-public`, not backend headers: they live under the public include directory and pass the
-dependency-free standalone header check like every other public header.
+Every unit's access to the RHI is the external entry below, not a row in this table.
 
-`tests` reaches the GPU through `rhi-public` alone — `createDevice` in `RHI/Include/RHI/Device.h`
-hands back the interface, and no test names a backend, adapter or `RHI/Source` header. That the
-Tests target links the `RHI` target is the link-level view, a target's dependency closure, which the
-link checks own; it is not an include edge and does not widen this row.
+## External components
+
+An external component is a foreign library Luminex consumes and does not police. Luminex checks
+what its own files include from it; what the component does inside itself is the component's own
+contract. `externals` in `Tools/module_contract.json` holds one entry per component:
+
+| Field | Meaning |
+|---|---|
+| `kind` | `external`, so an entry cannot be read as a unit |
+| `paths` | the repository paths the component owns; no unit may own a path inside them |
+| `targets` | the component's build targets; no unit may claim one, and `targets` still declares each one's allowed dependency closure |
+| `includeRoots` | the include roots the `"*"` allowance covers; each must be a directory inside `paths` |
+| `consumers` | unit → the headers it may include, spelled as an `#include` writes them, or `"*"` |
+
+Today there is one entry, `rhi`: paths `RHI`, targets `RHI`, `RHIMetal4ImGui` and `RHITests`,
+include root `RHI/Include`.
+
+| Consumer | May include |
+|---|---|
+| `render`, `scene`, `app-model`, `benchmarks` | `"*"` |
+| `app-shell` | `"*"`, and `RHI/Metal4/Metal4ImGui.h` |
+| `tests` | `"*"`, and `RHI/Tests/RhiGpuTestSupport.h` |
+| `asset`, `texture-bake` | `RHI/Format.h` and `RHI/TextureDesc.h`, and nothing else |
+
+[ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md) supersedes in part the four `rhi-*`
+units of [ADR 0020](../decisions/0020-module-layering-and-units.md), every other unit's dependency
+on them, and the spelling of the Asset allowance; the allowance itself stands. ADR 0020 stays
+accepted and unedited as the record of how the layering was decided.
+
+Rules the entry carries:
+
+- A resolved include inside `paths` is an external edge, charged to the unit of the file the check
+  started from. A unit absent from `consumers` may not include the component at all.
+- `"*"` covers every header under `includeRoots` and nothing else, so `RHI/Source`,
+  `RHI/Backends/.../Source` and every other component-private file stay unreachable through it. The
+  optional ImGui adapter ships a second public include root; `app-shell` names its single header
+  explicitly rather than widening `includeRoots`, so the wildcard does not hand the editor's ImGui
+  bridge to every consumer.
+- Reach stops at the component boundary. A unit including `RHI/RHI.h` inherits nothing from what
+  that header includes inside the component, and the component's own files are not walked for unit
+  ownership, reach or line budgets — they are absent from `roots`, and excluded even if a root
+  reached them.
+- The component's targets are still reconciled: `RHI` declares no dependency, `RHIMetal4ImGui`
+  declares `RHI` and `ImGui`, `RHITests` declares `RHI`. Nothing under `RHI/` can link a Luminex
+  target without failing the target-closure check, which is how the standalone build stays
+  standalone. `Asset`'s `forbidUndefined: lmx::rhi::` still runs under `--link`.
+
+`tests` takes one header out of the component's own suite, `RHI/Tests/RhiGpuTestSupport.h`, the GPU
+bootstrap that `Tests/GpuTestSupport.h` layers its Asset, Render and Scene helpers onto. The edge
+points into the component, never out of it; when the component leaves the repository, the repository
+suite keeps its own copy of the bootstrap. The two test binaries partition the suite: a case lives
+in exactly one of them, and `RHITests` links the `RHI` target and no other project library.
 
 ### Directory ownership
 
@@ -82,10 +121,10 @@ Ownership comes from one explicit map from unit to paths, never from inference:
   leaf header, never inside the orchestrator that consumes it.
 - Tests link libraries, never loose sources from another unit.
 - Every project header compiles standalone: a generated translation unit that includes only that
-  header, compiled with its owning target's include paths, must build. `rhi-public` keeps a
-  stricter dependency-free command line, because its headers are required to need nothing; the
-  Source header check instead keeps each target's own flags and does not add `-Werror`, since it is
-  checking inclusion completeness rather than a warning-free public surface.
+  header, compiled with its owning target's include paths, must build. The Source header check
+  keeps each target's own flags and does not add `-Werror`, since it is checking inclusion
+  completeness rather than a warning-free public surface. The RHI component owns the stricter
+  dependency-free check of its own public headers, in `RHI/Tools/check_rhi_headers.py`.
 
 ## Include-level form
 
@@ -120,11 +159,13 @@ The rules above are checked as include edges:
   `app-model` header cannot borrow ImGui by including a shell header that includes it.
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
   that file's includers, so `core` including spdlog does not spend spdlog everywhere.
-- Header allowances are per unit and per header, and are the only exception to the unit table.
-  `asset` and its `texture-bake` consumer may include `RHI/Format.h` and `RHI/TextureDesc.h`.
-  TextureBake reaches these through Asset's public mip-chain structure; it still links Core and
-  Asset only. An allowance grants those headers only — not the target, not the umbrella
-  `RHI/RHI.h`, and not any other header the allowed header happens to include.
+- External reach is neither transitive nor an exception to the unit table: it is the separate
+  `externals` contract above, matched per header. `asset` and its `texture-bake` consumer may
+  include `RHI/Format.h` and `RHI/TextureDesc.h` and nothing else — not the target, not the
+  umbrella `RHI/RHI.h`, and not any other header those two happen to include. TextureBake reaches
+  them through Asset's public mip-chain structure; it still links Core and Asset only.
+- `headers` remains a per-unit, per-header allowance against another unit, and is the only
+  exception to the unit table. No unit needs one today, so no unit carries the field.
 
 ## Private implementation boundaries
 
@@ -133,22 +174,26 @@ range/temporal implementation declarations are private. Shared `SceneTables.h` r
 public Render vocabulary; scene identity stores and table ownership stay in Scene. Scene's
 environment assembly is private; uploads used by tests remain public. Every shell/panel header
 is private to App, while AppModel's shared model headers remain public. Test and benchmark
-fixtures are private to their units. Metal's device-private helpers and temporal scaler are
-private; the command-list/resources/common/frame-arena headers needed by the separate ImGui
-adapter remain shared with that permitted consumer. Core, Asset and RHI's exported headers have
-no private entries. Public Renderer uses incomplete stage owners with out-of-line destruction.
+fixtures are private to their units. Core and Asset have no private entries; the RHI component
+keeps its own private inventory, which Luminex neither reads nor needs: a file outside the entry's
+`includeRoots` is unreachable from Luminex whether the component calls it private or not. Public
+Renderer uses incomplete stage owners with out-of-line destruction.
 
 Root `xmake.lua` includes unit-local target definitions; reusable shader rules, dependency setup
-and maintenance tasks live under `xmake/`. Slang entry points stay at `Shaders/`, reusable modules
-at `Shaders/Modules/` and oracles at `Shaders/Tests/`; `check_shader_imports.py` enforces their
-import boundary and basename uniqueness. These paths do not change runtime shader basenames.
+and maintenance tasks live under `xmake/`. The RHI component keeps the same shape one level down:
+`RHI/xmake.lua` carries root settings for a standalone configure, `RHI/xmake/targets.lua` is the
+one file the repository root includes, and `RHI/xmake/` owns the component's own shader rule and
+dependency setup. Slang entry points stay at `Shaders/`, reusable modules
+at `Shaders/Modules/` and oracles at `Shaders/Tests/`; the RHI component owns a second tree of its
+own smoke shaders at `RHI/Shaders/Tests/`. `check_shader_imports.py` enforces each tree's import
+boundary and basename uniqueness. These paths do not change runtime shader basenames.
 
 ## Asset independence
 
 `asset` is CPU-only content and must stay linkable without a GPU. Three layers prove it, and the
 weakest one is deliberately last:
 
-1. **Include layer.** The header allowance admits format and descriptor headers only, so
+1. **Include layer.** Its consumer entry admits the format and descriptor headers only, so
    `rhi::Device`, `rhi::Texture` and `rhi::Buffer` are not nameable from `asset`. This is the
    layer that actually holds the boundary.
 2. **Framework layer.** `check_link`'s `frameworks` entry checks a target's own linked frameworks

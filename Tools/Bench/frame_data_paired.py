@@ -243,9 +243,10 @@ def collect_workload(baseline: Path, candidate: Path, case: str, repetitions: in
         for side in order:
             binary = baseline if side == "baseline" else candidate
             proc = run_bench(binary, case, warmup, frames, json_paths[side], env)
-            # spdlog's default sink is stdout, not stderr, so a fatal LMX_ASSERT's diagnostic (for
-            # example the incumbent per-frame uniform ring's fixed-capacity abort) lands there; fall
-            # back to stdout's last line only when stderr has nothing, rather than assuming either.
+            # RHI messages, including a fatal LMX_ASSERT's diagnostic (for example the incumbent
+            # per-frame uniform ring's fixed-capacity abort), go to stderr unless a sink is
+            # installed, and FrameDataBench installs none; fall back to stdout's last line only
+            # when stderr has nothing, rather than assuming either.
             diagnostic = proc.stderr.strip() or proc.stdout.strip()
             record = {"returncode": proc.returncode,
                      "diagnosticTail": diagnostic.splitlines()[-1] if diagnostic else ""}

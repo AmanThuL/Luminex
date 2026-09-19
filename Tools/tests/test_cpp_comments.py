@@ -43,7 +43,14 @@ class CppCommentTests(unittest.TestCase):
     def test_owned_roots_include_source_and_root_rhi_but_not_tests(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for relative in ("Source/App.cpp", "RHI/Include/RHI/RHI.h", "Tests/Test.cpp"):
+            for relative in (
+                "Source/App.cpp",
+                "RHI/Include/RHI/RHI.h",
+                "Tests/Test.cpp",
+                # Test sources are exempt wherever they live, including inside the RHI component.
+                "RHI/Tests/RHITest.cpp",
+                "RHI/Tests/RHITestSupport.h",
+            ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("", encoding="utf-8")
