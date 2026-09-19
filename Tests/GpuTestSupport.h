@@ -8,6 +8,8 @@
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 
+#include <string>
+
 namespace {
 
 template <typename T>
