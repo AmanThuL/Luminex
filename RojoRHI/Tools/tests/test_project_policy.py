@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -25,7 +27,7 @@ class ProjectPolicyTests(unittest.TestCase):
 
     def test_identity_check_covers_repository_relative_paths(self) -> None:
         errors: list[str] = []
-        path = Path("docs/privatehandle-notes.md")
+        path = Path("Tools/privatehandle-notes.md")
         with (
             mock.patch.object(policy, "author_identity_tokens", return_value={"privatehandle"}),
             mock.patch.object(policy, "read_text", return_value="safe content"),
@@ -40,7 +42,7 @@ class ProjectPolicyTests(unittest.TestCase):
             mock.patch.object(policy, "author_identity_tokens", return_value={"privatehandle"}),
             mock.patch.object(policy, "read_text", return_value='owner = "privatehandle"'),
         ):
-            policy.check_identity([Path("settings.toml")], errors)
+            policy.check_identity([Path(".clang-format")], errors)
         self.assertEqual(len(errors), 1)
         self.assertIn("outside metadata", errors[0])
 
@@ -105,15 +107,33 @@ class ProjectPolicyTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_process_policy_covers_extracted_build_scripts(self) -> None:
-        for path in ("xmake/setup.lua", "Source/Core/xmake.lua"):
+        for path in ("xmake.lua", "xmake/setup.lua", "xmake/targets.lua", "Source/Validate.cpp",
+                     "Backends/Metal4/Source/Metal4Device.cpp", "Shaders/Tests/Triangle.slang",
+                     "Tools/ImGuiBufferProbe/run.py"):
             with self.subTest(path=path):
                 errors: list[str] = []
                 with mock.patch.object(policy, "read_text", return_value="-- Close the backlog."):
                     policy.check_process_narration([Path(path)], errors)
                 self.assertEqual(len(errors), 1)
 
-    def test_component_paths_are_not_process_roots(self):
-        self.assertFalse(any(root.startswith("RojoRHI") for root in policy.PROCESS_ROOTS))
+    def test_commit_messages_are_checked_only_when_a_range_is_given(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(policy, "git", side_effect=AssertionError("git must not run")):
+            policy.check_commit_messages(None, errors)
+        self.assertEqual(errors, [])
+        with mock.patch.object(sys, "argv", ["check_project_policy.py"]):
+            self.assertIsNone(policy.parse_args().commits)
+
+    def test_an_empty_root_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            with (
+                mock.patch.object(policy, "ROOT", root),
+                mock.patch.object(sys, "argv", ["check_project_policy.py"]),
+                mock.patch("sys.stderr"),
+            ):
+                self.assertNotEqual(policy.main(), 0)
 
 
 if __name__ == "__main__":
