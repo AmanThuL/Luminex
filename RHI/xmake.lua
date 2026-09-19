@@ -21,6 +21,5 @@ target("RHI")
     add_includedirs("Backends/Metal4/Source")
     add_includedirs("../ThirdParty/metal-cpp")
     add_frameworks("Metal", "MetalFX", "QuartzCore", "Foundation")
-    add_deps("Core")
 
 includes("Backends/Metal4/ImGui/xmake.lua")

@@ -52,7 +52,6 @@
         "RHI"
       ],
       "units": [
-        "core",
         "rhi-public"
       ],
       "thirdParty": [],
@@ -66,8 +65,8 @@
         "RHI"
       ],
       "units": [
-        "core",
-        "rhi-public"
+        "rhi-public",
+        "rhi-impl"
       ],
       "thirdParty": [
         "metal-cpp"
@@ -85,8 +84,8 @@
         "RHIMetal4ImGui"
       ],
       "units": [
-        "core",
         "rhi-public",
+        "rhi-impl",
         "metal4-backend"
       ],
       "thirdParty": [
@@ -300,13 +299,10 @@
       "deps": []
     },
     "RHI": {
-      "deps": [
-        "Core"
-      ]
+      "deps": []
     },
     "RHIMetal4ImGui": {
       "deps": [
-        "Core",
         "RHI",
         "ImGui"
       ]

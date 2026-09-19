@@ -17,11 +17,11 @@ and AppModel static target.
 |---|---|---|---|---|---|
 | `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing and dispatch division | — | spdlog, glm |
 | `rhi-public` | `RHI/Include` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug`, `lmx::rhi::metal4` | API-neutral GPU contracts, compiled standalone | — | — |
-| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug` | Backend-neutral shared implementation and validation | `core`, `rhi-public` | — |
-| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `core`, `rhi-public` | metal-cpp |
-| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `core`, `rhi-public`, `metal4-backend` | metal-cpp, imgui |
+| `rhi-impl` | `RHI/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::debug`, `lmx::rhi::base` | Backend-neutral shared implementation and validation, and the private base the whole component logs, asserts, aligns and escapes JSON through | `rhi-public` | — |
+| `metal4-backend` | `RHI/Backends/Metal4/Source` (`RHI`) | `lmx::rhi`, `lmx::rhi::metal4` and nested | The only backend: devices, command lists, resources, swapchain, temporal scaler, capture | `rhi-public`, `rhi-impl` | metal-cpp |
+| `imgui-adapter` | `RHI/Backends/Metal4/ImGui` (`RHIMetal4ImGui`) | `lmx::rhi::metal4` | Optional Dear ImGui renderer glue over the Metal 4 backend | `rhi-public`, `rhi-impl`, `metal4-backend` | metal-cpp, imgui |
 | `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
-| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, CPU geometry vocabulary and shared scene-table rows/bindings, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts | `core`, `rhi-public` | glm |
+| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, CPU geometry vocabulary and shared scene-table rows/bindings, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core`, `rhi-public` | glm |
 | `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
 | `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
@@ -35,6 +35,12 @@ header" means any header under `RHI/Backends`. The Metal 4 extension headers
 `RHI/Include/RHI/Metal4/Metal4Capture.h` and `RHI/Include/RHI/Metal4/Metal4FrameData.h` are
 `rhi-public`, not backend headers: they live under the public include directory and pass the
 dependency-free standalone header check like every other public header.
+
+The RHI component depends on no unit outside itself. `RHI/Source/Base` is that independence: an
+`rhi-impl`-owned private base holding the component's logging macros, assertions, alignment and
+JSON escaping, which `metal4-backend` and `imgui-adapter` reach as headers under `RHI/Source`. The
+messages it emits leave the component through the public `RHI/Message.h` sink; `render` owns the
+callback that forwards them into the project log, so spdlog stays a `core` dependency.
 
 `tests` reaches the GPU through `rhi-public` alone — `createDevice` in `RHI/Include/RHI/Device.h`
 hands back the interface, and no test names a backend, adapter or `RHI/Source` header. That the

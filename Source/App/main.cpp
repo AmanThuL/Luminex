@@ -19,6 +19,7 @@
 #include "Render/FrameDeclaration.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
+#include "Render/RhiLog.h"
 #include "Scene/SceneLibrary.h"
 
 #include <SDL3/SDL.h>
@@ -500,6 +501,7 @@ int main(int argc, char** argv) {
     lmx::log::init();
     auto consoleLog = std::make_shared<lmx::app::ConsoleLog>();
     lmx::app::ConsoleLogSink consoleSink(consoleLog);
+    lmx::render::installRhiLogForwarding();
 
     std::vector<std::string_view> arguments;
     arguments.reserve(static_cast<size_t>(argc > 0 ? argc - 1 : 0));
