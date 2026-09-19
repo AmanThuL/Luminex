@@ -42,7 +42,7 @@ the row says otherwise.
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
-| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 [in progress](plans/2026-09-19-r2.2-decouple-in-place.md); [proposed record](milestones/r2.md) | M7 complete |
+| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 implemented, awaiting owner acceptance, [plan](plans/2026-09-19-r2.2-decouple-in-place.md) still open; [record](milestones/r2.md) | M7 complete |
 | 11 | [R3.1–R3.6](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r3.md) | R2 |
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r4.md) | R3 |
 | 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux2.md) | R4 |
