@@ -126,10 +126,18 @@ jobs:
       - name: Confirm GPU suite is discoverable
         run: |
           xmake build Tests
+          xmake build RHITests
           gpu_count=$(./build/macosx/arm64/release/test/Tests --list-tests "[gpu]" | \
             sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
           test -n "$gpu_count" && test "$gpu_count" -gt 0
-          echo "$gpu_count Metal 4 GPU cases compiled"
+          echo "$gpu_count Metal 4 GPU cases compiled in Tests"
+          rhi_gpu_count=$(./build/macosx/arm64/release/rhi-test/RHITests --list-tests "[gpu]" | \
+            sed -n 's/^\([0-9][0-9]*\) matching test cases$/\1/p')
+          test -n "$rhi_gpu_count" && test "$rhi_gpu_count" -gt 0
+          echo "$rhi_gpu_count Metal 4 GPU cases compiled in RHITests"
+
+      - name: Checkpoint A inventory
+        run: python3 Tools/check_checkpoint_a.py
 
       - name: Format check
         run: xmake format --check

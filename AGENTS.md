@@ -58,7 +58,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
 - Frozen portability-checkpoint-A subset (ADR 0009), split over both binaries (16 RHI, 3 graph):
   `xmake build Tests && xmake build RHITests && (cd build/macosx/arm64/release/rhi-test && MTL_DEBUG_LAYER=1
   ./RHITests "[checkpoint-a]") && (cd build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests
-  "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD).
+  "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD). `python3 Tools/check_checkpoint_a.py` checks the split against the frozen inventory.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
