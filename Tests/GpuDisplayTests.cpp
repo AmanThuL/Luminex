@@ -1,8 +1,8 @@
 #include "Asset/PngImage.h"
 #include "DisplayTransformOracle.h"
-#include <rojoRHI/RHI.h>
 #include "Render/DisplayDomain.h"
 #include "Render/Renderer.h"
+#include <rojoRHI/RHI.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -139,7 +139,7 @@ glm::vec3 bloomAt(const Fixture& fixture, uint32_t x, uint32_t y) {
 
 //======================================================================================================================
 std::unique_ptr<rojoRHI::Texture> upload(rojoRHI::Device& device, uint32_t width, uint32_t height,
-                                     std::span<const uint16_t> pixels, const char* label) {
+                                         std::span<const uint16_t> pixels, const char* label) {
     const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = uint64_t{width} * 8};
     auto texture = device.createTexture({.width = width,
                                          .height = height,

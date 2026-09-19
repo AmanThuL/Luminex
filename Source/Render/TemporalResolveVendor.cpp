@@ -50,7 +50,8 @@ uint32_t TemporalResolve::vendorScalerGeneration() const {
 }
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rojoRHI::CommandList& commands,
+GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
+                                                   rojoRHI::CommandList& commands,
                                                    const TemporalInputs& inputs) {
     const auto target = graph.createTexture({.width = inputs.extents.outputWidth,
                                              .height = inputs.extents.outputHeight,
@@ -81,7 +82,8 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rojoRHI::
             commands.bindTexture(kResolveHistorySlot, *texture(inputs.history));
             commands.bindStorageTexture(kResolveReprojectedSlot, *texture(target), {},
                                         rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+                                       rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),

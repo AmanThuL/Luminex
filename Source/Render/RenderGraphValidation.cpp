@@ -80,7 +80,8 @@ GraphResult<void> RenderGraph::validateExtraColorAttachments(const Pass& pass) c
     if (pass.extraColor.size() > rojoRHI::kMaxExtraColorTargets) {
         return fail(std::format("pass '{}' declares {} extra color attachments, past the {} a "
                                 "pass can bind beyond its primary one",
-                                pass.label, pass.extraColor.size(), rojoRHI::kMaxExtraColorTargets));
+                                pass.label, pass.extraColor.size(),
+                                rojoRHI::kMaxExtraColorTargets));
     }
     if (!pass.color) {
         const Resource& first = m_resources[pass.extraColor.front().handle.index];

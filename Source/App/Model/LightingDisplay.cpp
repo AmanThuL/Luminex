@@ -115,7 +115,8 @@ void LightingDisplay::publishReadings(double nowSeconds) {
         return;
     m_readings = m_latest;
     const auto found = std::ranges::find(m_timings, m_readings.frameNumber, &Timings::frame);
-    m_readingsTimings = found == m_timings.end() ? std::vector<rojoRHI::PassTiming>{} : found->passes;
+    m_readingsTimings =
+        found == m_timings.end() ? std::vector<rojoRHI::PassTiming>{} : found->passes;
     m_nextReadingsSeconds = nowSeconds + 0.25;
     m_hasReadings = true;
 }

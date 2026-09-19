@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <rojoRHI/RHI.h>
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <memory>
@@ -125,7 +125,7 @@ public:
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
     static rojoRHI::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
-                                                                bool cpuReadback);
+                                                                    bool cpuReadback);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
     TemporalResolve(const TemporalResolve&) = delete;
@@ -277,8 +277,9 @@ private:
     // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
     // commit left, and what an untouched slot is imported as before any frame has written it.
     rojoRHI::TextureUse m_colorUse[2] = {rojoRHI::TextureUse::CopyDestination,
-                                     rojoRHI::TextureUse::CopyDestination};
-    rojoRHI::TextureUse m_depthUse[2] = {rojoRHI::TextureUse::ShaderRead, rojoRHI::TextureUse::ShaderRead};
+                                         rojoRHI::TextureUse::CopyDestination};
+    rojoRHI::TextureUse m_depthUse[2] = {rojoRHI::TextureUse::ShaderRead,
+                                         rojoRHI::TextureUse::ShaderRead};
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

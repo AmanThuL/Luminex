@@ -134,13 +134,14 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     }
     std::unique_ptr<rojoRHI::ShaderLibrary> library = std::move(*libraryResult);
 
-    auto pipelineResult = device->createGraphicsPipeline({.library = library.get(),
-                                                          .vertexEntry = "vertexMain",
-                                                          .fragmentEntry = "fragmentMain",
-                                                          .colorFormat = rojoRHI::Format::RGBA8Unorm,
-                                                          .fillMode = rojoRHI::FillMode::Solid,
-                                                          .cullMode = rojoRHI::CullMode::None,
-                                                          .label = "framedatabench.pipeline"});
+    auto pipelineResult =
+        device->createGraphicsPipeline({.library = library.get(),
+                                        .vertexEntry = "vertexMain",
+                                        .fragmentEntry = "fragmentMain",
+                                        .colorFormat = rojoRHI::Format::RGBA8Unorm,
+                                        .fillMode = rojoRHI::FillMode::Solid,
+                                        .cullMode = rojoRHI::CullMode::None,
+                                        .label = "framedatabench.pipeline"});
     if (!pipelineResult) {
         result.error = "pipeline creation failed: " + pipelineResult.error().message;
         return result;

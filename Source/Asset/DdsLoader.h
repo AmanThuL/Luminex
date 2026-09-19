@@ -25,8 +25,8 @@ struct DdsImage {
     uint32_t height = 0;    ///< Base-level height in pixels.
     uint32_t mipLevels = 1; ///< Number of complete mip levels in `payload`.
     rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Uploaded texture dimensionality.
-    bool bc1 = false;                  ///< false = RGBA8 (BGRA masks converted on load)
-    std::vector<std::byte> payload;    ///< tightly packed, face-major then mip-major
+    bool bc1 = false;                      ///< false = RGBA8 (BGRA masks converted on load)
+    std::vector<std::byte> payload;        ///< tightly packed, face-major then mip-major
     std::vector<rojoRHI::TextureMip> mips; ///< views into payload, createTexture-ready
 };
 

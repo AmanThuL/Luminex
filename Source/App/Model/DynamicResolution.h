@@ -6,8 +6,8 @@
 #pragma once
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/FrameRecordRing.h"
-#include <rojoRHI/RHI.h>
 #include "Render/ResolutionController.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <span>

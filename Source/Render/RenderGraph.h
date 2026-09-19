@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
 #include "Render/TransientPool.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <expected>
@@ -76,20 +76,20 @@ constexpr GraphBuffer nextVersion(GraphBuffer handle) {
 
 /// Describes a texture the graph creates, owns, and destroys within one frame.
 ///
-/// It mirrors rojoRHI::TextureDesc minus the two things a transient cannot have: initial contents, and
-/// CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
+/// It mirrors rojoRHI::TextureDesc minus the two things a transient cannot have: initial contents,
+/// and CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
 /// caller that needs to read a result back imports a texture of its own instead. The name is passed
 /// beside the descriptor, exactly as importTexture takes one, and becomes the GPU object's label.
 struct TransientTextureDesc {
-    uint32_t width = 0;                              ///< Extent in texels.
-    uint32_t height = 0;                             ///< Extent in texels.
+    uint32_t width = 0;                                      ///< Extent in texels.
+    uint32_t height = 0;                                     ///< Extent in texels.
     rojoRHI::Format format = rojoRHI::Format::Unknown;       ///< Pixel format.
     rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
-    uint32_t mipLevels = 1;                          ///< Mip levels allocated for each face.
-    bool renderTarget = false;                       ///< Enables render-target use.
-    bool sampled = false;                            ///< Enables shader reads.
-    bool storageRead = false;                        ///< Enables storage-binding reads.
-    bool storageWrite = false;                       ///< Enables storage-binding writes.
+    uint32_t mipLevels = 1;    ///< Mip levels allocated for each face.
+    bool renderTarget = false; ///< Enables render-target use.
+    bool sampled = false;      ///< Enables shader reads.
+    bool storageRead = false;  ///< Enables storage-binding reads.
+    bool storageWrite = false; ///< Enables storage-binding writes.
 };
 
 /// The buffer counterpart of TransientTextureDesc, on the same terms.
@@ -110,7 +110,7 @@ struct TransientBufferDesc {
 /// A GraphTexture converts implicitly, so `textureReads.push_back(handle)` still declares the whole
 /// resource and existing passes need no range of their own.
 struct TextureUseDesc {
-    GraphTexture handle;                ///< The version the pass touches.
+    GraphTexture handle;                    ///< The version the pass touches.
     rojoRHI::TextureSubresourceRange range; ///< Subresources of it the pass touches.
 
     /// Declares the whole of `handle`.
@@ -156,10 +156,10 @@ struct DepthAttachment {
     LoadOp load = LoadOp::Clear;      ///< Whether prior contents are preserved.
     StoreOp store = StoreOp::Discard; ///< Whether produced contents remain readable.
     /// 0 is the far plane, because depth is reversed everywhere above this layer (Camera.cpp
-    /// derives it). It differs from rojoRHI::RenderPassDesc's 1.0, which is the API's neutral default
-    /// and belongs to no convention; this one belongs to the renderer's, so a pass that omits it
-    /// clears to the value its Greater test will accept anything against rather than to the value
-    /// that would reject every fragment it draws.
+    /// derives it). It differs from rojoRHI::RenderPassDesc's 1.0, which is the API's neutral
+    /// default and belongs to no convention; this one belongs to the renderer's, so a pass that
+    /// omits it clears to the value its Greater test will accept anything against rather than to
+    /// the value that would reject every fragment it draws.
     float clearDepth = 0.0f;
 };
 
@@ -177,9 +177,9 @@ struct PassDesc {
     /// Colour attachments past the primary, in attachment order: `extraColor[0]` is attachment 1,
     /// which a fragment shader writes as SV_Target1. Each is an attachment on `color`'s terms --
     /// it declares its own attachment use and produces the next version of what it names -- and
-    /// each shares the primary's extent. A pass may declare at most rojoRHI::kMaxExtraColorTargets of
-    /// them, may not declare one without a primary, since extras are attachments 1 and up, and may
-    /// not name one texture twice across its colour attachments.
+    /// each shares the primary's extent. A pass may declare at most rojoRHI::kMaxExtraColorTargets
+    /// of them, may not declare one without a primary, since extras are attachments 1 and up, and
+    /// may not name one texture twice across its colour attachments.
     std::vector<ColorAttachment> extraColor;
     /// Writes that are not attachments. Each names the version it consumes and produces the next.
     std::vector<TextureUseDesc> textureWrites; ///< Non-attachment texture writes.
@@ -263,9 +263,9 @@ using ExecuteFn = std::function<void(const PassResources&)>;
 /// acyclic graph and answers with the order to run them in, so a mis-declared frame fails on the
 /// CPU with a message instead of on the GPU as a hazard.
 ///
-/// The graph borrows what it does not own: an imported rojoRHI::Texture or rojoRHI::Buffer must outlive it,
-/// and the handles it issues mean nothing once it is gone. Declaring a fresh graph per frame is the
-/// intended use -- it holds no GPU memory of its own between frames.
+/// The graph borrows what it does not own: an imported rojoRHI::Texture or rojoRHI::Buffer must
+/// outlive it, and the handles it issues mean nothing once it is gone. Declaring a fresh graph per
+/// frame is the intended use -- it holds no GPU memory of its own between frames.
 ///
 /// A resource is either imported or transient (ADR 0008). An imported one is the caller's for the
 /// caller's own reasons -- it persists, it can be exported, read back, or presented, and it is
@@ -285,15 +285,16 @@ public:
     /// Brings an existing texture into the graph as version 0. `format` snapshots the attachment
     /// interpretation the graph validates and must match texture.format(); `name` appears in
     /// validation messages and is copied. `texture` must outlive the graph.
-    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format, std::string_view name);
+    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                               std::string_view name);
 
     /// The same import when a pass in an earlier frame last accessed this persistent texture.
     /// `previousUse` seeds hazard derivation across the command-buffer boundary: a prior write is
     /// ordered before this frame's first read or write, while a prior read is ordered only before
     /// this frame's first write. The whole texture is assumed because no previous-frame range is
     /// available to this fresh graph.
-    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format, std::string_view name,
-                               rojoRHI::TextureUse previousUse);
+    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                               std::string_view name, rojoRHI::TextureUse previousUse);
 
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
@@ -478,8 +479,8 @@ private:
     enum class ResourceKind { Texture, Buffer };
 
     // One declared resource, imported or transient. The shape fields are carried here rather than
-    // read back off the rojoRHI::Texture because a transient has no texture until execute() places it,
-    // and the range and attachment rules have to answer the same way for both kinds.
+    // read back off the rojoRHI::Texture because a transient has no texture until execute() places
+    // it, and the range and attachment rules have to answer the same way for both kinds.
     struct Resource {
         ResourceKind kind = ResourceKind::Texture;
         std::string name;

@@ -7,9 +7,9 @@
 
 #include "Core/Assert.h"
 #include "Core/Color.h"
-#include <rojoRHI/CaptureSchema.h>
 #include "Render/LightClusters.h"
 #include "Render/TemporalResolve.h"
+#include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>
 #include <cmath>
@@ -263,7 +263,7 @@ void SceneStage::registerPassLayoutsForCapture() {
 
 //======================================================================================================================
 rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& device,
-                                                            rojoRHI::Format sceneColorFormat) {
+                                                                rojoRHI::Format sceneColorFormat) {
     std::unique_ptr<SceneStage> self(new SceneStage);
 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
@@ -335,8 +335,8 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
     // second colour attachment. Compiled up front rather than on the frame temporal is first
     // enabled, because a pipeline compile in the middle of a frame is a hitch a toggle should not
     // cost.
-    const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary* library, rojoRHI::FillMode fill,
-                                             const char* label) {
+    const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary* library,
+                                             rojoRHI::FillMode fill, const char* label) {
         return device.createGraphicsPipeline(
             {.library = library,
              .vertexEntry = "vertexMainMotion",
@@ -377,16 +377,17 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
     } else {
         return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
-                                          "lmx.render.sceneWireframePipelineAuto");
+    if (auto pipeline =
+            makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
+                              "lmx.render.sceneWireframePipelineAuto");
         pipeline) {
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
 
-    if (auto pipeline = makeSceneMotionPipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
-                                                "lmx.render.scenePipelineMotion");
+    if (auto pipeline = makeSceneMotionPipeline(
+            self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid, "lmx.render.scenePipelineMotion");
         pipeline) {
         self->m_scenePipelineMotion = std::move(*pipeline);
     } else {
@@ -500,8 +501,10 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
                          .depthFormat = rojoRHI::Format::D32Float,
                          .depthTestEnable = true,
                          .depthWriteEnable = true,
-                         .fillMode = wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
-                         .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+                         .fillMode =
+                             wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
+                         .cullMode =
+                             doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                          .depthCompare = rojoRHI::DepthCompare::Greater,
                          .label = label});
                     if (!pipeline) {

@@ -276,10 +276,10 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
                                       context.outlineTarget.height() == context.renderer.height();
             ImGui::Image(rojoRHI::metal4::imguiTextureID(context.showOutline && outlineReady &&
-                                                             context.selection.subject ==
-                                                                 EditorSubject::Object
-                                                         ? context.outlineTarget
-                                                         : context.renderer.colorTarget()),
+                                                                 context.selection.subject ==
+                                                                     EditorSubject::Object
+                                                             ? context.outlineTarget
+                                                             : context.renderer.colorTarget()),
                          imageSize);
             result.hovered = ImGui::IsItemHovered();
             drawOcclusionOverlay(context, ImGui::GetItemRectMin(), imageSize);

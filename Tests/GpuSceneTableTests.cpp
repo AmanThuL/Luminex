@@ -49,7 +49,7 @@ std::unique_ptr<render::Renderer> tableRenderer(rojoRHI::Device& device) {
 
 //======================================================================================================================
 std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, scene::Scene& scene,
-                                          render::Renderer& renderer, bool wait = true) {
+                                              render::Renderer& renderer, bool wait = true) {
     auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
                                          .cpuReadback = true,
                                          .label = "lmx.test.sceneTables.frame"},

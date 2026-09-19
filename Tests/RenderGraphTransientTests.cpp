@@ -126,7 +126,7 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
         }
     }
     REQUIRE(closingUses == std::vector<rojoRHI::TextureUse>{rojoRHI::TextureUse::ShaderRead,
-                                                        rojoRHI::TextureUse::StorageWrite});
+                                                            rojoRHI::TextureUse::StorageWrite});
 }
 
 //======================================================================================================================
@@ -501,8 +501,8 @@ TEST_CASE("exposure and bloom passes are culled when both features are off", "[r
     FakeBuffer exposureBufferFake{4, "exposure"};
 
     RenderGraph graph(pool);
-    const GraphTexture sceneColor = graph.importTexture(sceneColorTexture, rojoRHI::Format::RGBA16Float,
-                                                        "lmx.render.sceneColorHdr");
+    const GraphTexture sceneColor = graph.importTexture(
+        sceneColorTexture, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture displayColor = graph.importTexture(
         displayColorTexture, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
     const GraphBuffer histogramBuffer =

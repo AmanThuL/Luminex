@@ -43,9 +43,9 @@ std::unique_ptr<render::Renderer> visibilityRenderer(rojoRHI::Device& device) {
 
 //======================================================================================================================
 std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene::Scene& scene,
-                                              render::Renderer& renderer,
-                                              render::SubmissionMode mode, bool cull,
-                                              bool wait = true) {
+                                                  render::Renderer& renderer,
+                                                  render::SubmissionMode mode, bool cull,
+                                                  bool wait = true) {
     auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
                                          .cpuReadback = true,
                                          .label = "lmx.test.sceneTables.frame"},

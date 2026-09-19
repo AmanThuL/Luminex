@@ -5,11 +5,11 @@
 
 #pragma once
 
-#include <rojoRHI/RHI.h>
 #include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
 #include "Render/TemporalHistory.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -47,7 +47,7 @@ struct SceneStageInputs {
     std::array<float, 4> clearColor; ///< Authored sRGB color; alpha is passed through.
     float timeSeconds;               ///< Frame clock uploaded to PassUniforms.time.
     bool temporalEnabled;            ///< Selects motion pipelines and extra attachments.
-    rojoRHI::Texture* whiteTexture;      ///< Neutral material-factor fallback.
+    rojoRHI::Texture* whiteTexture;  ///< Neutral material-factor fallback.
     rojoRHI::Texture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
     rojoRHI::Texture* blackCubeTexture;  ///< Zero-radiance environment fallback.
     rojoRHI::Texture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
@@ -61,7 +61,7 @@ class SceneStage {
 public:
     /// Creates all variants for the scene color format; propagates GPU creation errors.
     static rojoRHI::Result<std::unique_ptr<SceneStage>> create(rojoRHI::Device& device,
-                                                           rojoRHI::Format sceneColorFormat);
+                                                               rojoRHI::Format sceneColorFormat);
 
     /// Registers draw and shared table layouts independently to retain the capture schema's
     /// serialized ordering.

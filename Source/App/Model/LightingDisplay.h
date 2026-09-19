@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include <rojoRHI/Device.h>
 #include "Render/LightingStatus.h"
+#include <rojoRHI/Device.h>
 
 #include <deque>
 #include <span>

@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <rojoRHI/Format.h>
 #include "Render/Camera.h"
+#include <rojoRHI/Format.h>
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>

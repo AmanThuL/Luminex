@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include <rojoRHI/RHI.h>
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
+#include <rojoRHI/RHI.h>
 
 #include <algorithm>
 #include <cmath>

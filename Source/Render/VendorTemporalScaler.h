@@ -15,7 +15,8 @@ float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& suppo
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
 
 /// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter.
-rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
+rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
+                                                  glm::vec2 jitterPixels);
 
 /// Translated, graph-owned signals read by the vendor pass after the packing dispatch.
 struct VendorTemporalPacked {

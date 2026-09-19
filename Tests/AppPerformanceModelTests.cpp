@@ -189,7 +189,8 @@ TEST_CASE("performance model ignores repeated or regressing frame ids in full", 
     model.tick(0.3f, &sampleA);
     const PerformanceSnapshot afterFirst = model.snapshot();
 
-    const std::array timingsRepeat = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 99.0}};
+    const std::array timingsRepeat = {
+        rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 99.0}};
     const PerformanceFrameSample repeat = sampleFor(5, timingsRepeat, /*objectCount=*/77);
     model.tick(0.3f, &repeat);
     const PerformanceFrameSample regressed = sampleFor(3, timingsRepeat, /*objectCount=*/88);

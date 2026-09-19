@@ -80,7 +80,8 @@ TEST_CASE("a newest timed frame is observed once per frame number", "[app]") {
     applyDynamicResolution(state, controller, settings, nullptr);
     controller.declared(1);
 
-    const std::vector<rojoRHI::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     const RetainedFrame frame = timedFrame(1, overBudget);
 
     applyDynamicResolution(state, controller, settings, &frame);
@@ -179,7 +180,8 @@ TEST_CASE("over-budget frames are not judged while temporal is off", "[app]") {
     settings.temporalEnabled = false;
     settings.renderScale = 0.8f;
 
-    const std::vector<rojoRHI::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     for (uint64_t frameId = 1; frameId <= 8; ++frameId) {
         controller.declared(frameId);
         const RetainedFrame frame = timedFrame(frameId, overBudget);
@@ -209,7 +211,8 @@ TEST_CASE("re-enabling temporal reseeds from the retained scale and drops the id
     settings.temporalEnabled = false;
     settings.renderScale = 0.8f; // The value retained from when the controller last ran.
 
-    const std::vector<rojoRHI::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     const RetainedFrame idleFrame = timedFrame(7, overBudget);
     controller.declared(7);
     applyDynamicResolution(state, controller, settings, &idleFrame);

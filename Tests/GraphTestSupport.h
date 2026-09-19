@@ -235,7 +235,7 @@ struct FakeDevice final : rojoRHI::Device {
         temporalScalerCreations.back().label = temporalScalerLabels.back();
         if (!deviceCaps.temporalScaler.available || failTemporalScalerCreation) {
             return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::ResourceCreationFailed,
-                                                   "fake temporal scaler unavailable"});
+                                                  "fake temporal scaler unavailable"});
         }
         return std::make_unique<FakeTemporalScaler>();
     }
@@ -277,8 +277,7 @@ struct FakeDevice final : rojoRHI::Device {
 
     //==================================================================================================================
     rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
-    createTexture(const rojoRHI::TextureDesc& desc,
-                  std::span<const rojoRHI::TextureMip>) override {
+    createTexture(const rojoRHI::TextureDesc& desc, std::span<const rojoRHI::TextureMip>) override {
         return std::make_unique<TextureObject>(desc);
     }
 

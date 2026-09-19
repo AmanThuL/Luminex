@@ -148,7 +148,8 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
                 commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
                                             rojoRHI::StorageAccess::Write);
             }
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+                                       rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
@@ -169,7 +170,8 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
 }
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
+GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph,
+                                                   rojoRHI::CommandList& commands,
                                                    const TemporalInputs& inputs) {
     // Declared only where the two extents agree, so the copy covers the whole slot; the caller
     // routes an upscaled frame to declareSpatialCommit() instead.

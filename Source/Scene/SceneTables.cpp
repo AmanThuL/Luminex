@@ -91,8 +91,8 @@ struct PacedTable {
 //======================================================================================================================
 template <typename Row>
 rojoRHI::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, uint32_t count,
-                               std::string_view label, uint64_t lastFrame,
-                               std::vector<RetiringBuffer>& retiring, uint64_t& growthEvents) {
+                                   std::string_view label, uint64_t lastFrame,
+                                   std::vector<RetiringBuffer>& retiring, uint64_t& growthEvents) {
     if (count <= table.capacity && table.capacity != 0) {
         return {};
     }

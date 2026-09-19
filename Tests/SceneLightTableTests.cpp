@@ -3,8 +3,8 @@
 /// @brief Tests the paced local light table's identities, dirty tracking, growth and capacity.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include <rojoRHI/RHI.h>
 #include "Scene/Scene.h"
+#include <rojoRHI/RHI.h>
 
 #include <catch2/catch_test_macros.hpp>
 

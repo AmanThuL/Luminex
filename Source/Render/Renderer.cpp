@@ -39,10 +39,9 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createFallbackTexture(rojoRHI::Device& device,
-                                                                 const std::array<uint8_t, 4>& rgba,
-                                                                 rojoRHI::TextureKind kind,
-                                                                 std::string_view label) {
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+createFallbackTexture(rojoRHI::Device& device, const std::array<uint8_t, 4>& rgba,
+                      rojoRHI::TextureKind kind, std::string_view label) {
     const rojoRHI::TextureMip mip{.data = rgba.data(), .bytesPerRow = 4};
     const uint32_t faceCount = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
     // Cube fallbacks must cover every face with the same neutral texel.
@@ -61,7 +60,8 @@ rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createFallbackTexture(rojoRHI
 // because the split-sum table it stands in for is RG16Float and a shader reading it as anything
 // else would find its two channels in the wrong place.
 rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createZeroDfgTexture(rojoRHI::Device& device) {
-    const rojoRHI::TextureMip mip{.data = kZeroDfgTexel.data(), .bytesPerRow = sizeof(kZeroDfgTexel)};
+    const rojoRHI::TextureMip mip{.data = kZeroDfgTexel.data(),
+                                  .bytesPerRow = sizeof(kZeroDfgTexel)};
     return device.createTexture({.width = 1,
                                  .height = 1,
                                  .format = rojoRHI::Format::RG16Float,
@@ -98,7 +98,7 @@ rojoRHI::Buffer& Renderer::exposureBuffer() {
 
 //======================================================================================================================
 rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& device, uint32_t width,
-                                                        uint32_t height, bool cpuReadback) {
+                                                            uint32_t height, bool cpuReadback) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
 
     // Registration is idempotent and keeps capture startup independent of Renderer state.
@@ -412,8 +412,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
     // overlap those earlier reads/writes on Metal 4's queue. Depth and display use ShaderRead
     // conservatively because their public targets may be sampled by a caller after this graph;
     // that stage set also covers their ordinary fragment attachment work.
-    const GraphTexture shadowMap = graph.importTexture(
-        *m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap", rojoRHI::TextureUse::ShaderRead);
+    const GraphTexture shadowMap =
+        graph.importTexture(*m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap",
+                            rojoRHI::TextureUse::ShaderRead);
     // The scene colour's terminal use is the display pass's read on an ordinary frame and the
     // history commit's copy on a temporal one, so it is what the previous frame left rather than a
     // constant.

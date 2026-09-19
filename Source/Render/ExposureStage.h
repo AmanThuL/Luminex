@@ -22,8 +22,8 @@ public:
     // The frame composition root imports the persistent pair before scene declaration.
     rojoRHI::Buffer& buffer() { return *m_exposureBuffer; }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.
-    GraphBuffer declareSeed(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
-                            GraphBuffer exposureImport);
+    GraphBuffer declareSeed(RenderGraph& graph, rojoRHI::CommandList& commands,
+                            const SceneView& view, GraphBuffer exposureImport);
     // Declares metering after the raw scene, exporting feedback only in auto mode.
     void declareMetering(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                          const FrameExtents& extents, GraphTexture sceneColorRead,

@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstddef>
 #include <cstdint>

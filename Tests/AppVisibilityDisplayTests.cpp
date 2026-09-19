@@ -116,8 +116,8 @@ TEST_CASE("Visibility categories preserve failure diagnostics and separate pyram
     status.rowMismatches = 1;
     status.overflow = true;
     const std::array<rojoRHI::PassTiming, 3> timings = {{{"lmx.pass.visibility.classify", 0.25},
-                                                     {"lmx.pass.hzb.level0", 0.125},
-                                                     {"lmx.pass.scene", 2.0}}};
+                                                         {"lmx.pass.hzb.level0", 0.125},
+                                                         {"lmx.pass.scene", 2.0}}};
     const auto fields = app::visibilityFields(status, timings);
     std::array<size_t, 4> counts{};
     for (const auto& field : fields) {

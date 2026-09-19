@@ -9,7 +9,8 @@ TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]"
     FakeTexture color{64, 64, "sceneColor"};
     FakeBuffer storage{256, "instances"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphBuffer instances = graph.importBuffer(storage, "instances");
@@ -67,7 +68,8 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     FakeTexture color{64, 64, "sceneColor"};
     FakeBuffer storage{256, "histogram"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphBuffer bins = graph.importBuffer(storage, "histogram");
@@ -360,7 +362,8 @@ TEST_CASE("a culled pass is still validated", "[render][graph]") {
     RenderGraph graph;
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};

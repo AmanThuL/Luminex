@@ -102,11 +102,14 @@ struct BaseFrameOptions {
 void declareBaseFrame(BaseFrame& frame, const BaseFrameOptions& options) {
     RenderGraph& graph = frame.graph;
     frame.shadow = graph.importTexture(frame.shadowMap, rojoRHI::Format::D32Float, "lmx.shadowMap");
-    frame.color = graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
-    frame.depth = graph.importTexture(frame.sceneDepth, rojoRHI::Format::D32Float, "lmx.sceneDepth");
+    frame.color =
+        graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
+    frame.depth =
+        graph.importTexture(frame.sceneDepth, rojoRHI::Format::D32Float, "lmx.sceneDepth");
     frame.display =
         graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
-    frame.extra = graph.importTexture(frame.extraColor, rojoRHI::Format::BGRA8Unorm, "lmx.extraColor");
+    frame.extra =
+        graph.importTexture(frame.extraColor, rojoRHI::Format::BGRA8Unorm, "lmx.extraColor");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(frame.shadow));

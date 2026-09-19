@@ -15,10 +15,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Asset/GeometryGenerator.h"
-#include <rojoRHI/RHI.h>
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>

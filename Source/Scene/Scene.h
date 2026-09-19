@@ -8,7 +8,6 @@
 #include "Asset/Asset.h"
 #include "Asset/SceneAnimation.h"
 #include "Asset/Transform.h"
-#include <rojoRHI/RHI.h>
 #include "Render/Bounds.h"
 #include "Render/Camera.h"
 #include "Render/LocalLight.h"
@@ -17,6 +16,7 @@
 #include "Scene/MaterialRecord.h"
 #include "Scene/SceneIds.h"
 #include "Scene/SceneTableStats.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -158,7 +158,7 @@ public:
     /// that has a skyCubemap has all three.
     std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
     std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
-    std::unique_ptr<rojoRHI::Texture> dfgLut;            ///< Split-sum material response lookup table.
+    std::unique_ptr<rojoRHI::Texture> dfgLut; ///< Split-sum material response lookup table.
     /// Immutable authored grid-light count set before finalize; zero outside LightLab. Remaining
     /// initial local lights are the authored overflow pile, independently editable by the session.
     uint32_t lightLabGridCount = 0;
@@ -211,8 +211,8 @@ private:
 /// seeds every object's previous transform, and attaches the shared neutral environment. `name`
 /// names the scene and prefixes every GPU object's debug label. The camera is left at its default:
 /// each catalog scene below fits its own after calling this.
-asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device, std::string_view path,
-                                                         std::string_view name);
+asset::AssetResult<std::unique_ptr<Scene>>
+loadGltfScene(rojoRHI::Device& device, std::string_view path, std::string_view name);
 
 /// Crytek Sponza from the McGuire Computer Graphics Archive. `xmake setup` converts the pinned OBJ
 /// archive to core glTF; camera and bounding sphere are computed from the loaded AABB.

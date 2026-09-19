@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include <rojoRHI/RHI.h>
 #include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -50,8 +50,8 @@ struct ShadowStageInputs {
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
-    rojoRHI::Texture* whiteTexture;            ///< Non-null neutral diffuse fallback owned by Renderer.
-    rojoRHI::Sampler* linearSampler;           ///< Non-null material sampler owned by Renderer.
+    rojoRHI::Texture* whiteTexture;        ///< Non-null neutral diffuse fallback owned by Renderer.
+    rojoRHI::Sampler* linearSampler;       ///< Non-null material sampler owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.

@@ -7,7 +7,8 @@ TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") 
     FakeTexture storage{64, 64, "storage"};
     FakeTexture target{64, 64, "target"};
     RenderGraph graph;
-    const GraphTexture written = graph.importTexture(storage, rojoRHI::Format::RGBA16Float, "storage");
+    const GraphTexture written =
+        graph.importTexture(storage, rojoRHI::Format::RGBA16Float, "storage");
     const GraphTexture color = graph.importTexture(target, rojoRHI::Format::BGRA8Unorm, "target");
 
     ComputePassDesc fill;

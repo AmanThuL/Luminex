@@ -355,7 +355,8 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
 
     // Normal-map probe: one unit quad textured with the code-generated hemispherical bump.
     const std::vector<uint8_t> normalPixels = makeNormalMapPixels();
-    const rojoRHI::TextureMip normalMip{.data = normalPixels.data(), .bytesPerRow = uint64_t{64} * 4};
+    const rojoRHI::TextureMip normalMip{.data = normalPixels.data(),
+                                        .bytesPerRow = uint64_t{64} * 4};
     auto normalTexture = device.createTexture({.width = 64,
                                                .height = 64,
                                                .format = rojoRHI::Format::RGBA8Unorm,

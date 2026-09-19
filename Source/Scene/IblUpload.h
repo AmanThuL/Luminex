@@ -40,6 +40,6 @@ struct GenerationOptions {
 /// are labelled "<label>.irradiance", "<label>.prefilteredEnv" and "<label>.dfgLut", alongside the
 /// scene's "<label>.sky".
 rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
-                                  std::string_view label, GenerationOptions options = {});
+                                      std::string_view label, GenerationOptions options = {});
 
 } // namespace lmx::scene::ibl

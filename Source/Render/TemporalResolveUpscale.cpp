@@ -85,7 +85,8 @@ TemporalUpscaleParams temporalUpscaleParams(const TemporalInputs& inputs, bool h
 } // namespace temporal_detail
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
+GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph,
+                                                   rojoRHI::CommandList& commands,
                                                    const TemporalInputs& inputs) {
     const SpatialUpscaleParams params = spatialUpscaleParams(inputs);
 
@@ -217,7 +218,8 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
                 commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
                                             rojoRHI::StorageAccess::Write);
             }
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+                                       rojoRHI::StorageAccess::Read);
             // The clamped sampler: a tap of either Catmull-Rom fetch that reaches the edge of the
             // active rectangle must answer with that edge rather than with the opposite one.
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);

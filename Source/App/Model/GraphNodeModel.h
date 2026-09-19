@@ -5,8 +5,8 @@
 
 #pragma once
 #include "App/Model/GraphInspectorModel.h"
-#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <optional>

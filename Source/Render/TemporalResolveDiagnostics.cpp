@@ -104,7 +104,8 @@ bool viewReadsReprojected(TemporalDebugView view) {
 } // namespace temporal_detail
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rojoRHI::CommandList& commands,
+GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph,
+                                                  rojoRHI::CommandList& commands,
                                                   const TemporalInputs& inputs) {
     // The output extent, at every scale: the history and the display the view draws over are both
     // that size, and the current colour is resampled out of the active rectangle to meet them. It
@@ -130,7 +131,8 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rojoRHI::C
          params = reprojectParams(inputs)](const PassResources& resources) {
             const GraphResult<rojoRHI::Texture*> historyTexture = resources.texture(inputs.history);
             LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
-            const GraphResult<rojoRHI::Texture*> sceneTexture = resources.texture(inputs.sceneColor);
+            const GraphResult<rojoRHI::Texture*> sceneTexture =
+                resources.texture(inputs.sceneColor);
             LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
             const GraphResult<rojoRHI::Texture*> motionTexture = resources.texture(inputs.motion);
             LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
@@ -187,41 +189,41 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::Comm
     const GraphTexture resolved = outputs.resolved;
     const GraphTexture motion = inputs.motion;
     const FrameExtents extents = inputs.extents;
-    graph.addPass("lmx.pass.temporal.debugView", std::move(debugDesc),
-                  [this, &commands, motion, diagnostic, rejection, reprojected, resolved,
-                   readsDiagnostic, readsRejection, readsReprojected, readsResolved, debugView,
-                   extents](const PassResources& resources) {
-                      const GraphResult<rojoRHI::Texture*> motionTexture = resources.texture(motion);
-                      LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
+    graph.addPass(
+        "lmx.pass.temporal.debugView", std::move(debugDesc),
+        [this, &commands, motion, diagnostic, rejection, reprojected, resolved, readsDiagnostic,
+         readsRejection, readsReprojected, readsResolved, debugView,
+         extents](const PassResources& resources) {
+            const GraphResult<rojoRHI::Texture*> motionTexture = resources.texture(motion);
+            LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
 
-                      commands.bindPipeline(*m_debugViewPipeline);
-                      commands.bindTexture(kDebugViewMotionSlot, **motionTexture);
-                      // A view that reads none of these binds the 1x1 fallback: every texel the
-                      // shader loads lies outside it, and an out-of-bounds Load answers with zeroes
-                      // -- which is the shader's own "nothing to show" for each of them.
-                      const auto bindOptional = [&](uint32_t slot, bool wanted,
-                                                    GraphTexture handle) {
-                          if (!wanted) {
-                              commands.bindTexture(slot, *m_viewFallback);
-                              return;
-                          }
-                          const GraphResult<rojoRHI::Texture*> texture = resources.texture(handle);
-                          LMX_ASSERT(texture.has_value(), texture.error().message);
-                          commands.bindTexture(slot, **texture);
-                      };
-                      bindOptional(kDebugViewDiagnosticSlot, readsDiagnostic, diagnostic);
-                      bindOptional(kDebugViewRejectionSlot, readsRejection, rejection);
-                      bindOptional(kDebugViewReprojectedSlot, readsReprojected, reprojected);
-                      bindOptional(kDebugViewResolvedSlot, readsResolved, resolved);
+            commands.bindPipeline(*m_debugViewPipeline);
+            commands.bindTexture(kDebugViewMotionSlot, **motionTexture);
+            // A view that reads none of these binds the 1x1 fallback: every texel the
+            // shader loads lies outside it, and an out-of-bounds Load answers with zeroes
+            // -- which is the shader's own "nothing to show" for each of them.
+            const auto bindOptional = [&](uint32_t slot, bool wanted, GraphTexture handle) {
+                if (!wanted) {
+                    commands.bindTexture(slot, *m_viewFallback);
+                    return;
+                }
+                const GraphResult<rojoRHI::Texture*> texture = resources.texture(handle);
+                LMX_ASSERT(texture.has_value(), texture.error().message);
+                commands.bindTexture(slot, **texture);
+            };
+            bindOptional(kDebugViewDiagnosticSlot, readsDiagnostic, diagnostic);
+            bindOptional(kDebugViewRejectionSlot, readsRejection, rejection);
+            bindOptional(kDebugViewReprojectedSlot, readsReprojected, reprojected);
+            bindOptional(kDebugViewResolvedSlot, readsResolved, resolved);
 
-                      const TemporalDebugViewParams params{.view = debugViewSelector(debugView),
-                                                           .renderWidth = extents.renderWidth,
-                                                           .renderHeight = extents.renderHeight,
-                                                           .outputWidth = extents.outputWidth,
-                                                           .outputHeight = extents.outputHeight};
-                      commands.bindFrameData(kDebugViewParamsSlot, params);
-                      commands.draw(3);
-                  });
+            const TemporalDebugViewParams params{.view = debugViewSelector(debugView),
+                                                 .renderWidth = extents.renderWidth,
+                                                 .renderHeight = extents.renderHeight,
+                                                 .outputWidth = extents.outputWidth,
+                                                 .outputHeight = extents.outputHeight};
+            commands.bindFrameData(kDebugViewParamsSlot, params);
+            commands.draw(3);
+        });
     return nextVersion(displayResult);
 }
 

@@ -95,9 +95,9 @@ std::unique_ptr<render::Renderer> contributionRenderer(rojoRHI::Device& device) 
 
 //======================================================================================================================
 ContributionTargets contributionTargets(render::Renderer& renderer, render::TransientPool& pool,
-                                        rojoRHI::CommandList& commands, const render::Camera& camera,
-                                        const render::SceneView& view, uint64_t frame,
-                                        rojoRHI::ComputePipeline& depthPipeline) {
+                                        rojoRHI::CommandList& commands,
+                                        const render::Camera& camera, const render::SceneView& view,
+                                        uint64_t frame, rojoRHI::ComputePipeline& depthPipeline) {
     pool.beginFrame();
     render::RenderGraph graph(pool);
     graph.exportTexture(renderer.declarePasses(graph, commands, camera, view));

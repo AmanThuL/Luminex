@@ -51,7 +51,8 @@ private:
         VisibilityParams params;
         std::vector<InstanceVisibility> expected;
         std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
-        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr, *arguments = nullptr;
+        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
+                        *arguments = nullptr;
     };
     rojoRHI::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
