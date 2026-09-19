@@ -3,7 +3,7 @@
 On Metal 4 Apple Silicon, after building App/ImGui:
 
 ```sh
-python3 Tools/ImGuiBufferProbe/run.py --old-policy-control
+python3 RHI/Tools/ImGuiBufferProbe/run.py --old-policy-control
 ```
 
 The standalone Objective-C++ executable includes the actual fetched/patched backend and links

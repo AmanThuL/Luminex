@@ -2,7 +2,10 @@
   "schemaVersion": 1,
   "roots": [
     "Source",
-    "RHI",
+    "RHI/Include",
+    "RHI/Source",
+    "RHI/Backends",
+    "RHI/Tests",
     "Tests",
     "Tools/TextureBake",
     "Benchmarks"
