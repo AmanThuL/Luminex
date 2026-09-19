@@ -1,6 +1,6 @@
 # ADR 0024: The RHI relocates to RojoRHI
 
-**Status**: Proposed (2026-09-19)
+**Status**: Accepted (2026-09-19)
 
 ## Context
 
