@@ -3,7 +3,7 @@
 **Status**: Accepted
 
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
-rendering evidence. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+rendering evidence: UX1 before M7.1, and [UX2](#ux2--scene-documents-and-hierarchy) between R4 and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -91,7 +91,7 @@ The original audit's tool limitations require new verification, not inherited pa
 [engineering evidence rules](../conventions/engineering.md#validation-evidence) by change risk;
 UI work neither closes historical M6/R1 exceptions nor substitutes for GPU/image validation.
 
-## Boundaries and deferrals
+## UX1 boundaries and deferrals
 
 Retain ImGui, the native maximized main window, the independent undocked Render Graph window,
 versioned workspace persistence and the AppModel/module layering. Preserve Native TAA as the
@@ -114,3 +114,37 @@ contract. On 2026-09-14 the owner accepted the result after manual review and re
 and PR merge. The executor plan is closed. This acceptance does not turn unverified automated
 gestures or known GPU/image limitations into passes; the [milestone](../milestones/ux1.md) retains
 them. M7.1 is eligible for a separate plan and remains inactive.
+
+## UX2 — Scene documents and hierarchy
+
+**Placement:** [R3](codebase-restructuring.md#r3--subsystems-and-tree-restructure) →
+[R4](codebase-restructuring.md#r4--shader-source-deduplication) → UX2 → N1, so
+new editor and scene code lands in the restructured tree and the learned-rendering lab starts from
+saved scenes. UX2 changes behaviour, so it uses its own gates and one owned re-baseline instead of
+the refactoring comparison protocol.
+
+**Outcome:** a scene is a saved document. An operator opens it, disables an object, edits a light
+or the look, saves, relaunches and finds the same scene; the Hierarchy shows only scene content;
+an authored disabled state is never confused with culling; the application has an icon.
+
+**Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` — `KHR_lights_punctual`,
+glTF cameras and animations with keys in a standard external buffer, and one `LMX_scene` extension
+for asset references, overrides, lab generators, enabled state and the saved look — loaded under
+the unchanged editor, replacing the C++ light rig, camera rails and initial cameras (UX2.1);
+Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a six-scene catalog
+(UX2.2); enabled state for lights and objects across Scene, both classification paths, counters
+and measurement (UX2.3); a scene-only Hierarchy, the Inspector header checkbox, a Rendering panel
+for renderer configuration, workspace schema 4 and Open/Save/Save As/Revert (UX2.4); the
+application icon and whole-application acceptance (UX2.5). The scene's look is saved; renderer
+configuration stays with the editor session and CLI. The [proposed record](../milestones/ux2.md)
+holds the contract.
+
+**Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`
+with identical graph dumps, reported as measured with no tolerance approved in advance; saves are
+byte-stable and pass a pinned glTF validator; the re-baseline lists every retired and new hash and
+carries the owner's acceptance; a disabled object contributes to no target and no counter but its
+own, identically on CPU and GPU classification; the [completion gate](#completion-gate) tasks
+still pass on the new layout; capture manifests and measurement reports record the document hash.
+
+**Defer:** create, duplicate, delete and reparent; importing an asset into an open scene;
+persisting renderer configuration; an `.app` bundle; everything the UX1 deferrals above already name.

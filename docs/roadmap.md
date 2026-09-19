@@ -13,8 +13,8 @@ that decomposes the accepted boundary without expanding it.
 |---|---|---|
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
-| [Codebase Refactoring](roadmap/codebase-refactoring.md) | R1 between M6.5 and gate B; later R milestones | Restructure modules and large units between rendering milestones without changing output |
-| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator |
+| [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; make scenes saved documents |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
@@ -34,7 +34,7 @@ the row says otherwise.
 | Step | Slice | Part | State | Enters after |
 |---|---|---|---|---|
 | 1 | [M6.5](roadmap/rendering-foundations.md#m65--display-boundary-and-edr-evaluation) display boundary | I | Closed 2026-09-13 | M6.4 |
-| 2 | [R1.1–R1.5](roadmap/codebase-refactoring.md#r1--module-boundaries-and-shared-foundations) module boundaries | III | Complete 2026-09-13 | M6.5 |
+| 2 | [R1.1–R1.5](roadmap/codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations) module boundaries | III | Complete 2026-09-13 | M6.5 |
 | 3 | [Interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation) | I | PASS 2026-09-13 | R1 |
 | 4 | [UX1](roadmap/editor-experience.md#ux1--editor-usability-and-diagnostics) editor usability | IV | Implemented, owner-accepted | Gate B |
 | 5 | [M7.1](roadmap/gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) GPU scene foundation | II | Implemented, owner-accepted 2026-09-15 | UX1 |
@@ -42,25 +42,34 @@ the row says otherwise.
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
-| 10 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | M7 complete; technically gate B |
-| 11 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
-| 12 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
-| 13 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
-| 14 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
+| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | Inactive; [proposed record](milestones/r2.md) | M7 complete |
+| 11 | [R3.1–R3.6](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r3.md) | R2 |
+| 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r4.md) | R3 |
+| 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux2.md) | R4 |
+| 14 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX2; technically gate B |
+| 15 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
+| 16 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
+| 17 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
+| 18 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
 
 Rows that interleave when their own prerequisites exist, without a fixed step:
 
 - [N2](roadmap/neural-rendering.md#n2--learned-reconstruction-study) after N1; N3's reconstruction
   adapter after N1 and its denoiser after M10; N4 candidates one at a time after N1 and each
   candidate's baseline. None is a condition of any M-slice.
-- Later [R milestones](roadmap/codebase-refactoring.md#later-refactoring-milestones) between
+- [R milestones](roadmap/codebase-restructuring.md#opening-a-further-r-milestone) after R4, between
   rendering milestones, adding no rendering scope.
 - Area lights and stochastic direct lighting after M7.5; other
   [independent research](roadmap/gpu-driven-hybrid-rendering.md#independent-research-and-graduation-gates)
   behind its own gates; a D3D12 backend only under [ADR 0007](decisions/0007-d3d12-backend-target.md).
 
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
-composition work while preserving every M-slice gate.
+composition work while preserving every M-slice gate. On 2026-09-19 the owner placed R2, R3, R4
+and UX2 between M7 and N1: the RHI moves to its own repository, the tree takes Donut's core/engine/render/app subsystems, the scene
+shader variants are deduplicated if the experiment supports it, and scenes become saved documents
+before new rendering work starts. Identifiers are names, not ordinals:
+M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
+already use them; the Step column carries the order.
 [UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
 M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
 and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
@@ -138,8 +147,8 @@ Each milestone has one recognizable completion outcome. Use a few independently 
 implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M9–M11 retain bounded work
 areas until planned. R milestones in Part III restructure code between rendering milestones and add no
-rendering scope. Part IV owns editor experience and its completion criteria independently of the
-rendering and structural milestones. Part V owns the four learned-rendering slices, each an
+rendering scope; R2 has four slices, R3 six and R4 two. Part IV owns editor experience and its completion
+criteria independently of the rendering and structural milestones; UX2 has five slices. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
 is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,
 rather than numerical order, determine entry. Only one

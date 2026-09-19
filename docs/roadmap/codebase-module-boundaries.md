@@ -1,4 +1,4 @@
-# Codebase Refactoring
+# Codebase Refactoring — Module Boundaries (R1)
 
 **Status**: Accepted
 
@@ -8,7 +8,9 @@ behaviour. R1 follows [M6.5](rendering-foundations.md#m65--display-boundary-and-
 and runs before the [interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation)
 review that admits [M7.1](gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation), so that
 review reads the restructured tree; R1 prepares the review and approves nothing gate B owns.
-Shared delivery rules stay in the roadmap entry.
+This file holds the module contract and R1, which is complete; R2–R4, placed between M7 and UX2,
+are defined in [Repository, Subsystem and Shader Restructuring](codebase-restructuring.md). Shared delivery
+rules stay in the roadmap entry.
 
 ## Observed structure before R1.1
 
@@ -283,18 +285,6 @@ library change; each target's dependency closure matches the contract.
 
 ## Later refactoring milestones
 
-No further R identifiers are reserved. When a planned rendering slice would cross the checked
-layering or grow a unit past a review budget, the owner opens the next R milestone here with its
-own outcome and gates rather than widening the allowlist. Visible candidates: RHI extraction once
-a second backend exists, and a logging facade if compile-time measurement justifies it.
-
-**Shader source deduplication** is a candidate that opens only after
-[M7.1](gpu-driven-hybrid-rendering.md#m71--gpu-scene-foundation) settles the binding model, so the
-shared code it extracts is the code M7 keeps. It starts with the `ScenePass` family and explores
-thin entry-point files over one shared implementation module with compile-time choices for exposure
-source and alpha coverage, while every compiled pipeline stays separate: the runtime-branch
-regression behind the twin files justifies separate pipelines, not whole-file duplication forever.
-A bounded experiment on an `exp/` branch compares each variant's generated MSL, reflected resource
-layout and rendered output under the strict parity matrix against the parent before any abstraction
-is adopted. `TemporalResolve` and `TemporalUpscale` are not merged for overlap alone: each keeps its
-kernel, and only a helper with one contract moves into `TemporalCommon`.
+R2, R3 and R4 and the rule for opening a further R milestone are in
+[Repository, Subsystem and Shader Restructuring](codebase-restructuring.md). The shader source deduplication
+candidate this section used to hold is [R4](codebase-restructuring.md#r4--shader-source-deduplication).

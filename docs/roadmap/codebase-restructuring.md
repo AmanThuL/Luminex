@@ -1,0 +1,234 @@
+# Codebase Refactoring — Repository, Subsystem and Shader Restructuring (R2–R4)
+
+**Status**: Accepted
+
+Second file of Part III of the [rendering roadmap](../roadmap.md).
+[Module Boundaries](codebase-module-boundaries.md) holds the module contract, the comparison
+protocol and R1, which is complete; this file holds the milestones the owner placed between M7 and
+[UX2](editor-experience.md#ux2--scene-documents-and-hierarchy) on 2026-09-19: **R2 → R3 → R4**.
+They add no rendering scope. Unless a section states otherwise they use the
+[R1 comparison protocol](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations)
+unchanged, and earlier parity exceptions relax nothing here. Proposed records hold design detail:
+[R2](../milestones/r2.md), [R3](../milestones/r3.md), [R4](../milestones/r4.md).
+
+## R2 — RHI becomes RojoRHI
+
+**Outcome:** the RHI is the private `rojo-rhi` repository, mounted at `RojoRHI/` as a submodule
+with its own conventions, ADRs, conformance tests and CI. Luminex remains the primary project and
+the RHI's required consumer; every RHI edit is a RojoRHI commit. This supersedes R1's deferral of
+a standalone RHI and the earlier candidate that waited for a second backend.
+
+**Identity:** namespace `rojoRHI` and include root `rojoRHI/` (the one owner-approved exception to
+lowercase naming, guarded by an include-spelling check), `ROJORHI_` macros, lowercase `rojorhi.`
+default labels, targets `RojoRHI` and `RojoRHIMetal4ImGui`. xmake in both repositories.
+
+**Sequence:** R2.1 → R2.2 → R2.3 → R2.4, before any other milestone plan.
+
+**Exit gate:** every slice gate below; the public message callback is the only RHI interface
+addition; every pre-existing test case passes under its name in one of the two repositories.
+
+**Defer:** a second backend ([ADR 0007](../decisions/0007-d3d12-backend-target.md) still governs
+it); releases, a package registry entry or a public repository; any RHI capability or semantic
+change; unifying the two shader rules.
+
+### R2.1 — RojoRHI foundations
+
+**Outcome:** RojoRHI has its own rules before it has any code.
+
+**Deliver:** in `rojo-rhi`, documents only: `AGENTS.md`, conventions for naming, C++ style,
+commits, documentation and testing derived from Luminex's with each deliberate difference stated,
+founding ADRs restating the RHI decisions of Luminex ADRs 0002, 0004, 0007, 0009 and 0010, and the
+recorded substitution R2.3 executes. In Luminex: a new ADR recording the relocation, the
+two-repository workflow and the checkpoint A split. Accepted Luminex ADRs stay immutable.
+
+**Exit gate:** the owner accepts the conventions and ADRs before any source changes; the 2024
+stub in `rojo-rhi` carries an archive tag.
+
+### R2.2 — Decouple in place
+
+**Outcome:** `RHI/` builds and tests as if already alone, while parent/candidate comparison is
+still possible inside Luminex.
+
+**Deliver:** a private base (assert, alignment, JSON escaping, `std::format` logging) replacing
+the four Core includes, with one public message callback that Luminex forwards to spdlog and the
+Console; RHI-only tests split out by a checkable include rule, with copied smoke shaders and a
+split test bootstrap; checkpoint A as two filters whose union is the frozen inventory; a
+standalone xmake build with its own setup task and a test-only shader-rule copy; the public-header
+check, ImGui patch and buffer probe gathered under the component; the module contract's four
+`rhi-*` units replaced by one external entry.
+
+**Exit gate:** the protocol holds commit by commit; `xmake -P RHI` builds and passes linking no
+Luminex target; GPU runs are validation-clean.
+
+### R2.3 — Mechanical rename
+
+**Deliver:** one commit reproducible from the recorded substitution — namespace, macros, include
+root, targets, default label strings and the directory `RHI/` → `RojoRHI/` — with Luminex call
+sites; formatting separate.
+
+**Exit gate:** the protocol holds with one declared difference: default labels and log text change
+exactly as the substitution predicts. Renderer-owned `lmx.*` labels, `LMX_*` variables and the
+`lmx` namespace outside the component are untouched.
+
+### R2.4 — Extract, mount and wire
+
+**Deliver:** an immutable tag on the last in-tree commit; `git filter-repo` extraction keeping
+history for every path RojoRHI receives; after the owner confirms, `rojo-rhi` `main` replaced by
+the result; the submodule mount with Luminex including the component's targets file; CI in both
+repositories, with a read-only credential for the private submodule; a policy check that the
+pinned commit is reachable from `rojo-rhi` `main`; `AGENTS.md`, conventions, architecture and
+worktree guidance updated.
+
+**Exit gate:** a fresh recursive clone builds; Luminex at the mount commit matches the
+pre-extraction tag under the protocol; `rojo-rhi` builds and passes with no Luminex checkout;
+policy is green in both.
+
+## R3 — Subsystems and tree restructure
+
+**Outcome:** Luminex has Donut's four subsystems — `Source/Core`, `Source/Engine`,
+`Source/Render`, `Source/App` — over the `RojoRHI/` submodule, with Donut's dependency direction:
+Render depends on Engine, and Engine never on Render. Every tree has a second level matching its
+responsibilities, and no leaf folder holds one file or more than about sixteen. Rendered output
+and shipped behaviour do not change.
+
+**Scope:** this is refactoring, not only moving. Header extractions, one function relocation, a
+dependency reversal, target and namespace renames and decompositions by responsibility are in
+scope where the structure needs them, each as its own commit under the comparison protocol. No
+pass label, shader basename, CLI option, schema, file format or test case name changes. Moves are
+one commit per destination folder, reproducible from a recorded path and include substitution.
+A new ADR supersedes the parts of [ADR 0020](../decisions/0020-module-layering-and-units.md) that
+retired the Engine name and let Scene depend on Render; it keeps Asset a separately linked,
+CPU-only library inside `Engine/`, so `TextureBake` and GPU-free builds still link no Metal.
+
+**Sequence:** R3.1 → R3.2 → R3.3 → R3.4 → R3.5 → R3.6, after R2.
+
+**Defer:** a repository-wide include directory or Donut's `include/`–`src/` split; headers shared
+between C++ and Slang; an engine-level shader factory or binding cache; moving the render graph
+out of Render; renaming Stage classes or test tags; everything UX2 owns.
+
+### R3.1 — Documentation records
+
+**Deliver:** `docs/milestones/<series>/` folders — `m1-m4`, `m5`, `m6` (with interface gate B),
+`m7`, `r` and `ux` — so no series folder holds a single file; each frozen design beside its record
+as `<id>-design.md`; the two postmortems in the series of their period; the founding design
+(D1–D10) in `docs/decisions/`; `docs/specs/` and `docs/postmortems/` removed; the fifteen closed
+plans deleted as the documentation convention already requires, leaving `docs/plans/` as the one
+transient folder. The convention, the policy checker's tables and `AGENTS.md` follow; `AGENTS.md`
+states that a brainstormed design is written as the `Proposed` milestone record and a plan goes
+to `docs/plans/`.
+
+**Exit gate:** policy green, every local link resolving, no document type losing its status field
+or precedence. Documents only; the comparison protocol does not apply.
+
+### R3.2 — Shader folders
+
+**Deliver:** `Shaders/Passes/<family>/` for ten families (Scene, Shadow, Visibility, Occlusion,
+LocalLights, Temporal, Exposure, Bloom, Display, SelectionOutline), `Shaders/Common/` replacing
+`Modules/`, and `Shaders/Tests/`. A module imported by one family lives with it; one imported by
+two or more lives in `Common/`; test oracles do not count as a family. The import checker enforces
+that a family-local module is imported only from its own folder.
+
+**Exit gate:** [R1.5](codebase-module-boundaries.md#r15--consolidation-and-decomposition)'s build
+and shader evidence: generated MSL identical to the parent's once `#line` directives are dropped,
+metallib inventory and runtime artifact paths unchanged, importer rebuilds intact, the runtime-MSL
+fallback loading, basename collisions still rejected.
+
+### R3.3 — Engine
+
+**Outcome:** scene description lives below the renderer, as in Donut's engine.
+
+**Deliver:** the ADR, accepted first. `Source/Engine/Asset/` (own library; `Image/`, `Model/`,
+`Texture/`) and `Source/Engine/{Scene,Types,Upload,Catalog}/` replacing `Source/Asset` and
+`Source/Scene`. The scene vocabulary leaves Render for `Engine/Types/` — `Mesh`, `Camera`,
+`AlphaMode.h`, `LocalLight.h`, `LocalLightMath` — and the table row ABI `SceneTables.h` for
+`Engine/Scene/`; `Bounds.h`, glm-only math with consumers in three units, goes to Core as Donut's
+`core/math/box.h` does. Two leaf-header extractions the old headers keep including: `DrawItem` and
+`DirectionalLight` out of `SceneView.h`, `MotionClass` out of `Temporal.h`. `Scene::view()`
+becomes a Render-side builder, so `SceneView` — scene description plus renderer settings — stays
+Render's input contract and the renderer still consumes a plain struct. The module contract
+reverses the edge and the checker rejects any Engine include of Render. Then one mechanical
+commit: target `Scene` → `Engine`, `lmx::scene` → `lmx::engine`, and the moved vocabulary
+`lmx::render` → `lmx::engine`; `lmx::asset` stays, naming the checked CPU-only unit.
+
+**Exit gate:** the protocol holds at every commit; the Asset archive still has no undefined RHI
+references and `TextureBake` links neither Engine nor a Metal framework; the Engine archive has no
+undefined `lmx::render` references; every test case is present under its name.
+
+### R3.4 — Render
+
+**Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
+compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
+builder, `DisplayDomain.h`) and `Render/Passes/<the same ten names as the shaders>/`, one folder
+per pass family holding its stages, CPU mirrors, checks and readbacks.
+
+**Exit gate:** the protocol holds; graph dumps and capture semantics match the parent.
+
+### R3.5 — App
+
+**Deliver:** `App/{Shell,Headless}`; `Model/` and `Panels/` kept as checked layers, because the
+checker proves by directory that AppModel reaches no ImGui, SDL or Metal; feature folders repeated
+under both — `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, `Options`, and
+`Rendering/{Settings,Temporal,Lighting,Visibility}` in Model; `Scene`, `Inspector`, `Viewport`,
+`Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
+decomposed by subject and `EditorShell.cpp` brought under the review budget.
+
+**Exit gate:** the protocol holds; scripted editor runs are validation-clean; workspace schema 3
+files load unchanged; AppModel still links no ImGui, SDL or Metal.
+
+### R3.6 — Tests and architecture pages
+
+**Deliver:** `Tests/{Core,Engine/{Asset,Scene},Render/<family>,App/<feature>,Tools,Support,Golden}`
+with CPU and GPU cases of one family side by side, since tags and not folders select GPU runs;
+tags, case names, run filters and Luminex's checkpoint A filter unchanged.
+`docs/architecture/overview.md` reduced to the subsystem diagram and an index over `core.md`,
+`engine.md`, `render-graph.md`, `render-passes.md`, `app.md`, `shaders.md`, a pointer page for
+RojoRHI, and the frame walkthrough beside them. README's directory table, the module convention
+and `AGENTS.md` describe the tree as built.
+
+**Exit gate:** the test inventory equals the parent's by case name; each page is within budget;
+policy green.
+
+## R4 — Shader source deduplication
+
+**Outcome:** the scene shader variants share one implementation and differ only where the
+[shader-style convention](../conventions/shader-style.md) says they must, while every compiled
+pipeline stays separate. Entry is satisfied: M7.1 settled the binding model, so the shared code is
+the code M7 keeps. It runs after R3.2 has placed the family in `Shaders/Passes/Scene/` and before
+M8 and M9 multiply the mirrored edits the twin rule demands today.
+
+**Scope:** the `ScenePass` family — four files of 320 to 346 lines that differ by exposure source
+and alpha coverage. Thin entry-point files over one shared implementation module, with
+compile-time choices and no runtime branch: the runtime-branch regression behind the twin files
+justifies separate pipelines, not whole-file duplication. `TemporalResolve` and `TemporalUpscale`
+are not merged for overlap alone; each keeps its kernel, and only a helper with one contract
+moves into the temporal family's shared module.
+
+**Sequence:** R4.1 → R4.2, after R3. R4 changes generated shader source, so R3.2's
+identical-MSL gate does not apply; the gates below replace it.
+
+**Defer:** merging pipelines or adding a runtime exposure or coverage branch; any shading,
+binding or uniform-layout change; other families until this one is adopted.
+
+### R4.1 — Bounded experiment
+
+**Deliver:** on a short-lived `exp/` branch, the shared module and thin entries for the
+`ScenePass` family; for each variant, the generated MSL, the reflected resource layout and the
+rendered output compared with the parent under the strict parity matrix; an immutable evidence
+tag; a recorded adopt or DEFER decision.
+
+**Exit gate:** the comparison is complete and recorded for all four variants whatever the outcome.
+
+### R4.2 — Adoption
+
+**Deliver:** only if R4.1 decides to adopt: the production change on `main`, and the shader-style
+convention's twin rule replaced by the rule the shared module now enforces.
+
+**Exit gate:** reflected resource layouts identical to the parent's; rendered output passes the
+strict parity matrix; pipeline inventory and labels unchanged; GPU suite validation-clean. A DEFER
+leaves the twin files and the convention as they are and closes R4 with its evidence.
+
+## Opening a further R milestone
+
+No identifier beyond R4 is reserved. When a planned rendering slice would cross the checked
+layering or grow a unit past a review budget, the owner opens the next R milestone here with its
+own outcome and gates rather than widening the allowlist.

@@ -18,7 +18,8 @@ silently override an accepted higher-precedence decision.
    identifiers and boundaries, not an implementation transcript. The entry owns direction, shared
    delivery rules, the current baseline and the cross-part execution sequence; Rendering Foundations owns M4–M6.5 and interface gate B;
    GPU-Driven Hybrid Rendering owns M7–M11 and independent research; Codebase Refactoring owns
-   the R-series structural milestones; Editor Experience owns UX1 and its placement before M7.1;
+   the R-series structural milestones, R1 in its first file and R2–R4 in its after-M7 file;
+   Editor Experience owns UX1 and its placement before M7.1, and UX2 and its placement before N1;
    Neural and Learned Rendering owns N1–N4, the post-M7 delivery order and the learned-technique
    and hardware policies.
    Define each boundary once and link to its owner from summaries and dependency tables.
