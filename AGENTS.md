@@ -52,12 +52,12 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   conversion provenance; archive and converted-tree hashes are pinned in `xmake/setup.lua`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
-- Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` runs four groups (`Tests/unit`, `Tests/gpu`, `RHITests/unit`, `RHITests/gpu`; CPU-only: `xmake test Tests/unit RHITests/unit`). Standalone RHI: `xmake setup -P RHI` (or copy/symlink `ThirdParty` into `RHI/`), then `xmake f -P RHI` and `xmake build -P RHI RHITests`; a bare copy of `RHI/` builds and tests the same way from its own root.
+- Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` runs four groups (`Tests/unit`, `Tests/gpu`, `RojoRHITests/unit`, `RojoRHITests/gpu`; CPU-only: `xmake test Tests/unit RojoRHITests/unit`). Standalone RojoRHI: `xmake setup -P RojoRHI` (or copy/symlink `ThirdParty` into `RojoRHI/`), then `xmake f -P RojoRHI` and `xmake build -P RojoRHI RojoRHITests`; a bare copy of `RojoRHI/` builds and tests the same way from its own root.
 - **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits. GPU regression uses `[gpu]~[.]`; hidden replay diagnostics require their explicit filter.
   `xmake test` rebuilds; before running Tests directly, run `xmake build Tests` to avoid stale passes.
 - Frozen portability-checkpoint-A subset (ADR 0009), split over both binaries (16 RHI, 3 graph):
-  `xmake build Tests && xmake build RHITests && (cd build/macosx/arm64/release/rhi-test && MTL_DEBUG_LAYER=1
-  ./RHITests "[checkpoint-a]") && (cd build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests
+  `xmake build Tests && xmake build RojoRHITests && (cd build/macosx/arm64/release/rojorhi-test && MTL_DEBUG_LAYER=1
+  ./RojoRHITests "[checkpoint-a]") && (cd build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests
   "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD). `python3 Tools/check_checkpoint_a.py` checks the split against the frozen inventory.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
@@ -68,7 +68,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
-  `python3 RHI/Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
+  `python3 RojoRHI/Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
@@ -147,9 +147,9 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
   parity checks: `docs/guides/gpu-debugging.md`.
 ## Architecture
-`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) and, independently, the root `RHI/` component — no Core dependency, its own private `RHI/Source/Base` (assert/log/align/JSON) and one public `RHI/Include/RHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RHI/xmake.lua` plus `RHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RHI`); the repository root includes `RHI/xmake/targets.lua` and nothing else from the component. `RHI/Tests`/`RHI/Shaders/Tests` hold its own contract/GPU suite (`RHITests`, linking only `RHI`); `RHI/Tools` holds its header check, ImGui patch and buffer probe (`RHI/Include/RHI`: public `lmx::rhi`
-interfaces with **no Metal or ImGui types**; `RHI/Source`: shared implementation;
-`RHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables (16 buffer / 16 texture / 8 sampler slots; texture slots cleared at each render/compute pass)
+`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) and, independently, the root `RojoRHI/` component — no Core dependency, its own private `RojoRHI/Source/Base` (assert/log/align/JSON) and one public `RojoRHI/Include/rojoRHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RojoRHI/xmake.lua` plus `RojoRHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RojoRHI`); the repository root includes `RojoRHI/xmake/targets.lua` and nothing else from the component. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui patch and buffer probe (`RojoRHI/Include/rojoRHI`: public `rojoRHI`
+interfaces with **no Metal or ImGui types**; `RojoRHI/Source`: shared implementation;
+`RojoRHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables (16 buffer / 16 texture / 8 sampler slots; texture slots cleared at each render/compute pass)
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
 shared-event pacing, per-pass GPU timing for every pass kind, samplers, sRGB/BC1/cubemap/RGBA16Float
 formats, depth-only passes, compute passes with storage bindings, subresource views, explicit
@@ -162,7 +162,7 @@ a sub-rectangle of its attachments; `Device::capabilities()` reports the neutral
 capability, `TemporalScaler` owns vendor history, and the timed `CommandList::temporalScale` encodes
 between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
 output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `R32Float` supports sampled/storage/CPU-readable HZB texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
-`RHIMetal4ImGui`: optional ImGui glue target; maintained backend patch quarantines each slot's used vertex/index buffers until its next paced visit, preventing native-window uploads from overwriting main-window GPU reads) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
+`RojoRHIMetal4ImGui`: optional ImGui glue target; maintained backend patch quarantines each slot's used vertex/index buffers until its next paced visit, preventing native-window uploads from overwriting main-window GPU reads) → `Source/Render` (lmx::render: `Camera`, CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, the
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
@@ -228,7 +228,7 @@ ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassM
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
 SelectionMask and SelectionOutline (editor-only).
-`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
+`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.

@@ -6,16 +6,16 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 
 - **Naming**: `PascalCase` types & files; `camelCase` functions/variables; private data members use the
   `m_` prefix (`m_device`), public/aggregate members do not (no `s_` prefix anywhere);
-  `kPascalCase` compile-time constants; `LMX_` macros; `lowercase` namespaces (`lmx`, `lmx::rhi`).
+  `kPascalCase` compile-time constants; `LMX_` macros; `lowercase` namespaces (`lmx`, `lmx::render`).
 - **Experimental code**: experimental source stays off `main` on a short-lived `exp/<topic>`
   branch and uses `lmx::experimental::<name>`. Accepted evidence is frozen with an immutable tag;
   only conclusions, ADRs, and adopted production code return to `main`.
 - **Files**: one primary type per header; `PascalCase.h/.cpp` named after it. `#pragma once`.
-  Every project-owned source or header under `Source/`, `RHI/`, or `Experiments/` starts with the
+  Every project-owned source or header under `Source/`, `RojoRHI/`, or `Experiments/` starts with the
   file envelope defined below.
 - **Includes**: own header first, then project (`"Core/..."`), then third-party, then std. Blank line between groups.
 - **Errors**: use the owning domain's `std::expected` alias at creation and loading boundaries
-  (`rhi::Result<T>` for GPU work, `engine::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
+  (`rojoRHI::Result<T>` for GPU work, `lmx::asset::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
   violations and never silently swallow failures (spec §6).
 - **C++23**: prefer `std::expected`, `std::span`, `std::string_view`, ranges, `std::print` in tools.
   No RTTI-dependent design; exceptions only from third-party boundaries.
@@ -23,7 +23,7 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 
 ## File headers
 
-Every hand-written project-owned `.h` and `.cpp` file under `Source/`, `RHI/`, or `Experiments/`
+Every hand-written project-owned `.h` and `.cpp` file under `Source/`, `RojoRHI/`, or `Experiments/`
 starts at its first physical line with this four-line envelope. Both ruler lines are exactly 120
 ASCII characters (`//` followed by 118 `-` characters):
 
@@ -94,7 +94,7 @@ and orphan separators. It must not use a regular expression to guess C++ functio
 
 `Tools/check_cpp_comments.py` enforces file envelopes and uses the compilation database plus Clang's
 parsed comments and AST to reject undocumented API in public `Source` headers (excluding the
-module contract's checked `privateHeaders`), the exported `RHI/Include`
+module contract's checked `privateHeaders`), the exported `RojoRHI/Include`
 tree, and experimental public headers under `Experiments/*/Include`. RHI backend and implementation
 headers are not public API. The same compilation pass enables `-Wdocumentation` as an error so
 malformed tags and parameter names fail policy too.
