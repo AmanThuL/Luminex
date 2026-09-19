@@ -7,7 +7,6 @@
 
 namespace {
 namespace render = lmx::render;
-namespace rhi = rojoRHI;
 
 struct WorkFixture {
     std::unique_ptr<rojoRHI::Device> device;

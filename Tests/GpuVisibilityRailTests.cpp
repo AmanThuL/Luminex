@@ -3,7 +3,6 @@
 
 namespace {
 namespace render = lmx::render;
-namespace rhi = rojoRHI;
 namespace scene = lmx::scene;
 } // namespace
 

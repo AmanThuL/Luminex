@@ -10,7 +10,6 @@
 
 namespace {
 using namespace lmx::render;
-namespace rhi = rojoRHI;
 
 // A camera plus the jittered projection the scene pass would rasterize with; the same shape
 // LightClustersTests.cpp builds its mirror inputs from.

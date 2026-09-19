@@ -45,7 +45,7 @@ struct RunResult {
     /// analysis can decompose per-buffer cost scaling without re-deriving this from the raw count.
     uint64_t overflowBufferCreationsPerFrame = 0;
 
-    /// Candidate-only counter evidence (`RHI/Include/RHI/Metal4/Metal4FrameData.h`): the
+    /// Candidate-only counter evidence (`RojoRHI/Include/rojoRHI/Metal4/Metal4FrameData.h`): the
     /// device's frame-data counters snapshotted immediately after warm-up completes, before the
     /// first measured frame's timed region begins. Unset when `config.warmupFrames == 0` (no
     /// "after warm-up, before measurement" boundary exists) or on an error path before the loop

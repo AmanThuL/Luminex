@@ -41,7 +41,6 @@ using lmx::srgbToLinear;
 using namespace lmx::scene;
 using lmx::test::findRepoAsset;
 using lmx::test::near3;
-namespace rhi = rojoRHI;
 namespace render = lmx::render;
 
 namespace {
