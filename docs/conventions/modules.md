@@ -6,7 +6,7 @@ The repository is a set of named units with an explicit dependency set each. A u
 the units and third-party packages listed for it and on nothing else; anything absent from its row
 is forbidden, and the policy checker rejects it. The layering, the unit names and the namespace
 renames are decided in [ADR 0020](../decisions/0020-module-layering-and-units.md); the migration
-order lives in the [refactoring roadmap](../roadmap/codebase-refactoring.md).
+order lives in the [refactoring roadmap](../roadmap/codebase-module-boundaries.md).
 
 ## Units
 

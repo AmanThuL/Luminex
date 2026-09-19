@@ -27,7 +27,7 @@ shipped evidence. In particular, M5.6 closed with no adopted submission path or 
 conclusion. M6.4 retains manual/capture follow-ups, and M6.5 closed with EDR deferred and a narrow
 historical-hash exception. Their closure does not record a pass for every original gate.
 [Interface gate B](#m6--temporal-and-display-foundation) passes in its
-[2026-09-13 review](../milestones/interface-gate-b.md), after [R1](codebase-refactoring.md),
+[2026-09-13 review](../milestones/interface-gate-b.md), after [R1](codebase-module-boundaries.md),
 approving M7.1 entry while preserving those limits.
 
 ## M4 — Correct image formation
