@@ -11,7 +11,7 @@ holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
   JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are public packages.
-- **RHI** builds and tests from its own root (`xmake -P RHI`): `RHI/xmake.lua` includes `RHI/xmake/targets.lua`, `setup.lua` and `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
+- **RHI** builds and tests from its own root (`xmake -P RHI`): `RHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
   dependency — a private `RHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
   is `RHI/Include/RHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
   forwards into spdlog/Console for App and Luminex's `Tests`. `RHI/Tests`/`RHI/Shaders/Tests` hold its
