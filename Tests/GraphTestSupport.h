@@ -14,7 +14,7 @@ namespace {
 
 using namespace lmx::rhi;
 
-struct FakeCommandList final : lmx::rhi::CommandList {
+struct FakeCommandList : lmx::rhi::CommandList {
     struct Request {
         uint32_t slot = 0;
         const void* data = nullptr;
@@ -124,6 +124,14 @@ struct FakeCommandList final : lmx::rhi::CommandList {
     //==================================================================================================================
     void bufferBarrier(Buffer&, const BufferRange&, BufferUse, BufferUse, BarrierOptions) override {
     }
+};
+
+struct FakeGraphicsPipeline final : lmx::rhi::GraphicsPipeline {
+    std::string label;
+};
+
+struct FakeComputePipeline final : lmx::rhi::ComputePipeline {
+    std::string label;
 };
 
 // Deterministic allocation policy and no-op GPU objects for graph declarations.
@@ -306,14 +314,18 @@ struct FakeDevice final : lmx::rhi::Device {
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::GraphicsPipeline>>
-    createGraphicsPipeline(const lmx::rhi::GraphicsPipelineDesc&) override {
-        return std::make_unique<lmx::rhi::GraphicsPipeline>();
+    createGraphicsPipeline(const lmx::rhi::GraphicsPipelineDesc& desc) override {
+        auto result = std::make_unique<FakeGraphicsPipeline>();
+        result->label = desc.label;
+        return result;
     }
 
     //==================================================================================================================
     lmx::rhi::Result<std::unique_ptr<lmx::rhi::ComputePipeline>>
-    createComputePipeline(const lmx::rhi::ComputePipelineDesc&) override {
-        return std::make_unique<lmx::rhi::ComputePipeline>();
+    createComputePipeline(const lmx::rhi::ComputePipelineDesc& desc) override {
+        auto result = std::make_unique<FakeComputePipeline>();
+        result->label = desc.label;
+        return result;
     }
 
     //==================================================================================================================

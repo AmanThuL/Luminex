@@ -7,8 +7,10 @@
 
 #include "Core/Assert.h"
 
+#include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <cmath>
 #include <cstddef>
 
 namespace lmx::asset {
@@ -49,7 +51,7 @@ KeySpan bracket(std::span<const Key> keys, double time) {
 //======================================================================================================================
 bool hasAnimationTracks(const SceneAnimation& animation) {
     return !animation.tracks.empty() || !animation.cameraTrack.empty() ||
-           !animation.emissiveTracks.empty();
+           !animation.emissiveTracks.empty() || !animation.lightTracks.empty();
 }
 
 //======================================================================================================================
@@ -95,6 +97,26 @@ float sampleEmissiveTrack(const EmissiveTrack& track, double time) {
         ++index;
     }
     return keys[index].strength;
+}
+
+//======================================================================================================================
+glm::vec3 sampleOrbit(const LightOrbitTrack& track, float seconds) {
+    LMX_ASSERT(glm::length(track.axis) > 0.0f, "LightOrbitTrack.axis must be nonzero");
+    const glm::vec3 axis = glm::normalize(track.axis);
+    // A deterministic basis perpendicular to axis: world up, unless axis is nearly parallel to it,
+    // where world +X keeps the cross product well-conditioned instead of collapsing toward zero.
+    const glm::vec3 reference =
+        std::abs(axis.y) < 0.999f ? glm::vec3(0.0f, 1.0f, 0.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
+    const glm::vec3 u = glm::normalize(glm::cross(reference, axis));
+    const glm::vec3 v = glm::cross(axis, u);
+    float angle = track.phase;
+    if (track.period > 0.0f) {
+        // Wrapping onto one period before the multiply keeps the angle's float precision constant
+        // regardless of how large `seconds` has grown, instead of coarsening across a long session.
+        const float wrapped = std::fmod(seconds, track.period);
+        angle += static_cast<float>(2.0 * glm::pi<double>() * wrapped / track.period);
+    }
+    return track.centre + track.radius * (std::cos(angle) * u + std::sin(angle) * v);
 }
 
 } // namespace lmx::asset

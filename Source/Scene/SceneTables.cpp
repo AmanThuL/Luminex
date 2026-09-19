@@ -7,6 +7,7 @@
 
 #include "Core/Assert.h"
 #include "Core/Log.h"
+#include "Render/LocalLightMath.h"
 
 #include <algorithm>
 #include <array>
@@ -164,17 +165,29 @@ struct Scene::Storage {
     uint16_t store = nextStore();
     std::vector<IdentitySlot> instances;
     std::vector<IdentitySlot> textureIds;
+    std::vector<IdentitySlot> localLightIds;
     uint32_t instanceSearchStart = 0;
     uint32_t textureSearchStart = 0;
+    uint32_t localLightSearchStart = 0;
     std::vector<render::MeshData> meshData;
     std::vector<render::MeshRow> meshRows;
     std::vector<MaterialRecord> materials;
+    std::vector<render::LocalLight> localLightData;
+    std::vector<LightId> liveLightIds;
+    uint32_t enabledLightCount = 0;
+    /// Every `addLight` result from before `finalize`, in call order; `LightOrbitTrack::light`
+    /// indexes here. Frozen at `finalize` (see `addLight`): append-only up to that point, so a
+    /// later removal never shifts an earlier index's mapping, and never grown afterward, so a
+    /// light added post-finalize (unindexable, static by contract) cannot make it grow without
+    /// bound across repeated runtime add/remove cycles.
+    std::vector<LightId> lightCreationOrder;
     std::vector<std::unique_ptr<rhi::Texture>> textures;
     std::unique_ptr<rhi::Buffer> vertices;
     std::unique_ptr<rhi::Buffer> indices;
     PacedTable<render::InstanceRow> instanceTable;
     PacedTable<render::MaterialRow> materialTable;
     PacedTable<render::MeshRow> meshTable;
+    PacedTable<render::LightRow> lightTable;
     std::vector<RetiringBuffer> retiring;
     std::vector<std::pair<uint64_t, std::unique_ptr<rhi::Texture>>> retiringTextures;
     rhi::Device* device = nullptr;
@@ -335,6 +348,96 @@ void Scene::removeTexture(TextureId id) {
     if (slot.generation != std::numeric_limits<uint16_t>::max()) {
         ++slot.generation;
     }
+}
+
+//======================================================================================================================
+rhi::Result<LightId> Scene::addLight(const render::LocalLight& light) {
+    auto row = render::makeLightRow(light);
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    auto& storage = *m_storage;
+    if (storage.liveLightIds.size() >= render::kMaxLocalLights) {
+        return std::unexpected(
+            rhi::Error{rhi::ErrorCode::InvalidDesc, "local light capacity exceeded"});
+    }
+    const uint32_t slot = allocateIdentity(storage.localLightIds, storage.localLightSearchStart);
+    if (slot >= storage.localLightData.size()) {
+        storage.localLightData.resize(slot + 1);
+    }
+    storage.localLightData[slot] = light;
+    storage.enabledLightCount += light.enabled ? 1u : 0u;
+    const LightId id{slot, storage.localLightIds[slot].generation, storage.store};
+    storage.liveLightIds.insert(
+        std::ranges::upper_bound(storage.liveLightIds, slot, {}, &LightId::slot), id);
+    // The animation index list freezes at finalize (storage.device becomes non-null there): a
+    // light added afterward -- a runtime pile addition, say -- gets no index and is static by
+    // contract, so this list never grows once the scene is playable, regardless of how many
+    // lights are later added and removed.
+    if (storage.device == nullptr) {
+        storage.lightCreationOrder.push_back(id);
+    }
+    return id;
+}
+
+//======================================================================================================================
+bool Scene::removeLight(LightId id) {
+    auto& storage = *m_storage;
+    if (!resolves(id, storage.store, storage.localLightIds)) {
+        return false;
+    }
+    auto& slot = storage.localLightIds[id.slot];
+    storage.localLightSearchStart = std::min(storage.localLightSearchStart, id.slot);
+    slot.live = false;
+    if (slot.generation != std::numeric_limits<uint16_t>::max()) {
+        ++slot.generation;
+    }
+    storage.enabledLightCount -= storage.localLightData[id.slot].enabled ? 1u : 0u;
+    std::erase(storage.liveLightIds, id);
+    return true;
+}
+
+//======================================================================================================================
+rhi::Result<void> Scene::updateLight(LightId id, const render::LocalLight& light) {
+    auto& storage = *m_storage;
+    if (!resolves(id, storage.store, storage.localLightIds)) {
+        return std::unexpected(
+            rhi::Error{rhi::ErrorCode::InvalidDesc, "light identity is invalid"});
+    }
+    auto row = render::makeLightRow(light);
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    storage.enabledLightCount -= storage.localLightData[id.slot].enabled ? 1u : 0u;
+    storage.enabledLightCount += light.enabled ? 1u : 0u;
+    storage.localLightData[id.slot] = light;
+    return {};
+}
+
+//======================================================================================================================
+const render::LocalLight* Scene::light(LightId id) const {
+    const auto& storage = *m_storage;
+    return resolves(id, storage.store, storage.localLightIds) ? &storage.localLightData[id.slot]
+                                                              : nullptr;
+}
+
+//======================================================================================================================
+uint32_t Scene::enabledLightCount() const {
+    return m_storage->enabledLightCount;
+}
+
+//======================================================================================================================
+std::span<const LightId> Scene::localLights() const {
+    return m_storage->liveLightIds;
+}
+
+//======================================================================================================================
+std::optional<LightId> Scene::animationLightId(uint32_t index) const {
+    const auto& order = m_storage->lightCreationOrder;
+    if (index >= order.size()) {
+        return std::nullopt;
+    }
+    return order[index];
 }
 
 //======================================================================================================================
@@ -507,6 +610,15 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     if (!materials) {
         return materials;
     }
+    if (!storage.localLightIds.empty()) {
+        auto lights =
+            reserveTable(*storage.device, storage.lightTable,
+                         static_cast<uint32_t>(storage.localLightIds.size()), "lmx.scene.lights",
+                         storage.lastFrame, storage.retiring, storage.stats.growthEvents);
+        if (!lights) {
+            return lights;
+        }
+    }
     const auto alreadyRetired = std::erase_if(storage.retiring, [frameNumber](const auto& buffer) {
         return frameNumber >= buffer.releaseAtFrame;
     });
@@ -587,6 +699,15 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
                     (material.doubleSided ? render::kMaterialDoubleSided : 0);
         updateRow(storage.materialTable, i, row);
     }
+    for (uint32_t i = 0; i < storage.localLightIds.size(); ++i) {
+        if (storage.localLightIds[i].live) {
+            auto row = render::makeLightRow(storage.localLightData[i]);
+            LMX_ASSERT(row, "stored local light failed re-validation");
+            updateRow(storage.lightTable, i, *row);
+        } else {
+            updateRow(storage.lightTable, i, render::LightRow{});
+        }
+    }
     if (coverageChanged) {
         LMX_ASSERT(storage.coverageEpoch < std::numeric_limits<uint64_t>::max(),
                    "scene coverage epoch exhausted");
@@ -597,6 +718,9 @@ rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     storage.stats.slot = static_cast<uint32_t>(frameNumber % kSlots);
     writeRows(storage.instanceTable, storage.stats.slot, storage.stats);
     writeRows(storage.materialTable, storage.stats.slot, storage.stats);
+    if (storage.lightTable.capacity != 0) {
+        writeRows(storage.lightTable, storage.stats.slot, storage.stats);
+    }
     storage.lastFrame = frameNumber;
     storage.prepared = true;
     return {};
@@ -617,6 +741,8 @@ SceneTableStats Scene::tableStats() const {
     stats.instanceCapacity = storage.instanceTable.capacity;
     stats.materialCapacity = storage.materialTable.capacity;
     stats.meshCapacity = storage.meshTable.capacity;
+    stats.lightCount = static_cast<uint32_t>(storage.liveLightIds.size());
+    stats.lightCapacity = storage.lightTable.capacity;
     stats.pendingReleaseBuffers = static_cast<uint32_t>(storage.retiring.size());
     return stats;
 }
@@ -638,7 +764,13 @@ render::SceneTables Scene::tables() const {
             .instanceCount = static_cast<uint32_t>(storage.instances.size()),
             .materialCount = static_cast<uint32_t>(storage.materials.size()),
             .instanceRows = storage.instanceTable.shadow,
-            .instanceCapacity = storage.instanceTable.capacity};
+            .instanceCapacity = storage.instanceTable.capacity,
+            .lights =
+                storage.lightTable.capacity != 0 ? storage.lightTable.buffers[slot].get() : nullptr,
+            .lightRowCount = static_cast<uint32_t>(storage.localLightIds.size()),
+            .lightCapacity = storage.lightTable.capacity,
+            .lightRows = storage.lightTable.shadow,
+            .liveLightCount = storage.enabledLightCount};
 }
 
 } // namespace lmx::scene

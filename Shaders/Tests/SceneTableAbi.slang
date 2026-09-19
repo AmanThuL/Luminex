@@ -8,6 +8,8 @@ StructuredBuffer<InstanceRow> gInstances : register(t5);
 StructuredBuffer<MaterialRow> gMaterials : register(t6);
 [[vk::binding(7, 0)]]
 StructuredBuffer<MeshRow> gMeshes : register(t7);
+[[vk::binding(8, 0)]]
+StructuredBuffer<LightRow> gLights : register(t8);
 
 [shader("compute")]
 [numthreads(1, 1, 1)]
@@ -16,7 +18,8 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     InstanceRow instance = gInstances[tid.x];
     MaterialRow material = gMaterials[tid.x];
     MeshRow mesh = gMeshes[tid.x];
-    uint base = tid.x * 100;
+    LightRow light = gLights[tid.x];
+    uint base = tid.x * 116;
     for (uint column = 0; column < 4; ++column)
     {
         for (uint row = 0; row < 4; ++row)
@@ -55,4 +58,15 @@ void computeMain(uint3 tid : SV_DispatchThreadID)
     gOutput[base + 89] = mesh.indexCount;
     gOutput[base + 90] = mesh.firstVertex;
     gOutput[base + 91] = mesh.vertexCount;
+    for (uint component = 0; component < 3; ++component)
+    {
+        gOutput[base + 100 + component] = asuint(light.position[component]);
+        gOutput[base + 104 + component] = asuint(light.strength[component]);
+        gOutput[base + 108 + component] = asuint(light.direction[component]);
+        gOutput[base + 112 + component] = asuint(light.boundCentre[component]);
+    }
+    gOutput[base + 103] = asuint(light.range);
+    gOutput[base + 107] = asuint(light.spotScale);
+    gOutput[base + 111] = asuint(light.spotOffset);
+    gOutput[base + 115] = asuint(light.boundRadius);
 }

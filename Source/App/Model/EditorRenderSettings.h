@@ -13,6 +13,10 @@ namespace lmx::app {
 /// borrow it to edit the same values, which is what keeps a viewport shortcut and an Inspector row
 /// from becoming two parallel settings.
 struct EditorRenderSettings {
+    /// Local-light path.
+    render::LocalLightMode localLightMode = render::LocalLightMode::Clustered;
+    render::LightDebugView lightDebugView = render::LightDebugView::Off; ///< Lighting diagnostic.
+    bool lightCheck = false;       ///< Exact retired CPU/GPU light-list comparison, unscored.
     bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.
     bool occlusionEnabled = false;    ///< Previous-frame HZB rejection; GPU culling only.

@@ -7,6 +7,8 @@
 
 #include "App/Model/SceneSession.h"
 
+#include <glm/vec3.hpp>
+
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -22,7 +24,10 @@ enum class PlaybackState : uint8_t {
 
 /// Restores the camera, clock, rail preference and animation-owned fields when a preview stops.
 /// The session's scene must remain alive until stopped; stop before activating another scene.
-/// Independent object, material and light edits survive Stop. Removed object identities are never
+/// Independent object, material and light edits survive Stop -- only each animation's own field is
+/// restored: an object's transform and emissive strength, and, for a light carrying a
+/// `LightOrbitTrack`, its position alone (AGENTS.md: "unrelated edits are outside restoration").
+/// A light with no orbit track is never touched. Removed object and light identities are never
 /// recreated, and a snapshot from a different active scene is discarded without restoring it.
 class EditorPlayback {
 public:
@@ -57,6 +62,13 @@ private:
         std::optional<asset::DecomposedTransform> transform;
         std::optional<float> emissiveStrength;
     };
+    /// The one field a light orbit track owns; Stop rewrites only this into the light's *current*
+    /// value (read fresh at Stop), so colour, intensity, range and direction edits made during the
+    /// preview are preserved exactly like an object's untracked fields are.
+    struct LightSnapshot {
+        scene::LightId id;
+        glm::vec3 position;
+    };
     struct Snapshot {
         const scene::Scene* source = nullptr;
         std::optional<scene::MeshId> identity;
@@ -64,6 +76,7 @@ private:
         double time = 0;
         bool followRail = false;
         std::unordered_map<uint32_t, ObjectSnapshot> objects;
+        std::unordered_map<uint32_t, LightSnapshot> lights;
     };
 
     bool matches(const SceneSession& session) const;

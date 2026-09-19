@@ -11,6 +11,7 @@
 #include "App/Model/SceneTableDisplay.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"
+#include "App/Panels/InspectorLighting.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
@@ -219,6 +220,10 @@ void drawTemporalSection(const InspectorPanelContext& context) {
                         if (ImGui::Selectable(kDebugViewNames[index],
                                               settings.temporalDebugView == view)) {
                             settings.temporalDebugView = view;
+                            if (view != render::TemporalDebugView::Off) {
+                                settings.lightDebugView = render::LightDebugView::Off;
+                                settings.hzbDebugLevel = -1;
+                            }
                         }
                         ImGui::EndDisabled();
                         if (unavailable) {
@@ -487,6 +492,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                                               settings.hzbDebugLevel ==
                                                   static_cast<int32_t>(level))) {
                             settings.hzbDebugLevel = static_cast<int32_t>(level);
+                            settings.lightDebugView = render::LightDebugView::Off;
                             settings.temporalDebugView = render::TemporalDebugView::Off;
                         }
                     }
@@ -672,6 +678,9 @@ void drawRenderingSection(const InspectorPanelContext& context) {
         }
         drawDisplaySection(context);
     }
+    if (category == RenderingCategory::Lighting) {
+        drawLightingSection(context);
+    }
     if (category == RenderingCategory::SceneTables) {
         editor_style::message("Current scene storage and the most recent table upload.");
         if (beginReadings("sceneTableFields")) {
@@ -768,6 +777,11 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
         } else if (subject == EditorSubject::DirectionalLight) {
             ImGui::TextWrapped("Light %zu", context.selection.index);
             editor_style::message("Directional light");
+        } else if (subject == EditorSubject::LocalLight) {
+            ImGui::TextWrapped(
+                "%s",
+                sceneLocalLightLabel(context.session.scene(), context.selection.lightId).c_str());
+            editor_style::message("Local light");
         } else if (subject == EditorSubject::Camera) {
             ImGui::TextUnformatted("Editor Camera");
         } else if (subject == EditorSubject::Rendering) {
@@ -787,7 +801,11 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
         const ImGuiID previousKey = ImGui::GetID("PreviousInspectorSubject");
         ImGuiStorage* storage = ImGui::GetStateStorage();
         ImGui::PushID(static_cast<int>(subject));
-        ImGui::PushID(static_cast<int>(context.selection.index));
+        ImGui::PushID(static_cast<int>(subject == EditorSubject::LocalLight
+                                           ? context.selection.lightId.slot
+                                           : context.selection.index));
+        ImGui::PushID(static_cast<int>(context.selection.lightId.generation));
+        ImGui::PushID(static_cast<int>(context.selection.lightId.store));
         const ImGuiID page = ImGui::GetID("InspectorFields");
         const bool changed = storage->GetInt(previousKey, -1) != static_cast<int>(page);
         storage->SetInt(previousKey, static_cast<int>(page));
@@ -808,12 +826,17 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             case EditorSubject::DirectionalLight:
                 drawDirectionalLightSection(context, context.selection.index);
                 break;
+            case EditorSubject::LocalLight:
+                drawLocalLightSection(context, context.selection.lightId);
+                break;
             case EditorSubject::Object:
                 drawObjectSection(context, context.selection.index);
                 break;
             }
         }
         ImGui::EndChild();
+        ImGui::PopID();
+        ImGui::PopID();
         ImGui::PopID();
         ImGui::PopID();
     }

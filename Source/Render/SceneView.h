@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Render/LocalLight.h"
+
 #include "Render/AlphaMode.h"
 #include "Render/SceneTables.h"
 #include "Render/Temporal.h"
@@ -164,7 +166,11 @@ struct SceneView {
     /// does not contain the scene loses the geometry outside it from the shadow map.
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Runtime shadow sampling mode.
-    bool wireframe = false;                        ///< Selects the wireframe scene pipeline.
+    /// Requested local-light path; Clustered is the default and Direct remains the reference.
+    LocalLightMode localLightMode = LocalLightMode::Clustered;
+    bool lightCheck = false; ///< Compare retired clustered lists with the declaration CPU mirror.
+    LightDebugView lightDebugView = LightDebugView::Off; ///< Post-display light-list diagnostic.
+    bool wireframe = false;                              ///< Selects the wireframe scene pipeline.
     /// Manual exposure, in stops. Every fragment multiplies its linear output by exp2(exposureEv)
     /// before the target sees it -- so the scene target holds pre-exposed radiance and the display
     /// transform reads one already-exposed image. Zero is unit exposure, which is what leaves a

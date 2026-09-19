@@ -50,6 +50,7 @@ constexpr std::array kSceneDescriptors{
                     "Assets/Fetched/SanMiguel/SanMiguel.gltf", false, &loadSanMiguelScene},
     SceneDescriptor{"visibility-lab", "VisibilityLab", SceneRole::Diagnostic, "", "", false,
                     nullptr},
+    SceneDescriptor{"light-lab", "LightLab", SceneRole::Diagnostic, "", "", false, nullptr},
 };
 
 static_assert([] {
@@ -108,8 +109,10 @@ std::span<const std::string_view> sceneStableIds() {
 }
 
 //======================================================================================================================
-SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances, uint32_t labOccluders)
-    : m_device(device), m_labInstances(labInstances), m_labOccluders(labOccluders) {
+SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances, uint32_t labOccluders,
+                           uint32_t labLights, uint32_t labLightPile)
+    : m_device(device), m_labInstances(labInstances), m_labOccluders(labOccluders),
+      m_labLights(labLights), m_labLightPile(labLightPile) {
     m_entries.reserve(kSceneDescriptors.size());
     m_scenes.resize(kSceneDescriptors.size());
     for (size_t i = 0; i < kSceneDescriptors.size(); ++i) {
@@ -154,6 +157,8 @@ asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
 
     auto built = kSceneDescriptors[index].stableId == "visibility-lab"
                      ? loadVisibilityLabScene(m_device, m_labInstances, m_labOccluders)
+                 : kSceneDescriptors[index].stableId == "light-lab"
+                     ? loadLightLabScene(m_device, m_labLights, m_labLightPile)
                      : kSceneDescriptors[index].build(m_device);
     if (!built) {
         return std::unexpected(built.error());

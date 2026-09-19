@@ -28,21 +28,23 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.start({.warmupFrames = 1, .measuredFrames = 2}, testProvenance()));
     REQUIRE(run.state() == MeasurementState::Warmup);
     REQUIRE_FALSE(run.nextFrame()->ordinal);
-    REQUIRE(run.recordCpu({.frameId = 8, .sequenceFrame = 0}));
+    REQUIRE(run.recordCpu({.frameId = 8, .sequenceFrame = 0, .lighting = {.frameNumber = 8}}));
     REQUIRE(run.nextFrame()->ordinal == 0);
-    REQUIRE(run.recordCpu({.frameId = 9, .sequenceFrame = 1}));
-    REQUIRE(run.recordCpu({.frameId = 10, .sequenceFrame = 2}));
+    REQUIRE(run.recordCpu({.frameId = 9, .sequenceFrame = 1, .lighting = {.frameNumber = 9}}));
+    REQUIRE(run.recordCpu({.frameId = 10, .sequenceFrame = 2, .lighting = {.frameNumber = 10}}));
     REQUIRE(run.state() == MeasurementState::Draining);
     REQUIRE_FALSE(run.nextFrame());
     const std::array<lmx::rhi::PassTiming, 1> timings = {{{"scene", 1.5}}};
     REQUIRE(run.retire(10, timings));
     REQUIRE(run.state() == MeasurementState::Draining);
     REQUIRE(run.retire(10, timings));
+    REQUIRE(run.retireLighting({.frameNumber = 9, .isRetired = true}));
+    REQUIRE(run.retireLighting({.frameNumber = 10, .isRetired = true}));
     REQUIRE(run.retire(9, timings));
     REQUIRE(run.state() == MeasurementState::Complete);
     REQUIRE(run.finishDrain());
     REQUIRE(run.samples().size() == 2);
-    REQUIRE(run.json().find("\"schemaVersion\":3") != std::string::npos);
+    REQUIRE(run.json().find("\"schemaVersion\":4") != std::string::npos);
     REQUIRE(run.json().find("\"scored\":true") != std::string::npos);
     REQUIRE(run.json().find("serialized-retirement") != std::string::npos);
 }
@@ -51,23 +53,26 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
 TEST_CASE("Missing or contradictory measurement evidence invalidates a run", "[app][measurement]") {
     MeasurementRun run;
     REQUIRE(run.start({.warmupFrames = 0, .measuredFrames = 2}, testProvenance()));
-    REQUIRE(run.recordCpu({.frameId = 1, .sequenceFrame = 0}));
+    REQUIRE(run.recordCpu({.frameId = 1, .sequenceFrame = 0, .lighting = {.frameNumber = 1}}));
     SECTION("missing retirement") {
-        REQUIRE(run.recordCpu({.frameId = 2, .sequenceFrame = 1}));
+        REQUIRE(run.recordCpu({.frameId = 2, .sequenceFrame = 1, .lighting = {.frameNumber = 2}}));
         REQUIRE_FALSE(run.finishDrain());
     }
     SECTION("wrong sequence") {
-        REQUIRE_FALSE(run.recordCpu({.frameId = 2, .sequenceFrame = 9}));
+        REQUIRE_FALSE(
+            run.recordCpu({.frameId = 2, .sequenceFrame = 9, .lighting = {.frameNumber = 2}}));
     }
     SECTION("skipped CPU frame") {
-        REQUIRE_FALSE(run.recordCpu({.frameId = 3, .sequenceFrame = 1}));
+        REQUIRE_FALSE(
+            run.recordCpu({.frameId = 3, .sequenceFrame = 1, .lighting = {.frameNumber = 3}}));
     }
     SECTION("future GPU frame") {
         const std::array<lmx::rhi::PassTiming, 1> future = {{{"scene", 1}}};
         REQUIRE_FALSE(run.retire(2, future));
     }
     SECTION("duplicate CPU frame") {
-        REQUIRE_FALSE(run.recordCpu({.frameId = 1, .sequenceFrame = 1}));
+        REQUIRE_FALSE(
+            run.recordCpu({.frameId = 1, .sequenceFrame = 1, .lighting = {.frameNumber = 1}}));
     }
     SECTION("empty GPU timing") {
         REQUIRE_FALSE(run.retire(1, {}));
@@ -81,7 +86,8 @@ TEST_CASE("Missing or contradictory measurement evidence invalidates a run", "[a
     SECTION("nonfinite CPU timing") {
         REQUIRE_FALSE(run.recordCpu({.frameId = 2,
                                      .sequenceFrame = 1,
-                                     .encodeMs = std::numeric_limits<double>::infinity()}));
+                                     .encodeMs = std::numeric_limits<double>::infinity(),
+                                     .lighting = {.frameNumber = 2}}));
     }
     REQUIRE(run.state() == MeasurementState::Cancelled);
     REQUIRE_FALSE(run.failure().empty());
@@ -92,7 +98,8 @@ TEST_CASE("Missing or contradictory measurement evidence invalidates a run", "[a
 TEST_CASE("Declared pass inventory is required at retirement", "[app][measurement]") {
     MeasurementRun run;
     REQUIRE(run.start({.warmupFrames = 0, .measuredFrames = 1}, testProvenance()));
-    REQUIRE(run.recordCpu({.frameId = 1, .expectedPasses = {"shadow", "scene"}}));
+    REQUIRE(run.recordCpu(
+        {.frameId = 1, .expectedPasses = {"shadow", "scene"}, .lighting = {.frameNumber = 1}}));
     const std::array<lmx::rhi::PassTiming, 1> missing = {{{"scene", 1}}};
     REQUIRE_FALSE(run.retire(1, missing));
     REQUIRE(run.state() == MeasurementState::Cancelled);

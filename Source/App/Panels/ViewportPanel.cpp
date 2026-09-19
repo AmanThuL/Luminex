@@ -131,6 +131,21 @@ void drawToolbar(const ViewportPanelContext& context) {
 
 //======================================================================================================================
 void drawLegend(const ViewportPanelContext& context) {
+    if (context.settings.lightDebugView != render::LightDebugView::Off) {
+        const auto legend = diagnosticLegend(context.settings.lightDebugView);
+        ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
+        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
+                        ImGui::GetStyle().FramePadding.x * 2);
+        if (ImGui::Button("Return to Final"))
+            context.settings.lightDebugView = render::LightDebugView::Off;
+        if (context.scene.enabledLightCount() == 0)
+            ImGui::TextWrapped(
+                "Requested view unavailable: no enabled local lights. Showing Final.");
+        else
+            ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
+                               legend.description.data());
+        return;
+    }
     if (context.settings.hzbDebugLevel >= 0) {
         uint32_t width = (context.renderer.width() + 1) / 2;
         uint32_t height = (context.renderer.height() + 1) / 2;

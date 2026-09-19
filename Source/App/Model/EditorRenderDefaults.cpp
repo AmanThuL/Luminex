@@ -11,6 +11,11 @@ namespace lmx::app {
 void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group) {
     const EditorRenderSettings defaults;
     switch (group) {
+    case EditorRenderGroup::Lighting:
+        settings.localLightMode = defaults.localLightMode;
+        settings.lightDebugView = defaults.lightDebugView;
+        settings.lightCheck = defaults.lightCheck;
+        break;
     case EditorRenderGroup::Exposure:
         settings.exposureEv = defaults.exposureEv;
         settings.autoExposureEnabled = defaults.autoExposureEnabled;
@@ -53,6 +58,10 @@ void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group
 bool renderingGroupChanged(const EditorRenderSettings& settings, EditorRenderGroup group) {
     const EditorRenderSettings defaults;
     switch (group) {
+    case EditorRenderGroup::Lighting:
+        return settings.localLightMode != defaults.localLightMode ||
+               settings.lightDebugView != defaults.lightDebugView ||
+               settings.lightCheck != defaults.lightCheck;
     case EditorRenderGroup::Exposure:
         return settings.exposureEv != defaults.exposureEv ||
                settings.autoExposureEnabled != defaults.autoExposureEnabled ||

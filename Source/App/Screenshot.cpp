@@ -6,7 +6,10 @@
 #include "App/Screenshot.h"
 
 #include "App/Model/CaptureMetadata.h"
+#include "App/Model/DynamicResolution.h"
 #include "App/Model/FrameRecordRing.h"
+#include "App/Model/LightCheckCapture.h"
+#include "App/Model/LightingDiagnostics.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
@@ -14,6 +17,7 @@
 #include "Asset/BmpImage.h"
 #include "Asset/PngImage.h"
 #include "Core/Log.h"
+#include "Core/Parse.h"
 #include "RHI/RHI.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
@@ -22,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
@@ -93,12 +98,55 @@ bool writeManifest(const AppOptions& options, std::string_view device,
 }
 
 //======================================================================================================================
-int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
-                 TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
-                 const AppOptions* sequence, bool visibilityEnabled,
-                 render::SubmissionMode submission, uint32_t labInstances,
-                 render::ClassifyMode classifyMode, bool classifyCheck, bool occlusionEnabled,
-                 bool occlusionCheck, int32_t hzbDebugLevel, uint32_t labOccluders) {
+int runOffscreen(AppOptions options) {
+    const auto& outPath = options.screenshotPath;
+    const auto sceneId = options.initialScene;
+    const auto frames = options.frames;
+    const auto temporal = options.temporal;
+    const auto temporalView = options.temporalView;
+    const auto renderScale = options.renderScale;
+    const auto visibilityEnabled = options.visibilityEnabled;
+    const auto submission = options.submission;
+    const auto labInstances = options.labInstances;
+    const auto classifyMode = options.classifyMode;
+    const auto classifyCheck = options.classifyCheck;
+    const auto occlusionEnabled = options.occlusionEnabled;
+    const auto occlusionCheck = options.occlusionCheck;
+    const auto hzbDebugLevel = options.hzbDebugLevel;
+    const auto labOccluders = options.labOccluders;
+    const auto labLights = options.labLights;
+    const auto labLightPile = options.labLightPile;
+    const auto localLightMode = options.localLightMode;
+    const auto localLightRig = options.localLightRig;
+    EditorRenderSettings resolutionSettings;
+    resolutionSettings.temporalEnabled = temporal != TemporalMode::Off;
+    resolutionSettings.renderScale = renderScale;
+    if (const char* raw = std::getenv("LMX_DYNAMIC_RESOLUTION_BUDGET_MS")) {
+        float budget = 0;
+        if (!parseNumber(std::string_view(raw), budget) || !std::isfinite(budget) || budget <= 0 ||
+            !resolutionSettings.temporalEnabled) {
+            LMX_LOG_ERROR(
+                "capture dynamic resolution requires temporal and a positive finite budget");
+            return 1;
+        }
+        resolutionSettings.dynamicResolutionEnabled = true;
+        resolutionSettings.gpuBudgetMilliseconds = budget;
+        options.dynamicResolution = true;
+    }
+    const AppOptions* sequence = options.mode == RunMode::CaptureSequence ? &options : nullptr;
+    std::ofstream lightDump;
+    if (const char* raw = std::getenv("LMX_LIGHT_CHECK_DUMP")) {
+        if (!options.lightCheck || !*raw || std::filesystem::exists(raw)) {
+            LMX_LOG_ERROR("LMX_LIGHT_CHECK_DUMP requires --light-check and a new nonempty path");
+            return 1;
+        }
+        lightDump.open(raw, std::ios::binary);
+        if (!lightDump || !writeLightCheckHeader(lightDump)) {
+            LMX_LOG_ERROR("cannot create raw light-check evidence");
+            return 1;
+        }
+    }
+    render::LightingStatus captureLighting;
     std::vector<std::string> records;
     render::VisibilityStatus captureVisibility;
     if (sequence) {
@@ -117,7 +165,7 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    scene::SceneLibrary library(**device, labInstances, labOccluders);
+    scene::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
     const scene::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
@@ -149,9 +197,17 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
 
     SceneSession session;
     session.activate(*activeScene, SceneActivationMotion::PreserveLoadedMotion);
+    if (session.localLightRigAvailable()) {
+        if (auto rig = session.setLocalLightRig(localLightRig); !rig) {
+            LMX_LOG_ERROR("local-light rig failed: {}", rig.error().message);
+            return 1;
+        }
+    }
     const render::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
     FrameRecordRing frameRecords;
+    DynamicResolutionState resolutionState;
+    render::ResolutionController resolutionController;
 
     if (sequence && !writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
                                    hasCameraTrack, records, false)) {
@@ -160,6 +216,10 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     const auto scaleStep = readOcclusionScaleStep(true, temporal != TemporalMode::Off);
     if (!scaleStep) {
         LMX_LOG_ERROR("{}", scaleStep.error());
+        return 1;
+    }
+    if (*scaleStep && options.dynamicResolution) {
+        LMX_LOG_ERROR("capture cannot combine an extent step with dynamic resolution");
         return 1;
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
@@ -171,6 +231,9 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         }
 
         rhi::CommandList& commands = (*device)->beginFrame();
+        frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
+        applyDynamicResolution(resolutionState, resolutionController, resolutionSettings,
+                               frameRecords.newestTimedFrame());
         if (auto prepared = session.prepareFrame((*device)->frameNumber()); !prepared) {
             LMX_LOG_ERROR("scene table preparation failed: {}", prepared.error().message);
             (*device)->endFrame(nullptr);
@@ -189,6 +252,9 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         }
         // A one-shot process has no prior generation to differ from and never teleports its own
         // camera, so both stay at SceneView's defaults (0, false).
+        view.localLightMode = localLightMode;
+        view.lightCheck = options.lightCheck;
+        view.lightDebugView = options.lightDebugView;
         view.visibilityEnabled = visibilityEnabled;
         view.submission = submission;
         view.classifyMode = classifyMode;
@@ -200,13 +266,16 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         view.temporal.jitterEnabled = temporal != TemporalMode::Off;
         view.temporal.reconstruction = temporalReconstructionMode(temporal);
         view.temporal.debugView = temporalView;
-        view.temporal.renderScale =
-            *scaleStep && frame >= (**scaleStep).frame ? (**scaleStep).scale : renderScale;
+        view.temporal.renderScale = *scaleStep && frame >= (**scaleStep).frame
+                                        ? (**scaleStep).scale
+                                        : resolutionSettings.renderScale;
 
         render::FrameDeclaration declared(transientPool, **renderer, commands, camera, view,
                                           /*poolingEnabled=*/true);
         declared.graph().exportTexture(declared.displayColor());
         frameRecords.retain(declared.execute());
+        if (options.dynamicResolution)
+            resolutionController.declared((*device)->frameNumber());
         (*device)->endFrame(nullptr);
 
         // readback() has no synchronization; wait until the GPU releases the shared target, and
@@ -215,6 +284,24 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
         (*device)->waitIdle();
         session.commitFrame();
         (*renderer)->drainVisibilityAfterIdle();
+        (*renderer)->drainLightingAfterIdle();
+        captureLighting = (*renderer)->lightingStatus();
+        for (const auto& retired : (*renderer)->takeRetiredLighting()) {
+            if (retired.frameNumber == captureLighting.frameNumber)
+                captureLighting = retired;
+            if (lightDump.is_open() && retired.checkFrame &&
+                !writeLightCheckFrame(lightDump, *retired.checkFrame)) {
+                LMX_LOG_ERROR("raw light-check evidence write failed");
+                return 1;
+            }
+        }
+        if (const auto failure = lightingFailure(captureLighting); !failure.empty()) {
+            if (sequence)
+                writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
+                              hasCameraTrack, records, false, failure);
+            LMX_LOG_ERROR("capture refused: {}", failure);
+            return 1;
+        }
         captureVisibility = (*renderer)->visibilityStatus();
         for (const auto& retired : (*renderer)->takeRetiredVisibility()) {
             if (retired.frameNumber == captureVisibility.frameNumber)
@@ -249,27 +336,41 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
                     "frame-{:06}.{}", ordinal, captureFormatName(sequence->captureFormat));
                 std::vector<uint8_t> pixels(size_t{kScreenshotWidth} * kScreenshotHeight * 4);
                 (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
-                if (!writeCaptureImage(
-                        sequence->captureSequencePath / filename, pixels,
-                        (*renderer)->displayDomain(),
-                        captureFrameMetadataJson(sceneId, frames, frame, temporal, temporalView,
-                                                 view.temporal.renderScale, status,
-                                                 (*device)->deviceName(), visibilityEnabled,
-                                                 submission, labInstances, classifyMode,
-                                                 classifyCheck, &captureVisibility))) {
+                if (!writeCaptureImage(sequence->captureSequencePath / filename, pixels,
+                                       (*renderer)->displayDomain(),
+                                       captureFrameMetadataJson(
+                                           sceneId, frames, frame, temporal, temporalView,
+                                           view.temporal.renderScale, status,
+                                           (*device)->deviceName(), visibilityEnabled, submission,
+                                           labInstances, classifyMode, classifyCheck,
+                                           &captureVisibility, &options, &captureLighting))) {
                     return 1;
                 }
                 records.push_back(captureRecordJson(ordinal, frame, camera, view, status, filename,
-                                                    temporal, &captureVisibility));
+                                                    temporal, &captureVisibility,
+                                                    &captureLighting));
                 if (!writeManifest(*sequence, (*device)->deviceName(), (*renderer)->displayDomain(),
                                    hasCameraTrack, records, false)) {
                     return 1;
                 }
-                if (isFlatImage(pixels)) {
+                if (options.lightDebugView != render::LightDebugView::Missed &&
+                    isFlatImage(pixels)) {
                     LMX_LOG_ERROR("capture frame {} is flat; manifest remains incomplete", ordinal);
                     return 1;
                 }
             }
+        }
+    }
+    if (lightDump.is_open()) {
+        lightDump.flush();
+        if (!lightDump) {
+            LMX_LOG_ERROR("raw light-check evidence flush failed");
+            return 1;
+        }
+        lightDump.close();
+        if (!lightDump) {
+            LMX_LOG_ERROR("raw light-check evidence close failed");
+            return 1;
         }
     }
     if (sequence) {
@@ -283,19 +384,19 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
     (*renderer)->colorTarget().readback(pixels.data(), pixels.size());
 
     // Preserve flat output as debugging evidence before reporting liveness failure.
-    if (!writeCaptureImage(
-            outPath, pixels, (*renderer)->displayDomain(),
-            captureFrameMetadataJson(
-                sceneId, frames, frames - 1, temporal, temporalView,
-                *scaleStep && frames - 1 >= (**scaleStep).frame ? (**scaleStep).scale : renderScale,
-                (*renderer)->temporalStatus(), (*device)->deviceName(), visibilityEnabled,
-                submission, labInstances, classifyMode, classifyCheck, &captureVisibility))) {
+    if (!writeCaptureImage(outPath, pixels, (*renderer)->displayDomain(),
+                           captureFrameMetadataJson(
+                               sceneId, frames, frames - 1, temporal, temporalView,
+                               (*renderer)->temporalStatus().renderScale,
+                               (*renderer)->temporalStatus(), (*device)->deviceName(),
+                               visibilityEnabled, submission, labInstances, classifyMode,
+                               classifyCheck, &captureVisibility, &options, &captureLighting))) {
         return 1;
     }
     LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
                  kScreenshotWidth, kScreenshotHeight, pixels.size());
 
-    if (isFlatImage(pixels)) {
+    if (options.lightDebugView != render::LightDebugView::Missed && isFlatImage(pixels)) {
         LMX_LOG_ERROR(
             "screenshot: {} is a single flat colour across the whole image -- nothing appears "
             "to have rendered (the file was still written, open it)",
@@ -309,23 +410,13 @@ int runOffscreen(const std::filesystem::path& outPath, scene::SceneId sceneId, u
 } // namespace
 
 //======================================================================================================================
-int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
-                  bool visibilityEnabled, render::SubmissionMode submission, uint32_t labInstances,
-                  render::ClassifyMode classifyMode, bool classifyCheck, bool occlusionEnabled,
-                  bool occlusionCheck, int32_t hzbDebugLevel, uint32_t labOccluders) {
-    return runOffscreen(outPath, sceneId, frames, temporal, temporalView, renderScale, nullptr,
-                        visibilityEnabled, submission, labInstances, classifyMode, classifyCheck,
-                        occlusionEnabled, occlusionCheck, hzbDebugLevel, labOccluders);
+int runScreenshot(const AppOptions& options) {
+    return runOffscreen(options);
 }
 
 //======================================================================================================================
 int runCaptureSequence(const AppOptions& options) {
-    return runOffscreen({}, options.initialScene, options.frames, options.temporal,
-                        options.temporalView, options.renderScale, &options,
-                        options.visibilityEnabled, options.submission, options.labInstances,
-                        options.classifyMode, options.classifyCheck, options.occlusionEnabled,
-                        options.occlusionCheck, options.hzbDebugLevel, options.labOccluders);
+    return runOffscreen(options);
 }
 
 } // namespace lmx::app

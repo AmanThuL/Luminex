@@ -13,14 +13,15 @@
 namespace lmx::app {
 /// Collects actual runtime file hashes, device, OS and instrumentation environment before timing.
 MeasurementProvenance collectMeasurementProvenance(const rhi::Device& device);
-/// Allocated instance, mesh and material row bytes across all three current slots.
+/// Allocated instance, mesh, material and local-light row bytes across all three current slots.
 uint64_t measurementTableBytes(const scene::SceneTableStats& stats);
 /// Captures declaration diagnostics without borrowing the renderer's next-frame storage.
 MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs, double encodeMs,
                                           const render::VisibilityStatus& visibility,
                                           const scene::SceneTableStats& tables,
                                           const render::CompiledFrameRecord& record, bool hasSky,
-                                          const render::TemporalStatus& temporal);
+                                          const render::TemporalStatus& temporal,
+                                          const render::LightingStatus& lighting);
 /// Renders a deterministic offscreen run and writes a complete or explicitly failed JSON report.
 int runMeasurement(const AppOptions& options);
 } // namespace lmx::app

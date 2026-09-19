@@ -13,4 +13,5 @@ target("Tests")
     add_rules("slang2metallib")
     add_files("../Shaders/**.slang")
     add_tests("unit", {runargs = {"~[gpu]"}})
-    add_tests("gpu", {runargs = {"[gpu]"}})
+    -- Hidden diagnostics have explicit reproduction commands and are not ordinary regression gates.
+    add_tests("gpu", {runargs = {"[gpu]~[.]"}})

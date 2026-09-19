@@ -1,5 +1,10 @@
+#include "App/Model/SceneSession.h"
 #include "EngineSceneTestSupport.h"
+#include "Render/LocalLightMath.h"
+#include "Scene/SponzaLightRig.h"
 #include "SceneTableTestSupport.h"
+
+#include <cstring>
 
 #include <set>
 
@@ -350,7 +355,7 @@ TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 7);
+    REQUIRE(library.entries().size() == 8);
     REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
@@ -370,6 +375,11 @@ TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     REQUIRE(library.entries()[4].role == SceneRole::Diagnostic);
     REQUIRE(library.entries()[5].stableId == "san-miguel");
     REQUIRE(library.entries()[5].role == SceneRole::Showcase);
+    REQUIRE(library.entries()[6].stableId == "visibility-lab");
+    REQUIRE(library.entries()[6].role == SceneRole::Diagnostic);
+    REQUIRE(library.entries()[7].stableId == "light-lab");
+    REQUIRE(library.entries()[7].displayName == "LightLab");
+    REQUIRE(library.entries()[7].role == SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -522,4 +532,160 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
     // The bounds describe the posed geometry: the quad spans x in [-1, 1] about the clip's origin,
     // not about the authored (10, 0, 0).
     REQUIRE(glm::vec3((*scene)->boundingSphere).x == Catch::Approx(0.0f).margin(1e-4));
+}
+
+//======================================================================================================================
+TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
+          "[scene][light-rig]") {
+    Scene scene;
+    scene.name = "Sponza";
+    Scene foreign;
+    foreign.name = "Sponza";
+    SponzaLightRig rig;
+    REQUIRE(rig.setEnabled(scene, false));
+    REQUIRE(scene.localLights().empty());
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(rig.enabled());
+    const std::vector<LightId> ids(rig.lightIds().begin(), rig.lightIds().end());
+    REQUIRE(ids.size() > 0);
+    REQUIRE(ids.size() <= 32);
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(std::ranges::equal(rig.lightIds(), ids));
+    for (const auto id : ids) {
+        REQUIRE(scene.light(id));
+        REQUIRE(render::makeLightRow(*scene.light(id)));
+        REQUIRE_FALSE(foreign.light(id));
+        REQUIRE_FALSE(foreign.removeLight(id));
+    }
+    REQUIRE_FALSE(rig.setEnabled(foreign, false));
+    REQUIRE(scene.localLights().size() == ids.size());
+    REQUIRE(rig.setEnabled(scene, false));
+    REQUIRE_FALSE(rig.enabled());
+    REQUIRE(scene.localLights().size() == ids.size());
+    REQUIRE(scene.enabledLightCount() == 0);
+    for (const auto id : ids) {
+        REQUIRE(scene.light(id));
+        REQUIRE_FALSE(scene.light(id)->enabled);
+    }
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(rig.lightIds().front() == ids.front());
+    const auto original = *scene.light(ids.front());
+    auto edited = original;
+    edited.intensity = 137.0f;
+    edited.colour = {0.1f, 0.2f, 0.3f};
+    REQUIRE(scene.updateLight(ids.front(), edited));
+    REQUIRE(rig.setEnabled(scene, false));
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(scene.light(ids.front())->intensity == 137.0f);
+    REQUIRE(scene.light(ids.front())->colour == edited.colour);
+    SponzaLightRig rebound;
+    REQUIRE(rebound.setEnabled(scene, true));
+    REQUIRE(std::ranges::equal(rebound.lightIds(), ids));
+    REQUIRE(scene.localLights().size() == ids.size());
+    REQUIRE(scene.updateLight(ids.front(), original));
+    SponzaLightRig otherRig;
+    REQUIRE(otherRig.setEnabled(foreign, true));
+    REQUIRE(otherRig.lightIds().size() == rig.lightIds().size());
+    for (size_t i = 0; i < rig.lightIds().size(); ++i) {
+        const auto first = render::makeLightRow(*scene.light(rig.lightIds()[i]));
+        const auto second = render::makeLightRow(*foreign.light(otherRig.lightIds()[i]));
+        REQUIRE(first);
+        REQUIRE(second);
+        REQUIRE(std::memcmp(&*first, &*second, sizeof(render::LightRow)) == 0);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession preserves per-scene rig state without touching unrelated scenes",
+          "[app][scene-session][light-rig]") {
+    Scene sponza;
+    sponza.name = "Sponza";
+    Scene other;
+    other.name = "LightLab";
+    lmx::app::SceneSession session;
+    session.activate(sponza, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    REQUIRE(session.localLightRigAvailable());
+    REQUIRE_FALSE(session.localLightRigEnabled());
+    REQUIRE(session.setLocalLightRig(true));
+    const size_t count = sponza.localLights().size();
+    session.activate(other, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    REQUIRE_FALSE(session.localLightRigAvailable());
+    REQUIRE_FALSE(session.localLightRigEnabled());
+    REQUIRE_FALSE(session.setLocalLightRig(true));
+    REQUIRE(other.localLights().empty());
+    session.activate(sponza, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    REQUIRE(session.localLightRigEnabled());
+    REQUIRE(sponza.localLights().size() == count);
+    REQUIRE(session.setLocalLightRig(false));
+    REQUIRE(sponza.localLights().size() == count);
+    REQUIRE(sponza.enabledLightCount() == 0);
+}
+
+//======================================================================================================================
+TEST_CASE("Sponza authored rig preserves geometry rows and has no animation tracks",
+          "[gpu][scene][light-rig]") {
+    if (!findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf")) {
+        SKIP("Sponza asset not fetched");
+    }
+    auto device = rhi::createDevice();
+    REQUIRE(device);
+    auto loaded = loadSponzaScene(**device);
+    REQUIRE(loaded);
+    auto& scene = **loaded;
+    lmx::app::SceneSession session;
+    session.activate(scene, lmx::app::SceneActivationMotion::PreserveLoadedMotion);
+    const auto before = readSceneInstances(scene, **device);
+    REQUIRE(scene.tables().liveLightCount == 16);
+    REQUIRE(scene.tables().lights != nullptr);
+    REQUIRE(session.setLocalLightRig(true));
+    const auto during = readSceneInstances(scene, **device);
+    REQUIRE(scene.tables().liveLightCount > 0);
+    REQUIRE(scene.tables().liveLightCount <= 32);
+    REQUIRE(scene.animation.lightTracks.empty());
+    REQUIRE(scene.animationLightId(0));
+    REQUIRE(before.size() == during.size());
+    REQUIRE(std::memcmp(before.data(), during.data(),
+                        before.size() * sizeof(render::InstanceRow)) == 0);
+    const std::vector<LightId> ids(scene.localLights().begin(), scene.localLights().end());
+    const auto firstPosition = scene.light(ids.front())->position;
+    session.stepAnimation();
+    REQUIRE(scene.light(ids.front())->position == firstPosition);
+    REQUIRE(session.setLocalLightRig(false));
+    const auto after = readSceneInstances(scene, **device);
+    REQUIRE(scene.tables().liveLightCount == 0);
+    REQUIRE(before.size() == after.size());
+    REQUIRE(std::memcmp(before.data(), after.data(), before.size() * sizeof(render::InstanceRow)) ==
+            0);
+    for (const auto id : ids) {
+        REQUIRE(scene.light(id));
+        REQUIRE_FALSE(scene.light(id)->enabled);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without partial additions",
+          "[scene][light-rig]") {
+    Scene scene;
+    scene.name = "Sponza";
+    const auto authored = scene.addLight(render::LocalLight{});
+    REQUIRE(authored);
+    SponzaLightRig rig;
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(scene.removeLight(rig.lightIds().front()));
+    REQUIRE(rig.setEnabled(scene, false));
+    REQUIRE(scene.localLights().size() == 16);
+    REQUIRE(scene.enabledLightCount() == 1);
+    REQUIRE(scene.light(*authored));
+    REQUIRE(rig.setEnabled(scene, true));
+    REQUIRE(scene.localLights().size() == 16);
+    Scene crowded;
+    crowded.name = "Sponza";
+    SponzaLightRig crowdedRig;
+    while (crowded.localLights().size() < render::kMaxLocalLights - 8) {
+        REQUIRE(crowded.addLight(render::LocalLight{}));
+    }
+    const size_t count = crowded.localLights().size();
+    REQUIRE_FALSE(crowdedRig.setEnabled(crowded, true));
+    REQUIRE_FALSE(crowdedRig.enabled());
+    REQUIRE(crowded.localLights().size() == count);
 }

@@ -105,7 +105,10 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
                 nullptr);
             if (!args)
                 return std::unexpected(args.error());
-            replacements[i] = {std::move(*rows), std::move(*args)};
+            replacements[i] = {.rows = std::move(*rows),
+                               .arguments = std::move(*args),
+                               .rowUse = std::nullopt,
+                               .argumentUse = std::nullopt};
         }
         for (auto& slot : m_slots)
             if (slot.rows)

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Measurement.h"
 
+#include "App/Model/LightingDiagnostics.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
@@ -98,7 +99,8 @@ MeasurementProvenance collectMeasurementProvenance(const rhi::Device& device) {
 uint64_t measurementTableBytes(const scene::SceneTableStats& stats) {
     return 3 * (uint64_t{stats.instanceCapacity} * sizeof(render::InstanceRow) +
                 uint64_t{stats.meshCapacity} * sizeof(render::MeshRow) +
-                uint64_t{stats.materialCapacity} * sizeof(render::MaterialRow));
+                uint64_t{stats.materialCapacity} * sizeof(render::MaterialRow) +
+                uint64_t{stats.lightCapacity} * sizeof(render::LightRow));
 }
 
 //======================================================================================================================
@@ -106,7 +108,8 @@ MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs,
                                           const render::VisibilityStatus& visibility,
                                           const scene::SceneTableStats& tables,
                                           const render::CompiledFrameRecord& record, bool hasSky,
-                                          const render::TemporalStatus& temporal) {
+                                          const render::TemporalStatus& temporal,
+                                          const render::LightingStatus& lighting) {
     MeasurementCpuSample sample{
         .frameId = record.frameId,
         .sequenceFrame = sequenceFrame,
@@ -140,7 +143,8 @@ MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs,
         .classifyMode = visibility.classifyMode,
         .sceneCounters = visibility.sceneCounters,
         .shadowCounters = visibility.shadowCounters,
-        .transientBytes = record.debug.memory.highWater};
+        .transientBytes = record.debug.memory.highWater,
+        .lighting = lighting};
     for (uint32_t index : record.debug.schedule.passes)
         sample.expectedPasses.push_back(record.debug.passes[index].label);
     return sample;
@@ -185,13 +189,20 @@ int runMeasurement(const AppOptions& options) {
     plan.renderScale = options.renderScale;
     plan.cameraTrack = options.measurementTrack;
     plan.unscored = options.unscored;
+    plan.localLightMode = localLightModeName(options.localLightMode);
+    plan.localLightRig = options.localLightRig;
+    plan.labLights = options.labLights;
+    plan.labLightPile = options.labLightPile;
+    plan.lightCheck = options.lightCheck;
+    plan.lightDebugView = lightDebugViewName(options.lightDebugView);
     MeasurementRun run;
     if (!run.start(plan, collectMeasurementProvenance(**device))) {
         writeReport(options.measurementPath, run);
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    scene::SceneLibrary library(**device, options.labInstances, options.labOccluders);
+    scene::SceneLibrary library(**device, options.labInstances, options.labOccluders,
+                                options.labLights, options.labLightPile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
         run.cancel(loaded.error().message);
@@ -200,6 +211,13 @@ int runMeasurement(const AppOptions& options) {
     }
     SceneSession session;
     session.activate(**loaded, SceneActivationMotion::PreserveLoadedMotion);
+    if (session.localLightRigAvailable()) {
+        if (auto rig = session.setLocalLightRig(options.localLightRig); !rig) {
+            run.cancel(rig.error().message);
+            writeReport(options.measurementPath, run);
+            return 1;
+        }
+    }
     render::TransientPool pool(**device);
     auto renderer = render::Renderer::create(**device, plan.width, plan.height);
     if (!renderer) {
@@ -228,6 +246,9 @@ int runMeasurement(const AppOptions& options) {
         }
         std::vector<render::DrawItem> items;
         auto view = session.view(items, render::ShadowFilter::PCF, false);
+        view.localLightMode = options.localLightMode;
+        view.lightCheck = options.lightCheck;
+        view.lightDebugView = options.lightDebugView;
         view.visibilityEnabled = options.visibilityEnabled;
         view.submission = options.submission;
         view.classifyMode = options.classifyMode;
@@ -249,11 +270,11 @@ int runMeasurement(const AppOptions& options) {
         session.commitFrame();
         (*device)->endFrame(nullptr);
         const auto encodeEnd = Clock::now();
-        run.recordCpu(measurementCpuSample(frame.sequenceFrame, elapsedMs(waitStart, encodeStart),
-                                           elapsedMs(encodeStart, encodeEnd),
-                                           (*renderer)->visibilityStatus(), session.tableStats(),
-                                           record, view.skySphere.has_value(),
-                                           (*renderer)->temporalStatus()));
+        run.recordCpu(
+            measurementCpuSample(frame.sequenceFrame, elapsedMs(waitStart, encodeStart),
+                                 elapsedMs(encodeStart, encodeEnd), (*renderer)->visibilityStatus(),
+                                 session.tableStats(), record, view.skySphere.has_value(),
+                                 (*renderer)->temporalStatus(), (*renderer)->lightingStatus()));
         if (options.temporal == TemporalMode::Vendor &&
             (*renderer)->temporalStatus().vendorFallback != render::VendorFallback::None) {
             run.cancel("Requested vendor reconstruction fell back during measurement");
@@ -262,6 +283,10 @@ int runMeasurement(const AppOptions& options) {
         // preserve every frame's timestamps; report this pacing, and exclude it from CPU encoding.
         (*device)->waitIdle();
         (*renderer)->drainVisibilityAfterIdle();
+        (*renderer)->drainLightingAfterIdle();
+        for (const auto& status : (*renderer)->takeRetiredLighting())
+            if (run.active())
+                run.retireLighting(status);
         for (const auto& status : (*renderer)->takeRetiredVisibility())
             if (run.active())
                 run.retireVisibility(status);

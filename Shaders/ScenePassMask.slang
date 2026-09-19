@@ -8,6 +8,8 @@
 // Slots -- resource classes use separate index spaces:
 //   buffers   b0 vertices, b1 first-entry DrawUniforms, b2 per-pass PassUniforms
 //             b4 visible rows, b5 instances, b6 materials
+//             b8 light rows, b9 cluster grid, b10 cluster index list,
+//             b11 LocalLightParams
 //   textures  per-draw material set: t0 base colour, t1 normal, t4 metallic-roughness,
 //             t5 occlusion, t6 emissive
 //             per-pass shared set:   t3 shadow map, t7 irradiance, t8 prefiltered environment,
@@ -19,6 +21,7 @@
 // render pass, so the slot is bound there rather than here. This fragment no longer samples the sky
 // directly -- its ad-hoc mirror reflection was replaced by the prefiltered environment on t8.
 import Lighting;
+import LocalLights;
 import SceneTables;
 import AlphaMask;
 import Motion;
@@ -48,6 +51,16 @@ StructuredBuffer<uint> gVisibleRows : register(t4);
 StructuredBuffer<InstanceRow> gInstances : register(t5);
 [[vk::binding(6, 0)]]
 StructuredBuffer<MaterialRow> gMaterials : register(t6);
+
+// Always bound, including Off and zero-light frames: replay requires valid declared slots.
+[[vk::binding(8, 0)]]
+StructuredBuffer<LightRow> gLights : register(t8);
+[[vk::binding(9, 0)]]
+StructuredBuffer<ClusterRecord> gLightClusterGrid : register(t9);
+[[vk::binding(10, 0)]]
+StructuredBuffer<uint> gLightClusterIndices : register(t10);
+[[vk::binding(11, 0)]]
+ConstantBuffer<LocalLightParams> gLocalLights : register(b11);
 
 struct PassUniforms
 {
@@ -220,6 +233,10 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input, bool frontFace)
                                         alpha);
     litColor += ComputeDirectionalLight(gPass.lights[2], normalW, toEye, baseColor, f0, metallic,
                                         alpha);
+
+    litColor += AccumulateLocalLights(gLocalLights, gLights, gLightClusterGrid,
+                                      gLightClusterIndices, input.position, input.positionW,
+                                      normalW, toEye, baseColor, f0, metallic, alpha);
 
     // Image-based lighting. N.V is clamped off zero because the DFG table's first column stands for
     // a half-texel inside the domain, not for the grazing limit itself.

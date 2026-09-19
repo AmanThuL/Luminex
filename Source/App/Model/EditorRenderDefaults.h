@@ -11,6 +11,7 @@ namespace lmx::app {
 
 /// Independent reset scopes; playback and other rendering groups remain unchanged.
 enum class EditorRenderGroup {
+    Lighting,       ///< Local-light mode, diagnostic view and CPU list check.
     Exposure,       ///< Manual exposure and automatic metering/adaptation.
     Bloom,          ///< Bloom enable, threshold and intensity.
     Shadows,        ///< Shadow filter.

@@ -7,11 +7,20 @@
 
 #include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
+#include "Scene/LightLab.h"
 
 #include <algorithm>
 #include <iterator>
 
 namespace lmx::app {
+namespace {
+
+//======================================================================================================================
+uint64_t lightKey(scene::LightId id) {
+    return (uint64_t{id.store} << 48) | (uint64_t{id.generation} << 32) | id.slot;
+}
+
+} // namespace
 
 //======================================================================================================================
 void SceneSession::activate(scene::Scene& scene, SceneActivationMotion motion) {
@@ -22,7 +31,14 @@ void SceneSession::activate(scene::Scene& scene, SceneActivationMotion motion) {
         }
         std::copy(std::begin(scene.lights), std::end(scene.lights), entry->second.lights.begin());
     }
+    if (inserted && scene.lightLabGridCount > 0) {
+        LMX_ASSERT(scene.lightLabGridCount <= scene.localLights().size(),
+                   "LightLab grid count exceeds authored population");
+        const auto pile = scene.localLights().subspan(scene.lightLabGridCount);
+        entry->second.pileLights.assign(pile.begin(), pile.end());
+    }
     m_scene = &scene;
+    rememberLocalLightDefaults();
     m_camera = scene::cameraFromScene(scene.initialCamera);
     if (motion == SceneActivationMotion::Reset) {
         resetMotion();
@@ -159,6 +175,145 @@ bool SceneSession::lightChanged(size_t index) const {
     const auto& original = lightDefault(index);
     const auto& light = scene().lights[index];
     return original.direction != light.direction || original.strength != light.strength;
+}
+
+//======================================================================================================================
+bool SceneSession::localLightRigAvailable() const {
+    return m_scene && m_scene->name == "Sponza";
+}
+
+//======================================================================================================================
+bool SceneSession::localLightRigEnabled() const {
+    if (!localLightRigAvailable())
+        return false;
+    for (const auto id : m_scene->sponzaLightIds()) {
+        if (const auto* light = m_scene->light(id); light && light->enabled)
+            return true;
+    }
+    return false;
+}
+
+//======================================================================================================================
+rhi::Result<void> SceneSession::setLocalLightRig(bool enabled) {
+    if (!localLightRigAvailable()) {
+        return std::unexpected(
+            rhi::Error{rhi::ErrorCode::InvalidDesc, "Local-light rig is available only in Sponza"});
+    }
+    auto result = m_lightRigs[m_scene].setEnabled(scene(), enabled);
+    if (result)
+        rememberLocalLightDefaults();
+    return result;
+}
+
+//======================================================================================================================
+void SceneSession::rememberLocalLightDefaults() {
+    auto& defaults = m_defaults.at(m_scene).localLights;
+    std::erase_if(defaults, [&](const auto& entry) {
+        const auto key = entry.first;
+        return scene().light({.slot = static_cast<uint32_t>(key),
+                              .generation = static_cast<uint16_t>(key >> 32),
+                              .store = static_cast<uint16_t>(key >> 48)}) == nullptr;
+    });
+    for (const auto id : scene().localLights())
+        defaults.try_emplace(lightKey(id), *scene().light(id));
+}
+
+//======================================================================================================================
+std::optional<render::LocalLight> SceneSession::localLightDefault(scene::LightId id) const {
+    const auto* current = scene().light(id);
+    if (!current)
+        return std::nullopt;
+    const auto& defaults = m_defaults.at(m_scene).localLights;
+    const auto found = defaults.find(lightKey(id));
+    auto result = found == defaults.end() ? *current : found->second;
+    for (const auto& track : scene().animation.lightTracks) {
+        if (scene().animationLightId(track.light) == id) {
+            result.position = asset::sampleOrbit(track, static_cast<float>(scene().animationTime));
+            break;
+        }
+    }
+    return result;
+}
+
+//======================================================================================================================
+bool SceneSession::localLightChanged(scene::LightId id) const {
+    const auto original = localLightDefault(id);
+    const auto* current = scene().light(id);
+    return original && current &&
+           (original->enabled != current->enabled || original->type != current->type ||
+            original->position != current->position || original->colour != current->colour ||
+            original->intensity != current->intensity || original->range != current->range ||
+            original->direction != current->direction ||
+            original->innerCone != current->innerCone || original->outerCone != current->outerCone);
+}
+
+//======================================================================================================================
+rhi::Result<void> SceneSession::editLocalLight(scene::LightId id, const render::LocalLight& light) {
+    if (const auto* current = scene().light(id))
+        m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
+    return scene().updateLight(id, light);
+}
+
+//======================================================================================================================
+rhi::Result<void> SceneSession::resetLocalLight(scene::LightId id) {
+    const auto original = localLightDefault(id);
+    if (!original)
+        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc, "Light no longer exists"});
+    return scene().updateLight(id, *original);
+}
+
+//======================================================================================================================
+bool SceneSession::lightLabPileAvailable() const {
+    return m_scene && m_scene->lightLabGridCount > 0;
+}
+
+//======================================================================================================================
+uint32_t SceneSession::lightLabPileCount() const {
+    if (!lightLabPileAvailable())
+        return 0;
+    const auto& pile = m_defaults.at(m_scene).pileLights;
+    return static_cast<uint32_t>(std::count_if(
+        pile.begin(), pile.end(), [&](auto id) { return scene().light(id) != nullptr; }));
+}
+
+//======================================================================================================================
+uint32_t SceneSession::lightLabPileCapacity() const {
+    if (!lightLabPileAvailable())
+        return 0;
+    return std::min(render::kMaxLocalLights - scene().lightLabGridCount,
+                    render::kMaxLocalLights - (static_cast<uint32_t>(scene().localLights().size()) -
+                                               lightLabPileCount()));
+}
+
+//======================================================================================================================
+rhi::Result<void> SceneSession::setLightLabPile(uint32_t count) {
+    if (!lightLabPileAvailable() || count > lightLabPileCapacity())
+        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
+                                          "Pile exceeds available LightLab light capacity"});
+    auto& pile = m_defaults.at(m_scene).pileLights;
+    std::erase_if(pile, [&](auto id) { return scene().light(id) == nullptr; });
+    std::vector<scene::LightId> added;
+    if (count > pile.size()) {
+        // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
+        // helper's one unused grid light plus the requested pile obey the generator's 4096 limit.
+        const auto authored = scene::lightLabLights(1, count);
+        for (size_t i = pile.size(); i < count; ++i) {
+            const auto id = scene().addLight(authored[i + 1]);
+            if (!id) {
+                for (auto addedId : added)
+                    scene().removeLight(addedId);
+                return std::unexpected(id.error());
+            }
+            added.push_back(*id);
+        }
+        pile.insert(pile.end(), added.begin(), added.end());
+    }
+    while (pile.size() > count) {
+        scene().removeLight(pile.back());
+        pile.pop_back();
+    }
+    rememberLocalLightDefaults();
+    return {};
 }
 
 } // namespace lmx::app

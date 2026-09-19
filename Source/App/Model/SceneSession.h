@@ -7,6 +7,7 @@
 
 #include "Render/Camera.h"
 #include "Scene/Scene.h"
+#include "Scene/SponzaLightRig.h"
 
 #include <array>
 #include <cstdint>
@@ -110,17 +111,51 @@ public:
     /// True when direction or scene-linear radiance differs from the authored light.
     bool lightChanged(size_t index) const;
 
+    /// Whether the active scene supports the static Sponza local-light rig.
+    bool localLightRigAvailable() const;
+
+    /// Whether any surviving authored Sponza rig light is enabled; false on other scenes.
+    bool localLightRigEnabled() const;
+
+    /// Sets enabled flags on the active Sponza rig before prepareFrame, retaining IDs and edits.
+    /// Authors a missing rig for CPU fixtures; invalid scenes/capacity fail without partial
+    /// additions.
+    rhi::Result<void> setLocalLightRig(bool enabled);
+
+    /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
+    std::optional<render::LocalLight> localLightDefault(scene::LightId id) const;
+    /// Whether this live light differs from its authored/current-track default.
+    bool localLightChanged(scene::LightId id) const;
+    /// Validates and edits one live light before prepareFrame, retaining its original reset value.
+    rhi::Result<void> editLocalLight(scene::LightId id, const render::LocalLight& light);
+    /// Restores all authored fields and current orbit position; stale/foreign IDs return
+    /// InvalidDesc.
+    rhi::Result<void> resetLocalLight(scene::LightId id);
+    /// Whether the active scene exposes an authored LightLab grid and editable overflow pile.
+    bool lightLabPileAvailable() const;
+    /// Number of this session's currently live pile lights; unrelated additions are excluded.
+    uint32_t lightLabPileCount() const;
+    /// Largest requested pile preserving every current non-pile light under the 4096 live cap.
+    uint32_t lightLabPileCapacity() const;
+    /// Replaces only the pile population before prepareFrame. Added lights are static; oversized
+    /// requests fail transactionally. Grid identities, tracks and unrelated runtime lights survive.
+    rhi::Result<void> setLightLabPile(uint32_t count);
+
 private:
     struct Defaults {
         std::vector<asset::DecomposedTransform> objects;
         std::array<render::DirectionalLight, 3> lights;
+        std::unordered_map<uint64_t, render::LocalLight> localLights;
+        std::vector<scene::LightId> pileLights;
     };
 
     void followCameraTrack();
+    void rememberLocalLightDefaults();
 
     scene::Scene* m_scene = nullptr;
     render::Camera m_camera;
     std::unordered_map<const scene::Scene*, Defaults> m_defaults;
+    std::unordered_map<const scene::Scene*, scene::SponzaLightRig> m_lightRigs;
 };
 
 } // namespace lmx::app

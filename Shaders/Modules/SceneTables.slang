@@ -9,6 +9,10 @@ static const uint kSceneInstancesSlot = 5u;
 static const uint kSceneMaterialsSlot = 6u;
 static const uint kSceneMeshesSlot = 7u;
 static const uint kDrawUniformsSlot = 1u;
+static const uint kSceneLightsSlot = 8u;
+static const uint kLightClusterGridSlot = 9u;
+static const uint kLightClusterIndexSlot = 10u;
+static const uint kLocalLightParamsSlot = 11u;
 
 struct InstanceRow
 {
@@ -47,6 +51,21 @@ struct MeshRow
     uint boundsPadding0;
     float3 boundsMax;
     uint boundsPadding1;
+};
+
+// Mirrors lmx::render::LightRow. `range == 0` marks a free slot, `strength` is the light's colour
+// already multiplied by its intensity, and `spotScale`/`spotOffset` encode the cone term for both
+// light types, so nothing downstream branches on the type. The bounding sphere is CPU-derived.
+struct LightRow
+{
+    float3 position;
+    float range;
+    float3 strength;
+    float spotScale;
+    float3 direction;
+    float spotOffset;
+    float3 boundCentre;
+    float boundRadius;
 };
 
 struct DrawUniforms
