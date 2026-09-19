@@ -115,3 +115,55 @@ equality. Sequence/state/argument equality is a separate gate. CPU default versu
 the previously accepted strict and scoped vendor criteria; no new tolerance follows from GPU
 classification. Retain each failed image with its measured differences. The
 [GPU visibility guide](gpu-visibility.md) explains diagnostic mode, overflow and final-frame drains.
+
+## Local-light comparisons
+
+Use the same binary and authored frame for `--local-lights direct` versus `clustered`, and retain
+Direct/Direct repeats beside every cell. LightLab's `--lab-lights` and `--lab-light-pile`, and
+Sponza's authored-light enable state (`--local-light-rig on`, now default), must match. With
+`--temporal off` and scale 1, the local-light agreement gate is exact BMP SHA-256 equality; temporal
+cells report differing pixels, >8/255
+pixels, max/mean delta and LDR-FLIP beside null controls without a new acceptance threshold.
+This scoped requirement is separate from the parent/candidate fifteen-cell zero-light matrix
+and its inherited profile. The original Off/Direct/Clustered zero-live exact gate remains 11/15 FAIL.
+The [follow-up](../milestones/m7.5-followup.md#f5-diagnosis-and-prospective-gate) proposes exact causal
+invariants plus separately reported temporal repeatability; controlled results are pending. This
+proposal does not replace the original exact requirement before disposition. Preserve failures and controls independently; a temporal difference cannot explain
+away a list-oracle failure. Clustered is now the default after the lossless-list and scoped
+exact-image gates passed; Direct remains the reference. The [default decision](../milestones/m7.5-validation.md#default-decision)
+records that correctness scope separately from other families, performance and owner acceptance.
+
+For current Sponza zero-enabled controls, use `--local-light-rig off`; `--local-lights off` alone
+leaves 16 enabled identities. Disabled IDs/rows remain allocated. The new 120-second tour changes
+the initial camera, so historical comparisons must explicitly restore the frozen camera/content
+or use the frozen binaries. Preserve old evidence separately from follow-up captures.
+
+`--light-view missed --local-lights clustered --light-check` captures each frame's own range/cone
+reach oracle: red is an absent reaching light in an untruncated froxel, yellow is expected loss in
+a truncated froxel, and black means no missing contribution. It loads the actual render-depth
+pixel and reconstructs position under that frame's jittered projection, independent of temporal
+history; it does not compare shaded colours or evaluate N.L. Sky and a valid clean run are black.
+The Count palette and Overflow overlay are inspection aids, not shaded image-agreement inputs.
+Use [the raw diagnostic hook](gpu-debugging.md#inspect-local-lighting) to retain exact CPU/GPU list
+records alongside manifests. Formal results belong in [M7.5 validation](../milestones/m7.5-validation.md);
+development smoke and a black single frame do not substitute for the complete rail matrix.
+
+Audit the native Missed PNG sequence with:
+
+```sh
+python3 Tools/Lighting/missed_oracle.py --input /absolute/missed-sequence --out /absolute/new-oracle.json
+python3 Tools/Lighting/missed_oracle.py --selftest
+```
+
+The auditor counts exact black/red/yellow/other pixels and checks complete native manifests,
+ordered consecutive simulation frames, readable images and opaque RGB/RGBA pixels. Red is a
+renderer failure; yellow also fails a lossless run. `--allow-yellow` permits yellow only for an
+intentional overflow fixture. Unexpected colours, transparency, malformed files or missing frames
+are harness failures; both failure classes remain in the report. Output must be new. Exit codes
+are 0 for pass, 1 for renderer failure and 2 for incomplete/malformed evidence.
+
+Capture manifests remain v2. Measurement schema 4 separately joins retired lighting to each
+sample and reports `lightingGpuMs` apart from scene shading; see the [paired local/zero cost
+commands](gpu-debugging.md#measure-local-light-costs). Checks and views under `--measure` require
+`--unscored`, as does enabled validation/capture instrumentation. Pixel agreement, list coverage
+and cost retain separate records and conclusions.

@@ -41,6 +41,8 @@ bool matchesRow(const EditorSelectionRow& row, const EditorSelection& selection)
     if (row.subject != selection.subject) {
         return false;
     }
+    if (row.subject == EditorSubject::LocalLight)
+        return row.lightId == selection.lightId;
     if (row.subject == EditorSubject::Rendering || row.subject == EditorSubject::DirectionalLight ||
         row.subject == EditorSubject::Object) {
         return row.index == selection.index;
@@ -76,6 +78,8 @@ std::string_view renderingCategoryLabel(RenderingCategory category) {
         return "Occlusion";
     case RenderingCategory::Submission:
         return "Submission";
+    case RenderingCategory::Lighting:
+        return "Lighting";
     case RenderingCategory::Exposure:
         return "Exposure";
     case RenderingCategory::Bloom:
@@ -103,6 +107,10 @@ EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId 
     }
 
     switch (current.subject) {
+    case EditorSubject::LocalLight:
+        if (!scene.light(current.lightId))
+            return healed;
+        break;
     case EditorSubject::DirectionalLight:
         if (current.index >= std::size(scene.lights)) {
             return healed;
@@ -144,6 +152,15 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activ
 }
 
 //======================================================================================================================
+std::string sceneLocalLightLabel(const scene::Scene& scene, scene::LightId id) {
+    const auto* light = scene.light(id);
+    if (!light)
+        return "Unavailable light";
+    return std::format("{} light {}",
+                       light->type == render::LocalLightType::Point ? "Point" : "Spot", id.slot);
+}
+
+//======================================================================================================================
 std::string sceneObjectLabel(const scene::Scene& scene, size_t index) {
     if (index >= scene.objects.size()) {
         return "Unavailable object";
@@ -172,6 +189,9 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
     case EditorSubject::Rendering:
         label = renderingCategoryLabel(static_cast<RenderingCategory>(selection.index));
         compact = "Rendering";
+        break;
+    case EditorSubject::LocalLight:
+        label = sceneLocalLightLabel(scene, selection.lightId);
         break;
     case EditorSubject::DirectionalLight:
         label = std::format("Light {}", selection.index);
@@ -204,7 +224,7 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scen
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
     rows.reserve(1 + static_cast<size_t>(RenderingCategory::Count) + std::size(scene.lights) +
-                 scene.objects.size());
+                 scene.localLights().size() + scene.objects.size());
 
     rows.push_back({.subject = EditorSubject::Camera,
                     .index = 0,
@@ -235,6 +255,14 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scen
         }
         ++displayCounts[object.materialQualifier.empty() ? object.name : object.materialQualifier];
     }
+    for (const auto id : scene.localLights()) {
+        rows.push_back({.subject = EditorSubject::LocalLight,
+                        .index = id.slot,
+                        .displayLabel = sceneLocalLightLabel(scene, id),
+                        .group = EditorSelectionGroup::LocalLights,
+                        .lightId = id});
+    }
+
     for (size_t i = 0; i < scene.objects.size(); ++i) {
         const auto& object = scene.objects[i];
         const std::string& name = object.name;

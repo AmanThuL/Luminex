@@ -388,6 +388,49 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
 }
 
 //======================================================================================================================
+TEST_CASE("Local light table slots preserve each submitted row across three-frame overlap",
+          "[gpu][scene-tables]") {
+    auto device = rhi::createDevice();
+    REQUIRE(device.has_value());
+    auto scene = tableScene();
+    const auto light = scene.addLight({.type = render::LocalLightType::Point,
+                                       .position = {0.0f, 0.0f, 0.0f},
+                                       .colour = {1.0f, 1.0f, 1.0f},
+                                       .intensity = 1.0f,
+                                       .range = 5.0f});
+    REQUIRE(light.has_value());
+    REQUIRE(scene.finalize(**device).has_value());
+    auto renderer = tableRenderer(**device);
+    // Six distinct nonzero values: a repeated or zero-valued position would be indistinguishable
+    // from an unwritten row's default-constructed LightRow{} (position (0,0,0), range 0).
+    const std::array<float, 6> positions = {-2.1f, -1.4f, -0.7f, 0.7f, 1.4f, 2.1f};
+    std::array<rhi::Buffer*, 3> slotBuffers{};
+    std::array<float, 3> slotPositions{};
+    std::vector<std::unique_ptr<rhi::Buffer>> frames;
+    for (size_t i = 0; i < positions.size(); ++i) {
+        REQUIRE(scene
+                    .updateLight(*light, {.type = render::LocalLightType::Point,
+                                          .position = {positions[i], 0.0f, 0.0f},
+                                          .colour = {1.0f, 1.0f, 1.0f},
+                                          .intensity = 1.0f,
+                                          .range = 5.0f})
+                    .has_value());
+        frames.push_back(submitTables(**device, scene, *renderer, false));
+        const uint32_t slot = scene.tableStats().slot;
+        slotBuffers[slot] = scene.tables().lights;
+        slotPositions[slot] = positions[i];
+    }
+    (*device)->waitIdle();
+    for (uint32_t slot = 0; slot < 3; ++slot) {
+        render::LightRow row{};
+        REQUIRE(slotBuffers[slot]);
+        slotBuffers[slot]->readback(&row, sizeof(row));
+        REQUIRE(row.position.x == slotPositions[slot]);
+        REQUIRE(row.range == 5.0f);
+    }
+}
+
+//======================================================================================================================
 TEST_CASE(
     "Removing a no-longer-authored texture retains submitted bindings through paced retirement",
     "[gpu][scene-tables]") {

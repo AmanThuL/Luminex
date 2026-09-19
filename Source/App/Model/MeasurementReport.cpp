@@ -1,7 +1,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file MeasurementReport.cpp
-/// @brief Serializes schema-3 measurement scopes and exact-frame retired diagnostics.
+/// @brief Serializes schema-4 measurement scopes and exact-frame retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
+#include "App/Model/LightingDiagnostics.h"
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "Core/Json.h"
@@ -32,29 +33,34 @@ std::string pairsJson(const std::vector<std::pair<std::string, std::string>>& pa
 std::string MeasurementRun::json() const {
     const bool complete = m_state == MeasurementState::Complete;
     std::string out = std::format(
-        "{{\"schemaVersion\":3,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
+        "{{\"schemaVersion\":4,\"complete\":{},\"scored\":{},\"interactive\":{},\"failure\":{},",
         complete, complete && !m_plan.interactive && !m_plan.unscored, m_plan.interactive,
         quote(m_failure));
-    out += "\"pacing\":\"serialized-retirement\",\"timingScope\":{\"encodeMs\":\"after beginFrame "
-           "through endFrame commit; excludes slot wait and post-submit retirement "
-           "wait\",\"slotWaitMs\":\"beginFrame including timing publication\",\"gpuSumMs\":\"sum "
-           "of timed passes; excludes presentation, driver and untimed work; not throughput\","
-           "\"visibilityGpuMs\":\"sum of matched lmx.pass.visibility.* timings; GPU preparation\","
-           "\"hzbGpuMs\":\"sum of lmx.pass.hzb.* reduction/publication timings; excludes debug\"},"
-           "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
-           "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
-           "\"allocatedListBytes\":\"active list storage across three slots\"},";
+    out +=
+        "\"pacing\":\"serialized-retirement\",\"timingScope\":{\"encodeMs\":\"after beginFrame "
+        "through endFrame commit; excludes slot wait and post-submit retirement "
+        "wait\",\"slotWaitMs\":\"beginFrame including timing publication\",\"gpuSumMs\":\"sum "
+        "of timed passes; excludes presentation, driver and untimed work; not throughput\","
+        "\"visibilityGpuMs\":\"sum of matched lmx.pass.visibility.* timings; GPU preparation\","
+        "\"hzbGpuMs\":\"sum of lmx.pass.hzb.* reduction/publication timings; excludes debug\","
+        "\"lightingGpuMs\":\"sum of exact-frame lmx.pass.light.* timings; separate from scene\"},"
+        "\"memoryScope\":{\"listBytes\":\"valid emitted row payload; GPU joined on retirement\","
+        "\"reservedListBytes\":\"declaration row reservation; includes rejected GPU slots\","
+        "\"allocatedListBytes\":\"active list storage across three slots\"},";
     out += std::format(
         "\"plan\":{{\"warmupFrames\":{},\"measuredFrames\":{},\"width\":{},\"height\":{},"
         "\"labInstances\":{},\"scene\":{},\"temporal\":{},\"submission\":{},\"visibilityEnabled\":{"
         "},\"cameraTrack\":{},\"renderScale\":{},\"stepSeconds\":0.016666666666666666,"
         "\"classify\":{},\"classifyCheck\":{},\"occlusionEnabled\":{},\"occlusionCheck\":{},"
-        "\"hzbDebugLevel\":{},\"labOccluders\":{}}},",
+        "\"hzbDebugLevel\":{},\"labOccluders\":{},"
+        "\"localLightMode\":{},\"localLightRig\":{},\"labLights\":{},\"labLightPile\":{},"
+        "\"lightCheck\":{},\"lightDebugView\":{}}},",
         m_plan.warmupFrames, m_plan.measuredFrames, m_plan.width, m_plan.height,
         m_plan.labInstances, quote(m_plan.scene), quote(m_plan.temporal), quote(m_plan.submission),
         m_plan.visibilityEnabled, m_plan.cameraTrack, m_plan.renderScale, quote(m_plan.classify),
         m_plan.classifyCheck, m_plan.occlusionEnabled, m_plan.occlusionCheck, m_plan.hzbDebugLevel,
-        m_plan.labOccluders);
+        m_plan.labOccluders, quote(m_plan.localLightMode), m_plan.localLightRig, m_plan.labLights,
+        m_plan.labLightPile, m_plan.lightCheck, quote(m_plan.lightDebugView));
     out += "\"provenance\":{\"device\":" + quote(m_provenance.device) +
            ",\"os\":" + quote(m_provenance.os) + ",\"buildMode\":" + quote(m_provenance.buildMode) +
            ",\"executableHash\":" + quote(m_provenance.executableHash) +
@@ -90,6 +96,10 @@ std::string MeasurementRun::json() const {
             "\"effectiveScale\":{},\"effectiveReconstruction\":{},\"vendorFallback\":{}",
             c.renderWidth, c.renderHeight, c.outputWidth, c.outputHeight, c.effectiveScale,
             c.effectiveReconstruction, c.vendorFallback);
+        double lightingGpuMs = 0;
+        for (const auto& pass : sample.passes)
+            if (pass.label.starts_with("lmx.pass.light."))
+                lightingGpuMs += pass.gpuMilliseconds;
         double visibilityGpuMs = 0;
         double hzbGpuMs = 0;
         for (const auto& pass : sample.passes)
@@ -117,6 +127,10 @@ std::string MeasurementRun::json() const {
                         visibilityGpuMs, c.allocatedListBytes, c.allocatedArgumentBytes,
                         c.candidateBytes, c.runBytes, c.chunkBytes, c.stateBytes, c.counterBytes,
                         sample.visibility ? visibilityDiagnosticsJson(*sample.visibility) : "null");
+        out += std::format(
+            ",\"localLightMode\":{},\"liveLightCount\":{},\"lightingGpuMs\":{},\"lighting\":{}",
+            quote(localLightModeName(c.lighting.requested)), c.lighting.liveLightCount,
+            lightingGpuMs, sample.lighting ? lightingDiagnosticsJson(*sample.lighting) : "null");
         out += ",\"passes\":[";
         for (size_t j = 0; j < sample.passes.size(); ++j) {
             if (j)

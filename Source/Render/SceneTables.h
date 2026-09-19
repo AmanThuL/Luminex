@@ -37,6 +37,16 @@ constexpr uint32_t kSceneInstancesSlot = 5;
 constexpr uint32_t kSceneMaterialsSlot = 6;
 /// Mesh-row binding reserved for the shared row ABI reader.
 constexpr uint32_t kSceneMeshesSlot = 7;
+/// Local point/spot light-row binding reserved for the shared row ABI reader.
+constexpr uint32_t kSceneLightsSlot = 8;
+/// Per-froxel `(offset, count)` cluster-record binding read by the scene entries' local-light loop.
+constexpr uint32_t kLightClusterGridSlot = 9;
+/// Flat cluster index-list binding read by the scene entries' local-light loop.
+constexpr uint32_t kLightClusterIndexSlot = 10;
+/// Per-pass `LocalLightParams` frame-data binding selecting the local-light path.
+constexpr uint32_t kLocalLightParamsSlot = 11;
+/// Maximum live local lights per scene (docs/milestones/m7.5.md's light table).
+constexpr uint32_t kMaxLocalLights = 4096;
 /// Per-draw instance selector binding in scene and shadow entries.
 constexpr uint32_t kDrawUniformsSlot = 1;
 
@@ -109,6 +119,31 @@ static_assert(offsetof(MeshRow, boundsPadding0) == 28);
 static_assert(offsetof(MeshRow, boundsMax) == 32);
 static_assert(offsetof(MeshRow, boundsPadding1) == 44);
 
+/// Stable local point/spot light slot contents; `range == 0` marks a free slot. `strength` is
+/// `colour * intensity` decoded once at build, `spotScale`/`spotOffset` encode the cone term for
+/// both light types (a point light stores 0/1), and `boundCentre`/`boundRadius` are the CPU-
+/// computed world bounding sphere `LocalLightMath.h` derives -- see docs/milestones/m7.5.md's
+/// light table.
+struct alignas(16) LightRow {
+    glm::vec3 position{0.0f};               ///< World-space origin, metres.
+    float range = 0.0f;                     ///< Metres; zero marks a free slot.
+    glm::vec3 strength{0.0f};               ///< Linear-RGB `colour * intensity`.
+    float spotScale = 0.0f;                 ///< Cone slope; zero for a point light.
+    glm::vec3 direction{0.0f, 0.0f, -1.0f}; ///< Unit ray-travel direction.
+    float spotOffset = 1.0f;                ///< Cone offset; one for a point light.
+    glm::vec3 boundCentre{0.0f};            ///< World-space bounding-sphere centre.
+    float boundRadius = 0.0f;               ///< Inflated world-space bounding-sphere radius.
+};
+static_assert(sizeof(LightRow) == 64);
+static_assert(offsetof(LightRow, position) == 0);
+static_assert(offsetof(LightRow, range) == 12);
+static_assert(offsetof(LightRow, strength) == 16);
+static_assert(offsetof(LightRow, spotScale) == 28);
+static_assert(offsetof(LightRow, direction) == 32);
+static_assert(offsetof(LightRow, spotOffset) == 44);
+static_assert(offsetof(LightRow, boundCentre) == 48);
+static_assert(offsetof(LightRow, boundRadius) == 60);
+
 /// Per-draw selector into the paced instance table; padding is always zero.
 struct DrawUniforms {
     uint32_t firstEntry = 0; ///< First entry in the visible instance-row list.
@@ -130,6 +165,11 @@ struct SceneTables {
     uint32_t materialCount = 0;       ///< Number of addressable material slots, including holes.
     std::span<const InstanceRow> instanceRows; ///< CPU rows exactly matching the prepared GPU slot.
     uint32_t instanceCapacity = 0; ///< Allocated instance slots; draw buffers grow with this count.
+    rhi::Buffer* lights = nullptr; ///< Local light rows for the paced slot; null until one exists.
+    uint32_t lightRowCount = 0;    ///< Addressable light row slots, including free slots.
+    uint32_t lightCapacity = 0;    ///< Allocated light slots; zero until one exists.
+    std::span<const LightRow> lightRows; ///< CPU rows exactly matching the prepared GPU slot.
+    uint32_t liveLightCount = 0; ///< Enabled local lights this frame; zero disables local passes.
 };
 
 } // namespace lmx::render

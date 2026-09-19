@@ -217,6 +217,131 @@ TEST_CASE("Scene leaves emissive untouched when an object has no emissive track"
 }
 
 //======================================================================================================================
+TEST_CASE("sampleOrbit is periodic and closed-form about its centre", "[scene]") {
+    LightOrbitTrack track{.light = 0,
+                          .centre = glm::vec3(1.0f, 2.0f, 3.0f),
+                          .axis = glm::vec3(0.0f, 0.0f, 1.0f),
+                          .radius = 5.0f,
+                          .phase = 0.0f,
+                          .period = 8.0f};
+
+    const glm::vec3 start = sampleOrbit(track, 0.0f);
+    const glm::vec3 quarter = sampleOrbit(track, 2.0f); // period / 4
+    const glm::vec3 full = sampleOrbit(track, 8.0f);    // period
+
+    // At t == 0 the sample sits `radius` from the centre, along the deterministic basis's first
+    // axis: axis is +Z here, so world up (+Y) is the reference and u is world +X.
+    REQUIRE(near3(start - track.centre, glm::vec3(track.radius, 0.0f, 0.0f)));
+    REQUIRE(Catch::Approx(glm::length(quarter - track.centre)).margin(1e-4f) == track.radius);
+    REQUIRE(Catch::Approx(glm::dot(quarter - track.centre, start - track.centre)).margin(1e-3f) ==
+            0.0f);
+    // A full revolution returns to the starting position.
+    REQUIRE(near3(full, start));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleOrbit holds position fixed when the period is nonpositive", "[scene]") {
+    LightOrbitTrack track{.light = 0,
+                          .centre = glm::vec3(0.0f),
+                          .axis = glm::vec3(0.0f, 0.0f, 1.0f),
+                          .radius = 2.0f,
+                          .phase = glm::half_pi<float>(),
+                          .period = 0.0f};
+
+    const glm::vec3 early = sampleOrbit(track, 0.0f);
+    const glm::vec3 later = sampleOrbit(track, 100.0f);
+    REQUIRE(near3(early, later));
+}
+
+//======================================================================================================================
+TEST_CASE("sampleOrbit wraps far-future seconds onto the same angle as their reduced phase",
+          "[scene]") {
+    LightOrbitTrack track{.light = 0,
+                          .centre = glm::vec3(1.0f, 2.0f, 3.0f),
+                          .axis = glm::vec3(0.0f, 0.0f, 1.0f),
+                          .radius = 5.0f,
+                          .phase = 0.0f,
+                          .period = 8.0f};
+
+    // 1000 whole periods plus a quarter turn should land exactly where a bare quarter turn does;
+    // without wrapping seconds onto one period first, float precision at this magnitude coarsens
+    // the angle well past a tight tolerance.
+    const glm::vec3 nearPosition = sampleOrbit(track, 2.0f); // period / 4
+    const glm::vec3 farPosition = sampleOrbit(track, 1000.0f * track.period + 2.0f);
+    REQUIRE(near3(nearPosition, farPosition));
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::animate moves an orbit-tracked light's position without disturbing its other "
+          "authored fields or coverageEpoch",
+          "[scene]") {
+    Scene scene = makeMotionTestScene();
+    const auto lightId = scene.addLight({.type = render::LocalLightType::Point,
+                                         .position = glm::vec3(99.0f, 99.0f, 99.0f),
+                                         .colour = glm::vec3(0.2f, 0.4f, 0.6f),
+                                         .intensity = 3.0f,
+                                         .range = 12.0f});
+    REQUIRE(lightId.has_value());
+    scene.animation.lightTracks.push_back({.light = 0,
+                                           .centre = glm::vec3(0.0f),
+                                           .axis = glm::vec3(0.0f, 1.0f, 0.0f),
+                                           .radius = 4.0f,
+                                           .phase = 0.0f,
+                                           .period = 4.0f});
+    const uint64_t epochBefore = scene.coverageEpoch();
+
+    scene.animate(1.0); // period / 4
+
+    const render::LocalLight* moved = scene.light(*lightId);
+    REQUIRE(moved != nullptr);
+    // axis is +Y here, which is nearly parallel to the fallback reference: the basis falls back to
+    // world +X, so u is world +Z and v is world +X; a quarter turn lands on +radius * v.
+    REQUIRE(near3(moved->position, glm::vec3(4.0f, 0.0f, 0.0f)));
+    REQUIRE(near3(moved->colour, glm::vec3(0.2f, 0.4f, 0.6f)));
+    REQUIRE(moved->intensity == Catch::Approx(3.0f));
+    REQUIRE(moved->range == Catch::Approx(12.0f));
+    REQUIRE(scene.coverageEpoch() == epochBefore);
+}
+
+//======================================================================================================================
+TEST_CASE("Scene::animate skips a light orbit track whose light was removed without disturbing "
+          "another live orbit-tracked light",
+          "[scene]") {
+    Scene scene = makeMotionTestScene();
+    const auto removedId = scene.addLight({.type = render::LocalLightType::Point,
+                                           .position = glm::vec3(0.0f),
+                                           .colour = glm::vec3(1.0f),
+                                           .intensity = 1.0f,
+                                           .range = 5.0f});
+    REQUIRE(removedId.has_value());
+    const auto liveId = scene.addLight({.type = render::LocalLightType::Point,
+                                        .position = glm::vec3(0.0f),
+                                        .colour = glm::vec3(1.0f),
+                                        .intensity = 1.0f,
+                                        .range = 5.0f});
+    REQUIRE(liveId.has_value());
+    scene.animation.lightTracks.push_back({.light = 0,
+                                           .centre = glm::vec3(0.0f),
+                                           .axis = glm::vec3(0.0f, 1.0f, 0.0f),
+                                           .radius = 1.0f,
+                                           .phase = 0.0f,
+                                           .period = 1.0f});
+    scene.animation.lightTracks.push_back({.light = 1,
+                                           .centre = glm::vec3(0.0f),
+                                           .axis = glm::vec3(0.0f, 1.0f, 0.0f),
+                                           .radius = 1.0f,
+                                           .phase = 0.0f,
+                                           .period = 1.0f});
+    REQUIRE(scene.removeLight(*removedId));
+
+    scene.animate(0.5); // Must not assert or crash with the first track's light already gone.
+    REQUIRE(scene.light(*removedId) == nullptr);
+    // The second track's light is still live and must have moved -- a broad catch inside the
+    // loop could otherwise silently skip every track, not just the removed one's.
+    REQUIRE_FALSE(near3(scene.light(*liveId)->position, glm::vec3(0.0f)));
+}
+
+//======================================================================================================================
 TEST_CASE("Scene::animate accepts a track that collapses an object to zero scale", "[scene]") {
     Scene scene = makeMotionTestScene();
     RigidTrack track;

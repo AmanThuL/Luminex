@@ -5,6 +5,7 @@
 #pragma once
 
 #include "RHI/Device.h"
+#include "Render/LightingStatus.h"
 #include "Render/Visibility.h"
 
 #include <cstdint>
@@ -47,6 +48,12 @@ struct MeasurementPlan {
     float renderScale = 1.0f;            ///< Requested reconstruction input scale.
     bool interactive = false;            ///< UI and presentation are included; always unscored.
     bool unscored = false;               ///< Explicit instrumentation override.
+    std::string localLightMode = "clustered"; ///< Requested local-light path.
+    bool localLightRig = false;               ///< Authored Sponza rig enabled for the complete run.
+    uint32_t labLights = 256;                 ///< Authored LightLab base count.
+    uint32_t labLightPile = 0;                ///< Authored LightLab saturation count.
+    bool lightCheck = false;            ///< Exact CPU/GPU light-list diagnostic; never scored.
+    std::string lightDebugView = "off"; ///< Lighting diagnostic view; never scored when active.
 };
 
 /// Actual host and executable provenance collected before the timed interval.
@@ -101,7 +108,8 @@ struct MeasurementCpuSample {
     render::VisibilityCounters shadowCounters; ///< Immediate CPU shadow counts; GPU joins later.
     uint64_t transientBytes = 0; ///< Compiled transient physical bytes for this frame.
     std::vector<std::string>
-        expectedPasses; ///< Scheduled pass labels required in retirement order.
+        expectedPasses;              ///< Scheduled pass labels required in retirement order.
+    render::LightingStatus lighting; ///< Owned declaration identity; counters join at retirement.
 };
 
 /// A sample becomes reportable only after matching nonempty GPU timings arrive.
@@ -110,6 +118,7 @@ struct MeasurementSample {
     std::vector<rhi::PassTiming> passes; ///< Retired timings joined by exact frame id.
     std::optional<render::VisibilityStatus> visibility; ///< Exact-frame retired GPU counters.
     bool retired = false; ///< Distinguishes absent timings from zero-duration timings.
+    std::optional<render::LightingStatus> lighting; ///< Exact-frame retired light counts and lists.
 };
 
 /// True for enabled or unrecognized validation/capture environment values; unset and "0" are off.
@@ -132,6 +141,8 @@ public:
     bool retire(uint64_t frameId, std::span<const rhi::PassTiming> passes);
     /// Joins GPU classifier counters by exact submitted frame, independently of timings.
     bool retireVisibility(const render::VisibilityStatus& status);
+    /// Joins lighting counters by declaration frame and scene, independently of other retirements.
+    bool retireLighting(const render::LightingStatus& status);
     /// Called once all submitted work has retired; any missing join invalidates the run.
     bool finishDrain();
     /// Cancels a run while retaining its partial evidence and explicit reason.
@@ -142,7 +153,7 @@ public:
     std::span<const MeasurementSample> samples() const { return m_samples; }
     /// Empty on success, otherwise the first terminal failure or cancellation reason.
     const std::string& failure() const { return m_failure; }
-    /// Schema-3 JSON, including partial evidence, exact scopes, provenance and completion status.
+    /// Schema-4 JSON, including partial evidence, exact scopes, provenance and completion status.
     std::string json() const;
 
 private:
@@ -154,6 +165,7 @@ private:
     uint64_t m_firstFrameId = 0;
     uint64_t m_lastFrameId = 0;
     std::vector<MeasurementSample> m_samples;
+    std::vector<render::LightingStatus> m_lightingDeclarations;
     std::string m_failure;
     std::string m_referenceFailure;
 };

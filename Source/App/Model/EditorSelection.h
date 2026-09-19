@@ -22,6 +22,7 @@ enum class EditorSubject {
     Camera,           ///< The scene's one editor camera.
     Rendering,        ///< A rendering category, named by `EditorSelection::index`.
     DirectionalLight, ///< One of `Scene::lights`, named by `EditorSelection::index`.
+    LocalLight,       ///< One generational local light, named by `lightId`.
     Object,           ///< One of `Scene::objects`, named by `EditorSelection::index`.
 };
 
@@ -33,6 +34,7 @@ enum class RenderingCategory {
     Visibility,     ///< Frustum classification and visible-instance counts.
     Occlusion,      ///< Previous-frame occlusion controls and validation.
     Submission,     ///< Draw submission and batching counts.
+    Lighting,       ///< Local-light modes, cluster diagnostics and rig controls.
     Exposure,       ///< Exposure controls and adaptation feedback.
     Bloom,          ///< Bloom controls.
     Shadows,        ///< Shadow controls and status.
@@ -52,12 +54,14 @@ struct EditorSelection {
     scene::SceneId sceneId;                      ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
     size_t index = 0;                            ///< Category or DirectionalLight/Object row index.
+    scene::LightId lightId{}; ///< Complete local-light identity; otherwise unused.
 };
 
 /// Compares `current` against `activeScene`/`scene` and returns the value the caller should store:
 /// `current` unchanged if it still resolves, or a healed `{activeScene, EditorSubject::None, 0}` if
 /// `current.sceneId` no longer names the active scene, or its category, `DirectionalLight` or
-/// `Object` index is out of range. `Camera` and `None` never fail range validation. Call
+/// `Object` index is out of range, or its complete `LocalLight` identity is stale.
+/// `Camera` and `None` never fail range validation. Call
 /// this on every use before drawing the Inspector; it never mutates `scene`, and the caller stores
 /// the returned value rather than caching the argument.
 EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
@@ -94,6 +98,7 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activ
 enum class EditorSelectionGroup {
     Workspace,         ///< Editor Camera and Rendering categories.
     DirectionalLights, ///< The three fixed lights, in index order.
+    LocalLights,       ///< Live local-light identities in stable row order.
     Objects,           ///< `Scene::objects`, in scene order.
 };
 
@@ -106,8 +111,12 @@ struct EditorSelectionRow {
     EditorSelectionGroup group = EditorSelectionGroup::Workspace; ///< Which header it draws under.
     /// Full source-qualified name for search, hover and copy; empty when the short label suffices.
     std::string detailLabel;
-    std::string sourceGroup; ///< Optional imported source navigation group; no parent transform.
+    std::string sourceGroup;  ///< Optional imported source navigation group; no parent transform.
+    scene::LightId lightId{}; ///< Complete identity for LocalLight rows.
 };
+
+/// Stable point/spot label carrying its row slot, or Unavailable light for stale identities.
+std::string sceneLocalLightLabel(const scene::Scene& scene, scene::LightId id);
 
 /// Authored name with a scene-local object suffix for duplicate names; unnamed objects always get
 /// a deterministic `Unnamed object [N]` label. An out-of-range index returns `Unavailable object`.
@@ -119,11 +128,11 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
                              std::string_view filter);
 
 /// Builds rows in fixed order: Editor Camera, Rendering categories in enum order, three lights,
-/// then scene objects. Filters visible/full source names case-insensitively; matching `Rendering`
-/// retains every category. Unmatched navigation parents are not included in selectable rows.
-/// An empty `filter` keeps every row; a filter matching nothing returns an empty vector rather than
-/// an error state. Duplicate object names still produce distinct rows: subject kind plus index, not
-/// label text, identifies a row. Never mutates `scene`.
+/// live local lights, then scene objects. Filters visible/full source names case-insensitively;
+/// matching `Rendering` retains every category. Unmatched navigation parents are not included in
+/// selectable rows. An empty `filter` keeps every row; a filter matching nothing returns an empty
+/// vector rather than an error state. Duplicate object names still produce distinct rows: subject
+/// kind plus index, not label text, identifies a row. Never mutates `scene`.
 std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
                                                         std::string_view filter);
 

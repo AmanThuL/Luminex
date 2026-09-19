@@ -608,6 +608,7 @@ void EditorShell::buildMainMenu() {
 void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
     m_visibilityDisplay.publishReadings(ImGui::GetTime());
+    m_lightingDisplay.publishReadings(ImGui::GetTime());
     ImGui::BeginDisabled(m_measurement.active());
     // Every panel is drawn only while visible, and hands its window close button back through the
     // same storage the Window menu writes, so the two can never disagree.
@@ -615,6 +616,8 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
         bool open = true;
         drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
                                                .activeScene = m_session.scene(),
+                                               .session = m_session,
+                                               .temporalState = m_temporalState,
                                                .selection = m_selection,
                                                .filter = m_sceneFilter,
                                                .visibilityDisplay = m_visibilityDisplay,
@@ -694,7 +697,8 @@ void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
                                         .selectionHiddenByFilter = selectionHiddenByFilter(
                                             m_session.scene(), m_selection, m_sceneFilter),
                                         .visibilityDisplay = &m_visibilityDisplay,
-                                        .sceneFilter = &m_sceneFilter});
+                                        .sceneFilter = &m_sceneFilter,
+                                        .lightingDisplay = &m_lightingDisplay});
         setPanelVisible(EditorPanel::Inspector, open);
     }
 
@@ -739,12 +743,17 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
 }
 
 //======================================================================================================================
-void EditorShell::primeTemporal(const AppOptions& options) {
+rhi::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
+    m_settings.localLightMode = options.localLightMode;
+    m_settings.lightCheck = options.lightCheck;
+    m_settings.lightDebugView = options.lightDebugView;
     m_settings.temporalEnabled = options.temporal != TemporalMode::Off;
     m_settings.jitterEnabled = options.temporal != TemporalMode::Off;
     m_settings.reconstruction = temporalReconstructionMode(options.temporal);
     m_settings.temporalDebugView = options.temporalView;
     m_settings.renderScale = options.renderScale;
+    m_labLights = options.labLights;
+    m_labLightPile = options.labLightPile;
     m_labInstances = options.labInstances;
     m_labOccluders = options.labOccluders;
     m_settings.visibilityEnabled = options.visibilityEnabled;
@@ -754,6 +763,10 @@ void EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.occlusionEnabled = options.occlusionEnabled;
     m_settings.occlusionCheck = options.occlusionCheck;
     m_settings.hzbDebugLevel = options.hzbDebugLevel;
+    if (m_session.localLightRigAvailable()) {
+        return m_session.setLocalLightRig(options.localLightRig);
+    }
+    return {};
 }
 
 //======================================================================================================================
@@ -767,6 +780,9 @@ render::SceneView EditorShell::sceneView() {
         m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
     // Exposure is a shell knob rather than scene data, so it is applied after the scene has
     // described itself -- the same way the wireframe and shadow-filter settings are.
+    view.localLightMode = m_settings.localLightMode;
+    view.lightCheck = m_settings.lightCheck;
+    view.lightDebugView = m_settings.lightDebugView;
     view.visibilityEnabled = m_settings.visibilityEnabled;
     view.submission = m_settings.submission;
     view.classifyMode = m_settings.classifyMode;
@@ -850,7 +866,7 @@ void EditorShell::advanceFrameAnimation() {
 
 //======================================================================================================================
 uint64_t EditorShell::metricsContextEpoch() {
-    const uint64_t key =
+    uint64_t key =
         m_temporalState.sceneGeneration * 65536 + (m_settings.occlusionEnabled ? 512 : 0) +
         (m_settings.occlusionCheck ? 1024 : 0) +
         static_cast<uint64_t>(m_settings.hzbDebugLevel + 1) * 2048 +
@@ -858,6 +874,14 @@ uint64_t EditorShell::metricsContextEpoch() {
         (m_settings.classifyCheck ? 256 : 0) + static_cast<uint64_t>(m_settings.submission) * 16 +
         (m_settings.visibilityEnabled ? 8 : 0) +
         static_cast<uint64_t>(m_settings.reconstruction) * 2 + (m_settings.temporalEnabled ? 1 : 0);
+    // Lighting modes can share a pass inventory while performing different amounts of work.
+    const auto mix = [&](uint64_t value) { key = (key ^ value) * 1099511628211ULL; };
+    mix(static_cast<uint64_t>(m_settings.localLightMode));
+    mix(static_cast<uint64_t>(m_settings.lightDebugView));
+    mix(m_settings.lightCheck);
+    mix(m_session.scene().enabledLightCount());
+    mix(m_session.localLightRigEnabled());
+    mix(m_session.lightLabPileCount());
     return m_metricsContextRevision.observe(key);
 }
 
@@ -920,6 +944,8 @@ bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
     stopPlayback();
     m_activeSceneId = id;
     m_visibilityDisplay.clear();
+    m_lightingDisplay.clear();
+    m_lightingFailureLogged = false;
     m_session.activate(**scene, SceneActivationMotion::Reset);
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset

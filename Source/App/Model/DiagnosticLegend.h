@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Render/LocalLight.h"
 #include "Render/Temporal.h"
 #include "Scene/SceneLibrary.h"
 
@@ -19,6 +20,9 @@ struct DiagnosticLegend {
 
 /// Returns static strings derived from TemporalDebugView.slang and its producer kernels.
 DiagnosticLegend diagnosticLegend(render::TemporalDebugView view);
+
+/// Returns the clustered lighting overlay encoding, independent of exposure and temporal history.
+DiagnosticLegend diagnosticLegend(render::LightDebugView view);
 
 /// Returns an actionable explanation when this view cannot execute, otherwise empty. Uses the
 /// effective reconstruction, so a vendor request running Native TAA fallback retains native views.

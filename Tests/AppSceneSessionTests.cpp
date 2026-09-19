@@ -6,6 +6,7 @@
 
 #include <glm/glm.hpp>
 
+#include <cmath>
 #include <vector>
 
 namespace {
@@ -238,6 +239,44 @@ TEST_CASE("SceneSession playback includes camera and emissive tracks but leaves 
 }
 
 //======================================================================================================================
+TEST_CASE("SceneSession::stepAnimation advances an orbit-tracked light by exactly one bake-rate "
+          "step",
+          "[app][scene-session]") {
+    scene::Scene scene = makeSessionScene();
+    scene.animation.tracks.clear();
+    const auto lightId = scene.addLight({.type = render::LocalLightType::Point,
+                                         .position = {0.0f, 0.0f, 0.0f},
+                                         .colour = {1.0f, 1.0f, 1.0f},
+                                         .intensity = 1.0f,
+                                         .range = 5.0f});
+    REQUIRE(lightId.has_value());
+    // Period is exactly 4 bake-rate steps, so one stepAnimation() call is a quarter turn: a
+    // hand-computable case that also pins the documented basis rule (sampleOrbit's doc comment).
+    // axis +Y is nearly parallel to the deterministic basis's default reference (world up), so the
+    // basis falls back to world +X: u = world +Z, v = world +X. At angle == pi/2, position ==
+    // centre + radius * v, i.e. (radius, 0, 0).
+    const asset::LightOrbitTrack track{.light = 0,
+                                       .centre = {0.0f, 0.0f, 0.0f},
+                                       .axis = {0.0f, 1.0f, 0.0f},
+                                       .radius = 2.0f,
+                                       .phase = 0.0f,
+                                       .period =
+                                           4.0f / static_cast<float>(asset::kAnimationBakeRate)};
+    scene.animation.lightTracks.push_back(track);
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
+
+    session.stepAnimation();
+
+    REQUIRE(scene.animationTime == 1.0 / asset::kAnimationBakeRate);
+    const render::LocalLight* moved = scene.light(*lightId);
+    REQUIRE(moved != nullptr);
+    REQUIRE(std::abs(moved->position.x - 2.0f) < 1e-4f);
+    REQUIRE(std::abs(moved->position.y) < 1e-4f);
+    REQUIRE(std::abs(moved->position.z) < 1e-4f);
+}
+
+//======================================================================================================================
 TEST_CASE("SceneSession restores original static defaults after leaving and reactivating a scene",
           "[app][scene-session]") {
     auto first = makeSessionScene();
@@ -288,4 +327,74 @@ TEST_CASE(
     CHECK(scene.lights[1].strength == glm::vec3(6.0f, 5.0f, 4.0f));
     CHECK_FALSE(session.objectChanged(0));
     CHECK(session.objectChanged(1));
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession local-light reset uses full identities and current orbit position",
+          "[app][scene-session][local-light-editor]") {
+    scene::Scene scene;
+    render::LocalLight authored;
+    authored.position = {1.0f, 2.0f, 3.0f};
+    const auto id = scene.addLight(authored);
+    REQUIRE(id);
+    scene.animation.lightTracks.push_back({.light = 0,
+                                           .centre = {0.0f, 2.0f, 0.0f},
+                                           .axis = {0.0f, 1.0f, 0.0f},
+                                           .radius = 3.0f,
+                                           .phase = 0.0f,
+                                           .period = 4.0f});
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
+    scene.animationTime = 1.0;
+    scene.animate(scene.animationTime);
+    REQUIRE_FALSE(session.localLightChanged(*id));
+    auto edited = *scene.light(*id);
+    edited.position = {90.0f, 0.0f, 0.0f};
+    edited.intensity = 9.0f;
+    edited.enabled = false;
+    REQUIRE(session.editLocalLight(*id, edited));
+    REQUIRE(session.localLightChanged(*id));
+    REQUIRE(session.resetLocalLight(*id));
+    REQUIRE(scene.light(*id)->position == asset::sampleOrbit(scene.animation.lightTracks[0], 1.0f));
+    REQUIRE(scene.light(*id)->intensity == authored.intensity);
+    REQUIRE(scene.light(*id)->enabled);
+    REQUIRE(scene.removeLight(*id));
+    const auto replacement = scene.addLight(edited);
+    REQUIRE(replacement);
+    REQUIRE_FALSE(session.localLightDefault(*id));
+    REQUIRE_FALSE(session.resetLocalLight(*id));
+    REQUIRE_FALSE(session.editLocalLight(*id, authored));
+    REQUIRE(scene.light(*replacement)->intensity == 9.0f);
+}
+
+//======================================================================================================================
+TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and obey capacity",
+          "[app][scene-session][local-light-editor]") {
+    scene::Scene scene;
+    scene.lightLabGridCount = 2;
+    const auto grid0 = scene.addLight(render::LocalLight{});
+    const auto grid1 = scene.addLight(render::LocalLight{});
+    const auto authoredPile = scene.addLight(render::LocalLight{});
+    REQUIRE(grid0);
+    REQUIRE(grid1);
+    REQUIRE(authoredPile);
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
+    REQUIRE(session.lightLabPileAvailable());
+    REQUIRE(session.lightLabPileCount() == 1);
+    REQUIRE(session.setLightLabPile(0));
+    REQUIRE_FALSE(scene.light(*authoredPile));
+    REQUIRE_FALSE(session.resetLocalLight(*authoredPile));
+    REQUIRE(scene.light(*grid0));
+    REQUIRE(scene.light(*grid1));
+    const auto unrelated = scene.addLight(render::LocalLight{});
+    REQUIRE(unrelated);
+    REQUIRE(session.lightLabPileCapacity() == render::kMaxLocalLights - 3);
+    REQUIRE_FALSE(session.setLightLabPile(render::kMaxLocalLights - 2));
+    REQUIRE(scene.localLights().size() == 3);
+    REQUIRE(session.setLightLabPile(140));
+    REQUIRE(session.lightLabPileCount() == 140);
+    REQUIRE(session.setLightLabPile(0));
+    REQUIRE(scene.localLights().size() == 3);
+    REQUIRE(scene.light(*unrelated));
 }

@@ -50,6 +50,28 @@ DiagnosticLegend diagnosticLegend(render::TemporalDebugView view) {
 }
 
 //======================================================================================================================
+DiagnosticLegend diagnosticLegend(render::LightDebugView view) {
+    using enum render::LightDebugView;
+    switch (view) {
+    case Off:
+        return {"Final", "Scene image after exposure, bloom and the SDR display transform."};
+    case Count:
+        return {"Light count", "Stored local-light count in the visible surface's froxel; "
+                               "0 black; 1-4 blue; 5-16 green; 17-64 yellow; 65-128 red."};
+    case Overflow:
+        return {"Light overflow",
+                "Magenta marks truncated froxels over the final image at 25% brightness. "
+                "Unmarked froxels retained every candidate light."};
+    case Missed:
+        return {"Missed lights",
+                "Red = an absent light reaches this surface in an untruncated "
+                "froxel (list error). Yellow = an absent light reaches it in a "
+                "truncated froxel (expected loss). Black = no missing contribution."};
+    }
+    return {"Final", "Scene image."};
+}
+
+//======================================================================================================================
 std::string_view diagnosticUnavailableReason(render::TemporalDebugView view, bool temporalEnabled,
                                              render::ReconstructionMode effective) {
     if (view == render::TemporalDebugView::Off) {
@@ -97,6 +119,11 @@ std::string_view labDescription(scene::SceneId sceneId) {
                "bottom to top "
                "in the initial view. Texture/normal probes are at X=14; depth probes at X=28. "
                "Hold RMB + A/D to move between lanes.";
+    }
+    if (id == "light-lab") {
+        return "LightLab: a deterministic grid of unshadowed point and spot lights, orbiting "
+               "lights and a 12-second camera rail. The optional colocated pile forces overflow; "
+               "clear it to return to the measured grid workload.";
     }
     if (id == "temporal-lab") {
         return "TemporalLab: compare rotating and static cubes, orbiting geometry, thin moving "

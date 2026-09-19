@@ -245,6 +245,12 @@ GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
 }
 
 //======================================================================================================================
+void TemporalResolve::recordDepthRead(uint32_t slot) {
+    LMX_ASSERT(slot < 2, "recordDepthRead requires a valid history slot");
+    m_depthUse[slot] = rhi::TextureUse::ShaderRead;
+}
+
+//======================================================================================================================
 rhi::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
     LMX_ASSERT(slot < 2, "depthUse requires a valid history slot");
     return m_depthUse[slot];

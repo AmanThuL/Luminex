@@ -4,6 +4,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 using lmx::app::EditorPlayback;
@@ -35,6 +36,14 @@ scene::Scene playbackScene() {
         {.objectIndex = 1, .keys = {{.time = 0, .strength = 8}, {.time = 1, .strength = 16}}});
     result.animation.cameraTrack = {{.time = 0, .position = {0, 1, 2}},
                                     {.time = 1, .position = {60, 1, 2}, .yaw = 0.6f}};
+    const auto light = result.addLight({.type = render::LocalLightType::Point,
+                                        .position = {0, 0, 0},
+                                        .colour = {1, 1, 1},
+                                        .intensity = 1,
+                                        .range = 5});
+    REQUIRE(light.has_value());
+    result.animation.lightTracks.push_back(
+        {.light = 0, .centre = {0, 0, 0}, .axis = {0, 0, 1}, .radius = 4, .phase = 0, .period = 4});
     result.initialCamera = {.position = {3, 4, 5},
                             .yaw = 0.2f,
                             .pitch = -0.1f,
@@ -42,6 +51,13 @@ scene::Scene playbackScene() {
                             .nearZ = 0.25f,
                             .farZ = 500};
     return result;
+}
+
+//======================================================================================================================
+bool near3(const glm::vec3& a, const glm::vec3& b) {
+    constexpr float kMargin = 1e-4f;
+    return std::abs(a.x - b.x) <= kMargin && std::abs(a.y - b.y) <= kMargin &&
+           std::abs(a.z - b.z) <= kMargin;
 }
 
 //======================================================================================================================
@@ -125,6 +141,87 @@ TEST_CASE("editor playback restores its first edit state across pause and resume
     for (const auto& object : scene.objects)
         REQUIRE(object.previousModel == object.modelMatrix());
     REQUIRE_FALSE(playback.stop(session, followRail));
+}
+
+//======================================================================================================================
+TEST_CASE("editor playback restores only a tracked light's position on Stop, leaving every other "
+          "edit and every untracked light alone",
+          "[app][editor-playback]") {
+    auto scene = playbackScene();
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    const auto trackedId = scene.localLights().front();
+    const auto authoredPosition = scene.light(trackedId)->position;
+    const auto untrackedId = scene.addLight({.type = render::LocalLightType::Point,
+                                             .position = {5, 6, 7},
+                                             .colour = {0.1f, 0.2f, 0.3f},
+                                             .intensity = 2.0f,
+                                             .range = 8.0f});
+    REQUIRE(untrackedId.has_value());
+    EditorPlayback playback;
+    bool followRail = false;
+
+    REQUIRE(playback.play(session, followRail));
+    // Playing does not itself move the light -- only sampled frames do.
+    REQUIRE(near3(scene.light(trackedId)->position, authoredPosition));
+
+    session.advanceEditorFrame(true, followRail, false);
+    // A quarter turn (track period 4, one bake-rate step past animationTime 0.25) has moved it.
+    REQUIRE_FALSE(near3(scene.light(trackedId)->position, authoredPosition));
+
+    // Edits made during the preview: intensity on the tracked light, everything on the untracked
+    // one. Stop owns only the animation-owned field -- the tracked light's position -- so both
+    // sets of edits survive exactly like an object's untracked fields do.
+    render::LocalLight trackedEdit = *scene.light(trackedId);
+    trackedEdit.intensity = 42.0f;
+    trackedEdit.enabled = false;
+    REQUIRE(scene.updateLight(trackedId, trackedEdit));
+    const render::LocalLight untrackedEdit{.type = render::LocalLightType::Spot,
+                                           .position = {50, 60, 70},
+                                           .colour = {0.9f, 0.8f, 0.7f},
+                                           .intensity = 99.0f,
+                                           .range = 33.0f,
+                                           .direction = {0.0f, -1.0f, 0.0f},
+                                           .innerCone = 0.1f,
+                                           .outerCone = 0.5f};
+    REQUIRE(scene.updateLight(*untrackedId, untrackedEdit));
+
+    session.advanceEditorFrame(true, followRail, false);
+    REQUIRE_FALSE(scene.light(trackedId)->enabled);
+    REQUIRE_FALSE(near3(scene.light(trackedId)->position, trackedEdit.position));
+    REQUIRE(playback.stop(session, followRail));
+
+    const render::LocalLight* tracked = scene.light(trackedId);
+    REQUIRE(tracked != nullptr);
+    REQUIRE_FALSE(tracked->enabled);
+    REQUIRE(near3(tracked->position, authoredPosition)); // only the animation-owned field reverts
+    REQUIRE(tracked->intensity == 42.0f);                // the unrelated edit survives Stop
+
+    const render::LocalLight* untracked = scene.light(*untrackedId);
+    REQUIRE(untracked != nullptr);
+    REQUIRE(near3(untracked->position, untrackedEdit.position));
+    REQUIRE(untracked->colour == untrackedEdit.colour);
+    REQUIRE(untracked->intensity == untrackedEdit.intensity);
+    REQUIRE(untracked->range == untrackedEdit.range);
+}
+
+//======================================================================================================================
+TEST_CASE("editor stop never revives an orbit-tracked light removed during playback",
+          "[app][editor-playback]") {
+    auto scene = playbackScene();
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    const auto lightId = scene.localLights().front();
+    EditorPlayback playback;
+    bool followRail = false;
+
+    REQUIRE(playback.play(session, followRail));
+    session.advanceEditorFrame(true, followRail, false);
+    REQUIRE(scene.removeLight(lightId));
+
+    REQUIRE(playback.stop(session, followRail));
+    REQUIRE(scene.light(lightId) == nullptr);
+    REQUIRE(scene.localLights().empty());
 }
 
 //======================================================================================================================

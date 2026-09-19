@@ -8,6 +8,7 @@
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
+#include "App/Model/LightingDisplay.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
@@ -52,6 +53,8 @@ struct InspectorPanelContext {
     bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Last rendered object identity map.
     std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.
+    const LightingDisplay* lightingDisplay =
+        nullptr; ///< Coherent lighting readings and latest warnings.
 };
 
 /// Draws the Inspector panel over exactly one subject (spec section 7): its kind and display name,

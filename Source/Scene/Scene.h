@@ -11,6 +11,7 @@
 #include "RHI/RHI.h"
 #include "Render/Bounds.h"
 #include "Render/Camera.h"
+#include "Render/LocalLight.h"
 #include "Render/Mesh.h"
 #include "Render/SceneView.h"
 #include "Scene/MaterialRecord.h"
@@ -22,6 +23,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -87,6 +89,32 @@ public:
     /// Removes an unreferenced texture; stale or still-referenced identities are misuse.
     /// Submitted references retain the resource until three paced frames after its last use.
     void removeTexture(TextureId id);
+    /// Adds a local point or spot light, validating it the way `render::makeLightRow` does and
+    /// failing with `InvalidDesc` for invalid parameters or once `render::kMaxLocalLights` live
+    /// lights already exist. May be called before or after finalize.
+    rhi::Result<LightId> addLight(const render::LocalLight& light);
+    /// Removes a live local light and returns whether the identity resolved; a stale or foreign
+    /// identity is reported rather than asserted. Preserves later row slots.
+    bool removeLight(LightId id);
+    /// Replaces a live local light's parameters, validating them the way `addLight` does; an
+    /// invalid identity or invalid light fails with `InvalidDesc` and leaves the light unchanged.
+    rhi::Result<void> updateLight(LightId id, const render::LocalLight& light);
+    /// Returns the live local light's authored parameters, or null for an unresolvable identity.
+    const render::LocalLight* light(LightId id) const;
+    /// Returns every existing local light identity, including disabled lights, by row slot.
+    std::span<const LightId> localLights() const;
+    /// Number of enabled lights contributing to rendering; disabled lights still occupy capacity.
+    uint32_t enabledLightCount() const;
+    /// Immutable authored Sponza rig identities, including disabled or subsequently removed lights.
+    std::span<const LightId> sponzaLightIds() const { return m_sponzaLightIds; }
+    /// Resolves a `LightOrbitTrack::light` creation-order index (the order `addLight` was called,
+    /// among lights added before `finalize`) to the `LightId` it was assigned, for playback and
+    /// session code outside Scene. The index space freezes at `finalize`: a light added afterward
+    /// -- a runtime pile addition, say -- has no index and is static by contract, however many
+    /// lights are later added and removed. Returns `nullopt` only for an index at or beyond that
+    /// frozen count; a later-removed light's id still resolves here, and callers distinguish it
+    /// from a live one via `light()`.
+    std::optional<LightId> animationLightId(uint32_t index) const;
     /// Returns the live object or null for stale, foreign or invalid identities.
     SceneObject* tryObject(InstanceId id);
     /// Returns the live object or null; the pointer is invalidated by object-list mutations.
@@ -131,6 +159,9 @@ public:
     std::unique_ptr<rhi::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
     std::unique_ptr<rhi::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
     std::unique_ptr<rhi::Texture> dfgLut;            ///< Split-sum material response lookup table.
+    /// Immutable authored grid-light count set before finalize; zero outside LightLab. Remaining
+    /// initial local lights are the authored overflow pile, independently editable by the session.
+    uint32_t lightLabGridCount = 0;
     SceneCamera initialCamera{};     ///< Camera pose restored when the scene becomes active.
     asset::SceneAnimation animation; ///< Tracks this scene plays; empty for a static scene.
     double animationTime = 0.0; ///< Playback position in seconds, advanced by advanceAnimation().
@@ -148,7 +179,9 @@ public:
     void advanceAnimation(double dt);
 
     /// Samples every rigid track at `seconds` and writes the result into its object's transform
-    /// fields, and every emissive track into its object's `emissiveStrength`. Track object indices
+    /// fields, every emissive track into its object's `emissiveStrength`, and every light orbit
+    /// track into its light's position through `updateLight` (a removed light's track is skipped,
+    /// not a contract violation). Light motion never advances `coverageEpoch`. Track object indices
     /// and sampled poses are validated where tracks are built, so a pose that cannot be decomposed
     /// here is a contract violation.
     void animate(double seconds);
@@ -165,6 +198,8 @@ public:
                            bool wireframe) const;
 
 private:
+    friend class SponzaLightRig;
+    std::vector<LightId> m_sponzaLightIds;
     void validateObjects() const;
     struct Storage;
     std::unique_ptr<Storage> m_storage;
@@ -212,5 +247,13 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& devic
 asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& device,
                                                                   uint32_t instanceCount = 4096,
                                                                   uint32_t occluderCount = 0);
+
+/// Builds a deterministic material field (matte floor, pillar/sphere sweep) under lightCount local
+/// lights (1..render::kMaxLocalLights) on a jittered grid whose range scales with
+/// 1/sqrt(lightCount), plus pileCount extra lights (default 0) stacked at one point; lightCount +
+/// pileCount must not exceed render::kMaxLocalLights. See Source/Scene/LightLab.h for the
+/// device-free generation this wraps.
+asset::AssetResult<std::unique_ptr<Scene>>
+loadLightLabScene(rhi::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
 
 } // namespace lmx::scene

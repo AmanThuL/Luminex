@@ -9,6 +9,9 @@
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
 #include "Render/HzbStage.h"
+#include "Render/LightClusterStage.h"
+#include "Render/LightDebugStage.h"
+#include "Render/LightingStatus.h"
 #include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneStage.h"
@@ -150,6 +153,13 @@ public:
     /// Reads all submitted visibility results after the caller has completed Device::waitIdle.
     void drainVisibilityAfterIdle();
 
+    /// Local-light selection and context of the last declared frame.
+    const LightingStatus& lightingStatus() const { return m_lightingStatus; }
+    /// Moves completed lighting contexts to the caller; consume regularly as for visibility.
+    std::vector<LightingStatus> takeRetiredLighting();
+    /// Reads every submitted lighting result after the caller has completed Device::waitIdle.
+    void drainLightingAfterIdle();
+
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
@@ -190,6 +200,12 @@ private:
     std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rhi::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
+
+    LightClusterOutputs prepareLighting(RenderGraph& graph, rhi::CommandList& commands,
+                                        const SceneView& view, std::optional<GraphBuffer> lights,
+                                        const FrameExtents& extents,
+                                        const CameraFrameState& cameraState);
+    void retireLightingThrough(uint64_t frame);
 
     GraphTexture prepareOcclusion(RenderGraph& graph, const Camera& camera, const SceneView& view,
                                   const FrameExtents& extents, const CameraFrameState& cameraState);
@@ -280,6 +296,11 @@ private:
     bool m_occlusionStrictView = false;
     std::optional<glm::mat4> m_previousOcclusionViewProjection;
     VisibilityStatus m_visibilityStatus;
+    std::unique_ptr<LightClusterStage> m_lightClusters;
+    std::unique_ptr<LightDebugStage> m_lightDebug;
+    LightingStatus m_lightingStatus;
+    std::vector<LightingStatus> m_pendingLighting;
+    std::vector<LightingStatus> m_retiredLighting;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

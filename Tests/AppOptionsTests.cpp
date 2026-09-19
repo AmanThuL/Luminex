@@ -89,7 +89,7 @@ TEST_CASE("app options reject unknown scene IDs", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown scene ID 'Sponza'; valid IDs: sponza, damaged-helmet, milk-truck, "
-            "material-lab, temporal-lab, san-miguel, visibility-lab");
+            "material-lab, temporal-lab, san-miguel, visibility-lab, light-lab");
 }
 
 //======================================================================================================================
@@ -104,10 +104,10 @@ TEST_CASE("app options reject missing option values", "[app][options]") {
     REQUIRE(screenshotResult.error().message ==
             "--screenshot needs an output path: App --screenshot <out.png|out.bmp>");
     REQUIRE_FALSE(sceneResult);
-    REQUIRE(
-        sceneResult.error().message ==
-        "--scene needs an ID: App --scene "
-        "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab>");
+    REQUIRE(sceneResult.error().message ==
+            "--scene needs an ID: App --scene "
+            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|"
+            "light-lab>");
 }
 
 //======================================================================================================================
@@ -118,7 +118,8 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message ==
             "unknown argument '--unknown'; usage: App [--screenshot <out.png|out.bmp>] [--scene "
-            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab>"
+            "<sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|"
+            "light-lab>"
             "] [--windowed] "
             "[--frames <N>] [--temporal <off|raw|taa|metalfx>] "
             "[--temporal-view <off|motion|reprojection|reprojected|rejection|weight|age>] "
@@ -127,6 +128,9 @@ TEST_CASE("app options reject unknown arguments", "[app][options]") {
             "[--visibility <cull|off>] [--classify <cpu|gpu>] [--classify-check] "
             "[--submission <direct|indirect|batched>] "
             "[--lab-instances <1..1048576>] [--lab-occluders <0..1024>] "
+            "[--lab-lights <1..4096>] [--lab-light-pile <0..4096>] "
+            "[--light-check] [--light-view <off|count|overflow|missed>] [--local-lights "
+            "<off|direct|clustered>] [--local-light-rig <on|off>] "
             "[--occlusion <on|off>] [--occlusion-check] [--hzb-level <k>] "
             "[--measure-camera <track|initial>] "
             "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
@@ -399,9 +403,9 @@ TEST_CASE("--render-scale 1.0 combined with --temporal off is not an error", "[a
 // The CLI text is generated from the catalog (Source/App/Model/AppOptions.cpp's sceneIdList), not a
 // second hardcoded list -- this pins the catalog's own order/content so the two cannot drift.
 TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app][options]") {
-    const std::array<std::string_view, 7> expected = {
-        "sponza",       "damaged-helmet", "milk-truck",    "material-lab",
-        "temporal-lab", "san-miguel",     "visibility-lab"};
+    const std::array<std::string_view, 8> expected = {
+        "sponza",       "damaged-helmet", "milk-truck",     "material-lab",
+        "temporal-lab", "san-miguel",     "visibility-lab", "light-lab"};
     const std::span<const std::string_view> ids = lmx::scene::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());
@@ -563,4 +567,136 @@ TEST_CASE("sequence container defaults to PNG and accepts an explicit BMP overri
     const auto result = parseAppOptions(repeated);
     REQUIRE(result);
     REQUIRE(result->captureFormat == CaptureFormat::Png);
+}
+
+//======================================================================================================================
+TEST_CASE("--lab-lights and --lab-light-pile default and parse with --scene light-lab",
+          "[app][options]") {
+    const auto defaults = parseAppOptions({});
+    REQUIRE(defaults);
+    REQUIRE(defaults->labLights == 256);
+    REQUIRE(defaults->labLightPile == 0);
+
+    const std::array arguments = {
+        std::string_view{"--scene"},          std::string_view{"light-lab"},
+        std::string_view{"--lab-lights"},     std::string_view{"128"},
+        std::string_view{"--lab-light-pile"}, std::string_view{"16"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE(result);
+    REQUIRE(result->labLights == 128);
+    REQUIRE(result->labLightPile == 16);
+}
+
+//======================================================================================================================
+TEST_CASE("--lab-lights and --lab-light-pile reject out-of-range values", "[app][options]") {
+    const std::vector<std::vector<std::string_view>> invalid{
+        {"--scene", "light-lab", "--lab-lights", "0"},
+        {"--scene", "light-lab", "--lab-lights", "4097"},
+        {"--scene", "light-lab", "--lab-lights", "-1"},
+        {"--scene", "light-lab", "--lab-light-pile", "-1"},
+        {"--scene", "light-lab", "--lab-light-pile", "4097"},
+        {"--lab-lights"},
+        {"--lab-light-pile"},
+    };
+    for (const auto& args : invalid) {
+        CAPTURE(args);
+        REQUIRE_FALSE(parseAppOptions(args));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("--lab-lights and --lab-light-pile require --scene light-lab", "[app][options]") {
+    const std::vector<std::vector<std::string_view>> invalid{
+        {"--lab-lights", "128"},
+        {"--scene", "visibility-lab", "--lab-lights", "128"},
+        {"--lab-light-pile", "16"},
+        {"--scene", "visibility-lab", "--lab-light-pile", "16"},
+    };
+    for (const auto& args : invalid) {
+        CAPTURE(args);
+        REQUIRE_FALSE(parseAppOptions(args));
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("--lab-lights plus --lab-light-pile must not exceed the local light capacity",
+          "[app][options]") {
+    const std::array arguments = {
+        std::string_view{"--scene"},          std::string_view{"light-lab"},
+        std::string_view{"--lab-lights"},     std::string_view{"4096"},
+        std::string_view{"--lab-light-pile"}, std::string_view{"1"}};
+    const auto result = parseAppOptions(arguments);
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message == "--lab-lights plus --lab-light-pile must not exceed 4096");
+}
+
+//======================================================================================================================
+TEST_CASE("local light options default to Clustered and the authored Sponza rig",
+          "[app][options]") {
+    const auto defaults = parseAppOptions({});
+    REQUIRE(defaults);
+    REQUIRE(defaults->localLightMode == lmx::render::LocalLightMode::Clustered);
+    REQUIRE(defaults->localLightRig);
+    for (const auto& [text, mode] :
+         std::array{std::pair{"off", lmx::render::LocalLightMode::Off},
+                    std::pair{"direct", lmx::render::LocalLightMode::Direct},
+                    std::pair{"clustered", lmx::render::LocalLightMode::Clustered}}) {
+        const std::array<std::string_view, 2> args{"--local-lights", text};
+        const auto parsed = parseAppOptions(args);
+        REQUIRE(parsed);
+        REQUIRE(parsed->localLightMode == mode);
+    }
+    const std::array<std::string_view, 4> args{"--scene", "sponza", "--local-light-rig", "on"};
+    const auto enabled = parseAppOptions(args);
+    REQUIRE(enabled);
+    REQUIRE(enabled->localLightRig);
+    for (const auto name : {"light-lab", "damaged-helmet", "temporal-lab"}) {
+        const std::array<std::string_view, 2> sceneArgs{"--scene", name};
+        const auto other = parseAppOptions(sceneArgs);
+        REQUIRE(other);
+        REQUIRE_FALSE(other->localLightRig);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("local light flags reject malformed values and rig use outside Sponza",
+          "[app][options]") {
+    for (const auto& args : std::vector<std::vector<std::string_view>>{
+             {"--local-lights"},
+             {"--local-lights", "invalid"},
+             {"--local-light-rig"},
+             {"--local-light-rig", "invalid"},
+             {"--scene", "light-lab", "--local-light-rig", "on"},
+             {"--scene", "damaged-helmet", "--local-light-rig", "off"}}) {
+        CAPTURE(args);
+        REQUIRE_FALSE(parseAppOptions(args));
+    }
+    const std::array<std::string_view, 2> args{"--local-light-rig", "off"};
+    const auto disabled = parseAppOptions(args);
+    REQUIRE(disabled);
+    REQUIRE_FALSE(disabled->localLightRig);
+}
+
+//======================================================================================================================
+TEST_CASE("lighting diagnostics require clustered unscored and exclusive views",
+          "[app][options][light-check]") {
+    const auto parse = [](std::initializer_list<std::string_view> args) {
+        return parseAppOptions(std::span(args.begin(), args.size()));
+    };
+    REQUIRE(parse({"--local-lights", "clustered", "--light-check"}));
+    REQUIRE(parse({"--local-lights", "clustered", "--light-view", "missed", "--temporal", "off"}));
+    REQUIRE(parse({"--light-check"}));
+    REQUIRE(parse({"--light-view", "count"}));
+    REQUIRE_FALSE(parse({"--local-lights", "direct", "--light-check"}));
+    REQUIRE_FALSE(parse({"--local-lights", "off", "--light-view", "count"}));
+    REQUIRE_FALSE(parse({"--local-lights", "clustered", "--light-view", "invalid"}));
+    REQUIRE_FALSE(parse(
+        {"--local-lights", "clustered", "--light-view", "missed", "--temporal-view", "motion"}));
+    REQUIRE_FALSE(parse({"--local-lights", "clustered", "--light-view", "count", "--classify",
+                         "gpu", "--occlusion", "on", "--hzb-level", "0"}));
+    REQUIRE_FALSE(parse({"--local-lights", "clustered", "--light-check", "--measure", "out.json"}));
+    REQUIRE_FALSE(
+        parse({"--local-lights", "clustered", "--light-view", "missed", "--measure", "out.json"}));
+    REQUIRE(parse({"--local-lights", "clustered", "--light-check", "--light-view", "missed",
+                   "--measure", "out.json", "--unscored"}));
 }

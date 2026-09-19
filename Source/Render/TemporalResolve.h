@@ -151,6 +151,9 @@ public:
     /// Last access recorded for a depth slot, including opaque vendor reads across temporal off.
     rhi::TextureUse depthUse(uint32_t slot) const;
 
+    /// Records a post-reconstruction diagnostic read of the actual depth slot.
+    void recordDepthRead(uint32_t slot);
+
     /// Imports the colour history of `slot` with the terminal use recordFrame() last recorded for
     /// it, so a mode switch between two frames imports the slot with the use the other mode
     /// actually left it in.

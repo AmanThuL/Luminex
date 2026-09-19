@@ -8,8 +8,10 @@
 #include "Core/Assert.h"
 #include "Core/Color.h"
 #include "RHI/CaptureSchema.h"
+#include "Render/LightClusters.h"
 #include "Render/TemporalResolve.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <format>
@@ -65,6 +67,25 @@ struct SkyUniforms {
 };
 static_assert(sizeof(SkyUniforms) == 176, "must match Sky.slang's SkyUniforms");
 
+// Mirrors the scalar-packed LocalLightParams at b11 in LocalLights.slang.
+struct LocalLightParams {
+    uint32_t mode;                                // 0 -- LocalLightMode
+    uint32_t rowCount;                            // 4
+    uint32_t gridX;                               // 8
+    uint32_t gridY;                               // 12
+    uint32_t gridZ;                               // 16
+    uint32_t activeOriginX;                       // 20
+    uint32_t activeOriginY;                       // 24
+    uint32_t activeWidth;                         // 28
+    uint32_t activeHeight;                        // 32
+    float sliceDepth[kClusterSliceBoundaryCount]; // 36
+};
+static_assert(sizeof(LocalLightParams) == 136, "must match LocalLights.slang's LocalLightParams");
+static_assert(offsetof(LocalLightParams, rowCount) == 4);
+static_assert(offsetof(LocalLightParams, gridX) == 8);
+static_assert(offsetof(LocalLightParams, activeWidth) == 28);
+static_assert(offsetof(LocalLightParams, sliceDepth) == 36);
+
 // Shaders/Modules/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
 constexpr int32_t kShadowFilterPcf = 0;
 constexpr int32_t kShadowFilterPcss = 1;
@@ -97,6 +118,17 @@ constexpr uint32_t kDfgLutTextureSlot = 9;
 constexpr uint32_t kLinearSamplerSlot = 0;
 constexpr uint32_t kShadowSamplerSlot = 1;
 constexpr uint32_t kIblSamplerSlot = 2;
+
+//======================================================================================================================
+// A zero-light frame must not index even a fallback grid.
+LocalLightMode resolveLocalLightMode(LocalLightMode requested, uint32_t liveLightCount,
+                                     bool hasClusters) {
+    if (requested == LocalLightMode::Off || liveLightCount == 0)
+        return LocalLightMode::Off;
+    LMX_ASSERT(requested != LocalLightMode::Clustered || hasClusters,
+               "clustered shading requires this frame's grid and list");
+    return requested;
+}
 
 //======================================================================================================================
 DirLightUniform toUniform(const DirectionalLight& light) {
@@ -153,6 +185,32 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
                     {"vertexCount", offsetof(MeshRow, vertexCount), "uint"},
                     {"boundsMin", offsetof(MeshRow, boundsMin), "float3"},
                     {"boundsMax", offsetof(MeshRow, boundsMax), "float3"}}});
+    schema.registerUniformStruct(
+        {.name = "LightRow",
+         .slot = kSceneLightsSlot,
+         .sizeBytes = sizeof(LightRow),
+         .fields = {{"position", offsetof(LightRow, position), "float3"},
+                    {"range", offsetof(LightRow, range), "float"},
+                    {"strength", offsetof(LightRow, strength), "float3"},
+                    {"spotScale", offsetof(LightRow, spotScale), "float"},
+                    {"direction", offsetof(LightRow, direction), "float3"},
+                    {"spotOffset", offsetof(LightRow, spotOffset), "float"},
+                    {"boundCentre", offsetof(LightRow, boundCentre), "float3"},
+                    {"boundRadius", offsetof(LightRow, boundRadius), "float"}}});
+    schema.registerUniformStruct(
+        {.name = "LocalLightParams",
+         .slot = kLocalLightParamsSlot,
+         .sizeBytes = sizeof(LocalLightParams),
+         .fields = {{"mode", offsetof(LocalLightParams, mode), "uint"},
+                    {"rowCount", offsetof(LocalLightParams, rowCount), "uint"},
+                    {"gridX", offsetof(LocalLightParams, gridX), "uint"},
+                    {"gridY", offsetof(LocalLightParams, gridY), "uint"},
+                    {"gridZ", offsetof(LocalLightParams, gridZ), "uint"},
+                    {"activeOriginX", offsetof(LocalLightParams, activeOriginX), "uint"},
+                    {"activeOriginY", offsetof(LocalLightParams, activeOriginY), "uint"},
+                    {"activeWidth", offsetof(LocalLightParams, activeWidth), "uint"},
+                    {"activeHeight", offsetof(LocalLightParams, activeHeight), "uint"},
+                    {"sliceDepth", offsetof(LocalLightParams, sliceDepth), "float[25]"}}});
 }
 
 //======================================================================================================================
@@ -207,6 +265,35 @@ void SceneStage::registerPassLayoutsForCapture() {
 rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
                                                             rhi::Format sceneColorFormat) {
     std::unique_ptr<SceneStage> self(new SceneStage);
+
+    // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
+    {
+        const LightRow freeRow;
+        auto rows = device.createBuffer(
+            {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"}, &freeRow);
+        if (!rows) {
+            return std::unexpected(rows.error());
+        }
+        self->m_fallbackLightRows = std::move(*rows);
+
+        const ClusterRecord emptyRecord;
+        auto grid = device.createBuffer(
+            {.size = sizeof(emptyRecord), .label = "lmx.render.localLightFallbackGrid"},
+            &emptyRecord);
+        if (!grid) {
+            return std::unexpected(grid.error());
+        }
+        self->m_fallbackClusterGrid = std::move(*grid);
+
+        constexpr uint32_t kEmptyIndex = 0;
+        auto indices = device.createBuffer(
+            {.size = sizeof(kEmptyIndex), .label = "lmx.render.localLightFallbackIndices"},
+            &kEmptyIndex);
+        if (!indices) {
+            return std::unexpected(indices.error());
+        }
+        self->m_fallbackClusterIndices = std::move(*indices);
+    }
 
     if (auto library = device.loadShaderLibrary("Shaders/ScenePass"); library) {
         self->m_sceneLibrary = std::move(*library);
@@ -474,6 +561,27 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
     passUniforms.viewProjUnjittered = cameraState.viewProjection;
     passUniforms.previousViewProjUnjittered = previousCamera.viewProjection;
 
+    LMX_ASSERT(inputs.lightGrid.has_value() == inputs.lightIndices.has_value(),
+               "cluster grid and index list must be supplied together");
+    // The render area is origin-anchored; lookup uses its active extent and reversed-Z boundaries.
+    const LocalLightMode localLightMode =
+        resolveLocalLightMode(view.localLightMode, view.tables.liveLightCount,
+                              inputs.lightGrid.has_value() && inputs.lightIndices.has_value());
+    LocalLightParams localLightParams{
+        .mode = static_cast<uint32_t>(localLightMode),
+        .rowCount = localLightMode == LocalLightMode::Off ? 0u : view.tables.lightRowCount,
+        .gridX = kClusterTilesX,
+        .gridY = kClusterTilesY,
+        .gridZ = kClusterSliceCount,
+        .activeOriginX = 0,
+        .activeOriginY = 0,
+        .activeWidth = extents.renderWidth,
+        .activeHeight = extents.renderHeight,
+        .sliceDepth = {}};
+    LMX_ASSERT(cameraState.nearZ > 0.0f, "the froxel slice table needs a positive near plane");
+    const auto sliceDepths = clusterSliceDepths(cameraState.nearZ);
+    std::copy(sliceDepths.begin(), sliceDepths.end(), std::begin(localLightParams.sliceDepth));
+
     // The clear has to be the value a fragment writing that colour would have produced, or the
     // background and the geometry would disagree about what space the target holds. That means
     // both steps a fragment takes: the authored display-space colour decodes to linear (once,
@@ -493,6 +601,13 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
     sceneDesc.bufferReads.assign(inputs.sceneBuffers.begin(), inputs.sceneBuffers.end());
     sceneDesc.bufferReads.push_back(inputs.drawRows);
     sceneDesc.indirectBufferReads.push_back(inputs.drawArguments);
+    if (inputs.lights.has_value()) {
+        sceneDesc.bufferReads.push_back(*inputs.lights);
+    }
+    if (inputs.lightGrid) {
+        sceneDesc.bufferReads.push_back(*inputs.lightGrid);
+        sceneDesc.bufferReads.push_back(*inputs.lightIndices);
+    }
     // Declared only in auto mode: manual mode's shading never reads the feedback buffer (spec 9),
     // so declaring the read here always would be a lie about what the pass depends on.
     if (view.autoExposureEnabled) {
@@ -539,8 +654,8 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                               2.0f * jitterPixels.y / static_cast<float>(extents.renderHeight)};
     graph.addPass(
         "lmx.pass.scene", std::move(sceneDesc),
-        [this, &commands, view, inputs, passUniforms, shadowRead, exposureCurrent, temporalEnabled,
-         cameraState, previousCamera, jitterNdc](const PassResources& resources) {
+        [this, &commands, view, inputs, passUniforms, localLightParams, shadowRead, exposureCurrent,
+         temporalEnabled, cameraState, previousCamera, jitterNdc](const PassResources& resources) {
             // Resolved rather than captured: the graph hands over the shadow map only because this
             // pass declared reading it, which is what ordered it after the pass that wrote it.
             const GraphResult<rhi::Texture*> shadowMapTexture = resources.texture(shadowRead);
@@ -589,6 +704,27 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 commands.bindBuffer(kExposureOverrideSlot, **exposureOverride);
             }
             commands.bindFrameData(kPassUniformsSlot, passUniforms);
+            // Declared slots stay bound even when the selected loop never reads their data.
+            rhi::Buffer* lightRows = m_fallbackLightRows.get();
+            if (inputs.lights.has_value()) {
+                const GraphResult<rhi::Buffer*> imported = resources.buffer(*inputs.lights);
+                LMX_ASSERT(imported.has_value(), imported.error().message);
+                lightRows = *imported;
+            }
+            commands.bindBuffer(kSceneLightsSlot, *lightRows);
+            rhi::Buffer* grid = m_fallbackClusterGrid.get();
+            rhi::Buffer* indices = m_fallbackClusterIndices.get();
+            if (inputs.lightGrid) {
+                const auto gridResult = resources.buffer(*inputs.lightGrid);
+                const auto indexResult = resources.buffer(*inputs.lightIndices);
+                LMX_ASSERT(gridResult.has_value(), gridResult.error().message);
+                LMX_ASSERT(indexResult.has_value(), indexResult.error().message);
+                grid = *gridResult;
+                indices = *indexResult;
+            }
+            commands.bindBuffer(kLightClusterGridSlot, *grid);
+            commands.bindBuffer(kLightClusterIndexSlot, *indices);
+            commands.bindFrameData(kLocalLightParamsSlot, localLightParams);
             if (view.tables.vertices) {
                 commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
                 commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);

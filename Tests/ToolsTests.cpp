@@ -15,3 +15,13 @@ TEST_CASE("GpuDebug Python tool tests pass", "[tools]") {
                             "/Tools/GpuDebug/tests\" 2>&1";
     REQUIRE(std::system(cmd.c_str()) == 0);
 }
+
+//======================================================================================================================
+TEST_CASE("Lighting evidence Python tool tests pass", "[tools][lighting-tools]") {
+    for (const char* script :
+         {"Tools/Lighting/missed_oracle.py", "Tools/Bench/lighting_paired.py"}) {
+        const std::string command =
+            std::string("python3 \"") + LMX_REPO_ROOT + "/" + script + "\" --selftest 2>&1";
+        REQUIRE(std::system(command.c_str()) == 0);
+    }
+}

@@ -17,6 +17,8 @@
 // visibility term below is deliberately the same one Ibl.cpp's DFG integration uses.
 module Lighting;
 
+import SceneTables;
+
 static const float kPi = 3.141592653589793;
 
 // Constant-buffer float3 fields occupy 16-byte slots in the CPU mirror.
@@ -80,19 +82,17 @@ public float3 F0FromBaseColor(float3 baseColor, float metallic)
 }
 
 //======================================================================================================================
-// One analytic directional light. `lightVec` points opposite ray travel, so a light overhead is
-// sampled straight up. Diffuse takes the energy Fresnel did not reflect and a metal has no diffuse
-// lobe at all, so the two terms sum to at most one by construction.
-public float3 ComputeDirectionalLight(DirLight light, float3 normal, float3 toEye, float3 baseColor,
-                                      float3 f0, float metallic, float alpha)
+// The two lobes one analytic light of any kind reflects towards the eye, before the cosine factor
+// and the light's own radiance scale them. Diffuse takes the energy Fresnel did not reflect and a
+// metal has no diffuse lobe at all, so the two terms sum to at most one by construction.
+//
+// Factored out of ComputeDirectionalLight so a directional and a punctual light cannot drift apart.
+// The expression order below is the one the directional light has always evaluated, and both
+// callers apply `* nol * strength` in the same place afterwards, so existing images are unchanged.
+// `lightVec` points opposite ray travel and `nol` is the caller's already-positive N.L.
+float3 SurfaceResponse(float3 normal, float3 toEye, float3 lightVec, float nol, float3 baseColor,
+                       float3 f0, float metallic, float alpha)
 {
-    float3 lightVec = -light.direction;
-    float nol = saturate(dot(normal, lightVec));
-    if (nol <= 0.0f)
-    {
-        return float3(0.0f);
-    }
-
     // A shading normal perturbed by a normal map can face away from a view direction the geometry
     // still faces, which would drive the visibility term negative; the floor keeps it finite.
     float nov = max(dot(normal, toEye), 1e-4f);
@@ -104,7 +104,88 @@ public float3 ComputeDirectionalLight(DirLight light, float3 normal, float3 toEy
     float3 diffuse = (1.0f - fresnel) * (1.0f - metallic) * baseColor / kPi;
     float3 specular = D_GGX(noh, alpha) * V_SmithHeightCorrelated(nov, nol, alpha) * fresnel;
 
-    return (diffuse + specular) * nol * light.strength;
+    return diffuse + specular;
+}
+
+//======================================================================================================================
+// One analytic directional light. `lightVec` points opposite ray travel, so a light overhead is
+// sampled straight up.
+public float3 ComputeDirectionalLight(DirLight light, float3 normal, float3 toEye, float3 baseColor,
+                                      float3 f0, float metallic, float alpha)
+{
+    float3 lightVec = -light.direction;
+    float nol = saturate(dot(normal, lightVec));
+    if (nol <= 0.0f)
+    {
+        return float3(0.0f);
+    }
+
+    return SurfaceResponse(normal, toEye, lightVec, nol, baseColor, f0, metallic, alpha) * nol *
+           light.strength;
+}
+
+//======================================================================================================================
+// The glTF / UE / Frostbite windowed inverse square, with the distance floor that keeps a surface
+// arbitrarily close to a punctual light finite. The window is exactly zero at and beyond `range`,
+// which is what lets a conservative cluster list drop only exact-zero terms.
+public float PunctualAttenuation(float dist, float range)
+{
+    if (dist >= range)
+    {
+        return 0.0f;
+    }
+    const float kDistanceFloor = 0.01f;
+    float ratio = dist / range;
+    float ratio4 = ratio * ratio * ratio * ratio;
+    float window = saturate(1.0f - ratio4);
+    return (window * window) / max(dist * dist, kDistanceFloor * kDistanceFloor);
+}
+
+//======================================================================================================================
+// The smoothed cone falloff. A point light's stored scale 0 and offset 1 make this identically one,
+// so one expression serves both light types and nothing branches on the type.
+public float SpotTerm(float cosTheta, float spotScale, float spotOffset)
+{
+    float term = saturate(cosTheta * spotScale + spotOffset);
+    return term * term;
+}
+
+//======================================================================================================================
+// One analytic point or spot light, sharing SurfaceResponse's BRDF core with the directional light
+// above. Source/Render/LocalLightMath.cpp mirrors this function statement for statement and
+// Tests/GpuLocalLightTests.cpp holds the two to a 64-sample agreement.
+//
+// The three tests below are one ordered early-out, each returning exact zero: outside the range,
+// outside the cone, or facing away. Exactness is a contract, not an optimization -- clustered
+// shading is lossless only because a light that fails the first two tests contributes nothing at
+// all, so a conservative per-froxel list may drop it.
+public float3 ComputePunctualLight(LightRow light, float3 position, float3 normal, float3 toEye,
+                                   float3 baseColor, float3 f0, float metallic, float alpha)
+{
+    float3 toLight = light.position - position;
+    float dist = length(toLight);
+    if (dist >= light.range)
+    {
+        return float3(0.0f);
+    }
+    float3 lightVec = toLight / max(dist, 1e-8f);
+
+    float cosTheta = dot(-lightVec, light.direction);
+    float cone = SpotTerm(cosTheta, light.spotScale, light.spotOffset);
+    if (cone <= 0.0f)
+    {
+        return float3(0.0f);
+    }
+
+    float nol = saturate(dot(normal, lightVec));
+    if (nol <= 0.0f)
+    {
+        return float3(0.0f);
+    }
+
+    float attenuation = PunctualAttenuation(dist, light.range);
+    return SurfaceResponse(normal, toEye, lightVec, nol, baseColor, f0, metallic, alpha) * nol *
+           light.strength * attenuation * cone;
 }
 
 //======================================================================================================================

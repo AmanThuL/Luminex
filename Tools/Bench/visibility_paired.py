@@ -18,6 +18,8 @@ import statistics
 import subprocess
 import sys
 
+import lighting_report
+
 SEED = 0x4C4D5836
 RESAMPLES = 10000
 WORKLOADS = {
@@ -100,7 +102,7 @@ def validate_report(report, expected, scored):
             raise ValueError("invalid measurement: " + name)
 
     require_dict(report, "report")
-    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] not in (2, 3) or report.get("complete") is not True:
+    if type(report.get("schemaVersion")) is not int or report["schemaVersion"] not in (2, 3, 4) or report.get("complete") is not True:
         raise ValueError("incomplete or unsupported report")
     legacy = report["schemaVersion"] == 2
     if legacy and (expected["occlusionEnabled"] or expected["occlusionCheck"] or
@@ -111,7 +113,8 @@ def validate_report(report, expected, scored):
     if report.get("pacing") != "serialized-retirement":
         raise ValueError("unexpected retirement pacing")
     actual_plan = report.get("plan")
-    comparison = {k: v for k, v in expected.items() if not legacy or k not in
+    lighting_plan = lighting_report.comparable_plan(report["schemaVersion"], expected)
+    comparison = {k: v for k, v in lighting_plan.items() if not legacy or k not in
                   ("occlusionEnabled", "occlusionCheck", "hzbDebugLevel", "labOccluders")}
     if actual_plan != comparison:
         raise ValueError("run plan differs from requested invocation")
@@ -130,7 +133,7 @@ def validate_report(report, expected, scored):
     for key in ("MTL_DEBUG_LAYER", "MTL_CAPTURE_ENABLED", "MTL_SHADER_VALIDATION", "LMX_CAPTURE_AT_FRAME"):
         if key not in environment:
             raise ValueError("missing instrumentation flag: " + key)
-    if scored and any((key.startswith(("MTL_", "METAL_", "DYLD_")) or key == "LMX_CAPTURE_AT_FRAME")
+    if scored and any((key.startswith(("MTL_", "METAL_", "DYLD_")) or key in ("LMX_CAPTURE_AT_FRAME", "LMX_LIGHT_CHECK_DUMP"))
                       and value not in ("", "0") for key, value in environment.items()):
         raise ValueError("scored report contains enabled validation/capture instrumentation")
     hashes = [provenance["executableHash"], *shader_hashes.values()]
@@ -248,6 +251,8 @@ def validate_report(report, expected, scored):
                         and p["label"] != "lmx.pass.hzb.debug")
             if not math.isclose(scope, sample[metric], rel_tol=1e-12, abs_tol=1e-12):
                 raise ValueError(metric + " differs from joined passes")
+        if report["schemaVersion"] == 4:
+            lighting_report.validate_sample(sample, comparison)
         if sample["candidates"] != sample["visible"] + sample["rejected"]:
             raise ValueError("visibility count mismatch")
     return provenance

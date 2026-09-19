@@ -1,0 +1,98 @@
+render-graph frame 1
+resources
+  r0 texture "lmx.render.shadowMap" D32Float
+  r1 texture "lmx.render.sceneColorHdr" RGBA16Float
+  r2 texture "lmx.render.displayColor" BGRA8Unorm
+  r3 texture "lmx.render.sceneDepth" D32Float
+  r4 buffer "lmx.render.exposureBuffer"
+  r5 buffer "lmx.scene.vertices"
+  r6 buffer "lmx.scene.indices"
+  r7 buffer "lmx.scene.meshes"
+  r8 buffer "lmx.scene.instances"
+  r9 buffer "lmx.scene.materials"
+  r10 buffer "lmx.scene.lights"
+  r11 buffer "lmx.draw.rows"
+  r12 buffer "lmx.draw.args"
+  r13 buffer "lmx.render.histogramBuffer"
+  r14 texture "lmx.render.bloomChain" RGBA16Float
+  r15 texture "lmx.render.bloomBlur" RGBA16Float
+sinks
+  export r2 v1
+passes
+  p0 raster "lmx.pass.shadow"
+    read r5 v0
+    read r6 v0
+    read r7 v0
+    read r8 v0
+    read r9 v0
+    read r11 v0
+    indirect argument r12 v0
+    depth attachment r0 v0 mips[0..] layers[0..]
+  p1 raster "lmx.pass.scene"
+    read r0 v1 mips[0..] layers[0..]
+    read r5 v0
+    read r6 v0
+    read r7 v0
+    read r8 v0
+    read r9 v0
+    read r11 v0
+    read r10 v0
+    indirect argument r12 v0
+    color attachment r1 v0 mips[0..] layers[0..]
+    depth attachment r3 v0 mips[0..] layers[0..]
+  p14 raster "lmx.pass.display"
+    read r1 v1 mips[0..] layers[0..]
+    color attachment r2 v0 mips[0..] layers[0..]
+culled
+  p2 copy "lmx.pass.exposure.clearHistogram" no-sink-reaches-it
+    copy destination r13 v0
+  p3 compute "lmx.pass.exposure.histogram" no-sink-reaches-it
+    shader read r1 v1 mips[0..] layers[0..]
+    shader read r4 v0
+    write r13 v1
+  p4 compute "lmx.pass.exposure.resolve" no-sink-reaches-it
+    read r13 v2
+    write r4 v0
+  p5 compute "lmx.pass.bloom.threshold" no-sink-reaches-it
+    shader read r1 v1 mips[0..] layers[0..]
+    write r14 v0 mips[0..0] layers[0..]
+  p6 compute "lmx.pass.bloom.downsample0" no-sink-reaches-it
+    read r14 v1 mips[0..0] layers[0..]
+    write r14 v1 mips[1..1] layers[0..]
+  p7 compute "lmx.pass.bloom.downsample1" no-sink-reaches-it
+    read r14 v2 mips[1..1] layers[0..]
+    write r14 v2 mips[2..2] layers[0..]
+  p8 compute "lmx.pass.bloom.downsample2" no-sink-reaches-it
+    read r14 v3 mips[2..2] layers[0..]
+    write r14 v3 mips[3..3] layers[0..]
+  p9 compute "lmx.pass.bloom.downsample3" no-sink-reaches-it
+    read r14 v4 mips[3..3] layers[0..]
+    write r14 v4 mips[4..4] layers[0..]
+  p10 compute "lmx.pass.bloom.upsample3" no-sink-reaches-it
+    read r14 v5 mips[3..3] layers[0..]
+    read r14 v5 mips[4..4] layers[0..]
+    write r15 v0 mips[3..3] layers[0..]
+  p11 compute "lmx.pass.bloom.upsample2" no-sink-reaches-it
+    read r14 v5 mips[2..2] layers[0..]
+    read r15 v1 mips[3..3] layers[0..]
+    write r15 v1 mips[2..2] layers[0..]
+  p12 compute "lmx.pass.bloom.upsample1" no-sink-reaches-it
+    read r14 v5 mips[1..1] layers[0..]
+    read r15 v2 mips[2..2] layers[0..]
+    write r15 v2 mips[1..1] layers[0..]
+  p13 compute "lmx.pass.bloom.upsample0" no-sink-reaches-it
+    read r14 v5 mips[0..0] layers[0..]
+    read r15 v3 mips[1..1] layers[0..]
+    write r15 v3 mips[0..0] layers[0..]
+transitions
+  before p0 texture r0 mips[0..] layers[0..] ShaderRead -> RenderTarget
+  before p1 texture r0 mips[0..] layers[0..] RenderTarget -> ShaderRead
+  before p1 texture r1 mips[0..] layers[0..] ShaderRead -> RenderTarget
+  before p1 texture r3 mips[0..] layers[0..] ShaderRead -> RenderTarget
+  before p14 texture r1 mips[0..] layers[0..] RenderTarget -> ShaderRead
+  before p14 texture r2 mips[0..] layers[0..] ShaderRead -> RenderTarget
+transients
+  r14 unused
+  r15 unused
+memory
+  pooling on requested 0 high-water 0 saved 0

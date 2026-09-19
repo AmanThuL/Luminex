@@ -83,6 +83,7 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
     std::array<render::InstanceRow, 2> instances{};
     std::array<render::MaterialRow, 2> materials{};
     std::array<render::MeshRow, 2> meshes{};
+    std::array<render::LightRow, 2> lights{};
     for (uint32_t row = 0; row < 2; ++row) {
         auto& instance = instances[row];
         auto& material = materials[row];
@@ -118,6 +119,14 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
                        .boundsPadding0 = 0x34567890u + row,
                        .boundsMax = glm::vec3(4.125f, 5.25f, 6.5f) + float(row),
                        .boundsPadding1 = 0x45678901u + row};
+        lights[row] = {.position = glm::vec3(-2.5f, 7.75f, 0.125f) + float(row),
+                       .range = 11.5f + float(row),
+                       .strength = glm::vec3(3.25f, 2.125f, 1.0625f) + float(row),
+                       .spotScale = 5.75f + float(row),
+                       .direction = glm::vec3(0.0f, -1.0f, 0.0f),
+                       .spotOffset = -4.375f - float(row),
+                       .boundCentre = glm::vec3(-2.5f, 1.25f, 0.125f) + float(row),
+                       .boundRadius = 8.875f + float(row)};
     }
     auto instanceBuffer = (*device)->createBuffer(
         {.size = sizeof(instances), .label = "lmx.test.sceneTableAbi.instances"}, instances.data());
@@ -125,19 +134,26 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
         {.size = sizeof(materials), .label = "lmx.test.sceneTableAbi.materials"}, materials.data());
     auto meshBuffer = (*device)->createBuffer(
         {.size = sizeof(meshes), .label = "lmx.test.sceneTableAbi.meshes"}, meshes.data());
+    auto lightBuffer = (*device)->createBuffer(
+        {.size = sizeof(lights), .label = "lmx.test.sceneTableAbi.lights"}, lights.data());
     REQUIRE(instanceBuffer);
     REQUIRE(materialBuffer);
     REQUIRE(meshBuffer);
-    constexpr size_t kRowBytes =
-        sizeof(render::InstanceRow) + sizeof(render::MaterialRow) + sizeof(render::MeshRow);
+    REQUIRE(lightBuffer);
+    // The kernel packs one row of every table into this many words, so a wrong structured-buffer
+    // stride shifts the second row's words and fails on a specific field rather than in bulk.
+    constexpr size_t kRowBytes = sizeof(render::InstanceRow) + sizeof(render::MaterialRow) +
+                                 sizeof(render::MeshRow) + sizeof(render::LightRow);
     std::array<uint32_t, 2 * kRowBytes / sizeof(uint32_t)> expected{};
     for (size_t row = 0; row < 2; ++row) {
         auto* bytes = reinterpret_cast<std::byte*>(expected.data()) + row * kRowBytes;
         std::memcpy(bytes, &instances[row], sizeof(render::InstanceRow));
-        std::memcpy(bytes + sizeof(render::InstanceRow), &materials[row],
-                    sizeof(render::MaterialRow));
-        std::memcpy(bytes + sizeof(render::InstanceRow) + sizeof(render::MaterialRow), &meshes[row],
-                    sizeof(render::MeshRow));
+        bytes += sizeof(render::InstanceRow);
+        std::memcpy(bytes, &materials[row], sizeof(render::MaterialRow));
+        bytes += sizeof(render::MaterialRow);
+        std::memcpy(bytes, &meshes[row], sizeof(render::MeshRow));
+        bytes += sizeof(render::MeshRow);
+        std::memcpy(bytes, &lights[row], sizeof(render::LightRow));
     }
     auto output = (*device)->createBuffer({.size = sizeof(expected),
                                            .storageWrite = true,
@@ -152,6 +168,7 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
     commands.bindBuffer(render::kSceneInstancesSlot, **instanceBuffer);
     commands.bindBuffer(render::kSceneMaterialsSlot, **materialBuffer);
     commands.bindBuffer(render::kSceneMeshesSlot, **meshBuffer);
+    commands.bindBuffer(render::kSceneLightsSlot, **lightBuffer);
     commands.dispatch(2, 1, 1);
     commands.endComputePass();
     (*device)->endFrame(nullptr);
