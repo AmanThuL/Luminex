@@ -9,13 +9,13 @@
 namespace lmx::render {
 
 /// Clamps input/output scale into the engine and supported vendor intervals.
-float vendorRenderScale(float scale, const rhi::TemporalScalerSupport& support);
+float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& support);
 
 /// Vendor history resets independently of the engine's interchangeable color/depth histories.
 bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMode, bool recreated);
 
 /// Converts engine UV motion and NDC jitter to pixel motion-to-previous and texture-space jitter.
-rhi::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
+rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels);
 
 /// Translated, graph-owned signals read by the vendor pass after the packing dispatch.
 struct VendorTemporalPacked {
@@ -29,26 +29,26 @@ struct VendorTemporalPacked {
 class VendorTemporalScaler {
 public:
     /// Borrows the device, which must outlive this adapter and its encoded work.
-    explicit VendorTemporalScaler(rhi::Device& device) : m_device(device) {}
+    explicit VendorTemporalScaler(rojoRHI::Device& device) : m_device(device) {}
 
     /// Prepares a vendor request and its packing pipeline, or reports native fallback.
     ReconstructionSelection prepare(ReconstructionMode requested, uint32_t width, uint32_t height);
 
     /// Creates only the engine packing pipeline; works without a vendor capability or scaler.
-    rhi::Result<void> preparePacking();
+    rojoRHI::Result<void> preparePacking();
 
     /// Prepared pipeline for the engine-owned, exposure-corrected history diagnostic.
-    rhi::ComputePipeline& historyPipeline() const;
+    rojoRHI::ComputePipeline& historyPipeline() const;
 
     /// Retires the scaler and clears an extent-specific failure after a successful output resize.
     void invalidateOutput();
 
     /// Declares input translation; the pipeline must have been prepared successfully first.
-    VendorTemporalPacked declarePack(RenderGraph& graph, rhi::CommandList& commands,
+    VendorTemporalPacked declarePack(RenderGraph& graph, rojoRHI::CommandList& commands,
                                      const TemporalInputs& inputs);
 
     /// Declares the packing and external passes, exporting this frame's color-slot version.
-    GraphTexture declare(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const TemporalInputs& inputs);
 
     /// Records the frame's effective mode; temporal off is recorded as Raw by the stage.
@@ -61,12 +61,12 @@ public:
     uint32_t generation() const { return m_generation; }
 
 private:
-    rhi::Device& m_device;
-    std::unique_ptr<rhi::TemporalScaler> m_scaler;
-    std::unique_ptr<rhi::ShaderLibrary> m_packLibrary;
-    std::unique_ptr<rhi::ComputePipeline> m_packPipeline;
-    std::unique_ptr<rhi::ShaderLibrary> m_historyLibrary;
-    std::unique_ptr<rhi::ComputePipeline> m_historyPipeline;
+    rojoRHI::Device& m_device;
+    std::unique_ptr<rojoRHI::TemporalScaler> m_scaler;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_packLibrary;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_packPipeline;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_historyLibrary;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_historyPipeline;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     uint32_t m_generation = 0;

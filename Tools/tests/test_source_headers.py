@@ -69,7 +69,7 @@ COMPILE_DB = {
             "/SDK",
             "-std=c++23",
             "-Wall",
-            "-IRHI/Include",
+            "-IRojoRHI/Include",
             "-ISource",
             "-I",
             "/opt/glm/include",
@@ -90,7 +90,7 @@ COMPILE_DB = {
             "-isysroot",
             "/SDK",
             "-std=c++23",
-            "-IRHI/Include",
+            "-IRojoRHI/Include",
             "-ISource",
             "-isystem",
             "/opt/imgui/include",
@@ -140,7 +140,7 @@ class SyntaxCommandTests(unittest.TestCase):
         self.assertIn("-std=c++23", command)
         self.assertIn("-isysroot", command)
         self.assertIn("-target", command)
-        self.assertIn("-IRHI/Include", command)
+        self.assertIn("-IRojoRHI/Include", command)
         self.assertIn("-ISource", command)
         self.assertIn("-isystem", command)
         self.assertEqual(command[-4:], ["-fsyntax-only", "-x", "c++", "-"])
@@ -255,7 +255,7 @@ class SourceHeadersTests(unittest.TestCase):
                     "Source/App/Model/GraphLayout.h",
                     "Source/App/Model/GraphLayout.cpp",
                     "Source/Core/Log.h",
-                    "RHI/Include/RHI/Device.h",
+                    "RojoRHI/Include/rojoRHI/Device.h",
                 ],
             )
             result = headers.source_headers(root)

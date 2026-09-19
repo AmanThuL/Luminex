@@ -76,13 +76,13 @@ struct MaterialCoverage {
 };
 
 struct RetiringBuffer {
-    std::unique_ptr<rhi::Buffer> buffer;
+    std::unique_ptr<rojoRHI::Buffer> buffer;
     uint64_t releaseAtFrame = 0;
 };
 
 template <typename Row>
 struct PacedTable {
-    std::array<std::unique_ptr<rhi::Buffer>, kSlots> buffers;
+    std::array<std::unique_ptr<rojoRHI::Buffer>, kSlots> buffers;
     std::vector<Row> shadow;
     std::vector<uint8_t> dirty;
     uint32_t capacity = 0;
@@ -90,7 +90,7 @@ struct PacedTable {
 
 //======================================================================================================================
 template <typename Row>
-rhi::Result<void> reserveTable(rhi::Device& device, PacedTable<Row>& table, uint32_t count,
+rojoRHI::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& table, uint32_t count,
                                std::string_view label, uint64_t lastFrame,
                                std::vector<RetiringBuffer>& retiring, uint64_t& growthEvents) {
     if (count <= table.capacity && table.capacity != 0) {
@@ -102,7 +102,7 @@ rhi::Result<void> reserveTable(rhi::Device& device, PacedTable<Row>& table, uint
                    "scene capacity exhausted");
         capacity *= 2;
     }
-    std::array<std::unique_ptr<rhi::Buffer>, kSlots> buffers;
+    std::array<std::unique_ptr<rojoRHI::Buffer>, kSlots> buffers;
     for (uint32_t slot = 0; slot < kSlots; ++slot) {
         auto buffer = device.createBuffer({.size = uint64_t{capacity} * sizeof(Row),
                                            .storageRead = true,
@@ -181,16 +181,16 @@ struct Scene::Storage {
     /// light added post-finalize (unindexable, static by contract) cannot make it grow without
     /// bound across repeated runtime add/remove cycles.
     std::vector<LightId> lightCreationOrder;
-    std::vector<std::unique_ptr<rhi::Texture>> textures;
-    std::unique_ptr<rhi::Buffer> vertices;
-    std::unique_ptr<rhi::Buffer> indices;
+    std::vector<std::unique_ptr<rojoRHI::Texture>> textures;
+    std::unique_ptr<rojoRHI::Buffer> vertices;
+    std::unique_ptr<rojoRHI::Buffer> indices;
     PacedTable<render::InstanceRow> instanceTable;
     PacedTable<render::MaterialRow> materialTable;
     PacedTable<render::MeshRow> meshTable;
     PacedTable<render::LightRow> lightTable;
     std::vector<RetiringBuffer> retiring;
-    std::vector<std::pair<uint64_t, std::unique_ptr<rhi::Texture>>> retiringTextures;
-    rhi::Device* device = nullptr;
+    std::vector<std::pair<uint64_t, std::unique_ptr<rojoRHI::Texture>>> retiringTextures;
+    rojoRHI::Device* device = nullptr;
     uint64_t lastFrame = 0;
     uint64_t coverageEpoch = 0;
     std::vector<MaterialCoverage> materialCoverage;
@@ -266,7 +266,7 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
 }
 
 //======================================================================================================================
-TextureId Scene::addTexture(std::unique_ptr<rhi::Texture> texture) {
+TextureId Scene::addTexture(std::unique_ptr<rojoRHI::Texture> texture) {
     LMX_ASSERT(texture != nullptr, "scene texture must not be null");
     const uint32_t slot = allocateIdentity(m_storage->textureIds, m_storage->textureSearchStart);
     m_storage->textures.resize(m_storage->textureIds.size());
@@ -351,7 +351,7 @@ void Scene::removeTexture(TextureId id) {
 }
 
 //======================================================================================================================
-rhi::Result<LightId> Scene::addLight(const render::LocalLight& light) {
+rojoRHI::Result<LightId> Scene::addLight(const render::LocalLight& light) {
     auto row = render::makeLightRow(light);
     if (!row) {
         return std::unexpected(row.error());
@@ -359,7 +359,7 @@ rhi::Result<LightId> Scene::addLight(const render::LocalLight& light) {
     auto& storage = *m_storage;
     if (storage.liveLightIds.size() >= render::kMaxLocalLights) {
         return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc, "local light capacity exceeded"});
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "local light capacity exceeded"});
     }
     const uint32_t slot = allocateIdentity(storage.localLightIds, storage.localLightSearchStart);
     if (slot >= storage.localLightData.size()) {
@@ -398,11 +398,11 @@ bool Scene::removeLight(LightId id) {
 }
 
 //======================================================================================================================
-rhi::Result<void> Scene::updateLight(LightId id, const render::LocalLight& light) {
+rojoRHI::Result<void> Scene::updateLight(LightId id, const render::LocalLight& light) {
     auto& storage = *m_storage;
     if (!resolves(id, storage.store, storage.localLightIds)) {
         return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc, "light identity is invalid"});
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "light identity is invalid"});
     }
     auto row = render::makeLightRow(light);
     if (!row) {
@@ -485,7 +485,7 @@ const MaterialRecord* Scene::tryMaterial(MaterialId id) const {
 }
 
 //======================================================================================================================
-rhi::Texture* Scene::tryTexture(TextureId id) const {
+rojoRHI::Texture* Scene::tryTexture(TextureId id) const {
     return resolves(id, m_storage->store, m_storage->textureIds)
                ? m_storage->textures[id.slot].get()
                : nullptr;
@@ -506,7 +506,7 @@ const MaterialRecord& Scene::material(MaterialId id) const {
 }
 
 //======================================================================================================================
-rhi::Result<void> Scene::finalize(rhi::Device& device) {
+rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
     auto& storage = *m_storage;
     LMX_ASSERT(storage.device == nullptr, "scene is already finalized");
     std::vector<render::Vertex> vertices;
@@ -586,7 +586,7 @@ void Scene::validateObjects() const {
 }
 
 //======================================================================================================================
-rhi::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
+rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     auto& storage = *m_storage;
     validateObjects();
     LMX_ASSERT(storage.device, "scene must be finalized before preparing a frame");

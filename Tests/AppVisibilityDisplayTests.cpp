@@ -115,7 +115,7 @@ TEST_CASE("Visibility categories preserve failure diagnostics and separate pyram
     status.checkEnabled = true;
     status.rowMismatches = 1;
     status.overflow = true;
-    const std::array<rhi::PassTiming, 3> timings = {{{"lmx.pass.visibility.classify", 0.25},
+    const std::array<rojoRHI::PassTiming, 3> timings = {{{"lmx.pass.visibility.classify", 0.25},
                                                      {"lmx.pass.hzb.level0", 0.125},
                                                      {"lmx.pass.scene", 2.0}}};
     const auto fields = app::visibilityFields(status, timings);
@@ -159,7 +159,7 @@ TEST_CASE("Inspector visibility readings publish coherent owned frames at four H
     status.isRetired = true;
     status.sceneCounters.visible = 5;
     display.retire(status);
-    std::array<rhi::PassTiming, 1> timings = {{{"lmx.pass.hzb.level0", 0.125}}};
+    std::array<rojoRHI::PassTiming, 1> timings = {{{"lmx.pass.hzb.level0", 0.125}}};
     display.observeTimings(1, timings);
     display.publishReadings(0.01);
     REQUIRE(display.readingsStatus().isRetired);

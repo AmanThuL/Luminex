@@ -34,12 +34,12 @@ bool isWriteRole(UseRole role) {
 // Resolution saturates rather than wrapping: a count past the end of the chain is caught by the
 // containment check below, and this must produce a comparable bound for that message to name.
 //
-// The counts are passed rather than read off an rhi::Texture because a transient has no texture
+// The counts are passed rather than read off an rojoRHI::Texture because a transient has no texture
 // until the frame is executed, and every rule below has to answer the same way for both kinds.
-ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, uint32_t mipLevels,
+ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers) {
     const auto lastOf = [](uint32_t base, uint32_t count, uint32_t available) {
-        if (count == rhi::kAllMipLevels) {
+        if (count == rojoRHI::kAllMipLevels) {
             return available > base ? available - 1 : base;
         }
         if (count == 0) {

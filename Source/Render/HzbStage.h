@@ -48,38 +48,38 @@ struct HzbSource {
 class HzbStage {
 public:
     /// Loads reduction/publish pipelines. Readback enables only diagnostic texture readback.
-    static rhi::Result<std::unique_ptr<HzbStage>> create(rhi::Device& device,
+    static rojoRHI::Result<std::unique_ptr<HzbStage>> create(rojoRHI::Device& device,
                                                          bool cpuReadback = false);
     /// Allocates from output extent only; unchanged dimensions preserve identity and history.
-    rhi::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
+    rojoRHI::Result<void> resize(uint32_t outputWidth, uint32_t outputHeight);
     /// Returns the last declared source, or an unbuilt record before the first build.
     const HzbSource& previousSource() const { return m_sources[m_lastBuilt]; }
     /// Returns the last declared pyramid, or an allocated unbuilt texture initially.
-    rhi::Texture& previousTexture() const { return *m_textures[m_lastBuilt]; }
+    rojoRHI::Texture& previousTexture() const { return *m_textures[m_lastBuilt]; }
     /// Imports the last declared pyramid with its recorded shader-read terminal state.
     GraphTexture importPrevious(RenderGraph& graph) const;
     /// Declares each reduction and a rooted publish read; alternates by build count.
     /// The caller must execute this graph before declaring another build. Source depth is sampled.
-    GraphTexture build(RenderGraph& graph, rhi::CommandList& commands, GraphTexture depth,
+    GraphTexture build(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture depth,
                        HzbSource source);
     /// Returns allocated dimensions and combined pyramid texel bytes.
     const HzbLayout& layout() const { return m_layout; }
 
 private:
-    rhi::Device* m_device = nullptr;
+    rojoRHI::Device* m_device = nullptr;
     bool m_cpuReadback = false;
     uint32_t m_outputWidth = 0;
     uint32_t m_outputHeight = 0;
     uint32_t m_next = 0;
     uint32_t m_lastBuilt = 1;
     HzbLayout m_layout;
-    std::array<std::unique_ptr<rhi::Texture>, 2> m_textures;
+    std::array<std::unique_ptr<rojoRHI::Texture>, 2> m_textures;
     std::array<HzbSource, 2> m_sources;
-    std::unique_ptr<rhi::ShaderLibrary> m_reduceLibrary;
-    std::unique_ptr<rhi::ComputePipeline> m_reducePipeline;
-    std::unique_ptr<rhi::ShaderLibrary> m_publishLibrary;
-    std::unique_ptr<rhi::ComputePipeline> m_publishPipeline;
-    std::unique_ptr<rhi::Buffer> m_publishBuffer;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_reduceLibrary;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_reducePipeline;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_publishLibrary;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_publishPipeline;
+    std::unique_ptr<rojoRHI::Buffer> m_publishBuffer;
     bool m_published = false;
 };
 

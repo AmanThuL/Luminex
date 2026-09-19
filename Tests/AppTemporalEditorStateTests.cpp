@@ -73,7 +73,7 @@ TEST_CASE("a camera cut is reported exactly once", "[app]") {
 
 //======================================================================================================================
 TEST_CASE("reconstruction names follow the capability without changing native labels", "[app]") {
-    const rhi::TemporalScalerSupport available{
+    const rojoRHI::TemporalScalerSupport available{
         .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Test Temporal"};
     REQUIRE(reconstructionName(render::ReconstructionMode::Raw, available) == "Raw");
     REQUIRE(reconstructionName(render::ReconstructionMode::NativeTaa, {}) == "Native TAA");
@@ -149,7 +149,7 @@ TEST_CASE("vendor fallback keeps requested and effective algorithms distinct", "
     render::TemporalStatus status;
     status.reconstruction = render::ReconstructionMode::NativeTaa;
     status.vendorFallback = render::VendorFallback::CreationFailed;
-    const rhi::TemporalScalerSupport support{.available = true, .name = "Test Temporal"};
+    const rojoRHI::TemporalScalerSupport support{.available = true, .name = "Test Temporal"};
     observeDeclaredTemporal(state, settings, status, 1);
     auto presentation = temporalPresentation(state, settings, status, support, 1280, 720);
     CHECK(presentation.requestedName == "Test Temporal");

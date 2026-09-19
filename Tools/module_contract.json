@@ -218,20 +218,20 @@
     "rhi": {
       "kind": "external",
       "paths": [
-        "RHI"
+        "RojoRHI"
       ],
       "targets": [
-        "RHI",
-        "RHIMetal4ImGui",
-        "RHITests"
+        "RojoRHI",
+        "RojoRHIMetal4ImGui",
+        "RojoRHITests"
       ],
       "includeRoots": [
-        "RHI/Include"
+        "RojoRHI/Include"
       ],
       "consumers": {
         "asset": [
-          "RHI/Format.h",
-          "RHI/TextureDesc.h"
+          "rojoRHI/Format.h",
+          "rojoRHI/TextureDesc.h"
         ],
         "render": [
           "*"
@@ -244,15 +244,15 @@
         ],
         "app-shell": [
           "*",
-          "RHI/Metal4/Metal4ImGui.h"
+          "rojoRHI/Metal4/Metal4ImGui.h"
         ],
         "tests": [
           "*",
-          "RHI/Tests/RhiGpuTestSupport.h"
+          "RojoRHI/Tests/RhiGpuTestSupport.h"
         ],
         "texture-bake": [
-          "RHI/Format.h",
-          "RHI/TextureDesc.h"
+          "rojoRHI/Format.h",
+          "rojoRHI/TextureDesc.h"
         ],
         "benchmarks": [
           "*"
@@ -264,26 +264,26 @@
     "Core": {
       "deps": []
     },
-    "RHI": {
+    "RojoRHI": {
       "deps": []
     },
-    "RHIMetal4ImGui": {
+    "RojoRHIMetal4ImGui": {
       "deps": [
-        "RHI",
+        "RojoRHI",
         "ImGui"
       ]
     },
     "Render": {
       "deps": [
         "Core",
-        "RHI"
+        "RojoRHI"
       ]
     },
     "App": {
       "deps": [
         "Core",
-        "RHI",
-        "RHIMetal4ImGui",
+        "RojoRHI",
+        "RojoRHIMetal4ImGui",
         "Render",
         "ImGui",
         "ImGuiNodeEditor",
@@ -295,16 +295,16 @@
     "Tests": {
       "deps": [
         "Core",
-        "RHI",
+        "RojoRHI",
         "Render",
         "Asset",
         "Scene",
         "AppModel"
       ]
     },
-    "RHITests": {
+    "RojoRHITests": {
       "deps": [
-        "RHI"
+        "RojoRHI"
       ]
     },
     "TextureBake": {
@@ -317,19 +317,19 @@
     "FrameDataBench": {
       "deps": [
         "Core",
-        "RHI"
+        "RojoRHI"
       ]
     },
     "Asset": {
       "deps": [
         "Core"
       ],
-      "forbidUndefined": "lmx::rhi::"
+      "forbidUndefined": "rojoRHI::"
     },
     "Scene": {
       "deps": [
         "Core",
-        "RHI",
+        "RojoRHI",
         "Asset",
         "Render"
       ]
@@ -337,7 +337,7 @@
     "AppModel": {
       "deps": [
         "Core",
-        "RHI",
+        "RojoRHI",
         "Render",
         "Asset",
         "Scene"

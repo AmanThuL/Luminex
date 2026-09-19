@@ -36,7 +36,7 @@ ReconstructionSelection TemporalResolve::prepare(ReconstructionMode requested, u
 //======================================================================================================================
 void TemporalResolve::recordDisabledFrame() {
     m_vendor->recordMode(ReconstructionMode::Raw);
-    m_depthUse[0] = rhi::TextureUse::ShaderRead;
+    m_depthUse[0] = rojoRHI::TextureUse::ShaderRead;
 }
 
 //======================================================================================================================
@@ -50,11 +50,11 @@ uint32_t TemporalResolve::vendorScalerGeneration() const {
 }
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                    const TemporalInputs& inputs) {
     const auto target = graph.createTexture({.width = inputs.extents.outputWidth,
                                              .height = inputs.extents.outputHeight,
-                                             .format = rhi::Format::RGBA16Float,
+                                             .format = rojoRHI::Format::RGBA16Float,
                                              .sampled = true,
                                              .storageWrite = true},
                                             "lmx.render.temporalReprojected");
@@ -80,8 +80,8 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph, rhi::Comm
             commands.bindTexture(kResolveMotionSlot, *texture(inputs.motion));
             commands.bindTexture(kResolveHistorySlot, *texture(inputs.history));
             commands.bindStorageTexture(kResolveReprojectedSlot, *texture(target), {},
-                                        rhi::StorageAccess::Write);
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Read);
+                                        rojoRHI::StorageAccess::Write);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),

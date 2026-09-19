@@ -60,12 +60,12 @@ void observeRetiredTemporal(TemporalEditorState& state, const RetainedFrame* fra
 TemporalPresentation temporalPresentation(const TemporalEditorState& state,
                                           const EditorRenderSettings& settings,
                                           const render::TemporalStatus& status,
-                                          const rhi::TemporalScalerSupport& support,
+                                          const rojoRHI::TemporalScalerSupport& support,
                                           uint32_t outputWidth, uint32_t outputHeight);
 
 /// Names a reconstruction option using the device capability's human-readable vendor name.
 std::string_view reconstructionName(render::ReconstructionMode mode,
-                                    const rhi::TemporalScalerSupport& support);
+                                    const rojoRHI::TemporalScalerSupport& support);
 
 /// Restricts native accumulation diagnostics only when the effective reconstruction is vendor.
 render::TemporalDebugView clampTemporalDebugView(render::TemporalDebugView view,

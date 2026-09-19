@@ -5,7 +5,7 @@
 #include <limits>
 
 using namespace lmx::render;
-using namespace lmx::rhi;
+using namespace rojoRHI;
 
 namespace {
 struct ProbeBounds {

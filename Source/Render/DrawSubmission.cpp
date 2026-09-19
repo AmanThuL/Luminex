@@ -54,10 +54,10 @@ PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityRe
 }
 
 //======================================================================================================================
-DrawSubmission::DrawSubmission(rhi::Device& device) : m_device(device) {}
+DrawSubmission::DrawSubmission(rojoRHI::Device& device) : m_device(device) {}
 
 //======================================================================================================================
-rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView& view,
+rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView& view,
                                           const VisibilityResult& scene,
                                           const VisibilityResult& shadow) {
     LMX_ASSERT(frameNumber == m_device.frameNumber() && frameNumber > m_lastFrame,
@@ -97,7 +97,7 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
             if (!rows)
                 return std::unexpected(rows.error());
             auto args = m_device.createBuffer(
-                {.size = uint64_t{capacity} * sizeof(rhi::DrawIndexedIndirectArgs),
+                {.size = uint64_t{capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs),
                  .storageWrite = true,
                  .cpuReadback = true,
                  .cpuWrite = true,
@@ -122,7 +122,7 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
         slot.rows->write(0, prepared.rows.data(), prepared.rows.size() * sizeof(uint32_t));
     if (view.classifyMode == ClassifyMode::Cpu && !prepared.arguments.empty())
         slot.arguments->write(0, prepared.arguments.data(),
-                              prepared.arguments.size() * sizeof(rhi::DrawIndexedIndirectArgs));
+                              prepared.arguments.size() * sizeof(rojoRHI::DrawIndexedIndirectArgs));
     prepared.scene.rows = prepared.shadow.rows = slot.rows.get();
     prepared.scene.arguments = prepared.shadow.arguments = slot.arguments.get();
     m_stats.sceneCommands = static_cast<uint32_t>(prepared.scene.runs.size());
@@ -132,10 +132,10 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
         for (const auto& run : list->runs)
             m_stats.instancedRuns += run.instanceCount > 1;
     m_stats.listBytes = prepared.rows.size() * sizeof(uint32_t);
-    m_stats.argumentBytes = prepared.arguments.size() * sizeof(rhi::DrawIndexedIndirectArgs);
+    m_stats.argumentBytes = prepared.arguments.size() * sizeof(rojoRHI::DrawIndexedIndirectArgs);
     m_stats.allocatedListBytes = uint64_t{m_capacity} * sizeof(uint32_t) * m_slots.size();
     m_stats.allocatedArgumentBytes =
-        uint64_t{m_capacity} * sizeof(rhi::DrawIndexedIndirectArgs) * m_slots.size();
+        uint64_t{m_capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs) * m_slots.size();
     std::erase_if(m_retiring,
                   [frameNumber](const auto& entry) { return frameNumber >= entry.releaseFrame; });
     m_stats.pendingReleaseBuffers = static_cast<uint32_t>(m_retiring.size() * 2);
@@ -147,7 +147,7 @@ rhi::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneView&
 void DrawSubmission::recordUses() {
     auto& slot = m_slots[m_lastFrame % 3];
     // Both stages declare these reads even when their command list is empty.
-    slot.rowUse = rhi::BufferUse::ShaderRead;
-    slot.argumentUse = rhi::BufferUse::IndirectArgument;
+    slot.rowUse = rojoRHI::BufferUse::ShaderRead;
+    slot.argumentUse = rojoRHI::BufferUse::IndirectArgument;
 }
 } // namespace lmx::render

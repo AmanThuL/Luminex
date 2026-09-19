@@ -42,7 +42,7 @@ render::LightingStatus retiredLighting(uint64_t frame) {
     status.allocatedListBytes = 3 * render::kLightClusterIndexCapacity * sizeof(uint32_t);
     return status;
 }
-const std::array<rhi::PassTiming, 3> kLightingTimings = {
+const std::array<rojoRHI::PassTiming, 3> kLightingTimings = {
     {{"lmx.pass.light.count", 0.25}, {"lmx.pass.light.fill", 0.125}, {"lmx.pass.scene", 2.0}}};
 } // namespace
 
@@ -137,7 +137,7 @@ TEST_CASE("Lighting retirement is required for zero-light frames in every reques
         sample.lighting.effective = render::LocalLightMode::Off;
         sample.lighting.liveLightCount = 0;
         REQUIRE(run.recordCpu(sample));
-        const std::array<rhi::PassTiming, 1> timing = {{{"lmx.pass.scene", 1}}};
+        const std::array<rojoRHI::PassTiming, 1> timing = {{{"lmx.pass.scene", 1}}};
         REQUIRE(run.retire(4, timing));
         CHECK(run.state() == app::MeasurementState::Draining);
         auto status = sample.lighting;

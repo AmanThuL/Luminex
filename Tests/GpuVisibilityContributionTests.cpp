@@ -8,13 +8,13 @@
 namespace {
 namespace render = lmx::render;
 namespace scene = lmx::scene;
-namespace rhi = lmx::rhi;
+namespace rhi = rojoRHI;
 
 constexpr uint32_t kRejectedCount = 15;
 
 struct ContributionTargets {
-    std::array<rhi::Texture*, 4> textures{};
-    std::unique_ptr<rhi::Buffer> depth;
+    std::array<rojoRHI::Texture*, 4> textures{};
+    std::unique_ptr<rojoRHI::Buffer> depth;
 };
 
 //======================================================================================================================
@@ -27,7 +27,7 @@ render::MeshData contributionQuad() {
 }
 
 //======================================================================================================================
-scene::Scene contributionScene(rhi::Device& device) {
+scene::Scene contributionScene(rojoRHI::Device& device) {
     scene::Scene result;
     result.name = "lmx.test.visibility.contribution";
     result.boundingSphere = {0, 0, -2, 4};
@@ -35,10 +35,10 @@ scene::Scene contributionScene(rhi::Device& device) {
         light.strength = {};
     const std::array<uint8_t, 16> texels{255, 255, 255, 0, 255, 255, 255, 255,
                                          255, 255, 255, 0, 255, 255, 255, 255};
-    const rhi::TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
+    const rojoRHI::TextureMip mip{.data = texels.data(), .bytesPerRow = 16};
     auto texture = device.createTexture({.width = 4,
                                          .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm_sRGB,
+                                         .format = rojoRHI::Format::RGBA8Unorm_sRGB,
                                          .sampled = true,
                                          .label = "lmx.test.visibility.cutout"},
                                         std::span{&mip, 1});
@@ -85,7 +85,7 @@ scene::Scene contributionScene(rhi::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<render::Renderer> contributionRenderer(rhi::Device& device) {
+std::unique_ptr<render::Renderer> contributionRenderer(rojoRHI::Device& device) {
     auto result = render::Renderer::create(device, kSize, kSize, true);
     INFO(errorOf(result));
     REQUIRE(result);
@@ -95,9 +95,9 @@ std::unique_ptr<render::Renderer> contributionRenderer(rhi::Device& device) {
 
 //======================================================================================================================
 ContributionTargets contributionTargets(render::Renderer& renderer, render::TransientPool& pool,
-                                        rhi::CommandList& commands, const render::Camera& camera,
+                                        rojoRHI::CommandList& commands, const render::Camera& camera,
                                         const render::SceneView& view, uint64_t frame,
-                                        rhi::ComputePipeline& depthPipeline) {
+                                        rojoRHI::ComputePipeline& depthPipeline) {
     pool.beginFrame();
     render::RenderGraph graph(pool);
     graph.exportTexture(renderer.declarePasses(graph, commands, camera, view));
@@ -143,7 +143,7 @@ ContributionTargets contributionTargets(render::Renderer& renderer, render::Tran
                              commands.bindComputePipeline(depthPipeline);
                              commands.bindTexture(1, **source);
                              commands.bindStorageBuffer(0, **destination,
-                                                        rhi::StorageAccess::Write);
+                                                        rojoRHI::StorageAccess::Write);
                              commands.dispatch(kSize / 8, kSize / 8, 1);
                          });
     graph.readbackBuffer(render::nextVersion(depthBuffer));
@@ -245,7 +245,7 @@ void requireSentinelCoverage(const ContributionTargets& targets, uint32_t width,
 //======================================================================================================================
 TEST_CASE("rejected geometry contributes no camera attachments through the jitter cycle",
           "[gpu][visibility][visibility-contribution]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto library = (*device)->loadShaderLibrary("Shaders/VisibilityDepthReadback");
     INFO(errorOf(library));
@@ -334,7 +334,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
 //======================================================================================================================
 TEST_CASE("GPU classification preserves every camera attachment through the jitter cycle",
           "[gpu][visibility][visibility-contribution][gpu-classify]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto library = (*device)->loadShaderLibrary("Shaders/VisibilityDepthReadback");
     INFO(errorOf(library));

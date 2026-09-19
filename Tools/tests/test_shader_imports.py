@@ -96,8 +96,8 @@ class ComponentTreeTests(unittest.TestCase):
     def test_component_oracle_imports_the_component_module(self) -> None:
         errors, files, imports = self.check({
             "Shaders/Scene.slang": "",
-            "RHI/Shaders/Tests/ShadowSmoke.slang": "import Shadow;",
-            "RHI/Shaders/Tests/Modules/Shadow.slang": "float value;",
+            "RojoRHI/Shaders/Tests/ShadowSmoke.slang": "import Shadow;",
+            "RojoRHI/Shaders/Tests/Modules/Shadow.slang": "float value;",
         })
         self.assertEqual(errors, [])
         self.assertEqual((files, imports), (3, 1))
@@ -105,14 +105,14 @@ class ComponentTreeTests(unittest.TestCase):
     def test_component_oracle_cannot_reach_the_repository_modules(self) -> None:
         errors, _, _ = self.check({
             "Shaders/Modules/Lighting.slang": "float value;",
-            "RHI/Shaders/Tests/Smoke.slang": "import Lighting;",
+            "RojoRHI/Shaders/Tests/Smoke.slang": "import Lighting;",
         })
         self.assertTrue(any("unresolved module import 'Lighting'" in error for error in errors))
 
     def test_the_two_trees_have_independent_basename_namespaces(self) -> None:
         errors, files, _ = self.check({
             "Shaders/Tests/Triangle.slang": "",
-            "RHI/Shaders/Tests/Triangle.slang": "",
+            "RojoRHI/Shaders/Tests/Triangle.slang": "",
         })
         self.assertEqual(errors, [])
         self.assertEqual(files, 2)
@@ -120,15 +120,15 @@ class ComponentTreeTests(unittest.TestCase):
     def test_component_modules_cannot_own_entry_points(self) -> None:
         errors, _, _ = self.check({
             "Shaders/Scene.slang": "",
-            "RHI/Shaders/Tests/Modules/Shadow.slang": '[shader("compute")] void main() {}',
+            "RojoRHI/Shaders/Tests/Modules/Shadow.slang": '[shader("compute")] void main() {}',
         })
         self.assertTrue(any("cannot declare shader entry points" in error for error in errors))
 
     def test_a_duplicate_inside_the_component_tree_still_fails(self) -> None:
         errors, _, _ = self.check({
             "Shaders/Scene.slang": "",
-            "RHI/Shaders/Tests/Triangle.slang": "",
-            "RHI/Shaders/Tests/Modules/triangle.slang": "",
+            "RojoRHI/Shaders/Tests/Triangle.slang": "",
+            "RojoRHI/Shaders/Tests/Modules/triangle.slang": "",
         })
         self.assertTrue(any("duplicate shader output basename" in error for error in errors))
 

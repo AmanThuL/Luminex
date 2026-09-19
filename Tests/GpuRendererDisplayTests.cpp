@@ -20,7 +20,7 @@ using lmx::test::FixtureSceneView;
 // still puts a chosen linear value on a surface without routing it through a BRDF, which is what
 // keeps the display transform the only thing this case measures.
 TEST_CASE("the display transform tone maps and encodes the scene's linear output", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -78,7 +78,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
 // pass is declared, and pre-exposed with everything else -- if it were not, an exposure change
 // would move the shaded pixels and leave the background behind, which is the failure this pins.
 TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exactly", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -162,7 +162,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
 // CPU readback; after retirement the final target must contain a finite positive pre-exposed value,
 // while Metal validation checks the access itself is hazard-free.
 TEST_CASE("auto exposure applies through the real scene pass with no CPU readback", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -221,7 +221,7 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
 // previous-frame ShaderRead import must make the new attachment wait on the dispatch stage, not
 // merely on the previous fragment attachment work.
 TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -290,7 +290,7 @@ TEST_CASE("a depth sample is ordered before the next frame overwrites depth", "[
 // Validation this also proves the odd final row/column and the 1x1 disabled fallback perform no
 // out-of-bounds texture loads.
 TEST_CASE("odd renderer extents and disabled bloom stay within the bloom texture", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     constexpr uint32_t kOddWidth = 5, kOddHeight = 3;
     auto device = createDevice();

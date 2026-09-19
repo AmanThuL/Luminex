@@ -33,7 +33,7 @@ class FrameDeclaration {
 public:
     /// Rotates the retired transient slot, applies pooling policy, and declares renderer passes.
     /// The renderer, commands, camera, and view are borrowed until execute finishes.
-    FrameDeclaration(TransientPool& pool, Renderer& renderer, rhi::CommandList& commands,
+    FrameDeclaration(TransientPool& pool, Renderer& renderer, rojoRHI::CommandList& commands,
                      const Camera& camera, const SceneView& view, bool poolingEnabled);
 
     /// Frames cannot duplicate graph declarations or their single execution boundary.
@@ -52,7 +52,7 @@ public:
     CompiledFrameRecord execute();
 
 private:
-    rhi::CommandList& m_commands;
+    rojoRHI::CommandList& m_commands;
     uint64_t m_frameId;
     RenderGraph m_graph;
     GraphTexture m_displayColor;

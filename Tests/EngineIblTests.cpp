@@ -442,7 +442,7 @@ TEST_CASE("the generators are byte-identical across runs", "[asset][ibl]") {
 // The uploaded set every catalog scene carries. MaterialLab has an asset-free fallback, so this
 // runs wherever a Metal 4 device exists.
 TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = lmx::scene::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
@@ -461,7 +461,7 @@ TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     REQUIRE((*scene)->dfgLut != nullptr);
     REQUIRE((*scene)->dfgLut->width() == kDfgLutSize);
     REQUIRE((*scene)->dfgLut->height() == kDfgLutSize);
-    // rhi::Texture exposes no mip count, so the prefiltered chain's kSpecularMipCount levels stay
+    // rojoRHI::Texture exposes no mip count, so the prefiltered chain's kSpecularMipCount levels stay
     // pinned CPU-side by the prefilterSpecular case above rather than read back off the device.
 
     // The sky the set was generated from is still uploaded alongside it, unchanged.

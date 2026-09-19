@@ -47,7 +47,7 @@ PROCESS_PATTERNS = (
     re.compile(r"(?i)\b(?:work[- ]item|plan[- ](?:checkbox|completion|amendment))\b"),
     re.compile(r"(?i)\b(?:as requested|per the prompt|controller resolution)\b"),
 )
-PROCESS_ROOTS = ("xmake/", "RHI/", "Source/", "Shaders/", "Tests/", "Tools/GpuDebug/", "Tools/Bench/", "Benchmarks/")
+PROCESS_ROOTS = ("xmake/", "RojoRHI/", "Source/", "Shaders/", "Tests/", "Tools/GpuDebug/", "Tools/Bench/", "Benchmarks/")
 COMMIT_SUBJECT = re.compile(
     r"^(?:rhi|metal|render|shader|scene|asset|engine|editor|app|core|tool|build|ci|docs|test|spike): "
     r"[a-z0-9]"

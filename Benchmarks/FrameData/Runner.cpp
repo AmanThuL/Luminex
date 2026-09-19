@@ -7,7 +7,7 @@
 #include "DeliverPerDrawData.h"
 #include "Digest.h"
 
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <algorithm>
 #include <array>
@@ -120,37 +120,37 @@ QuadParams quadParamsFor(const GridLayout& layout, uint32_t frame, uint32_t draw
 RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
     RunResult result;
 
-    auto deviceResult = rhi::createDevice({.enableValidation = false});
+    auto deviceResult = rojoRHI::createDevice({.enableValidation = false});
     if (!deviceResult) {
         result.error = "device creation failed: " + deviceResult.error().message;
         return result;
     }
-    std::unique_ptr<rhi::Device> device = std::move(*deviceResult);
+    std::unique_ptr<rojoRHI::Device> device = std::move(*deviceResult);
 
     auto libraryResult = device->loadShaderLibrary("Shaders/FrameDataQuad");
     if (!libraryResult) {
         result.error = "FrameDataQuad shader load failed: " + libraryResult.error().message;
         return result;
     }
-    std::unique_ptr<rhi::ShaderLibrary> library = std::move(*libraryResult);
+    std::unique_ptr<rojoRHI::ShaderLibrary> library = std::move(*libraryResult);
 
     auto pipelineResult = device->createGraphicsPipeline({.library = library.get(),
                                                           .vertexEntry = "vertexMain",
                                                           .fragmentEntry = "fragmentMain",
-                                                          .colorFormat = rhi::Format::RGBA8Unorm,
-                                                          .fillMode = rhi::FillMode::Solid,
-                                                          .cullMode = rhi::CullMode::None,
+                                                          .colorFormat = rojoRHI::Format::RGBA8Unorm,
+                                                          .fillMode = rojoRHI::FillMode::Solid,
+                                                          .cullMode = rojoRHI::CullMode::None,
                                                           .label = "framedatabench.pipeline"});
     if (!pipelineResult) {
         result.error = "pipeline creation failed: " + pipelineResult.error().message;
         return result;
     }
-    std::unique_ptr<rhi::GraphicsPipeline> pipeline = std::move(*pipelineResult);
+    std::unique_ptr<rojoRHI::GraphicsPipeline> pipeline = std::move(*pipelineResult);
 
     const GridLayout layout(spec.drawCount);
     auto targetResult = device->createTexture({.width = layout.targetWidth,
                                                .height = layout.targetHeight,
-                                               .format = rhi::Format::RGBA8Unorm,
+                                               .format = rojoRHI::Format::RGBA8Unorm,
                                                .renderTarget = true,
                                                .cpuReadback = true,
                                                .label = "framedatabench.target"});
@@ -158,11 +158,11 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
         result.error = "target texture creation failed: " + targetResult.error().message;
         return result;
     }
-    std::unique_ptr<rhi::Texture> target = std::move(*targetResult);
+    std::unique_ptr<rojoRHI::Texture> target = std::move(*targetResult);
 
     // Static workloads bind already-created, reusable buffers and deliver zero per-frame frame-data
     // bytes; their one-time content never varies with frame, so it is computed once here.
-    std::vector<std::unique_ptr<rhi::Buffer>> staticBuffers;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> staticBuffers;
     std::vector<std::byte> dynamicBlock;
     if (spec.kind == WorkloadKind::Static) {
         staticBuffers.reserve(spec.drawCount);
@@ -207,7 +207,7 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
         // are both inside this region: that churn is the allocation cliff being measured (ADR 0010
         // / M5.1 evidence 7.1).
         const auto start = std::chrono::steady_clock::now();
-        rhi::CommandList& commands = device->beginFrame();
+        rojoRHI::CommandList& commands = device->beginFrame();
         deliveryContext.beginFrame();
         commands.beginRenderPass(
             {.colorTarget = target.get(), .clear = true, .label = "framedatabench.draws"});
@@ -242,10 +242,10 @@ RunResult runWorkload(const WorkloadSpec& spec, const RunConfig& config) {
         // iteration, so it reflects exactly "after warm-up, before the first measured frame's
         // timed region" with nothing measured yet able to have touched the counters.
         if (frame + 1 == config.warmupFrames) {
-            result.frameDataCountersAfterWarmup = rhi::metal4::frameDataCounters(*device);
+            result.frameDataCountersAfterWarmup = rojoRHI::metal4::frameDataCounters(*device);
         }
     }
-    result.frameDataCountersAfterMeasurement = rhi::metal4::frameDataCounters(*device);
+    result.frameDataCountersAfterMeasurement = rojoRHI::metal4::frameDataCounters(*device);
 
     result.medianNs = medianOf(result.perFrameTimedRegionNs);
     result.overflowBufferCreations = deliveryContext.overflowBufferCreations;

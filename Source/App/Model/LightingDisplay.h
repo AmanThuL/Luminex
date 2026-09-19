@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "RHI/Device.h"
+#include <rojoRHI/Device.h>
 #include "Render/LightingStatus.h"
 
 #include <deque>
@@ -26,7 +26,7 @@ std::string_view localLightModeLabel(render::LocalLightMode mode);
 
 /// Formats a single coherent publication and only the timings already joined to that frame.
 std::vector<LightingField> lightingFields(const render::LightingStatus& status,
-                                          std::span<const rhi::PassTiming> timings = {});
+                                          std::span<const rojoRHI::PassTiming> timings = {});
 
 /// Retains latest diagnostics for immediate warnings while publishing counters/timings at 4 Hz.
 class LightingDisplay {
@@ -36,7 +36,7 @@ public:
     /// Retains a completed frame only if its scene/mode matches current declaration context.
     void retire(const render::LightingStatus& status);
     /// Stores bounded exact-frame timing snapshots; never joins timings from another frame.
-    void observeTimings(uint64_t frame, std::span<const rhi::PassTiming> timings);
+    void observeTimings(uint64_t frame, std::span<const rojoRHI::PassTiming> timings);
     /// Publishes at most every 250 ms, except first data, retirement readiness and context changes.
     void publishReadings(double nowSeconds);
     /// Latest coherent result, independent of the throttled Inspector counters.
@@ -44,20 +44,20 @@ public:
     /// Owned 250 ms reading snapshot; pending declarations have isRetired false.
     const render::LightingStatus& readingsStatus() const { return m_readings; }
     /// Owned timings matching readingsStatus exactly; empty until matching timings exist.
-    std::span<const rhi::PassTiming> readingsTimings() const { return m_readingsTimings; }
+    std::span<const rojoRHI::PassTiming> readingsTimings() const { return m_readingsTimings; }
     /// Drops scene context, retained readings and bounded timing history.
     void clear();
 
 private:
     struct Timings {
         uint64_t frame;
-        std::vector<rhi::PassTiming> passes;
+        std::vector<rojoRHI::PassTiming> passes;
     };
     render::LightingStatus m_context;
     render::LightingStatus m_latest;
     render::LightingStatus m_readings;
     std::deque<Timings> m_timings;
-    std::vector<rhi::PassTiming> m_readingsTimings;
+    std::vector<rojoRHI::PassTiming> m_readingsTimings;
     double m_nextReadingsSeconds = 0.0;
     bool m_hasContext = false;
     bool m_hasReadings = false;

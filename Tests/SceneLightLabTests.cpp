@@ -203,7 +203,7 @@ TEST_CASE("lightLabLights stacks every pile light at one shared position", "[sce
 //======================================================================================================================
 TEST_CASE("LightLab loads from the catalog with its requested population",
           "[gpu][scene][light-lab]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scene::SceneLibrary library(**device, 4096, 0, 128, 16);
     const auto id = scene::parseSceneId("light-lab");
@@ -240,7 +240,7 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
 
 //======================================================================================================================
 TEST_CASE("loadLightLabScene rejects out-of-range populations", "[gpu][scene][light-lab]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     REQUIRE_FALSE(scene::loadLightLabScene(**device, 0, 0));
     REQUIRE_FALSE(scene::loadLightLabScene(**device, render::kMaxLocalLights + 1, 0));

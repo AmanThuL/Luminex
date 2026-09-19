@@ -22,7 +22,7 @@ TEST_CASE("LightingDisplay keeps counters and timings coherent while warnings st
     REQUIRE_FALSE(display.readingsStatus().isRetired);
     status.isRetired = true;
     status.counters = {.candidates = 10, .assigned = 10};
-    const std::vector<rhi::PassTiming> timings{{"lmx.pass.light.count", 1.5}};
+    const std::vector<rojoRHI::PassTiming> timings{{"lmx.pass.light.count", 1.5}};
     display.observeTimings(7, timings);
     display.retire(status);
     display.publishReadings(0.01);

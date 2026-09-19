@@ -46,7 +46,7 @@ using lmx::test::FixtureSceneView;
 // reconstruction divides by d, which carries relative error through unchanged rather than
 // amplifying it, so that bound is the answer's bound too.
 TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's probes", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     constexpr uint32_t kSourceTextureSlot = 0;
 
@@ -178,7 +178,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 // Tests/RenderTests.cpp's furnace case); what they must still honour is that nothing creates
 // energy, which is asserted across the whole grid.
 TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -280,7 +280,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
 // The reference is Tests/BrdfOracle.h, a CPU mirror written from the same published formulations
 // rather than transliterated from the shader.
 TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned angles", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -383,7 +383,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
 // Raw HDR equality also checks the always-bound Off path under Metal validation.
 TEST_CASE("a zero-light frame is byte-identical across the three local-light modes",
           "[gpu][light]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -508,7 +508,7 @@ inline float storedAsHalf(float value) {
 // Zero directional strength, black fallback IBL and no emissive isolate the local contribution.
 TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-exposure",
           "[gpu][light]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -616,7 +616,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
 // Exposure reset seeds exactly exp2(exposureEv), matching manual exposure in all four variants.
 TEST_CASE("the masked and auto-exposure scene variants light a local light identically",
           "[gpu][light]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -698,7 +698,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
     for (const auto mode : {LocalLightMode::Clustered, LocalLightMode::Direct}) {
-        auto device = lmx::rhi::createDevice();
+        auto device = rojoRHI::createDevice();
         REQUIRE(device);
         auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
         REQUIRE(scene);
@@ -731,7 +731,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
             const bool barrier = std::ranges::any_of(debug.transitions, [&](const auto& item) {
                 return debug.resources[item.resource].name == name &&
                        item.kind == GraphResourceKind::Buffer &&
-                       item.bufferTo == lmx::rhi::BufferUse::ShaderRead;
+                       item.bufferTo == rojoRHI::BufferUse::ShaderRead;
             });
             REQUIRE(barrier == clustered);
         }
@@ -755,15 +755,15 @@ TEST_CASE("LightLab graph declares the selected light consumers",
 namespace {
 
 struct LightingDepthReadback {
-    std::unique_ptr<lmx::rhi::ShaderLibrary> library;
-    std::unique_ptr<lmx::rhi::ComputePipeline> pipeline;
-    std::unique_ptr<lmx::rhi::Buffer> buffer;
+    std::unique_ptr<rojoRHI::ShaderLibrary> library;
+    std::unique_ptr<rojoRHI::ComputePipeline> pipeline;
+    std::unique_ptr<rojoRHI::Buffer> buffer;
 };
 
 //======================================================================================================================
-LightingDepthReadback copyLightingDepth(lmx::rhi::Device& device, lmx::rhi::CommandList& commands,
+LightingDepthReadback copyLightingDepth(rojoRHI::Device& device, rojoRHI::CommandList& commands,
                                         Renderer& renderer) {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto library = device.loadShaderLibrary("Shaders/VisibilityDepthReadback");
     REQUIRE(library);
     auto pipeline = device.createComputePipeline({.library = library->get(),
@@ -789,7 +789,7 @@ LightingDepthReadback copyLightingDepth(lmx::rhi::Device& device, lmx::rhi::Comm
 }
 
 //======================================================================================================================
-std::vector<uint8_t> lightAttachmentBytes(lmx::rhi::Texture& texture, uint32_t bytesPerPixel) {
+std::vector<uint8_t> lightAttachmentBytes(rojoRHI::Texture& texture, uint32_t bytesPerPixel) {
     std::vector<uint8_t> result(size_t{texture.width()} * texture.height() * bytesPerPixel);
     texture.readback(result.data(), result.size());
     return result;
@@ -801,7 +801,7 @@ std::vector<uint8_t> lightAttachmentBytes(lmx::rhi::Texture& texture, uint32_t b
 TEST_CASE("LightLab direct and clustered paths preserve all written scene attachments",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene);
@@ -865,7 +865,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
 TEST_CASE("lighting retirement keeps declaration modes through paced switches",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = lmx::scene::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene);
@@ -931,7 +931,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
 TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto plane = lmx::test::fixtureMesh(**device, makePlane(20.0f), "lmx.test.overflowPlane");
     REQUIRE(plane);

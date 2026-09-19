@@ -30,7 +30,7 @@ constexpr uint32_t kHazardParamsSlot = 2;
 // decides whether two of them share bytes.
 constexpr lmx::render::TransientTextureDesc kStorageImage{.width = kSize,
                                                           .height = kSize,
-                                                          .format = lmx::rhi::Format::RGBA8Unorm,
+                                                          .format = rojoRHI::Format::RGBA8Unorm,
                                                           .sampled = true,
                                                           .storageRead = true,
                                                           .storageWrite = true};
@@ -52,7 +52,7 @@ uint8_t gradientChannel(uint32_t coordinate) {
 // logical resources in one set of bytes -- and the two runs' plans are asserted to differ, or the
 // comparison would be proving nothing.
 TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     auto device = createDevice();
@@ -216,7 +216,7 @@ TEST_CASE("a pooled frame and an unpooled frame render the same image", "[gpu]")
 // one's fill. Both readbacks are checked, so a bleed in either direction is visible.
 TEST_CASE("a transient cannot read what the transient it replaced left behind",
           "[gpu][checkpoint-a]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     constexpr uint32_t kElements = 256;
@@ -341,7 +341,7 @@ TEST_CASE("a transient cannot read what the transient it replaced left behind",
 // per slot, and a run that settles releases every retired generation. Metal validation is what
 // covers the other half -- a generation released while a frame still reads it would fault here.
 TEST_CASE("resizing and toggling transients leaks no heap generation", "[gpu][checkpoint-a]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     constexpr uint32_t kCycles = 4;

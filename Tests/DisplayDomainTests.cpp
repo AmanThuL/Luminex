@@ -1,5 +1,5 @@
 #include "Asset/PngImage.h"
-#include "RHI/Validate.h"
+#include <rojoRHI/Validate.h>
 #include "Render/DisplayDomain.h"
 #include "Render/Renderer.h"
 
@@ -23,8 +23,8 @@ TEST_CASE("the SDR display domain has stable names and serialization", "[render]
     REQUIRE(
         toJson(kSdrDisplayDomain) ==
         R"({"view":"sdr","transfer":"srgb","primaries":"bt709","toneMap":"pbr-neutral","referenceWhite":1,"peakWhite":1,"bitsPerChannel":8,"opaque":true})");
-    REQUIRE(kDisplayFormat == lmx::rhi::Format::BGRA8Unorm);
-    REQUIRE(lmx::rhi::bytesPerPixel(kDisplayFormat) * 8 / 4 == kSdrDisplayDomain.bitsPerChannel);
+    REQUIRE(kDisplayFormat == rojoRHI::Format::BGRA8Unorm);
+    REQUIRE(rojoRHI::bytesPerPixel(kDisplayFormat) * 8 / 4 == kSdrDisplayDomain.bitsPerChannel);
 }
 
 //======================================================================================================================

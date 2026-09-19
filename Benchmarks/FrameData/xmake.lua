@@ -10,6 +10,6 @@ target("FrameDataBench")
     -- Keep bench shader outputs separate from App/Tests; all three targets may compile in parallel.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/bench")
     add_files("*.cpp")
-    add_deps("Core", "RHI")
+    add_deps("Core", "RojoRHI")
     add_rules("slang2metallib")
     add_files("../../Shaders/**.slang")

@@ -48,7 +48,7 @@ static_assert(sizeof(TemporalResolveParams) == 160,
 } // namespace
 
 //======================================================================================================================
-void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& commands,
+void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& commands,
                                      const TemporalInputs& inputs, bool rejectionWanted,
                                      bool reprojectedWanted, TemporalResolveOutputs& outputs) {
     // Only a frame whose render extent is its output extent reaches here, so the two are the same
@@ -59,7 +59,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
     if (rejectionWanted) {
         outputs.rejection = graph.createTexture({.width = width,
                                                  .height = height,
-                                                 .format = rhi::Format::RGBA8Unorm,
+                                                 .format = rojoRHI::Format::RGBA8Unorm,
                                                  .sampled = true,
                                                  .storageWrite = true},
                                                 "lmx.render.temporalRejection");
@@ -67,7 +67,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
     if (reprojectedWanted) {
         outputs.reprojected = graph.createTexture({.width = width,
                                                    .height = height,
-                                                   .format = rhi::Format::RGBA16Float,
+                                                   .format = rojoRHI::Format::RGBA16Float,
                                                    .sampled = true,
                                                    .storageWrite = true},
                                                   "lmx.render.temporalReprojected");
@@ -109,7 +109,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
         [this, &commands, inputs, output, rejection, reprojected, rejectionWanted,
          reprojectedWanted, params, width, height](const PassResources& resources) {
             const auto bindRead = [&](uint32_t slot, GraphTexture handle) {
-                const GraphResult<rhi::Texture*> texture = resources.texture(handle);
+                const GraphResult<rojoRHI::Texture*> texture = resources.texture(handle);
                 LMX_ASSERT(texture.has_value(), texture.error().message);
                 commands.bindTexture(slot, **texture);
             };
@@ -120,35 +120,35 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
             bindRead(kResolveReactiveSlot, inputs.reactive);
             bindRead(kResolveHistorySlot, inputs.history);
 
-            const GraphResult<rhi::Texture*> target = resources.texture(output);
+            const GraphResult<rojoRHI::Texture*> target = resources.texture(output);
             LMX_ASSERT(target.has_value(), target.error().message);
-            const GraphResult<rhi::Buffer*> exposure = resources.buffer(inputs.exposure);
+            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(inputs.exposure);
             LMX_ASSERT(exposure.has_value(), exposure.error().message);
 
             commands.bindComputePipeline(*m_resolvePipeline);
             commands.bindStorageTexture(kResolveOutputSlot, **target, {},
-                                        rhi::StorageAccess::Write);
+                                        rojoRHI::StorageAccess::Write);
             // The argument table entry has to hold a writable texture even where the kernel's
             // corresponding writeDiagnostics bit makes it write nothing.
             if (rejectionWanted) {
-                const GraphResult<rhi::Texture*> texture = resources.texture(rejection);
+                const GraphResult<rojoRHI::Texture*> texture = resources.texture(rejection);
                 LMX_ASSERT(texture.has_value(), texture.error().message);
                 commands.bindStorageTexture(kResolveRejectionSlot, **texture, {},
-                                            rhi::StorageAccess::Write);
+                                            rojoRHI::StorageAccess::Write);
             } else {
                 commands.bindStorageTexture(kResolveRejectionSlot, *m_diagnosticFallback, {},
-                                            rhi::StorageAccess::Write);
+                                            rojoRHI::StorageAccess::Write);
             }
             if (reprojectedWanted) {
-                const GraphResult<rhi::Texture*> texture = resources.texture(reprojected);
+                const GraphResult<rojoRHI::Texture*> texture = resources.texture(reprojected);
                 LMX_ASSERT(texture.has_value(), texture.error().message);
                 commands.bindStorageTexture(kResolveReprojectedSlot, **texture, {},
-                                            rhi::StorageAccess::Write);
+                                            rojoRHI::StorageAccess::Write);
             } else {
                 commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
-                                            rhi::StorageAccess::Write);
+                                            rojoRHI::StorageAccess::Write);
             }
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rhi::StorageAccess::Read);
+            commands.bindStorageBuffer(kResolveExposureSlot, **exposure, rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
@@ -169,7 +169,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rhi::CommandList& comma
 }
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                    const TemporalInputs& inputs) {
     // Declared only where the two extents agree, so the copy covers the whole slot; the caller
     // routes an upscaled frame to declareSpatialCommit() instead.
@@ -184,12 +184,12 @@ GraphTexture TemporalResolve::declareHistoryCommit(RenderGraph& graph, rhi::Comm
     graph.addCopyPass(
         "lmx.pass.temporal.commitHistory", std::move(commitDesc),
         [&commands, sceneColor, history, width, height](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(sceneColor);
+            const GraphResult<rojoRHI::Texture*> sceneTexture = resources.texture(sceneColor);
             LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
-            const GraphResult<rhi::Texture*> historyTexture = resources.texture(history);
+            const GraphResult<rojoRHI::Texture*> historyTexture = resources.texture(history);
             LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
 
-            const rhi::TextureCopyRegion region{.width = width, .height = height};
+            const rojoRHI::TextureCopyRegion region{.width = width, .height = height};
             commands.copyTexture(**sceneTexture, region, **historyTexture, region);
         });
     // Nothing else in the frame consumes it -- the consumer is the next frame -- so the export is

@@ -27,13 +27,13 @@ struct LightDebugInputs {
 class LightDebugStage {
 public:
     /// Loads the ordinary fast-math diagnostic shader and creates its opaque display pipeline.
-    static rhi::Result<std::unique_ptr<LightDebugStage>> create(rhi::Device& device);
+    static rojoRHI::Result<std::unique_ptr<LightDebugStage>> create(rojoRHI::Device& device);
     /// Declares one post-display raster pass and returns the produced output version.
-    GraphTexture declare(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                          const LightDebugInputs& inputs);
 
 private:
-    std::unique_ptr<rhi::ShaderLibrary> m_library;
-    std::unique_ptr<rhi::GraphicsPipeline> m_pipeline;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_library;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_pipeline;
 };
 } // namespace lmx::render

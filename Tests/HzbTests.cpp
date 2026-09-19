@@ -1,4 +1,4 @@
-#include "RHI/Validate.h"
+#include <rojoRHI/Validate.h>
 #include "Render/HzbStage.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -38,7 +38,7 @@ TEST_CASE("HZB allocation holds every ceil-sized mip at every active scale", "[h
 
 //======================================================================================================================
 TEST_CASE("R32Float is exact sampled storage data without attachment capability", "[hzb][rhi]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     REQUIRE(bytesPerPixel(Format::R32Float) == 4);
     TextureDesc desc{.width = 8,
                      .height = 8,

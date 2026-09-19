@@ -9,9 +9,9 @@ TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]"
     FakeTexture color{64, 64, "sceneColor"};
     FakeBuffer storage{256, "instances"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphBuffer instances = graph.importBuffer(storage, "instances");
 
     PassDesc scene;
@@ -34,7 +34,7 @@ TEST_CASE("compileFrame records the declarations it compiled", "[render][graph]"
     REQUIRE(record->debug.resources.size() == 3);
     REQUIRE(record->debug.resources[0].name == "shadowMap");
     REQUIRE(record->debug.resources[0].kind == GraphResourceKind::Texture);
-    REQUIRE(record->debug.resources[0].format == rhi::Format::D32Float);
+    REQUIRE(record->debug.resources[0].format == rojoRHI::Format::D32Float);
     REQUIRE(record->debug.resources[2].name == "instances");
     REQUIRE(record->debug.resources[2].kind == GraphResourceKind::Buffer);
 
@@ -67,9 +67,9 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     FakeTexture color{64, 64, "sceneColor"};
     FakeBuffer storage{256, "histogram"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphBuffer bins = graph.importBuffer(storage, "histogram");
 
     PassDesc shadowPass;
@@ -94,12 +94,12 @@ TEST_CASE("execute emits exactly the transitions the record lists", "[render][gr
     REQUIRE(record.debug.transitions[0].beforePass == 2);
     REQUIRE(record.debug.transitions[0].kind == GraphResourceKind::Texture);
     REQUIRE(record.debug.transitions[0].resource == shadow.index);
-    REQUIRE(record.debug.transitions[0].textureFrom == rhi::TextureUse::RenderTarget);
-    REQUIRE(record.debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+    REQUIRE(record.debug.transitions[0].textureFrom == rojoRHI::TextureUse::RenderTarget);
+    REQUIRE(record.debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
     REQUIRE(record.debug.transitions[1].kind == GraphResourceKind::Buffer);
     REQUIRE(record.debug.transitions[1].resource == bins.index);
-    REQUIRE(record.debug.transitions[1].bufferFrom == rhi::BufferUse::CopyDestination);
-    REQUIRE(record.debug.transitions[1].bufferTo == rhi::BufferUse::ShaderRead);
+    REQUIRE(record.debug.transitions[1].bufferFrom == rojoRHI::BufferUse::CopyDestination);
+    REQUIRE(record.debug.transitions[1].bufferTo == rojoRHI::BufferUse::ShaderRead);
 
     REQUIRE(commands.events ==
             std::vector<std::string>{"begin lmx.pass.shadow", "end", "begin copy lmx.pass.clear",
@@ -115,7 +115,7 @@ TEST_CASE("the frame id changes nothing else about a record", "[render][graph]")
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -141,7 +141,7 @@ TEST_CASE("a graph with no sink schedules nothing", "[render][graph]") {
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -165,11 +165,11 @@ TEST_CASE("only the passes a sink reaches are scheduled", "[render][graph]") {
     FakeBuffer probe{256, "probe"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
     const GraphBuffer stats = graph.importBuffer(probe, "probe");
 
     PassDesc scene;
@@ -222,8 +222,8 @@ TEST_CASE("only the passes a sink reaches are scheduled", "[render][graph]") {
 TEST_CASE("culling answers the same way every time", "[render][graph]") {
     const auto build = [](RenderGraph& graph, FakeTexture& first, FakeTexture& second,
                           bool exportFirst) {
-        const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "a");
-        const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "b");
+        const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "a");
+        const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "b");
         PassDesc writeA;
         writeA.color = ColorAttachment{.handle = a};
         graph.addPass("lmx.pass.a", writeA, kNoWork);
@@ -267,9 +267,9 @@ TEST_CASE("execute runs none of a culled pass", "[render][graph]") {
     FakeTexture unused{64, 64, "unusedTarget"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
 
     bool orphanRan = false;
     PassDesc orphaned;
@@ -301,7 +301,7 @@ TEST_CASE("presentation and readback root work like an export", "[render][graph]
     FakeBuffer histogram{1024, "histogram"};
     RenderGraph graph;
     const GraphTexture backbuffer =
-        graph.importTexture(drawable, rhi::Format::BGRA8Unorm, "drawable");
+        graph.importTexture(drawable, rojoRHI::Format::BGRA8Unorm, "drawable");
     const GraphBuffer bins = graph.importBuffer(histogram, "histogram");
 
     PassDesc ui;
@@ -335,7 +335,7 @@ TEST_CASE("a sink naming a version no pass wrote is rejected", "[render][graph]"
 
     RenderGraph presented;
     const GraphTexture backbuffer =
-        presented.importTexture(drawable, rhi::Format::BGRA8Unorm, "drawable");
+        presented.importTexture(drawable, rojoRHI::Format::BGRA8Unorm, "drawable");
     presented.presentTexture(nextVersion(backbuffer));
     const auto presentFailure = presented.compile();
     REQUIRE_FALSE(presentFailure.has_value());
@@ -359,8 +359,8 @@ TEST_CASE("a culled pass is still validated", "[render][graph]") {
     FakeTexture shadowMap{1024, 1024, "shadowMap"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};

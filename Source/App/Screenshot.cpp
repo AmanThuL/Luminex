@@ -18,7 +18,7 @@
 #include "Asset/PngImage.h"
 #include "Core/Log.h"
 #include "Core/Parse.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
@@ -158,7 +158,7 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
     }
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
         return 1;
@@ -230,7 +230,7 @@ int runOffscreen(AppOptions options) {
             session.prepareScreenshotFrame(frame);
         }
 
-        rhi::CommandList& commands = (*device)->beginFrame();
+        rojoRHI::CommandList& commands = (*device)->beginFrame();
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         applyDynamicResolution(resolutionState, resolutionController, resolutionSettings,
                                frameRecords.newestTimedFrame());

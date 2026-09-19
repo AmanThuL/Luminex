@@ -8,7 +8,7 @@
 #include "Asset/Asset.h"
 #include "Asset/SceneAnimation.h"
 #include "Asset/Transform.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/Bounds.h"
 #include "Render/Camera.h"
 #include "Render/LocalLight.h"
@@ -79,7 +79,7 @@ public:
     /// Adds immutable CPU geometry before finalize; invalid indices are misuse.
     MeshId addMesh(render::MeshData data, std::string_view label);
     /// Takes ownership of a non-null texture and assigns a fresh identity.
-    TextureId addTexture(std::unique_ptr<rhi::Texture> texture);
+    TextureId addTexture(std::unique_ptr<rojoRHI::Texture> texture);
     /// Adds shared scene-linear factors, asserting every supplied texture identity resolves.
     MaterialId addMaterial(MaterialRecord material);
     /// Adds an instance with valid mesh/material handles and seeds its own previous pose.
@@ -92,13 +92,13 @@ public:
     /// Adds a local point or spot light, validating it the way `render::makeLightRow` does and
     /// failing with `InvalidDesc` for invalid parameters or once `render::kMaxLocalLights` live
     /// lights already exist. May be called before or after finalize.
-    rhi::Result<LightId> addLight(const render::LocalLight& light);
+    rojoRHI::Result<LightId> addLight(const render::LocalLight& light);
     /// Removes a live local light and returns whether the identity resolved; a stale or foreign
     /// identity is reported rather than asserted. Preserves later row slots.
     bool removeLight(LightId id);
     /// Replaces a live local light's parameters, validating them the way `addLight` does; an
     /// invalid identity or invalid light fails with `InvalidDesc` and leaves the light unchanged.
-    rhi::Result<void> updateLight(LightId id, const render::LocalLight& light);
+    rojoRHI::Result<void> updateLight(LightId id, const render::LocalLight& light);
     /// Returns the live local light's authored parameters, or null for an unresolvable identity.
     const render::LocalLight* light(LightId id) const;
     /// Returns every existing local light identity, including disabled lights, by row slot.
@@ -128,16 +128,16 @@ public:
     /// Returns material data or null for an unresolvable identity.
     const MaterialRecord* tryMaterial(MaterialId id) const;
     /// Returns the owned texture or null for an unresolvable identity.
-    rhi::Texture* tryTexture(TextureId id) const;
+    rojoRHI::Texture* tryTexture(TextureId id) const;
     /// Returns an editable material, asserting the identity resolves.
     MaterialRecord& material(MaterialId id);
     /// Returns a material, asserting the identity resolves.
     const MaterialRecord& material(MaterialId id) const;
     /// Merges immutable geometry and allocates three paced table slots; returns GPU failures.
-    rhi::Result<void> finalize(rhi::Device& device);
+    rojoRHI::Result<void> finalize(rojoRHI::Device& device);
     /// Updates this frame's retired slot after Device::beginFrame and before any declaration.
     /// Frame numbers must strictly advance and match the owning device; returns growth failures.
-    rhi::Result<void> prepareFrame(uint64_t frameNumber);
+    rojoRHI::Result<void> prepareFrame(uint64_t frameNumber);
     /// Reports live counts, allocation capacities and the last preparation's upload work.
     SceneTableStats tableStats() const;
     /// Monotonic coverage revision, refreshed for public object/material edits by prepareFrame.
@@ -151,14 +151,14 @@ public:
     render::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
     glm::vec4 boundingSphere{0.f};      ///< World-space center in xyz and radius in w.
     std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
-    std::unique_ptr<rhi::Texture> skyCubemap; ///< Authored linear-radiance environment.
+    std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
     /// (Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain, and
     /// the split-sum DFG table. Published together with the sky by the scene-build path, so a scene
     /// that has a skyCubemap has all three.
-    std::unique_ptr<rhi::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
-    std::unique_ptr<rhi::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
-    std::unique_ptr<rhi::Texture> dfgLut;            ///< Split-sum material response lookup table.
+    std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
+    std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
+    std::unique_ptr<rojoRHI::Texture> dfgLut;            ///< Split-sum material response lookup table.
     /// Immutable authored grid-light count set before finalize; zero outside LightLab. Remaining
     /// initial local lights are the authored overflow pile, independently editable by the session.
     uint32_t lightLabGridCount = 0;
@@ -211,40 +211,40 @@ private:
 /// seeds every object's previous transform, and attaches the shared neutral environment. `name`
 /// names the scene and prefixes every GPU object's debug label. The camera is left at its default:
 /// each catalog scene below fits its own after calling this.
-asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rhi::Device& device, std::string_view path,
+asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device, std::string_view path,
                                                          std::string_view name);
 
 /// Crytek Sponza from the McGuire Computer Graphics Archive. `xmake setup` converts the pinned OBJ
 /// archive to core glTF; camera and bounding sphere are computed from the loaded AABB.
-asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rojoRHI::Device& device);
 
 /// Khronos' DamagedHelmet sample (Assets/Fetched/DamagedHelmet, fetched by `xmake setup`). No
 /// floor -- a model showcase, floating near the origin.
-asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rojoRHI::Device& device);
 
 /// Deterministic code-generated diagnostics: a material sweep sphere grid plus horizontal color,
 /// texture, normal, and depth lanes. A fetched studio HDRI upgrades its lighting, with a neutral
 /// deterministic fallback that keeps the scene always available.
-asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device& device);
 
 /// Khronos' CesiumMilkTruck sample (Assets/Fetched/CesiumMilkTruck, fetched by `xmake setup`).
 /// Its wheel clip loads as rigid tracks, so the truck is the fetched rigid-motion reference;
 /// camera and bounding sphere are computed from the loaded AABB.
-asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& device);
 
 /// Deterministic code-generated temporal diagnostics: a checkerboard floor under a rotating cube,
 /// a sphere orbiting a static reference cube, a row of oscillating poles, and one cube flagged
 /// `render::MotionClass::Invalid`, all driven by looping tracks alongside a looping camera track.
-asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device& device);
 
 /// San Miguel's pinned realtime variant with masked foliage and a looping camera rail. Optional
 /// assets are fetched by `xmake setup --san-miguel`; missing assets return NotFound with that hint.
-asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& device);
+asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& device);
 
 /// Builds a seeded repeated-geometry visibility lab with exactly instanceCount candidates.
 /// Counts from 1 through 1,048,576 include up to five initial-camera boundary probes.
 /// Adds occluderCount slabs (0..1,024) with wide gaps; zero preserves the original scene bytes.
-asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& device,
+asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rojoRHI::Device& device,
                                                                   uint32_t instanceCount = 4096,
                                                                   uint32_t occluderCount = 0);
 
@@ -254,6 +254,6 @@ asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rhi::Device& d
 /// pileCount must not exceed render::kMaxLocalLights. See Source/Scene/LightLab.h for the
 /// device-free generation this wraps.
 asset::AssetResult<std::unique_ptr<Scene>>
-loadLightLabScene(rhi::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
+loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
 
 } // namespace lmx::scene

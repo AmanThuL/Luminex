@@ -13,10 +13,10 @@ includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/depen
 
 -- The RHI component configures from its own root too, so it owns one includable targets file and
 -- reads where its vendored dependencies and the Dear ImGui target live from this root. Its own
--- RHI/xmake.lua carries root settings for a standalone configure and is deliberately not included.
-rhi_thirdparty = path.join(os.scriptdir(), "ThirdParty")
-rhi_imgui_target = "ImGui"
-includes("RHI/xmake/targets.lua")
+-- RojoRHI/xmake.lua carries root settings for a standalone configure and is deliberately not included.
+rojorhi_thirdparty = path.join(os.scriptdir(), "ThirdParty")
+rojorhi_imgui_target = "ImGui"
+includes("RojoRHI/xmake/targets.lua")
 
 -- First-party targets keep source membership and dependency declarations beside their units.
 includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",

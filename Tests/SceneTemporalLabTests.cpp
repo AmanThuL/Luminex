@@ -3,7 +3,7 @@
 //======================================================================================================================
 TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world positions",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));
@@ -53,7 +53,7 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
 //======================================================================================================================
 TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their documented periods",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));
@@ -126,7 +126,7 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
 // viewport, the moving objects do not overlap the still ones they are read against, and the poles
 // stay separated on screen across their whole swing.
 TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated", "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));

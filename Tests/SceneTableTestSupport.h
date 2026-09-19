@@ -14,25 +14,25 @@ struct FixtureMesh {
     render::MeshData data;
     mutable std::vector<std::shared_ptr<FixtureSceneState>> retained;
 };
-inline rhi::Result<FixtureMesh> fixtureMesh(rhi::Device&, render::MeshData data, std::string_view) {
+inline rojoRHI::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, render::MeshData data, std::string_view) {
     return FixtureMesh{.data = std::move(data), .retained = {}};
 }
 
 struct FixtureMaterial {
     /// Null means the renderer's white 1x1 fallback -- so `albedo` alone applies, rather than the
     /// draw silently reading an unbound texture slot.
-    rhi::Texture* diffuse = nullptr;
+    rojoRHI::Texture* diffuse = nullptr;
     /// Null means no normal mapping: the shader's flags bit 0 stays clear and its TBN path never
     /// runs. The slot is still bound (to a flat-normal 1x1) so nothing dereferences an empty one.
-    rhi::Texture* normalMap = nullptr;
+    rojoRHI::Texture* normalMap = nullptr;
     /// glTF 2.0 channel convention: roughness = G, metallic = B (R and A unused). Null means the
     /// shared white fallback, so `metallic`/`roughness` alone apply.
-    rhi::Texture* metallicRoughness = nullptr;
+    rojoRHI::Texture* metallicRoughness = nullptr;
     /// glTF 2.0 channel convention: occlusion = R. Null means the shared white fallback (no
     /// occlusion). Attenuates the image-based terms only, never the analytic lights.
-    rhi::Texture* occlusion = nullptr;
+    rojoRHI::Texture* occlusion = nullptr;
     /// Null means the shared white fallback, so `emissive` alone applies.
-    rhi::Texture* emissiveMap = nullptr;
+    rojoRHI::Texture* emissiveMap = nullptr;
     /// The glTF base colour: linear, and the input the shader derives both the diffuse albedo and a
     /// metal's F0 from -- which is why there is no separate reflectance field to keep in step with
     /// it.
@@ -95,7 +95,7 @@ struct FixtureSceneView : render::SceneView {
     FixtureSceneView() = default;
     FixtureSceneView(const render::SceneView& view) : render::SceneView(view), production(true) {}
 
-    render::SceneView prepare(rhi::Device& device) const {
+    render::SceneView prepare(rojoRHI::Device& device) const {
         if (production)
             return static_cast<const render::SceneView&>(*this);
         const uint64_t frame = device.frameNumber();
@@ -125,10 +125,10 @@ struct FixtureSceneView : render::SceneView {
                 return meshIds.at(mesh);
             };
             const uint32_t normal = 0xffff8080u;
-            rhi::TextureMip mip{.data = &normal, .bytesPerRow = 4};
+            rojoRHI::TextureMip mip{.data = &normal, .bytesPerRow = 4};
             auto marker = device.createTexture({.width = 1,
                                                 .height = 1,
-                                                .format = rhi::Format::RGBA8Unorm,
+                                                .format = rojoRHI::Format::RGBA8Unorm,
                                                 .sampled = true,
                                                 .label = "lmx.test.scene.normalPresence"},
                                                std::span{&mip, 1});
@@ -201,10 +201,10 @@ struct FixtureSceneView : render::SceneView {
         return view;
     }
 };
-inline render::SceneView prepareSceneView(const FixtureSceneView& view, rhi::Device& device) {
+inline render::SceneView prepareSceneView(const FixtureSceneView& view, rojoRHI::Device& device) {
     return view.prepare(device);
 }
-inline render::SceneView prepareSceneView(const render::SceneView& view, rhi::Device&) {
+inline render::SceneView prepareSceneView(const render::SceneView& view, rojoRHI::Device&) {
     return view;
 }
 template <typename DeviceOwner>

@@ -18,7 +18,7 @@ static_assert(sizeof(DebugParams) == 188);
 } // namespace
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rhi::Device& device) {
+rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRHI::Device& device) {
     auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
     auto library = device.loadShaderLibrary("Shaders/LightDebugView");
     if (!library)
@@ -27,8 +27,8 @@ rhi::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rhi::Devic
     auto pipeline = device.createGraphicsPipeline({.library = stage->m_library.get(),
                                                    .vertexEntry = "vertexMain",
                                                    .fragmentEntry = "fragmentMain",
-                                                   .colorFormat = rhi::Format::BGRA8Unorm,
-                                                   .cullMode = rhi::CullMode::None,
+                                                   .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                   .cullMode = rojoRHI::CullMode::None,
                                                    .label = "lmx.render.lightDebugPipeline"});
     if (!pipeline)
         return std::unexpected(pipeline.error());
@@ -37,7 +37,7 @@ rhi::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rhi::Devic
 }
 
 //======================================================================================================================
-GraphTexture LightDebugStage::declare(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const LightDebugInputs& inputs) {
     LMX_ASSERT(inputs.mode != LightDebugView::Off, "a light debug pass needs an active view");
     LMX_ASSERT(inputs.clusters.activeWidth && inputs.clusters.activeHeight && inputs.outputWidth &&

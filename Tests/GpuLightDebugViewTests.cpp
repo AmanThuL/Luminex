@@ -8,7 +8,7 @@
 
 namespace {
 using namespace lmx::render;
-namespace rhi = lmx::rhi;
+namespace rhi = rojoRHI;
 
 struct DebugFixture {
     uint32_t width = 37, height = 23, outputWidth = 61, outputHeight = 41;
@@ -59,15 +59,15 @@ DebugFixture makeDebugFixture() {
 
 //======================================================================================================================
 std::vector<uint8_t> renderDebug(const DebugFixture& f, LightDebugView mode) {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto stage = LightDebugStage::create(**device);
     INFO(errorOf(stage));
     REQUIRE(stage.has_value());
-    const rhi::TextureMip depthMip{.data = f.depths.data(), .bytesPerRow = f.width * 4};
+    const rojoRHI::TextureMip depthMip{.data = f.depths.data(), .bytesPerRow = f.width * 4};
     auto depth = (*device)->createTexture({.width = f.width,
                                            .height = f.height,
-                                           .format = rhi::Format::R32Float,
+                                           .format = rojoRHI::Format::R32Float,
                                            .sampled = true,
                                            .label = "lmx.test.lightDebug.depth"},
                                           std::span{&depthMip, 1});
@@ -75,17 +75,17 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, LightDebugView mode) {
     std::vector<uint8_t> source(f.outputWidth * f.outputHeight * 4, 128);
     for (size_t i = 3; i < source.size(); i += 4)
         source[i] = 255;
-    const rhi::TextureMip sourceMip{.data = source.data(), .bytesPerRow = f.outputWidth * 4};
+    const rojoRHI::TextureMip sourceMip{.data = source.data(), .bytesPerRow = f.outputWidth * 4};
     auto display = (*device)->createTexture({.width = f.outputWidth,
                                              .height = f.outputHeight,
-                                             .format = rhi::Format::BGRA8Unorm,
+                                             .format = rojoRHI::Format::BGRA8Unorm,
                                              .sampled = true,
                                              .label = "lmx.test.lightDebug.source"},
                                             std::span{&sourceMip, 1});
     REQUIRE(display.has_value());
     auto output = (*device)->createTexture({.width = f.outputWidth,
                                             .height = f.outputHeight,
-                                            .format = rhi::Format::BGRA8Unorm,
+                                            .format = rojoRHI::Format::BGRA8Unorm,
                                             .renderTarget = true,
                                             .cpuReadback = true,
                                             .label = "lmx.test.lightDebug.output"});
@@ -112,9 +112,9 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, LightDebugView mode) {
     const auto result = (*stage)->declare(
         graph, commands,
         {.mode = mode,
-         .depth = graph.importTexture(**depth, rhi::Format::R32Float, "depth"),
-         .display = graph.importTexture(**display, rhi::Format::BGRA8Unorm, "display"),
-         .output = graph.importTexture(**output, rhi::Format::BGRA8Unorm, "output"),
+         .depth = graph.importTexture(**depth, rojoRHI::Format::R32Float, "depth"),
+         .display = graph.importTexture(**display, rojoRHI::Format::BGRA8Unorm, "display"),
+         .output = graph.importTexture(**output, rojoRHI::Format::BGRA8Unorm, "output"),
          .lights = graph.importBuffer(**lights, "lights"),
          .grid = graph.importBuffer(**grid, "grid"),
          .indices = graph.importBuffer(**indices, "indices"),
@@ -243,7 +243,7 @@ TEST_CASE("light count and overflow views use exact pixel-aligned froxel records
 //======================================================================================================================
 TEST_CASE("light diagnostics reuse actual temporal depth without contaminating history",
           "[gpu][light-debug]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene.has_value());
@@ -294,7 +294,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
 
 //======================================================================================================================
 TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gpu][light-debug]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = lmx::scene::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene.has_value());

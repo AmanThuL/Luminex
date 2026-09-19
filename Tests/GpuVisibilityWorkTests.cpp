@@ -7,25 +7,25 @@
 
 namespace {
 namespace render = lmx::render;
-namespace rhi = lmx::rhi;
+namespace rhi = rojoRHI;
 
 struct WorkFixture {
-    std::unique_ptr<rhi::Device> device;
+    std::unique_ptr<rojoRHI::Device> device;
     std::unique_ptr<render::GpuVisibility> visibility;
     std::unique_ptr<render::DrawSubmission> submission;
     std::unique_ptr<render::TransientPool> pool;
-    std::unique_ptr<rhi::Buffer> meshes;
-    std::vector<std::unique_ptr<rhi::Buffer>> instances;
+    std::unique_ptr<rojoRHI::Buffer> meshes;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> instances;
     std::vector<render::InstanceRow> rows;
     std::vector<render::DrawItem> items;
     render::FrustumPlanes planes;
-    rhi::Buffer* lastRows = nullptr;
-    rhi::Buffer* lastArgs = nullptr;
-    rhi::Buffer* lastStates = nullptr;
+    rojoRHI::Buffer* lastRows = nullptr;
+    rojoRHI::Buffer* lastArgs = nullptr;
+    rojoRHI::Buffer* lastStates = nullptr;
 
     //==================================================================================================================
     explicit WorkFixture(uint32_t count) {
-        auto created = rhi::createDevice();
+        auto created = rojoRHI::createDevice();
         REQUIRE(created);
         device = std::move(*created);
         auto stage = render::GpuVisibility::create(*device);
@@ -95,9 +95,9 @@ struct WorkFixture {
         const auto instanceHandle = graph.importBuffer(*instances.back(), "lmx.scene.instances");
         const auto meshHandle = graph.importBuffer(*meshes, "lmx.scene.meshes");
         const auto rowHandle =
-            graph.importBuffer(*lastRows, "lmx.draw.rows", rhi::BufferUse::StorageWrite);
+            graph.importBuffer(*lastRows, "lmx.draw.rows", rojoRHI::BufferUse::StorageWrite);
         const auto argumentHandle =
-            graph.importBuffer(*lastArgs, "lmx.draw.args", rhi::BufferUse::StorageWrite);
+            graph.importBuffer(*lastArgs, "lmx.draw.args", rojoRHI::BufferUse::StorageWrite);
         render::VisibilityStatus status;
         status.frameNumber = frame;
         status.classifyMode = render::ClassifyMode::Gpu;
@@ -127,13 +127,13 @@ struct WorkFixture {
             REQUIRE(state);
             lastStates = *state;
             // Fixture-only GPU initialization leaves production buffer flags and passes intact.
-            commands.bufferBarrier(*lastStates, rhi::BufferUse::StorageRead,
-                                   rhi::BufferUse::CopyDestination);
+            commands.bufferBarrier(*lastStates, rojoRHI::BufferUse::StorageRead,
+                                   rojoRHI::BufferUse::CopyDestination);
             commands.beginCopyPass("lmx.test.visibility.stateGuard");
             commands.fillBuffer(*lastStates, 0, lastStates->size(), 0xcd);
             commands.endCopyPass();
-            commands.bufferBarrier(*lastStates, rhi::BufferUse::CopyDestination,
-                                   rhi::BufferUse::StorageWrite);
+            commands.bufferBarrier(*lastStates, rojoRHI::BufferUse::CopyDestination,
+                                   rojoRHI::BufferUse::StorageWrite);
         }
         graph.execute(commands, frame);
         device->endFrame(nullptr);

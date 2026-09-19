@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
 
 #include <cstdint>
@@ -20,7 +20,7 @@ struct GraphInspectorResourceRow {
     uint32_t index = 0; ///< Index into CompiledFrameDebug::resources.
     render::GraphResourceKind kind = render::GraphResourceKind::Texture; ///< Texture or buffer.
     std::string name;                          ///< The name it was declared under.
-    rhi::Format format = rhi::Format::Unknown; ///< Declared format; Unknown for a buffer.
+    rojoRHI::Format format = rojoRHI::Format::Unknown; ///< Declared format; Unknown for a buffer.
 };
 
 /// One declared use of one resource version by one pass, with the resource's name resolved so the
@@ -93,6 +93,6 @@ struct GraphInspectorModel {
 /// labels unambiguous and guarantees a culled pass -- which has no schedule position -- remains
 /// unmeasured. Nothing here mutates `record`; the model borrows nothing from it once built.
 GraphInspectorModel buildGraphInspectorModel(const render::CompiledFrameRecord& record,
-                                             std::span<const rhi::PassTiming> timings);
+                                             std::span<const rojoRHI::PassTiming> timings);
 
 } // namespace lmx::app

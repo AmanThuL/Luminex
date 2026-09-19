@@ -5,7 +5,7 @@
 // fetched-asset gate at all, unlike the Sponza/Helmet cases above.
 TEST_CASE("loadMaterialLabScene builds deterministic diagnostics without requiring fetched assets",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -54,7 +54,7 @@ TEST_CASE("loadMaterialLabScene builds deterministic diagnostics without requiri
 TEST_CASE("loadMaterialLabScene uses its neutral fallback when the studio environment is absent",
           "[gpu]") {
     const auto loadAndCheckFallback = [] {
-        auto device = rhi::createDevice();
+        auto device = rojoRHI::createDevice();
         REQUIRE(device.has_value());
         auto scene = loadMaterialLabScene(**device);
         INFO(describeSceneError(scene));
@@ -83,7 +83,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
         SKIP("Studio Small 09 is not present (xmake setup fetches it)");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -97,7 +97,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
 TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns and metallic "
           "across rows",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -126,7 +126,7 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
 TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pan and its probes "
           "do not occlude each other",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -166,7 +166,7 @@ TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pa
 // The opening view is a lookdev view, not an inventory thumbnail: the complete sphere matrix must
 // be visible, yet large enough that roughness and reflection changes are immediately readable.
 TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent", "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -193,7 +193,7 @@ TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent"
 // initial camera along X. Exact X centres also pin the left-to-right lane ordering as scene data.
 TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally pannable lane",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -241,7 +241,7 @@ TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally p
 TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,128,255,255} "
           "outside the bump",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -249,14 +249,14 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 
     const SceneObject* normalProbe = findObject(**scene, "material-lab normal probe");
     REQUIRE(normalProbe != nullptr);
-    rhi::Texture* normalMap =
+    rojoRHI::Texture* normalMap =
         (*scene)->tryTexture(*(*scene)->material(normalProbe->material).normalMap);
     REQUIRE(normalMap != nullptr);
 
     constexpr uint32_t kMapSize = 64;
     auto destination = (*device)->createTexture({.width = kMapSize,
                                                  .height = kMapSize,
-                                                 .format = rhi::Format::BGRA8Unorm,
+                                                 .format = rojoRHI::Format::BGRA8Unorm,
                                                  .renderTarget = true,
                                                  .cpuReadback = true,
                                                  .label = "lmx.test.materialLabNormalCopy"});
@@ -270,12 +270,12 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
         (*device)->createGraphicsPipeline({.library = library->get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
-                                           .colorFormat = rhi::Format::BGRA8Unorm,
+                                           .colorFormat = rojoRHI::Format::BGRA8Unorm,
                                            .label = "lmx.test.materialLabNormalCopyPipeline"});
     INFO(describeSceneError(pipeline));
     REQUIRE(pipeline.has_value());
 
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     commands.beginRenderPass({.colorTarget = destination->get(),
                               .clearColor = {1.0f, 0.0f, 1.0f, 1.0f},
                               .clear = true,
@@ -321,7 +321,7 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display transform and its "
           "gradient ramp reads back monotonic",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -357,7 +357,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<render::DrawItem> allItems;
     (*scene)->view(allItems, render::ShadowFilter::PCF, false);
@@ -487,7 +487,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
@@ -511,7 +511,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     camera.nearZ = 0.1f;
     camera.farZ = 20.0f;
 
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<render::DrawItem> allItems;
     (*scene)->view(allItems, render::ShadowFilter::PCF, false);

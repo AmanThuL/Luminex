@@ -17,8 +17,8 @@ ENTRY = re.compile(r'\[\s*shader\s*\(')
 INCLUDE = re.compile(r"^\s*#\s*include\b", re.MULTILINE)
 # Each Slang tree, paired with the directory holding its shared modules. The repository tree serves
 # App, Tests and the benchmark; the RHI component owns a second, self-contained tree so its test
-# target compiles without reaching outside RHI/.
-TREES = (("Shaders", "Modules"), ("RHI/Shaders", "Tests/Modules"))
+# target compiles without reaching outside RojoRHI/.
+TREES = (("Shaders", "Modules"), ("RojoRHI/Shaders", "Tests/Modules"))
 
 
 def without_comments(text: str) -> str:

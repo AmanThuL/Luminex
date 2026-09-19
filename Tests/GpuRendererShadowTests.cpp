@@ -11,7 +11,7 @@ using lmx::test::FixtureSceneView;
 // Asymmetric receiver probes catch Y mirroring; broad image disagreement proves both PCF and PCSS
 // paths run.
 TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -166,7 +166,7 @@ TEST_CASE("shadow filters resolve a quad's shadow on a plane", "[gpu]") {
 // Projected world-space probes follow the expected shadow and a distant lit patch through the real
 // renderer.
 TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -262,7 +262,7 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
 // instrument that says so -- a bias that kept the conventional sign would move the ramp the other
 // way and read here as a positive difference.
 TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     constexpr uint32_t kObjectSlot = 1;
     constexpr uint32_t kDepthTextureSlot = 0;

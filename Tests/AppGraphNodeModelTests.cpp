@@ -19,9 +19,9 @@ using namespace lmx::render;
 namespace {
 
 // The model reads a texture's kind, format, and range text off the compiled record alone -- never
-// the rhi::Texture behind it -- so a fake needs to be real enough for RenderGraph::compile() to
+// the rojoRHI::Texture behind it -- so a fake needs to be real enough for RenderGraph::compile() to
 // accept, and nothing more.
-struct FakeTexture final : rhi::Texture {
+struct FakeTexture final : rojoRHI::Texture {
 
     //==================================================================================================================
     explicit FakeTexture(uint32_t extent, uint32_t mips = 1, uint32_t layers = 1)
@@ -34,7 +34,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::Unknown; }
+    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -51,7 +51,7 @@ private:
     uint32_t m_arrayLayers = 1;
 };
 
-struct FakeBuffer final : rhi::Buffer {
+struct FakeBuffer final : rojoRHI::Buffer {
 
     //==================================================================================================================
     explicit FakeBuffer(uint64_t size) : m_size(size) {}
@@ -101,12 +101,12 @@ struct BaseFrameOptions {
 //======================================================================================================================
 void declareBaseFrame(BaseFrame& frame, const BaseFrameOptions& options) {
     RenderGraph& graph = frame.graph;
-    frame.shadow = graph.importTexture(frame.shadowMap, rhi::Format::D32Float, "lmx.shadowMap");
-    frame.color = graph.importTexture(frame.sceneColor, rhi::Format::RGBA16Float, "lmx.sceneColor");
-    frame.depth = graph.importTexture(frame.sceneDepth, rhi::Format::D32Float, "lmx.sceneDepth");
+    frame.shadow = graph.importTexture(frame.shadowMap, rojoRHI::Format::D32Float, "lmx.shadowMap");
+    frame.color = graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
+    frame.depth = graph.importTexture(frame.sceneDepth, rojoRHI::Format::D32Float, "lmx.sceneDepth");
     frame.display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
-    frame.extra = graph.importTexture(frame.extraColor, rhi::Format::BGRA8Unorm, "lmx.extraColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
+    frame.extra = graph.importTexture(frame.extraColor, rojoRHI::Format::BGRA8Unorm, "lmx.extraColor");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(frame.shadow));
@@ -154,18 +154,18 @@ void declareOverlappingTransients(OverlappingTransientFrame& frame, uint32_t ext
     RenderGraph& graph = frame.graph;
     const GraphTexture first = graph.createTexture({.width = extent,
                                                     .height = extent,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.first");
     const GraphTexture second = graph.createTexture({.width = extent,
                                                      .height = extent,
-                                                     .format = rhi::Format::RGBA16Float,
+                                                     .format = rojoRHI::Format::RGBA16Float,
                                                      .renderTarget = true,
                                                      .sampled = true},
                                                     "lmx.transient.second");
     const GraphTexture display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
 
     PassDesc writeFirst;
     writeFirst.color = ColorAttachment{.handle = first};
@@ -199,20 +199,20 @@ void declareAliasingTransients(AliasingTransientFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture scene = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.sceneColor");
     const GraphTexture bloom = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture mid =
-        graph.importTexture(frame.midTarget, rhi::Format::BGRA8Unorm, "lmx.mid");
+        graph.importTexture(frame.midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
     const GraphTexture display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -381,11 +381,11 @@ TEST_CASE("a culled pass has no pins and no edges", "[app]") {
     FakeBuffer probe{256};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
     const GraphBuffer stats = graph.importBuffer(probe, "probe");
 
     PassDesc scene;
@@ -486,8 +486,8 @@ TEST_CASE("the shape signature ignores measurements and notices shape changes", 
     declareBaseFrame(frame, {});
     const auto record = frame.graph.compileFrame(2);
     REQUIRE(record.has_value());
-    const std::array<rhi::PassTiming, 1> timings = {
-        rhi::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 7.25}};
+    const std::array<rojoRHI::PassTiming, 1> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.shadow", .gpuMilliseconds = 7.25}};
 
     BaseFrame other;
     declareBaseFrame(other, {});
@@ -540,11 +540,11 @@ TEST_CASE("node facts equal the inspector rows for the same pass", "[app]") {
     const auto record = frame.graph.compileFrame(11);
     REQUIRE(record.has_value());
 
-    const std::array<rhi::PassTiming, 4> timings = {
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.1},
-        rhi::PassTiming{.label = "lmx.pass.resolve", .gpuMilliseconds = 0.2},
-        rhi::PassTiming{.label = "lmx.pass.bloom", .gpuMilliseconds = 0.3},
-        rhi::PassTiming{.label = "lmx.pass.composite", .gpuMilliseconds = 0.4}};
+    const std::array<rojoRHI::PassTiming, 4> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.1},
+        rojoRHI::PassTiming{.label = "lmx.pass.resolve", .gpuMilliseconds = 0.2},
+        rojoRHI::PassTiming{.label = "lmx.pass.bloom", .gpuMilliseconds = 0.3},
+        rojoRHI::PassTiming{.label = "lmx.pass.composite", .gpuMilliseconds = 0.4}};
 
     const GraphInspectorModel rows = buildGraphInspectorModel(*record, timings);
     const GraphNodeModel model = buildGraphNodeModel(*record, timings);

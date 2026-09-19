@@ -5,7 +5,7 @@
 
 #pragma once
 #include "App/Model/GraphInspectorModel.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
 
 #include <cstdint>
@@ -130,7 +130,7 @@ struct GraphNodeModel {
 /// equal signatures are the same graph, which is what lets a caller keep dragged node positions
 /// across frames and know when it must not.
 GraphNodeModel buildGraphNodeModel(const render::CompiledFrameRecord& record,
-                                   std::span<const rhi::PassTiming> timings);
+                                   std::span<const rojoRHI::PassTiming> timings);
 
 /// Canvas identity of a resource name. Only the renderer's two explicit double-buffered
 /// sceneDepth/historyColor families omit their physical slot suffix; the returned view borrows

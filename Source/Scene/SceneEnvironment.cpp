@@ -35,8 +35,8 @@ static_assert(std::size(kLightStrengths) == std::size(kLightDirections),
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
-                                           std::unique_ptr<rhi::Texture> skyCubemap,
+asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
+                                           std::unique_ptr<rojoRHI::Texture> skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
                                            bool analyticLights, std::string_view label,
                                            ibl::GenerationOptions options) {
@@ -63,16 +63,16 @@ asset::AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
 }
 
 //======================================================================================================================
-asset::AssetResult<void> attachNeutralEnvironment(rhi::Device& device, Scene& scene,
+asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene& scene,
                                                   std::string_view label) {
     constexpr std::array<uint8_t, 4> kNeutralSky = {149, 170, 196, 255};
-    const rhi::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
-    const std::array<rhi::TextureMip, 6> faces = {face, face, face, face, face, face};
+    const rojoRHI::TextureMip face{.data = kNeutralSky.data(), .bytesPerRow = 4};
+    const std::array<rojoRHI::TextureMip, 6> faces = {face, face, face, face, face, face};
     // The sRGB view decodes this authored display colour before lighting consumes it.
     auto cubemap = device.createTexture({.width = 1,
                                          .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm_sRGB,
-                                         .kind = rhi::TextureKind::Cube,
+                                         .format = rojoRHI::Format::RGBA8Unorm_sRGB,
+                                         .kind = rojoRHI::TextureKind::Cube,
                                          .mipLevels = 1,
                                          .sampled = true,
                                          .label = std::string(label) + ".sky"},

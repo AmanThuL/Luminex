@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
 
 #include <cstddef>
@@ -37,9 +37,9 @@ struct FrameMetricsMetadata {
 struct RetainedFrame {
     render::CompiledFrameRecord record; ///< The frame as compilation described it.
     /// Per-pass GPU times, in the order the frame began its passes, or empty until they retire.
-    /// Copied rather than borrowed: rhi::Device::passTimings() is invalidated by the next
+    /// Copied rather than borrowed: rojoRHI::Device::passTimings() is invalidated by the next
     /// beginFrame(), and this outlives several of those.
-    std::vector<rhi::PassTiming> timings;
+    std::vector<rojoRHI::PassTiming> timings;
     std::optional<FrameMetricsMetadata> metrics; ///< Declaration-time editor context, if supplied.
     bool timed = false; ///< Whether `timings` has been joined; distinguishes it from a timed frame
                         ///< that ran no passes.
@@ -73,7 +73,7 @@ public:
     /// joins nothing. Joining the same frame twice replaces the timings rather than accumulating
     /// them, so a loop may call this every frame without checking whether the publication has
     /// advanced.
-    bool joinTimings(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    bool joinTimings(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings);
 
     /// The newest retained frame that has timings joined, or null while none has retired yet. This
     /// is the frame an observer displays: the newest one for which both halves are known.

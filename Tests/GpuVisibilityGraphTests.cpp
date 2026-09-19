@@ -7,7 +7,7 @@
 TEST_CASE("GPU visibility declares writers and precise draw consumers in both layouts",
           "[gpu][visibility][gpu-classify][visibility-graph]") {
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     for (const auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
         auto device = createDevice();
         REQUIRE(device);
@@ -64,7 +64,7 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
 TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
           "[gpu][visibility][gpu-classify][visibility-graph]") {
     using namespace lmx::render;
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = lmx::scene::loadVisibilityLabScene(**device, 5);
     REQUIRE(scene);

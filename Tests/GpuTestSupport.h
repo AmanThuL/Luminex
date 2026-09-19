@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../RHI/Tests/RhiGpuTestSupport.h"
+#include "../RojoRHI/Tests/RhiGpuTestSupport.h"
 
 #include "Asset/Asset.h"
 #include "Asset/GeometryGenerator.h"

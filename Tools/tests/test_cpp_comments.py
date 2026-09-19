@@ -28,7 +28,7 @@ class CppCommentTests(unittest.TestCase):
 
     def test_file_header_starts_on_first_line_and_matches_basename(self) -> None:
         text = "\n" + source("Other.h")
-        errors = comments.check_file_header(Path("RHI/Include/RHI/Example.h"), text)
+        errors = comments.check_file_header(Path("RojoRHI/Include/rojoRHI/Example.h"), text)
         self.assertTrue(any(":1:" in error for error in errors))
         self.assertTrue(any("basename" in error or "expected" in error for error in errors))
 
@@ -45,18 +45,18 @@ class CppCommentTests(unittest.TestCase):
             root = Path(directory)
             for relative in (
                 "Source/App.cpp",
-                "RHI/Include/RHI/RHI.h",
+                "RojoRHI/Include/rojoRHI/RHI.h",
                 "Tests/Test.cpp",
                 # Test sources are exempt wherever they live, including inside the RHI component.
-                "RHI/Tests/RHITest.cpp",
-                "RHI/Tests/RHITestSupport.h",
+                "RojoRHI/Tests/RHITest.cpp",
+                "RojoRHI/Tests/RHITestSupport.h",
             ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("", encoding="utf-8")
             self.assertEqual(
                 [path.relative_to(root).as_posix() for path in comments.project_cpp_files(root)],
-                ["RHI/Include/RHI/RHI.h", "Source/App.cpp"],
+                ["RojoRHI/Include/rojoRHI/RHI.h", "Source/App.cpp"],
             )
 
     def test_public_header_roots_exclude_rhi_backend_headers(self) -> None:
@@ -64,10 +64,10 @@ class CppCommentTests(unittest.TestCase):
             root = Path(directory)
             for relative in (
                 "Source/App/Public.h",
-                "RHI/Include/RHI/RHI.h",
-                "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h",
-                "RHI/Backends/Metal4/Source/Private.h",
-                "RHI/Source/Validate.h",
+                "RojoRHI/Include/rojoRHI/RHI.h",
+                "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h",
+                "RojoRHI/Backends/Metal4/Source/Private.h",
+                "RojoRHI/Source/Validate.h",
             ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -75,8 +75,8 @@ class CppCommentTests(unittest.TestCase):
             self.assertEqual(
                 [path.relative_to(root).as_posix() for path in comments.public_header_files(root)],
                 [
-                    "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h",
-                    "RHI/Include/RHI/RHI.h",
+                    "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h",
+                    "RojoRHI/Include/rojoRHI/RHI.h",
                     "Source/App/Public.h",
                 ],
             )

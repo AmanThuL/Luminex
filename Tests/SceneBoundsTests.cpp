@@ -58,7 +58,7 @@ TEST_CASE("shared bounds reject invalid and overflowing transforms conservativel
 //======================================================================================================================
 TEST_CASE("prepared bounds are canonical uploaded rows and static slots converge",
           "[gpu][scene][bounds]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scene::Scene scene;
     const auto mesh = scene.addMesh(render::makeCube(), "bounds.upload.cube");

@@ -22,8 +22,8 @@ using graph_detail::sinkVerb;
 namespace {
 
 //======================================================================================================================
-bool isDepthFormat(rhi::Format format) {
-    return format == rhi::Format::D32Float;
+bool isDepthFormat(rojoRHI::Format format) {
+    return format == rojoRHI::Format::D32Float;
 }
 
 //======================================================================================================================
@@ -33,21 +33,21 @@ bool isDepthFormat(rhi::Format format) {
 // carries. It has to answer exactly as the RHI's predicate does, or the graph refuses a target
 // the device would have accepted. A block-compressed format cannot be rendered into, and a depth
 // format belongs in the other slot.
-bool isColorRenderableFormat(rhi::Format format) {
+bool isColorRenderableFormat(rojoRHI::Format format) {
     switch (format) {
-    case rhi::Format::BGRA8Unorm:
-    case rhi::Format::RGBA8Unorm:
-    case rhi::Format::RGBA8Unorm_sRGB:
-    case rhi::Format::RGBA16Float:
-    case rhi::Format::RG16Float:
-    case rhi::Format::R8Unorm:
+    case rojoRHI::Format::BGRA8Unorm:
+    case rojoRHI::Format::RGBA8Unorm:
+    case rojoRHI::Format::RGBA8Unorm_sRGB:
+    case rojoRHI::Format::RGBA16Float:
+    case rojoRHI::Format::RG16Float:
+    case rojoRHI::Format::R8Unorm:
         return true;
-    case rhi::Format::R16Float:
-    case rhi::Format::R32Float:
-    case rhi::Format::Unknown:
-    case rhi::Format::BC1Unorm:
-    case rhi::Format::BC1Unorm_sRGB:
-    case rhi::Format::D32Float:
+    case rojoRHI::Format::R16Float:
+    case rojoRHI::Format::R32Float:
+    case rojoRHI::Format::Unknown:
+    case rojoRHI::Format::BC1Unorm:
+    case rojoRHI::Format::BC1Unorm_sRGB:
+    case rojoRHI::Format::D32Float:
         return false;
     }
     return false;
@@ -64,7 +64,7 @@ bool validAxis(uint32_t base, uint32_t count, uint32_t available, uint32_t allSe
 //======================================================================================================================
 // A range covers real subresources only when both axes do, so an empty count on either one is an
 // empty range whatever the other says.
-bool isEmptyRange(const rhi::TextureSubresourceRange& range) {
+bool isEmptyRange(const rojoRHI::TextureSubresourceRange& range) {
     return range.mipLevelCount == 0 || range.arrayLayerCount == 0;
 }
 
@@ -77,10 +77,10 @@ GraphResult<void> RenderGraph::validateExtraColorAttachments(const Pass& pass) c
     }
     // Extras are attachments 1 and up: the count is what the hardware can bind past attachment
     // zero, and attachment zero has to be there for any of them to mean anything.
-    if (pass.extraColor.size() > rhi::kMaxExtraColorTargets) {
+    if (pass.extraColor.size() > rojoRHI::kMaxExtraColorTargets) {
         return fail(std::format("pass '{}' declares {} extra color attachments, past the {} a "
                                 "pass can bind beyond its primary one",
-                                pass.label, pass.extraColor.size(), rhi::kMaxExtraColorTargets));
+                                pass.label, pass.extraColor.size(), rojoRHI::kMaxExtraColorTargets));
     }
     if (!pass.color) {
         const Resource& first = m_resources[pass.extraColor.front().handle.index];
@@ -226,10 +226,10 @@ GraphResult<void> RenderGraph::validateDeclarations() const {
             }
             const bool validMips =
                 validAxis(declaration.range.baseMipLevel, declaration.range.mipLevelCount,
-                          resource.mipLevels, rhi::kAllMipLevels);
+                          resource.mipLevels, rojoRHI::kAllMipLevels);
             const bool validLayers =
                 validAxis(declaration.range.baseArrayLayer, declaration.range.arrayLayerCount,
-                          resource.arrayLayers, rhi::kAllArrayLayers);
+                          resource.arrayLayers, rojoRHI::kAllArrayLayers);
             if (!validMips || !validLayers) {
                 return fail(std::format("pass '{}' declares a {} of texture '{}' over {}, which "
                                         "runs past its {} mip levels and {} array layers",

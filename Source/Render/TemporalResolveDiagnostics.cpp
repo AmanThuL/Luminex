@@ -104,7 +104,7 @@ bool viewReadsReprojected(TemporalDebugView view) {
 } // namespace temporal_detail
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                   const TemporalInputs& inputs) {
     // The output extent, at every scale: the history and the display the view draws over are both
     // that size, and the current colour is resampled out of the active rectangle to meet them. It
@@ -114,7 +114,7 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
     const uint32_t height = inputs.extents.outputHeight;
     const GraphTexture diagnostic = graph.createTexture({.width = width,
                                                          .height = height,
-                                                         .format = rhi::Format::RGBA16Float,
+                                                         .format = rojoRHI::Format::RGBA16Float,
                                                          .sampled = true,
                                                          .storageWrite = true},
                                                         "lmx.render.temporalDiagnostic");
@@ -128,13 +128,13 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
         "lmx.pass.temporal.reproject", std::move(reprojectDesc),
         [this, &commands, inputs, diagnostic,
          params = reprojectParams(inputs)](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> historyTexture = resources.texture(inputs.history);
+            const GraphResult<rojoRHI::Texture*> historyTexture = resources.texture(inputs.history);
             LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
-            const GraphResult<rhi::Texture*> sceneTexture = resources.texture(inputs.sceneColor);
+            const GraphResult<rojoRHI::Texture*> sceneTexture = resources.texture(inputs.sceneColor);
             LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
-            const GraphResult<rhi::Texture*> motionTexture = resources.texture(inputs.motion);
+            const GraphResult<rojoRHI::Texture*> motionTexture = resources.texture(inputs.motion);
             LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
-            const GraphResult<rhi::Texture*> target = resources.texture(diagnostic);
+            const GraphResult<rojoRHI::Texture*> target = resources.texture(diagnostic);
             LMX_ASSERT(target.has_value(), target.error().message);
 
             commands.bindComputePipeline(*m_reprojectPipeline);
@@ -142,7 +142,7 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
             commands.bindTexture(kReprojectSceneColorSlot, **sceneTexture);
             commands.bindTexture(kReprojectMotionSlot, **motionTexture);
             commands.bindStorageTexture(kReprojectDiagnosticSlot, **target, {},
-                                        rhi::StorageAccess::Write);
+                                        rojoRHI::StorageAccess::Write);
             commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
             commands.bindFrameData(kReprojectParamsSlot, params);
             commands.dispatch(divRoundUp(params.width, kComputeThreadsPerGroup2D),
@@ -152,7 +152,7 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph, rhi::Comma
 }
 
 //======================================================================================================================
-GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                TemporalDebugView debugView,
                                                const TemporalInputs& inputs,
                                                const TemporalResolveOutputs& outputs,
@@ -191,7 +191,7 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandL
                   [this, &commands, motion, diagnostic, rejection, reprojected, resolved,
                    readsDiagnostic, readsRejection, readsReprojected, readsResolved, debugView,
                    extents](const PassResources& resources) {
-                      const GraphResult<rhi::Texture*> motionTexture = resources.texture(motion);
+                      const GraphResult<rojoRHI::Texture*> motionTexture = resources.texture(motion);
                       LMX_ASSERT(motionTexture.has_value(), motionTexture.error().message);
 
                       commands.bindPipeline(*m_debugViewPipeline);
@@ -205,7 +205,7 @@ GraphTexture TemporalResolve::declareDebugView(RenderGraph& graph, rhi::CommandL
                               commands.bindTexture(slot, *m_viewFallback);
                               return;
                           }
-                          const GraphResult<rhi::Texture*> texture = resources.texture(handle);
+                          const GraphResult<rojoRHI::Texture*> texture = resources.texture(handle);
                           LMX_ASSERT(texture.has_value(), texture.error().message);
                           commands.bindTexture(slot, **texture);
                       };

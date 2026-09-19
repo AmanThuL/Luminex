@@ -17,7 +17,7 @@ using lmx::test::FixtureSceneView;
 //======================================================================================================================
 TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-selected sink",
           "[gpu][app][frame-declaration]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     auto device = createDevice();

@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "RHI/TextureDesc.h"
+#include <rojoRHI/TextureDesc.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -15,19 +15,19 @@
 
 namespace lmx::asset {
 
-/// A decoded DDS image, ready to hand to rhi::Device::createTexture: mips is a span of
+/// A decoded DDS image, ready to hand to rojoRHI::Device::createTexture: mips is a span of
 /// createTexture-ready views into payload, one entry per (face, mip level), ordered face-major
 /// then mip-major -- face0[mip0..mipLevels-1], face1[mip0..mipLevels-1], ... -- matching
-/// rhi::Device::createTexture's contract (mips.size() == mipLevels * faceCount, 6 faces for
+/// rojoRHI::Device::createTexture's contract (mips.size() == mipLevels * faceCount, 6 faces for
 /// Cube, 1 for Tex2D).
 struct DdsImage {
     uint32_t width = 0;     ///< Base-level width in pixels.
     uint32_t height = 0;    ///< Base-level height in pixels.
     uint32_t mipLevels = 1; ///< Number of complete mip levels in `payload`.
-    rhi::TextureKind kind = rhi::TextureKind::Tex2D; ///< Uploaded texture dimensionality.
+    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Uploaded texture dimensionality.
     bool bc1 = false;                  ///< false = RGBA8 (BGRA masks converted on load)
     std::vector<std::byte> payload;    ///< tightly packed, face-major then mip-major
-    std::vector<rhi::TextureMip> mips; ///< views into payload, createTexture-ready
+    std::vector<rojoRHI::TextureMip> mips; ///< views into payload, createTexture-ready
 };
 
 /// Decodes the legacy DDS formats covered by the loader fixtures: BC1 (DXT1) and uncompressed

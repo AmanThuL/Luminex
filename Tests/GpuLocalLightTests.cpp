@@ -359,7 +359,7 @@ TEST_CASE("the punctual light shader matches its CPU mirror over a fixed sample 
     REQUIRE(exactZeros == 20);
     REQUIRE(coneEdges == 4);
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto library = (*device)->loadShaderLibrary("Shaders/PunctualLightOracle");
@@ -386,10 +386,10 @@ TEST_CASE("the punctual light shader matches its CPU mirror over a fixed sample 
     REQUIRE(output);
 
     constexpr uint32_t kSampleSlot = 1;
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     commands.beginComputePass("lmx.test.punctualLight.evaluate");
     commands.bindComputePipeline(**pipeline);
-    commands.bindStorageBuffer(0, **output, rhi::StorageAccess::Write);
+    commands.bindStorageBuffer(0, **output, rojoRHI::StorageAccess::Write);
     commands.bindBuffer(kSampleSlot, **sampleBuffer);
     commands.dispatch(static_cast<uint32_t>(samples.size()), 1, 1);
     commands.endComputePass();

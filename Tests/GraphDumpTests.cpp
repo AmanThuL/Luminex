@@ -18,7 +18,7 @@ namespace {
 
 // The dump reads mip and layer counts through the range formatting, and formats through the import
 // declaration, so a fake needs nothing else.
-struct FakeTexture final : rhi::Texture {
+struct FakeTexture final : rojoRHI::Texture {
 
     //==================================================================================================================
     FakeTexture(uint32_t extent, uint32_t mips = 1, uint32_t layers = 1)
@@ -31,7 +31,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::Unknown; }
+    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -48,7 +48,7 @@ private:
     uint32_t m_arrayLayers = 1;
 };
 
-struct FakeBuffer final : rhi::Buffer {
+struct FakeBuffer final : rojoRHI::Buffer {
 
     //==================================================================================================================
     explicit FakeBuffer(uint64_t size) : m_size(size) {}
@@ -109,13 +109,13 @@ TEST_CASE("a frame's dump matches its golden file", "[render][graph]") {
     FakeTexture displayColor{64};
     RenderGraph graph;
     const GraphTexture shadow =
-        graph.importTexture(shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap");
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap");
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture depth =
-        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
 
     // Declared before its producer, so the dump's scheduled order differs from its pass indices.
     PassDesc scene;
@@ -150,9 +150,9 @@ TEST_CASE("a compute and copy frame's dump matches its golden file", "[render][g
     FakeBuffer staging{1024};
     RenderGraph graph;
     const GraphTexture bloom =
-        graph.importTexture(chain, rhi::Format::RGBA16Float, "lmx.bloomChain");
+        graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "lmx.bloomChain");
     const GraphTexture target =
-        graph.importTexture(output, rhi::Format::BGRA8Unorm, "lmx.composite");
+        graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "lmx.composite");
     const GraphBuffer bins = graph.importBuffer(histogram, "lmx.histogram");
     const GraphBuffer readback = graph.importBuffer(staging, "lmx.staging");
 
@@ -199,11 +199,11 @@ TEST_CASE("a culled frame's dump matches its golden file", "[render][graph]") {
     FakeTexture unused{64};
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.sceneColor");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "lmx.debugOverlay");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "lmx.debugOverlay");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -252,25 +252,25 @@ TEST_CASE("a transient frame's dump matches its golden file", "[render][graph]")
     RenderGraph graph(pool);
     const GraphTexture scene = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.sceneColor");
     const GraphTexture bloom = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture unused = graph.createTexture({.width = 64,
                                                      .height = 64,
-                                                     .format = rhi::Format::RGBA16Float,
+                                                     .format = rojoRHI::Format::RGBA16Float,
                                                      .renderTarget = true,
                                                      .sampled = true},
                                                     "lmx.transient.unused");
-    const GraphTexture mid = graph.importTexture(midTarget, rhi::Format::BGRA8Unorm, "lmx.mid");
+    const GraphTexture mid = graph.importTexture(midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -310,7 +310,7 @@ TEST_CASE("the same declarations dump identically", "[render][graph]") {
     FakeTexture sceneColor{64};
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.sceneColor");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -335,13 +335,13 @@ TEST_CASE("a multi-attachment frame's dump matches its golden file", "[render][g
     FakeTexture displayColor{64};
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture motion =
-        graph.importTexture(motionVectors, rhi::Format::RG16Float, "lmx.render.motionVectors");
+        graph.importTexture(motionVectors, rojoRHI::Format::RG16Float, "lmx.render.motionVectors");
     const GraphTexture depth =
-        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -372,11 +372,11 @@ TEST_CASE("a third colour attachment is numbered in the dump", "[render][graph]"
     FakeTexture reactive{64};
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture motion =
-        graph.importTexture(motionVectors, rhi::Format::RG16Float, "lmx.render.motion");
+        graph.importTexture(motionVectors, rojoRHI::Format::RG16Float, "lmx.render.motion");
     const GraphTexture weight =
-        graph.importTexture(reactive, rhi::Format::R8Unorm, "lmx.render.reactive");
+        graph.importTexture(reactive, rojoRHI::Format::R8Unorm, "lmx.render.reactive");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -403,11 +403,11 @@ TEST_CASE("a render area appears in the dump", "[render][graph]") {
     FakeTexture displayColor{64};
     RenderGraph graph;
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture depth =
-        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = color};
@@ -434,9 +434,9 @@ TEST_CASE("external graph dumps name the operation and both external uses",
     FakeTexture input{64};
     FakeTexture output{64};
     RenderGraph graph;
-    const auto source = graph.importTexture(input, rhi::Format::R16Float, "exposure",
-                                            rhi::TextureUse::StorageWrite);
-    const auto target = graph.importTexture(output, rhi::Format::RGBA16Float, "history");
+    const auto source = graph.importTexture(input, rojoRHI::Format::R16Float, "exposure",
+                                            rojoRHI::TextureUse::StorageWrite);
+    const auto target = graph.importTexture(output, rojoRHI::Format::RGBA16Float, "history");
     graph.addExternalPass("vendor", {.textureReads = {source}, .textureWrites = {target}}, kNoWork);
     graph.addComputePass("consume",
                          {.shaderTextureReads = {nextVersion(target)}, .textureWrites = {source}},

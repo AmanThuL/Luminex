@@ -33,7 +33,7 @@ void TransientPool::beginFrame() {
 }
 
 //======================================================================================================================
-rhi::Result<void> TransientPool::reserve(uint64_t bytes) {
+rojoRHI::Result<void> TransientPool::reserve(uint64_t bytes) {
     LMX_ASSERT(m_frame > 0, "TransientPool::reserve: no frame is open -- call beginFrame() first");
     Slot& slot = openSlot();
     // Refused before the footprint is even looked at. A second reservation asking for the *same*
@@ -42,7 +42,7 @@ rhi::Result<void> TransientPool::reserve(uint64_t bytes) {
     // already live in -- aliasing across two frames' worth of work with no barrier between them.
     if (slot.reserved) {
         return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc,
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                        "TransientPool::reserve: this frame has already reserved its transient "
                        "memory -- one frame reserves once, so a second graph declaring transients "
                        "in the same frame needs a frame of its own"});
@@ -80,7 +80,7 @@ rhi::Result<void> TransientPool::reserve(uint64_t bytes) {
 }
 
 //======================================================================================================================
-rhi::Result<rhi::Texture*> TransientPool::placeTexture(const rhi::TextureDesc& desc,
+rojoRHI::Result<rojoRHI::Texture*> TransientPool::placeTexture(const rojoRHI::TextureDesc& desc,
                                                        uint64_t offset) {
     LMX_ASSERT(m_frame > 0,
                "TransientPool::placeTexture: no frame is open -- call beginFrame() first");
@@ -98,7 +98,7 @@ rhi::Result<rhi::Texture*> TransientPool::placeTexture(const rhi::TextureDesc& d
 }
 
 //======================================================================================================================
-rhi::Result<rhi::Buffer*> TransientPool::placeBuffer(const rhi::BufferDesc& desc, uint64_t offset) {
+rojoRHI::Result<rojoRHI::Buffer*> TransientPool::placeBuffer(const rojoRHI::BufferDesc& desc, uint64_t offset) {
     LMX_ASSERT(m_frame > 0,
                "TransientPool::placeBuffer: no frame is open -- call beginFrame() first");
     Slot& slot = openSlot();

@@ -74,9 +74,9 @@ glm::mat4 facingPlaneModel(float z) {
 //======================================================================================================================
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
-void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
+void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                  const FixtureSceneView& view) {
-    lmx::rhi::CommandList& commands = device.beginFrame();
+    rojoRHI::CommandList& commands = device.beginFrame();
     renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
                     /*barrierForSampling=*/false);
     device.endFrame(nullptr);
@@ -87,9 +87,9 @@ void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& cam
 // The same frame without the drain: exactly what App/main.cpp submits every frame, so a temporal
 // resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
 // the shipped loop never performs.
-void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
+void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                          const FixtureSceneView& view) {
-    lmx::rhi::CommandList& commands = device.beginFrame();
+    rojoRHI::CommandList& commands = device.beginFrame();
     renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
                     /*barrierForSampling=*/false);
     device.endFrame(nullptr);
@@ -98,7 +98,7 @@ void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Cam
 //======================================================================================================================
 // One RGBA16Float target, widened to floats. Both the colour history and the raw scene target are
 // half-precision, so a comparison between them has to speak the same units the shader wrote.
-std::vector<glm::vec4> readHalf4(lmx::rhi::Texture& texture) {
+std::vector<glm::vec4> readHalf4(rojoRHI::Texture& texture) {
     const size_t count = size_t{texture.width()} * texture.height();
     std::vector<uint8_t> bytes(count * 8);
     texture.readback(bytes.data(), bytes.size());
@@ -179,7 +179,7 @@ using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Came
 // The render scale is not one of the fixed fields: `base.temporal.renderScale` carries a whole
 // sequence's scale and a PerFrame may set `view.temporal.renderScale` to change it per frame,
 // which is what the scale-change scenarios drive the extent with.
-std::vector<ScenarioFrame> renderSequence(lmx::rhi::Device& device, Renderer& renderer,
+std::vector<ScenarioFrame> renderSequence(rojoRHI::Device& device, Renderer& renderer,
                                           uint32_t frames, ReconstructionMode mode,
                                           const FixtureSceneView& base, const Camera& baseCamera,
                                           TemporalDebugView debugView, const PerFrame& perFrame) {
@@ -402,7 +402,7 @@ std::vector<FixtureDrawItem> movingQuadItems(const Camera& camera, const Fixture
 
 //======================================================================================================================
 TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -440,7 +440,7 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
 
 //======================================================================================================================
 TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -482,7 +482,7 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
 
 //======================================================================================================================
 TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -525,7 +525,7 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
 //======================================================================================================================
 TEST_CASE("native and vendor reconstruction retain separate valid histories",
           "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -567,7 +567,7 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
 
 //======================================================================================================================
 TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -611,7 +611,7 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
 //======================================================================================================================
 TEST_CASE("vendor scaler recreates on output resize and survives content scale changes",
           "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());
@@ -670,7 +670,7 @@ TEST_CASE("vendor scaler recreates on output resize and survives content scale c
 
 //======================================================================================================================
 TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][temporal][vendor]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device.has_value());

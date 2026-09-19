@@ -48,7 +48,7 @@ struct ViewportPanelResult {
 /// between them, never two.
 struct ViewportPanelContext {
     render::Renderer& renderer;  ///< The scene target the panel displays.
-    rhi::Texture& outlineTarget; ///< Separate display target for the enabled object cue.
+    rojoRHI::Texture& outlineTarget; ///< Separate display target for the enabled object cue.
     bool& showOutline;           ///< Editor-local cue toggle; leaves framing and capture unchanged.
     std::string_view activeSceneName; ///< Shown in the toolbar.
     render::Camera& camera;           ///< Reset Camera writes the active scene's initial pose here.

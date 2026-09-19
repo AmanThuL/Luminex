@@ -32,13 +32,13 @@ constexpr std::array kCells{Cell{"off", false, ReconstructionMode::Raw, 1.0f},
                             Cell{"metalfx-0.5", true, ReconstructionMode::VendorTemporal, 0.5f}};
 
 struct ZeroLightDepthProbe {
-    std::unique_ptr<lmx::rhi::ShaderLibrary> library;
-    std::unique_ptr<lmx::rhi::ComputePipeline> pipeline;
-    std::unique_ptr<lmx::rhi::Buffer> bytes;
+    std::unique_ptr<rojoRHI::ShaderLibrary> library;
+    std::unique_ptr<rojoRHI::ComputePipeline> pipeline;
+    std::unique_ptr<rojoRHI::Buffer> bytes;
 };
 
 //======================================================================================================================
-ZeroLightDepthProbe makeZeroLightDepthProbe(lmx::rhi::Device& device, uint32_t width,
+ZeroLightDepthProbe makeZeroLightDepthProbe(rojoRHI::Device& device, uint32_t width,
                                             uint32_t height) {
     auto library = device.loadShaderLibrary("Shaders/VisibilityDepthReadback");
     REQUIRE(library);
@@ -66,7 +66,7 @@ Bytes crop(const Bytes& source, uint32_t stride, uint32_t width, uint32_t height
 }
 
 //======================================================================================================================
-Bytes readTexture(lmx::rhi::Texture& texture, uint32_t bpp, uint32_t width, uint32_t height) {
+Bytes readTexture(rojoRHI::Texture& texture, uint32_t bpp, uint32_t width, uint32_t height) {
     Bytes bytes(size_t{texture.width()} * texture.height() * bpp);
     texture.readback(bytes.data(), bytes.size());
     return crop(bytes, texture.width(), width, height, bpp);
@@ -112,7 +112,7 @@ LocalLightMode modeFor(size_t history, uint32_t frame) {
 }
 
 //======================================================================================================================
-void compareHistories(lmx::rhi::Device& device, const char* sceneName, const Camera& camera,
+void compareHistories(rojoRHI::Device& device, const char* sceneName, const Camera& camera,
                       uint32_t width, uint32_t height,
                       const std::function<SceneView(uint64_t)>& prepare) {
     std::ofstream report;
@@ -169,11 +169,11 @@ void compareHistories(lmx::rhi::Device& device, const char* sceneName, const Cam
                     view.exposureEv = 0;
                     renderer.render(commands, camera, view, false);
                     commands.textureBarrier(renderer.depthTarget(),
-                                            lmx::rhi::TextureUse::RenderTarget,
-                                            lmx::rhi::TextureUse::ShaderRead);
+                                            rojoRHI::TextureUse::RenderTarget,
+                                            rojoRHI::TextureUse::ShaderRead);
                     commands.beginComputePass("lmx.test.zeroLight.readDepth");
                     commands.bindComputePipeline(*probe.pipeline);
-                    commands.bindStorageBuffer(0, *probe.bytes, lmx::rhi::StorageAccess::Write);
+                    commands.bindStorageBuffer(0, *probe.bytes, rojoRHI::StorageAccess::Write);
                     commands.bindTexture(1, renderer.depthTarget());
                     commands.dispatch((width + 7) / 8, (height + 7) / 8, 1);
                     commands.endComputePass();
@@ -286,7 +286,7 @@ void compareHistories(lmx::rhi::Device& device, const char* sceneName, const Cam
 //======================================================================================================================
 TEST_CASE("zero-light requested modes preserve controlled GPU histories",
           "[gpu][zero-light-history]") {
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto cube = fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.zeroLight.cube");
     REQUIRE(cube);
@@ -294,12 +294,12 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
                            "lmx.test.zeroLight.sky");
     REQUIRE(sky);
     const uint32_t skyTexel = 0xffff8000u;
-    const lmx::rhi::TextureMip skyMip{.data = &skyTexel, .bytesPerRow = 4};
+    const rojoRHI::TextureMip skyMip{.data = &skyTexel, .bytesPerRow = 4};
     const std::array skyFaces{skyMip, skyMip, skyMip, skyMip, skyMip, skyMip};
     auto cubemap = (*device)->createTexture({.width = 1,
                                              .height = 1,
-                                             .format = lmx::rhi::Format::RGBA8Unorm,
-                                             .kind = lmx::rhi::TextureKind::Cube,
+                                             .format = rojoRHI::Format::RGBA8Unorm,
+                                             .kind = rojoRHI::TextureKind::Cube,
                                              .sampled = true,
                                              .label = "lmx.test.zeroLight.skyTexture"},
                                             skyFaces);
@@ -307,10 +307,10 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
     std::array<uint32_t, 64> maskTexels{};
     for (size_t i = 0; i < maskTexels.size(); ++i)
         maskTexels[i] = ((i / 8 + i % 8) % 2) ? 0xffffffffu : 0x00ffffffu;
-    const lmx::rhi::TextureMip maskMip{.data = maskTexels.data(), .bytesPerRow = 8 * 4};
+    const rojoRHI::TextureMip maskMip{.data = maskTexels.data(), .bytesPerRow = 8 * 4};
     auto mask = (*device)->createTexture({.width = 8,
                                           .height = 8,
-                                          .format = lmx::rhi::Format::RGBA8Unorm,
+                                          .format = rojoRHI::Format::RGBA8Unorm,
                                           .sampled = true,
                                           .label = "lmx.test.zeroLight.mask"},
                                          std::span{&maskMip, 1});
@@ -335,7 +335,7 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
 // Fetched Sponza is an explicit diagnostic, separate from the small always-available fixture.
 TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
           "[.][gpu][zero-light-history-sponza]") {
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = lmx::scene::loadSponzaScene(**device);
     REQUIRE(scene);
