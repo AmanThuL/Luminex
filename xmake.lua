@@ -16,7 +16,7 @@ includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/depen
 -- RHI/xmake.lua carries root settings for a standalone configure and is deliberately not included.
 rhi_thirdparty = path.join(os.scriptdir(), "ThirdParty")
 rhi_imgui_target = "ImGui"
-includes("RHI/xmake/shaders.lua", "RHI/xmake/targets.lua")
+includes("RHI/xmake/targets.lua")
 
 -- First-party targets keep source membership and dependency declarations beside their units.
 includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",

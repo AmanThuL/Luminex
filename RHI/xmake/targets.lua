@@ -3,6 +3,10 @@
 -- it and nothing else, so project settings, language level and package requires stay declared once
 -- per root rather than once per include.
 --
+-- The shader rule the test target opts into is part of that interface, so this file includes it
+-- rather than leaving a host to remember a second include.
+includes("shaders.lua")
+
 -- Two values a host may set as plain globals before the include, because xmake evaluates an
 -- included description script in the same interpreter as the including one:
 --
