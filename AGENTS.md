@@ -68,7 +68,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
-  `python3 Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
+  `python3 RHI/Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
