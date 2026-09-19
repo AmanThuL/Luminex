@@ -1,4 +1,4 @@
--- CPU-only contract tests for the standalone RHI component. They link the RHI target alone, so
+-- Contract and GPU tests for the standalone RHI component. They link the RHI target alone, so
 -- the suite stays runnable once the component leaves this repository.
 target("RHITests")
     set_kind("binary")
@@ -7,7 +7,14 @@ target("RHITests")
     add_files("*.cpp")
     add_deps("RHI")
     add_packages("catch2", "glm")
+    -- GPU cases load shaders relative to the test binary, so this target compiles its own smoke
+    -- shaders. The six under Shaders/Tests are still shared with the Tests target; the copy
+    -- commit gives this component its own tree and drops the reach outside RHI/.
+    add_rules("slang2metallib")
+    add_files("../Shaders/Tests/*.slang")
+    add_files("../../Shaders/Tests/BufferHazardSmoke.slang", "../../Shaders/Tests/ComputeImageSmoke.slang",
+              "../../Shaders/Tests/FullscreenSample.slang", "../../Shaders/Tests/MrtSmoke.slang",
+              "../../Shaders/Tests/SamplerSmoke.slang", "../../Shaders/Tests/ShadowSmoke.slang")
     add_tests("unit", {runargs = {"~[gpu]"}})
-    -- The GPU cases still live in the Tests target, so this group matches nothing yet and Catch2
-    -- would fail the run; the allowance goes away with the GPU movers.
-    add_tests("gpu", {runargs = {"[gpu]~[.]", "--allow-running-no-tests"}})
+    -- Hidden diagnostics have explicit reproduction commands and are not ordinary regression gates.
+    add_tests("gpu", {runargs = {"[gpu]~[.]"}})

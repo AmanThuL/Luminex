@@ -232,7 +232,8 @@
         "render",
         "asset",
         "scene",
-        "app-model"
+        "app-model",
+        "rhi-tests"
       ],
       "thirdParty": [
         "glm",

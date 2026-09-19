@@ -25,8 +25,8 @@ and AppModel static target.
 | `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `rhi-public`, `asset`, `render` | glm |
 | `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
-| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
-| `rhi-tests` | `RHI/Tests` (`RHITests`) | — | CPU-only contract cases for the RHI component, in a binary that links the RHI target alone | `rhi-public` | catch2, glm |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model`, `rhi-tests` | glm, catch2 |
+| `rhi-tests` | `RHI/Tests` (`RHITests`) | — | Contract and GPU cases for the RHI component, in a binary that links the RHI target alone | `rhi-public` | catch2, glm |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core`, `rhi-public` | glm |
 
@@ -48,11 +48,16 @@ hands back the interface, and no test names a backend, adapter or `RHI/Source` h
 Tests target links the `RHI` target is the link-level view, a target's dependency closure, which the
 link checks own; it is not an include edge and does not widen this row.
 
-`rhi-tests` keeps the component's CPU-only cases inside the component: its sources live under
-`RHI/Tests`, include `RHI/` headers and their own fixture only, and build into the separate
+`rhi-tests` keeps the component's own cases inside the component: its sources live under
+`RHI/Tests`, include `RHI/` headers and their own fixtures only, and build into the separate
 `RHITests` binary, which links the `RHI` target and no other project library. Its messages reach the
 `RHI/Message.h` stderr default, because the forwarding sink belongs to `render`. The two test
 binaries partition the suite: a case lives in exactly one of them.
+
+`tests` depends on `rhi-tests` for one header: `RHI/Tests/RhiGpuTestSupport.h`, the shared GPU
+bootstrap that `Tests/GpuTestSupport.h` layers its Asset, Render and Scene helpers onto. The edge
+points into the component, never out of it, so the RHI suite stays self-contained; when the
+component leaves the repository, the repository suite keeps its own copy of the bootstrap.
 
 ### Directory ownership
 
@@ -153,8 +158,9 @@ no private entries. Public Renderer uses incomplete stage owners with out-of-lin
 
 Root `xmake.lua` includes unit-local target definitions; reusable shader rules, dependency setup
 and maintenance tasks live under `xmake/`. Slang entry points stay at `Shaders/`, reusable modules
-at `Shaders/Modules/` and oracles at `Shaders/Tests/`; `check_shader_imports.py` enforces their
-import boundary and basename uniqueness. These paths do not change runtime shader basenames.
+at `Shaders/Modules/` and oracles at `Shaders/Tests/`; the RHI component owns a second tree of its
+own smoke shaders at `RHI/Shaders/Tests/`. `check_shader_imports.py` enforces each tree's import
+boundary and basename uniqueness. These paths do not change runtime shader basenames.
 
 ## Asset independence
 

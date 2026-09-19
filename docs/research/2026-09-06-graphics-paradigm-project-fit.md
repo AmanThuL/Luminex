@@ -49,7 +49,7 @@ this repository, the missing dependencies put both behind execution and shader e
 
 | Existing surface | Reusable value | Limit |
 |---|---|---|
-| [CommandList](../../RHI/Include/RHI/CommandList.h), [indirect arguments](../../RHI/Include/RHI/Indirect.h), [GPU tests](../../Tests/GpuIndirectTests.cpp) | Compute-written arguments, explicit hazards, GPU correctness checks | Each indirect call still encodes one command; no public ICB/batched execution API |
+| [CommandList](../../RHI/Include/RHI/CommandList.h), [indirect arguments](../../RHI/Include/RHI/Indirect.h), [GPU tests](../../RHI/Tests/GpuIndirectTests.cpp) | Compute-written arguments, explicit hazards, GPU correctness checks | Each indirect call still encodes one command; no public ICB/batched execution API |
 | [Renderer](../../Source/Render/Renderer.cpp), [frame-data decision](../decisions/0010-execution-model-partial-reshape.md) | Retained object model with efficient frame-owned data | Production iterates draw items; GPU addresses are not persistent GPU scene ownership |
 | [FrameData benchmark](../../Benchmarks/FrameData/Runner.cpp), [paired driver](../../Tools/Bench/frame_data_paired.py) | Existing discipline for repeatable paired CPU measurements | Must add visibility, GPU preparation, execution, and workload-specific accounting |
 | [Render graph](../../Source/Render/RenderGraph.h), [graph model](../../Source/App/Model/GraphNodeModel.h), [layout](../../Source/App/Model/GraphLayout.h) | Pass/resource/barrier inspection and exact retired-frame evidence | No device execution graph, command-processor counter, or causal bottleneck diagnosis |

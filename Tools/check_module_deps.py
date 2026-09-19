@@ -729,11 +729,12 @@ def check_link(
 
 
 def report_budgets(files: list[Path], contract: dict, root: Path) -> list[str]:
-    """Line-count review candidates: informational, never errors. Tests root uses the tests budget."""
+    """Line-count review candidates: informational, never errors. A Tests directory uses the tests
+    budget, whether it is the repository suite or a component's own suite such as RHI/Tests."""
     budgets = contract.get("budgets", {})
     lines: list[str] = []
     for path in files:
-        category = "tests" if path.parts[:1] == ("Tests",) else "production"
+        category = "tests" if "Tests" in path.parts[:-1] else "production"
         budget = budgets.get(category)
         if budget is None:
             continue
