@@ -11,13 +11,13 @@ holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
   JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are public packages.
-- **RHI** builds and tests from its own root (`xmake -P RHI`): `RHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
-  dependency — a private `RHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
-  is `RHI/Include/RHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
-  forwards into spdlog/Console for App and Luminex's `Tests`. `RHI/Tests`/`RHI/Shaders/Tests` hold its
-  own contract/GPU suite (`RHITests`, linking only `RHI`); `RHI/Tools` holds its header check, ImGui
+- **RHI** builds and tests from its own root (`xmake -P RojoRHI`): `RojoRHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
+  dependency — a private `RojoRHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
+  is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
+  forwards into spdlog/Console for App and Luminex's `Tests`. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its
+  own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui
   patch and buffer probe. Its self-contained core public headers live under
-  `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
+  `RojoRHI/Include/rojoRHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
   `Heap.h`, `Sampler.h`, `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`,
   `RenderPass.h`, `CommandList.h`, `TemporalScaler.h`, `Swapchain.h`, and `Device.h`, plus the focused `Result.h`,
   `Validate.h`, and `CaptureSchema.h` — behind an includes-only `RHI.h` umbrella that declares no
@@ -39,14 +39,14 @@ holds the borrowed frame input independently of the renderer.
   `DeviceCapabilities::temporalScaler` reports an optional algorithm and its input/output scale
   interval; `TemporalScaler` owns private reconstruction history, and the between-pass
   `CommandList::temporalScale` consumes neutral frame parameters. `R16Float` is sampled and storage-writable for the exposure texel; no MetalFX types enter public headers.
-- **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
+- **RojoRHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables (texture slots cleared before each render/compute pass), a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
   retained mapped and resident until device destruction so a slot's high water becomes its reused
   capacity rather than being released), residency, shared-event pacing, render, compute, and copy
   pass encoders, indirect draws and dispatches, untracked placement heaps with resources created at
-  explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time private scratch and a copy inside the same timed call. The optional `RHIMetal4ImGui` target
-  owns the adapter (sources under `RHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
+  explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time private scratch and a copy inside the same timed call. The optional `RojoRHIMetal4ImGui` target
+  owns the adapter (sources under `RojoRHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
 - **Render** owns camera, CPU geometry vocabulary (`Vertex`/`MeshData`), shared scene-table rows,
   the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
