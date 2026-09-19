@@ -90,7 +90,7 @@ def _schema_with(uniform_structs, frame_data_uploads, resources=None) -> schemal
                             frame_data_uploads=frame_data_uploads)
 
 
-def _upload(page_label="lmx.device.frameData.0.page.0", slot=2, page_offset=512, size_bytes=288,
+def _upload(page_label="rojorhi.device.frameData.0.page.0", slot=2, page_offset=512, size_bytes=288,
            alignment_bytes=256, gpu_address=0x1000) -> schemalib.FrameDataUpload:
     return schemalib.FrameDataUpload(page_label=page_label, slot=slot, page_offset=page_offset,
                                      size_bytes=size_bytes, alignment_bytes=alignment_bytes,
@@ -100,7 +100,7 @@ def _upload(page_label="lmx.device.frameData.0.page.0", slot=2, page_offset=512,
 class DecodeUploadsTests(unittest.TestCase):
     def setUp(self):
         self.page = bytes(_build_page())
-        self.page_bytes_by_label = {"lmx.device.frameData.0.page.0": self.page}
+        self.page_bytes_by_label = {"rojorhi.device.frameData.0.page.0": self.page}
 
     def test_resolves_struct_names_by_slot_and_size(self):
         uploads = [
@@ -152,7 +152,7 @@ class DecodeUploadsTests(unittest.TestCase):
         self.assertEqual(decoded[0].values["eyePos"], [1.0, 2.0, 3.0])
         self.assertEqual(decoded[0].values["shadowFilter"], 0)
         self.assertEqual(decoded[0].slot, 2)
-        self.assertEqual(decoded[0].page_label, "lmx.device.frameData.0.page.0")
+        self.assertEqual(decoded[0].page_label, "rojorhi.device.frameData.0.page.0")
         self.assertEqual(decoded[0].page_offset, 512)
         self.assertEqual(decoded[0].alignment_bytes, 512)
         self.assertTrue(decoded[0].finite)
@@ -175,18 +175,18 @@ class DecodeUploadsTests(unittest.TestCase):
             uniformlib.decode_uploads(schema, self.page_bytes_by_label)
 
         message = str(ctx.exception)
-        self.assertIn("lmx.device.frameData.0.page.0", message)
+        self.assertIn("rojorhi.device.frameData.0.page.0", message)
         self.assertIn("4000", message)
 
     def test_unresolved_page_label_raises_uniform_error_not_a_crash(self):
-        uploads = [_upload(page_label="lmx.device.frameData.9.page.0", page_offset=0,
+        uploads = [_upload(page_label="rojorhi.device.frameData.9.page.0", page_offset=0,
                            size_bytes=288)]
         schema = _schema_with([_pass_uniforms_struct()], uploads)
 
         with self.assertRaises(uniformlib.UniformError) as ctx:
             uniformlib.decode_uploads(schema, {})  # nothing attributed to frameData.9.page.0
 
-        self.assertIn("lmx.device.frameData.9.page.0", str(ctx.exception))
+        self.assertIn("rojorhi.device.frameData.9.page.0", str(ctx.exception))
 
     def test_nan_field_marks_upload_not_finite_and_renders_as_none(self):
         page = bytearray(_build_page())
@@ -197,7 +197,7 @@ class DecodeUploadsTests(unittest.TestCase):
         schema = _schema_with([_pass_uniforms_struct()], uploads)
 
         decoded = uniformlib.decode_uploads(
-            schema, {"lmx.device.frameData.0.page.0": bytes(page)})
+            schema, {"rojorhi.device.frameData.0.page.0": bytes(page)})
 
         self.assertFalse(decoded[0].finite)
         self.assertIsNone(decoded[0].values["eyePos"][0])
@@ -216,7 +216,7 @@ class ResolvePageBytesTests(unittest.TestCase):
         These are never each other's attribution family (see uniformlib's module docstring), so
         this fixture only backs tests whose branch doesn't depend on family grouping at all."""
         return [
-            schemalib.Resource(label=f"lmx.device.frameData.0.page.{i}", kind="buffer",
+            schemalib.Resource(label=f"rojorhi.device.frameData.0.page.{i}", kind="buffer",
                               format=None, width=None, height=None, mip_levels=None,
                               size_bytes=size)
             for i in range(3)
@@ -228,7 +228,7 @@ class ResolvePageBytesTests(unittest.TestCase):
         order, all at the arena's normal page size, so this is the shape the positional heuristic
         actually has to disambiguate in a real capture."""
         return [
-            schemalib.Resource(label=f"lmx.device.frameData.{slot}.page.0", kind="buffer",
+            schemalib.Resource(label=f"rojorhi.device.frameData.{slot}.page.0", kind="buffer",
                               format=None, width=None, height=None, mip_levels=None,
                               size_bytes=size)
             for slot in range(3)
@@ -243,15 +243,15 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.add_labelled_resource("lmx.unrelated", None)
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
-        schema = _schema_with([], [self._upload_for("lmx.device.frameData.0.page.1")],
+        schema = _schema_with([], [self._upload_for("rojorhi.device.frameData.0.page.1")],
                               resources=self._page_resources())
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
 
         self.assertEqual(resolution.page_bytes_by_label,
-                         {"lmx.device.frameData.0.page.1": b"\xab" * 4096})
+                         {"rojorhi.device.frameData.0.page.1": b"\xab" * 4096})
         self.assertIn("single page-sized blob", resolution.attribution)
-        self.assertIn("lmx.device.frameData.0.page.1", resolution.attribution)
+        self.assertIn("rojorhi.device.frameData.0.page.1", resolution.attribution)
 
     def test_cross_slot_page_zero_blobs_attributed_positionally_by_creation_id(self):
         # The real topology: one page-0 per frame-in-flight slot, created in ascending slot order
@@ -264,13 +264,13 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.add_labelled_resource("lmx.unrelated", None)
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
-        schema = _schema_with([], [self._upload_for("lmx.device.frameData.2.page.0")],
+        schema = _schema_with([], [self._upload_for("rojorhi.device.frameData.2.page.0")],
                               resources=self._cross_slot_page_resources())
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
 
         self.assertEqual(resolution.page_bytes_by_label,
-                         {"lmx.device.frameData.2.page.0": b"\x22" * 4096})
+                         {"rojorhi.device.frameData.2.page.0": b"\x22" * 4096})
         self.assertIn("positional", resolution.attribution)
         self.assertIn("untrusted heuristic", resolution.attribution)
 
@@ -282,24 +282,24 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         resources = [
-            schemalib.Resource(label="lmx.device.frameData.0.page.0", kind="buffer",
+            schemalib.Resource(label="rojorhi.device.frameData.0.page.0", kind="buffer",
                                format=None, width=None, height=None, mip_levels=None,
                                size_bytes=4096),
-            schemalib.Resource(label="lmx.device.frameData.0.page.1", kind="buffer",
+            schemalib.Resource(label="rojorhi.device.frameData.0.page.1", kind="buffer",
                                format=None, width=None, height=None, mip_levels=None,
                                size_bytes=8192),
         ]
         schema = _schema_with(
             [],
-            [self._upload_for("lmx.device.frameData.0.page.0"),
-             self._upload_for("lmx.device.frameData.0.page.1")],
+            [self._upload_for("rojorhi.device.frameData.0.page.0"),
+             self._upload_for("rojorhi.device.frameData.0.page.1")],
             resources=resources)
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
 
         self.assertEqual(resolution.page_bytes_by_label, {
-            "lmx.device.frameData.0.page.0": b"\xaa" * 4096,
-            "lmx.device.frameData.0.page.1": b"\xbb" * 8192,
+            "rojorhi.device.frameData.0.page.0": b"\xaa" * 4096,
+            "rojorhi.device.frameData.0.page.1": b"\xbb" * 8192,
         })
 
     def test_multi_page_capture_keeps_resolved_page_when_sibling_is_ambiguous(self):
@@ -311,23 +311,23 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
         resources = [
-            schemalib.Resource(label="lmx.device.frameData.0.page.0", kind="buffer",
+            schemalib.Resource(label="rojorhi.device.frameData.0.page.0", kind="buffer",
                                format=None, width=None, height=None, mip_levels=None,
                                size_bytes=4096),
-            schemalib.Resource(label="lmx.device.frameData.0.page.1", kind="buffer",
+            schemalib.Resource(label="rojorhi.device.frameData.0.page.1", kind="buffer",
                                format=None, width=None, height=None, mip_levels=None,
                                size_bytes=8192),
         ]
         schema = _schema_with(
             [],
-            [self._upload_for("lmx.device.frameData.0.page.0"),
-             self._upload_for("lmx.device.frameData.0.page.1")],
+            [self._upload_for("rojorhi.device.frameData.0.page.0"),
+             self._upload_for("rojorhi.device.frameData.0.page.1")],
             resources=resources)
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
 
         self.assertEqual(resolution.page_bytes_by_label,
-                         {"lmx.device.frameData.0.page.0": b"\xaa" * 4096})
+                         {"rojorhi.device.frameData.0.page.0": b"\xaa" * 4096})
         self.assertIn("page.1", resolution.attribution)
         self.assertIn("unresolved", resolution.attribution)
 
@@ -346,7 +346,7 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.add_labelled_resource("lmx.unrelated", None)
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
-        schema = _schema_with([], [self._upload_for("lmx.device.frameData.0.page.2")],
+        schema = _schema_with([], [self._upload_for("rojorhi.device.frameData.0.page.2")],
                               resources=self._page_resources())
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
@@ -362,7 +362,7 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.add_labelled_resource("lmx.unrelated", None)
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
-        schema = _schema_with([], [self._upload_for("lmx.device.frameData.0.page.0")],
+        schema = _schema_with([], [self._upload_for("rojorhi.device.frameData.0.page.0")],
                               resources=self._page_resources())
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)
@@ -375,7 +375,7 @@ class ResolvePageBytesTests(unittest.TestCase):
         fx.add_labelled_resource("lmx.unrelated", None)
         fx.flush_device_resources()
         bundle = bundlelib.walk_bundle(self.root)
-        schema = _schema_with([], [self._upload_for("lmx.device.frameData.0.page.0")],
+        schema = _schema_with([], [self._upload_for("rojorhi.device.frameData.0.page.0")],
                               resources=self._page_resources())
 
         resolution = uniformlib.resolve_page_bytes(schema, bundle)

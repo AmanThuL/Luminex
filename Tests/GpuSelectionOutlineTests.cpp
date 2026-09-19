@@ -16,7 +16,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 using namespace lmx::render;
-using namespace lmx::rhi;
+using namespace rojoRHI;
 
 //======================================================================================================================
 MeshData outlineQuad() {

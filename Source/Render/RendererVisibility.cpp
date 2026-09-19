@@ -24,7 +24,7 @@ VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands
 
 //======================================================================================================================
 std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
-                                                       rhi::CommandList& commands,
+                                                       rojoRHI::CommandList& commands,
                                                        const SceneView& view,
                                                        const FrustumPlanes& planes,
                                                        std::span<const GraphBuffer> sceneBuffers) {
@@ -77,7 +77,7 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
         m_drawSubmission.prepare(frame, view, m_visibilityStatus.scene, m_visibilityStatus.shadow);
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
     m_visibilityStatus.submission = m_drawSubmission.stats();
-    auto import = [&](rhi::Buffer& buffer, const char* label, std::optional<rhi::BufferUse> use) {
+    auto import = [&](rojoRHI::Buffer& buffer, const char* label, std::optional<rojoRHI::BufferUse> use) {
         return use ? graph.importBuffer(buffer, label, *use) : graph.importBuffer(buffer, label);
     };
     auto rows = import(*m_drawSubmission.scene().rows, "lmx.draw.rows", m_drawSubmission.rowUse());

@@ -29,8 +29,8 @@ constexpr float kMaxHalf = 65504.0f;
 //======================================================================================================================
 // Uploads a cube chain as RGBA16Float. `chain` is mip-major (chain[0] is the base level); the
 // staging buffers stay alive across createTexture because TextureMip only borrows their storage.
-rhi::Result<std::unique_ptr<rhi::Texture>>
-uploadCubeChain(rhi::Device& device, std::span<const asset::ibl::CpuCubemap> chain,
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+uploadCubeChain(rojoRHI::Device& device, std::span<const asset::ibl::CpuCubemap> chain,
                 const std::string& label) {
     LMX_ASSERT(!chain.empty(), "uploadCube: a cube needs at least its base level");
     const uint32_t mipCount = static_cast<uint32_t>(chain.size());
@@ -57,7 +57,7 @@ uploadCubeChain(rhi::Device& device, std::span<const asset::ibl::CpuCubemap> cha
         }
     }
 
-    std::vector<rhi::TextureMip> mips;
+    std::vector<rojoRHI::TextureMip> mips;
     mips.reserve(staging.size());
     for (uint32_t face = 0; face < asset::ibl::kCubeFaceCount; ++face) {
         for (uint32_t mip = 0; mip < mipCount; ++mip) {
@@ -67,8 +67,8 @@ uploadCubeChain(rhi::Device& device, std::span<const asset::ibl::CpuCubemap> cha
     }
     return device.createTexture({.width = chain[0].faceSize,
                                  .height = chain[0].faceSize,
-                                 .format = rhi::Format::RGBA16Float,
-                                 .kind = rhi::TextureKind::Cube,
+                                 .format = rojoRHI::Format::RGBA16Float,
+                                 .kind = rojoRHI::TextureKind::Cube,
                                  .mipLevels = mipCount,
                                  .sampled = true,
                                  .label = label},
@@ -76,7 +76,7 @@ uploadCubeChain(rhi::Device& device, std::span<const asset::ibl::CpuCubemap> cha
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<rhi::Texture>> uploadDfgLut(rhi::Device& device,
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> uploadDfgLut(rojoRHI::Device& device,
                                                         const std::vector<glm::vec2>& lut,
                                                         uint32_t size, const std::string& label) {
     std::vector<uint16_t> halves(lut.size() * 2);
@@ -84,11 +84,11 @@ rhi::Result<std::unique_ptr<rhi::Texture>> uploadDfgLut(rhi::Device& device,
         halves[texel * 2] = glm::packHalf1x16(lut[texel].x);
         halves[texel * 2 + 1] = glm::packHalf1x16(lut[texel].y);
     }
-    const rhi::TextureMip mip{.data = halves.data(), .bytesPerRow = uint64_t{size} * kHalf2Stride};
-    const std::array<rhi::TextureMip, 1> mips = {mip};
+    const rojoRHI::TextureMip mip{.data = halves.data(), .bytesPerRow = uint64_t{size} * kHalf2Stride};
+    const std::array<rojoRHI::TextureMip, 1> mips = {mip};
     return device.createTexture({.width = size,
                                  .height = size,
-                                 .format = rhi::Format::RG16Float,
+                                 .format = rojoRHI::Format::RG16Float,
                                  .mipLevels = 1,
                                  .sampled = true,
                                  .label = label},
@@ -98,15 +98,15 @@ rhi::Result<std::unique_ptr<rhi::Texture>> uploadDfgLut(rhi::Device& device,
 } // namespace
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<rhi::Texture>>
-uploadCubemap(rhi::Device& device, const asset::ibl::CpuCubemap& env, std::string_view label) {
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env, std::string_view label) {
     LMX_ASSERT(env.faceSize > 0, "uploadCubemap: the environment cube has no texels");
     return uploadCubeChain(device, std::span<const asset::ibl::CpuCubemap>(&env, 1),
                            std::string(label));
 }
 
 //======================================================================================================================
-rhi::Result<IblTextures> generate(rhi::Device& device, const asset::ibl::CpuCubemap& env,
+rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
                                   std::string_view label, GenerationOptions options) {
     LMX_ASSERT(env.faceSize > 0, "ibl::generate: the environment cube has no texels");
     LMX_ASSERT(options.specularBaseFaceSize >= (1u << (asset::ibl::kSpecularMipCount - 1)),

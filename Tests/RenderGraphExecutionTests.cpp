@@ -7,8 +7,8 @@ TEST_CASE("execute encodes each pass kind in its own scope", "[render][graph]") 
     FakeTexture storage{64, 64, "storage"};
     FakeTexture target{64, 64, "target"};
     RenderGraph graph;
-    const GraphTexture written = graph.importTexture(storage, rhi::Format::RGBA16Float, "storage");
-    const GraphTexture color = graph.importTexture(target, rhi::Format::BGRA8Unorm, "target");
+    const GraphTexture written = graph.importTexture(storage, rojoRHI::Format::RGBA16Float, "storage");
+    const GraphTexture color = graph.importTexture(target, rojoRHI::Format::BGRA8Unorm, "target");
 
     ComputePassDesc fill;
     fill.textureWrites.push_back(written);
@@ -69,7 +69,7 @@ TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]"
     FakeBuffer outputBuffer{256, "output"};
     RenderGraph graph;
     const GraphTexture sampled =
-        graph.importTexture(sampledTexture, rhi::Format::RGBA16Float, "sampled");
+        graph.importTexture(sampledTexture, rojoRHI::Format::RGBA16Float, "sampled");
     const GraphBuffer constants = graph.importBuffer(constantsBuffer, "constants");
     const GraphBuffer arguments = graph.importBuffer(argumentsBuffer, "arguments");
     const GraphBuffer output = graph.importBuffer(outputBuffer, "output");
@@ -92,9 +92,9 @@ TEST_CASE("compute read roles map to their explicit RHI uses", "[render][graph]"
     INFO(errorOf(record));
     REQUIRE(record.has_value());
     REQUIRE(record->debug.transitions.size() == 3);
-    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
-    REQUIRE(record->debug.transitions[1].bufferTo == rhi::BufferUse::ShaderRead);
-    REQUIRE(record->debug.transitions[2].bufferTo == rhi::BufferUse::IndirectArgument);
+    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(record->debug.transitions[1].bufferTo == rojoRHI::BufferUse::ShaderRead);
+    REQUIRE(record->debug.transitions[2].bufferTo == rojoRHI::BufferUse::IndirectArgument);
 }
 
 //======================================================================================================================
@@ -105,8 +105,8 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     FakeTexture output{64, 64, "output"};
     RenderGraph graph;
-    const GraphTexture texture = graph.importTexture(chain, rhi::Format::RGBA16Float, "chain");
-    const GraphTexture target = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+    const GraphTexture texture = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "chain");
+    const GraphTexture target = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
 
     CopyPassDesc copy;
     copy.textureDestinations.push_back({texture, {.baseMipLevel = 0, .mipLevelCount = 1}});
@@ -129,8 +129,8 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
     REQUIRE(record->debug.transitions.size() == 1);
     REQUIRE(record->debug.transitions[0].beforePass == 2);
     REQUIRE(record->debug.transitions[0].range.baseMipLevel == 0);
-    REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::CopyDestination);
-    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::ShaderRead);
+    REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::ShaderRead);
 }
 
 //======================================================================================================================
@@ -139,8 +139,8 @@ TEST_CASE("an untouched mip keeps its earlier writer use", "[render][graph]") {
 TEST_CASE("a texture write is barriered after an earlier write", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture texture = graph.importTexture(chain, rhi::Format::RGBA16Float, "chain");
-    const rhi::TextureSubresourceRange mip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    const GraphTexture texture = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "chain");
+    const rojoRHI::TextureSubresourceRange mip0{.baseMipLevel = 0, .mipLevelCount = 1};
 
     CopyPassDesc copy;
     copy.textureDestinations.push_back({texture, mip0});
@@ -156,8 +156,8 @@ TEST_CASE("a texture write is barriered after an earlier write", "[render][graph
     REQUIRE(record.has_value());
     REQUIRE(record->debug.transitions.size() == 1);
     REQUIRE(record->debug.transitions[0].beforePass == 1);
-    REQUIRE(record->debug.transitions[0].textureFrom == rhi::TextureUse::CopyDestination);
-    REQUIRE(record->debug.transitions[0].textureTo == rhi::TextureUse::StorageWrite);
+    REQUIRE(record->debug.transitions[0].textureFrom == rojoRHI::TextureUse::CopyDestination);
+    REQUIRE(record->debug.transitions[0].textureTo == rojoRHI::TextureUse::StorageWrite);
 }
 
 //======================================================================================================================
@@ -180,14 +180,14 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].bufferFrom == rhi::BufferUse::CopyDestination);
-        REQUIRE(record->debug.transitions[0].bufferTo == rhi::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferFrom == rojoRHI::BufferUse::CopyDestination);
+        REQUIRE(record->debug.transitions[0].bufferTo == rojoRHI::BufferUse::StorageWrite);
     }
 
     SECTION("prior-frame producer") {
         RenderGraph graph;
         const GraphBuffer buffer =
-            graph.importBuffer(storage, "storage", rhi::BufferUse::StorageWrite);
+            graph.importBuffer(storage, "storage", rojoRHI::BufferUse::StorageWrite);
         ComputePassDesc overwrite;
         overwrite.bufferWrites.push_back(buffer);
         graph.addComputePass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -196,8 +196,8 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
         const auto record = graph.compileFrame(1);
         REQUIRE(record.has_value());
         REQUIRE(record->debug.transitions.size() == 1);
-        REQUIRE(record->debug.transitions[0].bufferFrom == rhi::BufferUse::StorageWrite);
-        REQUIRE(record->debug.transitions[0].bufferTo == rhi::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferFrom == rojoRHI::BufferUse::StorageWrite);
+        REQUIRE(record->debug.transitions[0].bufferTo == rojoRHI::BufferUse::StorageWrite);
     }
 }
 
@@ -207,7 +207,7 @@ TEST_CASE("a buffer write is barriered after its preceding writer", "[render][gr
 TEST_CASE("a derived barrier carries the range the reader declared", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc write;
     write.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 1}});

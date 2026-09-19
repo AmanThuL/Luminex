@@ -42,7 +42,7 @@ uint8_t gradientChannel(uint32_t coordinate) {
 // read, and the ordering between the two is entirely the graph's answer. The sentinel the
 // accumulator starts from is what a missing barrier reads back instead of the filled value.
 TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     constexpr uint32_t kElements = 256;
@@ -138,7 +138,7 @@ TEST_CASE("a graph-declared copy pass feeds a graph-declared compute pass", "[gp
 // samples it, with the storage-write-to-shader-read transition derived from the two declarations.
 // The magenta clear is what a draw that ran before the dispatch would leave behind.
 TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     auto device = createDevice();
@@ -243,7 +243,7 @@ TEST_CASE("a graph-declared compute pass feeds a raster pass", "[gpu]") {
 // publishes timings for is found in the ring by its number, with the labels of the passes that
 // frame declared. A ring that retained only the frames in flight would have evicted it.
 TEST_CASE("a retained frame record joins the timings of the frame it describes", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     constexpr uint32_t kFrames = 6;
@@ -315,7 +315,7 @@ TEST_CASE("a retained frame record joins the timings of the frame it describes",
 // extra reached the hardware as attachment one rather than being dropped or aliased onto the
 // primary.
 TEST_CASE("a graph-declared pass writes an extra color attachment", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     // The two halves MrtSmoke.slang writes: 0.25 is 2^-2 and -0.5 is 2^-1, both exact in half

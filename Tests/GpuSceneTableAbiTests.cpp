@@ -7,7 +7,7 @@
 //======================================================================================================================
 TEST_CASE("CPU buffer uploads preserve surrounding bytes and reach GPU reads",
           "[gpu][scene-tables]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
@@ -49,7 +49,7 @@ TEST_CASE("CPU buffer uploads preserve surrounding bytes and reach GPU reads",
 
 //======================================================================================================================
 TEST_CASE("device-private placed buffers reject host upload permission", "[gpu][scene-tables]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
@@ -68,7 +68,7 @@ TEST_CASE("device-private placed buffers reject host upload permission", "[gpu][
 TEST_CASE("scene table structured-buffer ABI preserves every field and row stride",
           "[gpu][scene-tables]") {
     using namespace lmx;
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto library = (*device)->loadShaderLibrary("Shaders/SceneTableAbi");
@@ -164,7 +164,7 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
     auto& commands = (*device)->beginFrame();
     commands.beginComputePass("lmx.test.sceneTableAbi.read");
     commands.bindComputePipeline(**pipeline);
-    commands.bindStorageBuffer(0, **output, rhi::StorageAccess::Write);
+    commands.bindStorageBuffer(0, **output, rojoRHI::StorageAccess::Write);
     commands.bindBuffer(render::kSceneInstancesSlot, **instanceBuffer);
     commands.bindBuffer(render::kSceneMaterialsSlot, **materialBuffer);
     commands.bindBuffer(render::kSceneMeshesSlot, **meshBuffer);

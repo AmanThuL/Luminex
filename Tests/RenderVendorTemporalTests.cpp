@@ -44,7 +44,7 @@ std::string declaredFrame(FakeDevice& device, Renderer& renderer, const SceneVie
 }
 
 //======================================================================================================================
-lmx::rhi::TemporalScalerSupport supportedVendor() {
+rojoRHI::TemporalScalerSupport supportedVendor() {
     return {
         .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Fake Temporal"};
 }

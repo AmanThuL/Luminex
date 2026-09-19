@@ -70,7 +70,7 @@ public:
     void rewindAnimation();
 
     /// Uploads this frame's changed scene rows after Device::beginFrame has paced the slot.
-    rhi::Result<void> prepareFrame(uint64_t frameNumber);
+    rojoRHI::Result<void> prepareFrame(uint64_t frameNumber);
 
     /// Read-only diagnostics for the active scene's most recently prepared table slot.
     scene::SceneTableStats tableStats() const;
@@ -120,17 +120,17 @@ public:
     /// Sets enabled flags on the active Sponza rig before prepareFrame, retaining IDs and edits.
     /// Authors a missing rig for CPU fixtures; invalid scenes/capacity fail without partial
     /// additions.
-    rhi::Result<void> setLocalLightRig(bool enabled);
+    rojoRHI::Result<void> setLocalLightRig(bool enabled);
 
     /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
     std::optional<render::LocalLight> localLightDefault(scene::LightId id) const;
     /// Whether this live light differs from its authored/current-track default.
     bool localLightChanged(scene::LightId id) const;
     /// Validates and edits one live light before prepareFrame, retaining its original reset value.
-    rhi::Result<void> editLocalLight(scene::LightId id, const render::LocalLight& light);
+    rojoRHI::Result<void> editLocalLight(scene::LightId id, const render::LocalLight& light);
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
     /// InvalidDesc.
-    rhi::Result<void> resetLocalLight(scene::LightId id);
+    rojoRHI::Result<void> resetLocalLight(scene::LightId id);
     /// Whether the active scene exposes an authored LightLab grid and editable overflow pile.
     bool lightLabPileAvailable() const;
     /// Number of this session's currently live pile lights; unrelated additions are excluded.
@@ -139,7 +139,7 @@ public:
     uint32_t lightLabPileCapacity() const;
     /// Replaces only the pile population before prepareFrame. Added lights are static; oversized
     /// requests fail transactionally. Grid identities, tracks and unrelated runtime lights survive.
-    rhi::Result<void> setLightLabPile(uint32_t count);
+    rojoRHI::Result<void> setLightLabPile(uint32_t count);
 
 private:
     struct Defaults {

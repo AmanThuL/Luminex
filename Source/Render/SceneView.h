@@ -22,7 +22,7 @@
 #include <span>
 #include <string_view>
 
-namespace lmx::rhi {
+namespace rojoRHI {
 class Texture;
 }
 
@@ -35,11 +35,11 @@ struct DrawItem {
     uint64_t instanceIdentity = 0;
     uint32_t instanceRow = 0;          ///< Stable instance slot; independent of draw-list position.
     MeshRow mesh;                      ///< Range in the scene geometry pool.
-    rhi::Texture* diffuse = nullptr;   ///< Null selects the white fallback.
-    rhi::Texture* normalMap = nullptr; ///< Null selects the flat-normal fallback.
-    rhi::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
-    rhi::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
-    rhi::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
+    rojoRHI::Texture* diffuse = nullptr;   ///< Null selects the white fallback.
+    rojoRHI::Texture* normalMap = nullptr; ///< Null selects the flat-normal fallback.
+    rojoRHI::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
+    rojoRHI::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
+    rojoRHI::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
     AlphaMode alphaMode = AlphaMode::Opaque;   ///< Coverage pipeline selection.
     bool doubleSided = false;                  ///< Masked culling pipeline selection.
 };
@@ -148,7 +148,7 @@ struct SceneView {
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.
     std::optional<MeshRow> skySphere;
-    rhi::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
+    rojoRHI::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
     /// (Source/Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,
     /// and the split-sum DFG table. This is what replaced the flat ambient term -- an environment
@@ -159,9 +159,9 @@ struct SceneView {
     /// renderer substitutes its black-cube and zero-DFG fallbacks, which make both image-based
     /// terms evaluate to zero. A caller that builds a SceneView by hand -- every test that probes
     /// direct lighting on its own -- therefore renders without constructing an IBL set.
-    rhi::Texture* irradiance = nullptr;     ///< Borrowed diffuse IBL cubemap.
-    rhi::Texture* prefilteredEnv = nullptr; ///< Borrowed specular IBL cubemap chain.
-    rhi::Texture* dfgLut = nullptr;         ///< Borrowed split-sum lookup table.
+    rojoRHI::Texture* irradiance = nullptr;     ///< Borrowed diffuse IBL cubemap.
+    rojoRHI::Texture* prefilteredEnv = nullptr; ///< Borrowed specular IBL cubemap chain.
+    rojoRHI::Texture* dfgLut = nullptr;         ///< Borrowed split-sum lookup table.
     /// xyz centre, w radius. The shadow ortho frustum is fitted to exactly this, so a sphere that
     /// does not contain the scene loses the geometry outside it from the shadow map.
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};

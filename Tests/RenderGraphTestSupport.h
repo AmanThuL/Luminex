@@ -25,7 +25,7 @@ namespace {
 //
 // `name` is the test's own label for the texture, so a recorded barrier says which resource it
 // transitioned rather than printing a pointer.
-struct FakeTexture final : rhi::Texture {
+struct FakeTexture final : rojoRHI::Texture {
     std::string name;
 
     //==================================================================================================================
@@ -43,7 +43,7 @@ struct FakeTexture final : rhi::Texture {
     // Unknown is the sentinel a test double uses when the graph case declares the format itself;
     // production textures always report their concrete creation format.
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::Unknown; }
+    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -63,7 +63,7 @@ private:
 
 // The graph never reads a buffer's size -- buffers carry no attachment or subresource rules at all
 // -- so this exists to give importBuffer a real object to borrow and to name itself in a barrier.
-struct FakeBuffer final : rhi::Buffer {
+struct FakeBuffer final : rojoRHI::Buffer {
     std::string name;
 
     //==================================================================================================================
@@ -97,42 +97,42 @@ inline std::string errorOf(const GraphResult<T>& result) {
 }
 
 //======================================================================================================================
-inline std::string useName(rhi::TextureUse use) {
+inline std::string useName(rojoRHI::TextureUse use) {
     switch (use) {
-    case rhi::TextureUse::RenderTarget:
+    case rojoRHI::TextureUse::RenderTarget:
         return "RenderTarget";
-    case rhi::TextureUse::ShaderRead:
+    case rojoRHI::TextureUse::ShaderRead:
         return "ShaderRead";
-    case rhi::TextureUse::StorageRead:
+    case rojoRHI::TextureUse::StorageRead:
         return "StorageRead";
-    case rhi::TextureUse::StorageWrite:
+    case rojoRHI::TextureUse::StorageWrite:
         return "StorageWrite";
-    case rhi::TextureUse::CopySource:
+    case rojoRHI::TextureUse::CopySource:
         return "CopySource";
-    case rhi::TextureUse::CopyDestination:
+    case rojoRHI::TextureUse::CopyDestination:
         return "CopyDestination";
-    case rhi::TextureUse::ExternalRead:
+    case rojoRHI::TextureUse::ExternalRead:
         return "ExternalRead";
-    case rhi::TextureUse::ExternalWrite:
+    case rojoRHI::TextureUse::ExternalWrite:
         return "ExternalWrite";
     }
     return "unknown";
 }
 
 //======================================================================================================================
-inline std::string useName(rhi::BufferUse use) {
+inline std::string useName(rojoRHI::BufferUse use) {
     switch (use) {
-    case rhi::BufferUse::ShaderRead:
+    case rojoRHI::BufferUse::ShaderRead:
         return "ShaderRead";
-    case rhi::BufferUse::StorageRead:
+    case rojoRHI::BufferUse::StorageRead:
         return "StorageRead";
-    case rhi::BufferUse::StorageWrite:
+    case rojoRHI::BufferUse::StorageWrite:
         return "StorageWrite";
-    case rhi::BufferUse::CopySource:
+    case rojoRHI::BufferUse::CopySource:
         return "CopySource";
-    case rhi::BufferUse::CopyDestination:
+    case rojoRHI::BufferUse::CopyDestination:
         return "CopyDestination";
-    case rhi::BufferUse::IndirectArgument:
+    case rojoRHI::BufferUse::IndirectArgument:
         return "IndirectArgument";
     }
     return "unknown";
@@ -141,17 +141,17 @@ inline std::string useName(rhi::BufferUse use) {
 // What execute() produces is a sequence of RHI calls, so recording that sequence is what makes it
 // observable without a device. Only the calls execute() itself makes are recorded; the draw-level
 // binds a pass body might make are not this layer's output and are left as no-ops.
-struct RecordingCommandList final : rhi::CommandList {
+struct RecordingCommandList final : rojoRHI::CommandList {
     // The order of passes and of the barriers between them, as one flat log -- both are ordering,
     // and separate lists would not say which came first.
     std::vector<std::string> events;
     // Every begun pass, for the attachment assertions the log cannot carry.
-    std::vector<rhi::RenderPassDesc> passes;
-    std::vector<rhi::TemporalScaleParams> temporalScales;
+    std::vector<rojoRHI::RenderPassDesc> passes;
+    std::vector<rojoRHI::TemporalScaleParams> temporalScales;
     std::deque<std::string> temporalLabels;
 
     //==================================================================================================================
-    void temporalScale(rhi::TemporalScaler&, const rhi::TemporalScaleParams& params) override {
+    void temporalScale(rojoRHI::TemporalScaler&, const rojoRHI::TemporalScaleParams& params) override {
         temporalLabels.emplace_back(params.label);
         temporalScales.push_back(params);
         temporalScales.back().label = temporalLabels.back();
@@ -159,7 +159,7 @@ struct RecordingCommandList final : rhi::CommandList {
     }
 
     //==================================================================================================================
-    void beginRenderPass(const rhi::RenderPassDesc& desc) override {
+    void beginRenderPass(const rojoRHI::RenderPassDesc& desc) override {
         passes.push_back(desc);
         events.push_back("begin " + std::string(desc.label));
     }
@@ -180,14 +180,14 @@ struct RecordingCommandList final : rhi::CommandList {
     void endComputePass() override { events.push_back("end compute"); }
 
     //==================================================================================================================
-    void bindComputePipeline(rhi::ComputePipeline&) override {}
+    void bindComputePipeline(rojoRHI::ComputePipeline&) override {}
 
     //==================================================================================================================
-    void bindStorageBuffer(uint32_t, rhi::Buffer&, rhi::StorageAccess) override {}
+    void bindStorageBuffer(uint32_t, rojoRHI::Buffer&, rojoRHI::StorageAccess) override {}
 
     //==================================================================================================================
-    void bindStorageTexture(uint32_t, rhi::Texture&, const rhi::TextureViewDesc&,
-                            rhi::StorageAccess) override {}
+    void bindStorageTexture(uint32_t, rojoRHI::Texture&, const rojoRHI::TextureViewDesc&,
+                            rojoRHI::StorageAccess) override {}
 
     //==================================================================================================================
     void dispatch(uint32_t x, uint32_t y, uint32_t z) override {
@@ -196,7 +196,7 @@ struct RecordingCommandList final : rhi::CommandList {
     }
 
     //==================================================================================================================
-    void dispatchIndirect(rhi::Buffer&, uint64_t) override {}
+    void dispatchIndirect(rojoRHI::Buffer&, uint64_t) override {}
 
     // Copy pass boundaries log for the same reason the compute ones do; the copies a body records
     // are the body's own output and are left as no-ops.
@@ -210,70 +210,70 @@ struct RecordingCommandList final : rhi::CommandList {
     void endCopyPass() override { events.push_back("end copy"); }
 
     //==================================================================================================================
-    void copyBuffer(rhi::Buffer&, uint64_t, rhi::Buffer&, uint64_t, uint64_t) override {}
+    void copyBuffer(rojoRHI::Buffer&, uint64_t, rojoRHI::Buffer&, uint64_t, uint64_t) override {}
 
     //==================================================================================================================
-    void copyBufferToTexture(rhi::Buffer&, const rhi::BufferTextureLayout&, rhi::Texture&,
-                             const rhi::TextureCopyRegion&) override {}
+    void copyBufferToTexture(rojoRHI::Buffer&, const rojoRHI::BufferTextureLayout&, rojoRHI::Texture&,
+                             const rojoRHI::TextureCopyRegion&) override {}
 
     //==================================================================================================================
-    void copyTextureToBuffer(rhi::Texture&, const rhi::TextureCopyRegion&, rhi::Buffer&,
-                             const rhi::BufferTextureLayout&) override {}
+    void copyTextureToBuffer(rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&, rojoRHI::Buffer&,
+                             const rojoRHI::BufferTextureLayout&) override {}
 
     //==================================================================================================================
-    void copyTexture(rhi::Texture&, const rhi::TextureCopyRegion&, rhi::Texture&,
-                     const rhi::TextureCopyRegion&) override {}
+    void copyTexture(rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&, rojoRHI::Texture&,
+                     const rojoRHI::TextureCopyRegion&) override {}
 
     //==================================================================================================================
-    void fillBuffer(rhi::Buffer&, uint64_t, uint64_t, uint8_t) override {}
+    void fillBuffer(rojoRHI::Buffer&, uint64_t, uint64_t, uint8_t) override {}
 
     //==================================================================================================================
-    void bufferBarrier(rhi::Buffer& buffer, const rhi::BufferRange&, rhi::BufferUse from,
-                       rhi::BufferUse to, rhi::BarrierOptions) override {
+    void bufferBarrier(rojoRHI::Buffer& buffer, const rojoRHI::BufferRange&, rojoRHI::BufferUse from,
+                       rojoRHI::BufferUse to, rojoRHI::BarrierOptions) override {
         events.push_back("barrier " + static_cast<FakeBuffer&>(buffer).name + " " + useName(from) +
                          "->" + useName(to));
     }
 
     //==================================================================================================================
-    void textureBarrier(rhi::Texture& texture, const rhi::TextureSubresourceRange& range,
-                        rhi::TextureUse from, rhi::TextureUse to, rhi::BarrierOptions) override {
+    void textureBarrier(rojoRHI::Texture& texture, const rojoRHI::TextureSubresourceRange& range,
+                        rojoRHI::TextureUse from, rojoRHI::TextureUse to, rojoRHI::BarrierOptions) override {
         // A whole-resource range is what a pass with no subresource detail declares and is the
         // common case, so it is left out of the log; a narrowed one is spelled out, because a
         // barrier covering the wrong subresources is exactly what these cases are looking for.
         const bool wholeResource =
-            range.baseMipLevel == 0 && range.mipLevelCount == rhi::kAllMipLevels &&
-            range.baseArrayLayer == 0 && range.arrayLayerCount == rhi::kAllArrayLayers;
+            range.baseMipLevel == 0 && range.mipLevelCount == rojoRHI::kAllMipLevels &&
+            range.baseArrayLayer == 0 && range.arrayLayerCount == rojoRHI::kAllArrayLayers;
         events.push_back("barrier " + static_cast<FakeTexture&>(texture).name +
                          (wholeResource ? "" : " " + describeRange(range)) + " " + useName(from) +
                          "->" + useName(to));
     }
 
     //==================================================================================================================
-    void bindPipeline(rhi::GraphicsPipeline&) override {}
+    void bindPipeline(rojoRHI::GraphicsPipeline&) override {}
 
     //==================================================================================================================
-    void bindBuffer(uint32_t, rhi::Buffer&) override {}
+    void bindBuffer(uint32_t, rojoRHI::Buffer&) override {}
 
     //==================================================================================================================
-    void bindTexture(uint32_t, rhi::Texture&, const rhi::TextureViewDesc&) override {}
+    void bindTexture(uint32_t, rojoRHI::Texture&, const rojoRHI::TextureViewDesc&) override {}
 
     //==================================================================================================================
-    void bindSampler(uint32_t, rhi::Sampler&) override {}
+    void bindSampler(uint32_t, rojoRHI::Sampler&) override {}
 
     //==================================================================================================================
-    rhi::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override { return {}; }
+    rojoRHI::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override { return {}; }
 
     //==================================================================================================================
     void draw(uint32_t, uint32_t) override {}
 
     //==================================================================================================================
-    void drawIndexed(rhi::Buffer&, uint32_t, uint32_t) override {}
+    void drawIndexed(rojoRHI::Buffer&, uint32_t, uint32_t) override {}
 
     //==================================================================================================================
-    void drawIndirect(rhi::Buffer&, uint64_t) override {}
+    void drawIndirect(rojoRHI::Buffer&, uint64_t) override {}
 
     //==================================================================================================================
-    void drawIndexedIndirect(rhi::Buffer&, rhi::Buffer&, uint64_t) override {}
+    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer&, uint64_t) override {}
 };
 } // namespace
 
@@ -284,7 +284,7 @@ namespace {
 // multiple of the size, which keeps the packing readable in the assertions.
 [[maybe_unused]] constexpr TransientTextureDesc kTransientColor{.width = 64,
                                                                 .height = 64,
-                                                                .format = rhi::Format::RGBA16Float,
+                                                                .format = rojoRHI::Format::RGBA16Float,
                                                                 .renderTarget = true,
                                                                 .sampled = true};
 
@@ -303,8 +303,8 @@ struct DisjointFrame {
     void declare(const TransientTextureDesc& secondDesc = kTransientColor) {
         const GraphTexture first = graph.createTexture(kTransientColor, "lmx.transient.first");
         const GraphTexture second = graph.createTexture(secondDesc, "lmx.transient.second");
-        const GraphTexture mid = graph.importTexture(midTarget, rhi::Format::BGRA8Unorm, "mid");
-        const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+        const GraphTexture mid = graph.importTexture(midTarget, rojoRHI::Format::BGRA8Unorm, "mid");
+        const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
         PassDesc writeFirst;
         writeFirst.color = ColorAttachment{.handle = first};

@@ -29,7 +29,7 @@ constexpr uint32_t kDisplayParamsSlot = 0;
 } // namespace
 
 //======================================================================================================================
-rhi::Result<void> DisplayStage::loadLibraries(rhi::Device& device) {
+rojoRHI::Result<void> DisplayStage::loadLibraries(rojoRHI::Device& device) {
     if (auto library = device.loadShaderLibrary("Shaders/DisplayTransform"); library) {
         m_displayLibrary = std::move(*library);
     } else {
@@ -39,15 +39,15 @@ rhi::Result<void> DisplayStage::loadLibraries(rhi::Device& device) {
 }
 
 //======================================================================================================================
-rhi::Result<void> DisplayStage::createPipelines(rhi::Device& device) {
+rojoRHI::Result<void> DisplayStage::createPipelines(rojoRHI::Device& device) {
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     if (auto pipeline = device.createGraphicsPipeline({.library = m_displayLibrary.get(),
                                                        .vertexEntry = "vertexMain",
                                                        .fragmentEntry = "fragmentMain",
                                                        .colorFormat = kDisplayFormat,
-                                                       .depthFormat = rhi::Format::Unknown,
-                                                       .cullMode = rhi::CullMode::None,
+                                                       .depthFormat = rojoRHI::Format::Unknown,
+                                                       .cullMode = rojoRHI::CullMode::None,
                                                        .label = "lmx.render.displayPipeline"});
         pipeline) {
         m_displayPipeline = std::move(*pipeline);
@@ -59,12 +59,12 @@ rhi::Result<void> DisplayStage::createPipelines(rhi::Device& device) {
 }
 
 //======================================================================================================================
-rhi::Result<void> DisplayStage::createResources(rhi::Device& device) {
+rojoRHI::Result<void> DisplayStage::createResources(rojoRHI::Device& device) {
     // A valid resource for DisplayTransform's bloom slot when bloom is off. The shader skips the
     // texture load in that mode, but the argument table must still contain a bound texture.
     {
         const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
-        const rhi::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
+        const rojoRHI::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
         if (auto texture = device.createTexture({.width = 1,
                                                  .height = 1,
                                                  .format = kSceneColorFormat,
@@ -82,7 +82,7 @@ rhi::Result<void> DisplayStage::createResources(rhi::Device& device) {
 }
 
 //======================================================================================================================
-void DisplayStage::declare(RenderGraph& graph, rhi::CommandList& commands,
+void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                            GraphTexture displayInput, GraphTexture bloomResult,
                            GraphTexture displayColor, bool bloomEnabled, float bloomIntensity) {
     PassDesc displayDesc;
@@ -94,7 +94,7 @@ void DisplayStage::declare(RenderGraph& graph, rhi::CommandList& commands,
     // when it is off (spec 10) -- the same pattern the exposure passes above use.
     if (bloomEnabled) {
         displayDesc.textureReads.push_back(TextureUseDesc(
-            bloomResult, rhi::TextureSubresourceRange{.baseMipLevel = 0, .mipLevelCount = 1}));
+            bloomResult, rojoRHI::TextureSubresourceRange{.baseMipLevel = 0, .mipLevelCount = 1}));
     }
     // The fullscreen triangle covers every pixel, so the clear only states an attachment load
     // action the RHI requires; no fragment reads what it wrote.
@@ -104,7 +104,7 @@ void DisplayStage::declare(RenderGraph& graph, rhi::CommandList& commands,
         "lmx.pass.display", std::move(displayDesc),
         [this, &commands, displayInput, bloomResult, bloomEnabled,
          bloomIntensity](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> hdrTexture = resources.texture(displayInput);
+            const GraphResult<rojoRHI::Texture*> hdrTexture = resources.texture(displayInput);
             LMX_ASSERT(hdrTexture.has_value(), hdrTexture.error().message);
 
             commands.bindPipeline(*m_displayPipeline);
@@ -113,7 +113,7 @@ void DisplayStage::declare(RenderGraph& graph, rhi::CommandList& commands,
             // shader skip its texture load: scene color + 0 stays bit-identical to scene color
             // alone without addressing outside the fallback texture.
             if (bloomEnabled) {
-                const GraphResult<rhi::Texture*> bloomTexture = resources.texture(bloomResult);
+                const GraphResult<rojoRHI::Texture*> bloomTexture = resources.texture(bloomResult);
                 LMX_ASSERT(bloomTexture.has_value(), bloomTexture.error().message);
                 commands.bindTexture(kDisplayBloomTextureSlot, **bloomTexture);
             } else {

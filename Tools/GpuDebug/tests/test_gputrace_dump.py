@@ -302,14 +302,14 @@ class UniformsJsonCliTests(unittest.TestCase):
         schema = {
             **_SCHEMA,
             "resources": [
-                {"label": "lmx.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 4096},
+                {"label": "rojorhi.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 4096},
             ],
             "uniformStructs": [
                 {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
                  "fields": [{"name": "eyePos", "offsetBytes": 128, "type": "float3"}]},
             ],
             "frameDataUploads": [
-                {"pageLabel": "lmx.device.frameData.0.page.0", "slot": 2, "pageOffset": 512,
+                {"pageLabel": "rojorhi.device.frameData.0.page.0", "slot": 2, "pageOffset": 512,
                  "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4096},
             ],
         }
@@ -324,7 +324,7 @@ class UniformsJsonCliTests(unittest.TestCase):
         self.assertEqual(len(uniforms["uploads"]), 1)
         upload = uniforms["uploads"][0]
         self.assertEqual(upload["structName"], "PassUniforms")
-        self.assertEqual(upload["pageLabel"], "lmx.device.frameData.0.page.0")
+        self.assertEqual(upload["pageLabel"], "rojorhi.device.frameData.0.page.0")
         self.assertEqual(upload["alignmentBytes"], 256)
         self.assertNotIn("gpuAddress", upload)  # non-deterministic across runs; not surfaced
         self.assertEqual(upload["values"]["eyePos"], [1.5, 2.5, 3.5])
@@ -340,12 +340,12 @@ class UniformsJsonCliTests(unittest.TestCase):
         schema = {
             **_SCHEMA,
             "resources": [
-                {"label": f"lmx.device.frameData.0.page.{i}", "kind": "buffer", "sizeBytes": 4096}
+                {"label": f"rojorhi.device.frameData.0.page.{i}", "kind": "buffer", "sizeBytes": 4096}
                 for i in range(3)
             ],
             "uniformStructs": [],
             "frameDataUploads": [
-                {"pageLabel": "lmx.device.frameData.0.page.0", "slot": 2, "pageOffset": 0,
+                {"pageLabel": "rojorhi.device.frameData.0.page.0", "slot": 2, "pageOffset": 0,
                  "sizeBytes": 80, "alignmentBytes": 256, "gpuAddress": 0},
             ],
         }

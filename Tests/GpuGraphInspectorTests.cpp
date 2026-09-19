@@ -62,7 +62,7 @@ std::vector<std::string> passLabelsInSection(const std::string& dump, const std:
 // the dump and through the model the panel renders from, and the two agree on what ran, what was
 // culled, and what the transients cost -- without ImGui in the loop at all.
 TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
 
     constexpr uint64_t kBytes = 256;
@@ -307,7 +307,7 @@ TEST_CASE("the inspector model agrees with the dump for the same frame", "[gpu]"
 
 //======================================================================================================================
 TEST_CASE("Native TAA physical history alternates without changing canvas topology", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
     auto device = createDevice();
     REQUIRE(device.has_value());

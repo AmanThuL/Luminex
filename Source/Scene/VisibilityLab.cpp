@@ -79,7 +79,7 @@ float jitter(uint32_t& state) {
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<Scene>>
-loadVisibilityLabScene(rhi::Device& device, uint32_t instanceCount, uint32_t occluderCount) {
+loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t occluderCount) {
     if (instanceCount == 0 || instanceCount > 1048576) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "VisibilityLab instances must be 1..1048576"});
@@ -99,10 +99,10 @@ loadVisibilityLabScene(rhi::Device& device, uint32_t instanceCount, uint32_t occ
                                        scene->addMesh(makeIcosphere(), "VisibilityLab.icosphere")};
     const std::array<uint8_t, 16> maskPixels{255, 255, 255, 255, 255, 255, 255, 0,
                                              255, 255, 255, 0,   255, 255, 255, 255};
-    const rhi::TextureMip maskMip{.data = maskPixels.data(), .bytesPerRow = 8};
+    const rojoRHI::TextureMip maskMip{.data = maskPixels.data(), .bytesPerRow = 8};
     auto mask = device.createTexture({.width = 2,
                                       .height = 2,
-                                      .format = rhi::Format::RGBA8Unorm_sRGB,
+                                      .format = rojoRHI::Format::RGBA8Unorm_sRGB,
                                       .sampled = true,
                                       .label = "VisibilityLab.mask"},
                                      std::span(&maskMip, 1));

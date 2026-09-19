@@ -113,7 +113,7 @@ std::array<glm::vec3, 4> lightPalette() {
 }
 
 //======================================================================================================================
-asset::AssetError uploadFailure(rhi::Error error) {
+asset::AssetError uploadFailure(rojoRHI::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
@@ -299,7 +299,7 @@ std::vector<asset::CameraKey> lightLabCameraTrack() {
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<Scene>>
-loadLightLabScene(rhi::Device& device, uint32_t lightCount, uint32_t pileCount) {
+loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCount) {
     if (lightCount == 0 || lightCount > render::kMaxLocalLights) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "LightLab lights must be 1.." +

@@ -28,14 +28,14 @@ SCHEMA_EXAMPLE = {
     "resources": [
         {"label": "lmx.render.shadowMap", "kind": "texture2d", "format": "D32Float",
          "width": 2048, "height": 2048, "mipLevels": 1},
-        {"label": "lmx.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 262144},
+        {"label": "rojorhi.device.frameData.0.page.0", "kind": "buffer", "sizeBytes": 262144},
     ],
     "uniformStructs": [
         {"name": "PassUniforms", "slot": 2, "sizeBytes": 288,
          "fields": [{"name": "viewProj", "offsetBytes": 0, "type": "float4x4"}]},
     ],
     "frameDataUploads": [
-        {"pageLabel": "lmx.device.frameData.0.page.1", "slot": 2, "pageOffset": 1024,
+        {"pageLabel": "rojorhi.device.frameData.0.page.1", "slot": 2, "pageOffset": 1024,
          "sizeBytes": 288, "alignmentBytes": 256, "gpuAddress": 4294967296},
     ],
 }
@@ -85,7 +85,7 @@ class LoadSchemaTests(unittest.TestCase):
 
         buf = next(r for r in schema.resources if r.kind == "buffer")
 
-        self.assertEqual(buf.label, "lmx.device.frameData.0.page.0")
+        self.assertEqual(buf.label, "rojorhi.device.frameData.0.page.0")
         self.assertEqual(buf.size_bytes, 262144)
         self.assertIsNone(buf.format)
         self.assertIsNone(buf.width)
@@ -109,7 +109,7 @@ class LoadSchemaTests(unittest.TestCase):
         schema = schemalib.load_schema(path)
 
         upload = schema.frame_data_uploads[0]
-        self.assertEqual(upload.page_label, "lmx.device.frameData.0.page.1")
+        self.assertEqual(upload.page_label, "rojorhi.device.frameData.0.page.1")
         self.assertEqual(upload.slot, 2)
         self.assertEqual(upload.page_offset, 1024)
         self.assertEqual(upload.size_bytes, 288)

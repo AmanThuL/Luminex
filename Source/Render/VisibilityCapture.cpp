@@ -2,13 +2,13 @@
 /// @file VisibilityCapture.cpp
 /// @brief Registers GPU visibility record layouts for labelled capture inspection.
 //----------------------------------------------------------------------------------------------------------------------
-#include "RHI/CaptureSchema.h"
+#include <rojoRHI/CaptureSchema.h>
 #include "Render/VisibilityTables.h"
 
 namespace lmx::render {
 //======================================================================================================================
 void registerVisibilityLayoutsForCapture() {
-    auto& schema = rhi::debug::CaptureSchema::instance();
+    auto& schema = rojoRHI::debug::CaptureSchema::instance();
     schema.registerUniformStruct(
         {.name = "CandidateRecord",
          .slot = 0,

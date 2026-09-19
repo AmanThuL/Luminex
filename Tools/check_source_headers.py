@@ -3,7 +3,7 @@
 
 The convention in docs/conventions/modules.md requires every project header to compile
 standalone. RHI's public surface already gets the stricter dependency-free check in
-RHI/Tools/check_rhi_headers.py; this checker covers the remaining headers under Source/, each
+RojoRHI/Tools/check_rhi_headers.py; this checker covers the remaining headers under Source/, each
 compiled with the real command line of a source file from its owning unit's target so
 the header sees the include directories and defines that target actually uses.
 """

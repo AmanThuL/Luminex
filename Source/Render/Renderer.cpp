@@ -39,17 +39,17 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<rhi::Texture>> createFallbackTexture(rhi::Device& device,
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createFallbackTexture(rojoRHI::Device& device,
                                                                  const std::array<uint8_t, 4>& rgba,
-                                                                 rhi::TextureKind kind,
+                                                                 rojoRHI::TextureKind kind,
                                                                  std::string_view label) {
-    const rhi::TextureMip mip{.data = rgba.data(), .bytesPerRow = 4};
-    const uint32_t faceCount = kind == rhi::TextureKind::Cube ? 6u : 1u;
+    const rojoRHI::TextureMip mip{.data = rgba.data(), .bytesPerRow = 4};
+    const uint32_t faceCount = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
     // Cube fallbacks must cover every face with the same neutral texel.
-    const std::array<rhi::TextureMip, 6> mips = {mip, mip, mip, mip, mip, mip};
+    const std::array<rojoRHI::TextureMip, 6> mips = {mip, mip, mip, mip, mip, mip};
     return device.createTexture({.width = 1,
                                  .height = 1,
-                                 .format = rhi::Format::RGBA8Unorm,
+                                 .format = rojoRHI::Format::RGBA8Unorm,
                                  .kind = kind,
                                  .sampled = true,
                                  .label = label},
@@ -60,11 +60,11 @@ rhi::Result<std::unique_ptr<rhi::Texture>> createFallbackTexture(rhi::Device& de
 // The DFG fallback needs its own creator: it is the one fallback that is neither RGBA8 nor a cube,
 // because the split-sum table it stands in for is RG16Float and a shader reading it as anything
 // else would find its two channels in the wrong place.
-rhi::Result<std::unique_ptr<rhi::Texture>> createZeroDfgTexture(rhi::Device& device) {
-    const rhi::TextureMip mip{.data = kZeroDfgTexel.data(), .bytesPerRow = sizeof(kZeroDfgTexel)};
+rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createZeroDfgTexture(rojoRHI::Device& device) {
+    const rojoRHI::TextureMip mip{.data = kZeroDfgTexel.data(), .bytesPerRow = sizeof(kZeroDfgTexel)};
     return device.createTexture({.width = 1,
                                  .height = 1,
-                                 .format = rhi::Format::RG16Float,
+                                 .format = rojoRHI::Format::RG16Float,
                                  .sampled = true,
                                  .label = "lmx.render.zeroDfgFallback"},
                                 std::span{&mip, 1});
@@ -82,7 +82,7 @@ void registerUniformLayoutsForCapture() {
 }
 
 //======================================================================================================================
-Renderer::Renderer(rhi::Device& device, bool cpuReadback)
+Renderer::Renderer(rojoRHI::Device& device, bool cpuReadback)
     : m_device(device), m_transientPool(device), m_exposureStage(std::make_unique<ExposureStage>()),
       m_bloomStage(std::make_unique<BloomStage>()),
       m_displayStage(std::make_unique<DisplayStage>()), m_drawSubmission(device),
@@ -92,12 +92,12 @@ Renderer::Renderer(rhi::Device& device, bool cpuReadback)
 Renderer::~Renderer() = default;
 
 //======================================================================================================================
-rhi::Buffer& Renderer::exposureBuffer() {
+rojoRHI::Buffer& Renderer::exposureBuffer() {
     return m_exposureStage->buffer();
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uint32_t width,
+rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& device, uint32_t width,
                                                         uint32_t height, bool cpuReadback) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::create: width and height must be non-zero");
 
@@ -141,7 +141,7 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     // The shadow map transitions from depth attachment to sampled texture each frame.
     if (auto shadowMap = device.createTexture({.width = kShadowMapSize,
                                                .height = kShadowMapSize,
-                                               .format = rhi::Format::D32Float,
+                                               .format = rojoRHI::Format::D32Float,
                                                .renderTarget = true,
                                                .sampled = true,
                                                .label = "lmx.render.shadowMap"});
@@ -151,21 +151,21 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(shadowMap.error());
     }
 
-    if (auto texture = createFallbackTexture(device, kWhiteTexel, rhi::TextureKind::Tex2D,
+    if (auto texture = createFallbackTexture(device, kWhiteTexel, rojoRHI::TextureKind::Tex2D,
                                              "lmx.render.whiteFallback");
         texture) {
         self->m_whiteTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto texture = createFallbackTexture(device, kFlatNormalTexel, rhi::TextureKind::Tex2D,
+    if (auto texture = createFallbackTexture(device, kFlatNormalTexel, rojoRHI::TextureKind::Tex2D,
                                              "lmx.render.flatNormalFallback");
         texture) {
         self->m_flatNormalTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto texture = createFallbackTexture(device, kBlackTexel, rhi::TextureKind::Cube,
+    if (auto texture = createFallbackTexture(device, kBlackTexel, rojoRHI::TextureKind::Cube,
                                              "lmx.render.blackCubeFallback");
         texture) {
         self->m_blackCubeTexture = std::move(*texture);
@@ -185,8 +185,8 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
         return std::unexpected(result.error());
     }
 
-    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
-                                             .addressMode = rhi::AddressMode::Wrap,
+    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                             .addressMode = rojoRHI::AddressMode::Wrap,
                                              .maxAnisotropy = 16,
                                              .label = "lmx.render.linearSampler"});
         sampler) {
@@ -198,10 +198,10 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     // depth is at least the stored one, because nearer to the light is now the larger number.
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
-    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
-                                             .addressMode = rhi::AddressMode::Clamp,
+    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                             .addressMode = rojoRHI::AddressMode::Clamp,
                                              .maxAnisotropy = 16,
-                                             .compare = rhi::CompareFunc::GreaterEqual,
+                                             .compare = rojoRHI::CompareFunc::GreaterEqual,
                                              .label = "lmx.render.shadowSampler"});
         sampler) {
         self->m_shadowSampler = std::move(*sampler);
@@ -214,8 +214,8 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
     // into the result. Linear filtering carries the mip filter the prefiltered chain is sampled
     // across; no anisotropy, because neither lookup has a screen-space footprint to be anisotropic
     // about.
-    if (auto sampler = self->m_device.createSampler({.filter = rhi::FilterMode::Linear,
-                                                     .addressMode = rhi::AddressMode::Clamp,
+    if (auto sampler = self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                                     .addressMode = rojoRHI::AddressMode::Clamp,
                                                      .label = "lmx.render.iblSampler"});
         sampler) {
         self->m_iblSampler = std::move(*sampler);
@@ -238,7 +238,7 @@ rhi::Result<std::unique_ptr<Renderer>> Renderer::create(rhi::Device& device, uin
 }
 
 //======================================================================================================================
-rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
+rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "Renderer::resize: width and height must be non-zero");
 
     // Scene-linear radiance: rendered into by the scene and sky passes, sampled by the display
@@ -289,7 +289,7 @@ rhi::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
-rhi::Result<void> Renderer::createTemporalTargets() {
+rojoRHI::Result<void> Renderer::createTemporalTargets() {
     LMX_ASSERT(m_width > 0 && m_height > 0,
                "Renderer::createTemporalTargets: the render extent must be non-empty");
 
@@ -325,7 +325,7 @@ rhi::Result<void> Renderer::createTemporalTargets() {
 }
 
 //======================================================================================================================
-GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
                                      const Camera& camera, const SceneView& view) {
     LMX_ASSERT(m_hdrColor && m_color && m_shadowMap && m_motion && m_reactive && m_temporalResolve,
                "Renderer::declarePasses: targets are missing -- create() failed");
@@ -413,20 +413,20 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // conservatively because their public targets may be sampled by a caller after this graph;
     // that stage set also covers their ordinary fragment attachment work.
     const GraphTexture shadowMap = graph.importTexture(
-        *m_shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap", rhi::TextureUse::ShaderRead);
+        *m_shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap", rojoRHI::TextureUse::ShaderRead);
     // The scene colour's terminal use is the display pass's read on an ordinary frame and the
     // history commit's copy on a temporal one, so it is what the previous frame left rather than a
     // constant.
     const GraphTexture sceneColor = graph.importTexture(
         *m_hdrColor, kSceneColorFormat, "lmx.render.sceneColorHdr", m_previousSceneColorUse);
     const GraphTexture displayColor = graph.importTexture(
-        *m_color, kDisplayFormat, "lmx.render.displayColor", rhi::TextureUse::ShaderRead);
+        *m_color, kDisplayFormat, "lmx.render.displayColor", rojoRHI::TextureUse::ShaderRead);
     // A frame with temporal off imports slot 0 under the pre-temporal name and use, which is what
     // keeps its declaration exactly the one M6.1 made; a temporal frame names the slot it uses.
     const GraphTexture sceneDepth =
         temporalEnabled
             ? m_temporalResolve->importDepth(graph, slot)
-            : graph.importTexture(m_temporalResolve->depthSlot(0), rhi::Format::D32Float,
+            : graph.importTexture(m_temporalResolve->depthSlot(0), rojoRHI::Format::D32Float,
                                   "lmx.render.sceneDepth", m_temporalResolve->depthUse(0));
 
     // The temporal pair, imported only by a frame that declares the temporal path. Motion's
@@ -470,7 +470,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphBuffer exposureImport =
         exposureWrittenByEarlierFrame
             ? graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer",
-                                 rhi::BufferUse::StorageWrite)
+                                 rojoRHI::BufferUse::StorageWrite)
             : graph.importBuffer(m_exposureStage->buffer(), "lmx.render.exposureBuffer");
     const GraphBuffer exposureCurrent =
         m_exposureStage->declareSeed(graph, commands, view, exposureImport);
@@ -700,11 +700,11 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         // The resolve reads motion on every NativeTaa frame, and the debug view reads it whenever
         // one is shown.
         m_previousMotionUse = nativeTaa || vendorTemporal || debugView != TemporalDebugView::Off
-                                  ? rhi::TextureUse::ShaderRead
-                                  : rhi::TextureUse::RenderTarget;
+                                  ? rojoRHI::TextureUse::ShaderRead
+                                  : rojoRHI::TextureUse::RenderTarget;
         // Only the resolve reads the reactive attachment, so a Raw frame ends with its own write.
-        m_previousReactiveUse = nativeTaa || vendorTemporal ? rhi::TextureUse::ShaderRead
-                                                            : rhi::TextureUse::RenderTarget;
+        m_previousReactiveUse = nativeTaa || vendorTemporal ? rojoRHI::TextureUse::ShaderRead
+                                                            : rojoRHI::TextureUse::RenderTarget;
         m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid, upscaled);
     }
     if (lightDebugEnabled)
@@ -713,10 +713,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
     // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram
     // and the display transform all read it and none copies out of it.
-    m_previousSceneColorUse = vendorTemporal ? rhi::TextureUse::ExternalRead
+    m_previousSceneColorUse = vendorTemporal ? rojoRHI::TextureUse::ExternalRead
                               : temporalEnabled && !nativeTaa && !upscaled
-                                  ? rhi::TextureUse::CopySource
-                                  : rhi::TextureUse::ShaderRead;
+                                  ? rojoRHI::TextureUse::CopySource
+                                  : rojoRHI::TextureUse::ShaderRead;
     if (temporalEnabled) {
         ++m_temporalFrame;
     }
@@ -724,7 +724,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
 }
 
 //======================================================================================================================
-void Renderer::render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
+void Renderer::render(rojoRHI::CommandList& commands, const Camera& camera, const SceneView& view,
                       bool barrierForSampling) {
     // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
     // whether or not a caller's own graph has a pool), so this convenience path needs one of its
@@ -740,33 +740,33 @@ void Renderer::render(rhi::CommandList& commands, const Camera& camera, const Sc
     if (barrierForSampling) {
         // For a sampling pass outside this graph: a hand-encoded pass declares nothing, so there
         // is no read for the graph to have derived the transition from.
-        commands.textureBarrier(*m_color, rhi::TextureUse::RenderTarget,
-                                rhi::TextureUse::ShaderRead);
+        commands.textureBarrier(*m_color, rojoRHI::TextureUse::RenderTarget,
+                                rojoRHI::TextureUse::ShaderRead);
     }
 }
 
 //======================================================================================================================
-rhi::Texture& Renderer::colorTarget() {
+rojoRHI::Texture& Renderer::colorTarget() {
     LMX_ASSERT(m_color != nullptr, "Renderer::colorTarget: no color target -- create() failed");
     return *m_color;
 }
 
 //======================================================================================================================
-rhi::Texture& Renderer::hdrColorTarget() {
+rojoRHI::Texture& Renderer::hdrColorTarget() {
     LMX_ASSERT(m_hdrColor != nullptr,
                "Renderer::hdrColorTarget: no scene color target -- create() failed");
     return *m_hdrColor;
 }
 
 //======================================================================================================================
-rhi::Texture& Renderer::depthTarget() {
+rojoRHI::Texture& Renderer::depthTarget() {
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::depthTarget: no depth target -- create() failed");
     return m_temporalResolve->depthSlot(m_currentSlot);
 }
 
 //======================================================================================================================
-rhi::Texture* Renderer::historyTarget() {
+rojoRHI::Texture* Renderer::historyTarget() {
     LMX_ASSERT(m_temporalResolve != nullptr,
                "Renderer::historyTarget: no history -- create() failed");
     return &m_temporalResolve->colorSlot(m_currentSlot);

@@ -351,7 +351,7 @@ TEST_CASE("the jittered matrices do not leak into motion", "[render][temporal]")
 TEST_CASE("the motion sentinel is a positive infinity a consumer can test", "[render][temporal]") {
     CHECK(std::isinf(kMotionInvalid));
     CHECK(kMotionInvalid > 0.0f);
-    CHECK(kMotionFormat == lmx::rhi::Format::RG16Float);
+    CHECK(kMotionFormat == rojoRHI::Format::RG16Float);
 }
 
 //======================================================================================================================

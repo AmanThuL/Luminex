@@ -47,12 +47,12 @@ constexpr float kStudioEnvironmentYaw = 0.0f;
 constexpr float kStudioEnvironmentScale = 0.25f;
 
 //======================================================================================================================
-asset::AssetError uploadFailure(rhi::Error error) {
+asset::AssetError uploadFailure(rojoRHI::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
 //======================================================================================================================
-asset::AssetResult<void> attachStudioEnvironment(rhi::Device& device, Scene& scene,
+asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, Scene& scene,
                                                  std::string_view label) {
     // The fetched studio is deliberately optional: a fresh checkout and hosted CI still get a
     // deterministic scene, while `xmake setup` upgrades both the visible sky and its IBL from the
@@ -251,7 +251,7 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. The complete
 //   sphere matrix occupies roughly 70% of a square viewport's height while retaining comfortable
 //   edge clearance. The texture and depth lanes use the identical pose translated to their lane X.
-asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device& device) {
     auto scene = std::make_unique<Scene>();
     scene->name = "MaterialLab";
 
@@ -327,10 +327,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
 
     // Gradient ramp: one 6x1 quad textured with the code-generated horizontal ramp.
     const std::vector<uint8_t> rampPixels = makeGradientRampPixels();
-    const rhi::TextureMip rampMip{.data = rampPixels.data(), .bytesPerRow = uint64_t{256} * 4};
+    const rojoRHI::TextureMip rampMip{.data = rampPixels.data(), .bytesPerRow = uint64_t{256} * 4};
     auto rampTexture = device.createTexture({.width = 256,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA8Unorm_sRGB,
+                                             .format = rojoRHI::Format::RGBA8Unorm_sRGB,
                                              .mipLevels = 1,
                                              .sampled = true,
                                              .label = "MaterialLab.rampTexture"},
@@ -355,10 +355,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
 
     // Normal-map probe: one unit quad textured with the code-generated hemispherical bump.
     const std::vector<uint8_t> normalPixels = makeNormalMapPixels();
-    const rhi::TextureMip normalMip{.data = normalPixels.data(), .bytesPerRow = uint64_t{64} * 4};
+    const rojoRHI::TextureMip normalMip{.data = normalPixels.data(), .bytesPerRow = uint64_t{64} * 4};
     auto normalTexture = device.createTexture({.width = 64,
                                                .height = 64,
-                                               .format = rhi::Format::RGBA8Unorm,
+                                               .format = rojoRHI::Format::RGBA8Unorm,
                                                .mipLevels = 1,
                                                .sampled = true,
                                                .label = "MaterialLab.normalMapTexture"},
@@ -422,7 +422,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rhi::Device& dev
         asset::bakeMips(checkerPixels, 64, 64, asset::BakeMode::Srgb);
     auto checkerTexture = device.createTexture({.width = checkerChain.width,
                                                 .height = checkerChain.height,
-                                                .format = rhi::Format::RGBA8Unorm_sRGB,
+                                                .format = rojoRHI::Format::RGBA8Unorm_sRGB,
                                                 .mipLevels = checkerChain.mipLevels,
                                                 .sampled = true,
                                                 .label = "MaterialLab.mipCheckerboard"},

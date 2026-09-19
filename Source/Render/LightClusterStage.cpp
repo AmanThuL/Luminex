@@ -7,7 +7,7 @@
 
 #include "Core/Assert.h"
 #include "Core/Math.h"
-#include "RHI/CaptureSchema.h"
+#include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>
 #include <string>
@@ -72,7 +72,7 @@ LightClusterKernelParams makeKernelParams(const LightClusterInputs& inputs, uint
 
 //======================================================================================================================
 void LightClusterStage::registerLayoutsForCapture() {
-    auto& schema = rhi::debug::CaptureSchema::instance();
+    auto& schema = rojoRHI::debug::CaptureSchema::instance();
     schema.registerUniformStruct(
         {.name = "LightClusterParams",
          .slot = kParamsSlot,
@@ -92,7 +92,7 @@ void LightClusterStage::registerLayoutsForCapture() {
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rhi::Device& device) {
+rojoRHI::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rojoRHI::Device& device) {
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     for (uint32_t i = 0; i < names.size(); ++i) {
@@ -114,8 +114,8 @@ rhi::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rhi::D
     }
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
         const std::string suffix = "." + std::to_string(slot);
-        auto allocate = [&](std::unique_ptr<rhi::Buffer>& buffer, uint64_t bytes,
-                            const std::string& name, bool readback) -> rhi::Result<void> {
+        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
+                            const std::string& name, bool readback) -> rojoRHI::Result<void> {
             auto result = device.createBuffer({.size = bytes,
                                                .storageRead = true,
                                                .storageWrite = true,
@@ -156,7 +156,7 @@ void LightClusterStage::setCapacityOverride(uint32_t perCluster, uint32_t global
 }
 
 //======================================================================================================================
-LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandList& commands,
+LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                const LightClusterInputs& inputs) {
     // Nothing is imported and no pass is declared unless the frame actually shades from the grid:
     // a frame without local lights must compile to exactly the record it compiled to before.
@@ -181,18 +181,18 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandL
                          .indices = slot.indices.get(),
                          .counters = slot.counters.get()});
 
-    auto import = [&](rhi::Buffer& buffer, const char* name, rhi::BufferUse use) {
+    auto import = [&](rojoRHI::Buffer& buffer, const char* name, rojoRHI::BufferUse use) {
         return slot.used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
     };
     const auto grid =
         import(*slot.grid, "lmx.light.grid",
-               slot.shaderRead ? rhi::BufferUse::ShaderRead : rhi::BufferUse::StorageRead);
+               slot.shaderRead ? rojoRHI::BufferUse::ShaderRead : rojoRHI::BufferUse::StorageRead);
     const auto indices =
         import(*slot.indices, "lmx.light.indices",
-               slot.shaderRead ? rhi::BufferUse::ShaderRead : rhi::BufferUse::StorageWrite);
-    const auto counts = import(*slot.counts, "lmx.light.counts", rhi::BufferUse::StorageRead);
+               slot.shaderRead ? rojoRHI::BufferUse::ShaderRead : rojoRHI::BufferUse::StorageWrite);
+    const auto counts = import(*slot.counts, "lmx.light.counts", rojoRHI::BufferUse::StorageRead);
     const auto counters =
-        import(*slot.counters, "lmx.light.counters", rhi::BufferUse::StorageWrite);
+        import(*slot.counters, "lmx.light.counters", rojoRHI::BufferUse::StorageWrite);
 
     // The counters the scan writes are complete on their own; the fill is what makes them a
     // reconciling total of bytes the GPU actually holds, so the zero fill is the stated start.
@@ -200,7 +200,7 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandL
     reset.bufferDestinations.push_back(counters);
     graph.addCopyPass("lmx.pass.light.reset", std::move(reset),
                       [&commands, counters](const PassResources& resources) {
-                          const GraphResult<rhi::Buffer*> buffer = resources.buffer(counters);
+                          const GraphResult<rojoRHI::Buffer*> buffer = resources.buffer(counters);
                           LMX_ASSERT(buffer.has_value(), buffer.error().message);
                           commands.fillBuffer(**buffer, 0,
                                               kLightClusterCounterWords * sizeof(uint32_t), 0);
@@ -214,15 +214,15 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandL
     count.bufferWrites = {counts};
     graph.addComputePass("lmx.pass.light.count", std::move(count),
                          [=, this, &commands](const PassResources& resources) {
-                             const GraphResult<rhi::Buffer*> lightRows = resources.buffer(lights);
-                             const GraphResult<rhi::Buffer*> target = resources.buffer(counts);
+                             const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
+                             const GraphResult<rojoRHI::Buffer*> target = resources.buffer(counts);
                              LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
                              LMX_ASSERT(target.has_value(), target.error().message);
                              commands.bindComputePipeline(*m_pipelines[0]);
                              commands.bindFrameData(kParamsSlot, params);
                              commands.bindBuffer(kLightsSlot, **lightRows);
                              commands.bindStorageBuffer(kCountsSlot, **target,
-                                                        rhi::StorageAccess::Write);
+                                                        rojoRHI::StorageAccess::Write);
                              commands.dispatch(groups, 1, 1);
                          });
     const auto countsFilled = nextVersion(counts);
@@ -233,17 +233,17 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandL
     graph.addComputePass(
         "lmx.pass.light.scan", std::move(scan),
         [=, this, &commands](const PassResources& resources) {
-            const GraphResult<rhi::Buffer*> source = resources.buffer(countsFilled);
-            const GraphResult<rhi::Buffer*> records = resources.buffer(grid);
-            const GraphResult<rhi::Buffer*> totals = resources.buffer(countersReset);
+            const GraphResult<rojoRHI::Buffer*> source = resources.buffer(countsFilled);
+            const GraphResult<rojoRHI::Buffer*> records = resources.buffer(grid);
+            const GraphResult<rojoRHI::Buffer*> totals = resources.buffer(countersReset);
             LMX_ASSERT(source.has_value(), source.error().message);
             LMX_ASSERT(records.has_value(), records.error().message);
             LMX_ASSERT(totals.has_value(), totals.error().message);
             commands.bindComputePipeline(*m_pipelines[1]);
             commands.bindFrameData(kParamsSlot, params);
-            commands.bindStorageBuffer(kCountsSlot, **source, rhi::StorageAccess::Read);
-            commands.bindStorageBuffer(kGridSlot, **records, rhi::StorageAccess::Write);
-            commands.bindStorageBuffer(kCountersSlot, **totals, rhi::StorageAccess::Write);
+            commands.bindStorageBuffer(kCountsSlot, **source, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kGridSlot, **records, rojoRHI::StorageAccess::Write);
+            commands.bindStorageBuffer(kCountersSlot, **totals, rojoRHI::StorageAccess::Write);
             commands.dispatch(1, 1, 1);
         });
     const auto gridBuilt = nextVersion(grid);
@@ -256,17 +256,17 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rhi::CommandL
     graph.addComputePass(
         "lmx.pass.light.fill", std::move(fill),
         [=, this, &commands](const PassResources& resources) {
-            const GraphResult<rhi::Buffer*> lightRows = resources.buffer(lights);
-            const GraphResult<rhi::Buffer*> records = resources.buffer(gridBuilt);
-            const GraphResult<rhi::Buffer*> list = resources.buffer(indices);
+            const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
+            const GraphResult<rojoRHI::Buffer*> records = resources.buffer(gridBuilt);
+            const GraphResult<rojoRHI::Buffer*> list = resources.buffer(indices);
             LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
             LMX_ASSERT(records.has_value(), records.error().message);
             LMX_ASSERT(list.has_value(), list.error().message);
             commands.bindComputePipeline(*m_pipelines[2]);
             commands.bindFrameData(kParamsSlot, params);
             commands.bindBuffer(kLightsSlot, **lightRows);
-            commands.bindStorageBuffer(kGridSlot, **records, rhi::StorageAccess::Read);
-            commands.bindStorageBuffer(kIndicesSlot, **list, rhi::StorageAccess::Write);
+            commands.bindStorageBuffer(kGridSlot, **records, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kIndicesSlot, **list, rojoRHI::StorageAccess::Write);
             commands.dispatch(groups, 1, 1);
         });
     const auto listFilled = nextVersion(indices);

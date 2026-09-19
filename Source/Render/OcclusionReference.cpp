@@ -22,7 +22,7 @@ static_assert(offsetof(ReferenceParams, instanceRow) == 64);
 } // namespace
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rhi::Device& device) {
+rojoRHI::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rojoRHI::Device& device) {
     auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(device));
     auto library = device.loadShaderLibrary("Shaders/OcclusionReference");
     if (!library)
@@ -36,13 +36,13 @@ rhi::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rhi:
                     {.library = self->m_library.get(),
                      .vertexEntry = "vertexMain",
                      .fragmentEntry = masked ? "fragmentMask" : "fragmentMain",
-                     .colorFormat = rhi::Format::RGBA8Unorm,
-                     .depthFormat = rhi::Format::D32Float,
+                     .colorFormat = rojoRHI::Format::RGBA8Unorm,
+                     .depthFormat = rojoRHI::Format::D32Float,
                      .depthTestEnable = true,
                      .depthWriteEnable = true,
-                     .fillMode = wireframe ? rhi::FillMode::Wireframe : rhi::FillMode::Solid,
-                     .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
-                     .depthCompare = rhi::DepthCompare::Greater,
+                     .fillMode = wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
+                     .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+                     .depthCompare = rojoRHI::DepthCompare::Greater,
                      .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
                 if (!pipeline)
                     return std::unexpected(pipeline.error());
@@ -56,10 +56,10 @@ rhi::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rhi:
         return std::unexpected(sampler.error());
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
-    const rhi::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
     auto texture = device.createTexture({.width = 1,
                                          .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm,
+                                         .format = rojoRHI::Format::RGBA8Unorm,
                                          .sampled = true,
                                          .label = "lmx.occlusion.reference.white"},
                                         std::span{&mip, 1});
@@ -70,7 +70,7 @@ rhi::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rhi:
 }
 
 //======================================================================================================================
-rhi::Result<void> OcclusionReference::declare(RenderGraph& graph, rhi::CommandList& commands,
+rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                               const SceneView& view,
                                               const glm::mat4& viewProjection, uint32_t width,
                                               uint32_t height, bool strictView) {
@@ -102,10 +102,10 @@ rhi::Result<void> OcclusionReference::declare(RenderGraph& graph, rhi::CommandLi
         pending.observations.push_back({item.instanceIdentity, item.instanceRow});
     }
     const auto ids = graph.createTexture(
-        {.width = width, .height = height, .format = rhi::Format::RGBA8Unorm, .renderTarget = true},
+        {.width = width, .height = height, .format = rojoRHI::Format::RGBA8Unorm, .renderTarget = true},
         "occlusionReferenceIds");
     const auto depth = graph.createTexture(
-        {.width = width, .height = height, .format = rhi::Format::D32Float, .renderTarget = true},
+        {.width = width, .height = height, .format = rojoRHI::Format::D32Float, .renderTarget = true},
         "occlusionReferenceDepth");
     PassDesc pass;
     if (!view.items.empty()) {
@@ -145,8 +145,8 @@ rhi::Result<void> OcclusionReference::declare(RenderGraph& graph, rhi::CommandLi
         });
     const auto source = nextVersion(ids);
     const auto destination = graph.importBuffer(*slot.buffer, "lmx.occlusion.reference.readback",
-                                                slot.used ? rhi::BufferUse::CopyDestination
-                                                          : rhi::BufferUse::ShaderRead);
+                                                slot.used ? rojoRHI::BufferUse::CopyDestination
+                                                          : rojoRHI::BufferUse::ShaderRead);
     CopyPassDesc copy;
     copy.textureSources = {source};
     copy.bufferDestinations = {destination};

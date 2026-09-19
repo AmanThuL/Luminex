@@ -13,7 +13,7 @@ using lmx::test::FixtureSceneView;
 // rectangle it rasterised into -- a margin the upscale failed to write -- and the colour slot the
 // commit wrote is still the full output-extent allocation it always was.
 TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -73,7 +73,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
 
     // The colour slot the commit wrote is readable over the whole output extent, which is the
     // allocation the spec's table states for it whatever the frame rasterised at.
-    lmx::rhi::Texture* history = (*renderer)->historyTarget();
+    rojoRHI::Texture* history = (*renderer)->historyTarget();
     REQUIRE(history != nullptr);
     std::vector<uint8_t> slot(size_t{kSize} * kSize * 8);
     history->readback(slot.data(), slot.size());
@@ -92,7 +92,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
 // emissive surface by the missing weight -- a whole-image brightness shift no probe of a shaded
 // scene would separate from its shading.
 TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -139,7 +139,7 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     const glm::vec4 rendered = texelAt(scene, kSize / 4, kSize / 4);
     REQUIRE(rendered.r > 0.0f);
 
-    lmx::rhi::Texture* history = (*renderer)->historyTarget();
+    rojoRHI::Texture* history = (*renderer)->historyTarget();
     REQUIRE(history != nullptr);
     std::vector<uint8_t> committed(scene.size());
     history->readback(committed.data(), committed.size());
@@ -160,7 +160,7 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
 // into: the probe reads the active rectangle of a target allocated at the output extent, and the
 // oracle indexes its pixels over the render extent.
 TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -228,7 +228,7 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
 // accumulation has to settle that without the scene having moved at all -- and at the same output
 // extent, which is what makes the two comparable at all.
 TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -280,7 +280,7 @@ TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][tempor
 // to sit closer to the native one than a single frame's resample of the same samples does.
 TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
           "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -326,7 +326,7 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
 // accumulation has to carry its brightness across the samples that miss it rather than averaging it
 // into the floor -- and it has to reach the brightness the native-resolution accumulation does.
 TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -408,7 +408,7 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
 // motion target is exactly where an upscaling kernel would smear one. The region has to converge on
 // the spatial picture instead, and the rejection mask has to name the reason.
 TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -500,7 +500,7 @@ TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]"
 // accumulation age keeps climbing through them, the render-extent change is reported instead of
 // reset -- and the picture must not jump on the frame the extent moves.
 TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
     auto device = createDevice();
@@ -592,7 +592,7 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
 // whose generation counts it reads, and so each frame's compiled record is available for its heap
 // size.
 TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));

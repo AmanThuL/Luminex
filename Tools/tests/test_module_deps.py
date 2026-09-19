@@ -299,16 +299,16 @@ class TargetDumpTests(unittest.TestCase):
         self.assertEqual(run.call_args.args[0], ["xmake", "lua", "-P", "/repo/worktree", modules.TARGET_DUMP_SCRIPT])
 
     def test_single_valued_dependency_string_is_read_as_a_one_element_list(self) -> None:
-        dump = {"RHI": {"kind": "static", "files": "RHI/Source/Device.cpp", "deps": "Core", "packages": {}, "frameworks": "Metal"}}
+        dump = {"RojoRHI": {"kind": "static", "files": "RojoRHI/Source/Device.cpp", "deps": "Core", "packages": {}, "frameworks": "Metal"}}
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = root / "targets.json"
             path.write_text("configuring\n" + json.dumps(dump) + "\n", encoding="utf-8")
             targets = modules.load_targets(path, root)
-            self.assertEqual(targets["RHI"]["deps"], ["Core"])
-            self.assertEqual(targets["RHI"]["packages"], [])
-            self.assertEqual(targets["RHI"]["frameworks"], ["Metal"])
-            self.assertEqual(targets["RHI"]["files"], ["RHI/Source/Device.cpp"])
+            self.assertEqual(targets["RojoRHI"]["deps"], ["Core"])
+            self.assertEqual(targets["RojoRHI"]["packages"], [])
+            self.assertEqual(targets["RojoRHI"]["frameworks"], ["Metal"])
+            self.assertEqual(targets["RojoRHI"]["files"], ["RojoRHI/Source/Device.cpp"])
 
     def test_malformed_dump_is_a_could_not_run_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -439,14 +439,14 @@ class MainTests(unittest.TestCase):
 
 INCLUDE_CONTRACT = {
     "schemaVersion": 1,
-    "roots": ["Source", "RHI"],
+    "roots": ["Source", "RojoRHI"],
     "budgets": {"production": 1000},
     "units": {
         "core": {"paths": ["Source/Core"], "targets": ["Core"], "units": [], "thirdParty": ["spdlog"]},
-        "rhi-public": {"paths": ["RHI/Include"], "targets": ["RHI"], "units": [], "thirdParty": []},
+        "rhi-public": {"paths": ["RojoRHI/Include"], "targets": ["RojoRHI"], "units": [], "thirdParty": []},
         "backend": {
-            "paths": ["RHI/Backends"],
-            "targets": ["RHI"],
+            "paths": ["RojoRHI/Backends"],
+            "targets": ["RojoRHI"],
             "units": ["rhi-public"],
             "thirdParty": ["metal-cpp"],
         },
@@ -454,11 +454,11 @@ INCLUDE_CONTRACT = {
             "paths": ["Source/Engine"],
             "targets": ["Engine"],
             "units": ["core"],
-            "headers": ["RHI/Format.h"],
+            "headers": ["rojoRHI/Format.h"],
             "thirdParty": ["stb"],
         },
     },
-    "targets": {"Core": {"deps": []}, "RHI": {"deps": ["Core"]}, "Engine": {"deps": ["Core"]}},
+    "targets": {"Core": {"deps": []}, "RojoRHI": {"deps": ["Core"]}, "Engine": {"deps": ["Core"]}},
     "thirdPartyPrefixes": {"SDL3/": "libsdl3"},
 }
 
@@ -466,20 +466,20 @@ PACKAGE_STEM = ".xmake/packages/s/spdlog/v1.17.0/f028856e7c66484a8fbaa9d2364f224
 
 INCLUDE_TREE = {
     "Source/Core/Log.h": "#include <spdlog/spdlog.h>\n",
-    "RHI/Include/RHI/Format.h": '#include "Device.h"\n',
-    "RHI/Include/RHI/Device.h": "",
-    "RHI/Backends/Metal4/Source/Metal4Common.h": "",
-    "RHI/Backends/Metal4/Source/Metal4Device.cpp": '#include "Metal4Common.h"\n#include <Metal/Metal.hpp>\n',
+    "RojoRHI/Include/rojoRHI/Format.h": '#include "Device.h"\n',
+    "RojoRHI/Include/rojoRHI/Device.h": "",
+    "RojoRHI/Backends/Metal4/Source/Metal4Common.h": "",
+    "RojoRHI/Backends/Metal4/Source/Metal4Device.cpp": '#include "Metal4Common.h"\n#include <Metal/Metal.hpp>\n',
     "Source/Metal4Common.h": "",
-    "Source/Engine/Allowed.h": '#include "RHI/Format.h"\n',
-    "Source/Engine/Bad.h": '#include "RHI/Device.h"\n',
+    "Source/Engine/Allowed.h": '#include "rojoRHI/Format.h"\n',
+    "Source/Engine/Bad.h": '#include "rojoRHI/Device.h"\n',
     "Source/Engine/Mid.h": '#include "Engine/Bad.h"\n',
     "Source/Engine/Uses.h": '#include "Core/Log.h"\n',
     "Source/Engine/Widget.h": "#include <imgui_impl_sdl3.h>\n",
     "Source/Engine/DoubleWidget.h": "#include <imgui_impl_sdl3.h>\n#include <imgui_impl_sdl3.h>\n",
     "Source/Engine/Absent.h": "#include <nowhere/absent.h>\n",
     "Source/Engine/Cyc1.h": '#include "Engine/Cyc2.h"\n',
-    "Source/Engine/Cyc2.h": '#include "Engine/Cyc1.h"\n#include "RHI/Device.h"\n',
+    "Source/Engine/Cyc2.h": '#include "Engine/Cyc1.h"\n#include "rojoRHI/Device.h"\n',
     "ThirdParty/imgui/backends/imgui_impl_sdl3.h": "",
     "ThirdParty/metal-cpp/Metal/Metal.hpp": "",
     f"{PACKAGE_STEM}/spdlog/spdlog.h": "",
@@ -487,8 +487,8 @@ INCLUDE_TREE = {
 
 INCLUDE_DIRS = [
     "Source",
-    "RHI/Include",
-    "RHI/Backends/Metal4/Source",
+    "RojoRHI/Include",
+    "RojoRHI/Backends/Metal4/Source",
     "ThirdParty/imgui",
     "ThirdParty/imgui/backends",
     "ThirdParty/metal-cpp",
@@ -516,7 +516,7 @@ def include_entry(root: Path, file: str) -> dict:
 
 
 def include_db(root: Path) -> dict[str, dict]:
-    compiled = ["Source/Core/Log.cpp", "RHI/Backends/Metal4/Source/Metal4Device.cpp", "Source/Engine/Engine.cpp"]
+    compiled = ["Source/Core/Log.cpp", "RojoRHI/Backends/Metal4/Source/Metal4Device.cpp", "Source/Engine/Engine.cpp"]
     return {file: include_entry(root, file) for file in compiled}
 
 
@@ -542,20 +542,20 @@ class IncludeResolutionTests(unittest.TestCase):
                 modules.load_compile_commands(path)
 
     def test_header_without_unit_sources_uses_its_targets_context(self) -> None:
-        file = "RHI/Backends/Metal4/Source/Metal4Device.mm"
-        entry = {"directory": "/repo", "arguments": ["clang++", "-IRHI/Include"]}
-        result = modules.context_for(Path("RHI/Include/RHI/Device.h"), "rhi-public",
-                                     {"RHI": {"files": [file]}}, {file: entry}, INCLUDE_CONTRACT)
-        self.assertEqual(result, [Path("/repo/RHI/Include")])
+        file = "RojoRHI/Backends/Metal4/Source/Metal4Device.mm"
+        entry = {"directory": "/repo", "arguments": ["clang++", "-IRojoRHI/Include"]}
+        result = modules.context_for(Path("RojoRHI/Include/rojoRHI/Device.h"), "rhi-public",
+                                     {"RojoRHI": {"files": [file]}}, {file: entry}, INCLUDE_CONTRACT)
+        self.assertEqual(result, [Path("/repo/RojoRHI/Include")])
 
     def test_include_dirs_reads_joined_and_split_tokens_and_the_command_string(self) -> None:
         entry = {
             "directory": "/repo",
-            "arguments": ["clang++", "-IRHI/Include", "-isystem", "/pkg/include", "-iframeworkFrames"],
+            "arguments": ["clang++", "-IRojoRHI/Include", "-isystem", "/pkg/include", "-iframeworkFrames"],
         }
         self.assertEqual(
             modules.include_dirs(entry),
-            [Path("/repo/RHI/Include"), Path("/pkg/include"), Path("/repo/Frames")],
+            [Path("/repo/RojoRHI/Include"), Path("/pkg/include"), Path("/repo/Frames")],
         )
 
     def test_command_string_entries_load_like_argument_entries(self) -> None:
@@ -574,10 +574,10 @@ class IncludeResolutionTests(unittest.TestCase):
             contract = modules.load_contract(write_contract(root, INCLUDE_CONTRACT), root)
             dirs = modules.include_dirs(include_entry(root, "x.cpp"))
             resolved = modules.resolve_include(
-                Path("RHI/Backends/Metal4/Source/Metal4Device.cpp"), "Metal4Common.h", True, dirs, root, contract
+                Path("RojoRHI/Backends/Metal4/Source/Metal4Device.cpp"), "Metal4Common.h", True, dirs, root, contract
             )
             self.assertEqual(resolved.kind, "project")
-            self.assertEqual(resolved.path, Path("RHI/Backends/Metal4/Source/Metal4Common.h"))
+            self.assertEqual(resolved.path, Path("RojoRHI/Backends/Metal4/Source/Metal4Common.h"))
             self.assertEqual(resolved.unit, "backend")
 
     def test_angle_include_takes_the_package_or_the_third_party_directory_name(self) -> None:
@@ -653,7 +653,7 @@ class IncludeCheckTests(unittest.TestCase):
         errors: list[str] = []
         modules.check_includes(
             [Path(name) for name in names],
-            {"RHI": {"files": ["RHI/Backends/Metal4/Source/Metal4Device.cpp"]}},
+            {"RojoRHI": {"files": ["RojoRHI/Backends/Metal4/Source/Metal4Device.cpp"]}},
             include_db(root), contract, allowlist or [], errors, root
         )
         return errors
@@ -745,7 +745,7 @@ class IncludeCheckTests(unittest.TestCase):
             errors,
             [
                 "Source/Engine/Mid.h: asset reaches rhi-public via "
-                "Source/Engine/Mid.h -> Source/Engine/Bad.h -> RHI/Include/RHI/Device.h"
+                "Source/Engine/Mid.h -> Source/Engine/Bad.h -> RojoRHI/Include/rojoRHI/Device.h"
             ],
         )
 
@@ -754,7 +754,7 @@ class IncludeCheckTests(unittest.TestCase):
             self.check(self.root, ["Source/Engine/Allowed.h"]),
             [
                 "Source/Engine/Allowed.h: asset reaches rhi-public via "
-                "Source/Engine/Allowed.h -> RHI/Include/RHI/Format.h -> RHI/Include/RHI/Device.h"
+                "Source/Engine/Allowed.h -> RojoRHI/Include/rojoRHI/Format.h -> RojoRHI/Include/rojoRHI/Device.h"
             ],
         )
         self.assertEqual(len(self.check(self.root, ["Source/Engine/Bad.h"])), 1)
@@ -765,7 +765,7 @@ class IncludeCheckTests(unittest.TestCase):
             errors,
             [
                 "Source/Engine/Cyc1.h: asset reaches rhi-public via "
-                "Source/Engine/Cyc1.h -> Source/Engine/Cyc2.h -> RHI/Include/RHI/Device.h"
+                "Source/Engine/Cyc1.h -> Source/Engine/Cyc2.h -> RojoRHI/Include/rojoRHI/Device.h"
             ],
         )
 
@@ -811,14 +811,14 @@ class IncludeCheckTests(unittest.TestCase):
         )
 
     def test_backend_metal_cpp_include_is_allowed_and_the_quoted_neighbour_resolves(self) -> None:
-        self.assertEqual(self.check(self.root, ["RHI/Backends/Metal4/Source/Metal4Device.cpp"]), [])
+        self.assertEqual(self.check(self.root, ["RojoRHI/Backends/Metal4/Source/Metal4Device.cpp"]), [])
 
     def test_angle_project_include_in_objective_cpp_is_followed_transitively(self) -> None:
         file = "Source/Engine/Probe.mm"
         (self.root / file).write_text("#include <Engine/Mid.h>\n")
         errors = self.check(self.root, [file])
         self.assertEqual(len(errors), 1)
-        self.assertIn("Probe.mm -> Source/Engine/Mid.h -> Source/Engine/Bad.h -> RHI/Include/RHI/Device.h", errors[0])
+        self.assertIn("Probe.mm -> Source/Engine/Mid.h -> Source/Engine/Bad.h -> RojoRHI/Include/rojoRHI/Device.h", errors[0])
 
 
 class AppModelBoundaryTests(unittest.TestCase):
@@ -950,20 +950,20 @@ class TargetClosureTests(unittest.TestCase):
     def setUp(self) -> None:
         self.contract = {"targets": {
             "TextureBake": {"deps": ["Core", "Asset"]}, "Core": {"deps": []},
-            "RHI": {"deps": ["Core"]}, "Render": {"deps": ["Core", "RHI"]},
-            "Engine": {"deps": ["Core", "RHI", "Render"]},
+            "RojoRHI": {"deps": ["Core"]}, "Render": {"deps": ["Core", "RojoRHI"]},
+            "Engine": {"deps": ["Core", "RojoRHI", "Render"]},
         }}
         self.targets = {
             "Core": {"deps": []},
-            "RHI": {"deps": ["Core"]},
-            "Render": {"deps": ["Core", "RHI"]},
-            "Engine": {"deps": ["Core", "RHI", "Render"]},
+            "RojoRHI": {"deps": ["Core"]},
+            "Render": {"deps": ["Core", "RojoRHI"]},
+            "Engine": {"deps": ["Core", "RojoRHI", "Render"]},
             "TextureBake": {"deps": ["Core", "Engine"]},
         }
 
     def test_closure_is_transitive(self) -> None:
         self.assertEqual(
-            modules.dependency_closure("TextureBake", self.targets), {"Core", "Engine", "RHI", "Render"}
+            modules.dependency_closure("TextureBake", self.targets), {"Core", "Engine", "RojoRHI", "Render"}
         )
 
     def test_closure_dep_outside_the_allowed_set_is_an_error(self) -> None:
@@ -973,8 +973,8 @@ class TargetClosureTests(unittest.TestCase):
             sorted(errors),
             [
                 "TextureBake: depends on Engine outside its allowed set",
-                "TextureBake: depends on RHI outside its allowed set",
                 "TextureBake: depends on Render outside its allowed set",
+                "TextureBake: depends on RojoRHI outside its allowed set",
             ],
         )
 
@@ -1000,7 +1000,7 @@ class TargetClosureTests(unittest.TestCase):
             sorted(errors),
             [
                 "TextureBake: depends on Engine outside its allowed set",
-                "TextureBake: depends on RHI outside its allowed set",
+                "TextureBake: depends on RojoRHI outside its allowed set",
             ],
         )
         self.assertTrue(allowlist[0]["used"])
@@ -1046,10 +1046,10 @@ class LinkedFrameworksAndSymbolsTests(unittest.TestCase):
                 return FakeCompleted(stdout="libEngine.a(Foo.cpp.o):\n__ZN3lmx3rhi6DeviceD1Ev\n__Znwm\n")
             self.assertEqual(args[0], "c++filt")
             self.assertEqual(kwargs.get("input"), "__ZN3lmx3rhi6DeviceD1Ev\n__Znwm")
-            return FakeCompleted(stdout="lmx::rhi::Device::~Device()\n__Znwm\n")
+            return FakeCompleted(stdout="rojoRHI::Device::~Device()\n__Znwm\n")
 
         symbols = modules.undefined_symbols(Path("libEngine.a"), run=run)
-        self.assertEqual(symbols, ["lmx::rhi::Device::~Device()", "__Znwm"])
+        self.assertEqual(symbols, ["rojoRHI::Device::~Device()", "__Znwm"])
         self.assertEqual([call[0] for call in calls], ["nm", "c++filt"])
 
     def test_undefined_symbols_with_no_symbols_skips_cxxfilt(self) -> None:
@@ -1065,7 +1065,7 @@ class CheckLinkTests(unittest.TestCase):
         self.contract = {
             "targets": {
                 "TextureBake": {"deps": ["Core", "Asset"], "frameworks": []},
-                "Asset": {"deps": ["Core"], "forbidUndefined": "lmx::rhi::"},
+                "Asset": {"deps": ["Core"], "forbidUndefined": "rojoRHI::"},
             }
         }
 
@@ -1125,12 +1125,12 @@ class CheckLinkTests(unittest.TestCase):
                 if args[0] == "nm":
                     return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__ZN3lmx3rhi6DeviceD1Ev\n")
                 self.assertEqual(args[0], "c++filt")
-                return FakeCompleted(stdout="lmx::rhi::Device::~Device()\n")
+                return FakeCompleted(stdout="rojoRHI::Device::~Device()\n")
 
             errors: list[str] = []
             modules.check_link(targets, self.contract, [], errors, run=run)
             self.assertEqual(
-                errors, ["Asset: undefined symbol lmx::rhi::Device::~Device() references lmx::rhi::"]
+                errors, ["Asset: undefined symbol rojoRHI::Device::~Device() references rojoRHI::"]
             )
 
     def test_missing_target_file_is_a_could_not_run_error(self) -> None:
@@ -1214,13 +1214,13 @@ EXTERNAL_CONTRACT = {
     "externals": {
         "rhi": {
             "kind": "external",
-            "paths": ["RHI"],
-            "targets": ["RHI", "RHIMetal4ImGui", "RHITests"],
-            "includeRoots": ["RHI/Include"],
+            "paths": ["RojoRHI"],
+            "targets": ["RojoRHI", "RojoRHIMetal4ImGui", "RojoRHITests"],
+            "includeRoots": ["RojoRHI/Include"],
             "consumers": {
-                "asset": ["RHI/Format.h"],
+                "asset": ["rojoRHI/Format.h"],
                 "model": ["*"],
-                "shell": ["*", "RHI/Metal4/Metal4ImGui.h", "RHI/Tests/RhiGpuTestSupport.h"],
+                "shell": ["*", "rojoRHI/Metal4/Metal4ImGui.h", "RojoRHI/Tests/RhiGpuTestSupport.h"],
             },
         }
     },
@@ -1228,39 +1228,39 @@ EXTERNAL_CONTRACT = {
         "Core": {"deps": []},
         "Asset": {"deps": ["Core"]},
         "Model": {"deps": ["Core"]},
-        "App": {"deps": ["Core", "RHI"]},
+        "App": {"deps": ["Core", "RojoRHI"]},
         "Stray": {"deps": []},
-        "RHI": {"deps": []},
-        "RHIMetal4ImGui": {"deps": ["RHI", "ImGui"]},
-        "RHITests": {"deps": ["RHI"]},
+        "RojoRHI": {"deps": []},
+        "RojoRHIMetal4ImGui": {"deps": ["RojoRHI", "ImGui"]},
+        "RojoRHITests": {"deps": ["RojoRHI"]},
     },
     "thirdPartyTargets": ["ImGui"],
 }
 
 EXTERNAL_TREE = {
-    "RHI/Include/RHI/Format.h": "",
-    "RHI/Include/RHI/Device.h": "",
-    "RHI/Include/RHI/RHI.h": '#include "RHI/Device.h"\n#include "RHI/Source/Base/Log.h"\n',
-    "RHI/Source/Base/Log.h": "",
-    "RHI/Source/Validate.cpp": "",
-    "RHI/Backends/Metal4/Source/Metal4Device.h": "",
-    "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h": "",
-    "RHI/Tests/RhiGpuTestSupport.h": "",
+    "RojoRHI/Include/rojoRHI/Format.h": "",
+    "RojoRHI/Include/rojoRHI/Device.h": "",
+    "RojoRHI/Include/rojoRHI/RHI.h": '#include "rojoRHI/Device.h"\n#include "RojoRHI/Source/Base/Log.h"\n',
+    "RojoRHI/Source/Base/Log.h": "",
+    "RojoRHI/Source/Validate.cpp": "",
+    "RojoRHI/Backends/Metal4/Source/Metal4Device.h": "",
+    "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h": "",
+    "RojoRHI/Tests/RhiGpuTestSupport.h": "",
     "Source/Core/Log.h": "",
     "Source/Core/Log.cpp": "",
-    "Source/Asset/Allowed.h": '#include "RHI/Format.h"\n',
-    "Source/Asset/Forbidden.h": '#include "RHI/Device.h"\n',
-    "Source/Model/Wildcard.h": '#include "RHI/RHI.h"\n',
-    "Source/Model/Adapter.h": '#include "RHI/Metal4/Metal4ImGui.h"\n',
-    "Source/App/Shell.h": '#include "RHI/Metal4/Metal4ImGui.h"\n#include "RHI/RHI.h"\n',
-    "Source/App/Private.h": '#include "RHI/Source/Base/Log.h"\n',
-    "Source/App/Backend.h": '#include "RHI/Backends/Metal4/Source/Metal4Device.h"\n',
-    "Source/Stray/Stray.h": '#include "RHI/Format.h"\n',
+    "Source/Asset/Allowed.h": '#include "rojoRHI/Format.h"\n',
+    "Source/Asset/Forbidden.h": '#include "rojoRHI/Device.h"\n',
+    "Source/Model/Wildcard.h": '#include "rojoRHI/RHI.h"\n',
+    "Source/Model/Adapter.h": '#include "rojoRHI/Metal4/Metal4ImGui.h"\n',
+    "Source/App/Shell.h": '#include "rojoRHI/Metal4/Metal4ImGui.h"\n#include "rojoRHI/RHI.h"\n',
+    "Source/App/Private.h": '#include "RojoRHI/Source/Base/Log.h"\n',
+    "Source/App/Backend.h": '#include "RojoRHI/Backends/Metal4/Source/Metal4Device.h"\n',
+    "Source/Stray/Stray.h": '#include "rojoRHI/Format.h"\n',
 }
 
 # The repository root is an include directory here so that a component-private path is resolvable
 # and the wildcard has something to reject; in the real build no such directory is on the line.
-EXTERNAL_DIRS = [".", "Source", "RHI/Include", "RHI/Backends/Metal4/ImGui/Include"]
+EXTERNAL_DIRS = [".", "Source", "RojoRHI/Include", "RojoRHI/Backends/Metal4/ImGui/Include"]
 
 
 def external_entry(root: Path, file: str) -> dict:
@@ -1309,10 +1309,10 @@ class ExternalComponentTests(unittest.TestCase):
         contract = self.load()
         dirs = modules.include_dirs(external_entry(self.root, "x.cpp"))
         resolved = modules.resolve_include(
-            Path("Source/Model/Wildcard.h"), "RHI/RHI.h", True, dirs, self.root, contract
+            Path("Source/Model/Wildcard.h"), "rojoRHI/RHI.h", True, dirs, self.root, contract
         )
         self.assertEqual(
-            resolved, modules.Resolved("external", None, "rhi", Path("RHI/Include/RHI/RHI.h"))
+            resolved, modules.Resolved("external", None, "rhi", Path("RojoRHI/Include/rojoRHI/RHI.h"))
         )
 
     def test_a_unit_that_is_not_a_consumer_cannot_include_the_component(self) -> None:
@@ -1320,7 +1320,7 @@ class ExternalComponentTests(unittest.TestCase):
             self.check(["Source/Stray/Stray.h"]),
             [
                 "Source/Stray/Stray.h: stray is not a consumer of rhi, reaching "
-                "RHI/Include/RHI/Format.h via Source/Stray/Stray.h -> RHI/Include/RHI/Format.h"
+                "RojoRHI/Include/rojoRHI/Format.h via Source/Stray/Stray.h -> RojoRHI/Include/rojoRHI/Format.h"
             ],
         )
 
@@ -1329,8 +1329,8 @@ class ExternalComponentTests(unittest.TestCase):
         self.assertEqual(
             self.check(["Source/Asset/Forbidden.h"]),
             [
-                "Source/Asset/Forbidden.h: asset may not include rhi header RHI/Include/RHI/Device.h "
-                "via Source/Asset/Forbidden.h -> RHI/Include/RHI/Device.h"
+                "Source/Asset/Forbidden.h: asset may not include rhi header RojoRHI/Include/rojoRHI/Device.h "
+                "via Source/Asset/Forbidden.h -> RojoRHI/Include/rojoRHI/Device.h"
             ],
         )
 
@@ -1340,8 +1340,8 @@ class ExternalComponentTests(unittest.TestCase):
 
     def test_the_wildcard_does_not_reach_the_components_private_files(self) -> None:
         for name, reached in (
-            ("Source/App/Private.h", "RHI/Source/Base/Log.h"),
-            ("Source/App/Backend.h", "RHI/Backends/Metal4/Source/Metal4Device.h"),
+            ("Source/App/Private.h", "RojoRHI/Source/Base/Log.h"),
+            ("Source/App/Backend.h", "RojoRHI/Backends/Metal4/Source/Metal4Device.h"),
         ):
             with self.subTest(name=name):
                 self.assertEqual(
@@ -1350,7 +1350,7 @@ class ExternalComponentTests(unittest.TestCase):
                 )
 
     def test_the_wildcard_does_not_reach_a_second_include_root_unless_it_is_named(self) -> None:
-        adapter = "RHI/Backends/Metal4/ImGui/Include/RHI/Metal4/Metal4ImGui.h"
+        adapter = "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h"
         self.assertEqual(
             self.check(["Source/Model/Adapter.h"]),
             [
@@ -1360,7 +1360,7 @@ class ExternalComponentTests(unittest.TestCase):
         )
 
     def test_reach_stops_at_the_component_boundary(self) -> None:
-        """`RHI/RHI.h` includes a component-private header; the consumer does not inherit it."""
+        """`rojoRHI/RHI.h` includes a component-private header; the consumer does not inherit it."""
         self.assertEqual(self.check(["Source/Model/Wildcard.h"]), [])
 
     def test_an_include_allowance_suppresses_one_external_edge(self) -> None:
@@ -1373,7 +1373,7 @@ class ExternalComponentTests(unittest.TestCase):
 
     def test_files_under_the_entry_paths_are_not_checked_for_unit_reach_or_ownership(self) -> None:
         contract = self.load()
-        targets = {"RHI": {"files": ["RHI/Source/Validate.cpp"], "deps": [], "packages": [],
+        targets = {"RojoRHI": {"files": ["RojoRHI/Source/Validate.cpp"], "deps": [], "packages": [],
                            "frameworks": []}}
         errors: list[str] = []
         modules.check_ownership([], targets, contract, [], errors)
@@ -1387,19 +1387,19 @@ class ExternalComponentTests(unittest.TestCase):
         ])
 
     def test_a_walked_root_inside_the_component_contributes_no_files(self) -> None:
-        contract = self.load(lambda c: c["roots"].append("RHI/Include"))
-        self.assertNotIn(Path("RHI/Include/RHI/RHI.h"), modules.project_files(self.root, contract))
+        contract = self.load(lambda c: c["roots"].append("RojoRHI/Include"))
+        self.assertNotIn(Path("RojoRHI/Include/rojoRHI/RHI.h"), modules.project_files(self.root, contract))
 
     def test_a_component_target_may_not_depend_on_a_luminex_target(self) -> None:
         contract = self.load()
         targets = {
             "Core": {"deps": []},
-            "RHI": {"deps": []},
-            "RHITests": {"deps": ["RHI", "Core"]},
+            "RojoRHI": {"deps": []},
+            "RojoRHITests": {"deps": ["RojoRHI", "Core"]},
         }
         errors: list[str] = []
         modules.check_target_closure(targets, contract, [], errors)
-        self.assertEqual(errors, ["RHITests: depends on Core outside its allowed set"])
+        self.assertEqual(errors, ["RojoRHITests: depends on Core outside its allowed set"])
 
     def test_an_entry_must_declare_the_external_kind(self) -> None:
         with self.assertRaisesRegex(modules.ModuleContractError, "kind"):
@@ -1410,11 +1410,11 @@ class ExternalComponentTests(unittest.TestCase):
             self.load(lambda c: c["externals"]["rhi"].__setitem__("paths", ["Absent"]))
 
     def test_a_unit_may_not_own_a_path_inside_the_component(self) -> None:
-        with self.assertRaisesRegex(modules.ModuleContractError, "RHI/Include"):
-            self.load(lambda c: c["units"]["core"]["paths"].append("RHI/Include"))
+        with self.assertRaisesRegex(modules.ModuleContractError, "RojoRHI/Include"):
+            self.load(lambda c: c["units"]["core"]["paths"].append("RojoRHI/Include"))
 
     def test_an_include_root_must_be_a_directory_inside_the_component(self) -> None:
-        for roots in (["RHI/Absent"], ["Source"], ["RHI/Include/RHI/RHI.h"]):
+        for roots in (["RojoRHI/Absent"], ["Source"], ["RojoRHI/Include/rojoRHI/RHI.h"]):
             with self.subTest(roots=roots):
                 with self.assertRaises(modules.ModuleContractError):
                     self.load(lambda c, r=roots: c["externals"]["rhi"].__setitem__("includeRoots", r))
@@ -1426,8 +1426,8 @@ class ExternalComponentTests(unittest.TestCase):
             self.load(lambda c: c["externals"]["rhi"]["consumers"].__setitem__("asset", []))
 
     def test_a_component_target_may_not_also_be_a_unit_target(self) -> None:
-        with self.assertRaisesRegex(modules.ModuleContractError, "RHI"):
-            self.load(lambda c: c["units"]["core"]["targets"].append("RHI"))
+        with self.assertRaisesRegex(modules.ModuleContractError, "RojoRHI"):
+            self.load(lambda c: c["units"]["core"]["targets"].append("RojoRHI"))
 
 
 class RepositoryContractTests(unittest.TestCase):
@@ -1438,7 +1438,7 @@ class RepositoryContractTests(unittest.TestCase):
         self.contract = modules.load_contract(modules.CONTRACT_PATH, self.root)
 
     def test_every_source_file_under_the_rhi_component_is_covered_by_one_entry(self) -> None:
-        component = self.root / "RHI"
+        component = self.root / "RojoRHI"
         if not component.is_dir():
             self.skipTest("the RHI component is no longer in the repository")
         uncovered = [
@@ -1453,8 +1453,8 @@ class RepositoryContractTests(unittest.TestCase):
     def test_the_component_owns_no_luminex_unit_and_no_unit_owns_its_targets(self) -> None:
         self.assertEqual(sorted(self.contract["externals"]), ["rhi"])
         entry = self.contract["externals"]["rhi"]
-        self.assertEqual(entry["paths"], ["RHI"])
-        self.assertEqual(sorted(entry["targets"]), ["RHI", "RHIMetal4ImGui", "RHITests"])
+        self.assertEqual(entry["paths"], ["RojoRHI"])
+        self.assertEqual(sorted(entry["targets"]), ["RojoRHI", "RojoRHIMetal4ImGui", "RojoRHITests"])
         self.assertNotIn("rhi-public", self.contract["units"])
 
 

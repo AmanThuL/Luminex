@@ -9,7 +9,7 @@
 #include "App/Model/SelectionBounds.h"
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/EditorStyle.h"
-#include "RHI/Metal4/Metal4ImGui.h"
+#include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <imgui.h>
 
@@ -275,7 +275,7 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
         if (result.measured) {
             const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
                                       context.outlineTarget.height() == context.renderer.height();
-            ImGui::Image(rhi::metal4::imguiTextureID(context.showOutline && outlineReady &&
+            ImGui::Image(rojoRHI::metal4::imguiTextureID(context.showOutline && outlineReady &&
                                                              context.selection.subject ==
                                                                  EditorSubject::Object
                                                          ? context.outlineTarget

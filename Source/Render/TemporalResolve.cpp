@@ -44,7 +44,7 @@ bool sameExtents(const FrameExtents& a, const FrameExtents& b) {
 } // namespace
 
 //======================================================================================================================
-TemporalResolve::TemporalResolve(rhi::Device& device, bool cpuReadback)
+TemporalResolve::TemporalResolve(rojoRHI::Device& device, bool cpuReadback)
     : m_device(device), m_vendor(std::make_unique<VendorTemporalScaler>(device)),
       m_cpuReadback(cpuReadback) {}
 
@@ -52,7 +52,7 @@ TemporalResolve::TemporalResolve(rhi::Device& device, bool cpuReadback)
 TemporalResolve::~TemporalResolve() = default;
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Device& device,
+rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRHI::Device& device,
                                                                       bool cpuReadback) {
     auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
 
@@ -126,9 +126,9 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
             device.createGraphicsPipeline({.library = self->m_debugViewLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
-                                           .colorFormat = rhi::Format::BGRA8Unorm,
-                                           .depthFormat = rhi::Format::Unknown,
-                                           .cullMode = rhi::CullMode::None,
+                                           .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                           .depthFormat = rojoRHI::Format::Unknown,
+                                           .cullMode = rojoRHI::CullMode::None,
                                            .label = "lmx.render.temporalDebugViewPipeline"});
         pipeline) {
         self->m_debugViewPipeline = std::move(*pipeline);
@@ -136,8 +136,8 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
         return std::unexpected(pipeline.error());
     }
 
-    if (auto sampler = device.createSampler({.filter = rhi::FilterMode::Linear,
-                                             .addressMode = rhi::AddressMode::Clamp,
+    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+                                             .addressMode = rojoRHI::AddressMode::Clamp,
                                              .label = "lmx.render.temporalSampler"});
         sampler) {
         self->m_sampler = std::move(*sampler);
@@ -147,7 +147,7 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
 
     if (auto texture = device.createTexture({.width = 1,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA16Float,
+                                             .format = rojoRHI::Format::RGBA16Float,
                                              .storageWrite = true,
                                              .label = "lmx.render.temporalDiagnosticFallback"});
         texture) {
@@ -157,7 +157,7 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
     }
     if (auto texture = device.createTexture({.width = 1,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA16Float,
+                                             .format = rojoRHI::Format::RGBA16Float,
                                              .sampled = true,
                                              .label = "lmx.render.temporalViewFallback"});
         texture) {
@@ -169,11 +169,11 @@ rhi::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rhi::Devic
 }
 
 //======================================================================================================================
-rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
+rojoRHI::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
     LMX_ASSERT(width > 0 && height > 0, "TemporalResolve::resize: the extent must be non-empty");
 
-    std::unique_ptr<rhi::Texture> depth[2];
-    std::unique_ptr<rhi::Texture> color[2];
+    std::unique_ptr<rojoRHI::Texture> depth[2];
+    std::unique_ptr<rojoRHI::Texture> color[2];
     static constexpr const char* kDepthLabels[2] = {"lmx.render.sceneDepth0",
                                                     "lmx.render.sceneDepth1"};
     static constexpr const char* kColorLabels[2] = {"lmx.render.historyColor0",
@@ -184,7 +184,7 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         // public depth target after the graph.
         auto depthTexture = m_device.createTexture({.width = width,
                                                     .height = height,
-                                                    .format = rhi::Format::D32Float,
+                                                    .format = rojoRHI::Format::D32Float,
                                                     .renderTarget = true,
                                                     .sampled = true,
                                                     .label = kDepthLabels[slot]});
@@ -196,7 +196,7 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         // accumulated frame against the raw one it was built from.
         auto colorTexture = m_device.createTexture({.width = width,
                                                     .height = height,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true,
                                                     .storageWrite = true,
@@ -214,8 +214,8 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
         m_depth[slot] = std::move(depth[slot]);
         m_color[slot] = std::move(color[slot]);
         // The contents went with the old textures, and the extent change is a history reset anyway.
-        m_colorUse[slot] = rhi::TextureUse::CopyDestination;
-        m_depthUse[slot] = rhi::TextureUse::ShaderRead;
+        m_colorUse[slot] = rojoRHI::TextureUse::CopyDestination;
+        m_depthUse[slot] = rojoRHI::TextureUse::ShaderRead;
     }
     m_vendor->invalidateOutput();
     m_width = width;
@@ -224,14 +224,14 @@ rhi::Result<void> TemporalResolve::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
-rhi::Texture& TemporalResolve::depthSlot(uint32_t slot) {
+rojoRHI::Texture& TemporalResolve::depthSlot(uint32_t slot) {
     LMX_ASSERT(slot < 2 && m_depth[slot] != nullptr,
                "TemporalResolve::depthSlot: no such slot -- create() or resize() failed");
     return *m_depth[slot];
 }
 
 //======================================================================================================================
-rhi::Texture& TemporalResolve::colorSlot(uint32_t slot) {
+rojoRHI::Texture& TemporalResolve::colorSlot(uint32_t slot) {
     LMX_ASSERT(slot < 2 && m_color[slot] != nullptr,
                "TemporalResolve::colorSlot: no such slot -- create() or resize() failed");
     return *m_color[slot];
@@ -240,18 +240,18 @@ rhi::Texture& TemporalResolve::colorSlot(uint32_t slot) {
 //======================================================================================================================
 GraphTexture TemporalResolve::importDepth(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.sceneDepth0", "lmx.render.sceneDepth1"};
-    return graph.importTexture(depthSlot(slot), rhi::Format::D32Float, kNames[slot],
+    return graph.importTexture(depthSlot(slot), rojoRHI::Format::D32Float, kNames[slot],
                                m_depthUse[slot]);
 }
 
 //======================================================================================================================
 void TemporalResolve::recordDepthRead(uint32_t slot) {
     LMX_ASSERT(slot < 2, "recordDepthRead requires a valid history slot");
-    m_depthUse[slot] = rhi::TextureUse::ShaderRead;
+    m_depthUse[slot] = rojoRHI::TextureUse::ShaderRead;
 }
 
 //======================================================================================================================
-rhi::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
+rojoRHI::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
     LMX_ASSERT(slot < 2, "depthUse requires a valid history slot");
     return m_depthUse[slot];
 }
@@ -260,12 +260,12 @@ rhi::TextureUse TemporalResolve::depthUse(uint32_t slot) const {
 GraphTexture TemporalResolve::importColor(RenderGraph& graph, uint32_t slot) {
     static constexpr const char* kNames[2] = {"lmx.render.historyColor0",
                                               "lmx.render.historyColor1"};
-    return graph.importTexture(colorSlot(slot), rhi::Format::RGBA16Float, kNames[slot],
+    return graph.importTexture(colorSlot(slot), rojoRHI::Format::RGBA16Float, kNames[slot],
                                m_colorUse[slot]);
 }
 
 //======================================================================================================================
-TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rhi::CommandList& commands,
+TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                 const TemporalInputs& inputs,
                                                 TemporalDebugView debugView,
                                                 GraphTexture& displayResult) {
@@ -321,12 +321,12 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     LMX_ASSERT(slot < 2, "TemporalResolve::recordFrame: slot must be 0 or 1");
     const uint32_t other = 1 - slot;
     m_vendor->recordMode(mode);
-    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal ? rhi::TextureUse::ExternalRead
-                                                                  : rhi::TextureUse::ShaderRead;
+    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal ? rojoRHI::TextureUse::ExternalRead
+                                                                  : rojoRHI::TextureUse::ShaderRead;
     if (mode == ReconstructionMode::NativeTaa ||
         (mode == ReconstructionMode::VendorTemporal &&
          debugView == TemporalDebugView::ReprojectedHistory)) {
-        m_depthUse[other] = rhi::TextureUse::ShaderRead;
+        m_depthUse[other] = rojoRHI::TextureUse::ShaderRead;
     }
     // Under NativeTaa the resolve writes the slot and bloom and display then sample it, so the
     // frame's last access to it is a shader read. An upscaled Raw frame ends the same way: the
@@ -336,10 +336,10 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     // colour.
     const bool readCurrent = mode == ReconstructionMode::NativeTaa || upscaled ||
                              debugView == TemporalDebugView::HistoryAge;
-    m_colorUse[slot] = readCurrent ? rhi::TextureUse::ShaderRead : rhi::TextureUse::CopyDestination;
+    m_colorUse[slot] = readCurrent ? rojoRHI::TextureUse::ShaderRead : rojoRHI::TextureUse::CopyDestination;
     if (mode == ReconstructionMode::VendorTemporal) {
         // Retain the opaque producer stage set across frames even though display samples it.
-        m_colorUse[slot] = rhi::TextureUse::ExternalWrite;
+        m_colorUse[slot] = rojoRHI::TextureUse::ExternalWrite;
     }
     // The other slot is read by the resolve on every NativeTaa frame, and by the reprojection
     // diagnostic on a Raw frame only where that pass survived culling. A frame that read it
@@ -349,7 +349,7 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
                            (mode == ReconstructionMode::VendorTemporal &&
                             debugView == TemporalDebugView::ReprojectedHistory);
     if (readOther) {
-        m_colorUse[other] = rhi::TextureUse::ShaderRead;
+        m_colorUse[other] = rojoRHI::TextureUse::ShaderRead;
     }
 }
 

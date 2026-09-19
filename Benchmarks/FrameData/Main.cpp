@@ -32,7 +32,7 @@
 #include "Workload.h"
 
 #include "Core/Json.h"
-#include "RHI/Metal4/Metal4FrameData.h"
+#include <rojoRHI/Metal4/Metal4FrameData.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -122,7 +122,7 @@ std::optional<CliOptions> parseArgs(const std::vector<std::string_view>& args, s
 // differs; the paired driver never reads these additive fields, so either shape is backward
 // compatible with it.
 void writeFrameDataCounters(std::ofstream& file,
-                            const std::optional<lmx::rhi::metal4::FrameDataCounters>& counters) {
+                            const std::optional<rojoRHI::metal4::FrameDataCounters>& counters) {
     if (!counters) {
         file << "null";
         return;

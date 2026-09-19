@@ -1,6 +1,6 @@
 #include "Asset/PngImage.h"
 #include "DisplayTransformOracle.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 #include "Render/DisplayDomain.h"
 #include "Render/Renderer.h"
 
@@ -138,9 +138,9 @@ glm::vec3 bloomAt(const Fixture& fixture, uint32_t x, uint32_t y) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rhi::Texture> upload(rhi::Device& device, uint32_t width, uint32_t height,
+std::unique_ptr<rojoRHI::Texture> upload(rojoRHI::Device& device, uint32_t width, uint32_t height,
                                      std::span<const uint16_t> pixels, const char* label) {
-    const rhi::TextureMip mip{.data = pixels.data(), .bytesPerRow = uint64_t{width} * 8};
+    const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = uint64_t{width} * 8};
     auto texture = device.createTexture({.width = width,
                                          .height = height,
                                          .format = render::kSceneColorFormat,
@@ -154,7 +154,7 @@ std::unique_ptr<rhi::Texture> upload(rhi::Device& device, uint32_t width, uint32
 
 //======================================================================================================================
 std::vector<uint8_t> renderFixture(const Fixture& fixture) {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO((device ? "" : device.error().message));
     REQUIRE(device.has_value());
     auto library = (*device)->loadShaderLibrary("Shaders/DisplayTransform");

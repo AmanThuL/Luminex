@@ -34,7 +34,7 @@ std::string_view localLightModeLabel(render::LocalLightMode mode) {
 
 //======================================================================================================================
 std::vector<LightingField> lightingFields(const render::LightingStatus& status,
-                                          std::span<const rhi::PassTiming> timings) {
+                                          std::span<const rojoRHI::PassTiming> timings) {
     std::vector<LightingField> fields{
         {"Frame", std::format("{} ({})", status.frameNumber,
                               status.isRetired ? "retired" : "awaiting retirement")},
@@ -98,7 +98,7 @@ void LightingDisplay::retire(const render::LightingStatus& status) {
 }
 
 //======================================================================================================================
-void LightingDisplay::observeTimings(uint64_t frame, std::span<const rhi::PassTiming> timings) {
+void LightingDisplay::observeTimings(uint64_t frame, std::span<const rojoRHI::PassTiming> timings) {
     if (timings.empty() || (!m_timings.empty() && frame <= m_timings.back().frame))
         return;
     m_timings.push_back({frame, {timings.begin(), timings.end()}});
@@ -115,7 +115,7 @@ void LightingDisplay::publishReadings(double nowSeconds) {
         return;
     m_readings = m_latest;
     const auto found = std::ranges::find(m_timings, m_readings.frameNumber, &Timings::frame);
-    m_readingsTimings = found == m_timings.end() ? std::vector<rhi::PassTiming>{} : found->passes;
+    m_readingsTimings = found == m_timings.end() ? std::vector<rojoRHI::PassTiming>{} : found->passes;
     m_nextReadingsSeconds = nowSeconds + 0.25;
     m_hasReadings = true;
 }

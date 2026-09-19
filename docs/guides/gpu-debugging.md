@@ -253,7 +253,7 @@ Scored headless measurement refuses enabled Metal/DYLD/capture instrumentation, 
 python3 -m unittest discover -s Tools/GpuDebug/tests -v
 ```
 
-These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../RHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
+These tests validate the parsers and report generation without requiring a GPU capture session. The separate [ImGui buffer probe](../../RojoRHI/Tools/ImGuiBufferProbe/README.md) checks real Metal4 UI upload lifetime and an old-policy failure control; it requires a GPU.
 
 ## Parity checks
 

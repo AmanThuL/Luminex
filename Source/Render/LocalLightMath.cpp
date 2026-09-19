@@ -56,17 +56,17 @@ glm::vec3 fSchlick(const glm::vec3& f0, float voh) {
 } // namespace
 
 //======================================================================================================================
-rhi::Result<LightRow> makeLightRow(const LocalLight& light) {
+rojoRHI::Result<LightRow> makeLightRow(const LocalLight& light) {
     // The only gate before these values reach the GPU row: a NaN or infinite component would
     // otherwise upload silently and corrupt shading or the bounding sphere.
     if (!isFinite(light.position) || !isFinite(light.colour) || !std::isfinite(light.intensity) ||
         !isFinite(light.direction)) {
         return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc,
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                        "makeLightRow: position, colour, intensity and direction must be finite"});
     }
     if (!std::isfinite(light.range) || light.range <= 0.0f) {
-        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                           "makeLightRow: range must be finite and positive"});
     }
 
@@ -81,17 +81,17 @@ rhi::Result<LightRow> makeLightRow(const LocalLight& light) {
     if (light.type == LocalLightType::Spot) {
         if (!(light.innerCone >= 0.0f) || !(light.innerCone < light.outerCone)) {
             return std::unexpected(
-                rhi::Error{rhi::ErrorCode::InvalidDesc,
+                rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                            "makeLightRow: a spot needs 0 <= innerCone < outerCone"});
         }
         constexpr float kMaxOuterCone = 89.0f * std::numbers::pi_v<float> / 180.0f;
         if (!(light.outerCone <= kMaxOuterCone)) {
-            return std::unexpected(rhi::Error{
-                rhi::ErrorCode::InvalidDesc, "makeLightRow: outerCone must be at most 89 degrees"});
+            return std::unexpected(rojoRHI::Error{
+                rojoRHI::ErrorCode::InvalidDesc, "makeLightRow: outerCone must be at most 89 degrees"});
         }
         const float directionLength = glm::length(light.direction);
         if (!(directionLength > 1e-8f)) {
-            return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
+            return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                               "makeLightRow: a spot needs a nonzero direction"});
         }
         row.direction = light.direction / directionLength;

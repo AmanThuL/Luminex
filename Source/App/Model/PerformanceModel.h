@@ -6,7 +6,7 @@
 #pragma once
 #include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/PassTimingHistory.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <span>
@@ -24,7 +24,7 @@ namespace lmx::app {
 struct PerformanceFrameSample {
     uint64_t frameId = 0;                     ///< The device frame number this sample measured.
     uint64_t contextEpoch = 0;                ///< Scene/mode revision captured at declaration.
-    std::span<const rhi::PassTiming> timings; ///< Per-pass GPU times, schedule order.
+    std::span<const rojoRHI::PassTiming> timings; ///< Per-pass GPU times, schedule order.
     uint32_t objectCount = 0;                 ///< Scene object count at this frame.
     uint32_t drawCount = 0;                   ///< Draw-call count at this frame.
     uint32_t viewportLogicalWidth = 0;        ///< Viewport panel size, in ImGui logical points.

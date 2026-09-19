@@ -17,7 +17,7 @@ struct ResolvedRange {
 };
 
 bool isWriteRole(UseRole role);
-ResolvedRange resolveRange(const rhi::TextureSubresourceRange& range, uint32_t mipLevels,
+ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers);
 bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b);
 std::string_view sinkVerb(SinkKind kind);

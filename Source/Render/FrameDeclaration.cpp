@@ -12,7 +12,7 @@ namespace lmx::render {
 
 //======================================================================================================================
 FrameDeclaration::FrameDeclaration(TransientPool& pool, Renderer& renderer,
-                                   rhi::CommandList& commands, const Camera& camera,
+                                   rojoRHI::CommandList& commands, const Camera& camera,
                                    const SceneView& view, bool poolingEnabled)
     : m_commands(commands), m_frameId(pool.device().frameNumber()), m_graph(pool) {
     pool.beginFrame();

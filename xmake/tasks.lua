@@ -8,8 +8,8 @@ task("format")
         if option.get("check") then table.insert(args, "--Werror") end
         for _, f in ipairs(os.files("Source/**.h")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Source/**.cpp")) do table.insert(args, f) end
-        for _, f in ipairs(os.files("RHI/**.h")) do table.insert(args, f) end
-        for _, f in ipairs(os.files("RHI/**.cpp")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("RojoRHI/**.h")) do table.insert(args, f) end
+        for _, f in ipairs(os.files("RojoRHI/**.cpp")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Tests/**.h")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Tests/**.cpp")) do table.insert(args, f) end
         for _, f in ipairs(os.files("Benchmarks/**.h")) do table.insert(args, f) end
@@ -26,6 +26,6 @@ task("policy")
         os.execv("python3", {"Tools/check_module_deps.py"})
         os.execv("python3", {"Tools/check_source_headers.py"})
         os.execv("python3", {"Tools/check_cpp_comments.py", "--public-api-docs", "error"})
-        os.execv("python3", {"RHI/Tools/check_rhi_headers.py"})
+        os.execv("python3", {"RojoRHI/Tools/check_rhi_headers.py"})
         os.execv("python3", {"Tools/check_cpp_layout.py"})
     end)

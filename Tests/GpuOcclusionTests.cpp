@@ -4,7 +4,7 @@
 #include <functional>
 
 using namespace lmx::render;
-using namespace lmx::rhi;
+using namespace rojoRHI;
 namespace scene = lmx::scene;
 
 namespace {

@@ -7,7 +7,7 @@
 //======================================================================================================================
 TEST_CASE("vendor packing translates invalid motion and working exposure without a scaler",
           "[gpu][temporal][vendor][pack]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using namespace lmx::render;
     auto device = createDevice();
     REQUIRE(device);

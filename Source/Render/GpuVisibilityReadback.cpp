@@ -50,7 +50,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     std::vector<uint32_t> states(std::min(params.candidateCount, params.stateCapacity));
     std::vector<uint32_t> rows(
         result.checkEnabled ? std::min(params.candidateCount, params.rowCapacity) : 0);
-    std::vector<rhi::DrawIndexedIndirectArgs> arguments(
+    std::vector<rojoRHI::DrawIndexedIndirectArgs> arguments(
         result.checkEnabled ? std::min<uint32_t>(static_cast<uint32_t>(pending.tables.runs.size()),
                                                  params.argumentCapacity)
                             : 0);

@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -51,7 +51,7 @@ public:
     static constexpr size_t kSampleCapacity = 60;
 
     /// Adds one retired frame. Returns true when a changed schedule reset all prior samples.
-    bool addFrame(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    bool addFrame(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings);
 
     /// Computes display rows in schedule order from the currently retained samples.
     std::vector<PassTimingSummary> summaries() const;

@@ -65,7 +65,7 @@ constexpr float kCameraPitch = -0.15f;
 constexpr double kCameraLoopSeconds = 8.0;
 
 //======================================================================================================================
-asset::AssetError uploadFailure(rhi::Error error) {
+asset::AssetError uploadFailure(rojoRHI::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
@@ -150,7 +150,7 @@ float phase(double time, double seconds) {
 //   radians and pitch holds at -0.15 radians, which frames the floor and every probe.
 //   initialCamera is the track's first key: (0, 3, 10), yaw 0, pitch -0.15, 45 degree vertical
 //   FOV.
-asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device& device) {
     auto scene = std::make_unique<Scene>();
     scene->name = "TemporalLab";
 
@@ -175,7 +175,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rhi::Device& dev
         asset::bakeMips(checkerPixels, kCheckerSize, kCheckerSize, asset::BakeMode::Srgb);
     auto checkerTexture = device.createTexture({.width = checkerChain.width,
                                                 .height = checkerChain.height,
-                                                .format = rhi::Format::RGBA8Unorm_sRGB,
+                                                .format = rojoRHI::Format::RGBA8Unorm_sRGB,
                                                 .mipLevels = checkerChain.mipLevels,
                                                 .sampled = true,
                                                 .label = "TemporalLab.checker"},

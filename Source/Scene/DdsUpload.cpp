@@ -12,7 +12,7 @@
 namespace lmx::scene {
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<rhi::Texture>> createTextureFromDds(rhi::Device& device,
+asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoRHI::Device& device,
                                                                        std::string_view path,
                                                                        bool srgb,
                                                                        std::string_view label) {
@@ -21,14 +21,14 @@ asset::AssetResult<std::unique_ptr<rhi::Texture>> createTextureFromDds(rhi::Devi
         return std::unexpected(image.error());
     }
 
-    rhi::Format format{};
+    rojoRHI::Format format{};
     if (image->bc1) {
-        format = srgb ? rhi::Format::BC1Unorm_sRGB : rhi::Format::BC1Unorm;
+        format = srgb ? rojoRHI::Format::BC1Unorm_sRGB : rojoRHI::Format::BC1Unorm;
     } else {
-        format = srgb ? rhi::Format::RGBA8Unorm_sRGB : rhi::Format::RGBA8Unorm;
+        format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm;
     }
 
-    const rhi::TextureDesc desc{
+    const rojoRHI::TextureDesc desc{
         .width = image->width,
         .height = image->height,
         .format = format,

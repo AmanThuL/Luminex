@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "RHI/Result.h"
+#include <rojoRHI/Result.h>
 #include "Render/LocalLight.h"
 #include "Render/SceneTables.h"
 
@@ -19,7 +19,7 @@ namespace lmx::render {
 /// `position`, `colour`, `intensity` or `direction` component, a nonpositive, non-finite or NaN
 /// `range`, `innerCone >= outerCone`, `outerCone > 89deg`, or (for a spot) a zero direction; never
 /// asserts. Disabled lights undergo the same validation and return a zero row.
-rhi::Result<LightRow> makeLightRow(const LocalLight& light);
+rojoRHI::Result<LightRow> makeLightRow(const LocalLight& light);
 
 /// The glTF/UE/Frostbite windowed inverse-square term `window(d) / max(d^2, (0.01 m)^2)`, with
 /// `window(d) = saturate(1 - (d / range)^4)^2`; exactly zero for `distance >= range`.

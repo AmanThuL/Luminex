@@ -5,7 +5,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 using namespace lmx::render;
-using namespace lmx::rhi;
+using namespace rojoRHI;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureSceneView;
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that portability checkpoint A (ADR 0009) is split, undivided, across Tests and RHITests."""
+"""Check that portability checkpoint A (ADR 0009) is split, undivided, across Tests and RojoRHITests."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 UNION_INVENTORY = ROOT / "Tests" / "checkpoint-a.inventory"
-RHI_INVENTORY = ROOT / "RHI" / "Tests" / "checkpoint-a.inventory"
+RHI_INVENTORY = ROOT / "RojoRHI" / "Tests" / "checkpoint-a.inventory"
 DEFAULT_TESTS = ROOT / "build" / "macosx" / "arm64" / "release" / "test" / "Tests"
-DEFAULT_RHI_TESTS = ROOT / "build" / "macosx" / "arm64" / "release" / "rhi-test" / "RHITests"
+DEFAULT_RHI_TESTS = ROOT / "build" / "macosx" / "arm64" / "release" / "rojorhi-test" / "RojoRHITests"
 TAG = "[checkpoint-a]"
 
 
@@ -64,13 +64,13 @@ def check_split(
     """Compare the two binaries' tagged case names against the frozen inventory files.
 
     The binaries' tagged sets must be disjoint, their union must equal the frozen union exactly,
-    and RHITests' tagged set must equal the RHI inventory exactly.
+    and RojoRHITests' tagged set must equal the RHI inventory exactly.
     """
     errors: list[str] = []
 
     shared = sorted(set(tests) & set(rhi_tests))
     for name in shared:
-        errors.append(f"tagged {TAG} in both Tests and RHITests: {name!r}")
+        errors.append(f"tagged {TAG} in both Tests and RojoRHITests: {name!r}")
 
     combined = set(tests) | set(rhi_tests)
     frozen = set(union_inventory)
@@ -82,9 +82,9 @@ def check_split(
     rhi_frozen = set(rhi_inventory)
     rhi_actual = set(rhi_tests)
     for name in sorted(rhi_frozen - rhi_actual):
-        errors.append(f"in {RHI_INVENTORY.name} but not tagged {TAG} by RHITests: {name!r}")
+        errors.append(f"in {RHI_INVENTORY.name} but not tagged {TAG} by RojoRHITests: {name!r}")
     for name in sorted(rhi_actual - rhi_frozen):
-        errors.append(f"tagged {TAG} by RHITests but not in {RHI_INVENTORY.name}: {name!r}")
+        errors.append(f"tagged {TAG} by RojoRHITests but not in {RHI_INVENTORY.name}: {name!r}")
 
     return errors
 
@@ -92,7 +92,7 @@ def check_split(
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--tests", type=Path, default=DEFAULT_TESTS, help="Tests binary")
-    parser.add_argument("--rhi-tests", type=Path, default=DEFAULT_RHI_TESTS, help="RHITests binary")
+    parser.add_argument("--rhi-tests", type=Path, default=DEFAULT_RHI_TESTS, help="RojoRHITests binary")
     return parser.parse_args(argv)
 
 

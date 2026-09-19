@@ -12,7 +12,7 @@ using lmx::test::FixtureSceneView;
 // later, its imported terminal use must drain that read before the next history copy overwrites it.
 TEST_CASE("raw history age records the sampled slot before recycling",
           "[gpu][temporal][taa-diagnostics]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -53,7 +53,7 @@ TEST_CASE("raw history age records the sampled slot before recycling",
 // Disabled diagnostic outputs retain a poison texel, including on reset frames. A bound fallback
 // is still a real writable texture at (0,0); suppressing its graph declaration alone is not enough.
 TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][taa-diagnostics]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -143,7 +143,7 @@ TEST_CASE("temporal resolve writes only enabled diagnostics", "[gpu][temporal][t
 // back on, a resize, and an explicit cut. Every frame's reason is asserted, and the allocation
 // survives the frame temporal spent switched off.
 TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
     auto device = createDevice();
@@ -227,7 +227,7 @@ TEST_CASE("history reset reasons follow the frames that caused them", "[gpu][tem
 // Status values only: what is asserted here is the counter, not the picture.
 TEST_CASE("history age restarts across temporal off and survives a mode switch",
           "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
     using lmx::render::ReconstructionMode;
 
@@ -293,7 +293,7 @@ TEST_CASE("history age restarts across temporal off and survives a mode switch",
 // drain that dispatch-stage read.
 TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it",
           "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -349,7 +349,7 @@ TEST_CASE("a re-enabling frame imports motion as the last temporal frame left it
 // read a resource another frame had already retired, or a barrier the graph derived against the
 // wrong previous use, is reported here rather than in a drained case that never overlaps.
 TEST_CASE("temporal frames overlap in flight over one history", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
     using lmx::render::TemporalDebugView;
 
