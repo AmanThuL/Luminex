@@ -8,7 +8,6 @@
 
 namespace {
 using namespace lmx::render;
-namespace rhi = rojoRHI;
 
 struct DebugFixture {
     uint32_t width = 37, height = 23, outputWidth = 61, outputHeight = 41;

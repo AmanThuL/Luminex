@@ -8,7 +8,6 @@
 namespace {
 namespace render = lmx::render;
 namespace scene = lmx::scene;
-namespace rhi = rojoRHI;
 
 constexpr uint32_t kRejectedCount = 15;
 

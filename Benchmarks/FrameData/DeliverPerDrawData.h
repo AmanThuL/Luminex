@@ -17,7 +17,7 @@ namespace lmx::bench {
 /// Mirrors the incumbent Metal 4 backend's fixed per-frame transient-uniform capacity, as recorded
 /// by ADR 0010 and the M5.1 evidence this seam's baseline path reproduces (still present, under its
 /// own name, in the backend source the `m5.2-baseline` tag checks out). Backend-private and not
-/// part of the public `RHI/Include` surface `FrameDataBench` links against, so this is a
+/// part of the public `RojoRHI/Include` surface `FrameDataBench` links against, so this is a
 /// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the archived
 /// M5.1 adapters at tag `m5.1-noapi-evidence` had to duplicate it to decide client-side whether a
 /// call would fit before making it, since the incumbent path's overflow was a fatal assert with no

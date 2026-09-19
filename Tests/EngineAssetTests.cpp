@@ -15,7 +15,6 @@
 #include <vector>
 
 using namespace lmx::asset;
-namespace rhi = rojoRHI;
 
 namespace {
 

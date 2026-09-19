@@ -10,7 +10,6 @@
 namespace {
 namespace scene = lmx::scene;
 namespace render = lmx::render;
-namespace rhi = rojoRHI;
 
 //======================================================================================================================
 render::MeshData tableQuad() {
