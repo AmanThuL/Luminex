@@ -26,14 +26,14 @@ including the scoped MetalFX profile (15/15); original image criteria remain 11/
 [Its record](../milestones/m7.1.md) owns both results and limits. The executor plan is closed;
 the owner approved main integration on 2026-09-15. [M7.2 acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) also authorizes integration after manual review on that date, retaining original/revised failed image gates (13/15 and 9/15); its plan is closed.
 
-The current implementation supplies shared scene identities and paced GPU tables to the retained
-CPU draw path. `SceneView` borrows row selectors, mesh ranges and resolved texture pointers;
-instance/material rows carry transforms, motion and material factors. ShadowStage and SceneStage
-retain one indexed command and texture binding set per object, with shared geometry and table
-bindings. The [architecture](../architecture/overview.md) owns the current implementation details.
-M7.2 implements the CPU visibility reference and indirect baseline, owner-accepted for integration; GPU frustum classification
-remains M7.3 scope and measures against that reference; M7.5 adds point/spot lights before clustered
-assignment. Existing three-directional-light semantics and temporal inputs remain the reference.
+The accepted baseline through [M7.5](../milestones/m7.5.md) supplies shared scene identities,
+paced GPU tables, CPU visibility and indirect drawing, opt-in GPU classification and opt-in
+previous-frame HZB occlusion. [M7.5](../milestones/m7.5.md) implements point/spot lights, a Direct
+reference and clustered assignment/shading, with LightLab, a Sponza rig and light diagnostics.
+Owner acceptance on 2026-09-19 authorizes integration. F2/F3 select Clustered; original strict
+parent/mode failures and unresolved historical-camera replay remain in the [validation record](../milestones/m7.5-validation.md).
+The three directional lights and temporal inputs retain their contracts. The
+[architecture](../architecture/overview.md) owns current implementation details.
 
 Carry forward the [foundation's acceptance limits](rendering-foundations.md#foundation-and-handoff).
 M5.6 does not establish a production speedup or select ICB. The M6.4 manual/capture checks and
@@ -127,11 +127,13 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.5 — Clustered local lighting
 
+**Implementation state:** [Implemented](../milestones/m7.5.md), [owner-accepted for integration](../milestones/m7.5-validation.md#owner-acceptance-and-integration) on 2026-09-19 after visual review; executor plan closed. F2/F3 select Clustered. Original strict parent comparison remains 12/15 (scoped vendor 15/15), and exact zero-light mode equality remains failed at 11/15. The [follow-up](../milestones/m7.5-followup.md) passes the exact causal gate and current-camera 15/15 replay; historical-camera replay still fails. Acceptance preserves those distinct scopes, frozen costs and the absence of a new performance claim.
+
 **Outcome:** Opaque scenes support bounded point/spot lighting through a validated clustered Forward+ path.
 
-**Deliver:** Point/spot units, attenuation and a small direct-loop reference first, then clustered Forward+ opaque shading with explicit list capacities and overflow policy; LightLab exercises scale.
+**Deliver:** Point/spot units, attenuation and a small direct-loop reference first, then clustered Forward+ opaque shading over GPU-built compact per-froxel lists with explicit per-cluster and global capacities and an overflow policy; LightLab exercises scale and Sponza supplies 16 authored, individually enabled lights plus a two-level camera tour. A per-pixel missed-light oracle and a CPU list mirror measure list losslessness.
 
-**Exit gate:** Clustered results agree with the direct-loop reference; overlapping/moving lights remain bounded with visible overflow; light assignment and full lighting cost are inspectable; no local shadows or area-light model is required.
+**Exit gate:** Reported separately: no light that reaches a pixel is missing from its cluster list, and GPU lists equal the CPU mirror; clustered and direct-loop images are byte-identical with temporal reconstruction off, while temporal cells are reported beside same-path controls without a threshold; overlapping/moving lights remain bounded with deterministic, visible overflow; zero-light scenes are preserved; light assignment and full lighting cost are inspectable; no local shadows or area-light model is required.
 
 **Defer:** Local shadows and basic transparency to M8; area lights to the independent light-model extension; stochastic direct lighting (ReSTIR-DI/MegaLights-class) to the independent study below, which uses this clustered path as its reference.
 

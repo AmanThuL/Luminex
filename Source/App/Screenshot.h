@@ -13,7 +13,7 @@
 
 namespace lmx::app {
 
-/// Renders `sceneId` offscreen and writes a PNG or BMP image, selected by extension, to `outPath`.
+/// Renders the requested scene offscreen and writes options.screenshotPath as PNG or BMP.
 ///
 /// Renders `frames` frames in sequence (at least 1), advancing the scene's animation clock by
 /// 1/60 s and following its camera track (if any) between them, committing each after it renders,
@@ -25,20 +25,12 @@ namespace lmx::app {
 /// `temporal` maps `Off` to `render::TemporalSettings::enabled = false`, and `Raw`/`Taa` to
 /// enabled with the corresponding `render::ReconstructionMode` and jitter on. `renderScale` is
 /// copied verbatim onto `render::SceneView::temporal.renderScale`.
-int runScreenshot(const std::filesystem::path& outPath, scene::SceneId sceneId, uint32_t frames,
-                  TemporalMode temporal, render::TemporalDebugView temporalView, float renderScale,
-                  bool visibilityEnabled = true,
-                  render::SubmissionMode submission = render::SubmissionMode::Indirect,
-                  uint32_t labInstances = 4096,
-                  render::ClassifyMode classifyMode = render::ClassifyMode::Cpu,
-                  bool classifyCheck = false, bool occlusionEnabled = false,
-                  bool occlusionCheck = false, int32_t hzbDebugLevel = -1,
-                  uint32_t labOccluders = 0);
+int runScreenshot(const AppOptions& options);
 
 /// Captures options.frames post-warmup frames at exactly 60 Hz into a new or empty directory.
 /// Writes numbered PNGs or BMPs and a settings/camera/status manifest. A vendor fallback, flat
-/// image or write failure returns nonzero and leaves an incomplete manifest; existing output is
-/// never replaced.
+/// final image or write failure returns nonzero and leaves an incomplete manifest; existing output
+/// is never replaced.
 int runCaptureSequence(const AppOptions& options);
 
 } // namespace lmx::app

@@ -199,8 +199,8 @@ TEST_CASE("rendering topics have stable category identities and independent labe
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "rendering");
     constexpr std::array<std::string_view, kRenderingCategoryCount> labels{
-        "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion",   "Submission",
-        "Exposure",  "Bloom",          "Shadows",    "Display",    "Scene tables"};
+        "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion", "Submission",
+        "Lighting",  "Exposure",       "Bloom",      "Shadows",    "Display",   "Scene tables"};
     REQUIRE(rows.size() == labels.size());
     for (size_t i = 0; i < labels.size(); ++i) {
         CAPTURE(i);
@@ -487,4 +487,24 @@ TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
     REQUIRE(nextVisibleRow(drawn, collapsed)->subject == EditorSubject::Camera);
     REQUIRE(collapsed.index == 0);
+}
+
+//======================================================================================================================
+TEST_CASE("Local light selections retain full identity through slot reuse", "[app][selection]") {
+    lmx::scene::Scene scene;
+    const auto sceneId = *lmx::scene::parseSceneId("light-lab");
+    const auto light = scene.addLight(lmx::render::LocalLight{});
+    REQUIRE(light);
+    const lmx::app::EditorSelection selected{
+        .sceneId = sceneId, .subject = lmx::app::EditorSubject::LocalLight, .lightId = *light};
+    REQUIRE(lmx::app::resolveSelection(selected, sceneId, scene).subject ==
+            lmx::app::EditorSubject::LocalLight);
+    const auto rows = lmx::app::buildSceneSelectionRows(scene, "point");
+    REQUIRE(rows.size() == 1);
+    REQUIRE(rows.front().lightId == *light);
+    REQUIRE_FALSE(lmx::app::selectionHiddenByFilter(scene, selected, "point"));
+    REQUIRE(scene.removeLight(*light));
+    REQUIRE(scene.addLight(lmx::render::LocalLight{}));
+    REQUIRE(lmx::app::resolveSelection(selected, sceneId, scene).subject ==
+            lmx::app::EditorSubject::None);
 }

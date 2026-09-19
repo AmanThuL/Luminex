@@ -26,6 +26,8 @@ constexpr ImGuiTreeNodeFlags kGroupFlags =
 
 //======================================================================================================================
 bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selection) {
+    if (row.subject == EditorSubject::LocalLight)
+        return selection.subject == row.subject && selection.lightId == row.lightId;
     return row.subject == selection.subject && ((row.subject != EditorSubject::Rendering &&
                                                  row.subject != EditorSubject::DirectionalLight &&
                                                  row.subject != EditorSubject::Object) ||
@@ -34,15 +36,19 @@ bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selecti
 
 //======================================================================================================================
 void selectRow(EditorSelection& selection, scene::SceneId sceneId, const EditorSelectionRow& row) {
-    selection = {.sceneId = sceneId, .subject = row.subject, .index = row.index};
+    selection = {
+        .sceneId = sceneId, .subject = row.subject, .index = row.index, .lightId = row.lightId};
 }
 
 //======================================================================================================================
 void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
-              std::vector<EditorSelectionRow>& visibleLeaves) {
-    visibleLeaves.push_back(row);
+              std::vector<EditorSelectionRow>& visibleLeaves, bool appendNavigation = true) {
+    if (appendNavigation)
+        visibleLeaves.push_back(row);
     ImGui::PushID(static_cast<int>(row.subject));
     ImGui::PushID(static_cast<int>(row.index));
+    ImGui::PushID(static_cast<int>(row.lightId.generation));
+    ImGui::PushID(static_cast<int>(row.lightId.store));
     const ImGuiTreeNodeFlags flags =
         ImGuiTreeNodeFlags_Leaf | ImGuiTreeNodeFlags_NoTreePushOnOpen |
         ImGuiTreeNodeFlags_SpanAvailWidth |
@@ -62,7 +68,23 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
                                     : visibilityReasonName(state->reason))
                   : "\nAwaiting this object's rendered frame";
     }
-    const bool dimmed = culled && !isRowSelected(row, context.selection);
+    bool disabledLight = false;
+    if (row.subject == EditorSubject::LocalLight) {
+        if (const auto* light = context.activeScene.light(row.lightId)) {
+            bool enabled = light->enabled;
+            if (ImGui::Checkbox("##enabled", &enabled)) {
+                auto edited = *light;
+                edited.enabled = enabled;
+                if (context.session.editLocalLight(row.lightId, edited))
+                    requestCameraCut(context.temporalState);
+            }
+            disabledLight = !enabled;
+            editorTooltip(
+                "Enable this light without changing its identity, settings or animation.");
+            ImGui::SameLine();
+        }
+    }
+    const bool dimmed = (culled || disabledLight) && !isRowSelected(row, context.selection);
     if (dimmed)
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TreeNodeEx("subject", flags, "%s", row.displayLabel.c_str());
@@ -80,6 +102,8 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         }
         ImGui::EndPopup();
     }
+    ImGui::PopID();
+    ImGui::PopID();
     ImGui::PopID();
     ImGui::PopID();
 }
@@ -175,7 +199,8 @@ void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelCon
     }
     const size_t lightCount = groupCount(rows, EditorSelectionGroup::DirectionalLights);
     const size_t objectCount = groupCount(rows, EditorSelectionGroup::Objects);
-    if (lightCount + objectCount == 0) {
+    const size_t localCount = groupCount(rows, EditorSelectionGroup::LocalLights);
+    if (lightCount + objectCount + localCount == 0) {
         return;
     }
     ImGui::PushID(static_cast<int>(context.activeSceneId.catalogIndex));
@@ -187,6 +212,23 @@ void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelCon
         if (lightCount > 0 &&
             ImGui::TreeNodeEx("lights", kGroupFlags, "Lights (%zu)", lightCount)) {
             drawLeaves(rows, EditorSelectionGroup::DirectionalLights, context, visibleLeaves);
+            ImGui::TreePop();
+        }
+        if (localCount > 0 &&
+            ImGui::TreeNodeEx("local-lights", kGroupFlags, "Local lights (%zu)", localCount)) {
+            std::vector<EditorSelectionRow> localRows;
+            for (const auto& row : rows)
+                if (row.group == EditorSelectionGroup::LocalLights)
+                    localRows.push_back(row);
+            visibleLeaves.insert(visibleLeaves.end(), localRows.begin(), localRows.end());
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(localRows.size()));
+            for (size_t index = 0; index < localRows.size(); ++index)
+                if (isRowSelected(localRows[index], context.selection))
+                    clipper.IncludeItemByIndex(static_cast<int>(index));
+            while (clipper.Step())
+                for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
+                    drawLeaf(localRows[static_cast<size_t>(index)], context, visibleLeaves, false);
             ImGui::TreePop();
         }
         if (objectCount > 0 &&

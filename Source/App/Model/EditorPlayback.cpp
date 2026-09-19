@@ -42,6 +42,18 @@ void EditorPlayback::capture(const SceneSession& session, bool followRail) {
         saved.id = object.id;
         saved.emissiveStrength = object.emissiveStrength;
     }
+    for (const auto& track : scene.animation.lightTracks) {
+        const auto id = scene.animationLightId(track.light);
+        LMX_ASSERT(id.has_value(), "light orbit track light must exist");
+        const auto* value = scene.light(*id);
+        if (!value)
+            continue; // The authored light was removed before this preview started.
+        // Only the animation-owned position is captured: a track never claims the whole light, so
+        // a colour/intensity/range/direction edit made during the preview is never discarded.
+        auto& saved = snapshot.lights[id->slot];
+        saved.id = *id;
+        saved.position = value->position;
+    }
 }
 
 //======================================================================================================================
@@ -85,6 +97,21 @@ bool EditorPlayback::stop(SceneSession& session, bool& followRail) {
             }
             if (saved->second.emissiveStrength)
                 object.emissiveStrength = *saved->second.emissiveStrength;
+        }
+        // Same identity-checked scan as objects above: a removed light is never revived, and a
+        // recycled slot's replacement never inherits the removed light's captured position. Every
+        // other field is read fresh from the light's *current* value, so an edit made during the
+        // preview to a tracked light's colour, intensity, range or direction survives Stop exactly
+        // as an untracked light's edits do.
+        for (const auto id : scene.localLights()) {
+            const auto saved = m_snapshot->lights.find(id.slot);
+            if (saved == m_snapshot->lights.end() || saved->second.id != id)
+                continue;
+            render::LocalLight current = *scene.light(id);
+            current.position = saved->second.position;
+            const auto restored = scene.updateLight(id, current);
+            LMX_ASSERT(restored.has_value(),
+                       "restoring a captured light's position must remain valid");
         }
         session.resetMotion();
     }

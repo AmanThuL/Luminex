@@ -16,5 +16,5 @@ struct SceneTableField {
     std::string value;      ///< Complete value for this snapshot.
 };
 /// Formats a coherent table snapshot without querying GPU state.
-std::array<SceneTableField, 8> sceneTableFields(const scene::SceneTableStats& stats);
+std::array<SceneTableField, 9> sceneTableFields(const scene::SceneTableStats& stats);
 } // namespace lmx::app

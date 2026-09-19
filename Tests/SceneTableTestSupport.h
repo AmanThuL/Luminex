@@ -73,6 +73,9 @@ struct FixtureSceneState {
     std::vector<const FixtureMesh*> meshes;
     const FixtureMesh* sky = nullptr;
     std::optional<scene::TextureId> normalPresence;
+    /// Identities of `FixtureSceneView::localLights`, in the order they were authored, so a later
+    /// frame re-authors the same rows rather than growing the table.
+    std::vector<scene::LightId> lights;
 };
 
 // Each view retains its production scene until the test drains the GPU. Changes use the real
@@ -80,6 +83,10 @@ struct FixtureSceneState {
 // resolved draw bindings; a scene-owned normal marker preserves the tested normal-map flag.
 struct FixtureSceneView : render::SceneView {
     std::span<const FixtureDrawItem> items;
+    /// Local point and spot lights authored into the fixture scene before finalize. Their count is
+    /// part of the rebuild key, so a view handed a different number of lights builds a new scene
+    /// rather than leaving stale rows behind.
+    std::span<const render::LocalLight> localLights;
     const FixtureMesh* skySphere = nullptr;
     mutable std::shared_ptr<FixtureSceneState> state;
     mutable std::deque<std::pair<uint64_t, std::shared_ptr<FixtureSceneState>>> retired;
@@ -94,7 +101,8 @@ struct FixtureSceneView : render::SceneView {
         const uint64_t frame = device.frameNumber();
         while (!retired.empty() && retired.front().first <= frame)
             retired.pop_front();
-        bool rebuild = !state || state->meshes.size() != items.size() || state->sky != skySphere;
+        bool rebuild = !state || state->meshes.size() != items.size() || state->sky != skySphere ||
+                       state->lights.size() != localLights.size();
         if (!rebuild) {
             for (size_t i = 0; i < items.size(); ++i)
                 rebuild |= state->meshes[i] != items[i].mesh;
@@ -131,6 +139,12 @@ struct FixtureSceneView : render::SceneView {
                 state->scene.addObject({.mesh = meshId(item.mesh), .material = material});
                 state->meshes.push_back(item.mesh);
             }
+            for (const auto& light : localLights) {
+                auto id = state->scene.addLight(light);
+                INFO((id ? "" : id.error().message));
+                REQUIRE(id);
+                state->lights.push_back(*id);
+            }
             if (skySphere)
                 state->scene.skySphere = meshId(skySphere);
             auto result = state->scene.finalize(device);
@@ -158,6 +172,13 @@ struct FixtureSceneView : render::SceneView {
             material.alphaCutoff = input.material.alphaCutoff;
             material.doubleSided = input.material.doubleSided;
             material.normalMap = input.material.normalMap ? state->normalPresence : std::nullopt;
+        }
+        // Re-authored every frame, like the draw items above, so a fixture may move or recolour a
+        // light between frames without rebuilding its scene.
+        for (size_t i = 0; i < localLights.size(); ++i) {
+            auto updated = state->scene.updateLight(state->lights[i], localLights[i]);
+            INFO((updated ? "" : updated.error().message));
+            REQUIRE(updated);
         }
         auto prepared = state->scene.prepareFrame(frame);
         INFO((prepared ? "" : prepared.error().message));

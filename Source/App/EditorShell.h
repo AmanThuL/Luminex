@@ -13,6 +13,7 @@
 #include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
 #include "App/Model/FrameRecordRing.h"
+#include "App/Model/LightingDisplay.h"
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/MetricsContextRevision.h"
 #include "App/Model/PerformanceModel.h"
@@ -122,8 +123,9 @@ public:
     void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
 
-    /// Seeds both interactive and scripted runs from the parsed startup temporal options.
-    void primeTemporal(const AppOptions& options);
+    /// Seeds rendering and local-light startup options before the first frame; returns a rig
+    /// activation error without starting the frame loop if the requested rig cannot be added.
+    rhi::Result<void> primeTemporal(const AppOptions& options);
 
     /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
     render::GraphTexture declareSelection(render::RenderGraph& graph, rhi::CommandList& commands,
@@ -179,9 +181,13 @@ public:
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
     void retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    /// Joins the exact retired local-light diagnostics to their declared measurement frame.
+    void retireMeasurementLighting(const render::LightingStatus& status);
     /// Publishes queued GPU visibility using saved declaration identities and exact measurement
     /// joins.
     void retireVisibility(render::Renderer& renderer);
+    /// Consumes completed lighting frames once for coherent readings and immediate check warnings.
+    void retireLighting(render::Renderer& renderer);
     /// Records the just-submitted frame using its exact declaration and CPU timing scopes.
     void recordMeasurementFrame(uint64_t frameId, double waitMs, double encodeMs,
                                 const render::CompiledFrameRecord& record);
@@ -285,6 +291,8 @@ private:
     // switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
+    LightingDisplay m_lightingDisplay;
+    bool m_lightingFailureLogged = false;
     bool m_visibilityFailureLogged = false;
     MeasurementRun m_measurement;
     uint32_t m_measurementWarmup = 32;
@@ -292,9 +300,12 @@ private:
     std::string m_measurementExportPath;
     std::string m_measurementFeedback;
     render::VisibilityStatus m_measurementVisibility;
+    render::LightingStatus m_measurementLighting;
     render::TemporalStatus m_measurementTemporal;
     uint32_t m_labInstances = 4096;
     uint32_t m_labOccluders = 0;
+    uint32_t m_labLights = 256;
+    uint32_t m_labLightPile = 0;
     // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
     // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
     // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline

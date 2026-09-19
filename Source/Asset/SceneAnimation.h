@@ -58,17 +58,36 @@ struct EmissiveTrack {
     std::vector<EmissiveKey> keys; ///< Time-sorted keys; sampling requires at least one.
 };
 
+/// One closed-form orbit driving a scene local light's position. `light` indexes the scene's
+/// authored lights in creation order (the order `Scene::addLight` was called), not a scene
+/// `LightId` directly: `Source/Asset` may not depend on `Source/Scene`
+/// (Tools/module_contract.json), so `Scene` itself owns the mapping from this index back to the
+/// `LightId` it assigned (`Scene::animationLightId`). That index space freezes at
+/// `Scene::finalize`: `light` must reference a light added *before* finalize, since tracks are
+/// authored before a scene plays; a light added afterward (a runtime rig toggle, say) has no
+/// index and is static by contract. Only the light's position moves; direction, colour, intensity
+/// and range are untouched.
+struct LightOrbitTrack {
+    uint32_t light = 0;               ///< Pre-finalize creation-order index (see comment above).
+    glm::vec3 centre{0.0f};           ///< World-space orbit centre, metres.
+    glm::vec3 axis{0.0f, 1.0f, 0.0f}; ///< Orbit-plane normal; the input need not be unit length.
+    float radius = 0.0f;              ///< Orbit radius, metres.
+    float phase = 0.0f;               ///< Starting angle in radians at seconds == 0.
+    float period = 0.0f; ///< Seconds per revolution; <= 0 means the light does not move.
+};
+
 /// Every track a scene plays, with the clip length the scene clock wraps against.
 struct SceneAnimation {
     std::vector<RigidTrack> tracks;     ///< One track per animated object; unlisted objects rest.
     std::vector<CameraKey> cameraTrack; ///< Optional camera path; empty means the scene has none.
     std::vector<EmissiveTrack>
-        emissiveTracks;    ///< One track per object with animated emissive strength.
-    double duration = 0.0; ///< Clip length in seconds; 0 means nothing to play.
-    bool loop = true;      ///< Whether the clock wraps at `duration`.
+        emissiveTracks; ///< One track per object with animated emissive strength.
+    std::vector<LightOrbitTrack> lightTracks; ///< One track per local light orbiting a closed path.
+    double duration = 0.0;                    ///< Clip length in seconds; 0 means nothing to play.
+    bool loop = true;                         ///< Whether the clock wraps at `duration`.
 };
 
-/// Whether the clip has any rigid, camera, or emissive tracks for playback to advance.
+/// Whether the clip has any rigid, camera, emissive, or light-orbit tracks for playback to advance.
 bool hasAnimationTracks(const SceneAnimation& animation);
 
 /// Returns `track`'s world matrix at `time` seconds, as translate * rotate * scale. Translation
@@ -86,5 +105,12 @@ CameraKey sampleCameraTrack(std::span<const CameraKey> keys, double time);
 /// (step) until the next key, and clamped to the first or last key outside the range.
 /// `track.keys` must not be empty.
 float sampleEmissiveTrack(const EmissiveTrack& track, double time);
+
+/// Returns `track`'s position at `seconds`: `centre + radius * (cos(a) * u + sin(a) * v)`, where
+/// `a = phase + 2*pi*seconds/period` and `(u, v)` is a deterministic orthonormal basis
+/// perpendicular to the normalized `axis` (world up, or world +X when `axis` is nearly parallel to
+/// it). `period <= 0` fixes `a = phase`, so the light does not move over time. `track.axis` must
+/// be nonzero; its length otherwise does not matter.
+glm::vec3 sampleOrbit(const LightOrbitTrack& track, float seconds);
 
 } // namespace lmx::asset

@@ -4,6 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Scene/Scene.h"
+#include "Scene/SponzaLightRig.h"
+
+#include "Scene/SponzaCameraTour.h"
 
 #include "Asset/RepositoryAsset.h"
 
@@ -309,6 +312,11 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
         return std::unexpected(sky.error());
     }
 
+    if (sceneName == "Sponza") {
+        SponzaLightRig rig;
+        if (auto authored = rig.setEnabled(*scene, true); !authored)
+            return std::unexpected(uploadFailure(std::move(authored.error())));
+    }
     if (auto finalized = scene->finalize(device); !finalized) {
         return std::unexpected(uploadFailure(std::move(finalized.error())));
     }
@@ -359,6 +367,18 @@ void Scene::animate(double seconds) {
     for (const asset::EmissiveTrack& track : animation.emissiveTracks) {
         LMX_ASSERT(track.objectIndex < objects.size(), "EmissiveTrack.objectIndex out of range");
         objects[track.objectIndex].emissiveStrength = asset::sampleEmissiveTrack(track, seconds);
+    }
+    for (const asset::LightOrbitTrack& track : animation.lightTracks) {
+        const auto id = animationLightId(track.light);
+        LMX_ASSERT(id.has_value(), "LightOrbitTrack.light out of range");
+        const render::LocalLight* current = light(*id);
+        if (!current) {
+            continue; // The authored light was removed; its track keeps its reserved index.
+        }
+        render::LocalLight moved = *current;
+        moved.position = asset::sampleOrbit(track, static_cast<float>(seconds));
+        const auto updated = updateLight(*id, moved);
+        LMX_ASSERT(updated.has_value(), "an orbit-sampled light must remain valid");
     }
 }
 
@@ -435,15 +455,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device) 
         return std::unexpected(scene.error());
     }
 
-    const glm::vec3 center{(*scene)->boundingSphere};
-    const float radius = (*scene)->boundingSphere.w;
-    // Place the camera inside the long X-axis atrium, looking toward its center.
-    (*scene)->initialCamera.position = center + glm::vec3(radius * 0.6f, 0.0f, 0.0f);
-    (*scene)->initialCamera.yaw = -glm::half_pi<float>();
-    (*scene)->initialCamera.pitch = 0.0f;
     (*scene)->initialCamera.fovY = glm::radians(45.0f);
     (*scene)->initialCamera.nearZ = 0.05f;
-    (*scene)->initialCamera.farZ = radius * 20.0f;
+    (*scene)->initialCamera.farZ = (*scene)->boundingSphere.w * 20.0f;
+    authorSponzaCameraTour(**scene);
 
     return std::move(*scene);
 }

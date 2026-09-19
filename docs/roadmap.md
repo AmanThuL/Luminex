@@ -41,7 +41,7 @@ the row says otherwise.
 | 6 | [M7.2](roadmap/gpu-driven-hybrid-rendering.md#m72--cpu-visibility-reference-and-indirect-baseline) CPU visibility reference and indirect baseline | II | Owner-accepted for integration 2026-09-15; image gates failed | M7.1 |
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
-| 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Inactive | M7.1; may run before steps 6–8 |
+| 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
 | 10 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | M7 complete; technically gate B |
 | 11 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
 | 12 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
@@ -69,7 +69,12 @@ plan is closed; [M7.2 acceptance](milestones/m7.2-validation.md#owner-acceptance
 
 ## Current baseline
 
-The shipped baseline is [M6.5](milestones/m6.5.md): explicit SDR/UI/capture domains, tagged PNG,
+The accepted rendering baseline is [M7.5](milestones/m7.5.md), owner-accepted for integration on
+2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7.5-followup.md)
+passes exact causal/current-camera checks while retaining historical-camera replay failures.
+Its [validation record](milestones/m7.5-validation.md#owner-acceptance-and-integration) preserves
+original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6.5.md):
+explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
 runs remain intact, and the drift is not fixed. UX1 adds the accepted editor experience. M7.1

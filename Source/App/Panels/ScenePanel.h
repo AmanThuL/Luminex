@@ -6,6 +6,8 @@
 #pragma once
 #include "App/Model/EditorSelection.h"
 #include "App/Model/SceneLoadState.h"
+#include "App/Model/SceneSession.h"
+#include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
@@ -23,8 +25,10 @@ inline constexpr const char* kScenePanelWindowName = "Hierarchy###Scene";
 struct ScenePanelContext {
     scene::SceneId activeSceneId;    ///< Catalog identity scoping this scene's tree state.
     const scene::Scene& activeScene; ///< Flat scene whose subjects are grouped for navigation.
-    EditorSelection& selection;      ///< Selected leaf, edited in place.
-    std::string& filter;             ///< Case-insensitive short/full name filter, edited in place.
+    SceneSession& session; ///< Applies light edits before prepareFrame and retains reset defaults.
+    TemporalEditorState& temporalState; ///< Invalidates history when light enablement changes.
+    EditorSelection& selection;         ///< Selected leaf, edited in place.
+    std::string& filter; ///< Case-insensitive short/full name filter, edited in place.
     const VisibilityDisplay& visibilityDisplay;       ///< Identity mapping for the displayed image.
     const render::VisibilityStatus& visibilityStatus; ///< Last declared frame.
     uint64_t sceneGeneration = 0;                     ///< Active scene identity revision.

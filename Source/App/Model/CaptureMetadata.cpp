@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/CaptureMetadata.h"
+#include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include "Asset/SceneAnimation.h"
@@ -84,12 +85,18 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
          << ",\"occlusionCheck\":" << (options.occlusionCheck ? "true" : "false")
          << ",\"hzbDebugLevel\":" << options.hzbDebugLevel
          << ",\"labOccluders\":" << options.labOccluders
+         << ",\"localLightMode\":" << jsonString(localLightModeName(options.localLightMode))
+         << ",\"lightDebugView\":" << jsonString(lightDebugViewName(options.lightDebugView))
+         << ",\"lightCheck\":" << (options.lightCheck ? "true" : "false")
+         << ",\"localLightRig\":" << (options.localLightRig ? "true" : "false")
+         << ",\"labLights\":" << options.labLights << ",\"labLightPile\":" << options.labLightPile
          << ",\"labInstances\":" << options.labInstances
          << ",\"debugView\":" << static_cast<int>(options.temporalView)
          << ",\"cameraTrack\":" << (cameraTrack ? "true" : "false")
          << ",\"display\":" << render::toJson(display)
          << ",\"container\":" << jsonString(captureFormatName(options.captureFormat))
-         << ",\"ui\":{\"composited\":false},\"dynamicResolution\":false,\"frames\":[\n";
+         << ",\"ui\":{\"composited\":false},\"dynamicResolution\":"
+         << (options.dynamicResolution ? "true" : "false") << ",\"frames\":[\n";
     for (size_t i = 0; i < records.size(); ++i) {
         if (i != 0)
             file << ",\n";
@@ -103,7 +110,8 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
 std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
                               const render::SceneView& view, const render::TemporalStatus& status,
                               std::string_view filename, TemporalMode requested,
-                              const render::VisibilityStatus* visibility) {
+                              const render::VisibilityStatus* visibility,
+                              const render::LightingStatus* lighting) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"ordinal\":" << ordinal << ",\"simulationFrame\":" << frame
         << ",\"timeSeconds\":" << static_cast<double>(frame) / asset::kAnimationBakeRate
@@ -136,6 +144,11 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
         << ",\"occlusionCheck\":" << (view.occlusionCheck ? "true" : "false")
         << ",\"hzbDebugLevel\":" << view.hzbDebugLevel
         << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
+        << ",\"localLightMode\":" << jsonString(localLightModeName(view.localLightMode))
+        << ",\"lightDebugView\":" << jsonString(lightDebugViewName(view.lightDebugView))
+        << ",\"lightCheck\":" << (view.lightCheck ? "true" : "false")
+        << ",\"liveLightCount\":" << view.tables.liveLightCount
+        << ",\"lighting\":" << (lighting ? lightingDiagnosticsJson(*lighting) : "null")
         << ",\"exposureEv\":" << view.exposureEv
         << ",\"autoExposure\":" << (view.autoExposureEnabled ? "true" : "false")
         << ",\"bloom\":" << (view.bloomEnabled ? "true" : "false")
@@ -151,8 +164,9 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      const render::TemporalStatus& status, std::string_view device,
                                      bool visibilityEnabled, render::SubmissionMode submission,
                                      uint32_t labInstances, render::ClassifyMode classifyMode,
-                                     bool classifyCheck,
-                                     const render::VisibilityStatus* visibility) {
+                                     bool classifyCheck, const render::VisibilityStatus* visibility,
+                                     const AppOptions* options,
+                                     const render::LightingStatus* lighting) {
     std::ostringstream out;
     out << std::setprecision(17) << "{\"scene\":" << jsonString(scene::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
@@ -169,6 +183,20 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
         << ",\"classify\":" << jsonString(classifyModeName(classifyMode))
         << ",\"classifyCheck\":" << (classifyCheck ? "true" : "false")
         << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
+        << ",\"localLightMode\":"
+        << jsonString(localLightModeName(options ? options->localLightMode
+                                                 : render::LocalLightMode::Clustered))
+        << ",\"lightDebugView\":"
+        << jsonString(
+               lightDebugViewName(options ? options->lightDebugView : render::LightDebugView::Off))
+        << ",\"lightCheck\":" << (options && options->lightCheck ? "true" : "false")
+        << ",\"localLightRig\":"
+        << ((options ? options->localLightRig : scene == scene::defaultSceneId()) ? "true"
+                                                                                  : "false")
+        << ",\"labLights\":" << (options ? options->labLights : 256)
+        << ",\"labLightPile\":" << (options ? options->labLightPile : 0)
+        << ",\"lighting\":" << (lighting ? lightingDiagnosticsJson(*lighting) : "null")
+        << ",\"liveLightCount\":" << (lighting ? lighting->liveLightCount : 0)
         << ",\"labInstances\":" << labInstances << ",\"device\":" << jsonString(device) << "}";
     return out.str();
 }

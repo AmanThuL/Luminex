@@ -13,8 +13,10 @@ namespace lmx::app {
 void EditorShell::observeDeclaration(const render::Renderer& renderer, uint64_t frameId) {
     observeDeclaredTemporal(m_temporalState, m_settings, renderer.temporalStatus(), frameId);
     m_visibilityDisplay.observe(m_session.scene(), renderer.visibilityStatus());
+    m_lightingDisplay.observe(renderer.lightingStatus());
     if (m_measurement.active()) {
         m_measurementVisibility = renderer.visibilityStatus();
+        m_measurementLighting = renderer.lightingStatus();
         m_measurementTemporal = renderer.temporalStatus();
         if (renderer.width() != m_measurement.plan().width ||
             renderer.height() != m_measurement.plan().height ||

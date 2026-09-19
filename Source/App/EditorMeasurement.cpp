@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/EditorShell.h"
 #include "App/Measurement.h"
+#include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include <chrono>
@@ -66,6 +67,14 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
     plan.renderScale = m_settings.renderScale;
     plan.interactive = true;
     plan.unscored = true;
+    plan.localLightMode = localLightModeName(m_settings.localLightMode);
+    plan.localLightRig = m_session.localLightRigEnabled();
+    plan.labLights =
+        m_session.lightLabPileAvailable() ? m_session.scene().lightLabGridCount : m_labLights;
+    plan.labLightPile =
+        m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile;
+    plan.lightCheck = m_settings.lightCheck;
+    plan.lightDebugView = lightDebugViewName(m_settings.lightDebugView);
     if (!m_measurement.start(std::move(plan), collectMeasurementProvenance(device))) {
         m_measurementFeedback = m_measurement.failure();
         return;
@@ -87,6 +96,7 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
 //======================================================================================================================
 void EditorShell::retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
     m_visibilityDisplay.observeTimings(frameId, timings);
+    m_lightingDisplay.observeTimings(frameId, timings);
     if (m_measurement.active())
         m_measurement.retire(frameId, timings);
     finishMeasurementPlayback();
@@ -104,6 +114,15 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
         m_measurement.plan().occlusionEnabled != m_settings.occlusionEnabled ||
         m_measurement.plan().occlusionCheck != m_settings.occlusionCheck ||
         m_measurement.plan().hzbDebugLevel != m_settings.hzbDebugLevel ||
+        m_measurement.plan().localLightMode != localLightModeName(m_settings.localLightMode) ||
+        m_measurement.plan().localLightRig != m_session.localLightRigEnabled() ||
+        m_measurement.plan().labLights != (m_session.lightLabPileAvailable()
+                                               ? m_session.scene().lightLabGridCount
+                                               : m_labLights) ||
+        m_measurement.plan().labLightPile !=
+            (m_session.lightLabPileAvailable() ? m_session.lightLabPileCount() : m_labLightPile) ||
+        m_measurement.plan().lightCheck != m_settings.lightCheck ||
+        m_measurement.plan().lightDebugView != lightDebugViewName(m_settings.lightDebugView) ||
         m_measurement.plan().temporal != temporalName(m_settings) ||
         m_measurement.plan().renderScale != m_settings.renderScale ||
         m_settings.dynamicResolutionEnabled) {
@@ -113,7 +132,14 @@ void EditorShell::recordMeasurementFrame(uint64_t frameId, double waitMs, double
     const auto& scene = m_session.scene();
     m_measurement.recordCpu(measurementCpuSample(
         next->sequenceFrame, waitMs, encodeMs, m_measurementVisibility, m_session.tableStats(),
-        record, scene.skySphere.has_value() && scene.skyCubemap != nullptr, m_measurementTemporal));
+        record, scene.skySphere.has_value() && scene.skyCubemap != nullptr, m_measurementTemporal,
+        m_measurementLighting));
+}
+//======================================================================================================================
+void EditorShell::retireMeasurementLighting(const render::LightingStatus& status) {
+    if (m_measurement.active())
+        m_measurement.retireLighting(status);
+    finishMeasurementPlayback();
 }
 //======================================================================================================================
 bool EditorShell::measurementNeedsRetirementWait() const {

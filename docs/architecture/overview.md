@@ -2,24 +2,21 @@
 
 **Status**: Implemented
 
-Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI
-is a repository-root component; the other runtime layers remain under `Source/`:
+Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI is a repository-root component; the other runtime layers remain under `Source/`:
 
 `Core → Asset` and `Core → RHI → Render`, joined by `Scene → AppModel → App`. Asset uses only
 RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer and contract-preserving primitives;
 `Render/SceneView.h` holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
-  JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are
-  public packages.
+  JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are public packages.
 - **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
   `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
   `Heap.h`, `Sampler.h`, `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`,
   `RenderPass.h`, `CommandList.h`, `TemporalScaler.h`, `Swapchain.h`, and `Device.h`, plus the focused `Result.h`,
   `Validate.h`, and `CaptureSchema.h` — behind an includes-only `RHI.h` umbrella that declares no
   parallel surface. Every leaf compiles alone and the set exposes API-neutral resource, pipeline,
-  command, synchronization, capture, and domain-owned error contracts without Metal or ImGui
-  dependencies. Transient CPU-to-GPU parameter delivery is one typed operation,
+  command, synchronization, capture, and domain-owned error contracts without Metal or ImGui dependencies. Transient CPU-to-GPU parameter delivery is one typed operation,
   `CommandList::bindFrameData(slot, value)`: it allocates, copies, and binds the caller's block in
   one call and returns a `GpuAddress` — a standard-layout, arithmetic-free value naming the block's
   GPU location for the open frame. Data that survives the frame stays on the unchanged `bindBuffer`
@@ -27,8 +24,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   checked `Buffer::write(offset, data, size)` uploads into host-visible memory. Writes require
   non-null data and a nonempty in-bounds range; the caller proves all GPU readers/writers of that
   range retired. Metal4 copies into Shared storage; device-private placed buffers reject this flag.
-  Paced scene tables are the first consumer. `RenderPassDesc` and
-  `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
+  Paced scene tables are the first consumer. `RenderPassDesc` and `GraphicsPipelineDesc` support up to `kMaxExtraColorTargets` (3) additional colour attachments
   beyond the primary (`ExtraColorTarget`/`extraColorFormats`), validated for colour-renderable
   formats and matching extent; `RG16Float` and `R8Unorm` are colour-renderable and CPU-readable,
   which is what motion-vector and reactive-weight targets need. `RenderPassDesc` also carries an
@@ -36,8 +32,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   every attachment and encoded as an explicit Metal 4 viewport/scissor when non-zero.
   `DeviceCapabilities::temporalScaler` reports an optional algorithm and its input/output scale
   interval; `TemporalScaler` owns private reconstruction history, and the between-pass
-  `CommandList::temporalScale` consumes neutral frame parameters. `R16Float` is sampled and
-  storage-writable for the exposure texel; no MetalFX types enter public headers.
+  `CommandList::temporalScale` consumes neutral frame parameters. `R16Float` is sampled and storage-writable for the exposure texel; no MetalFX types enter public headers.
 - **RHI/Backends/Metal4** implements the current backend with private metal-cpp headers, three
   frames in flight, argument tables (texture slots cleared before each render/compute pass), a per-frame-slot growable frame-data page arena (256 KiB
   normal pages backing `bindFrameData`, oversize requests rounded up to that page quantum, pages
@@ -51,8 +46,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   owns the adapter (sources under `RHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
 - **Render** owns camera, CPU geometry vocabulary (`Vertex`/`MeshData`), shared scene-table rows,
-  the validating render graph (`RenderGraph`), the shadow/scene/sky/
-  display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
+  the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It
   declares raster, compute, copy and external passes with per-subresource uses over resources it either
   imports from a caller or creates as one-frame transients, culls every pass no declared sink
@@ -64,11 +58,10 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   validation have separate implementation units with private shared range helpers. `Renderer`
   composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns
   finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
-  240-byte instance, 112-byte material and 48-byte mesh rows, including local/world bounds.
+  240-byte instance, 112-byte material, 48-byte mesh and 64-byte local-light rows, including bounds.
   `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
   jittered raster view-projection, with a 1e-3 world-unit guard and no far plane. Rejected rows keep
-  their identity and motion; disabled, shadow-view, unreliable-bounds and nonfinite-transform
-  bypasses remain inspectable. Shadow candidates are unculled.
+  their identity and motion; disabled, shadow-view, unreliable-bounds and nonfinite-transform bypasses remain inspectable. Shadow candidates are unculled.
   Renderer owns `DrawSubmission`: three paced, growable row/argument buffer pairs, retained on
   replacement until the last prepared frame + 3. Scene entries precede shadow entries. The default
   indirect mode issues one command per retained object; batched mode stably sorts pipeline,
@@ -84,6 +77,19 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   `OcclusionHistory` globally retains on invalid source/camera/coverage evidence or wireframe.
   `OcclusionReference` draws every candidate directly into private ID/depth targets and joins
   generational missing-frame streaks at retirement; [contracts](../guides/gpu-visibility.md).
+  `LocalLightMode` selects Off, Direct (reference) or Clustered (default) in one shared punctual-light loop; the [default decision](../milestones/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independent of cost; owner acceptance is recorded separately. Shared punctual normal-footprint filtering broadens only its specular lobe; directional/IBL terms stay unchanged. Current diagnostics and limits are in the [follow-up](../milestones/m7.5-followup.md).
+  Point/spot terms follow the directional sum before ambient/emissive and the single pre-exposure
+  multiply. Local lights affect opaque/masked surfaces without shadows; `PassUniforms` stays 400 B.
+  A sixth `lmx.scene.lights` import exists only with live lights. Clustered adds a public
+  `LightClusterStage` with three paced slots and reset/count/scan/fill passes before scene shading.
+  Its 16×9×24 pixel-aligned froxels use the jittered projection and uploaded reversed-Z slices;
+  ordered fp32 CPU/GPU predicates, ascending row lists, a 128-light froxel cap and 65,536-index cap
+  make truncation deterministic. `LightClusters` owns the CPU mirror; `LightClusterCheck` compares
+  declaration-time mirror results with retired GPU lists/counters. `LightingStatus` retains frame,
+  scene and requested/effective mode; zero-live frames use Off and declare no light-list/debug pass.
+  Lazy `LightDebugStage` reads actual scene depth/lists after display and renders count, overflow or
+  missed-light views to the display target from a dedicated SDR source transient; scene/history stay unchanged.
+  [ADR 0023](../decisions/0023-local-light-and-cluster-contract.md) owns the accepted contract; milestone records retain historical image failures and follow-up evidence limits.
   SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
   and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
   `Render/FrameDeclaration` shares graph construction/execution across application loops and returns the accepted record for App-side retention. Render also owns
@@ -91,14 +97,12 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
   when `SceneView::temporal.enabled` is set. The `TemporalResolve` reconstruction stage (ADR 0014)
-  keeps native, upscale, vendor and diagnostic declaration units behind one history owner. It
-  owns two ping-ponged colour/depth slot pairs (`lmx.render.historyColor0/1`,
+  keeps native, upscale, vendor and diagnostic declaration units behind one history owner. It owns two ping-ponged colour/depth slot pairs (`lmx.render.historyColor0/1`,
   `lmx.render.sceneDepth0/1`) and the pipelines that reproject, reject, clip and blend a native
   `NativeTaa` frame or commit a raw copy under `Raw`; every temporal frame's colour slot holds that
   frame's output in every mode, which is what makes a mode switch not a reset. Colour imports
   record their final consumer's access: `ShaderRead` after NativeTaa or Raw's HistoryAge view,
-  otherwise `CopyDestination` for a Raw commit; the previous slot changes only when read
-  ([ADR 0015](../decisions/0015-temporal-slot-terminal-access.md)). These targets are
+  otherwise `CopyDestination` for a Raw commit; the previous slot changes only when read ([ADR 0015](../decisions/0015-temporal-slot-terminal-access.md)). These targets are
   allocated with the scene targets and recreated by `resize()` alongside them, so the allocation is
   permanent rather than made on first enable. Since M6.3 (ADR 0016), every one of these targets
   allocates at the *output* extent regardless of `SceneView::temporal.renderScale`; `Temporal.h`'s
@@ -107,13 +111,11 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   `ExtentChanged` now fires on an output-extent change alone (superseding ADR 0013's clause), so a
   render-scale change alone derives `None` and reuses history. `TemporalResolve` selects between the
   native `NativeTaa` kernel (`Shaders/TemporalResolve.slang`, unchanged since M6.2) and the upscale
-  kernel (`Shaders/TemporalUpscale.slang`) by whether render equals output extent and history was
-  not just accumulated at another one; `Raw` gets the matching split against
+  kernel (`Shaders/TemporalUpscale.slang`) by whether render equals output extent and history was not just accumulated at another one; `Raw` gets the matching split against
   `Shaders/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
   `Shaders/Modules/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
   class with no device, graph or App dependency that proposes the next render scale from a retired
-  frame's summed GPU pass time against a budget, with hysteresis.
-  `VendorTemporal` selects a composed `VendorTemporalScaler` inside the existing resolve stage
+  frame's summed GPU pass time against a budget, with hysteresis. `VendorTemporal` selects a composed `VendorTemporalScaler` inside the existing resolve stage
   ([ADR 0017](../decisions/0017-vendor-reconstruction-capability.md)). It lazily creates the device
   scaler and replaces only the reconstruction kernel: a packing pass translates invalid motion,
   reactive weight and reciprocal applied exposure, then an external pass writes the current colour
@@ -125,8 +127,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   diagnostics stay available; `VendorTemporalHistory.slang` supplies corrected reprojected history
   only for that selected view, while rejection, blend-weight and per-pixel age remain native-only.
   Vendor colour imports retain conservative `ExternalWrite`; current depth and scene colour record
-  `ExternalRead`. Native terminal-use rows remain unchanged.
-  `AlphaMode::Mask` selects dedicated `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask`
+  `ExternalRead`. Native terminal-use rows remain unchanged. `AlphaMode::Mask` selects dedicated `ScenePassMask`/`ScenePassAutoMask` and `ShadowPassMask`
   pipelines ([ADR 0018](../decisions/0018-masked-material-coverage.md)). Shared `AlphaMask.slang`
   discards when base-color texture alpha times factor alpha is below the material cutoff; color,
   depth, motion and reactive coverage share one scene invocation. Masked shadows use the same UV
@@ -138,18 +139,20 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
   MaterialLab studio reflection source with a separate bounded diffuse source, and deterministic
   offline texture mip baking (`TextureBake.h`), clip data and sampling, shared transform
-  decomposition, repository discovery and the asset error domain. The glTF loader carries its own
-  MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
-- **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` handles,
+  decomposition, repository discovery and the asset error domain. The glTF loader carries its own MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
+- **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` handles,
   the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL uploads, the scene catalog, initial camera mapping,
-  source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms
-  (`SceneObject::previousModel`/`motionClass`,
+  source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
-  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The seven-scene catalog also includes optional `san-miguel`, imported at authored
+  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The eight-scene catalog also includes optional `san-miguel`, imported at authored
   metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
   preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
   Always-available VisibilityLab adds a seeded cube/icosphere grid, four materials, five initial
   camera boundary probes and a 12-second rail. Its configurable total N includes the probes.
+  LightLab adds a deterministic point/spot grid, a 12-second rail, position-only orbit tracks and
+  an optional overflow pile; authored orbits clear material rows by 0.25 m. Sponza authors 16 static lights and a 120-second two-level corridor/atrium tour. Disabled lights retain IDs/rows/edits/orbits; localLights() includes them, while enabledLightCount() feeds rendering liveLightCount. Explicit CLI rig off disables the group without removing allocation.
+  `addLight`/`updateLight`/`removeLight` use the sixth paced table; `localLights()` lists live IDs.
+  Authored pre-finalize light indices bind orbit tracks; runtime lights remain static and edits do not advance occlusion coverage. All mutations precede `prepareFrame`.
   `addMesh`/`addTexture`/`addMaterial`/`addObject` build a scene, and `finalize` merges geometry
   including sky with rebased indices and allocates three table slots. Slot indices remain stable
   across draw-list removal/reorder; stale generations and foreign stores fail checked queries.
@@ -167,15 +170,14 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   The module checker keeps it free of ImGui, SDL, Metal and the graph builder. Tests compiles
   its own C++ sources only. The shared scene session borrows library-owned scenes, owns its camera,
   prepares playback and borrowed views, forwards paced table preparation, and resets/commits motion.
-  `EditorPlayback` owns Stopped/Playing/Paused and captures camera/time plus animation-owned object poses/emissive strength on first Play. Stop restores these and resets motion; the shell resets temporal/exposure. Activation starts Stopped after restoring the old run.
+  `EditorPlayback` owns Stopped/Playing/Paused and captures camera/time plus animation-owned object poses/emissive strength and tracked light positions on first Play. Stop restores these and resets motion; the shell resets temporal/exposure. Activation starts Stopped after restoring the old run.
   This preview shares the scene; it does not restore rendering settings or unrelated edits. Authored transform and light defaults are captured once per scene on first activation; returning to a cached scene never replaces
   those defaults with edited values. An animated object's default samples only that object's rigid
   track at the current playback time. Editing/resetting one transform collapses only its previous
   transform; the editor separately raises its temporal discontinuity latch. Activation resets
   editor motion but preserves headless loader state, matching each path's first-frame contract.
   Graph models and FrameRecordRing include the compiled record rather than the builder. Each application loop uses
-  Render's shared frame declaration, retains its accepted record, appends its own output sink and
-  owns scheduling and GPU waits.
+  Render's shared frame declaration, retains its accepted record, appends its own output sink and owns scheduling and GPU waits.
   Declaration-time counts, logical image size, render/output extents and context epoch travel with
   each retained frame. Performance joins those values with that frame's retired timing and
   publishes/freezes them as one snapshot. Its 60-frame timing window refreshes at 4 Hz; the interval
@@ -188,7 +190,9 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   ingestion/snapshot/clear, limiting storage to 2,000 messages and 2 MiB of payload with a 16 KiB
   per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
   `SceneTableDisplay` formats live scene counts/capacities, geometry bytes, writes, slot, growth
-  events and pending release buffers for Inspector's read-only Scene tables topic.
+  events and pending release buffers for Inspector's read-only Scene tables topic. `SceneSession` captures local-light defaults by full `LightId`; reset samples current orbit
+  position while restoring other authored fields. It retains actual LightLab pile IDs for bounded
+  runtime Apply/Clear without touching grid lights or tracks. `LightingDisplay` publishes one retired counter/timing frame every 250 ms, with immediate overflow/check warnings.
   `VisibilityDisplay` retains full object identity and frame-scoped classifications for Inspector
   diagnostics and Hierarchy badges. `MeasurementRun` joins declared CPU samples to retired GPU
   timings by frame ID, validates the pass inventory and completes only after every sample retires.
@@ -204,8 +208,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   detached native window with an `ImGuiWindowClass` that disallows unclassed docking and overrides
   auto-merge off under Dear ImGui platform viewports (`ImGuiConfigFlags_ViewportsEnable`).
   The dock builder places neither; both start closed, and Window menu toggles remain explicit.
-  Selection (`EditorSelection.h`), panel visibility and the workspace
-  persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised action intents
+  Selection (`EditorSelection.h`), panel visibility and the workspace persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised action intents
   (`EditorActions.h`), the Performance panel's coherent snapshot (`PerformanceModel.h`), the Render
   Graph panel's node shaping (`GraphNodeModel.h`, deriving nodes, edges, a culled band, and alias
   links from a `CompiledFrameRecord`), and its stage grouping and placement (`GraphLayout.h`,
@@ -219,8 +222,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   resource instances while details retain the displayed frame's exact physical names and ranges.
   Unchanged topology preserves selection, groups and pan/zoom. Real topology changes still update
   the model and explicitly invalidate disappeared selections. Fit graph, Fit selection, 100% and
-  Reset layout remain explicit actions; narrow graph windows stack canvas and details. A registered
-  ImGui settings handler persists
+  Reset layout remain explicit actions; narrow graph windows stack canvas and details. A registered ImGui settings handler persists
   the workspace schema and panel visibility as Luminex's own section of `imgui.ini`, alongside Dear
   ImGui's own docking and viewport data. Schema 3 restores panel visibility and detached geometry;
   schema 2 migrates to default topology while preserving valid UI scale. Reset Default Layout
@@ -241,13 +243,14 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   animation through the shared session around frame declaration. `DynamicResolution.h` drives the
   shell-owned controller only while temporal and dynamic resolution are active; its publication
   cursor and last actual measurement have separate frame IDs, so inactive status never pairs an
-  idle frame with an older measurement. Native TAA remains the default; device reconstruction
-  explains native-only diagnostic availability.
+  idle frame with an older measurement. Native TAA remains the default; device reconstruction explains native-only diagnostic availability.
   `EditorStyle.h` shares responsive fields and delayed contextual tooltips; Inspector keeps a selected-subject heading above its
   scrolling fields. Rendering expands into category subjects; each page pairs controls with compact live readings, without nested detail toggles. Category selection participates in filtering and
   keyboard navigation; changing pages resets scroll. Editable reset groups keep scoped defaults. File > Open Scene owns
   catalog availability, loading and retry. Hierarchy uses compact search, collapsible subject
-  groups and keyboard navigation; source names use scene-local disambiguation. A filtered-out
+  groups and keyboard navigation; Local lights uses clipping and complete generational selection.
+  Lighting owns mode/check/view and pile controls/reset; Hierarchy checkboxes preserve per-light identities and edits, including disabled lights. Per-light Inspector edits decode sRGB
+  colour once into linear storage. Source names use scene-local disambiguation. A filtered-out
   selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.
   The top Scene/Measure toolbar owns one state-switching Play/Pause button, separate Stop/Step and camera-rail follow options. `SelectionBounds`
   frames shared reliable world bounds; a rejected selection produces no outline. `Render/SelectionOutline` supplies an editor-only utility that
@@ -263,12 +266,10 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   its RAII subscription lasts through application shutdown. Callbacks only append to the thread-safe store. Console displays UTC
   timestamps, six severity levels, minimum-severity and case-insensitive message filters. Freeze
   latches display/counters while ingestion continues, Resume refreshes, Clear empties history and
-  counters while preserving filters/freeze, and Copy visible exports exactly matching displayed
-  messages. It is read-only; follow-newest applies only when already at the end.
+  counters while preserving filters/freeze, and Copy visible exports exactly matching displayed messages. It is read-only; follow-newest applies only when already at the end.
   `--capture-sequence <directory> --frames N --warmup W` writes N numbered PNGs (or `--capture-format bmp`) after W unsaved
   frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
-  Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR
-  BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
+  Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
   metadata. Asset `PngImage` writes deterministic colour-tagged PNGs; manifest v2 records the
   display domain, container and UI absence. The offline [comparison workflow](../guides/temporal-comparison.md)
   synchronizes Raw/Native/MetalFX reports and optional CPU LDR-FLIP on final sRGB images; Native TAA
@@ -277,8 +278,7 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. Shared modules live in `Shaders/Modules/`, test oracles in `Shaders/Tests/`;
 entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
-Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback
-and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
+Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
 
 The root component is a physical and build boundary, not yet a separately published library: it
 still participates in this repository's Core contracts and validation. The RHI grows only when a

@@ -100,7 +100,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders);
+    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
+                                          options.labLights, options.labLightPile);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;
@@ -150,7 +151,10 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         return 1;
     }
 
-    shell->primeTemporal(options);
+    if (auto primed = shell->primeTemporal(options); !primed) {
+        LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);
+        return 1;
+    }
     shell->actions().configureCapture(lmx::rhi::metal4::captureAvailable());
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
@@ -337,6 +341,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         lmx::render::FrameDeclaration frame(transientPool, **renderer, commands, shell->camera(),
                                             view, shell->poolingEnabled());
         shell->retireVisibility(**renderer);
+        shell->retireLighting(**renderer);
         shell->observeDeclaration(**renderer, (*device)->frameNumber());
         lmx::render::RenderGraph& graph = frame.graph();
         const lmx::render::GraphTexture displayColor =
@@ -390,7 +395,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         if (shell->measurementNeedsRetirementWait()) {
             (*device)->waitIdle();
             (*renderer)->drainVisibilityAfterIdle();
+            (*renderer)->drainLightingAfterIdle();
             shell->retireVisibility(**renderer);
+            shell->retireLighting(**renderer);
         }
         ++presentedFrames;
 
@@ -439,7 +446,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     // Establish one explicit idle boundary before dependent resources unwind.
     (*device)->waitIdle();
     (*renderer)->drainVisibilityAfterIdle();
+    (*renderer)->drainLightingAfterIdle();
     shell->retireVisibility(**renderer);
+    shell->retireLighting(**renderer);
 
     LMX_LOG_INFO("frame loop finished: {} presented, {} skipped, {} attempted", presentedFrames,
                  skippedFrames, frameIndex);
@@ -506,12 +515,7 @@ int main(int argc, char** argv) {
 
     // Offscreen capture does not initialize SDL or create a window.
     if (options->mode == lmx::app::RunMode::Screenshot) {
-        return lmx::app::runScreenshot(
-            options->screenshotPath, options->initialScene, options->frames, options->temporal,
-            options->temporalView, options->renderScale, options->visibilityEnabled,
-            options->submission, options->labInstances, options->classifyMode,
-            options->classifyCheck, options->occlusionEnabled, options->occlusionCheck,
-            options->hzbDebugLevel, options->labOccluders);
+        return lmx::app::runScreenshot(*options);
     }
     if (options->mode == lmx::app::RunMode::CaptureSequence) {
         return lmx::app::runCaptureSequence(*options);

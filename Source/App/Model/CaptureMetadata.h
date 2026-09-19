@@ -7,6 +7,7 @@
 
 #include "App/Model/AppOptions.h"
 #include "Render/DisplayDomain.h"
+#include "Render/LightingStatus.h"
 
 #include <string>
 #include <string_view>
@@ -28,7 +29,8 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
 std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
                               const render::SceneView& view, const render::TemporalStatus& status,
                               std::string_view filename, TemporalMode requested,
-                              const render::VisibilityStatus* visibility = nullptr);
+                              const render::VisibilityStatus* visibility = nullptr,
+                              const render::LightingStatus* lighting = nullptr);
 
 /// Serializes the lmx:frame PNG payload for a screenshot or sequence frame. frameCount is the
 /// requested number of saved frames (total rendered frames for a screenshot); simulationFrame
@@ -39,6 +41,7 @@ std::string captureFrameMetadataJson(
     std::string_view device, bool visibilityEnabled = true,
     render::SubmissionMode submission = render::SubmissionMode::Indirect,
     uint32_t labInstances = 4096, render::ClassifyMode classifyMode = render::ClassifyMode::Cpu,
-    bool classifyCheck = false, const render::VisibilityStatus* visibility = nullptr);
+    bool classifyCheck = false, const render::VisibilityStatus* visibility = nullptr,
+    const AppOptions* options = nullptr, const render::LightingStatus* lighting = nullptr);
 
 } // namespace lmx::app

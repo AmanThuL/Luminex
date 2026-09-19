@@ -77,6 +77,7 @@ void registerUniformLayoutsForCapture() {
     SceneStage::registerSceneTableLayoutsForCapture();
     ShadowStage::registerUniformLayoutsForCapture();
     registerVisibilityLayoutsForCapture();
+    LightClusterStage::registerLayoutsForCapture();
     SceneStage::registerPassLayoutsForCapture();
 }
 
@@ -488,6 +489,17 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
         LMX_ASSERT(view.items.empty() && !view.skySphere, "geometry needs scene table bindings");
     }
 
+    // Row count is a high-water mark; only live lights justify importing the sixth table.
+    std::optional<GraphBuffer> lightsImport;
+    if (view.tables.liveLightCount > 0) {
+        LMX_ASSERT(view.tables.lights != nullptr, "a live local light needs its paced light table");
+        LMX_ASSERT(view.tables.lightRows.size() >= view.tables.lightRowCount,
+                   "the borrowed light rows must cover every addressable row slot");
+        lightsImport = graph.importBuffer(*view.tables.lights, "lmx.scene.lights");
+    }
+
+    const auto lightClusters =
+        prepareLighting(graph, commands, view, lightsImport, extents, cameraState);
     const auto planes = extractFrustumPlanes(temporalEnabled ? cameraState.viewProjectionJittered
                                                              : cameraState.viewProjection);
     m_previousPyramid = prepareOcclusion(graph, camera, view, extents, cameraState);
@@ -511,6 +523,10 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
          .drawRows = drawRows,
          .drawArguments = drawArguments,
          .sceneBuffers = sceneBuffers,
+         .lights = lightsImport,
+         .lightGrid = lightClusters.declared ? std::optional{lightClusters.grid} : std::nullopt,
+         .lightIndices =
+             lightClusters.declared ? std::optional{lightClusters.indices} : std::nullopt,
          .sceneColor = sceneColor,
          .sceneDepth = sceneDepth,
          .shadowRead = shadowRead,
@@ -581,8 +597,51 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
     const GraphTexture bloomResult = m_bloomStage->declare(
         graph, commands, displayInput, sceneWidth, sceneHeight, view.bloomThreshold);
 
-    m_displayStage->declare(graph, commands, displayInput, bloomResult, displayColor,
+    const bool lightDebugEnabled =
+        view.lightDebugView != LightDebugView::Off && lightClusters.declared;
+    LMX_ASSERT(view.lightDebugView == LightDebugView::Off ||
+                   (view.localLightMode == LocalLightMode::Clustered &&
+                    debugView == TemporalDebugView::Off && view.hzbDebugLevel < 0),
+               "light debug views require clustered lighting and no other diagnostic view");
+    // Diagnostics sample the display result without feeding back into HDR or temporal history.
+    // A separate transient source preserves the public display target and needs only one extra
+    // pass.
+    const auto displayDestination = lightDebugEnabled
+                                        ? graph.createTexture({.width = m_width,
+                                                               .height = m_height,
+                                                               .format = kDisplayFormat,
+                                                               .renderTarget = true,
+                                                               .sampled = true},
+                                                              "lmx.render.lightDebugSource")
+                                        : displayColor;
+    m_displayStage->declare(graph, commands, displayInput, bloomResult, displayDestination,
                             view.bloomEnabled, view.bloomIntensity);
+    if (lightDebugEnabled) {
+        if (!m_lightDebug) {
+            auto stage = LightDebugStage::create(m_device);
+            LMX_ASSERT(stage.has_value(), stage.error().message);
+            m_lightDebug = std::move(*stage);
+        }
+        LightClusterParams clusterParams;
+        clusterParams.rowCount = view.tables.lightRowCount;
+        clusterParams.activeWidth = extents.renderWidth;
+        clusterParams.activeHeight = extents.renderHeight;
+        clusterParams.sliceDepth = clusterSliceDepths(camera.nearZ);
+        displayResult = m_lightDebug->declare(
+            graph, commands,
+            {.mode = view.lightDebugView,
+             .depth = nextVersion(sceneDepth),
+             .display = nextVersion(displayDestination),
+             .output = displayColor,
+             .lights = *lightsImport,
+             .grid = lightClusters.grid,
+             .indices = lightClusters.indices,
+             .clusters = clusterParams,
+             .inverseViewProjection = glm::inverse(
+                 temporalEnabled ? cameraState.viewProjectionJittered : cameraState.viewProjection),
+             .outputWidth = m_width,
+             .outputHeight = m_height});
+    }
 
     // HZB follows every temporal depth consumer in the stable graph schedule.
     declareOcclusion(graph, commands, view, nextVersion(sceneDepth), displayResult);
@@ -648,6 +707,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rhi::CommandList& comma
                                                             : rhi::TextureUse::RenderTarget;
         m_temporalResolve->recordFrame(slot, reconstruction, debugView, historyValid, upscaled);
     }
+    if (lightDebugEnabled)
+        m_temporalResolve->recordDepthRead(temporalEnabled ? slot : 0);
     // The scene colour is written and read by every frame. Under Raw at the output extent the
     // commit copy is the last thing to touch it; an upscaled Raw frame samples it in the spatial
     // pass instead of copying it, and under NativeTaa and with temporal off, bloom, the histogram

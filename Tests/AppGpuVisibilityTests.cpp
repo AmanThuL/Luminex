@@ -127,14 +127,18 @@ TEST_CASE("GPU measurement needs independent exact visibility and timing retirem
                            .candidates = 2,
                            .reservedListBytes = 16,
                            .listBytes = 16,
-                           .classifyMode = render::ClassifyMode::Gpu}));
+                           .classifyMode = render::ClassifyMode::Gpu,
+                           .lighting = {.frameNumber = 10}}));
     REQUIRE(run.recordCpu({.frameId = 11,
                            .sequenceFrame = 1,
                            .candidates = 2,
                            .reservedListBytes = 16,
                            .listBytes = 16,
-                           .classifyMode = render::ClassifyMode::Gpu}));
+                           .classifyMode = render::ClassifyMode::Gpu,
+                           .lighting = {.frameNumber = 11}}));
     REQUIRE(run.retireVisibility(retiredStatus(9)));
+    REQUIRE(run.retireLighting({.frameNumber = 10, .isRetired = true}));
+    REQUIRE(run.retireLighting({.frameNumber = 11, .isRetired = true}));
     const std::array<rhi::PassTiming, 1> timing = {{{"lmx.pass.visibility.classify", 0.25}}};
     REQUIRE(run.retire(11, timing));
     REQUIRE(run.retireVisibility(retiredStatus(10)));
@@ -144,7 +148,7 @@ TEST_CASE("GPU measurement needs independent exact visibility and timing retirem
     SECTION("last visibility result is drained without a new declaration") {
         REQUIRE(run.retireVisibility(retiredStatus(11)));
         REQUIRE(run.finishDrain());
-        REQUIRE(run.json().contains("\"schemaVersion\":3"));
+        REQUIRE(run.json().contains("\"schemaVersion\":4"));
         REQUIRE(run.json().contains("\"visibilityGpuMs\":0.25"));
         REQUIRE(run.json().contains("\"effectiveClassify\":\"gpu\""));
         REQUIRE(run.samples()[0].cpu.visible == 0);
@@ -181,7 +185,8 @@ TEST_CASE("Check diagnostics and vendor fallback cannot produce scored measureme
     REQUIRE(run.start({.classify = "gpu", .classifyCheck = true, .unscored = true}, provenance()));
     run.cancel();
     REQUIRE(run.start({.warmupFrames = 0, .measuredFrames = 1}, provenance()));
-    REQUIRE_FALSE(run.recordCpu({.frameId = 1, .vendorFallback = 1}));
+    REQUIRE_FALSE(
+        run.recordCpu({.frameId = 1, .vendorFallback = 1, .lighting = {.frameNumber = 1}}));
 }
 
 //======================================================================================================================

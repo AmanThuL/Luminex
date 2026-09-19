@@ -10,6 +10,8 @@ TEST_CASE("scene table diagnostics retain counts bytes and retirement state",
                                                     .instanceCapacity = 8,
                                                     .materialCapacity = 4,
                                                     .meshCapacity = 4,
+                                                    .lightCount = 5,
+                                                    .lightCapacity = 8,
                                                     .vertexBytes = 4096,
                                                     .indexBytes = 768,
                                                     .rowsWritten = 2,
@@ -20,12 +22,14 @@ TEST_CASE("scene table diagnostics retain counts bytes and retirement state",
     REQUIRE(fields[0].value == "2 / 8 rows");
     REQUIRE(fields[1].value == "1 / 4 rows");
     REQUIRE(fields[2].value == "3 / 4 rows");
-    REQUIRE(fields[3].value == "4096 vertex bytes; 768 index bytes");
-    REQUIRE(fields[4].value == "2 rows; 416 bytes");
-    REQUIRE(fields[5].value == "3 / 3");
-    REQUIRE(fields[6].value == "1");
-    REQUIRE(fields[7].value == "3 buffers");
+    REQUIRE(fields[3].value == "5 / 8 rows");
+    REQUIRE(fields[4].value == "4096 vertex bytes; 768 index bytes");
+    REQUIRE(fields[5].value == "2 rows; 416 bytes");
+    REQUIRE(fields[6].value == "3 / 3");
+    REQUIRE(fields[7].value == "1");
+    REQUIRE(fields[8].value == "3 buffers");
     const auto empty = lmx::app::sceneTableFields({});
-    REQUIRE(empty[4].value == "0 rows; 0 bytes");
-    REQUIRE(empty[7].value == "0 buffers");
+    REQUIRE(empty[3].value == "0 / 0 rows");
+    REQUIRE(empty[5].value == "0 rows; 0 bytes");
+    REQUIRE(empty[8].value == "0 buffers");
 }

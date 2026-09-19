@@ -17,9 +17,9 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
 - Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
   after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
-  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged. M7.4 is implemented and owner-accepted for integration on 2026-09-18; `docs/milestones/m7.4-validation.md` retains its 13/15 failed exact-image gate and mixed costs. Occlusion stays off; its executor plan is closed.
+  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged. M7.4 is implemented and owner-accepted for integration on 2026-09-18; `docs/milestones/m7.4-validation.md` retains its 13/15 failed exact-image gate and mixed costs. Occlusion stays off; its executor plan is closed. M7.5 is implemented and owner-accepted for integration on 2026-09-19 after visual review; its executor plan is closed. Clustered remains default by the passed list/scoped-image gates. [Acceptance](docs/milestones/m7.5-validation.md#owner-acceptance-and-integration) retains original 11/15 failed zero-light mode invariance and frozen costs; the [follow-up](docs/milestones/m7.5-followup.md) records authored-light controls, the camera tour, flicker corrections, passing exact causal/current-camera 15/15 gates and unresolved historical-camera replay.
 - Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order; transparency belongs to M8, cluster LOD
-  to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; nothing neural, cluster-based or ray-traced exists.
+  to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; no neural, clustered-geometry or ray-traced path exists; clustered local lighting is implemented.
 - Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
   EDR DEFER and an accepted historical-hash exception; ADR 0019) over
   `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
@@ -45,8 +45,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   pins and hashes are in `xmake/setup.lua`. Setup re-applies the maintained ThirdParty patches
   idempotently: a tree already carrying the current patch is left alone, and one carrying an older
   revision of it is restored to the pin before the patch is applied. Optional:
-  `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL
-  fallback works without it).
+  `xcodebuild -downloadComponent MetalToolchain` enables offline shader precompile (runtime-MSL fallback works without it).
 - Optional courtyard: `xmake setup --san-miguel` downloads the official ~511 MiB archive, converts
   its realtime OBJ at authored metre scale with diffuse alpha cutouts and `N_` tangent normals,
   and bakes referenced textures. `Assets/Fetched/SanMiguel/` preserves source metadata, license and
@@ -54,12 +53,11 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
   `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` (CPU-only: `xmake test Tests/unit`)
-- **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits.
+- **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits. GPU regression uses `[gpu]~[.]`; hidden replay diagnostics require their explicit filter.
   `xmake test` rebuilds; before running Tests directly, run `xmake build Tests` to avoid stale passes.
 - Frozen portability-checkpoint-A subset (ADR 0009): `xmake build Tests && cd
   build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests "[checkpoint-a]"` — a future backend
-  must pass this filter unchanged; the working directory must be the Tests build directory (shaders
-  resolve relative to CWD).
+  must pass this filter unchanged; the working directory must be the Tests build directory (shaders resolve relative to CWD).
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
@@ -76,7 +74,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
 - Scenes: `xmake run App` opens the editor maximized to the display's usable bounds, with Sponza
   selected by default (File > Open Scene catalog); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
-  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel> --screenshot <out.bmp>`. `--frames N`
+  <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|light-lab> --screenshot <out.bmp>`. `--frames N`
   (default 1) renders N frames before writing the last — the temporal warmup control — advancing
   the scene's animation by 1/60 s and following its camera track (if any) between them.
   `.png` uses tagged PNG with display/frame metadata; `.bmp` preserves the historical bytes.
@@ -94,7 +92,8 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
   expect several seconds in a debug build.
 - Visibility: `--classify cpu|gpu` (CPU default), GPU-only `--classify-check`, `--visibility cull|off`, `--submission direct|indirect|batched` (cull/indirect defaults; GPU forbids direct). Lab-only `--lab-instances N` defaults 4096. `--occlusion on` adds previous-frame HZB under GPU/cull; `--occlusion-check` uses an independent ID oracle;
-  `--hzb-level K` visualizes a mip; `--lab-occluders N` is lab-only. `--measure out.json --warmup W --frames N` records schema 3 costs; `--unscored` permits instrumentation/check mode. Paired controls and retired diagnostics: `docs/guides/gpu-visibility.md`.
+  `--hzb-level K` visualizes a mip; `--lab-occluders N` is lab-only. `--measure out.json --warmup W --frames N` records schema 4 costs; `--unscored` permits instrumentation/check mode. Paired controls and retired diagnostics: `docs/guides/gpu-visibility.md`.
+- Local lights: `--local-lights off|direct|clustered` (Clustered default); unshadowed point/spot lights affect opaque/masked surfaces. LightLab `--lab-lights N` defaults 256, `--lab-light-pile P` defaults 0, N≥1 and N+P≤4096. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on, with explicit off disabling all rig lights while retaining IDs/rows. Its camera rail tours both corridor levels in 120 seconds through the atrium. `--light-check` and non-off `--light-view off|count|overflow|missed` require Clustered (non-off views conflict with temporal/HZB views); diagnostic measurement requires `--unscored`. `LMX_LIGHT_CHECK_DUMP` writes raw frame-keyed CPU/GPU list evidence for checked screenshot/sequence runs to a new path. Schema 4 joins retired lighting to every frame, including Off/Direct/zero-live; `lightingGpuMs` sums `lmx.pass.light.*` separately from scene cost. `Tools/Bench/lighting_paired.py --control local` compares Direct/Clustered; `--control zero --parent /frozen/parent/App` compares parent schema 3 with candidate schema 4. `Tools/Lighting/missed_oracle.py` audits PNG pixels/manifests. Both tools offer `--selftest`. Procedures: `docs/guides/gpu-debugging.md#inspect-local-lighting`. [Default decision](docs/milestones/m7.5-validation.md#default-decision): family 2 lossless lists and scoped family 3 exact images passed; Direct remains the reference.
 - Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered PNGs (or `--capture-format bmp`) after W
   unsaved frames at 60 Hz, plus a v2 camera/settings/status/display/container/UI manifest, into a new or empty directory.
   It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
@@ -121,14 +120,14 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   GPU cases; docs-only changes (`docs/`, README, AGENTS/CLAUDE.md, LICENSE) run the policy job alone; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
 - Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
-  `Camera help` explains controls; text entry suppresses camera/capture keys. Top Scene/Measure toolbar owns a state-switching Play/Pause button, separate Stop/Step and camera-rail follow options; scenes load Stopped. First Scene Play captures camera/time and animation-owned object poses/emissive strength; Step advances 1/60 s and pauses.
+  `Camera help` explains controls; text entry suppresses camera/capture keys. Top Scene/Measure toolbar owns a state-switching Play/Pause button, separate Stop/Step and camera-rail follow options; scenes load Stopped. First Scene Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Step advances 1/60 s and pauses.
   Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Measure Play starts fixed W/N; Pause is disabled, Stop cancels, and completion/Stop restores preview state. Performance retains plan/results/export in a detached native window; Measure Play opens/focuses it once, while mode selection and completion/cancellation do not. Closing it leaves the run active; toolbar options > Show measurement opens/focuses Measure anytime. CLI is unchanged.
   Playback, metric freeze and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow; static scenes allow camera preview; unavailable camera-rail options explain their disabled state.
   Hierarchy has compact search, collapsible subjects and keyboard navigation; frustum-rejected names are dimmed but remain selectable, with reasons on hover/in Inspector. File > Open Scene
   owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
   selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles. Visibility/Occlusion/Submission readings publish coherent frames every 250 ms; fallback and failure warnings remain immediate.
-  Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
+  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles. Visibility/Occlusion/Submission/Lighting readings publish coherent frames every 250 ms; fallback and failure warnings remain immediate.
+  Local lights use clipped Hierarchy rows, full LightId selection and per-light enable checkboxes that preserve IDs/edits/orbits; Inspector edits position/colour/intensity/range and spot direction/cones, with authored/current-orbit reset. Lighting owns mode/check/view and bounded LightLab pile Apply/Clear; scoped Reset leaves individual lights and other Rendering topics unchanged. Measure disables editor edits and freezes the initial enabled population. Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
   nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
   File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.
   Console alone occupies the bottom dock; Performance and Render Graph are detached native windows, closed by default. Window > Performance toggles it normally.
@@ -169,7 +168,7 @@ dead-pass culling from declared sinks only, conservative aliasing of lifetime-di
 into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
 schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
 as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
-`SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five GPU buffers; 240 B instances/48 B meshes carry world/local AABBs. CPU-default five-plane visibility or opt-in `GpuVisibility` reset/classify/scan/emit feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. Opt-in `HzbStage`/`Occlusion` consume previous source-space depth with global coverage invalidation; `OcclusionReference` checks direct IDs and recovery at retirement. `Renderer` imports five read-only `lmx.scene.*` buffers plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
+`SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five geometry/material GPU buffers and live-only lights; 240 B instances/48 B meshes carry world/local AABBs. CPU-default five-plane visibility or opt-in `GpuVisibility` reset/classify/scan/emit feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. Opt-in `HzbStage`/`Occlusion` consume previous source-space depth with global coverage invalidation; `OcclusionReference` checks direct IDs and recovery at retirement. `Renderer` imports five read-only geometry/material `lmx.scene.*` buffers, live-only `lmx.scene.lights`, plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
 the next frame), bloom (threshold/downsample/bilinear upsample), display-transform, and, opt-in via
 `SceneView::temporal.enabled` (on by default since M6.2), motion/reactive/reconstruction passes
@@ -193,8 +192,8 @@ GeometryGenerator, deterministic environment/IBL generation, texture baking and 
 repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
 RHI format/descriptor headers only) + `Source/Scene` (lmx::scene: `Scene`/`SceneLibrary`, GPU
 DDS/cubemap/IBL uploads, environment rig, labs, source names, shared mesh bounds/world-row updates, initial camera,
-playback and previous transforms; generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId` reject stale/foreign handles; add/finalize builds one immutable rebased vertex/index pool including sky. Stable row slots survive removal/reorder; three paced table buffers per kind update only dirty rows. Growth doubles capacity and retires old buffers at lastFrame+3; new instances seed their previous pose;
-seven catalog scenes include VisibilityLab and optional San Miguel with a deterministic 12-second camera rail) →
+playback and previous transforms; generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` reject stale/foreign handles; add/finalize builds one immutable rebased vertex/index pool including sky. Stable row slots survive removal/reorder; three paced table buffers per kind update only dirty rows. Growth doubles capacity and retires old buffers at lastFrame+3; new instances seed their previous pose;
+eight catalog scenes include VisibilityLab, LightLab and optional San Miguel with deterministic 12-second rails, plus Sponza's 120-second two-level tour; localLights() includes disabled identities, enabledLightCount()/render liveLightCount count enabled lights, and only pre-finalize authored lights receive orbit indices) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
@@ -219,16 +218,17 @@ capture. `DynamicResolution.h` drives the shell-owned controller from retired ti
 `GraphNodeModel`/`GraphLayout` preserve logical canvas identity across physical temporal instances.
 Editor/capture loops share session playback/views/motion and declaration/retention, but own their
 waits, UI sink and presentation scheduling; full structure: `docs/architecture/overview.md`).
+`LightClusters` mirrors fixed 16×9×24 pixel-aligned froxels; `LightClusterStage` owns three paced reset/count/scan/fill slots with 128 lights/froxel and 65,536 indices. Shared `LocalLights.slang` selects Off/Direct/Clustered using b8 lights/b9 grid/b10 indices/b11 frame params; PassUniforms stays 400 B. Normal-footprint filtering broadens only punctual specular alpha; authored roughness/directional/IBL remain unchanged. Zero-enabled frames add no light import/pass. `LightingStatus` joins declaration-time mirror and retired GPU lists/counters; post-display Count/Overflow/Missed diagnostics preserve scene/history. `LightingDisplay` owns 250 ms coherent readings with immediate warnings; accepted ADR 0023 owns the contract; validation records retain failed historical gates.
 `Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display details (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
-Encode, Lighting, Shadow, Motion, Tonemap, TemporalCommon, SceneTables and AlphaMask. `Shaders/*.slang` entries:
+Encode, Lighting, LocalLights, Shadow, Motion, Tonemap, TemporalCommon, SceneTables and AlphaMask. `Shaders/*.slang` entries:
 ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
 SelectionMask and SelectionOutline (editor-only).
 `Shaders/Tests/` owns Triangle, FrameDataQuad and the sampler/cube/shadow/fullscreen/
-MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI oracles. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
+MRT/render-area/compute/image/buffer-hazard/indirect/full-field scene-table ABI oracles. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.

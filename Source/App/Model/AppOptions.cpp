@@ -111,6 +111,15 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool labOccludersSpecified = false;
     uint32_t labInstances = 4096;
     bool labInstancesSpecified = false;
+    render::LocalLightMode localLightMode = render::LocalLightMode::Clustered;
+    bool lightCheck = false;
+    render::LightDebugView lightDebugView = render::LightDebugView::Off;
+    bool localLightRig = false;
+    bool localLightRigSpecified = false;
+    uint32_t labLights = 256;
+    bool labLightsSpecified = false;
+    uint32_t labLightPile = 0;
+    bool labLightPileSpecified = false;
     std::string_view screenshotPath;
     std::string_view captureSequencePath;
     uint32_t warmup = 0;
@@ -186,6 +195,54 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 return fail("--lab-instances needs an integer in [1, 1048576]");
             }
             labInstancesSpecified = true;
+        } else if (argument == "--local-lights") {
+            if (++i >= arguments.size()) {
+                return fail("--local-lights needs off, direct, or clustered");
+            }
+            if (arguments[i] == "off") {
+                localLightMode = render::LocalLightMode::Off;
+            } else if (arguments[i] == "direct") {
+                localLightMode = render::LocalLightMode::Direct;
+            } else if (arguments[i] == "clustered") {
+                localLightMode = render::LocalLightMode::Clustered;
+            } else {
+                return fail("--local-lights needs off, direct, or clustered");
+            }
+        } else if (argument == "--light-check") {
+            lightCheck = true;
+        } else if (argument == "--light-view") {
+            if (++i >= arguments.size())
+                return fail("--light-view needs off|count|overflow|missed");
+            if (arguments[i] == "off")
+                lightDebugView = render::LightDebugView::Off;
+            else if (arguments[i] == "count")
+                lightDebugView = render::LightDebugView::Count;
+            else if (arguments[i] == "overflow")
+                lightDebugView = render::LightDebugView::Overflow;
+            else if (arguments[i] == "missed")
+                lightDebugView = render::LightDebugView::Missed;
+            else
+                return fail("--light-view needs off|count|overflow|missed");
+        } else if (argument == "--local-light-rig") {
+            if (++i >= arguments.size() || (arguments[i] != "on" && arguments[i] != "off")) {
+                return fail("--local-light-rig needs on or off");
+            }
+            localLightRig = arguments[i] == "on";
+            localLightRigSpecified = true;
+        } else if (argument == "--lab-lights") {
+            if (++i >= arguments.size() || !parseNumber(arguments[i], labLights) || labLights < 1 ||
+                labLights > render::kMaxLocalLights) {
+                return fail("--lab-lights needs an integer in [1, " +
+                            std::to_string(render::kMaxLocalLights) + "]");
+            }
+            labLightsSpecified = true;
+        } else if (argument == "--lab-light-pile") {
+            if (++i >= arguments.size() || !parseNumber(arguments[i], labLightPile) ||
+                labLightPile > render::kMaxLocalLights) {
+                return fail("--lab-light-pile needs an integer in [0, " +
+                            std::to_string(render::kMaxLocalLights) + "]");
+            }
+            labLightPileSpecified = true;
         } else if (argument == "--screenshot") {
             if (++i >= arguments.size()) {
                 return fail(
@@ -305,6 +362,12 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                 "[--visibility <cull|off>] [--classify <cpu|gpu>] [--classify-check] [--submission "
                 "<direct|indirect|batched>] "
                 "[--lab-instances <1..1048576>] [--lab-occluders <0..1024>] "
+                "[--lab-lights <1.." +
+                std::to_string(render::kMaxLocalLights) + ">] [--lab-light-pile <0.." +
+                std::to_string(render::kMaxLocalLights) +
+                ">] "
+                "[--light-check] [--light-view <off|count|overflow|missed>] [--local-lights "
+                "<off|direct|clustered>] [--local-light-rig <on|off>] "
                 "[--occlusion <on|off>] [--occlusion-check] [--hzb-level <k>] "
                 "[--measure-camera <track|initial>] "
                 "(--screenshot saves the last of N frames; --capture-sequence saves N frames "
@@ -312,6 +375,15 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
         }
     }
 
+    if ((lightCheck || lightDebugView != render::LightDebugView::Off) &&
+        localLightMode != render::LocalLightMode::Clustered)
+        return fail("--light-check and --light-view require --local-lights clustered");
+    if (lightDebugView != render::LightDebugView::Off &&
+        (temporalView != render::TemporalDebugView::Off || hzbDebugLevel >= 0))
+        return fail("--light-view conflicts with --temporal-view and --hzb-level");
+    if ((lightCheck || lightDebugView != render::LightDebugView::Off) && !measurementPath.empty() &&
+        !unscored)
+        return fail("lighting diagnostics measurement requires --unscored");
     if (occlusionEnabled && (classifyMode != render::ClassifyMode::Gpu || !visibilityEnabled))
         return fail("--occlusion on requires --classify gpu and --visibility cull");
     if (occlusionCheck && !occlusionEnabled)
@@ -340,6 +412,19 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     }
     if (labInstancesSpecified && sceneName != "visibility-lab") {
         return fail("--lab-instances requires --scene visibility-lab");
+    }
+    if (localLightRigSpecified && sceneName != "sponza") {
+        return fail("--local-light-rig requires --scene sponza");
+    }
+    if (labLightsSpecified && sceneName != "light-lab") {
+        return fail("--lab-lights requires --scene light-lab");
+    }
+    if (labLightPileSpecified && sceneName != "light-lab") {
+        return fail("--lab-light-pile requires --scene light-lab");
+    }
+    if (uint64_t{labLights} + labLightPile > render::kMaxLocalLights) {
+        return fail("--lab-lights plus --lab-light-pile must not exceed " +
+                    std::to_string(render::kMaxLocalLights));
     }
     if (!captureSequencePath.empty() && !screenshotPath.empty()) {
         return fail("--capture-sequence conflicts with --screenshot");
@@ -399,6 +484,12 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     options.hzbDebugLevel = hzbDebugLevel;
     options.labOccluders = labOccluders;
     options.labInstances = labInstances;
+    options.localLightMode = localLightMode;
+    options.lightCheck = lightCheck;
+    options.lightDebugView = lightDebugView;
+    options.localLightRig = localLightRigSpecified ? localLightRig : sceneName == "sponza";
+    options.labLights = labLights;
+    options.labLightPile = labLightPile;
     options.initialScene = *sceneId;
     options.maximized = maximized;
     options.frames = frames;

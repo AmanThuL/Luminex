@@ -78,6 +78,15 @@ struct AppOptions {
     int32_t hzbDebugLevel = -1;    ///< Pyramid diagnostic mip; -1 shows the final image.
     uint32_t labOccluders = 0;     ///< Optional VisibilityLab slabs, 0..1,024.
     uint32_t labInstances = 4096;  ///< Total VisibilityLab instances, including its boundary lane.
+    /// Local-light path.
+    render::LocalLightMode localLightMode = render::LocalLightMode::Clustered;
+    bool lightCheck = false; ///< Exact retired CPU/GPU clustered-list comparison.
+    render::LightDebugView lightDebugView = render::LightDebugView::Off; ///< Lighting diagnostic.
+    /// Capture metadata for the opt-in controller environment hook.
+    bool dynamicResolution = false;
+    bool localLightRig = true; ///< Authored Sponza rig; explicit off retains zero-light controls.
+    uint32_t labLights = 256;  ///< Grid LightLab local-light population, 1..kMaxLocalLights.
+    uint32_t labLightPile = 0; ///< Extra LightLab lights stacked at one point, 0..kMaxLocalLights.
     std::filesystem::path measurementPath; ///< New JSON report destination for --measure.
     bool unscored = false;        ///< Explicitly permits instrumentation in a headless measurement.
     bool measurementTrack = true; ///< Follow the camera rail; --measure-camera initial freezes it.

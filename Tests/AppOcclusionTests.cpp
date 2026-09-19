@@ -131,7 +131,8 @@ TEST_CASE("Measurement schema separates pyramid build cost and rejects scored re
     plan.warmupFrames = 0;
     plan.measuredFrames = 1;
     REQUIRE(run.start(plan, {}));
-    REQUIRE(run.recordCpu({.frameId = 1, .classifyMode = render::ClassifyMode::Gpu}));
+    REQUIRE(run.recordCpu(
+        {.frameId = 1, .classifyMode = render::ClassifyMode::Gpu, .lighting = {.frameNumber = 1}}));
     render::VisibilityStatus status;
     status.classifyMode = render::ClassifyMode::Gpu;
     status.isRetired = true;
@@ -144,10 +145,11 @@ TEST_CASE("Measurement schema separates pyramid build cost and rejects scored re
                                                   {"lmx.pass.hzb.level0", 0.5},
                                                   {"lmx.pass.hzb.publish", 0.0625},
                                                   {"lmx.pass.hzb.debug", 0.125}}};
+    REQUIRE(run.retireLighting({.frameNumber = 1, .isRetired = true}));
     REQUIRE(run.retire(1, timings));
     REQUIRE(run.finishDrain());
     const auto json = run.json();
-    REQUIRE(json.contains("\"schemaVersion\":3"));
+    REQUIRE(json.contains("\"schemaVersion\":4"));
     REQUIRE(json.contains("\"hzbGpuMs\":0.5625"));
     REQUIRE(json.contains("\"visibilityGpuMs\":0.25"));
     REQUIRE(json.contains("\"scored\":false"));
@@ -169,7 +171,8 @@ TEST_CASE("A failed occlusion reference retains the full measurement sequence",
     for (uint32_t frame = 1; frame <= 3; ++frame) {
         REQUIRE(run.recordCpu({.frameId = frame,
                                .sequenceFrame = frame - 1,
-                               .classifyMode = render::ClassifyMode::Gpu}));
+                               .classifyMode = render::ClassifyMode::Gpu,
+                               .lighting = {.frameNumber = frame}}));
         render::VisibilityStatus status;
         status.classifyMode = render::ClassifyMode::Gpu;
         status.isRetired = true;
@@ -180,6 +183,7 @@ TEST_CASE("A failed occlusion reference retains the full measurement sequence",
         status.occlusionCheck.strict = true;
         status.occlusionCheck.falselyRejectedInstances = frame == 1 ? 1 : 0;
         REQUIRE(run.retireVisibility(status));
+        REQUIRE(run.retireLighting({.frameNumber = frame, .isRetired = true}));
         REQUIRE(run.retire(frame, timings));
         if (frame < 3)
             REQUIRE(run.active());

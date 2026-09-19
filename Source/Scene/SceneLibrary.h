@@ -60,8 +60,11 @@ public:
     /// Creates a catalog whose loaded scenes use `device` for their full lifetime.
     /// labInstances sets the total VisibilityLab population; its builder validates 1..1,048,576.
     /// labOccluders adds 0..1,024 optional slabs without changing the default lab.
+    /// labLights sets LightLab's grid local-light population; its builder validates
+    /// 1..render::kMaxLocalLights. labLightPile adds that many extra lights stacked at one point.
     explicit SceneLibrary(rhi::Device& device, uint32_t labInstances = 4096,
-                          uint32_t labOccluders = 0);
+                          uint32_t labOccluders = 0, uint32_t labLights = 256,
+                          uint32_t labLightPile = 0);
 
     /// Returns every catalog entry in stable display order.
     std::span<const SceneEntry> entries() const;
@@ -74,6 +77,8 @@ private:
     rhi::Device& m_device;
     uint32_t m_labInstances;
     uint32_t m_labOccluders;
+    uint32_t m_labLights;
+    uint32_t m_labLightPile;
     std::vector<SceneEntry> m_entries;
     std::vector<std::unique_ptr<Scene>> m_scenes;
 };

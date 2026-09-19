@@ -15,6 +15,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace lmx::render {
@@ -26,9 +27,14 @@ struct SceneStageInputs {
     GraphBuffer drawRows;                  ///< Read-only visible-row import.
     GraphBuffer drawArguments;             ///< Indirect-argument import.
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
-    GraphTexture sceneColor;               ///< Scene-linear color attachment version to write.
-    GraphTexture sceneDepth;               ///< Reversed D32Float depth attachment version to write.
-    GraphTexture shadowRead;               ///< Written shadow-map version to sample.
+    /// Read-only `lmx.scene.lights` import, present exactly when the frame has a live local light.
+    /// Absent leaves the pass declaring nothing new and binding the stage's own fallback rows.
+    std::optional<GraphBuffer> lights;
+    std::optional<GraphBuffer> lightGrid; ///< Cluster records when clustered shading is selected.
+    std::optional<GraphBuffer> lightIndices; ///< Ascending light row indices paired with lightGrid.
+    GraphTexture sceneColor;                 ///< Scene-linear color attachment version to write.
+    GraphTexture sceneDepth; ///< Reversed D32Float depth attachment version to write.
+    GraphTexture shadowRead; ///< Written shadow-map version to sample.
     GraphTexture motion;     ///< Motion attachment; required only with temporal enabled.
     GraphTexture reactive;   ///< Reactive attachment; required only with temporal enabled.
     GraphBuffer exposure;    ///< Applied/previous pair; sampled by auto-exposure shading only.
@@ -70,6 +76,11 @@ public:
 
 private:
     SceneStage() = default;
+    // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
+    // graph so zero-light declarations retain their resource and pass topology.
+    std::unique_ptr<rhi::Buffer> m_fallbackLightRows;
+    std::unique_ptr<rhi::Buffer> m_fallbackClusterGrid;
+    std::unique_ptr<rhi::Buffer> m_fallbackClusterIndices;
     std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
     std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
     std::array<std::unique_ptr<rhi::ShaderLibrary>, 2> m_maskSceneLibraries;
