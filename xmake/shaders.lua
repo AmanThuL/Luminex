@@ -65,19 +65,25 @@ rule("slang2metallib")
             if visibility then table.join2(metalargs, {"-fno-fast-math", "-ffp-contract=off"}) end
             batchcmds:vrunv("xcrun", metalargs)
         end
-        -- Every .slang source of this target, not just this one, and deliberately so:
-        -- `import Shadow;` makes ShadowSmoke.slang depend on Shadow.slang, and nothing here can
-        -- see that edge -- slangc's CLI has no depfile mode wired up, and parsing `import` lines
-        -- out of the source would be a second, silently-drifting implementation of Slang's module
-        -- resolution. Without this, editing a module leaves every importer's .metal/.metallib
-        -- stale. The conservative list rebuilds all of the target's shaders whenever any entry or
-        -- module it compiles changes, avoiding stale metallibs without duplicating the compiler's
-        -- dependency resolver.
+        -- Every .slang source of this target, plus every module under its include directory, and
+        -- deliberately so: `import Shadow;` makes ShadowSmoke.slang depend on Shadow.slang, and
+        -- nothing here can see that edge -- slangc's CLI has no depfile mode wired up, and parsing
+        -- `import` lines out of the source would be a second, silently-drifting implementation of
+        -- Slang's module resolution. Without this, editing a module leaves every importer's
+        -- .metal/.metallib stale. The module directory is listed separately because a module is an
+        -- input the compiler resolves through -I, not a source the target compiles: a target whose
+        -- pattern does not happen to sweep its own modules in would otherwise miss them entirely.
+        -- The conservative list rebuilds all of the target's shaders whenever any entry or module
+        -- it can reach changes, without duplicating the compiler's dependency resolver.
         local depfiles = {}
         for _, shader in ipairs(sources) do
-            table.insert(depfiles, path.absolute(shader, os.projectdir()))
+            depfiles[path.absolute(shader, os.projectdir())] = true
         end
-        batchcmds:add_depfiles(depfiles)
+        for _, module in ipairs(os.files(path.join(os.projectdir(), moduledir, "**.slang"))) do
+            depfiles[path.absolute(module)] = true
+        end
+        local dependencies = table.orderkeys(depfiles)
+        batchcmds:add_depfiles(dependencies)
         batchcmds:set_depmtime(os.mtime(msl))
         batchcmds:set_depcache(target:dependfile(msl))
     end)
