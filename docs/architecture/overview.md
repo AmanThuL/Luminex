@@ -4,13 +4,19 @@
 
 Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI is a repository-root component; the other runtime layers remain under `Source/`:
 
-`Core → Asset` and `Core → RHI → Render`, joined by `Scene → AppModel → App`. Asset uses only
-RHI format/descriptor headers and links no GPU target. Core owns shared colour transfer and contract-preserving primitives;
-`Render/SceneView.h` holds the borrowed frame input independently of the renderer.
+`Core → Asset`, `Core → Render` and, independently, `RHI → Render`, joined by `Scene → AppModel → App`.
+The RHI has no Core dependency; Asset uses only its format/descriptor headers and links no GPU
+target. Core owns shared colour transfer and contract-preserving primitives; `Render/SceneView.h`
+holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
   JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are public packages.
-- **RHI** is built from `RHI/xmake.lua`. Its self-contained core public headers live under
+- **RHI** builds and tests from its own root (`xmake -P RHI`): `RHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
+  dependency — a private `RHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
+  is `RHI/Include/RHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
+  forwards into spdlog/Console for App and Luminex's `Tests`. `RHI/Tests`/`RHI/Shaders/Tests` hold its
+  own contract/GPU suite (`RHITests`, linking only `RHI`); `RHI/Tools` holds its header check, ImGui
+  patch and buffer probe. Its self-contained core public headers live under
   `RHI/Include/RHI/`, split by owner concept — `GpuAddress.h`, `Format.h`, `Buffer.h`, `Texture.h`,
   `Heap.h`, `Sampler.h`, `ShaderLibrary.h`, `GraphicsPipeline.h`, `ComputePipeline.h`, `Indirect.h`,
   `RenderPass.h`, `CommandList.h`, `TemporalScaler.h`, `Swapchain.h`, and `Device.h`, plus the focused `Result.h`,
@@ -39,25 +45,19 @@ RHI format/descriptor headers and links no GPU target. Core owns shared colour t
   retained mapped and resident until device destruction so a slot's high water becomes its reused
   capacity rather than being released), residency, shared-event pacing, render, compute, and copy
   pass encoders, indirect draws and dispatches, untracked placement heaps with resources created at
-  explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates
-  reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains
-  state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time
-  private scratch and a copy inside the same timed call. The optional `RHIMetal4ImGui` target
+  explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time private scratch and a copy inside the same timed call. The optional `RHIMetal4ImGui` target
   owns the adapter (sources under `RHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
 - **Render** owns camera, CPU geometry vocabulary (`Vertex`/`MeshData`), shared scene-table rows,
   the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
-  declared fresh every frame and validates its declarations before any of them reach the GPU. It
-  declares raster, compute, copy and external passes with per-subresource uses over resources it either
+  declared fresh every frame and validates its declarations before any of them reach the GPU. It declares raster, compute, copy and external passes with per-subresource uses over resources it either
   imports from a caller or creates as one-frame transients, culls every pass no declared sink
   reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
   heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
-  record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract,
-  independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
+  record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract, independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
   validation have separate implementation units with private shared range helpers. `Renderer`
-  composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns
-  finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
+  composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
   240-byte instance, 112-byte material, 48-byte mesh and 64-byte local-light rows, including bounds.
   `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
   jittered raster view-projection, with a 1e-3 world-unit guard and no far plane. Rejected rows keep
@@ -280,9 +280,9 @@ toolchain is present. Shared modules live in `Shaders/Modules/`, test oracles in
 entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
 Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
 
-The root component is a physical and build boundary, not yet a separately published library: it
-still participates in this repository's Core contracts and validation. The RHI grows only when a
-rendering feature supplies a real portability requirement. Metal is the first implementation, not
+The root component is a physical and build boundary, not yet a separately published library: it has
+no Core dependency but still builds, tests and passes policy inside this repository. The RHI grows
+only when a rendering feature supplies a real portability requirement. Metal is the first implementation, not
 the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 selected an
 address-first per-frame data path while retaining the object-shaped resource, pass, pipeline,
 residency, and barrier model and the render graph's logical ownership; M5.2 shipped that path —
