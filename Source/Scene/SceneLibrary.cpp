@@ -17,7 +17,7 @@ namespace lmx::scene {
 
 namespace {
 
-using SceneBuilder = asset::AssetResult<std::unique_ptr<Scene>> (*)(rhi::Device&);
+using SceneBuilder = asset::AssetResult<std::unique_ptr<Scene>> (*)(rojoRHI::Device&);
 
 struct SceneDescriptor {
     std::string_view stableId;
@@ -109,7 +109,7 @@ std::span<const std::string_view> sceneStableIds() {
 }
 
 //======================================================================================================================
-SceneLibrary::SceneLibrary(rhi::Device& device, uint32_t labInstances, uint32_t labOccluders,
+SceneLibrary::SceneLibrary(rojoRHI::Device& device, uint32_t labInstances, uint32_t labOccluders,
                            uint32_t labLights, uint32_t labLightPile)
     : m_device(device), m_labInstances(labInstances), m_labOccluders(labOccluders),
       m_labLights(labLights), m_labLightPile(labLightPile) {

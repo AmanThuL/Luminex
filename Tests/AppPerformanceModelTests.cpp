@@ -18,7 +18,7 @@ using namespace lmx::app;
 namespace {
 
 //======================================================================================================================
-PerformanceFrameSample sampleFor(uint64_t frameId, std::span<const rhi::PassTiming> timings,
+PerformanceFrameSample sampleFor(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings,
                                  uint32_t objectCount = 1, uint32_t drawCount = 1,
                                  uint32_t viewportWidth = 800, uint32_t viewportHeight = 600,
                                  uint32_t sceneTargetWidth = 1600,
@@ -103,10 +103,10 @@ TEST_CASE("performance model preserves the frame-interval rolling capacity", "[a
 TEST_CASE("performance model rolls up retired-frame pass timings without sampling one twice",
           "[app]") {
     PerformanceModel model;
-    const std::array first = {rhi::PassTiming{.label = "shadow", .gpuMilliseconds = 0.02},
-                              rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.20}};
-    const std::array second = {rhi::PassTiming{.label = "shadow", .gpuMilliseconds = 0.04},
-                               rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.40}};
+    const std::array first = {rojoRHI::PassTiming{.label = "shadow", .gpuMilliseconds = 0.02},
+                              rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.20}};
+    const std::array second = {rojoRHI::PassTiming{.label = "shadow", .gpuMilliseconds = 0.04},
+                               rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.40}};
 
     const PerformanceFrameSample sampleA = sampleFor(7, first);
     model.tick(0.3f, &sampleA);
@@ -126,10 +126,10 @@ TEST_CASE("performance model rolls up retired-frame pass timings without samplin
 // distinct, exactly as PassTimingHistory guarantees on its own.
 TEST_CASE("performance model preserves duplicate labels by schedule position", "[app]") {
     PerformanceModel model;
-    const std::array first = {rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
-                              rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.9}};
-    const std::array second = {rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.3},
-                               rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.7}};
+    const std::array first = {rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
+                              rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.9}};
+    const std::array second = {rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.3},
+                               rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.7}};
 
     const PerformanceFrameSample sampleA = sampleFor(1, first);
     model.tick(0.3f, &sampleA);
@@ -145,11 +145,11 @@ TEST_CASE("performance model preserves duplicate labels by schedule position", "
 //======================================================================================================================
 TEST_CASE("performance model resets every series when the compiled schedule changes", "[app]") {
     PerformanceModel model;
-    const std::array original = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0},
-                                 rhi::PassTiming{.label = "display", .gpuMilliseconds = 4.0}};
-    const std::array changed = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.2},
-                                rhi::PassTiming{.label = "bloom", .gpuMilliseconds = 0.4},
-                                rhi::PassTiming{.label = "display", .gpuMilliseconds = 0.6}};
+    const std::array original = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 2.0},
+                                 rojoRHI::PassTiming{.label = "display", .gpuMilliseconds = 4.0}};
+    const std::array changed = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.2},
+                                rojoRHI::PassTiming{.label = "bloom", .gpuMilliseconds = 0.4},
+                                rojoRHI::PassTiming{.label = "display", .gpuMilliseconds = 0.6}};
 
     const PerformanceFrameSample sampleA = sampleFor(1, original);
     model.tick(0.3f, &sampleA);
@@ -168,7 +168,7 @@ TEST_CASE("performance model evicts pass samples beyond the rolling capacity", "
     PerformanceModel model;
     for (uint64_t frame = 1; frame <= PassTimingHistory::kSampleCapacity + 1; ++frame) {
         const std::array timing = {
-            rhi::PassTiming{.label = "scene", .gpuMilliseconds = static_cast<double>(frame)}};
+            rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = static_cast<double>(frame)}};
         const PerformanceFrameSample sample = sampleFor(frame, timing);
         model.tick(0.3f, &sample);
     }
@@ -184,12 +184,13 @@ TEST_CASE("performance model evicts pass samples beyond the rolling capacity", "
 // resolution, or transient bytes that came with it take effect.
 TEST_CASE("performance model ignores repeated or regressing frame ids in full", "[app]") {
     PerformanceModel model;
-    const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timingsA = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA = sampleFor(5, timingsA, /*objectCount=*/3);
     model.tick(0.3f, &sampleA);
     const PerformanceSnapshot afterFirst = model.snapshot();
 
-    const std::array timingsRepeat = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 99.0}};
+    const std::array timingsRepeat = {
+        rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 99.0}};
     const PerformanceFrameSample repeat = sampleFor(5, timingsRepeat, /*objectCount=*/77);
     model.tick(0.3f, &repeat);
     const PerformanceFrameSample regressed = sampleFor(3, timingsRepeat, /*objectCount=*/88);
@@ -206,9 +207,9 @@ TEST_CASE("performance model ignores repeated or regressing frame ids in full", 
 //======================================================================================================================
 TEST_CASE("performance model's timed pass sum adds the displayed pass averages", "[app]") {
     PerformanceModel model;
-    const std::array timings = {rhi::PassTiming{.label = "shadow", .gpuMilliseconds = 0.5},
-                                rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.5},
-                                rhi::PassTiming{.label = "display", .gpuMilliseconds = 0.25}};
+    const std::array timings = {rojoRHI::PassTiming{.label = "shadow", .gpuMilliseconds = 0.5},
+                                rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.5},
+                                rojoRHI::PassTiming{.label = "display", .gpuMilliseconds = 0.25}};
     const PerformanceFrameSample sample = sampleFor(1, timings);
     model.tick(0.3f, &sample);
 
@@ -227,14 +228,14 @@ TEST_CASE("performance model's timed pass sum adds the displayed pass averages",
 TEST_CASE("performance model joins counts, resolution, and transient bytes to their frame",
           "[app]") {
     PerformanceModel model;
-    const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timingsA = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA =
         sampleFor(1, timingsA, /*objectCount=*/5, /*drawCount=*/6, /*viewportWidth=*/800,
                   /*viewportHeight=*/600, /*sceneTargetWidth=*/1600, /*sceneTargetHeight=*/1200,
                   /*requested=*/1000, /*highWater=*/800, /*aliasSavings=*/200);
     model.tick(0.3f, &sampleA);
 
-    const std::array timingsB = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 3.0}};
+    const std::array timingsB = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 3.0}};
     const PerformanceFrameSample sampleB =
         sampleFor(2, timingsB, /*objectCount=*/9, /*drawCount=*/11, /*viewportWidth=*/1024,
                   /*viewportHeight=*/768, /*sceneTargetWidth=*/2048, /*sceneTargetHeight=*/1536,
@@ -258,7 +259,7 @@ TEST_CASE("performance model joins counts, resolution, and transient bytes to th
 //======================================================================================================================
 TEST_CASE("performance model freezes every field together while paused", "[app]") {
     PerformanceModel model;
-    const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timingsA = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA = sampleFor(1, timingsA, /*objectCount=*/5);
     model.tick(0.3f, &sampleA);
     const PerformanceSnapshot before = model.snapshot();
@@ -267,7 +268,7 @@ TEST_CASE("performance model freezes every field together while paused", "[app]"
     model.setPaused(true);
     REQUIRE(model.paused());
 
-    const std::array timingsB = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 9.0}};
+    const std::array timingsB = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 9.0}};
     const PerformanceFrameSample sampleB = sampleFor(2, timingsB, /*objectCount=*/999);
     model.tick(0.3f, &sampleB);
     model.tick(0.3f, &sampleB);
@@ -286,7 +287,7 @@ TEST_CASE("performance model freezes every field together while paused", "[app]"
 //======================================================================================================================
 TEST_CASE("performance model resume waits for new data and starts a fresh window", "[app]") {
     PerformanceModel model;
-    const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timingsA = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA = sampleFor(1, timingsA, /*objectCount=*/5);
     model.tick(0.3f, &sampleA);
 
@@ -303,7 +304,7 @@ TEST_CASE("performance model resume waits for new data and starts a fresh window
     REQUIRE(model.snapshot().waitingForSamples);
 
     // A new sample after resume updates every field of the snapshot together.
-    const std::array timingsB = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 9.0}};
+    const std::array timingsB = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 9.0}};
     const PerformanceFrameSample sampleB = sampleFor(2, timingsB, /*objectCount=*/42);
     model.tick(0.3f, &sampleB);
 
@@ -317,7 +318,7 @@ TEST_CASE("performance model resume waits for new data and starts a fresh window
 TEST_CASE("performance model clears both histories and reports waiting until the next sample",
           "[app]") {
     PerformanceModel model;
-    const std::array timingsA = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timingsA = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sampleA = sampleFor(1, timingsA);
     model.tick(0.3f, &sampleA);
     REQUIRE_FALSE(model.snapshot().waitingForSamples);
@@ -333,7 +334,7 @@ TEST_CASE("performance model clears both histories and reports waiting until the
 
     model.tick(0.3f, &sampleA);
     REQUIRE(model.snapshot().waitingForSamples);
-    const std::array timingsAgain = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
+    const std::array timingsAgain = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
     const PerformanceFrameSample sampleAgain = sampleFor(2, timingsAgain);
     model.tick(0.3f, &sampleAgain);
 
@@ -346,7 +347,7 @@ TEST_CASE("performance model clears both histories and reports waiting until the
 //======================================================================================================================
 TEST_CASE("performance model clear takes effect immediately even while paused", "[app]") {
     PerformanceModel model;
-    const std::array timings = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timings = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     const PerformanceFrameSample sample = sampleFor(1, timings);
     model.tick(0.3f, &sample);
     model.setPaused(true);
@@ -363,7 +364,7 @@ TEST_CASE("performance model clear takes effect immediately even while paused", 
 //======================================================================================================================
 TEST_CASE("performance frozen clear resume rejects frames observed while frozen", "[app]") {
     PerformanceModel model;
-    const std::array timing = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.0}};
+    const std::array timing = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.0}};
     auto sample = sampleFor(1, timing);
     sample.renderPixelWidth = 640;
     sample.renderPixelHeight = 360;
@@ -397,7 +398,7 @@ TEST_CASE("performance frozen clear resume rejects frames observed while frozen"
 TEST_CASE("performance context changes reject old scene retirements without changing frozen data",
           "[app]") {
     PerformanceModel model;
-    const std::array timing = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    const std::array timing = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
     auto sample = sampleFor(1, timing, 50);
     model.tick(0.3f, &sample);
     model.setPaused(true);
@@ -433,7 +434,7 @@ TEST_CASE("performance mode re-entry rejects delayed frames from the first visit
     const auto firstA = revisions.observe(7);
     REQUIRE(revisions.observe(7) == firstA);
     model.setContextEpoch(firstA);
-    const std::array timings = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
+    const std::array timings = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 2.0}};
     auto sample = sampleFor(10, timings);
     sample.contextEpoch = firstA;
     model.tick(0.3f, &sample);

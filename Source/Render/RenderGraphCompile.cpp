@@ -30,8 +30,8 @@ namespace {
 // is device-private by construction, since it can neither be uploaded to nor read back.
 struct AliasClass {
     bool isTexture = true;
-    rhi::Format format = rhi::Format::Unknown;
-    rhi::TextureKind kind = rhi::TextureKind::Tex2D;
+    rojoRHI::Format format = rojoRHI::Format::Unknown;
+    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D;
     uint32_t width = 0;
     uint32_t height = 0;
     uint32_t mipLevels = 0;
@@ -47,8 +47,8 @@ struct AliasClass {
 };
 
 //======================================================================================================================
-AliasClass aliasClassOf(bool isTexture, rhi::Format format, const TransientTextureDesc& texture,
-                        const TransientBufferDesc& buffer, const rhi::SizeAlign& footprint) {
+AliasClass aliasClassOf(bool isTexture, rojoRHI::Format format, const TransientTextureDesc& texture,
+                        const TransientBufferDesc& buffer, const rojoRHI::SizeAlign& footprint) {
     if (!isTexture) {
         return {.isTexture = false,
                 .storageRead = buffer.storageRead,
@@ -323,10 +323,11 @@ RenderGraph::AliasPlan RenderGraph::planTransients(const Schedule& schedule) con
             // The RHI is asked what the descriptor costs rather than the descriptor being measured
             // here: only the backend knows the layout it will choose, and a plan built on a guess
             // would place resources where they do not fit.
-            rhi::Device& device = m_transients->device();
-            const rhi::SizeAlign footprint = resource.kind == ResourceKind::Texture
-                                                 ? device.textureSizeAlign(textureDescOf(resource))
-                                                 : device.bufferSizeAlign(bufferDescOf(resource));
+            rojoRHI::Device& device = m_transients->device();
+            const rojoRHI::SizeAlign footprint =
+                resource.kind == ResourceKind::Texture
+                    ? device.textureSizeAlign(textureDescOf(resource))
+                    : device.bufferSizeAlign(bufferDescOf(resource));
             entry.size = footprint.size;
             entry.alignment = footprint.alignment;
             klass = aliasClassOf(resource.kind == ResourceKind::Texture, resource.format,

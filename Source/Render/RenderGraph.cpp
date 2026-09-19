@@ -32,8 +32,8 @@ constexpr uint32_t kCubeFaceCount = 6;
 // The primary and every extra go through it, so the store rule and its message are written once
 // and a slot cannot be filled two subtly different ways. `what` names the attachment in that
 // message -- "its colour attachment", "extra color attachment 1".
-void fillColorTarget(const ColorAttachment& attachment, rhi::Texture* texture,
-                     std::string_view passLabel, std::string_view what, rhi::Texture*& target,
+void fillColorTarget(const ColorAttachment& attachment, rojoRHI::Texture* texture,
+                     std::string_view passLabel, std::string_view what, rojoRHI::Texture*& target,
                      bool& clear, float (&clearColor)[4]) {
     LMX_ASSERT(attachment.store == StoreOp::Store,
                std::format("pass '{}' discards {}, which this RHI cannot express -- a colour "
@@ -73,38 +73,38 @@ std::string_view roleName(UseRole role) {
 
 //======================================================================================================================
 // Omitting default lets -Wswitch catch a newly added format.
-std::string_view formatName(rhi::Format format) {
+std::string_view formatName(rojoRHI::Format format) {
     switch (format) {
-    case rhi::Format::Unknown:
+    case rojoRHI::Format::Unknown:
         return "Unknown";
-    case rhi::Format::BGRA8Unorm:
+    case rojoRHI::Format::BGRA8Unorm:
         return "BGRA8Unorm";
-    case rhi::Format::RGBA8Unorm:
+    case rojoRHI::Format::RGBA8Unorm:
         return "RGBA8Unorm";
-    case rhi::Format::RGBA8Unorm_sRGB:
+    case rojoRHI::Format::RGBA8Unorm_sRGB:
         return "RGBA8Unorm_sRGB";
-    case rhi::Format::RGBA16Float:
+    case rojoRHI::Format::RGBA16Float:
         return "RGBA16Float";
-    case rhi::Format::R16Float:
+    case rojoRHI::Format::R16Float:
         return "R16Float";
-    case rhi::Format::R32Float:
+    case rojoRHI::Format::R32Float:
         return "R32Float";
-    case rhi::Format::RG16Float:
+    case rojoRHI::Format::RG16Float:
         return "RG16Float";
-    case rhi::Format::R8Unorm:
+    case rojoRHI::Format::R8Unorm:
         return "R8Unorm";
-    case rhi::Format::BC1Unorm:
+    case rojoRHI::Format::BC1Unorm:
         return "BC1Unorm";
-    case rhi::Format::BC1Unorm_sRGB:
+    case rojoRHI::Format::BC1Unorm_sRGB:
         return "BC1Unorm_sRGB";
-    case rhi::Format::D32Float:
+    case rojoRHI::Format::D32Float:
         return "D32Float";
     }
     return "Unknown";
 }
 
 //======================================================================================================================
-std::string describeRange(const rhi::TextureSubresourceRange& range) {
+std::string describeRange(const rojoRHI::TextureSubresourceRange& range) {
     const auto axis = [](std::string_view name, uint32_t base, uint32_t count, uint32_t sentinel) {
         if (count == sentinel) {
             return std::format("{}[{}..]", name, base);
@@ -113,12 +113,12 @@ std::string describeRange(const rhi::TextureSubresourceRange& range) {
         return std::format("{}[{}..{}]", name, base, last);
     };
     return std::format(
-        "{} {}", axis("mips", range.baseMipLevel, range.mipLevelCount, rhi::kAllMipLevels),
-        axis("layers", range.baseArrayLayer, range.arrayLayerCount, rhi::kAllArrayLayers));
+        "{} {}", axis("mips", range.baseMipLevel, range.mipLevelCount, rojoRHI::kAllMipLevels),
+        axis("layers", range.baseArrayLayer, range.arrayLayerCount, rojoRHI::kAllArrayLayers));
 }
 
 //======================================================================================================================
-GraphResult<rhi::Texture*> PassResources::texture(GraphTexture handle) const {
+GraphResult<rojoRHI::Texture*> PassResources::texture(GraphTexture handle) const {
     LMX_ASSERT(handle.index < m_graph->m_resources.size(), "GraphTexture names no resource");
     const RenderGraph::Resource& resource = m_graph->m_resources[handle.index];
     LMX_ASSERT(resource.kind == RenderGraph::ResourceKind::Texture,
@@ -140,7 +140,7 @@ GraphResult<rhi::Texture*> PassResources::texture(GraphTexture handle) const {
 }
 
 //======================================================================================================================
-GraphResult<rhi::Buffer*> PassResources::buffer(GraphBuffer handle) const {
+GraphResult<rojoRHI::Buffer*> PassResources::buffer(GraphBuffer handle) const {
     LMX_ASSERT(handle.index < m_graph->m_resources.size(), "GraphBuffer names no resource");
     const RenderGraph::Resource& resource = m_graph->m_resources[handle.index];
     LMX_ASSERT(resource.kind == RenderGraph::ResourceKind::Buffer,
@@ -160,9 +160,9 @@ GraphResult<rhi::Buffer*> PassResources::buffer(GraphBuffer handle) const {
 }
 
 //======================================================================================================================
-GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format format,
+GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
                                         std::string_view name) {
-    LMX_ASSERT(texture.format() == rhi::Format::Unknown || texture.format() == format,
+    LMX_ASSERT(texture.format() == rojoRHI::Format::Unknown || texture.format() == format,
                std::format("imported texture '{}' reports format {}, not the declared {}", name,
                            formatName(texture.format()), formatName(format)));
     // Shape is read once, here, because a texture's extent and chain are fixed for its lifetime and
@@ -179,9 +179,9 @@ GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format forma
 }
 
 //======================================================================================================================
-GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format format,
-                                        std::string_view name, rhi::TextureUse previousUse) {
-    LMX_ASSERT(texture.format() == rhi::Format::Unknown || texture.format() == format,
+GraphTexture RenderGraph::importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                                        std::string_view name, rojoRHI::TextureUse previousUse) {
+    LMX_ASSERT(texture.format() == rojoRHI::Format::Unknown || texture.format() == format,
                std::format("imported texture '{}' reports format {}, not the declared {}", name,
                            formatName(texture.format()), formatName(format)));
     m_resources.push_back({.kind = ResourceKind::Texture,
@@ -197,15 +197,15 @@ GraphTexture RenderGraph::importTexture(rhi::Texture& texture, rhi::Format forma
 }
 
 //======================================================================================================================
-GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name) {
+GraphBuffer RenderGraph::importBuffer(rojoRHI::Buffer& buffer, std::string_view name) {
     m_resources.push_back(
         {.kind = ResourceKind::Buffer, .name = std::string(name), .buffer = &buffer});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
 }
 
 //======================================================================================================================
-GraphBuffer RenderGraph::importBuffer(rhi::Buffer& buffer, std::string_view name,
-                                      rhi::BufferUse previousUse) {
+GraphBuffer RenderGraph::importBuffer(rojoRHI::Buffer& buffer, std::string_view name,
+                                      rojoRHI::BufferUse previousUse) {
     m_resources.push_back({.kind = ResourceKind::Buffer,
                            .name = std::string(name),
                            .buffer = &buffer,
@@ -219,15 +219,16 @@ GraphTexture RenderGraph::createTexture(const TransientTextureDesc& desc, std::s
                std::format("transient texture '{}' is declared on a graph with no TransientPool: "
                            "a graph that creates resources needs somewhere to place them",
                            name));
-    m_resources.push_back({.kind = ResourceKind::Texture,
-                           .name = std::string(name),
-                           .format = desc.format,
-                           .width = desc.width,
-                           .height = desc.height,
-                           .mipLevels = desc.mipLevels,
-                           .arrayLayers = desc.kind == rhi::TextureKind::Cube ? kCubeFaceCount : 1,
-                           .transient = true,
-                           .textureDesc = desc});
+    m_resources.push_back(
+        {.kind = ResourceKind::Texture,
+         .name = std::string(name),
+         .format = desc.format,
+         .width = desc.width,
+         .height = desc.height,
+         .mipLevels = desc.mipLevels,
+         .arrayLayers = desc.kind == rojoRHI::TextureKind::Cube ? kCubeFaceCount : 1,
+         .transient = true,
+         .textureDesc = desc});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
 }
 
@@ -245,7 +246,7 @@ GraphBuffer RenderGraph::createBuffer(const TransientBufferDesc& desc, std::stri
 }
 
 //======================================================================================================================
-rhi::TextureDesc RenderGraph::textureDescOf(const Resource& resource) const {
+rojoRHI::TextureDesc RenderGraph::textureDescOf(const Resource& resource) const {
     const TransientTextureDesc& desc = resource.textureDesc;
     return {.width = desc.width,
             .height = desc.height,
@@ -261,7 +262,7 @@ rhi::TextureDesc RenderGraph::textureDescOf(const Resource& resource) const {
 }
 
 //======================================================================================================================
-rhi::BufferDesc RenderGraph::bufferDescOf(const Resource& resource) const {
+rojoRHI::BufferDesc RenderGraph::bufferDescOf(const Resource& resource) const {
     return {.size = resource.bufferDesc.size,
             .storageRead = resource.bufferDesc.storageRead,
             .storageWrite = resource.bufferDesc.storageWrite,
@@ -467,7 +468,7 @@ bool RenderGraph::passDeclares(uint32_t passIndex, uint32_t resourceIndex, uint3
 }
 
 //======================================================================================================================
-CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t frameId) {
+CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_t frameId) {
     GraphResult<CompiledFrameRecord> record = compileFrame(frameId);
     LMX_ASSERT(record.has_value(), record.error().message);
     placeTransients(record->debug);
@@ -483,12 +484,12 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
                record->debug.transitions[nextTransition].beforePass == passIndex) {
             const DebugTransition& transition = record->debug.transitions[nextTransition];
             const Resource& resource = m_resources[transition.resource];
-            const rhi::BarrierOptions options = transition.aliasedFrom
-                                                    ? rhi::BarrierOptions::ResourceAlias
-                                                    : rhi::BarrierOptions::None;
+            const rojoRHI::BarrierOptions options = transition.aliasedFrom
+                                                        ? rojoRHI::BarrierOptions::ResourceAlias
+                                                        : rojoRHI::BarrierOptions::None;
             if (transition.kind == GraphResourceKind::Buffer) {
-                commands.bufferBarrier(*resource.buffer, rhi::BufferRange{}, transition.bufferFrom,
-                                       transition.bufferTo, options);
+                commands.bufferBarrier(*resource.buffer, rojoRHI::BufferRange{},
+                                       transition.bufferFrom, transition.bufferTo, options);
             } else {
                 commands.textureBarrier(*resource.texture, transition.range, transition.textureFrom,
                                         transition.textureTo, options);
@@ -502,7 +503,7 @@ CompiledFrameRecord RenderGraph::execute(rhi::CommandList& commands, uint64_t fr
                        std::format("pass '{}' is a raster pass that declares no attachment: a pass "
                                    "with nothing to render into is a compute or copy pass",
                                    pass.label));
-            rhi::RenderPassDesc desc;
+            rojoRHI::RenderPassDesc desc;
             desc.label = pass.label;
             if (pass.color) {
                 fillColorTarget(*pass.color, m_resources[pass.color->handle.index].texture,
@@ -574,7 +575,7 @@ void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
     // Reserving before placing anything is what lets the pool decide in one step whether the frame
     // fits the generation it holds -- and a failure here is a device that could not give the frame
     // its memory, which no declaration can recover from.
-    const rhi::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
+    const rojoRHI::Result<void> reserved = m_transients->reserve(debug.memory.highWater);
     LMX_ASSERT(reserved.has_value(), reserved.error().message);
     if (debug.memory.highWater == 0) {
         return;
@@ -586,12 +587,12 @@ void RenderGraph::placeTransients(const CompiledFrameDebug& debug) {
         }
         Resource& resource = m_resources[entry.resource];
         if (resource.kind == ResourceKind::Texture) {
-            const rhi::Result<rhi::Texture*> texture =
+            const rojoRHI::Result<rojoRHI::Texture*> texture =
                 m_transients->placeTexture(textureDescOf(resource), entry.offset);
             LMX_ASSERT(texture.has_value(), texture.error().message);
             resource.texture = *texture;
         } else {
-            const rhi::Result<rhi::Buffer*> buffer =
+            const rojoRHI::Result<rojoRHI::Buffer*> buffer =
                 m_transients->placeBuffer(bufferDescOf(resource), entry.offset);
             LMX_ASSERT(buffer.has_value(), buffer.error().message);
             resource.buffer = *buffer;

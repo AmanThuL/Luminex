@@ -93,7 +93,7 @@ inline glm::vec2 motionAt(const std::vector<uint8_t>& bytes, uint32_t x, uint32_
 //======================================================================================================================
 inline std::vector<uint8_t> readMotion(Renderer& renderer) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
-    lmx::rhi::Texture* motion = renderer.motionTarget();
+    rojoRHI::Texture* motion = renderer.motionTarget();
     REQUIRE(motion != nullptr);
     motion->readback(pixels.data(), pixels.size());
     return pixels;
@@ -127,9 +127,9 @@ inline glm::mat4 facingPlaneModel(float z) {
 //======================================================================================================================
 // One declared and executed frame through the renderer's own graph, which is the path --screenshot
 // and the GPU tests take.
-inline void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
+inline void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                         const FixtureSceneView& view) {
-    lmx::rhi::CommandList& commands = device.beginFrame();
+    rojoRHI::CommandList& commands = device.beginFrame();
     renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
                     /*barrierForSampling=*/false);
     device.endFrame(nullptr);
@@ -140,9 +140,9 @@ inline void renderFrame(lmx::rhi::Device& device, Renderer& renderer, const Came
 // The same frame without the drain: exactly what App/main.cpp submits every frame, so a temporal
 // resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
 // the shipped loop never performs.
-inline void renderFrameInFlight(lmx::rhi::Device& device, Renderer& renderer, const Camera& camera,
+inline void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                                 const FixtureSceneView& view) {
-    lmx::rhi::CommandList& commands = device.beginFrame();
+    rojoRHI::CommandList& commands = device.beginFrame();
     renderer.render(commands, camera, lmx::test::prepareSceneView(view, device),
                     /*barrierForSampling=*/false);
     device.endFrame(nullptr);
@@ -207,7 +207,7 @@ using lmx::render::TemporalDebugView;
 //======================================================================================================================
 // One RGBA16Float target, widened to floats. Both the colour history and the raw scene target are
 // half-precision, so a comparison between them has to speak the same units the shader wrote.
-inline std::vector<glm::vec4> readHalf4(lmx::rhi::Texture& texture) {
+inline std::vector<glm::vec4> readHalf4(rojoRHI::Texture& texture) {
     std::vector<uint8_t> bytes(kScenarioPixels * 8);
     texture.readback(bytes.data(), bytes.size());
     std::vector<glm::vec4> pixels(kScenarioPixels);
@@ -288,7 +288,7 @@ using PerFrame = std::function<void(uint32_t frame, FixtureSceneView& view, Came
 // sequence's scale and a PerFrame may set `view.temporal.renderScale` to change it per frame,
 // which is what the scale-change scenarios drive the extent with.
 inline std::vector<ScenarioFrame>
-renderSequence(lmx::rhi::Device& device, Renderer& renderer, uint32_t frames,
+renderSequence(rojoRHI::Device& device, Renderer& renderer, uint32_t frames,
                ReconstructionMode mode, const FixtureSceneView& base, const Camera& baseCamera,
                TemporalDebugView debugView, const PerFrame& perFrame) {
     std::vector<ScenarioFrame> result;

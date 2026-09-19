@@ -18,7 +18,7 @@ rule("slang2metallib")
         import("core.project.project")
         for _, other in pairs(project.targets()) do
             if other:name() ~= target:name()
-               and (other:rule("slang2metallib") or other:rule("rhi_slang2metallib"))
+               and (other:rule("slang2metallib") or other:rule("rojorhi_slang2metallib"))
                and path.absolute(other:targetdir()) == path.absolute(target:targetdir()) then
                 os.raise("slang2metallib: targets '%s' and '%s' share targetdir '%s'; give one "
                          .. "its own set_targetdir", target:name(), other:name(), target:targetdir())

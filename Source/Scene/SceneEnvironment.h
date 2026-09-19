@@ -6,9 +6,9 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "RHI/RHI.h"
 #include "Scene/IblUpload.h"
 #include "Scene/Scene.h"
+#include <rojoRHI/RHI.h>
 
 #include <memory>
 #include <string_view>
@@ -30,8 +30,8 @@ namespace lmx::scene {
 /// `analyticLights` false zeroes the rig's strengths, for a scene whose environment already
 /// contains its key lights and would otherwise be lit twice. Ownership of `skyCubemap` moves into
 /// `scene`. Returns `AssetErrorCode::UploadFailed` if any GPU resource cannot be created.
-asset::AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
-                                           std::unique_ptr<rhi::Texture> skyCubemap,
+asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene,
+                                           std::unique_ptr<rojoRHI::Texture> skyCubemap,
                                            const asset::ibl::CpuCubemap& environment,
                                            bool analyticLights, std::string_view label,
                                            ibl::GenerationOptions options = {});
@@ -40,7 +40,7 @@ asset::AssetResult<void> attachEnvironment(rhi::Device& device, Scene& scene,
 /// shares: one sRGB texel of light overcast sky, decoded once so the sky pass and the generated
 /// image-based lighting describe the same radiance, with the analytic rig on. `label` prefixes the
 /// created GPU objects' debug labels.
-asset::AssetResult<void> attachNeutralEnvironment(rhi::Device& device, Scene& scene,
+asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene& scene,
                                                   std::string_view label);
 
 } // namespace lmx::scene

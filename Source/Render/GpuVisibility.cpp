@@ -10,7 +10,7 @@
 
 namespace lmx::render {
 //======================================================================================================================
-rhi::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rhi::Device& device) {
+rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::Device& device) {
     std::unique_ptr<GpuVisibility> self(new GpuVisibility(device));
     constexpr std::array names{"VisibilityClassify", "VisibilityScan", "VisibilityEmit",
                                "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
@@ -44,15 +44,15 @@ rhi::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rhi::Device& d
 }
 
 //======================================================================================================================
-rhi::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables& tables) {
+rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables& tables) {
     const auto needed = std::max<uint32_t>(1, static_cast<uint32_t>(tables.candidates.size()));
     if (needed > slot.capacity) {
         uint32_t capacity = std::max(1u, slot.capacity);
         while (capacity < needed)
             capacity *= 2;
         Slot replacement;
-        auto allocate = [&](std::unique_ptr<rhi::Buffer>& buffer, uint64_t bytes, const char* name,
-                            bool writable) -> rhi::Result<void> {
+        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
+                            const char* name, bool writable) -> rojoRHI::Result<void> {
             auto result = m_device.createBuffer(
                 {.size = bytes,
                  .storageRead = true,
@@ -89,7 +89,7 @@ rhi::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
         // Only the paced current slot grows: every replaced resource has already retired.
         slot = std::move(replacement);
     }
-    auto upload = [](rhi::Buffer& buffer, auto& previous, const auto& data) {
+    auto upload = [](rojoRHI::Buffer& buffer, auto& previous, const auto& data) {
         const auto bytes = std::as_bytes(std::span(data));
         if (previous.size() == bytes.size() &&
             std::equal(previous.begin(), previous.end(), bytes.begin()))
@@ -106,7 +106,7 @@ rhi::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTables&
 }
 
 //======================================================================================================================
-GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList& commands,
+GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                             const SceneView& view, const FrustumPlanes& planes,
                                             const PreparedSubmission& submission,
                                             GraphBuffer instances, GraphBuffer meshes,
@@ -149,15 +149,16 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
                                                             row, view.visibilityEnabled, v == 1));
             }
     m_pending.push_back(std::move(pending));
-    auto import = [&](rhi::Buffer& buffer, const char* name, rhi::BufferUse use) {
+    auto import = [&](rojoRHI::Buffer& buffer, const char* name, rojoRHI::BufferUse use) {
         return slot.used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
     };
     const auto candidates = graph.importBuffer(*slot.candidates, "lmx.draw.candidates");
     const auto runs = graph.importBuffer(*slot.runs, "lmx.draw.runs");
     const auto chunks = graph.importBuffer(*slot.chunks, "lmx.draw.chunks");
     const auto views = graph.importBuffer(*slot.views, "lmx.draw.views");
-    const auto states = import(*slot.states, "lmx.draw.states", rhi::BufferUse::StorageRead);
-    const auto counters = import(*slot.counters, "lmx.draw.counters", rhi::BufferUse::StorageWrite);
+    const auto states = import(*slot.states, "lmx.draw.states", rojoRHI::BufferUse::StorageRead);
+    const auto counters =
+        import(*slot.counters, "lmx.draw.counters", rojoRHI::BufferUse::StorageWrite);
     const auto chunkBytes = std::max<uint64_t>(4, tables.chunks.size() * 4);
     const auto counts = graph.createBuffer(
         {.size = chunkBytes, .storageRead = true, .storageWrite = true}, "lmx.draw.chunkCounts");
@@ -177,7 +178,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
         commands.bindBuffer(index, **resources.buffer(handle));
     };
     auto bindStorage = [&commands](const PassResources& resources, uint32_t index,
-                                   GraphBuffer handle, rhi::StorageAccess access) {
+                                   GraphBuffer handle, rojoRHI::StorageAccess access) {
         commands.bindStorageBuffer(index, **resources.buffer(handle), access);
     };
     if (!view.tables.instances) {
@@ -203,9 +204,9 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
             bindRead(resources, 3, instances);
             bindRead(resources, 5, views);
             commands.bindFrameData(6, params);
-            bindStorage(resources, 7, states, rhi::StorageAccess::Write);
-            bindStorage(resources, 8, nextVersion(counters), rhi::StorageAccess::ReadWrite);
-            bindStorage(resources, 9, counts, rhi::StorageAccess::Write);
+            bindStorage(resources, 7, states, rojoRHI::StorageAccess::Write);
+            bindStorage(resources, 8, nextVersion(counters), rojoRHI::StorageAccess::ReadWrite);
+            bindStorage(resources, 9, counts, rojoRHI::StorageAccess::Write);
             commands.dispatch(std::max(1u, chunkCount), 1, 1);
         });
     if (params.layout) {
@@ -221,8 +222,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
                                  bindRead(resources, 2, chunks);
                                  bindRead(resources, 5, views);
                                  bindStorage(resources, 9, nextVersion(counts),
-                                             rhi::StorageAccess::Read);
-                                 bindStorage(resources, 10, offsets, rhi::StorageAccess::Write);
+                                             rojoRHI::StorageAccess::Read);
+                                 bindStorage(resources, 10, offsets, rojoRHI::StorageAccess::Write);
                                  commands.dispatch(std::max(1u, runCount), 1, 1);
                              });
     }
@@ -243,13 +244,13 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rhi::CommandList
             bindRead(resources, 4, meshes);
             bindRead(resources, 5, views);
             commands.bindFrameData(6, params);
-            bindStorage(resources, 7, nextVersion(states), rhi::StorageAccess::Read);
+            bindStorage(resources, 7, nextVersion(states), rojoRHI::StorageAccess::Read);
             bindStorage(resources, 8, nextVersion(nextVersion(counters)),
-                        rhi::StorageAccess::ReadWrite);
+                        rojoRHI::StorageAccess::ReadWrite);
             if (params.layout)
-                bindStorage(resources, 10, nextVersion(offsets), rhi::StorageAccess::Read);
-            bindStorage(resources, 11, rows, rhi::StorageAccess::Write);
-            bindStorage(resources, 12, arguments, rhi::StorageAccess::Write);
+                bindStorage(resources, 10, nextVersion(offsets), rojoRHI::StorageAccess::Read);
+            bindStorage(resources, 11, rows, rojoRHI::StorageAccess::Write);
+            bindStorage(resources, 12, arguments, rojoRHI::StorageAccess::Write);
             commands.dispatch(std::max(1u, chunkCount), 1, 1);
         });
     graph.readbackBuffer(nextVersion(nextVersion(nextVersion(counters))));

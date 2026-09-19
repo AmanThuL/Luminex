@@ -5,11 +5,11 @@
 
 #pragma once
 
-#include "RHI/RHI.h"
 #include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
 #include "Render/TemporalHistory.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -47,21 +47,21 @@ struct SceneStageInputs {
     std::array<float, 4> clearColor; ///< Authored sRGB color; alpha is passed through.
     float timeSeconds;               ///< Frame clock uploaded to PassUniforms.time.
     bool temporalEnabled;            ///< Selects motion pipelines and extra attachments.
-    rhi::Texture* whiteTexture;      ///< Neutral material-factor fallback.
-    rhi::Texture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
-    rhi::Texture* blackCubeTexture;  ///< Zero-radiance environment fallback.
-    rhi::Texture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
-    rhi::Sampler* linearSampler;     ///< Material sampler.
-    rhi::Sampler* shadowSampler;     ///< Reversed-depth comparison sampler.
-    rhi::Sampler* iblSampler;        ///< Clamped environment sampler.
+    rojoRHI::Texture* whiteTexture;  ///< Neutral material-factor fallback.
+    rojoRHI::Texture* flatNormalTexture; ///< Tangent-space positive-Z normal fallback.
+    rojoRHI::Texture* blackCubeTexture;  ///< Zero-radiance environment fallback.
+    rojoRHI::Texture* zeroDfgTexture;    ///< Zero split-sum reconstruction fallback.
+    rojoRHI::Sampler* linearSampler;     ///< Material sampler.
+    rojoRHI::Sampler* shadowSampler;     ///< Reversed-depth comparison sampler.
+    rojoRHI::Sampler* iblSampler;        ///< Clamped environment sampler.
 };
 
 /// Owns scene and sky pipeline variants; Renderer keeps it alive through graph execution.
 class SceneStage {
 public:
     /// Creates all variants for the scene color format; propagates GPU creation errors.
-    static rhi::Result<std::unique_ptr<SceneStage>> create(rhi::Device& device,
-                                                           rhi::Format sceneColorFormat);
+    static rojoRHI::Result<std::unique_ptr<SceneStage>> create(rojoRHI::Device& device,
+                                                               rojoRHI::Format sceneColorFormat);
 
     /// Registers draw and shared table layouts independently to retain the capture schema's
     /// serialized ordering.
@@ -71,34 +71,34 @@ public:
 
     /// Declares scene geometry followed by sky and returns the written color version. Copies
     /// frame values; borrows commands and view resources through execution on those commands.
-    GraphTexture declare(RenderGraph& graph, rhi::CommandList& commands, const SceneView& view,
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                          const SceneStageInputs& inputs);
 
 private:
     SceneStage() = default;
     // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
     // graph so zero-light declarations retain their resource and pass topology.
-    std::unique_ptr<rhi::Buffer> m_fallbackLightRows;
-    std::unique_ptr<rhi::Buffer> m_fallbackClusterGrid;
-    std::unique_ptr<rhi::Buffer> m_fallbackClusterIndices;
-    std::unique_ptr<rhi::ShaderLibrary> m_sceneLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_sceneAutoLibrary;
-    std::array<std::unique_ptr<rhi::ShaderLibrary>, 2> m_maskSceneLibraries;
-    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 16> m_maskScenePipelines;
-    std::unique_ptr<rhi::ShaderLibrary> m_skyLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_skyAutoLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAuto;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAuto;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAuto;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_scenePipelineAutoMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineMotion;
-    std::unique_ptr<rhi::GraphicsPipeline> m_skyPipelineAutoMotion;
+    std::unique_ptr<rojoRHI::Buffer> m_fallbackLightRows;
+    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterGrid;
+    std::unique_ptr<rojoRHI::Buffer> m_fallbackClusterIndices;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_sceneLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_sceneAutoLibrary;
+    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 2> m_maskSceneLibraries;
+    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 16> m_maskScenePipelines;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_skyLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_skyAutoLibrary;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipeline;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipeline;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAuto;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAuto;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipeline;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAuto;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineMotion;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineMotion;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_scenePipelineAutoMotion;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_sceneWireframePipelineAutoMotion;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineMotion;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_skyPipelineAutoMotion;
 };
 
 } // namespace lmx::render

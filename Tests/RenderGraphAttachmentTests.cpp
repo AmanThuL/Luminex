@@ -9,9 +9,9 @@ TEST_CASE("an extra color attachment produces the next version of its resource",
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -42,9 +42,9 @@ TEST_CASE("PassResources resolves an extra color attachment", "[render][graph]")
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -52,7 +52,7 @@ TEST_CASE("PassResources resolves an extra color attachment", "[render][graph]")
     graph.addPass("lmx.pass.scene", scene, kNoWork);
 
     const PassResources resources = graph.passResources(0);
-    const GraphResult<rhi::Texture*> resolved = resources.texture(motionVectors);
+    const GraphResult<rojoRHI::Texture*> resolved = resources.texture(motionVectors);
     INFO(errorOf(resolved));
     REQUIRE(resolved.has_value());
     REQUIRE(*resolved == &motion);
@@ -66,9 +66,9 @@ TEST_CASE("execute fills the RHI descriptor's extra color attachments", "[render
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     RecordingCommandList commands;
 
@@ -98,9 +98,9 @@ TEST_CASE("an extra color attachment that loads clears nothing", "[render][graph
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     RecordingCommandList commands;
 
@@ -124,12 +124,12 @@ TEST_CASE("more extra color attachments than the RHI binds are rejected", "[rend
     // One past what the RHI binds, whatever that maximum is, so the case tracks the constant rather
     // than a count written out beside it. A deque keeps each texture's address stable while the
     // graph borrows it.
-    constexpr uint32_t kExtras = rhi::kMaxExtraColorTargets + 1;
+    constexpr uint32_t kExtras = rojoRHI::kMaxExtraColorTargets + 1;
     FakeTexture color{64, 64, "sceneColor"};
     std::deque<FakeTexture> extras;
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -137,7 +137,7 @@ TEST_CASE("more extra color attachments than the RHI binds are rejected", "[rend
         const std::string name = "extra" + std::to_string(index);
         extras.emplace_back(64, 64, name);
         scene.extraColor.push_back(ColorAttachment{
-            .handle = graph.importTexture(extras.back(), rhi::Format::RG16Float, name)});
+            .handle = graph.importTexture(extras.back(), rojoRHI::Format::RG16Float, name)});
     }
     graph.addPass("lmx.pass.scene", scene, kNoWork);
 
@@ -145,7 +145,7 @@ TEST_CASE("more extra color attachments than the RHI binds are rejected", "[rend
     REQUIRE_FALSE(schedule.has_value());
     REQUIRE(schedule.error().message.contains("lmx.pass.scene"));
     REQUIRE(schedule.error().message.contains(std::to_string(kExtras)));
-    REQUIRE(schedule.error().message.contains(std::to_string(rhi::kMaxExtraColorTargets)));
+    REQUIRE(schedule.error().message.contains(std::to_string(rojoRHI::kMaxExtraColorTargets)));
 }
 
 //======================================================================================================================
@@ -154,8 +154,9 @@ TEST_CASE("a depth format in an extra color attachment is rejected", "[render][g
     FakeTexture depth{64, 64, "sceneDepth"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -177,9 +178,9 @@ TEST_CASE("an extra color attachment of another extent is rejected", "[render][g
     FakeTexture motion{32, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -200,9 +201,10 @@ TEST_CASE("an extra color attachment without a primary is rejected", "[render][g
     FakeTexture depth{64, 64, "sceneDepth"};
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
-    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.depth = DepthAttachment{.handle = sceneDepth, .store = StoreOp::Store};
@@ -224,7 +226,7 @@ TEST_CASE("one texture as both the primary and an extra attachment is rejected",
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -244,9 +246,9 @@ TEST_CASE("one texture as two extra attachments is rejected", "[render][graph]")
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -270,11 +272,11 @@ TEST_CASE("an extra color attachment no sink reaches keeps nothing alive", "[ren
     FakeTexture display{64, 64, "displayColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
     const GraphTexture displayColor =
-        graph.importTexture(display, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(display, rojoRHI::Format::BGRA8Unorm, "displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -302,9 +304,9 @@ TEST_CASE("a sink on an extra attachment's version keeps its pass alive", "[rend
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -326,7 +328,7 @@ TEST_CASE("RG16Float is accepted as a color attachment", "[render][graph]") {
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
     const GraphTexture motionVectors =
-        graph.importTexture(motion, rhi::Format::RG16Float, "motionVectors");
+        graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = motionVectors};
@@ -344,7 +346,7 @@ TEST_CASE("RG16Float is accepted as a color attachment", "[render][graph]") {
 TEST_CASE("R8Unorm is accepted as a color attachment", "[render][graph]") {
     FakeTexture reactive{64, 64, "reactive"};
     RenderGraph graph;
-    const GraphTexture mask = graph.importTexture(reactive, rhi::Format::R8Unorm, "reactive");
+    const GraphTexture mask = graph.importTexture(reactive, rojoRHI::Format::R8Unorm, "reactive");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = mask};
@@ -365,7 +367,7 @@ TEST_CASE("a transient loaded as an extra color attachment fails to compile", "[
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
-    const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+    const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
     PassDesc load;
     load.color = ColorAttachment{.handle = out};
@@ -389,7 +391,7 @@ TEST_CASE("a half-set render area is rejected", "[render][graph]") {
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -413,8 +415,9 @@ TEST_CASE("a render area larger than an attachment is rejected", "[render][graph
     FakeTexture depth{64, 64, "sceneDepth"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -439,9 +442,9 @@ TEST_CASE("a compiled record carries the render area a pass declared", "[render]
     FakeTexture display{64, 64, "displayColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::RGBA16Float, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::RGBA16Float, "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(display, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(display, rojoRHI::Format::BGRA8Unorm, "displayColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -473,7 +476,7 @@ TEST_CASE("execute fills the RHI descriptor's render area", "[render][graph]") {
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     RecordingCommandList commands;
 
@@ -497,7 +500,7 @@ TEST_CASE("execute leaves an undeclared render area zero", "[render][graph]") {
     FakeTexture color{64, 64, "sceneColor"};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     RecordingCommandList commands;
 

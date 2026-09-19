@@ -6,8 +6,8 @@
 #pragma once
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/FrameRecordRing.h"
-#include "RHI/RHI.h"
 #include "Render/ResolutionController.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <span>
@@ -41,7 +41,7 @@ struct DynamicResolutionState {
 bool dynamicResolutionActive(const EditorRenderSettings& settings);
 
 /// Sums a retired frame's per-pass GPU times -- the controller's cost model, spec section 8.
-double frameGpuMilliseconds(std::span<const rhi::PassTiming> timings);
+double frameGpuMilliseconds(std::span<const rojoRHI::PassTiming> timings);
 
 /// Runs one frame of the dynamic-resolution policy (spec section 9):
 ///

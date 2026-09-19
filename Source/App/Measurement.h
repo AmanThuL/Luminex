@@ -12,7 +12,7 @@
 
 namespace lmx::app {
 /// Collects actual runtime file hashes, device, OS and instrumentation environment before timing.
-MeasurementProvenance collectMeasurementProvenance(const rhi::Device& device);
+MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device);
 /// Allocated instance, mesh, material and local-light row bytes across all three current slots.
 uint64_t measurementTableBytes(const scene::SceneTableStats& stats);
 /// Captures declaration diagnostics without borrowing the renderer's next-frame storage.

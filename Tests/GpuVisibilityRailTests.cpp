@@ -3,14 +3,13 @@
 
 namespace {
 namespace render = lmx::render;
-namespace rhi = lmx::rhi;
 namespace scene = lmx::scene;
 } // namespace
 
 //======================================================================================================================
 TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three rail times",
           "[gpu][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto loaded = scene::loadVisibilityLabScene(**device, 4096);
     REQUIRE(loaded);
@@ -62,7 +61,7 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
 //======================================================================================================================
 TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnostics",
           "[gpu][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto renderer = render::Renderer::create(**device, 32, 32, true);
     REQUIRE(renderer);

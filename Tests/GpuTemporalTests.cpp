@@ -14,7 +14,7 @@ using lmx::test::FixtureSceneView;
 // screenshot nobody diffs. It is a regression guard over this renderer's own output, not
 // independent evidence: the parity claim rests on the three screenshot hashes.
 TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -57,7 +57,7 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
 // it, and the debug view overwriting the display target after the display pass produced it.
 TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
           "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -105,7 +105,7 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
 // raw scene colour. It is the declaration a test comparing the two modes at identical inputs rests
 // on, so it is pinned by a golden of its own rather than inferred from the accumulated one.
 TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -152,7 +152,7 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
 // bloom and display read the slot the commit wrote rather than the scene colour behind it. Every
 // target keeps its output-extent allocation, so no descriptor and no transient footprint moves.
 TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -212,7 +212,7 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
 // render extent differs from its output extent. No commit copy is declared in either extent: the
 // accumulation writes the colour slot itself.
 TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -269,7 +269,7 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
 // upscaling kernels are selected by the extents, so a frame whose render extent is its output
 // extent must not reach them at all.
 TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -312,7 +312,7 @@ TEST_CASE("a scale-1 temporal frame declares no upscaling pass", "[gpu][temporal
 // which carries the previous render extent explicitly -- and the frame after it is native again.
 TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once",
           "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));

@@ -6,7 +6,7 @@
 #pragma once
 #include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/PassTimingHistory.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <span>
@@ -22,20 +22,20 @@ namespace lmx::app {
 /// shell already has to hand -- this model reads no `FrameRecordRing` or `CompiledFrameRecord`
 /// itself, so it stays ImGui/SDL/Metal/RHI-backend free.
 struct PerformanceFrameSample {
-    uint64_t frameId = 0;                     ///< The device frame number this sample measured.
-    uint64_t contextEpoch = 0;                ///< Scene/mode revision captured at declaration.
-    std::span<const rhi::PassTiming> timings; ///< Per-pass GPU times, schedule order.
-    uint32_t objectCount = 0;                 ///< Scene object count at this frame.
-    uint32_t drawCount = 0;                   ///< Draw-call count at this frame.
-    uint32_t viewportLogicalWidth = 0;        ///< Viewport panel size, in ImGui logical points.
-    uint32_t viewportLogicalHeight = 0;       ///< Viewport panel size, in ImGui logical points.
-    uint32_t sceneTargetPixelWidth = 0;       ///< Scene render target size, in device pixels.
-    uint32_t sceneTargetPixelHeight = 0;      ///< Scene render target size, in device pixels.
-    uint32_t renderPixelWidth = 0;            ///< Effective render width before reconstruction.
-    uint32_t renderPixelHeight = 0;           ///< Effective render height before reconstruction.
-    uint64_t transientRequestedBytes = 0;     ///< `render::TransientMemory::requested`.
-    uint64_t transientHighWaterBytes = 0;     ///< `render::TransientMemory::highWater`.
-    uint64_t transientAliasSavingsBytes = 0;  ///< `render::TransientMemory::aliasSavings`.
+    uint64_t frameId = 0;                         ///< The device frame number this sample measured.
+    uint64_t contextEpoch = 0;                    ///< Scene/mode revision captured at declaration.
+    std::span<const rojoRHI::PassTiming> timings; ///< Per-pass GPU times, schedule order.
+    uint32_t objectCount = 0;                     ///< Scene object count at this frame.
+    uint32_t drawCount = 0;                       ///< Draw-call count at this frame.
+    uint32_t viewportLogicalWidth = 0;            ///< Viewport panel size, in ImGui logical points.
+    uint32_t viewportLogicalHeight = 0;           ///< Viewport panel size, in ImGui logical points.
+    uint32_t sceneTargetPixelWidth = 0;           ///< Scene render target size, in device pixels.
+    uint32_t sceneTargetPixelHeight = 0;          ///< Scene render target size, in device pixels.
+    uint32_t renderPixelWidth = 0;                ///< Effective render width before reconstruction.
+    uint32_t renderPixelHeight = 0;          ///< Effective render height before reconstruction.
+    uint64_t transientRequestedBytes = 0;    ///< `render::TransientMemory::requested`.
+    uint64_t transientHighWaterBytes = 0;    ///< `render::TransientMemory::highWater`.
+    uint64_t transientAliasSavingsBytes = 0; ///< `render::TransientMemory::aliasSavings`.
 };
 
 /// One coherent, display-ready reading of the editor's rolling performance state.

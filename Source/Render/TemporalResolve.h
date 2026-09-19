@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "RHI/RHI.h"
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <memory>
@@ -23,7 +23,7 @@ struct ReconstructionSelection {
 
 /// Resolves a request without allocating resources; native modes never consult vendor support.
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
-                                              const rhi::TemporalScalerSupport& support,
+                                              const rojoRHI::TemporalScalerSupport& support,
                                               bool creationFailed = false);
 
 class VendorTemporalScaler;
@@ -84,7 +84,7 @@ constexpr float kUpscaleMinWeight = 0.25f;
 /// Pre-exposed emissive luminance the scene pass maps to a fully reactive pixel.
 constexpr float kReactiveEmissiveScale = 4.0f;
 /// Storage format of `lmx.render.reactive`: one byte of "do not accumulate me" per pixel.
-constexpr rhi::Format kReactiveFormat = rhi::Format::R8Unorm;
+constexpr rojoRHI::Format kReactiveFormat = rojoRHI::Format::R8Unorm;
 
 /// Why a pixel could not reuse its history, in the order Shaders/TemporalResolve.slang and
 /// Shaders/TemporalUpscale.slang test them:
@@ -124,8 +124,8 @@ public:
     /// `cpuReadback` puts both history pairs in shared storage so Texture::readback() works, on
     /// Renderer::create()'s terms: it is what the GPU tests and the offscreen path need, and the
     /// windowed App leaves it false.
-    static rhi::Result<std::unique_ptr<TemporalResolve>> create(rhi::Device& device,
-                                                                bool cpuReadback);
+    static rojoRHI::Result<std::unique_ptr<TemporalResolve>> create(rojoRHI::Device& device,
+                                                                    bool cpuReadback);
 
     /// Non-copyable: it owns GPU targets whose identity is what the frame's imports name.
     TemporalResolve(const TemporalResolve&) = delete;
@@ -134,14 +134,14 @@ public:
 
     /// Recreates both slot pairs at the new extent, replacing any already held. The caller
     /// guarantees the GPU is idle first, on Renderer::resize()'s terms.
-    rhi::Result<void> resize(uint32_t width, uint32_t height);
+    rojoRHI::Result<void> resize(uint32_t width, uint32_t height);
 
     /// The depth target of `slot`, which a temporal frame renders into and the next one samples as
     /// its previous depth. Never null after a successful create().
-    rhi::Texture& depthSlot(uint32_t slot);
+    rojoRHI::Texture& depthSlot(uint32_t slot);
 
     /// The colour history of `slot`, which holds that frame's output whichever mode produced it.
-    rhi::Texture& colorSlot(uint32_t slot);
+    rojoRHI::Texture& colorSlot(uint32_t slot);
 
     /// Imports the depth of `slot`. Stated as ShaderRead for the reason M6.1's single depth target
     /// was: the depth is public through Renderer::depthTarget() and a caller may sample it after
@@ -149,7 +149,7 @@ public:
     GraphTexture importDepth(RenderGraph& graph, uint32_t slot);
 
     /// Last access recorded for a depth slot, including opaque vendor reads across temporal off.
-    rhi::TextureUse depthUse(uint32_t slot) const;
+    rojoRHI::TextureUse depthUse(uint32_t slot) const;
 
     /// Records a post-reconstruction diagnostic read of the actual depth slot.
     void recordDepthRead(uint32_t slot);
@@ -177,7 +177,7 @@ public:
     /// the display pass produces, which the caller may not have declared yet -- and is replaced by
     /// the version the debug view produced. The graph's schedule is topological, so declaring the
     /// view against a version its producer has yet to declare still orders it after that producer.
-    TemporalResolveOutputs declare(RenderGraph& graph, rhi::CommandList& commands,
+    TemporalResolveOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                    const TemporalInputs& inputs, TemporalDebugView debugView,
                                    GraphTexture& displayResult);
 
@@ -196,20 +196,20 @@ public:
     uint64_t depthBytes() const;
 
 private:
-    explicit TemporalResolve(rhi::Device& device, bool cpuReadback);
+    explicit TemporalResolve(rojoRHI::Device& device, bool cpuReadback);
 
     // The reprojection diagnostic (ADR 0013), unchanged from M6.1 but now reading the previous
     // colour slot: it measures the motion vectors and the history, and nothing downstream shades
     // from it, so it is culled unless the ReprojectionError view keeps it alive.
-    GraphTexture declareReprojection(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declareReprojection(RenderGraph& graph, rojoRHI::CommandList& commands,
                                      const TemporalInputs& inputs);
-    GraphTexture declareVendorHistory(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declareVendorHistory(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const TemporalInputs& inputs);
 
     // The accumulation itself. The two diagnostic transients are created and written only when
     // `rejectionWanted`/`reprojectedWanted` say a debug view sinks them, which is what keeps a
     // shipped frame from paying for either.
-    void declareResolve(RenderGraph& graph, rhi::CommandList& commands,
+    void declareResolve(RenderGraph& graph, rojoRHI::CommandList& commands,
                         const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
                         TemporalResolveOutputs& outputs);
 
@@ -218,21 +218,21 @@ private:
     // modes. Its consumer is the next frame, so the version it produces is exported. Declared only
     // when the render extent is the output one; otherwise the spatial pass below stands in for it,
     // because a copy of a smaller rectangle would leave the rest of the slot stale.
-    GraphTexture declareHistoryCommit(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declareHistoryCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const TemporalInputs& inputs);
 
     // The Raw mode's upscaled commit: Shaders/SpatialUpscale.slang resamples the active rectangle
     // of this frame's scene colour into the whole colour slot. Same invariant as the copy it
     // replaces -- this frame's colour slot holds this frame's output -- and the same export, since
     // the consumer is the next frame.
-    GraphTexture declareSpatialCommit(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declareSpatialCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const TemporalInputs& inputs);
 
     // The NativeTaa mode's upscaling accumulation: Shaders/TemporalUpscale.slang over the output
     // extent, reading the render extent's active rectangle. Same declaration, diagnostics and
     // export as declareResolve(); it also serves the one scale-1 frame whose predecessor ran at
     // another render extent, which is why it carries the previous render extent in its block.
-    void declareUpscale(RenderGraph& graph, rhi::CommandList& commands,
+    void declareUpscale(RenderGraph& graph, rojoRHI::CommandList& commands,
                         const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
                         TemporalResolveOutputs& outputs);
 
@@ -240,45 +240,46 @@ private:
     // storage-write usage in this RHI, and a fullscreen triangle overwrites every texel of it just
     // as a dispatch would. The target is not an sRGB view, so the shader's encodings reach the
     // bytes unchanged.
-    GraphTexture declareDebugView(RenderGraph& graph, rhi::CommandList& commands,
+    GraphTexture declareDebugView(RenderGraph& graph, rojoRHI::CommandList& commands,
                                   TemporalDebugView debugView, const TemporalInputs& inputs,
                                   const TemporalResolveOutputs& outputs, GraphTexture diagnostic,
                                   bool readsDiagnostic, GraphTexture displayResult);
 
-    rhi::Device& m_device;
+    rojoRHI::Device& m_device;
     std::unique_ptr<VendorTemporalScaler> m_vendor;
-    std::unique_ptr<rhi::ShaderLibrary> m_reprojectLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_resolveLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_debugViewLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_spatialUpscaleLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_temporalUpscaleLibrary;
-    std::unique_ptr<rhi::ComputePipeline> m_reprojectPipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_resolvePipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_spatialUpscalePipeline;
-    std::unique_ptr<rhi::ComputePipeline> m_temporalUpscalePipeline;
-    std::unique_ptr<rhi::GraphicsPipeline> m_debugViewPipeline;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_reprojectLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_resolveLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_debugViewLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_spatialUpscaleLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_temporalUpscaleLibrary;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_reprojectPipeline;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_resolvePipeline;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_spatialUpscalePipeline;
+    std::unique_ptr<rojoRHI::ComputePipeline> m_temporalUpscalePipeline;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_debugViewPipeline;
     // Clamped, not wrapped: a history fetch lands where this frame's motion points, which for a
     // border texel is a bilinear footprint reaching past the edge. A wrapping sampler would fold
     // the opposite edge's texels into that fetch and report a difference that is an artefact of
     // the addressing rather than of the motion.
-    std::unique_ptr<rhi::Sampler> m_sampler;
+    std::unique_ptr<rojoRHI::Sampler> m_sampler;
     // Ping-pong by declared temporal frame parity. Every temporal frame renders depth into
     // m_depth[slot], reads m_depth[1 - slot] as its previous depth, and writes m_color[slot] while
     // reading m_color[1 - slot] -- so this frame's colour slot always holds this frame's output.
-    std::unique_ptr<rhi::Texture> m_depth[2];
-    std::unique_ptr<rhi::Texture> m_color[2];
+    std::unique_ptr<rojoRHI::Texture> m_depth[2];
+    std::unique_ptr<rojoRHI::Texture> m_color[2];
     // The 1x1 storage-write texture the resolve binds where a diagnostic is not declared. The
     // argument table entry must hold a valid writable texture even on the frames the kernel's
     // corresponding writeDiagnostics bit makes it write nothing.
-    std::unique_ptr<rhi::Texture> m_diagnosticFallback;
+    std::unique_ptr<rojoRHI::Texture> m_diagnosticFallback;
     // The 1x1 sampled texture the debug view binds for whichever inputs its view does not read.
     // Every texel the shader loads lies outside it, and an out-of-bounds Load answers with zeroes.
-    std::unique_ptr<rhi::Texture> m_viewFallback;
+    std::unique_ptr<rojoRHI::Texture> m_viewFallback;
     // What the last frame to touch each colour slot left it as. CopyDestination is what M6.1's
     // commit left, and what an untouched slot is imported as before any frame has written it.
-    rhi::TextureUse m_colorUse[2] = {rhi::TextureUse::CopyDestination,
-                                     rhi::TextureUse::CopyDestination};
-    rhi::TextureUse m_depthUse[2] = {rhi::TextureUse::ShaderRead, rhi::TextureUse::ShaderRead};
+    rojoRHI::TextureUse m_colorUse[2] = {rojoRHI::TextureUse::CopyDestination,
+                                         rojoRHI::TextureUse::CopyDestination};
+    rojoRHI::TextureUse m_depthUse[2] = {rojoRHI::TextureUse::ShaderRead,
+                                         rojoRHI::TextureUse::ShaderRead};
     uint32_t m_width = 0;
     uint32_t m_height = 0;
     bool m_cpuReadback = false;

@@ -43,7 +43,7 @@ def _schema(resources=None, frame_data_uploads=None, context=None):
                                                            _texture(_SCENE_COLOR)],
         uniform_structs=[],
         frame_data_uploads=frame_data_uploads if frame_data_uploads is not None else [
-            schemalib.FrameDataUpload(page_label="lmx.device.frameData.0.page.0", slot=2,
+            schemalib.FrameDataUpload(page_label="rojorhi.device.frameData.0.page.0", slot=2,
                                       page_offset=0, size_bytes=288, alignment_bytes=256,
                                       gpu_address=0x1000)],
     )
@@ -107,7 +107,7 @@ def _upload(index=0, struct_name="PassUniforms", values=None, finite=True, slot=
         "index": index,
         "structName": struct_name,
         "slot": slot,
-        "pageLabel": "lmx.device.frameData.0.page.0",
+        "pageLabel": "rojorhi.device.frameData.0.page.0",
         "pageOffset": index * 288,
         "alignmentBytes": 256,
         "values": values if values is not None else {

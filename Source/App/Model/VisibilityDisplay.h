@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "RHI/Device.h"
 #include "Render/Visibility.h"
 #include "Scene/Scene.h"
+#include <rojoRHI/Device.h>
 
 #include <deque>
 #include <string>
@@ -33,7 +33,7 @@ std::string_view visibilityStateName(render::VisibilityState state);
 std::string_view visibilityReasonName(render::VisibilityReason reason);
 /// Formats counts, commands, memory and matched CPU/GPU scopes from one frame.
 std::vector<VisibilityField> visibilityFields(const render::VisibilityStatus& status,
-                                              std::span<const rhi::PassTiming> timings = {});
+                                              std::span<const rojoRHI::PassTiming> timings = {});
 /// Formats one object's retained world bounds and classification.
 std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibility* visibility);
 /// Maps saved declaration identities to immediate CPU or delayed GPU candidate results.
@@ -44,11 +44,11 @@ public:
     /// Publishes retired classifications using identities saved at declaration, never current rows.
     void retire(const render::VisibilityStatus& status);
     /// Retains exact-frame timings for the displayed visibility publication.
-    void observeTimings(uint64_t frame, std::span<const rhi::PassTiming> timings);
+    void observeTimings(uint64_t frame, std::span<const rojoRHI::PassTiming> timings);
     /// Current complete CPU or retired GPU publication, or an explicit pending declaration.
     const render::VisibilityStatus& status() const { return m_status; }
     /// Timings only when their frame matches the displayed publication.
-    std::span<const rhi::PassTiming> timings() const;
+    std::span<const rojoRHI::PassTiming> timings() const;
     /// Publishes Inspector counters and exact-frame timings together at the shared 250 ms cadence.
     /// First data, pending-to-ready and classifier changes publish immediately; scene clears reset
     /// the publication. The caller supplies a nonnegative monotonic clock in seconds.
@@ -56,7 +56,7 @@ public:
     /// Owned Inspector publication, independent of immediate object lookup and failure reporting.
     const render::VisibilityStatus& readingsStatus() const { return m_readingsStatus; }
     /// Owned timings matching readingsStatus(); empty when no exact-frame join was available.
-    std::span<const rhi::PassTiming> readingsTimings() const { return m_readingsTimings; }
+    std::span<const rojoRHI::PassTiming> readingsTimings() const { return m_readingsTimings; }
     /// Formats the selected object's matching result and frame; missing identities stay pending.
     std::vector<VisibilityField> objectFields(scene::InstanceId id, uint64_t sceneGeneration) const;
     /// Clears identity mapping on a scene switch.
@@ -78,13 +78,13 @@ private:
     };
     struct Timings {
         uint64_t frame = 0;
-        std::vector<rhi::PassTiming> passes;
+        std::vector<rojoRHI::PassTiming> passes;
     };
     std::deque<Snapshot> m_pending;
     std::deque<Timings> m_timings;
     render::VisibilityStatus m_status;
     render::VisibilityStatus m_readingsStatus;
-    std::vector<rhi::PassTiming> m_readingsTimings;
+    std::vector<rojoRHI::PassTiming> m_readingsTimings;
     double m_nextReadingsSeconds = 0.0;
     std::vector<Entry> m_entries;
     uint64_t m_frame = 0;

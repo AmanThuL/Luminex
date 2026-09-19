@@ -62,7 +62,7 @@ public:
     /// labOccluders adds 0..1,024 optional slabs without changing the default lab.
     /// labLights sets LightLab's grid local-light population; its builder validates
     /// 1..render::kMaxLocalLights. labLightPile adds that many extra lights stacked at one point.
-    explicit SceneLibrary(rhi::Device& device, uint32_t labInstances = 4096,
+    explicit SceneLibrary(rojoRHI::Device& device, uint32_t labInstances = 4096,
                           uint32_t labOccluders = 0, uint32_t labLights = 256,
                           uint32_t labLightPile = 0);
 
@@ -74,7 +74,7 @@ public:
     asset::AssetResult<Scene*> get(SceneId id);
 
 private:
-    rhi::Device& m_device;
+    rojoRHI::Device& m_device;
     uint32_t m_labInstances;
     uint32_t m_labOccluders;
     uint32_t m_labLights;

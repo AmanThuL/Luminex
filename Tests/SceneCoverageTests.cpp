@@ -14,7 +14,7 @@ using namespace lmx;
 
 namespace {
 //======================================================================================================================
-uint64_t prepareCoverage(rhi::Device& device, scene::Scene& scene) {
+uint64_t prepareCoverage(rojoRHI::Device& device, scene::Scene& scene) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<render::DrawItem> items;
@@ -29,7 +29,7 @@ uint64_t prepareCoverage(rhi::Device& device, scene::Scene& scene) {
 
 //======================================================================================================================
 TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scene][occlusion]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scene::Scene scene;
     const auto firstMesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.first");
@@ -38,10 +38,10 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
     const auto secondMaterial = scene.addMaterial({});
     const auto id = scene.addObject({.mesh = firstMesh, .material = firstMaterial});
     const std::array<uint8_t, 4> pixels{255, 255, 255, 0};
-    const rhi::TextureMip mip{.data = pixels.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureMip mip{.data = pixels.data(), .bytesPerRow = 4};
     auto texture = (*device)->createTexture({.width = 1,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA8Unorm,
+                                             .format = rojoRHI::Format::RGBA8Unorm,
                                              .sampled = true,
                                              .label = "lmx.test.coverage.alpha"},
                                             std::span(&mip, 1));
@@ -103,7 +103,7 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
 //======================================================================================================================
 TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
           "[gpu][scene][occlusion]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scene::Scene scene;
     const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.exclusions");

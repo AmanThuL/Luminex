@@ -48,7 +48,7 @@ bool writeReport(const std::filesystem::path& path, const MeasurementRun& run) {
 }
 } // namespace
 //======================================================================================================================
-MeasurementProvenance collectMeasurementProvenance(const rhi::Device& device) {
+MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device) {
     MeasurementProvenance result;
     result.device = device.deviceName();
     utsname info{};
@@ -156,7 +156,7 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("measurement output already exists: {}", options.measurementPath.string());
         return 1;
     }
-    auto device = rhi::createDevice({.enableValidation = false});
+    auto device = rojoRHI::createDevice({.enableValidation = false});
     if (!device) {
         LMX_LOG_ERROR("measurement device: {}", device.error().message);
         return 1;

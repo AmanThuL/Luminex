@@ -94,7 +94,7 @@ TEST_CASE("Delayed GPU display never attributes old rows to replacement identiti
     REQUIRE(display.find(object.id, display.status(), 7) != nullptr);
     REQUIRE(display.find(scene.objects[0].id, display.status(), 7) == nullptr);
     REQUIRE(display.find(object.id, display.status(), 8) == nullptr);
-    const std::array<rhi::PassTiming, 1> timing = {{{"lmx.pass.visibility.classify", 0.25}}};
+    const std::array<rojoRHI::PassTiming, 1> timing = {{{"lmx.pass.visibility.classify", 0.25}}};
     display.observeTimings(9, timing);
     REQUIRE(display.timings().empty());
     display.observeTimings(10, timing);
@@ -139,7 +139,7 @@ TEST_CASE("GPU measurement needs independent exact visibility and timing retirem
     REQUIRE(run.retireVisibility(retiredStatus(9)));
     REQUIRE(run.retireLighting({.frameNumber = 10, .isRetired = true}));
     REQUIRE(run.retireLighting({.frameNumber = 11, .isRetired = true}));
-    const std::array<rhi::PassTiming, 1> timing = {{{"lmx.pass.visibility.classify", 0.25}}};
+    const std::array<rojoRHI::PassTiming, 1> timing = {{{"lmx.pass.visibility.classify", 0.25}}};
     REQUIRE(run.retire(11, timing));
     REQUIRE(run.retireVisibility(retiredStatus(10)));
     REQUIRE(run.retireVisibility(retiredStatus(10)));

@@ -87,7 +87,7 @@ constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 } // namespace
 
 //======================================================================================================================
-rhi::Result<void> ExposureStage::loadLibraries(rhi::Device& device) {
+rojoRHI::Result<void> ExposureStage::loadLibraries(rojoRHI::Device& device) {
     if (auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate"); library) {
         m_histogramLibrary = std::move(*library);
     } else {
@@ -107,7 +107,7 @@ rhi::Result<void> ExposureStage::loadLibraries(rhi::Device& device) {
 }
 
 //======================================================================================================================
-rhi::Result<void> ExposureStage::createPipelines(rhi::Device& device) {
+rojoRHI::Result<void> ExposureStage::createPipelines(rojoRHI::Device& device) {
     if (auto pipeline = device.createComputePipeline(
             {.library = m_histogramLibrary.get(),
              .computeEntry = "computeHistogramAccumulate",
@@ -141,7 +141,7 @@ rhi::Result<void> ExposureStage::createPipelines(rhi::Device& device) {
 }
 
 //======================================================================================================================
-rhi::Result<void> ExposureStage::createResources(rhi::Device& device, bool cpuReadback) {
+rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bool cpuReadback) {
     if (auto buffer = device.createBuffer({.size = kHistogramBufferSize,
                                            .storageRead = true,
                                            .storageWrite = true,
@@ -178,7 +178,7 @@ rhi::Result<void> ExposureStage::createResources(rhi::Device& device, bool cpuRe
 }
 
 //======================================================================================================================
-GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rhi::CommandList& commands,
+GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rojoRHI::CommandList& commands,
                                        const SceneView& view, GraphBuffer exposureImport) {
     GraphBuffer exposureCurrent = exposureImport;
     // Auto mode seeds on spec 9's reset frames, where the seed is what restarts the metering loop.
@@ -195,13 +195,13 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rhi::CommandList& com
         graph.addComputePass(
             "lmx.pass.exposure.seed", std::move(seedDesc),
             [this, &commands, exposureImport, manualExposure](const PassResources& resources) {
-                const GraphResult<rhi::Buffer*> exposure = resources.buffer(exposureImport);
+                const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureImport);
                 LMX_ASSERT(exposure.has_value(), exposure.error().message);
                 const ExposureSeedParams params{.exposure = manualExposure};
                 commands.bindComputePipeline(*m_exposureSeedPipeline);
                 // Read-write, not write: the kernel shifts index 0 into index 1 before it sets it.
                 commands.bindStorageBuffer(kSeedExposureSlot, **exposure,
-                                           rhi::StorageAccess::ReadWrite);
+                                           rojoRHI::StorageAccess::ReadWrite);
                 commands.bindFrameData(kSeedParamsSlot, params);
                 commands.dispatch(1, 1, 1);
             });
@@ -219,7 +219,7 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rhi::CommandList& com
 }
 
 //======================================================================================================================
-void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& commands,
+void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& commands,
                                     const SceneView& view, const FrameExtents& extents,
                                     GraphTexture sceneColorRead, GraphBuffer exposureCurrent) {
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
@@ -232,13 +232,13 @@ void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& comman
     // frame clears it. Seeding the import with that terminal read makes the first live clear wait
     // on the real WAR edge; when auto exposure is off the chain is culled, so this costs nothing.
     const GraphBuffer histogramImport = graph.importBuffer(
-        *m_histogramBuffer, "lmx.render.histogramBuffer", rhi::BufferUse::StorageRead);
+        *m_histogramBuffer, "lmx.render.histogramBuffer", rojoRHI::BufferUse::StorageRead);
 
     CopyPassDesc histogramClearDesc;
     histogramClearDesc.bufferDestinations.push_back(histogramImport);
     graph.addCopyPass("lmx.pass.exposure.clearHistogram", std::move(histogramClearDesc),
                       [&commands, histogramImport](const PassResources& resources) {
-                          const GraphResult<rhi::Buffer*> histogram =
+                          const GraphResult<rojoRHI::Buffer*> histogram =
                               resources.buffer(histogramImport);
                           LMX_ASSERT(histogram.has_value(), histogram.error().message);
                           commands.fillBuffer(**histogram, 0, kHistogramBufferSize, 0);
@@ -258,11 +258,11 @@ void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& comman
         "lmx.pass.exposure.histogram", std::move(histogramDesc),
         [this, &commands, sceneColorRead, histogramCleared, exposureCurrent, meterWidth,
          meterHeight](const PassResources& resources) {
-            const GraphResult<rhi::Texture*> scene = resources.texture(sceneColorRead);
+            const GraphResult<rojoRHI::Texture*> scene = resources.texture(sceneColorRead);
             LMX_ASSERT(scene.has_value(), scene.error().message);
-            const GraphResult<rhi::Buffer*> histogram = resources.buffer(histogramCleared);
+            const GraphResult<rojoRHI::Buffer*> histogram = resources.buffer(histogramCleared);
             LMX_ASSERT(histogram.has_value(), histogram.error().message);
-            const GraphResult<rhi::Buffer*> exposure = resources.buffer(exposureCurrent);
+            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureCurrent);
             LMX_ASSERT(exposure.has_value(), exposure.error().message);
 
             const HistogramParams params{.logLuminanceMin = kExposureLogLuminanceMin,
@@ -272,7 +272,7 @@ void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& comman
             commands.bindComputePipeline(*m_histogramPipeline);
             commands.bindTexture(kHistogramSceneColorSlot, **scene);
             commands.bindStorageBuffer(kHistogramBufferSlot, **histogram,
-                                       rhi::StorageAccess::ReadWrite);
+                                       rojoRHI::StorageAccess::ReadWrite);
             commands.bindBuffer(kHistogramExposureSlot, **exposure);
             commands.bindFrameData(kHistogramParamsSlot, params);
             commands.dispatch(divRoundUp(meterWidth, kComputeThreadsPerGroup2D),
@@ -290,9 +290,9 @@ void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& comman
     graph.addComputePass(
         "lmx.pass.exposure.resolve", std::move(resolveDesc),
         [this, &commands, histogramFinal, exposureCurrent, view](const PassResources& resources) {
-            const GraphResult<rhi::Buffer*> histogram = resources.buffer(histogramFinal);
+            const GraphResult<rojoRHI::Buffer*> histogram = resources.buffer(histogramFinal);
             LMX_ASSERT(histogram.has_value(), histogram.error().message);
-            const GraphResult<rhi::Buffer*> exposure = resources.buffer(exposureCurrent);
+            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureCurrent);
             LMX_ASSERT(exposure.has_value(), exposure.error().message);
 
             const ExposureResolveParams params{.lowPercentile = view.exposureLowPercentile,
@@ -309,11 +309,11 @@ void ExposureStage::declareMetering(RenderGraph& graph, rhi::CommandList& comman
                                                .pad = 0.0f};
             commands.bindComputePipeline(*m_exposureResolvePipeline);
             commands.bindStorageBuffer(kResolveHistogramSlot, **histogram,
-                                       rhi::StorageAccess::Read);
+                                       rojoRHI::StorageAccess::Read);
             // Read-write, not write: the kernel steps from the exposure this frame applied, which
             // it reads out of index 0 before overwriting it.
             commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
-                                       rhi::StorageAccess::ReadWrite);
+                                       rojoRHI::StorageAccess::ReadWrite);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(1, 1, 1);
         });

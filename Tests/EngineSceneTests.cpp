@@ -11,7 +11,7 @@
 namespace {
 
 //======================================================================================================================
-std::vector<render::InstanceRow> readSceneInstances(Scene& scene, rhi::Device& device) {
+std::vector<render::InstanceRow> readSceneInstances(Scene& scene, rojoRHI::Device& device) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     const auto tables = scene.tables();
@@ -33,7 +33,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
              "skipping the asset-gated pin");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadSponzaScene(**device);
     INFO(describeSceneError(scene));
@@ -43,7 +43,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
     REQUIRE((*scene)->objects.size() == 25);
     REQUIRE((*scene)->tableStats().materialCount == 25);
 
-    std::set<rhi::Texture*> textures;
+    std::set<rojoRHI::Texture*> textures;
     for (const auto& object : (*scene)->objects) {
         const auto& material = (*scene)->material(object.material);
         for (const auto id : {material.diffuse, material.normalMap, material.metallicRoughness,
@@ -80,7 +80,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
              "it) -- skipping the asset-gated pin");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadHelmetScene(**device);
     INFO(describeSceneError(scene));
@@ -135,13 +135,13 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
              "the asset-gated pin");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
 
     auto bakedScene = loadHelmetScene(**device);
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
-    rhi::Texture* bakedDiffuse =
+    rojoRHI::Texture* bakedDiffuse =
         (*bakedScene)
             ->tryTexture(*(*bakedScene)->material((*bakedScene)->objects[0].material).diffuse);
     REQUIRE(bakedDiffuse != nullptr);
@@ -153,7 +153,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
         auto fallbackScene = loadHelmetScene(**device);
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
-        rhi::Texture* fallbackDiffuse =
+        rojoRHI::Texture* fallbackDiffuse =
             (*fallbackScene)
                 ->tryTexture(
                     *(*fallbackScene)->material((*fallbackScene)->objects[0].material).diffuse);
@@ -179,7 +179,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
              "skipping the asset-gated pin");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadSponzaScene(**device);
     INFO(describeSceneError(scene));
@@ -199,7 +199,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     camera.nearZ = (*scene)->initialCamera.nearZ;
     camera.farZ = (*scene)->initialCamera.farZ;
 
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<render::DrawItem> items;
     const render::SceneView view =
@@ -239,20 +239,20 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
              "skipping the asset-gated pin");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadSponzaScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
     // Sample up to eight textures so at least one pair exposes a per-draw binding collision.
-    std::vector<rhi::Texture*> distinctDiffuse;
+    std::vector<rojoRHI::Texture*> distinctDiffuse;
     for (const auto& object : (*scene)->objects) {
         const auto& material = (*scene)->material(object.material);
         if (!material.diffuse) {
             continue;
         }
-        rhi::Texture* diffuse = (*scene)->tryTexture(*material.diffuse);
+        rojoRHI::Texture* diffuse = (*scene)->tryTexture(*material.diffuse);
         REQUIRE(diffuse != nullptr);
         const bool alreadySeen = std::find(distinctDiffuse.begin(), distinctDiffuse.end(),
                                            diffuse) != distinctDiffuse.end();
@@ -308,7 +308,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     view.boundingSphere = {0.0f, 0.0f, 0.0f,
                            spacing * static_cast<float>(distinctDiffuse.size()) + 2.0f};
 
-    rhi::CommandList& commands = (*device)->beginFrame();
+    rojoRHI::CommandList& commands = (*device)->beginFrame();
     (*renderer)->render(commands, camera, view.prepare(**device), /*barrierForSampling=*/false);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
@@ -351,7 +351,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
 //======================================================================================================================
 TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
@@ -388,7 +388,7 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     // Not asset-gated in the usual sense: it checks that `available` agrees with whatever this
     // checkout actually has (present or not), so it is meaningful either way rather than being
     // skipped when the fetched assets are missing.
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
@@ -421,7 +421,7 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
         SKIP("Assets/Fetched/Sponza/Sponza.gltf not present (xmake setup fetches it)");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     SceneLibrary library(**device);
 
@@ -443,7 +443,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
              "it)");
     }
 
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = loadMilkTruckScene(**device);
     INFO(describeSceneError(scene));
@@ -503,7 +503,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 // transforms, so the first frame draws the played pose and still reports no motion.
 TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its authored rest pose",
           "[scene][gpu]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
 
     const std::filesystem::path dir =
@@ -627,7 +627,7 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     if (!findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf")) {
         SKIP("Sponza asset not fetched");
     }
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto loaded = loadSponzaScene(**device);
     REQUIRE(loaded);

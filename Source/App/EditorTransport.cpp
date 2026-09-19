@@ -37,7 +37,8 @@ void EditorShell::finishMeasurementPlayback() {
 }
 
 //======================================================================================================================
-void EditorShell::buildPlaybackTransport(rhi::Device& device, const render::Renderer& renderer) {
+void EditorShell::buildPlaybackTransport(rojoRHI::Device& device,
+                                         const render::Renderer& renderer) {
     finishMeasurementPlayback();
     const auto& scene = m_session.scene();
     std::string status = m_playback.playing()  ? "Playing"

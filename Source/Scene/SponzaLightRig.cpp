@@ -46,21 +46,21 @@ std::array<render::LocalLight, kRigLightCount> rigLights() {
 } // namespace
 
 //======================================================================================================================
-rhi::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
+rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
     if (scene.name != "Sponza") {
-        return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc, "Local-light rig is available only in Sponza"});
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Local-light rig is available only in Sponza"});
     }
     if (m_scene && m_scene != &scene) {
-        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
-                                          "Local-light rig belongs to a different scene"});
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Local-light rig belongs to a different scene"});
     }
     if (scene.m_sponzaLightIds.empty()) {
         if (!enabled)
             return {};
         if (scene.localLights().size() + kRigLightCount > render::kMaxLocalLights) {
-            return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
-                                              "Sponza rig requires 16 free local-light slots"});
+            return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                                  "Sponza rig requires 16 free local-light slots"});
         }
         std::vector<LightId> authored;
         for (const auto& light : rigLights()) {

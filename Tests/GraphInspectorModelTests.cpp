@@ -16,9 +16,9 @@ using namespace lmx::render;
 namespace {
 
 // The model reads a texture's kind, format, and range text off the compiled record alone -- never
-// the rhi::Texture behind it -- so a fake needs to be real enough for RenderGraph::compile() to
+// the rojoRHI::Texture behind it -- so a fake needs to be real enough for RenderGraph::compile() to
 // accept, and nothing more.
-struct FakeTexture final : rhi::Texture {
+struct FakeTexture final : rojoRHI::Texture {
 
     //==================================================================================================================
     explicit FakeTexture(uint32_t extent, uint32_t mips = 1, uint32_t layers = 1)
@@ -31,7 +31,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::Unknown; }
+    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return m_mipLevels; }
@@ -48,7 +48,7 @@ private:
     uint32_t m_arrayLayers = 1;
 };
 
-struct FakeBuffer final : rhi::Buffer {
+struct FakeBuffer final : rojoRHI::Buffer {
 
     //==================================================================================================================
     explicit FakeBuffer(uint64_t size) : m_size(size) {}
@@ -81,13 +81,13 @@ TEST_CASE("the model preserves declaration order and the proved schedule", "[app
     FakeTexture displayColor{64};
     RenderGraph graph;
     const GraphTexture shadow =
-        graph.importTexture(shadowMap, rhi::Format::D32Float, "lmx.render.shadowMap");
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "lmx.render.shadowMap");
     const GraphTexture color =
-        graph.importTexture(sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
+        graph.importTexture(sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture depth =
-        graph.importTexture(sceneDepth, rhi::Format::D32Float, "lmx.render.sceneDepth");
+        graph.importTexture(sceneDepth, rojoRHI::Format::D32Float, "lmx.render.sceneDepth");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
 
     // Declared before its producer, exactly as the shipped frame is: the scheduled order differs
     // from declaration order, which is the case worth pinning.
@@ -140,11 +140,11 @@ TEST_CASE("culled rows carry their reason, and scheduled ones carry none", "[app
     FakeBuffer probe{256};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
     const GraphBuffer stats = graph.importBuffer(probe, "probe");
 
     PassDesc scene;
@@ -198,11 +198,11 @@ TEST_CASE("timing rows join by schedule and leave culled passes empty", "[app]")
     FakeTexture unused{64};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture displayColor =
-        graph.importTexture(displayed, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(displayed, rojoRHI::Format::BGRA8Unorm, "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(unused, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(unused, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -225,10 +225,10 @@ TEST_CASE("timing rows join by schedule and leave culled passes empty", "[app]")
 
     // "lmx.pass.ghost" names no declared pass at all -- a stale label from a prior frame's shape,
     // which must be silently ignored rather than attached to the nearest row.
-    const std::array<rhi::PassTiming, 3> timings = {
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.21},
-        rhi::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 0.42},
-        rhi::PassTiming{.label = "lmx.pass.ghost", .gpuMilliseconds = 9.99}};
+    const std::array<rojoRHI::PassTiming, 3> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.21},
+        rojoRHI::PassTiming{.label = "lmx.pass.display", .gpuMilliseconds = 0.42},
+        rojoRHI::PassTiming{.label = "lmx.pass.ghost", .gpuMilliseconds = 9.99}};
 
     const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
 
@@ -250,11 +250,12 @@ TEST_CASE("duplicate pass labels consume timings once in schedule order", "[app]
     FakeTexture orphanTarget{64};
     FakeTexture displayTarget{64};
     RenderGraph graph;
-    const GraphTexture scene = graph.importTexture(sceneTarget, rhi::Format::BGRA8Unorm, "scene");
+    const GraphTexture scene =
+        graph.importTexture(sceneTarget, rojoRHI::Format::BGRA8Unorm, "scene");
     const GraphTexture orphan =
-        graph.importTexture(orphanTarget, rhi::Format::BGRA8Unorm, "orphan");
+        graph.importTexture(orphanTarget, rojoRHI::Format::BGRA8Unorm, "orphan");
     const GraphTexture display =
-        graph.importTexture(displayTarget, rhi::Format::BGRA8Unorm, "display");
+        graph.importTexture(displayTarget, rojoRHI::Format::BGRA8Unorm, "display");
 
     PassDesc scenePass;
     scenePass.color = ColorAttachment{.handle = scene};
@@ -272,9 +273,9 @@ TEST_CASE("duplicate pass labels consume timings once in schedule order", "[app]
 
     const auto record = graph.compileFrame(8);
     REQUIRE(record.has_value());
-    const std::array<rhi::PassTiming, 2> timings = {
-        rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
-        rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.2}};
+    const std::array<rojoRHI::PassTiming, 2> timings = {
+        rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
+        rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.2}};
 
     const GraphInspectorModel model = buildGraphInspectorModel(*record, timings);
 
@@ -296,25 +297,25 @@ TEST_CASE("transient rows carry lifetimes and placement, and totals match the fr
     RenderGraph graph(pool);
     const GraphTexture scene = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.sceneColor");
     const GraphTexture bloom = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture unused = graph.createTexture({.width = 64,
                                                      .height = 64,
-                                                     .format = rhi::Format::RGBA16Float,
+                                                     .format = rojoRHI::Format::RGBA16Float,
                                                      .renderTarget = true,
                                                      .sampled = true},
                                                     "lmx.transient.unused");
-    const GraphTexture mid = graph.importTexture(midTarget, rhi::Format::BGRA8Unorm, "lmx.mid");
+    const GraphTexture mid = graph.importTexture(midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
     const GraphTexture display =
-        graph.importTexture(displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};

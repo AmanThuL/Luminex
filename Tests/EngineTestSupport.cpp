@@ -52,7 +52,7 @@ std::optional<std::filesystem::path> findRepoAsset(std::string_view relativePath
 }
 
 //======================================================================================================================
-scene::ibl::IblTextures makeUniformIbl(rhi::Device& device, const glm::vec3& radiance,
+scene::ibl::IblTextures makeUniformIbl(rojoRHI::Device& device, const glm::vec3& radiance,
                                        std::string_view label) {
     // Face size 1: a constant environment carries no detail for a larger source to hold, and the
     // generators' output extents are fixed by asset::ibl regardless of what they read from.

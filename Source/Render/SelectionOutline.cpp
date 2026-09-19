@@ -33,12 +33,12 @@ static_assert(sizeof(OutlineParams) == 4);
 } // namespace
 
 //======================================================================================================================
-SelectionOutline::SelectionOutline(rhi::Device& device, bool readback)
+SelectionOutline::SelectionOutline(rojoRHI::Device& device, bool readback)
     : m_device(device), m_readback(readback) {}
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<SelectionOutline>>
-SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, bool readback) {
+rojoRHI::Result<std::unique_ptr<SelectionOutline>>
+SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool readback) {
     auto self = std::unique_ptr<SelectionOutline>(new SelectionOutline(device, readback));
     auto maskLibrary = device.loadShaderLibrary("Shaders/SelectionMask");
     if (!maskLibrary) {
@@ -55,12 +55,12 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
-             .colorFormat = rhi::Format::R8Unorm,
-             .depthFormat = rhi::Format::D32Float,
+             .colorFormat = rojoRHI::Format::R8Unorm,
+             .depthFormat = rojoRHI::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = true,
-             .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
-             .depthCompare = rhi::DepthCompare::Greater,
+             .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+             .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = doubleSided ? "lmx.selection.maskDoubleSided" : "lmx.selection.mask"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
@@ -70,12 +70,12 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
             {.library = self->m_maskLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "depthMain",
-             .colorFormat = rhi::Format::Unknown,
-             .depthFormat = rhi::Format::D32Float,
+             .colorFormat = rojoRHI::Format::Unknown,
+             .depthFormat = rojoRHI::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = true,
-             .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
-             .depthCompare = rhi::DepthCompare::Greater,
+             .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+             .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = doubleSided ? "lmx.selection.depthDoubleSided" : "lmx.selection.depth"});
         if (!depthPipeline) {
             return std::unexpected(depthPipeline.error());
@@ -86,8 +86,8 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
     auto outline = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
                                                   .vertexEntry = "vertexMain",
                                                   .fragmentEntry = "fragmentMain",
-                                                  .colorFormat = rhi::Format::BGRA8Unorm,
-                                                  .cullMode = rhi::CullMode::None,
+                                                  .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                  .cullMode = rojoRHI::CullMode::None,
                                                   .label = "lmx.selection.outline"});
     if (!outline) {
         return std::unexpected(outline.error());
@@ -96,8 +96,8 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
     auto passthrough = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
                                                       .vertexEntry = "vertexMain",
                                                       .fragmentEntry = "fragmentCopy",
-                                                      .colorFormat = rhi::Format::BGRA8Unorm,
-                                                      .cullMode = rhi::CullMode::None,
+                                                      .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                      .cullMode = rojoRHI::CullMode::None,
                                                       .label = "lmx.selection.passthrough"});
     if (!passthrough)
         return std::unexpected(passthrough.error());
@@ -109,10 +109,10 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
-    const rhi::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
     auto texture = device.createTexture({.width = 1,
                                          .height = 1,
-                                         .format = rhi::Format::RGBA8Unorm,
+                                         .format = rojoRHI::Format::RGBA8Unorm,
                                          .sampled = true,
                                          .label = "lmx.selection.white"},
                                         std::span{&mip, 1});
@@ -127,10 +127,10 @@ SelectionOutline::create(rhi::Device& device, uint32_t width, uint32_t height, b
 }
 
 //======================================================================================================================
-rhi::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
+rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
     auto target = m_device.createTexture({.width = width,
                                           .height = height,
-                                          .format = rhi::Format::BGRA8Unorm,
+                                          .format = rojoRHI::Format::BGRA8Unorm,
                                           .renderTarget = true,
                                           .sampled = true,
                                           .cpuReadback = m_readback,
@@ -143,14 +143,15 @@ rhi::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
 }
 
 //======================================================================================================================
-GraphTexture SelectionOutline::declare(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                        GraphTexture display, const Camera& camera,
                                        const SceneView& view, uint32_t selectedDraw,
                                        float backingScale, bool visible) {
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
     if (!visible) {
-        const auto output = graph.importTexture(*m_target, rhi::Format::BGRA8Unorm,
-                                                "selectionDisplay", rhi::TextureUse::ShaderRead);
+        const auto output =
+            graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
+                                rojoRHI::TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
@@ -171,13 +172,13 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rhi::CommandList& com
     const uint32_t height = m_target->height();
     const GraphTexture mask = graph.createTexture({.width = width,
                                                    .height = height,
-                                                   .format = rhi::Format::R8Unorm,
+                                                   .format = rojoRHI::Format::R8Unorm,
                                                    .renderTarget = true,
                                                    .sampled = true},
                                                   "selectionMask");
     const auto depthDescriptor = TransientTextureDesc{.width = width,
                                                       .height = height,
-                                                      .format = rhi::Format::D32Float,
+                                                      .format = rojoRHI::Format::D32Float,
                                                       .renderTarget = true,
                                                       .sampled = true};
     const GraphTexture depth = graph.createTexture(depthDescriptor, "selectionDepth");
@@ -229,8 +230,9 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rhi::CommandList& com
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output = graph.importTexture(
-        *m_target, rhi::Format::BGRA8Unorm, "selectionDisplay", rhi::TextureUse::ShaderRead);
+    const GraphTexture output =
+        graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
+                            rojoRHI::TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

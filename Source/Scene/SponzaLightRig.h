@@ -19,7 +19,7 @@ public:
     /// Authors the deterministic rig on first enable, or changes existing lights' enabled flags.
     /// Rejects non-Sponza/foreign scenes and insufficient initial capacity with InvalidDesc.
     /// A failed initial enable leaves no partial rig; removed identities are never recreated.
-    rhi::Result<void> setEnabled(Scene& scene, bool enabled);
+    rojoRHI::Result<void> setEnabled(Scene& scene, bool enabled);
     /// True when at least one surviving rig light is enabled, including individual editor changes.
     bool enabled() const;
     /// Scene-owned immutable rig identities, including disabled or subsequently removed lights.

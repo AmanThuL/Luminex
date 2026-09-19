@@ -13,9 +13,9 @@ bool dynamicResolutionActive(const EditorRenderSettings& settings) {
 }
 
 //======================================================================================================================
-double frameGpuMilliseconds(std::span<const rhi::PassTiming> timings) {
+double frameGpuMilliseconds(std::span<const rojoRHI::PassTiming> timings) {
     double total = 0.0;
-    for (const rhi::PassTiming& timing : timings) {
+    for (const rojoRHI::PassTiming& timing : timings) {
         total += timing.gpuMilliseconds;
     }
     return total;

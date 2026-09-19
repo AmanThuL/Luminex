@@ -52,7 +52,7 @@ RUN_COMMAND_HINT = (
 _RAW_HEX_BYTES = 64
 
 _BUFFER_ID_RE = re.compile(r"^MTLBuffer-(\d+)-\d+$")
-# Metal4FrameArena.cpp labels a page "lmx.device.frameData.<slot>.page.<index>" -- the constant
+# Metal4FrameArena.cpp labels a page "rojorhi.device.frameData.<slot>.page.<index>" -- the constant
 # prefix, the frame-in-flight slot, the literal "page", and the page index within that slot. The
 # attribution family groups by (prefix, index) with the slot wildcarded, i.e. every slot's page at
 # the same index: that is the cross-slot ambiguity the ring family used to have (three same-size
@@ -204,8 +204,8 @@ def decode_uploads(schema, page_bytes_by_label: dict, skip_unresolved: bool = Fa
 
 
 def _page_label_parts(label: str):
-    """(prefix, slot, index) from "lmx.device.frameData.0.page.1" ->
-    ("lmx.device.frameData", 0, 1), or None when `label` doesn't match a frame-data page label's
+    """(prefix, slot, index) from "rojorhi.device.frameData.0.page.1" ->
+    ("rojorhi.device.frameData", 0, 1), or None when `label` doesn't match a frame-data page label's
     shape."""
     match = _PAGE_LABEL_RE.match(label)
     if match is None:

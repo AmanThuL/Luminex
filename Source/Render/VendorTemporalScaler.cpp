@@ -25,7 +25,7 @@ static_assert(offsetof(VendorPackParams, height) == 4);
 
 //======================================================================================================================
 ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
-                                              const rhi::TemporalScalerSupport& support,
+                                              const rojoRHI::TemporalScalerSupport& support,
                                               bool creationFailed) {
     if (requested != ReconstructionMode::VendorTemporal) {
         return {requested, VendorFallback::None};
@@ -40,7 +40,7 @@ ReconstructionSelection resolveReconstruction(ReconstructionMode requested,
 }
 
 //======================================================================================================================
-float vendorRenderScale(float scale, const rhi::TemporalScalerSupport& support) {
+float vendorRenderScale(float scale, const rojoRHI::TemporalScalerSupport& support) {
     if (!support.available) {
         return scale;
     }
@@ -58,7 +58,8 @@ bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMo
 }
 
 //======================================================================================================================
-rhi::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels) {
+rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
+                                                  glm::vec2 jitterPixels) {
     const glm::vec2 offset = jitterTexelOffset(jitterPixels);
     return {.inputContentWidth = extents.renderWidth,
             .inputContentHeight = extents.renderHeight,
@@ -92,7 +93,7 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
     if (m_creationFailed || m_scaler) {
         return resolveReconstruction(requested, support, m_creationFailed);
     }
-    const auto fail = [&](const rhi::Error& error) {
+    const auto fail = [&](const rojoRHI::Error& error) {
         m_creationFailed = true;
         LMX_LOG_WARN("{} initialization failed at {}x{}: {}; using Native TAA", support.name, width,
                      height, error.message);
@@ -145,13 +146,13 @@ void VendorTemporalScaler::invalidateOutput() {
 }
 
 //======================================================================================================================
-rhi::ComputePipeline& VendorTemporalScaler::historyPipeline() const {
+rojoRHI::ComputePipeline& VendorTemporalScaler::historyPipeline() const {
     LMX_ASSERT(m_historyPipeline, "vendor history pipeline must be prepared before declaration");
     return *m_historyPipeline;
 }
 
 //======================================================================================================================
-rhi::Result<void> VendorTemporalScaler::preparePacking() {
+rojoRHI::Result<void> VendorTemporalScaler::preparePacking() {
     if (!m_packLibrary) {
         auto library = m_device.loadShaderLibrary("Shaders/VendorTemporalPack");
         if (!library) {
@@ -175,10 +176,10 @@ rhi::Result<void> VendorTemporalScaler::preparePacking() {
 
 //======================================================================================================================
 VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
-                                                       rhi::CommandList& commands,
+                                                       rojoRHI::CommandList& commands,
                                                        const TemporalInputs& inputs) {
     LMX_ASSERT(m_packPipeline, "vendor packing must be prepared before declaration");
-    const auto makeTexture = [&](rhi::Format format, std::string_view label, uint32_t width,
+    const auto makeTexture = [&](rojoRHI::Format format, std::string_view label, uint32_t width,
                                  uint32_t height) {
         return graph.createTexture({.width = width,
                                     .height = height,
@@ -188,11 +189,11 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
                                    label);
     };
     VendorTemporalPacked packed{
-        makeTexture(rhi::Format::RG16Float, "lmx.render.vendorMotion", inputs.extents.outputWidth,
-                    inputs.extents.outputHeight),
-        makeTexture(rhi::Format::R8Unorm, "lmx.render.vendorReactive", inputs.extents.outputWidth,
-                    inputs.extents.outputHeight),
-        makeTexture(rhi::Format::R16Float, "lmx.render.vendorExposure", 1, 1)};
+        makeTexture(rojoRHI::Format::RG16Float, "lmx.render.vendorMotion",
+                    inputs.extents.outputWidth, inputs.extents.outputHeight),
+        makeTexture(rojoRHI::Format::R8Unorm, "lmx.render.vendorReactive",
+                    inputs.extents.outputWidth, inputs.extents.outputHeight),
+        makeTexture(rojoRHI::Format::R16Float, "lmx.render.vendorExposure", 1, 1)};
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.motion, inputs.reactive};
     desc.bufferReads = {inputs.exposure};
@@ -210,12 +211,13 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
             commands.bindComputePipeline(*m_packPipeline);
             commands.bindTexture(0, *texture(inputs.motion));
             commands.bindTexture(1, *texture(inputs.reactive));
-            commands.bindStorageTexture(2, *texture(packed.motion), {}, rhi::StorageAccess::Write);
+            commands.bindStorageTexture(2, *texture(packed.motion), {},
+                                        rojoRHI::StorageAccess::Write);
             commands.bindStorageTexture(3, *texture(packed.reactive), {},
-                                        rhi::StorageAccess::Write);
+                                        rojoRHI::StorageAccess::Write);
             commands.bindStorageTexture(4, *texture(packed.exposure), {},
-                                        rhi::StorageAccess::Write);
-            commands.bindStorageBuffer(0, **exposure, rhi::StorageAccess::Read);
+                                        rojoRHI::StorageAccess::Write);
+            commands.bindStorageBuffer(0, **exposure, rojoRHI::StorageAccess::Read);
             const VendorPackParams params{inputs.extents.renderWidth, inputs.extents.renderHeight};
             commands.bindFrameData(1, params);
             commands.dispatch(divRoundUp(params.width, 8), divRoundUp(params.height, 8), 1);
@@ -224,7 +226,7 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
 }
 
 //======================================================================================================================
-GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                            const TemporalInputs& inputs) {
     LMX_ASSERT(m_scaler, "vendor scaler must be prepared before declaration");
     const VendorTemporalPacked packed = declarePack(graph, commands, inputs);

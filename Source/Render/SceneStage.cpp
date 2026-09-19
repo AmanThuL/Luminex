@@ -7,9 +7,9 @@
 
 #include "Core/Assert.h"
 #include "Core/Color.h"
-#include "RHI/CaptureSchema.h"
 #include "Render/LightClusters.h"
 #include "Render/TemporalResolve.h"
+#include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>
 #include <cmath>
@@ -142,7 +142,7 @@ DirLightUniform toUniform(const DirectionalLight& light) {
 
 //======================================================================================================================
 void SceneStage::registerSceneTableLayoutsForCapture() {
-    using rhi::debug::CaptureSchema;
+    using rojoRHI::debug::CaptureSchema;
     CaptureSchema& schema = CaptureSchema::instance();
 
     schema.registerUniformStruct(
@@ -215,10 +215,10 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
 
 //======================================================================================================================
 void SceneStage::registerPassLayoutsForCapture() {
-    using rhi::debug::CaptureSchema;
+    using rojoRHI::debug::CaptureSchema;
     CaptureSchema& schema = CaptureSchema::instance();
 
-    using rhi::debug::SchemaUniformField;
+    using rojoRHI::debug::SchemaUniformField;
 
     // Derive array offsets from the element stride to avoid duplicated layout literals.
     constexpr uint32_t kLightCount = sizeof(PassUniforms::lights) / sizeof(DirLightUniform);
@@ -262,8 +262,8 @@ void SceneStage::registerPassLayoutsForCapture() {
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
-                                                            rhi::Format sceneColorFormat) {
+rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device& device,
+                                                                rojoRHI::Format sceneColorFormat) {
     std::unique_ptr<SceneStage> self(new SceneStage);
 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
@@ -315,44 +315,44 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
     } else {
         return std::unexpected(library.error());
     }
-    const auto makeScenePipeline = [&](rhi::ShaderLibrary* library, rhi::FillMode fill,
+    const auto makeScenePipeline = [&](rojoRHI::ShaderLibrary* library, rojoRHI::FillMode fill,
                                        const char* label) {
         return device.createGraphicsPipeline({.library = library,
                                               .vertexEntry = "vertexMain",
                                               .fragmentEntry = "fragmentMain",
                                               .colorFormat = sceneColorFormat,
-                                              .depthFormat = rhi::Format::D32Float,
+                                              .depthFormat = rojoRHI::Format::D32Float,
                                               .depthTestEnable = true,
                                               .depthWriteEnable = true,
                                               .fillMode = fill,
-                                              .cullMode = rhi::CullMode::Back,
+                                              .cullMode = rojoRHI::CullMode::Back,
                                               // Reversed depth: the pass clears to 0 and the
                                               // nearer fragment is the larger one.
-                                              .depthCompare = rhi::DepthCompare::Greater,
+                                              .depthCompare = rojoRHI::DepthCompare::Greater,
                                               .label = label});
     };
     // The motion twin of makeScenePipeline: the motion entry points, and the motion target as a
     // second colour attachment. Compiled up front rather than on the frame temporal is first
     // enabled, because a pipeline compile in the middle of a frame is a hitch a toggle should not
     // cost.
-    const auto makeSceneMotionPipeline = [&](rhi::ShaderLibrary* library, rhi::FillMode fill,
-                                             const char* label) {
+    const auto makeSceneMotionPipeline = [&](rojoRHI::ShaderLibrary* library,
+                                             rojoRHI::FillMode fill, const char* label) {
         return device.createGraphicsPipeline(
             {.library = library,
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
              .colorFormat = sceneColorFormat,
-             .extraColorFormats = {kMotionFormat, kReactiveFormat, rhi::Format::Unknown},
+             .extraColorFormats = {kMotionFormat, kReactiveFormat, rojoRHI::Format::Unknown},
              .extraColorCount = 2,
-             .depthFormat = rhi::Format::D32Float,
+             .depthFormat = rojoRHI::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = true,
              .fillMode = fill,
-             .cullMode = rhi::CullMode::Back,
-             .depthCompare = rhi::DepthCompare::Greater,
+             .cullMode = rojoRHI::CullMode::Back,
+             .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = label});
     };
-    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rhi::FillMode::Solid,
+    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipeline");
         pipeline) {
         self->m_scenePipeline = std::move(*pipeline);
@@ -360,7 +360,7 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
         return std::unexpected(pipeline.error());
     }
     // Fill mode is baked into Metal pipeline state; compile both variants once.
-    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rhi::FillMode::Wireframe,
+    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                           "lmx.render.sceneWireframePipeline");
         pipeline) {
         self->m_sceneWireframePipeline = std::move(*pipeline);
@@ -370,30 +370,31 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
     // ScenePassAuto.slang's compiled twin, bound instead of the pipelines above whenever
     // auto-exposure is on (spec 9) -- see ScenePassAuto.slang's header for why this is a separate
     // pipeline rather than a branch inside the ones above.
-    if (auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Solid,
+    if (auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipelineAuto");
         pipeline) {
         self->m_scenePipelineAuto = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Wireframe,
-                                          "lmx.render.sceneWireframePipelineAuto");
+    if (auto pipeline =
+            makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
+                              "lmx.render.sceneWireframePipelineAuto");
         pipeline) {
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
 
-    if (auto pipeline = makeSceneMotionPipeline(self->m_sceneLibrary.get(), rhi::FillMode::Solid,
-                                                "lmx.render.scenePipelineMotion");
+    if (auto pipeline = makeSceneMotionPipeline(
+            self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid, "lmx.render.scenePipelineMotion");
         pipeline) {
         self->m_scenePipelineMotion = std::move(*pipeline);
     } else {
         return std::unexpected(pipeline.error());
     }
     if (auto pipeline =
-            makeSceneMotionPipeline(self->m_sceneLibrary.get(), rhi::FillMode::Wireframe,
+            makeSceneMotionPipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineMotion");
         pipeline) {
         self->m_sceneWireframePipelineMotion = std::move(*pipeline);
@@ -401,7 +402,7 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
         return std::unexpected(pipeline.error());
     }
     if (auto pipeline =
-            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Solid,
+            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                     "lmx.render.scenePipelineAutoMotion");
         pipeline) {
         self->m_scenePipelineAutoMotion = std::move(*pipeline);
@@ -409,7 +410,7 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
         return std::unexpected(pipeline.error());
     }
     if (auto pipeline =
-            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rhi::FillMode::Wireframe,
+            makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineAutoMotion");
         pipeline) {
         self->m_sceneWireframePipelineAutoMotion = std::move(*pipeline);
@@ -419,16 +420,16 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
 
     // Sky vertices force z == 0, the reversed far plane: use GreaterEqual so they survive the
     // pass's own 0 clear, render inside faces, and avoid rewriting the unchanged depth value.
-    const auto makeSkyPipeline = [&](rhi::ShaderLibrary* library, const char* label) {
+    const auto makeSkyPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
         return device.createGraphicsPipeline({.library = library,
                                               .vertexEntry = "vertexMain",
                                               .fragmentEntry = "fragmentMain",
                                               .colorFormat = sceneColorFormat,
-                                              .depthFormat = rhi::Format::D32Float,
+                                              .depthFormat = rojoRHI::Format::D32Float,
                                               .depthTestEnable = true,
                                               .depthWriteEnable = false,
-                                              .cullMode = rhi::CullMode::None,
-                                              .depthCompare = rhi::DepthCompare::GreaterEqual,
+                                              .cullMode = rojoRHI::CullMode::None,
+                                              .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
                                               .label = label});
     };
     if (auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
@@ -446,19 +447,19 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
         return std::unexpected(pipeline.error());
     }
 
-    const auto makeSkyMotionPipeline = [&](rhi::ShaderLibrary* library, const char* label) {
+    const auto makeSkyMotionPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
         return device.createGraphicsPipeline(
             {.library = library,
              .vertexEntry = "vertexMainMotion",
              .fragmentEntry = "fragmentMainMotion",
              .colorFormat = sceneColorFormat,
-             .extraColorFormats = {kMotionFormat, kReactiveFormat, rhi::Format::Unknown},
+             .extraColorFormats = {kMotionFormat, kReactiveFormat, rojoRHI::Format::Unknown},
              .extraColorCount = 2,
-             .depthFormat = rhi::Format::D32Float,
+             .depthFormat = rojoRHI::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = false,
-             .cullMode = rhi::CullMode::None,
-             .depthCompare = rhi::DepthCompare::GreaterEqual,
+             .cullMode = rojoRHI::CullMode::None,
+             .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
              .label = label});
     };
     if (auto pipeline =
@@ -493,16 +494,18 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
                          .vertexEntry = motion ? "vertexMainMotion" : "vertexMain",
                          .fragmentEntry = motion ? "fragmentMainMotion" : "fragmentMain",
                          .colorFormat = sceneColorFormat,
-                         .extraColorFormats = {motion ? kMotionFormat : rhi::Format::Unknown,
-                                               motion ? kReactiveFormat : rhi::Format::Unknown,
-                                               rhi::Format::Unknown},
+                         .extraColorFormats = {motion ? kMotionFormat : rojoRHI::Format::Unknown,
+                                               motion ? kReactiveFormat : rojoRHI::Format::Unknown,
+                                               rojoRHI::Format::Unknown},
                          .extraColorCount = motion ? 2u : 0u,
-                         .depthFormat = rhi::Format::D32Float,
+                         .depthFormat = rojoRHI::Format::D32Float,
                          .depthTestEnable = true,
                          .depthWriteEnable = true,
-                         .fillMode = wireframe ? rhi::FillMode::Wireframe : rhi::FillMode::Solid,
-                         .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
-                         .depthCompare = rhi::DepthCompare::Greater,
+                         .fillMode =
+                             wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
+                         .cullMode =
+                             doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+                         .depthCompare = rojoRHI::DepthCompare::Greater,
                          .label = label});
                     if (!pipeline) {
                         return std::unexpected(pipeline.error());
@@ -516,7 +519,7 @@ rhi::Result<std::unique_ptr<SceneStage>> SceneStage::create(rhi::Device& device,
 }
 
 //======================================================================================================================
-GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                  const SceneView& view, const SceneStageInputs& inputs) {
     const bool temporalEnabled = inputs.temporalEnabled;
     const auto& cameraState = inputs.camera;
@@ -658,14 +661,14 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
          temporalEnabled, cameraState, previousCamera, jitterNdc](const PassResources& resources) {
             // Resolved rather than captured: the graph hands over the shadow map only because this
             // pass declared reading it, which is what ordered it after the pass that wrote it.
-            const GraphResult<rhi::Texture*> shadowMapTexture = resources.texture(shadowRead);
+            const GraphResult<rojoRHI::Texture*> shadowMapTexture = resources.texture(shadowRead);
             LMX_ASSERT(shadowMapTexture.has_value(), shadowMapTexture.error().message);
 
             // Auto-exposure selects ScenePassAuto.slang's compiled pipeline instead of
             // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
             // branch in one, is what keeps the manual pipeline's compiled output identical to
             // pre-M5 -- see ScenePassAuto.slang's header.
-            rhi::GraphicsPipeline* opaquePipeline = nullptr;
+            rojoRHI::GraphicsPipeline* opaquePipeline = nullptr;
             if (temporalEnabled) {
                 opaquePipeline = view.autoExposureEnabled
                                      ? (view.wireframe ? m_sceneWireframePipelineAutoMotion.get()
@@ -680,7 +683,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                         : (view.wireframe ? m_sceneWireframePipeline.get() : m_scenePipeline.get());
             }
             commands.bindPipeline(*opaquePipeline);
-            rhi::GraphicsPipeline* boundScenePipeline = opaquePipeline;
+            rojoRHI::GraphicsPipeline* boundScenePipeline = opaquePipeline;
             commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
             commands.bindSampler(kShadowSamplerSlot, *inputs.shadowSampler);
             commands.bindSampler(kIblSamplerSlot, *inputs.iblSampler);
@@ -698,22 +701,22 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
             // Only ScenePassAuto.slang/SkyAuto.slang declare this resource at all, so it is bound
             // only when their pipelines are the ones in use.
             if (view.autoExposureEnabled) {
-                const GraphResult<rhi::Buffer*> exposureOverride =
+                const GraphResult<rojoRHI::Buffer*> exposureOverride =
                     resources.buffer(exposureCurrent);
                 LMX_ASSERT(exposureOverride.has_value(), exposureOverride.error().message);
                 commands.bindBuffer(kExposureOverrideSlot, **exposureOverride);
             }
             commands.bindFrameData(kPassUniformsSlot, passUniforms);
             // Declared slots stay bound even when the selected loop never reads their data.
-            rhi::Buffer* lightRows = m_fallbackLightRows.get();
+            rojoRHI::Buffer* lightRows = m_fallbackLightRows.get();
             if (inputs.lights.has_value()) {
-                const GraphResult<rhi::Buffer*> imported = resources.buffer(*inputs.lights);
+                const GraphResult<rojoRHI::Buffer*> imported = resources.buffer(*inputs.lights);
                 LMX_ASSERT(imported.has_value(), imported.error().message);
                 lightRows = *imported;
             }
             commands.bindBuffer(kSceneLightsSlot, *lightRows);
-            rhi::Buffer* grid = m_fallbackClusterGrid.get();
-            rhi::Buffer* indices = m_fallbackClusterIndices.get();
+            rojoRHI::Buffer* grid = m_fallbackClusterGrid.get();
+            rojoRHI::Buffer* indices = m_fallbackClusterIndices.get();
             if (inputs.lightGrid) {
                 const auto gridResult = resources.buffer(*inputs.lightGrid);
                 const auto indexResult = resources.buffer(*inputs.lightIndices);
@@ -772,7 +775,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rhi::CommandList& commands,
                 } else {
                     commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
                                                  uint64_t{run.argumentIndex} *
-                                                     sizeof(rhi::DrawIndexedIndirectArgs));
+                                                     sizeof(rojoRHI::DrawIndexedIndirectArgs));
                 }
             }
 

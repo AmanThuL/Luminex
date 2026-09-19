@@ -24,8 +24,8 @@ struct LightingCommands final : FakeCommandList {
     InputSnapshot snapshot;
 
     //==================================================================================================================
-    rhi::GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
-                                  uint64_t alignment) override {
+    rojoRHI::GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
+                                      uint64_t alignment) override {
         snapshot.operations.push_back("uniform:" + std::to_string(slot) + ":" +
                                       std::to_string(alignment));
         const auto* bytes = static_cast<const std::byte*>(data);
@@ -36,7 +36,7 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void bindBuffer(uint32_t slot, rhi::Buffer& buffer) override {
+    void bindBuffer(uint32_t slot, rojoRHI::Buffer& buffer) override {
         snapshot.operations.push_back("buffer:" + std::to_string(slot) + ":" +
                                       std::to_string(buffer.size()));
         auto& bytes = snapshot.payloads.emplace_back(buffer.size());
@@ -44,8 +44,8 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void bindTexture(uint32_t slot, rhi::Texture& texture,
-                     const rhi::TextureViewDesc& view) override {
+    void bindTexture(uint32_t slot, rojoRHI::Texture& texture,
+                     const rojoRHI::TextureViewDesc& view) override {
         const auto& value = static_cast<FakeDevice::TextureObject&>(texture);
         snapshot.operations.push_back("texture:" + std::to_string(slot) + ":" + value.label + ":" +
                                       std::to_string(texture.width()) + ":" +
@@ -59,21 +59,23 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void bindStorageTexture(uint32_t slot, rhi::Texture& texture, const rhi::TextureViewDesc& view,
-                            rhi::StorageAccess access) override {
+    void bindStorageTexture(uint32_t slot, rojoRHI::Texture& texture,
+                            const rojoRHI::TextureViewDesc& view,
+                            rojoRHI::StorageAccess access) override {
         snapshot.operations.push_back("storageTexture:" + std::to_string(static_cast<int>(access)));
         bindTexture(slot, texture, view);
     }
 
     //==================================================================================================================
-    void bindStorageBuffer(uint32_t slot, rhi::Buffer& buffer, rhi::StorageAccess access) override {
+    void bindStorageBuffer(uint32_t slot, rojoRHI::Buffer& buffer,
+                           rojoRHI::StorageAccess access) override {
         snapshot.operations.push_back("storageBuffer:" + std::to_string(static_cast<int>(access)));
         bindBuffer(slot, buffer);
     }
 
     //==================================================================================================================
-    void temporalScale(rhi::TemporalScaler& scaler,
-                       const rhi::TemporalScaleParams& params) override {
+    void temporalScale(rojoRHI::TemporalScaler& scaler,
+                       const rojoRHI::TemporalScaleParams& params) override {
         snapshot.operations.push_back("vendor:" + std::to_string(params.inputContentWidth) + ":" +
                                       std::to_string(params.inputContentHeight) + ":" +
                                       std::to_string(params.reset) + ":" +
@@ -90,26 +92,27 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void drawIndexed(rhi::Buffer&, uint32_t count, uint32_t first) override {
+    void drawIndexed(rojoRHI::Buffer&, uint32_t count, uint32_t first) override {
         snapshot.operations.push_back("draw:" + std::to_string(first) + ":" +
                                       std::to_string(count));
     }
 
     //==================================================================================================================
-    void drawIndexedIndirect(rhi::Buffer&, rhi::Buffer& arguments, uint64_t offset) override {
+    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer& arguments,
+                             uint64_t offset) override {
         snapshot.operations.push_back("indirect:" + std::to_string(offset));
         auto& bytes = snapshot.payloads.emplace_back(arguments.size());
         arguments.readback(bytes.data(), bytes.size());
     }
 
     //==================================================================================================================
-    void bindPipeline(rhi::GraphicsPipeline& pipeline) override {
+    void bindPipeline(rojoRHI::GraphicsPipeline& pipeline) override {
         snapshot.operations.push_back("graphics:" +
                                       static_cast<FakeGraphicsPipeline&>(pipeline).label);
     }
 
     //==================================================================================================================
-    void bindComputePipeline(rhi::ComputePipeline& pipeline) override {
+    void bindComputePipeline(rojoRHI::ComputePipeline& pipeline) override {
         snapshot.operations.push_back("compute:" +
                                       static_cast<FakeComputePipeline&>(pipeline).label);
     }
@@ -148,8 +151,8 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
     FakeDevice::BufferObject materialBuffer(sizeof(materials), materials.data());
     FakeDevice::TextureObject sky({.width = 1,
                                    .height = 1,
-                                   .format = rhi::Format::RGBA8Unorm,
-                                   .kind = rhi::TextureKind::Cube,
+                                   .format = rojoRHI::Format::RGBA8Unorm,
+                                   .kind = rojoRHI::TextureKind::Cube,
                                    .sampled = true,
                                    .label = "test.zeroLightSky"});
     render::SceneView view;

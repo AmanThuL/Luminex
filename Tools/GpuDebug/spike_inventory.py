@@ -4,7 +4,7 @@
 Usage: python3 spike_inventory.py <bundle.gputrace> [--pattern-w 300 --pattern-h 299]
 Prints: file tree with sizes; the 256-byte capture-blob header where one is present;
 metadata plist keys; the spike pattern's contiguity verdict plus its prefix hits; every
-printable "lmx." string with (file, offset).
+printable "lmx." or "rojorhi." string with (file, offset).
 Exit 0 always -- this is an inventory, not a check.
 
 Produce the bundle this was written against with:
@@ -24,7 +24,7 @@ BLOB_U64_FIELDS = [(16, "kind"), (24, "pixelFormat"), (32, "width"), (40, "heigh
 
 
 def pattern_bytes(w, h):
-    """The spike test's pattern, byte-for-byte (RHI/Tests/CaptureTests.cpp spikePatternBytes)."""
+    """The spike test's pattern, byte-for-byte (RojoRHI/Tests/CaptureTests.cpp spikePatternBytes)."""
     return bytes(((i * 31) + (i >> 8)) & 0xFF for i in range(w * h * 4))
 
 
@@ -61,7 +61,7 @@ def main():
     # prefix every 256-byte block whose offset satisfies 31r + q = 0 (mod 256), so a *linear*
     # blob still shows dozens of prefix hits. PATTERN-FULL below is the verdict; the prefix hits
     # are only a locator.
-    needles = [("PATTERN", pattern[:64]), ("LMX-LABEL", b"lmx.")]
+    needles = [("PATTERN", pattern[:64]), ("LMX-LABEL", b"lmx."), ("ROJORHI-LABEL", b"rojorhi.")]
     for path in sorted(args.bundle.rglob("*")):
         if not path.is_file():
             continue
@@ -80,7 +80,7 @@ def main():
             print("    PATTERN-FULL: absent -- prefix hits only, so the bytes are not laid out "
                   "linearly here")
         for name, off in hits[:40]:
-            if name == "LMX-LABEL":
+            if name in ("LMX-LABEL", "ROJORHI-LABEL"):
                 end = off
                 while end < len(data) and 0x20 <= data[end] < 0x7F:
                     end += 1

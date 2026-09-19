@@ -82,7 +82,7 @@ public:
     /// fails to load --
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
-    static std::unique_ptr<EditorShell> create(SDL_Window* window, rhi::Device& device,
+    static std::unique_ptr<EditorShell> create(SDL_Window* window, rojoRHI::Device& device,
                                                scene::SceneLibrary& library,
                                                scene::SceneId initialScene,
                                                std::shared_ptr<ConsoleLog> consoleLog);
@@ -102,7 +102,7 @@ public:
     /// data naming a texture that no longer exists, which is why the frame loop calls it at the
     /// top of the frame rather than next to the size measurement that feeds it.
     /// False on renderer allocation failure: the caller must leave the frame loop before drawing.
-    bool applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer);
+    bool applyPendingViewportResize(rojoRHI::Device& device, render::Renderer& renderer);
 
     /// Applies queued font/control scaling before backend and ImGui NewFrame calls.
     /// Uses the unscaled base style so repeated zoom/reset operations cannot accumulate drift.
@@ -120,15 +120,16 @@ public:
     /// Heals the Scene panel's selection against the active scene before any panel draws (spec
     /// section 5): a stale scene id or out-of-range index resolves to None and the healed value is
     /// what the Inspector sees this frame.
-    void buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
+    void buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                  const FrameRecordRing& frameRecords);
 
     /// Seeds rendering and local-light startup options before the first frame; returns a rig
     /// activation error without starting the frame loop if the requested rig cannot be added.
-    rhi::Result<void> primeTemporal(const AppOptions& options);
+    rojoRHI::Result<void> primeTemporal(const AppOptions& options);
 
     /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
-    render::GraphTexture declareSelection(render::RenderGraph& graph, rhi::CommandList& commands,
+    render::GraphTexture declareSelection(render::RenderGraph& graph,
+                                          rojoRHI::CommandList& commands,
                                           render::GraphTexture display,
                                           const render::SceneView& view,
                                           const render::Renderer& renderer);
@@ -140,7 +141,7 @@ public:
     render::SceneView sceneView();
 
     /// Uploads active scene tables after frame pacing and animation, before obtaining the view.
-    rhi::Result<void> prepareSceneFrame(uint64_t frameNumber);
+    rojoRHI::Result<void> prepareSceneFrame(uint64_t frameNumber);
 
     /// True exactly once per reset trigger (spec 9): first frame, scene switch, auto-exposure
     /// enable, and resize. Consuming clears the flag, so main.cpp calling this once a frame is
@@ -180,7 +181,7 @@ public:
     FrameMetricsMetadata frameMetrics(const render::Renderer& renderer);
 
     /// Joins exact retired GPU timings to a pending interactive measurement.
-    void retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings);
+    void retireMeasurement(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings);
     /// Joins the exact retired local-light diagnostics to their declared measurement frame.
     void retireMeasurementLighting(const render::LightingStatus& status);
     /// Publishes queued GPU visibility using saved declaration identities and exact measurement
@@ -232,7 +233,7 @@ private:
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
     void buildMainMenu();
-    void buildPlaybackTransport(rhi::Device& device, const render::Renderer& renderer);
+    void buildPlaybackTransport(rojoRHI::Device& device, const render::Renderer& renderer);
     void showMeasurement();
     void stopPlayback();
     void finishMeasurementPlayback();
@@ -242,7 +243,7 @@ private:
     void updateUiScaleShortcuts();
     // Draws every visible panel in dock order and folds each window's close button back into
     // m_workspace.visibility. Panels draw the state this shell owns; they keep no copy of it.
-    void buildPanels(rhi::Device& device, render::Renderer& renderer,
+    void buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
                      const FrameRecordRing& frameRecords);
     // Leaves SDL relative mouse mode, restores the cursor, clears the look latch, and discards the
     // motion accumulated while looking, so a later look cannot start with a jump. Safe to call when
@@ -253,13 +254,13 @@ private:
     // moved no window.
     void setPanelVisible(EditorPanel panel, bool visible);
     // Consumes the preceding presented frame's request, preserving selection/filter on failure.
-    void applyPendingScene(rhi::Device& device);
+    void applyPendingScene(rojoRHI::Device& device);
     // Drains in-flight scene references and loads one requested catalog entry, retaining an
     // actionable failure for ScenePanel while the current scene remains renderable.
-    bool selectScene(rhi::Device& device, scene::SceneId id);
+    bool selectScene(rojoRHI::Device& device, scene::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
-    void startMeasurement(rhi::Device& device, const render::Renderer& renderer);
+    void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;

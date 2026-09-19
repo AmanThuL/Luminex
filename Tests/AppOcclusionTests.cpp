@@ -141,10 +141,10 @@ TEST_CASE("Measurement schema separates pyramid build cost and rejects scored re
     status.occlusionCheckEnabled = true;
     status.occlusionCheck.enabled = true;
     REQUIRE(run.retireVisibility(status));
-    const std::array<rhi::PassTiming, 4> timings{{{"lmx.pass.visibility.classify", 0.25},
-                                                  {"lmx.pass.hzb.level0", 0.5},
-                                                  {"lmx.pass.hzb.publish", 0.0625},
-                                                  {"lmx.pass.hzb.debug", 0.125}}};
+    const std::array<rojoRHI::PassTiming, 4> timings{{{"lmx.pass.visibility.classify", 0.25},
+                                                      {"lmx.pass.hzb.level0", 0.5},
+                                                      {"lmx.pass.hzb.publish", 0.0625},
+                                                      {"lmx.pass.hzb.debug", 0.125}}};
     REQUIRE(run.retireLighting({.frameNumber = 1, .isRetired = true}));
     REQUIRE(run.retire(1, timings));
     REQUIRE(run.finishDrain());
@@ -167,7 +167,7 @@ TEST_CASE("A failed occlusion reference retains the full measurement sequence",
     plan.warmupFrames = 0;
     plan.measuredFrames = 3;
     REQUIRE(run.start(plan, {}));
-    const std::array<rhi::PassTiming, 1> timings{{{"lmx.pass.visibility.classify", 0.25}}};
+    const std::array<rojoRHI::PassTiming, 1> timings{{{"lmx.pass.visibility.classify", 0.25}}};
     for (uint32_t frame = 1; frame <= 3; ++frame) {
         REQUIRE(run.recordCpu({.frameId = frame,
                                .sequenceFrame = frame - 1,

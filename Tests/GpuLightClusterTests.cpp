@@ -10,7 +10,6 @@
 
 namespace {
 using namespace lmx::render;
-namespace rhi = lmx::rhi;
 
 // A camera plus the jittered projection the scene pass would rasterize with; the same shape
 // LightClustersTests.cpp builds its mirror inputs from.
@@ -164,7 +163,7 @@ struct ClusterRun {
 
 //======================================================================================================================
 // Declares, executes and retires one clustering frame, and builds the mirror over the same inputs.
-ClusterRun runClusters(rhi::Device& device, LightClusterStage& stage,
+ClusterRun runClusters(rojoRHI::Device& device, LightClusterStage& stage,
                        const std::vector<LightRow>& rows, const LightClusterParams& params) {
     auto lights = device.createBuffer({.size = rows.size() * sizeof(LightRow),
                                        .storageRead = true,
@@ -227,7 +226,7 @@ void requireMatchesMirror(const ClusterRun& run) {
 }
 
 //======================================================================================================================
-std::unique_ptr<LightClusterStage> makeStage(rhi::Device& device) {
+std::unique_ptr<LightClusterStage> makeStage(rojoRHI::Device& device) {
     auto stage = LightClusterStage::create(device);
     INFO(errorOf(stage));
     REQUIRE(stage);
@@ -238,7 +237,7 @@ std::unique_ptr<LightClusterStage> makeStage(rhi::Device& device) {
 
 //======================================================================================================================
 TEST_CASE("the GPU froxel grid equals the mirror over a 256-light field", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -268,7 +267,7 @@ TEST_CASE("the GPU froxel grid equals the mirror over a 256-light field", "[gpu]
 // One guard on each side of a froxel face and of a slice boundary. The pixel-aligned rectangle and
 // the reversed-Z table are exactly where fp32 rounding could make the two implementations part.
 TEST_CASE("froxel face and slice boundary probes equal the mirror", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -331,7 +330,7 @@ TEST_CASE("froxel face and slice boundary probes equal the mirror", "[gpu][light
 //======================================================================================================================
 TEST_CASE("the open slice's conservative rule equals the mirror on the GPU",
           "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -354,7 +353,7 @@ TEST_CASE("the open slice's conservative rule equals the mirror on the GPU",
 
 //======================================================================================================================
 TEST_CASE("a near plane collapsing slices equals the mirror on the GPU", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -376,7 +375,7 @@ TEST_CASE("a near plane collapsing slices equals the mirror on the GPU", "[gpu][
 
 //======================================================================================================================
 TEST_CASE("a tile owning no pixel lists nothing on the GPU either", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -392,7 +391,7 @@ TEST_CASE("a tile owning no pixel lists nothing on the GPU either", "[gpu][light
 
 //======================================================================================================================
 TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -436,7 +435,7 @@ TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][
 
 //======================================================================================================================
 TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cluster]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = makeStage(**device);
@@ -471,17 +470,17 @@ TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cl
 //======================================================================================================================
 TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers",
           "[gpu][light-cluster][clustered-consumer]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto stage = makeStage(**device);
     const auto view = makeView({0.0f, 1.5f, 6.0f}, 0.0f, -0.1f, 0.1f, 101, 59, {0, 0});
     auto rows = deterministicLightField(0x9E3779B97F4A7C15ull);
     const std::array<uint32_t, 6> counts{256, 192, 128, 64, 8, 1};
     std::vector<LightClusterLists> expected;
-    std::vector<std::unique_ptr<rhi::Buffer>> storage;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> storage;
     auto target = (*device)->createTexture({.width = 1,
                                             .height = 1,
-                                            .format = rhi::Format::RGBA8Unorm,
+                                            .format = rojoRHI::Format::RGBA8Unorm,
                                             .renderTarget = true,
                                             .label = "lmx.test.clusterRasterConsumer"});
     REQUIRE(target);
@@ -519,7 +518,7 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
             inputsFrom(params, graph.importBuffer(*storage.back(), "lmx.test.rows"), count, frame);
         inputs.shaderReadsOutputs = true;
         const auto output = stage->declare(graph, commands, inputs);
-        auto colour = graph.importTexture(**target, rhi::Format::RGBA8Unorm, "lmx.test.colour");
+        auto colour = graph.importTexture(**target, rojoRHI::Format::RGBA8Unorm, "lmx.test.colour");
         PassDesc consumer;
         consumer.bufferReads = {output.grid, output.indices};
         consumer.color = ColorAttachment{.handle = colour};
@@ -531,8 +530,8 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
             for (const auto name : {"lmx.light.grid", "lmx.light.indices"}) {
                 REQUIRE(std::ranges::any_of(record->debug.transitions, [&](const auto& barrier) {
                     return record->debug.resources[barrier.resource].name == name &&
-                           barrier.bufferFrom == rhi::BufferUse::ShaderRead &&
-                           barrier.bufferTo == rhi::BufferUse::StorageWrite;
+                           barrier.bufferFrom == rojoRHI::BufferUse::ShaderRead &&
+                           barrier.bufferTo == rojoRHI::BufferUse::StorageWrite;
                 }));
             }
         }

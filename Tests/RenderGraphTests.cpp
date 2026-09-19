@@ -5,7 +5,8 @@ TEST_CASE("an imported texture enters the graph at version 0", "[render][graph]"
     FakeTexture color{64, 64};
     RenderGraph graph;
 
-    const GraphTexture handle = graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture handle =
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     REQUIRE(handle.version == 0);
     REQUIRE(nextVersion(handle) == GraphTexture{handle.index, 1});
@@ -29,9 +30,10 @@ TEST_CASE("a producer is scheduled before its consumer whatever the declaration 
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(shadow));
@@ -56,8 +58,8 @@ TEST_CASE("independent passes keep their declaration order", "[render][graph]") 
     FakeTexture first{64, 64};
     FakeTexture second{64, 64};
     RenderGraph graph;
-    const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "first");
-    const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "second");
+    const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "first");
+    const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "second");
 
     PassDesc writeA;
     writeA.color = ColorAttachment{.handle = a};
@@ -107,7 +109,8 @@ TEST_CASE("a buffer write orders the pass that reads its result", "[render][grap
 TEST_CASE("reading a version no pass writes is rejected", "[render][graph]") {
     FakeTexture shadowMap{1024, 1024};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(shadow));
@@ -132,8 +135,9 @@ TEST_CASE("a discarded attachment cannot be consumed", "[render][graph]") {
     SECTION("later pass") {
         RenderGraph graph;
         const GraphTexture shadow =
-            graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
-        const GraphTexture color = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+            graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+        const GraphTexture color =
+            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
 
         PassDesc shadowPass;
         shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Discard};
@@ -154,7 +158,7 @@ TEST_CASE("a discarded attachment cannot be consumed", "[render][graph]") {
     SECTION("external sink") {
         RenderGraph graph;
         const GraphTexture shadow =
-            graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+            graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
         PassDesc shadowPass;
         shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Discard};
         graph.addPass("lmx.pass.shadow", shadowPass, kNoWork);
@@ -174,8 +178,8 @@ TEST_CASE("mutually dependent passes are rejected as a cycle", "[render][graph]"
     FakeTexture first{64, 64};
     FakeTexture second{64, 64};
     RenderGraph graph;
-    const GraphTexture a = graph.importTexture(first, rhi::Format::BGRA8Unorm, "first");
-    const GraphTexture b = graph.importTexture(second, rhi::Format::BGRA8Unorm, "second");
+    const GraphTexture a = graph.importTexture(first, rojoRHI::Format::BGRA8Unorm, "first");
+    const GraphTexture b = graph.importTexture(second, rojoRHI::Format::BGRA8Unorm, "second");
 
     PassDesc passA;
     passA.color = ColorAttachment{.handle = a};
@@ -200,8 +204,9 @@ TEST_CASE("attachments of different extents are rejected", "[render][graph]") {
     FakeTexture depth{32, 32};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -225,8 +230,9 @@ TEST_CASE("attachments differing only in height are rejected", "[render][graph]"
     FakeTexture depth{64, 32};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rhi::Format::D32Float, "sceneDepth");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -242,7 +248,8 @@ TEST_CASE("attachments differing only in height are rejected", "[render][graph]"
 TEST_CASE("a depth format in the color attachment is rejected", "[render][graph]") {
     FakeTexture shadowMap{1024, 1024};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = shadow};
@@ -260,7 +267,7 @@ TEST_CASE("a color format in the depth attachment is rejected", "[render][graph]
     FakeTexture color{64, 64};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.depth = DepthAttachment{.handle = sceneColor};
@@ -280,7 +287,7 @@ TEST_CASE("two passes writing one version are rejected", "[render][graph]") {
     FakeTexture color{64, 64};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc first;
     first.color = ColorAttachment{.handle = sceneColor};
@@ -305,7 +312,7 @@ TEST_CASE("exporting a version no pass wrote is rejected", "[render][graph]") {
     FakeTexture color{64, 64};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     graph.exportTexture(sceneColor);
 
@@ -316,7 +323,7 @@ TEST_CASE("exporting a version no pass wrote is rejected", "[render][graph]") {
 
     RenderGraph beyond;
     const GraphTexture beyondColor =
-        beyond.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        beyond.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     beyond.exportTexture(nextVersion(beyondColor));
     REQUIRE_FALSE(beyond.compile().has_value());
 }
@@ -326,7 +333,7 @@ TEST_CASE("exporting a version a pass wrote is accepted", "[render][graph]") {
     FakeTexture color{64, 64};
     RenderGraph graph;
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -342,9 +349,10 @@ TEST_CASE("PassResources resolves every texture the pass declared", "[render][gr
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.textureReads.push_back(shadow);
@@ -369,9 +377,10 @@ TEST_CASE("PassResources refuses a texture the pass did not declare", "[render][
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rhi::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
-        graph.importTexture(color, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     PassDesc scene;
     scene.textureReads.push_back(shadow);
@@ -422,7 +431,7 @@ TEST_CASE("PassResources resolves a declared buffer and refuses an undeclared on
 TEST_CASE("a compute pass reads and writes disjoint mips of one texture", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc downsample;
     downsample.textureReads.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
@@ -443,7 +452,7 @@ TEST_CASE("a compute pass reads and writes disjoint mips of one texture", "[rend
 TEST_CASE("a pass reading and writing overlapping ranges is rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc overlapping;
     overlapping.textureReads.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 2}});
@@ -465,7 +474,7 @@ TEST_CASE("a pass reading and writing overlapping ranges is rejected", "[render]
 TEST_CASE("a whole-resource read beside a whole-resource write is rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc inPlace;
     inPlace.textureReads.push_back(bloom);
@@ -483,7 +492,7 @@ TEST_CASE("a whole-resource read beside a whole-resource write is rejected", "[r
 TEST_CASE("ranges on different array layers do not overlap", "[render][graph]") {
     FakeTexture cube{64, 64, "cube", 1, 6};
     RenderGraph graph;
-    const GraphTexture faces = graph.importTexture(cube, rhi::Format::RGBA16Float, "faces");
+    const GraphTexture faces = graph.importTexture(cube, rojoRHI::Format::RGBA16Float, "faces");
 
     ComputePassDesc perFace;
     perFace.textureReads.push_back({faces, {.baseArrayLayer = 0, .arrayLayerCount = 1}});
@@ -502,7 +511,7 @@ TEST_CASE("ranges on different array layers do not overlap", "[render][graph]") 
 TEST_CASE("a subresource range past the end of the texture is rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 3};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc tooFar;
     tooFar.textureWrites.push_back({bloom, {.baseMipLevel = 3, .mipLevelCount = 1}});
@@ -521,7 +530,7 @@ TEST_CASE("a subresource range past the end of the texture is rejected", "[rende
 TEST_CASE("an overflowing subresource range is rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc overflow;
     overflow.textureWrites.push_back(
@@ -540,7 +549,7 @@ TEST_CASE("an overflowing subresource range is rejected", "[render][graph]") {
 TEST_CASE("an empty subresource range is rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 3};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc empty;
     empty.textureWrites.push_back({bloom, {.baseMipLevel = 0, .mipLevelCount = 0}});
@@ -558,7 +567,7 @@ TEST_CASE("an empty subresource range is rejected", "[render][graph]") {
 TEST_CASE("two passes writing disjoint ranges of one version are rejected", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
 
     ComputePassDesc first;
     first.textureWrites.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});
@@ -582,8 +591,8 @@ TEST_CASE("a read inherits the subresources its producer did not write", "[rende
     FakeTexture chain{64, 64, "chain", 4};
     FakeTexture output{64, 64, "output"};
     RenderGraph graph;
-    const GraphTexture bloom = graph.importTexture(chain, rhi::Format::RGBA16Float, "bloom");
-    const GraphTexture target = graph.importTexture(output, rhi::Format::BGRA8Unorm, "output");
+    const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
+    const GraphTexture target = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
 
     ComputePassDesc write;
     write.textureWrites.push_back({bloom, {.baseMipLevel = 1, .mipLevelCount = 1}});

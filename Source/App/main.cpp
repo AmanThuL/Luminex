@@ -12,15 +12,15 @@
 #include "App/Screenshot.h"
 #include "Core/Log.h"
 #include "Core/Parse.h"
-#include "RHI/CaptureSchema.h"
-#include "RHI/Metal4/Metal4Capture.h"
-#include "RHI/Metal4/Metal4ImGui.h"
-#include "RHI/RHI.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
 #include "Render/RhiLog.h"
 #include "Scene/SceneLibrary.h"
+#include <rojoRHI/CaptureSchema.h>
+#include <rojoRHI/Metal4/Metal4Capture.h>
+#include <rojoRHI/Metal4/Metal4ImGui.h>
+#include <rojoRHI/RHI.h>
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
@@ -94,7 +94,7 @@ float dynamicResolutionBudgetFromEnv() {
 // order keeps the device alive until every dependent object has been released.
 int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& options,
         const std::shared_ptr<lmx::app::ConsoleLog>& consoleLog) {
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     if (!device) {
         LMX_LOG_ERROR("createDevice failed: {}", device.error().message);
         return 1;
@@ -115,7 +115,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     auto swapchain = (*device)->createSwapchain({.nativeLayer = metalLayer,
                                                  .width = static_cast<uint32_t>(pixelWidth),
                                                  .height = static_cast<uint32_t>(pixelHeight),
-                                                 .format = lmx::rhi::Format::BGRA8Unorm});
+                                                 .format = rojoRHI::Format::BGRA8Unorm});
     if (!swapchain) {
         LMX_LOG_ERROR("createSwapchain failed: {}", swapchain.error().message);
         return 1;
@@ -156,7 +156,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         LMX_LOG_ERROR("startup lighting failed: {}", primed.error().message);
         return 1;
     }
-    shell->actions().configureCapture(lmx::rhi::metal4::captureAvailable());
+    shell->actions().configureCapture(rojoRHI::metal4::captureAvailable());
 
     const float dynamicResolutionBudget = dynamicResolutionBudgetFromEnv();
     if (dynamicResolutionBudget > 0.0f) {
@@ -289,13 +289,13 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // drawable retains the request; failed attempts are consumed rather than retried.
         bool capturingThisFrame = false;
         if (shell->actions().consumeCapture()) {
-            capturingThisFrame = lmx::rhi::metal4::beginCapture(**device, capturePath);
+            capturingThisFrame = rojoRHI::metal4::beginCapture(**device, capturePath);
             auto& result = shell->actions().captureResult();
             std::error_code pathError;
             result.path = std::filesystem::absolute(capturePath, pathError).string();
             if (!capturingThisFrame) {
                 result.status = lmx::app::ActionStatus::Failed;
-                result.message = lmx::rhi::metal4::captureFailureReason();
+                result.message = rojoRHI::metal4::captureFailureReason();
             } else {
                 result.message = "Capturing GPU work; waiting for completion.";
             }
@@ -304,14 +304,14 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // The Metal backend prepares its frame before ImGui builds draw data and RHI encoding
         // begins.
         shell->prepareUIFrame();
-        lmx::rhi::metal4::imguiNewFrame();
+        rojoRHI::metal4::imguiNewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
         shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
         const auto measurementWaitStart = std::chrono::steady_clock::now();
-        lmx::rhi::CommandList& commands = (*device)->beginFrame();
+        rojoRHI::CommandList& commands = (*device)->beginFrame();
         const auto measurementEncodeStart = std::chrono::steady_clock::now();
         shell->retireMeasurement((*device)->passTimingsFrame(), (*device)->passTimings());
         // The dynamic-resolution controller's attribution is by frame number, so this frame's
@@ -348,7 +348,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         const lmx::render::GraphTexture displayColor =
             shell->declareSelection(graph, commands, frame.displayColor(), view, **renderer);
         const lmx::render::GraphTexture drawable =
-            graph.importTexture(**target, lmx::rhi::Format::BGRA8Unorm, "lmx.app.drawable");
+            graph.importTexture(**target, rojoRHI::Format::BGRA8Unorm, "lmx.app.drawable");
 
         lmx::render::PassDesc ui;
         // Declaring the read is the whole ordering statement: it puts this pass after the display
@@ -360,7 +360,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
             .clearColor = {kUiClearColor[0], kUiClearColor[1], kUiClearColor[2], kUiClearColor[3]}};
         // ImGui owns encoder state once it starts, so no engine draw follows it in this pass.
         graph.addPass("lmx.pass.ui", std::move(ui), [&commands](const lmx::render::PassResources&) {
-            lmx::rhi::metal4::imguiRender(commands);
+            rojoRHI::metal4::imguiRender(commands);
         });
         // The drawable this frame presents, and the only sink the frame declares: everything the
         // renderer put in front of it is live because this pass reads it, so nothing here has to
@@ -412,7 +412,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
 
         if (capturingThisFrame) {
             {
-                lmx::rhi::debug::SchemaContext ctx;
+                rojoRHI::debug::SchemaContext ctx;
                 ctx.sceneName = std::string(shell->activeSceneName());
                 ctx.frameIndex = frameIndex;
                 const glm::vec3 cameraPos = shell->camera().position;
@@ -424,11 +424,11 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                 ctx.light0Strength = {light0.strength.x, light0.strength.y, light0.strength.z};
                 ctx.shadowFilter =
                     view.shadowFilter == lmx::render::ShadowFilter::PCSS ? "PCSS" : "PCF";
-                lmx::rhi::debug::CaptureSchema::instance().setContext(std::move(ctx));
+                rojoRHI::debug::CaptureSchema::instance().setContext(std::move(ctx));
             }
             // Captured work must complete before the trace document is finalized.
             (*device)->waitIdle();
-            lmx::rhi::metal4::endCapture();
+            rojoRHI::metal4::endCapture();
             auto& result = shell->actions().captureResult();
             std::error_code outputError;
             const bool written = std::filesystem::is_directory(result.path, outputError);

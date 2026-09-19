@@ -2,7 +2,7 @@
 
 #include "Asset/DdsLoader.h"
 #include "Asset/TextureBake.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <array>
 #include <atomic>
@@ -15,7 +15,6 @@
 #include <vector>
 
 using namespace lmx::asset;
-namespace rhi = lmx::rhi;
 
 namespace {
 
@@ -136,7 +135,7 @@ TEST_CASE("loadDds accepts a 4x4 single-mip BC1 2D texture", "[asset]") {
     REQUIRE(result->width == 4);
     REQUIRE(result->height == 4);
     REQUIRE(result->mipLevels == 1);
-    REQUIRE(result->kind == rhi::TextureKind::Tex2D);
+    REQUIRE(result->kind == rojoRHI::TextureKind::Tex2D);
     REQUIRE(result->bc1);
     REQUIRE(result->mips.size() == 1);
     REQUIRE(result->mips[0].bytesPerRow == 8);
@@ -170,7 +169,7 @@ TEST_CASE("loadDds accepts a 1x1 RGBA8 (A8R8G8B8) texture, swizzled to RGBA", "[
     REQUIRE(result->width == 1);
     REQUIRE(result->height == 1);
     REQUIRE(result->mipLevels == 1);
-    REQUIRE(result->kind == rhi::TextureKind::Tex2D);
+    REQUIRE(result->kind == rojoRHI::TextureKind::Tex2D);
     REQUIRE_FALSE(result->bc1);
     REQUIRE(result->mips.size() == 1);
     REQUIRE(result->mips[0].bytesPerRow == 4);
@@ -196,7 +195,7 @@ TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major 
 
     const AssetResult<DdsImage> result = loadDds(file.string());
     REQUIRE(result.has_value());
-    REQUIRE(result->kind == rhi::TextureKind::Cube);
+    REQUIRE(result->kind == rojoRHI::TextureKind::Cube);
     REQUIRE(result->mipLevels == 3);
     REQUIRE(result->mips.size() == 18); // 6 faces * 3 mips
 
@@ -205,7 +204,7 @@ TEST_CASE("loadDds accepts an 8x8 BC1 cubemap with 3 mips, correctly face-major 
     constexpr uint32_t kExpectedStride[3] = {16, 8, 8};
     for (uint32_t face = 0; face < 6; ++face) {
         for (uint32_t level = 0; level < 3; ++level) {
-            const rhi::TextureMip& mip = result->mips[face * 3 + level];
+            const rojoRHI::TextureMip& mip = result->mips[face * 3 + level];
             REQUIRE(mip.bytesPerRow == kExpectedStride[level]);
             // Read through TextureMip to pin the face-major, mip-major span used by GPU upload.
             REQUIRE(*static_cast<const uint8_t*>(mip.data) ==
@@ -487,7 +486,7 @@ TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payl
     REQUIRE(loaded->height == baked.height);
     REQUIRE(loaded->mipLevels == baked.mipLevels);
     REQUIRE_FALSE(loaded->bc1);
-    REQUIRE(loaded->kind == rhi::TextureKind::Tex2D);
+    REQUIRE(loaded->kind == rojoRHI::TextureKind::Tex2D);
     REQUIRE(loaded->payload.size() == baked.payload.size());
     REQUIRE(loaded->payload == baked.payload);
 }

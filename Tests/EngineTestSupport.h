@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Asset/Ibl.h"
-#include "RHI/RHI.h"
 #include "Scene/IblUpload.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/vec3.hpp>
 
@@ -21,8 +21,8 @@ namespace lmx::test {
 // are `radiance` itself and can state its expectation in closed form. Building it through the real
 // generators is also what keeps a probe honest about the assets the renderer actually samples --
 // their face orientation, their mip chain, and their RG16Float DFG storage included.
-[[nodiscard]] scene::ibl::IblTextures makeUniformIbl(rhi::Device& device, const glm::vec3& radiance,
-                                                     std::string_view label);
+[[nodiscard]] scene::ibl::IblTextures
+makeUniformIbl(rojoRHI::Device& device, const glm::vec3& radiance, std::string_view label);
 
 // Writes a self-contained animated glTF fixture into `dir` and returns the .gltf path: a translated
 // quad whose node carries one translation channel, so the loader's animation handling can be

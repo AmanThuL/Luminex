@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "RHI/RHI.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
+#include <rojoRHI/RHI.h>
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +10,7 @@
 
 //======================================================================================================================
 TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[gpu][san-miguel]") {
-    auto device = lmx::rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     lmx::scene::SceneLibrary library(**device);
     const auto id = lmx::scene::parseSceneId("san-miguel");

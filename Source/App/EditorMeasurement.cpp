@@ -42,7 +42,7 @@ std::string temporalName(const EditorRenderSettings& settings) {
 }
 } // namespace
 //======================================================================================================================
-void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& renderer) {
+void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer) {
     if (m_settings.dynamicResolutionEnabled) {
         m_measurementFeedback =
             "Turn off dynamic resolution before starting a fixed-plan measurement.";
@@ -94,7 +94,8 @@ void EditorShell::startMeasurement(rhi::Device& device, const render::Renderer& 
     m_measurementFeedback.clear();
 }
 //======================================================================================================================
-void EditorShell::retireMeasurement(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
+void EditorShell::retireMeasurement(uint64_t frameId,
+                                    std::span<const rojoRHI::PassTiming> timings) {
     m_visibilityDisplay.observeTimings(frameId, timings);
     m_lightingDisplay.observeTimings(frameId, timings);
     if (m_measurement.active())

@@ -90,7 +90,7 @@ void SceneSession::rewindAnimation() {
 }
 
 //======================================================================================================================
-rhi::Result<void> SceneSession::prepareFrame(uint64_t frameNumber) {
+rojoRHI::Result<void> SceneSession::prepareFrame(uint64_t frameNumber) {
     return scene().prepareFrame(frameNumber);
 }
 
@@ -194,10 +194,10 @@ bool SceneSession::localLightRigEnabled() const {
 }
 
 //======================================================================================================================
-rhi::Result<void> SceneSession::setLocalLightRig(bool enabled) {
+rojoRHI::Result<void> SceneSession::setLocalLightRig(bool enabled) {
     if (!localLightRigAvailable()) {
-        return std::unexpected(
-            rhi::Error{rhi::ErrorCode::InvalidDesc, "Local-light rig is available only in Sponza"});
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Local-light rig is available only in Sponza"});
     }
     auto result = m_lightRigs[m_scene].setEnabled(scene(), enabled);
     if (result)
@@ -248,17 +248,19 @@ bool SceneSession::localLightChanged(scene::LightId id) const {
 }
 
 //======================================================================================================================
-rhi::Result<void> SceneSession::editLocalLight(scene::LightId id, const render::LocalLight& light) {
+rojoRHI::Result<void> SceneSession::editLocalLight(scene::LightId id,
+                                                   const render::LocalLight& light) {
     if (const auto* current = scene().light(id))
         m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
     return scene().updateLight(id, light);
 }
 
 //======================================================================================================================
-rhi::Result<void> SceneSession::resetLocalLight(scene::LightId id) {
+rojoRHI::Result<void> SceneSession::resetLocalLight(scene::LightId id) {
     const auto original = localLightDefault(id);
     if (!original)
-        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc, "Light no longer exists"});
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
     return scene().updateLight(id, *original);
 }
 
@@ -286,10 +288,10 @@ uint32_t SceneSession::lightLabPileCapacity() const {
 }
 
 //======================================================================================================================
-rhi::Result<void> SceneSession::setLightLabPile(uint32_t count) {
+rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
     if (!lightLabPileAvailable() || count > lightLabPileCapacity())
-        return std::unexpected(rhi::Error{rhi::ErrorCode::InvalidDesc,
-                                          "Pile exceeds available LightLab light capacity"});
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Pile exceeds available LightLab light capacity"});
     auto& pile = m_defaults.at(m_scene).pileLights;
     std::erase_if(pile, [&](auto id) { return scene().light(id) == nullptr; });
     std::vector<scene::LightId> added;

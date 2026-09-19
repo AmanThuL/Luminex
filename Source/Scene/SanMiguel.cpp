@@ -16,7 +16,7 @@
 namespace lmx::scene {
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& device) {
     const auto assetPath = asset::findRepositoryAsset("Assets/Fetched/SanMiguel/SanMiguel.gltf",
                                                       asset::RepositoryAssetKind::RegularFile);
     if (!assetPath) {

@@ -207,8 +207,8 @@ It writes neither scene targets nor temporal histories. Ordinary Renderer and of
 Console alone occupies the bottom dock; Performance/Graph are detached, initially closed. Workspace schema 3 restores visibility/bounds; schema 2 migrates to default topology and preserves valid UI scale.
 Window > Performance toggles normally; Show measurement opens/focuses Measure anytime. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](guides/gpu-debugging.md).
 
-Neutral interfaces/capture schema live in `RHI/Include/RHI/`, shared implementation in `RHI/Source/`,
-and the backend in `RHI/Backends/Metal4/Source/`; optional `RHIMetal4ImGui` contains UI dependencies.
+Neutral interfaces/capture schema live in `RojoRHI/Include/rojoRHI/`, shared implementation in `RojoRHI/Source/`,
+and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImGui` contains UI dependencies.
 
 ## Resources and lifetime
 

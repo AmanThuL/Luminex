@@ -15,7 +15,7 @@ using namespace lmx;
 //======================================================================================================================
 TEST_CASE("visibility lab keeps its requested population and initial boundary lanes",
           "[gpu][scene][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     scene::SceneLibrary library(**device);
     const auto id = scene::parseSceneId("visibility-lab");
@@ -70,7 +70,7 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
 //======================================================================================================================
 TEST_CASE("visibility lab count includes boundary probes and seeded layout repeats",
           "[gpu][scene][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 0));
     REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 1048577));
@@ -92,7 +92,7 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
 //======================================================================================================================
 TEST_CASE("visibility lab occluders append deterministic slabs without altering the default grid",
           "[gpu][scene][visibility][occlusion]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 32, 1025));
     auto baseline = scene::loadVisibilityLabScene(**device, 32);

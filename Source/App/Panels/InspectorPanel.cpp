@@ -562,7 +562,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                 for (const auto& row :
                      visibilityFields(visibility, context.visibilityDisplay
                                                       ? context.visibilityDisplay->readingsTimings()
-                                                      : std::span<const rhi::PassTiming>{})) {
+                                                      : std::span<const rojoRHI::PassTiming>{})) {
                     if (row.group != group &&
                         (visibilityReady || row.group != VisibilityFieldGroup::Frame))
                         continue;

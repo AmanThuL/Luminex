@@ -16,9 +16,9 @@ struct GpuVisibilityOutputs {
 class GpuVisibility {
 public:
     /// Loads safe-math visibility kernels and their fixed threadgroup pipelines.
-    static rhi::Result<std::unique_ptr<GpuVisibility>> create(rhi::Device& device);
+    static rojoRHI::Result<std::unique_ptr<GpuVisibility>> create(rojoRHI::Device& device);
     /// Declares the four visibility passes and retains the declaration's readback context.
-    GpuVisibilityOutputs declare(RenderGraph& graph, rhi::CommandList& commands,
+    GpuVisibilityOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                  const SceneView& view, const FrustumPlanes& planes,
                                  const PreparedSubmission& submission, GraphBuffer instances,
                                  GraphBuffer meshes, GraphBuffer rows, GraphBuffer arguments,
@@ -38,9 +38,9 @@ public:
     }
 
 private:
-    explicit GpuVisibility(rhi::Device& device) : m_device(device) {}
+    explicit GpuVisibility(rojoRHI::Device& device) : m_device(device) {}
     struct Slot {
-        std::unique_ptr<rhi::Buffer> candidates, runs, chunks, views, states, counters;
+        std::unique_ptr<rojoRHI::Buffer> candidates, runs, chunks, views, states, counters;
         std::vector<std::byte> candidateBytes, runBytes, chunkBytes, viewBytes;
         uint32_t capacity = 0;
         bool used = false;
@@ -50,15 +50,16 @@ private:
         VisibilityTables tables;
         VisibilityParams params;
         std::vector<InstanceVisibility> expected;
-        std::vector<rhi::DrawIndexedIndirectArgs> geometry;
-        rhi::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr, *arguments = nullptr;
+        std::vector<rojoRHI::DrawIndexedIndirectArgs> geometry;
+        rojoRHI::Buffer *states = nullptr, *counters = nullptr, *rows = nullptr,
+                        *arguments = nullptr;
     };
-    rhi::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
+    rojoRHI::Result<void> prepareSlot(Slot& slot, const VisibilityTables& tables);
     VisibilityStatus readback(Pending& pending);
-    rhi::Device& m_device;
-    std::array<std::unique_ptr<rhi::ShaderLibrary>, 5> m_libraries;
-    std::array<std::unique_ptr<rhi::ComputePipeline>, 5> m_pipelines;
-    std::unique_ptr<rhi::Buffer> m_emptyInstances, m_emptyMeshes;
+    rojoRHI::Device& m_device;
+    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 5> m_libraries;
+    std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 5> m_pipelines;
+    std::unique_ptr<rojoRHI::Buffer> m_emptyInstances, m_emptyMeshes;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;
     std::vector<VisibilityStatus> m_retired;

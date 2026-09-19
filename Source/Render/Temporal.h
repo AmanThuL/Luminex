@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "RHI/Format.h"
 #include "Render/Camera.h"
+#include <rojoRHI/Format.h>
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
@@ -123,7 +123,7 @@ enum class MotionClass : uint8_t {
 };
 
 /// Storage format of the `lmx.render.motion` target: a signed two-channel UV delta.
-constexpr rhi::Format kMotionFormat = rhi::Format::RG16Float;
+constexpr rojoRHI::Format kMotionFormat = rojoRHI::Format::RG16Float;
 
 /// Per-component sentinel written when motion is undefined. Consumers test it with `isinf`; zero
 /// is a legitimate motion value and must never stand in for "unknown".

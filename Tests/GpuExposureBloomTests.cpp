@@ -15,10 +15,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Asset/GeometryGenerator.h"
-#include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
@@ -39,7 +39,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using namespace lmx::rhi;
+using namespace rojoRHI;
 
 //======================================================================================================================
 template <typename T>

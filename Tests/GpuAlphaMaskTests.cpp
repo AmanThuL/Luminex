@@ -14,7 +14,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 using namespace lmx::render;
-using namespace lmx::rhi;
+using namespace rojoRHI;
 
 //======================================================================================================================
 MeshData cutoutQuad() {
@@ -77,7 +77,7 @@ FixtureSceneView cutoutView(std::span<const FixtureDrawItem> items) {
 //======================================================================================================================
 TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask]") {
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
     auto renderer = Renderer::create(**device, kSize, kSize, true);
@@ -153,7 +153,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
 //======================================================================================================================
 TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu][alpha-mask]") {
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
     auto renderer = Renderer::create(**device, kSize, kSize, true);
@@ -191,7 +191,7 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
 //======================================================================================================================
 TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][alpha-mask]") {
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
     auto renderer = Renderer::create(**device, kSize, kSize, true);

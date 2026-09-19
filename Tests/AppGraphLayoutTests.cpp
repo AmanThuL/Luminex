@@ -21,7 +21,7 @@ namespace {
 
 // The layout reads nothing but the compiled record, so a fake needs to be real enough for
 // RenderGraph::compile() to accept and nothing more.
-struct FakeTexture final : rhi::Texture {
+struct FakeTexture final : rojoRHI::Texture {
 
     //==================================================================================================================
     explicit FakeTexture(uint32_t extent) : m_extent(extent) {}
@@ -33,7 +33,7 @@ struct FakeTexture final : rhi::Texture {
     uint32_t height() const override { return m_extent; }
 
     //==================================================================================================================
-    rhi::Format format() const override { return rhi::Format::Unknown; }
+    rojoRHI::Format format() const override { return rojoRHI::Format::Unknown; }
 
     //==================================================================================================================
     uint32_t mipLevels() const override { return 1; }
@@ -69,13 +69,16 @@ struct BloomFrame {
 //======================================================================================================================
 void declareBloomFrame(BloomFrame& frame) {
     RenderGraph& graph = frame.graph;
-    frame.scene =
-        graph.importTexture(frame.sceneColor, rhi::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    frame.first = graph.importTexture(frame.bloomA, rhi::Format::RGBA16Float, "lmx.render.bloomA");
-    frame.second = graph.importTexture(frame.bloomB, rhi::Format::RGBA16Float, "lmx.render.bloomB");
-    frame.third = graph.importTexture(frame.bloomC, rhi::Format::RGBA16Float, "lmx.render.bloomC");
-    frame.display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+    frame.scene = graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float,
+                                      "lmx.render.sceneColorHdr");
+    frame.first =
+        graph.importTexture(frame.bloomA, rojoRHI::Format::RGBA16Float, "lmx.render.bloomA");
+    frame.second =
+        graph.importTexture(frame.bloomB, rojoRHI::Format::RGBA16Float, "lmx.render.bloomB");
+    frame.third =
+        graph.importTexture(frame.bloomC, rojoRHI::Format::RGBA16Float, "lmx.render.bloomC");
+    frame.display = graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm,
+                                        "lmx.render.displayColor");
 
     PassDesc scenePass;
     scenePass.color = ColorAttachment{.handle = frame.scene};
@@ -122,17 +125,18 @@ struct SplitFrame {
 //======================================================================================================================
 void declareSplitFrame(SplitFrame& frame) {
     RenderGraph& graph = frame.graph;
-    const GraphTexture mid = graph.importTexture(frame.mid, rhi::Format::RGBA16Float, "lmx.mid");
+    const GraphTexture mid =
+        graph.importTexture(frame.mid, rojoRHI::Format::RGBA16Float, "lmx.mid");
     const GraphTexture display =
-        graph.importTexture(frame.displayColor, rhi::Format::RGBA16Float, "lmx.displayColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::RGBA16Float, "lmx.displayColor");
     const GraphTexture out =
-        graph.importTexture(frame.finalColor, rhi::Format::BGRA8Unorm, "lmx.finalColor");
+        graph.importTexture(frame.finalColor, rojoRHI::Format::BGRA8Unorm, "lmx.finalColor");
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rhi::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rhi::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
     const GraphTexture spareC =
-        graph.importTexture(frame.orphanC, rhi::Format::BGRA8Unorm, "lmx.orphanC");
+        graph.importTexture(frame.orphanC, rojoRHI::Format::BGRA8Unorm, "lmx.orphanC");
 
     PassDesc wide;
     wide.color = ColorAttachment{.handle = mid};
@@ -175,13 +179,13 @@ struct ChainFrame {
 void declareChainFrame(ChainFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture zero =
-        graph.importTexture(frame.targets[0], rhi::Format::BGRA8Unorm, "lmx.chain0");
+        graph.importTexture(frame.targets[0], rojoRHI::Format::BGRA8Unorm, "lmx.chain0");
     const GraphTexture one =
-        graph.importTexture(frame.targets[1], rhi::Format::BGRA8Unorm, "lmx.chain1");
+        graph.importTexture(frame.targets[1], rojoRHI::Format::BGRA8Unorm, "lmx.chain1");
     const GraphTexture two =
-        graph.importTexture(frame.targets[2], rhi::Format::BGRA8Unorm, "lmx.chain2");
+        graph.importTexture(frame.targets[2], rojoRHI::Format::BGRA8Unorm, "lmx.chain2");
     const GraphTexture three =
-        graph.importTexture(frame.targets[3], rhi::Format::BGRA8Unorm, "lmx.chain3");
+        graph.importTexture(frame.targets[3], rojoRHI::Format::BGRA8Unorm, "lmx.chain3");
 
     PassDesc a;
     a.color = ColorAttachment{.handle = zero};
@@ -219,11 +223,11 @@ struct CulledFrame {
 void declareCulledFrame(CulledFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture scene =
-        graph.importTexture(frame.sceneColor, rhi::Format::BGRA8Unorm, "sceneColor");
+        graph.importTexture(frame.sceneColor, rojoRHI::Format::BGRA8Unorm, "sceneColor");
     const GraphTexture display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "displayColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "displayColor");
     const GraphTexture orphan =
-        graph.importTexture(frame.unusedColor, rhi::Format::BGRA8Unorm, "unusedTarget");
+        graph.importTexture(frame.unusedColor, rojoRHI::Format::BGRA8Unorm, "unusedTarget");
 
     PassDesc scenePass;
     scenePass.color = ColorAttachment{.handle = scene};
@@ -261,20 +265,20 @@ void declareAliasFrame(AliasFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture scene = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.sceneColor");
     const GraphTexture bloom = graph.createTexture({.width = 64,
                                                     .height = 64,
-                                                    .format = rhi::Format::RGBA16Float,
+                                                    .format = rojoRHI::Format::RGBA16Float,
                                                     .renderTarget = true,
                                                     .sampled = true},
                                                    "lmx.transient.bloom");
     const GraphTexture mid =
-        graph.importTexture(frame.midTarget, rhi::Format::BGRA8Unorm, "lmx.mid");
+        graph.importTexture(frame.midTarget, rojoRHI::Format::BGRA8Unorm, "lmx.mid");
     const GraphTexture display =
-        graph.importTexture(frame.displayColor, rhi::Format::BGRA8Unorm, "lmx.displayColor");
+        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.displayColor");
 
     PassDesc writeScene;
     writeScene.color = ColorAttachment{.handle = scene};
@@ -311,9 +315,9 @@ struct DeadFrame {
 void declareDeadFrame(DeadFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rhi::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rhi::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
 
     PassDesc first;
     first.color = ColorAttachment{.handle = spareA};
@@ -336,9 +340,9 @@ struct DeadStageFrame {
 void declareDeadStageFrame(DeadStageFrame& frame) {
     RenderGraph& graph = frame.graph;
     const GraphTexture spareA =
-        graph.importTexture(frame.orphanA, rhi::Format::BGRA8Unorm, "lmx.orphanA");
+        graph.importTexture(frame.orphanA, rojoRHI::Format::BGRA8Unorm, "lmx.orphanA");
     const GraphTexture spareB =
-        graph.importTexture(frame.orphanB, rhi::Format::BGRA8Unorm, "lmx.orphanB");
+        graph.importTexture(frame.orphanB, rojoRHI::Format::BGRA8Unorm, "lmx.orphanB");
 
     PassDesc first;
     first.color = ColorAttachment{.handle = spareA};
@@ -351,7 +355,7 @@ void declareDeadStageFrame(DeadStageFrame& frame) {
 
 //======================================================================================================================
 GraphNodeModel modelOf(RenderGraph& graph, uint64_t frameId,
-                       std::span<const rhi::PassTiming> timings = {}) {
+                       std::span<const rojoRHI::PassTiming> timings = {}) {
     const auto record = graph.compileFrame(frameId);
     REQUIRE(record.has_value());
     return buildGraphNodeModel(*record, timings);
@@ -502,10 +506,10 @@ TEST_CASE("a group sums the GPU time of its measured members and counts them", "
     BloomFrame frame;
     declareBloomFrame(frame);
     // Timings arrive in schedule order; the last two scheduled passes go unmeasured.
-    const std::array<rhi::PassTiming, 3> timings = {
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.125},
-        rhi::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 0.5},
-        rhi::PassTiming{.label = "lmx.pass.bloom.downsample0", .gpuMilliseconds = 0.25}};
+    const std::array<rojoRHI::PassTiming, 3> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 0.125},
+        rojoRHI::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 0.5},
+        rojoRHI::PassTiming{.label = "lmx.pass.bloom.downsample0", .gpuMilliseconds = 0.25}};
     const GraphNodeModel model = modelOf(frame.graph, 5, timings);
 
     // The join really landed, so the sum below is not vacuous.
@@ -624,9 +628,9 @@ TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]
 
     BloomFrame second;
     declareBloomFrame(second);
-    const std::array<rhi::PassTiming, 2> timings = {
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 2.5},
-        rhi::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 3.5}};
+    const std::array<rojoRHI::PassTiming, 2> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 2.5},
+        rojoRHI::PassTiming{.label = "lmx.pass.bloom.threshold", .gpuMilliseconds = 3.5}};
     const GraphNodeModel measured = modelOf(second.graph, 98765, timings);
 
     // The timings really did land, so the comparison below is not vacuous.
@@ -661,8 +665,8 @@ TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]
 TEST_CASE("the layout signature follows the options and not the measurements", "[app]") {
     BloomFrame frame;
     declareBloomFrame(frame);
-    const std::array<rhi::PassTiming, 1> timings = {
-        rhi::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 9.5}};
+    const std::array<rojoRHI::PassTiming, 1> timings = {
+        rojoRHI::PassTiming{.label = "lmx.pass.scene", .gpuMilliseconds = 9.5}};
     const GraphNodeModel plain = modelOf(frame.graph, 1);
     const GraphNodeModel measured = modelOf(frame.graph, 4242, timings);
 

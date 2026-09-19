@@ -48,7 +48,7 @@ asset::AssetError missingAsset(std::string_view sceneName, std::string_view rela
 }
 
 //======================================================================================================================
-asset::AssetError uploadFailure(rhi::Error error) {
+asset::AssetError uploadFailure(rojoRHI::Error error) {
     return asset::AssetError{asset::AssetErrorCode::UploadFailed, std::move(error.message)};
 }
 
@@ -66,7 +66,7 @@ std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t
 //======================================================================================================================
 // Resolves a catalog scene's repo-relative asset before handing it to the public loader, so a
 // missing fetch reports the `xmake setup` hint instead of a bare file-not-found.
-asset::AssetResult<std::unique_ptr<Scene>> loadCatalogGltfScene(rhi::Device& device,
+asset::AssetResult<std::unique_ptr<Scene>> loadCatalogGltfScene(rojoRHI::Device& device,
                                                                 std::string_view relativeAssetPath,
                                                                 std::string_view sceneName) {
     const auto path = asset::findRepositoryAsset(relativeAssetPath);
@@ -80,7 +80,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadCatalogGltfScene(rhi::Device& dev
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<Scene>>
-loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view sceneName) {
+loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_view sceneName) {
     const std::filesystem::path path(assetPath);
     auto loaded = asset::loadGltf(path.string());
     if (!loaded) {
@@ -157,7 +157,7 @@ loadGltfScene(rhi::Device& device, std::string_view assetPath, std::string_view 
         auto texture = device.createTexture(
             {.width = bakedChain.width,
              .height = bakedChain.height,
-             .format = srgb ? rhi::Format::RGBA8Unorm_sRGB : rhi::Format::RGBA8Unorm,
+             .format = srgb ? rojoRHI::Format::RGBA8Unorm_sRGB : rojoRHI::Format::RGBA8Unorm,
              .mipLevels = bakedChain.mipLevels,
              .sampled = true,
              .label = label},
@@ -402,11 +402,11 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
         const auto* mesh = tryMesh(object.mesh);
         LMX_ASSERT(mesh, "SceneObject mesh identity is invalid");
         const MaterialRecord& factors = material(object.material);
-        const auto texture = [this](std::optional<TextureId> id) -> rhi::Texture* {
+        const auto texture = [this](std::optional<TextureId> id) -> rojoRHI::Texture* {
             if (!id) {
                 return nullptr;
             }
-            rhi::Texture* resolved = tryTexture(*id);
+            rojoRHI::Texture* resolved = tryTexture(*id);
             LMX_ASSERT(resolved, "material texture identity is invalid");
             return resolved;
         };
@@ -449,7 +449,7 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/Sponza/Sponza.gltf", "Sponza");
     if (!scene) {
         return std::unexpected(scene.error());
@@ -464,7 +464,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rhi::Device& device) 
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb",
                                       "DamagedHelmet");
     if (!scene) {
@@ -485,7 +485,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rhi::Device& device) 
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rhi::Device& device) {
+asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb",
                                       "CesiumMilkTruck");
     if (!scene) {

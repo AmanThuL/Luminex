@@ -19,42 +19,42 @@ using render::CompiledFrameRecord;
 // read the same enumerators and should say the same words for them, but neither owns the other's
 // vocabulary. Source/Render is out of scope for this panel, so the words are duplicated rather than
 // shared.
-std::string_view textureUseName(rhi::TextureUse use) {
+std::string_view textureUseName(rojoRHI::TextureUse use) {
     switch (use) {
-    case rhi::TextureUse::RenderTarget:
+    case rojoRHI::TextureUse::RenderTarget:
         return "RenderTarget";
-    case rhi::TextureUse::ShaderRead:
+    case rojoRHI::TextureUse::ShaderRead:
         return "ShaderRead";
-    case rhi::TextureUse::StorageRead:
+    case rojoRHI::TextureUse::StorageRead:
         return "StorageRead";
-    case rhi::TextureUse::StorageWrite:
+    case rojoRHI::TextureUse::StorageWrite:
         return "StorageWrite";
-    case rhi::TextureUse::CopySource:
+    case rojoRHI::TextureUse::CopySource:
         return "CopySource";
-    case rhi::TextureUse::CopyDestination:
+    case rojoRHI::TextureUse::CopyDestination:
         return "CopyDestination";
-    case rhi::TextureUse::ExternalRead:
+    case rojoRHI::TextureUse::ExternalRead:
         return "ExternalRead";
-    case rhi::TextureUse::ExternalWrite:
+    case rojoRHI::TextureUse::ExternalWrite:
         return "ExternalWrite";
     }
     return "ShaderRead";
 }
 
 //======================================================================================================================
-std::string_view bufferUseName(rhi::BufferUse use) {
+std::string_view bufferUseName(rojoRHI::BufferUse use) {
     switch (use) {
-    case rhi::BufferUse::ShaderRead:
+    case rojoRHI::BufferUse::ShaderRead:
         return "ShaderRead";
-    case rhi::BufferUse::StorageRead:
+    case rojoRHI::BufferUse::StorageRead:
         return "StorageRead";
-    case rhi::BufferUse::StorageWrite:
+    case rojoRHI::BufferUse::StorageWrite:
         return "StorageWrite";
-    case rhi::BufferUse::CopySource:
+    case rojoRHI::BufferUse::CopySource:
         return "CopySource";
-    case rhi::BufferUse::CopyDestination:
+    case rojoRHI::BufferUse::CopyDestination:
         return "CopyDestination";
-    case rhi::BufferUse::IndirectArgument:
+    case rojoRHI::BufferUse::IndirectArgument:
         return "IndirectArgument";
     }
     return "ShaderRead";
@@ -118,7 +118,7 @@ GraphInspectorTransientRow shapeTransient(const CompiledFrameDebug& debug,
 
 //======================================================================================================================
 GraphInspectorModel buildGraphInspectorModel(const CompiledFrameRecord& record,
-                                             std::span<const rhi::PassTiming> timings) {
+                                             std::span<const rojoRHI::PassTiming> timings) {
     const CompiledFrameDebug& debug = record.debug;
     GraphInspectorModel model;
     model.frameId = record.frameId;

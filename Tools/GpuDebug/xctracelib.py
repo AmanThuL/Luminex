@@ -6,7 +6,7 @@ The following constraints were verified against Xcode 16.0/17E202:
 1. **Table name.** `xcrun xctrace export --input <trace> --toc` exposes the per-encoder interval
    table as `metal-application-encoders-list` (`ENCODER_TABLE_SCHEMA` below). Its exported rows
    carry start, duration, and label columns, including project-owned `lmx.` labels.
-2. **Encoder-label granularity.** Render-pass labels originate in `rhi::RenderPassDesc` and are
+2. **Encoder-label granularity.** Render-pass labels originate in `rojoRHI::RenderPassDesc` and are
    copied onto the Metal encoder. Shadow, scene, and UI therefore produce distinct buckets.
    Multiple invocations carrying the same label intentionally aggregate; this module does not
    reconstruct frame or draw boundaries.
@@ -221,7 +221,7 @@ def check_anomalies(aggregate_result: dict) -> list:
             f"0 of {len(observed)} observed encoder label(s) contain {LMX_LABEL_MARKER!r}{seen}",
             "check the right App binary/scene was profiled, and that its render passes still "
             "label their command encoders with an 'lmx.' prefix "
-            "(RHI/Backends/Metal4/Source/Metal4CommandList.cpp)")]
+            "(RojoRHI/Backends/Metal4/Source/Metal4CommandList.cpp)")]
 
     anomalies = []
     for label in sorted(lmx_labelled):

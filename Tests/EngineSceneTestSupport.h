@@ -17,12 +17,12 @@
 #include "DisplayTransformOracle.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
-#include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/Mesh.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
+#include <rojoRHI/RHI.h>
 
 #include <algorithm>
 #include <array>
@@ -41,7 +41,6 @@ using lmx::srgbToLinear;
 using namespace lmx::scene;
 using lmx::test::findRepoAsset;
 using lmx::test::near3;
-namespace rhi = lmx::rhi;
 namespace render = lmx::render;
 
 namespace {
@@ -54,7 +53,7 @@ inline std::string describeSceneError(const AssetResult<T>& result) {
 
 //======================================================================================================================
 template <typename T>
-inline std::string describeSceneError(const rhi::Result<T>& result) {
+inline std::string describeSceneError(const rojoRHI::Result<T>& result) {
     return result.has_value() ? std::string{} : result.error().message;
 }
 
@@ -110,7 +109,7 @@ private:
 // SampleLevel-forcing entry point, independent of geometry or camera -- the same oracle the
 // deleted generateMipmaps GPU test used, repurposed here to compare two textures' mip content
 // directly.
-inline std::vector<uint8_t> readMipLevel1(rhi::Device& device, rhi::Texture& texture) {
+inline std::vector<uint8_t> readMipLevel1(rojoRHI::Device& device, rojoRHI::Texture& texture) {
     auto destination = makeProbeTarget(device, "lmx.test.fallbackMipDestination");
     REQUIRE(destination.has_value());
     auto library = device.loadShaderLibrary("Shaders/SamplerSmoke");
@@ -118,11 +117,11 @@ inline std::vector<uint8_t> readMipLevel1(rhi::Device& device, rhi::Texture& tex
     auto pipeline = device.createGraphicsPipeline({.library = library->get(),
                                                    .vertexEntry = "vertexMain",
                                                    .fragmentEntry = "fragmentMipLevel1",
-                                                   .colorFormat = rhi::Format::BGRA8Unorm,
+                                                   .colorFormat = rojoRHI::Format::BGRA8Unorm,
                                                    .label = "lmx.test.fallbackMipPipeline"});
     REQUIRE(pipeline.has_value());
     auto sampler = device.createSampler(
-        {.addressMode = rhi::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
+        {.addressMode = rojoRHI::AddressMode::Clamp, .label = "lmx.test.fallbackMipSampler"});
     REQUIRE(sampler.has_value());
     return renderSampledImage(device, **pipeline, /*textureSlot=*/0, texture, **sampler,
                               **destination);

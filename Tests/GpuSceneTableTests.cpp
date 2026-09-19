@@ -10,7 +10,6 @@
 namespace {
 namespace scene = lmx::scene;
 namespace render = lmx::render;
-namespace rhi = lmx::rhi;
 
 //======================================================================================================================
 render::MeshData tableQuad() {
@@ -37,7 +36,7 @@ scene::Scene tableScene() {
 }
 
 //======================================================================================================================
-std::unique_ptr<render::Renderer> tableRenderer(rhi::Device& device) {
+std::unique_ptr<render::Renderer> tableRenderer(rojoRHI::Device& device) {
     auto renderer = render::Renderer::create(device, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -48,8 +47,8 @@ std::unique_ptr<render::Renderer> tableRenderer(rhi::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rhi::Buffer> submitTables(rhi::Device& device, scene::Scene& scene,
-                                          render::Renderer& renderer, bool wait = true) {
+std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, scene::Scene& scene,
+                                              render::Renderer& renderer, bool wait = true) {
     auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
                                          .cpuReadback = true,
                                          .label = "lmx.test.sceneTables.frame"},
@@ -67,14 +66,14 @@ std::unique_ptr<rhi::Buffer> submitTables(rhi::Device& device, scene::Scene& sce
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
     renderer.render(commands, render::Camera{}, view, false);
-    commands.textureBarrier(renderer.colorTarget(), rhi::TextureUse::RenderTarget,
-                            rhi::TextureUse::CopySource);
+    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
+                            rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
     commands.copyTextureToBuffer(renderer.colorTarget(), {.width = kSize, .height = kSize},
                                  **snapshot, {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget(), rhi::TextureUse::CopySource,
-                            rhi::TextureUse::RenderTarget);
+    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::CopySource,
+                            rojoRHI::TextureUse::RenderTarget);
     commands.beginRenderPass({.colorTarget = &renderer.colorTarget(),
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
@@ -88,7 +87,7 @@ std::unique_ptr<rhi::Buffer> submitTables(rhi::Device& device, scene::Scene& sce
 }
 
 //======================================================================================================================
-std::vector<uint8_t> tablePixels(rhi::Buffer& buffer) {
+std::vector<uint8_t> tablePixels(rojoRHI::Buffer& buffer) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     buffer.readback(pixels.data(), pixels.size());
     return pixels;
@@ -138,7 +137,7 @@ glm::vec2 tableMotion(render::Renderer& renderer, float x) {
 //======================================================================================================================
 TEST_CASE("Scene tables share geometry and material without sharing motion",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     REQUIRE(scene.finalize(**device).has_value());
@@ -168,7 +167,7 @@ TEST_CASE("Scene tables share geometry and material without sharing motion",
 //======================================================================================================================
 TEST_CASE("Scene removal preserves row identity and the image of remaining objects",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     const auto removed = scene.objects[0].id;
@@ -199,7 +198,7 @@ TEST_CASE("Scene removal preserves row identity and the image of remaining objec
 //======================================================================================================================
 TEST_CASE("A reused scene row seeds its own pose and renders zero first-frame motion",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     REQUIRE(scene.finalize(**device).has_value());
@@ -224,7 +223,7 @@ TEST_CASE("A reused scene row seeds its own pose and renders zero first-frame mo
 //======================================================================================================================
 TEST_CASE("Scene replacement rejects foreign identities while submitted scenes overlap",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto first = std::make_unique<scene::Scene>(tableScene());
     auto second = tableScene();
@@ -234,7 +233,7 @@ TEST_CASE("Scene replacement rejects foreign identities while submitted scenes o
     REQUIRE(second.finalize(**device).has_value());
     second.objects[0].position.x = 0.0f;
     auto renderer = tableRenderer(**device);
-    std::vector<std::unique_ptr<rhi::Buffer>> frames;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     frames.push_back(submitTables(**device, *first, *renderer, false));
     frames.push_back(submitTables(**device, second, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::SceneChanged);
@@ -254,14 +253,14 @@ TEST_CASE("Scene replacement rejects foreign identities while submitted scenes o
 //======================================================================================================================
 TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fail lookup",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     const std::array<uint8_t, 4> white = {255, 255, 255, 255};
-    const rhi::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
     auto texture = (*device)->createTexture({.width = 1,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA8Unorm,
+                                             .format = rojoRHI::Format::RGBA8Unorm,
                                              .sampled = true,
                                              .label = "lmx.test.sceneTables.white"},
                                             std::span(&mip, 1));
@@ -272,7 +271,7 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     REQUIRE_FALSE(scene.tryTexture(stale));
     auto replacement = (*device)->createTexture({.width = 1,
                                                  .height = 1,
-                                                 .format = rhi::Format::RGBA8Unorm,
+                                                 .format = rojoRHI::Format::RGBA8Unorm,
                                                  .sampled = true,
                                                  .label = "lmx.test.sceneTables.white2"},
                                                 std::span(&mip, 1));
@@ -301,7 +300,7 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
 //======================================================================================================================
 TEST_CASE("Scene table growth keeps stable rows and retires old buffers after three frames",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     REQUIRE(scene.finalize(**device).has_value());
@@ -316,7 +315,7 @@ TEST_CASE("Scene table growth keeps stable rows and retires old buffers after th
     while (scene.objects.size() <= capacity) {
         scene.addObject({.position = {0, 0, -3}, .mesh = mesh, .material = material});
     }
-    std::vector<std::unique_ptr<rhi::Buffer>> frames;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     frames.push_back(submitTables(**device, scene, *renderer, false));
     REQUIRE(renderer->temporalStatus().lastReset == render::HistoryResetReason::None);
     REQUIRE(scene.tableStats().growthEvents == 1);
@@ -345,17 +344,17 @@ TEST_CASE("Scene table growth keeps stable rows and retires old buffers after th
 //======================================================================================================================
 TEST_CASE("Scene table slots preserve each submitted transform across three-frame overlap",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     scene.removeObject(scene.objects[1].id);
     REQUIRE(scene.finalize(**device).has_value());
     auto renderer = tableRenderer(**device);
     const std::array<float, 6> positions = {-0.7f, 0.0f, 0.7f, -0.7f, 0.0f, 0.7f};
-    std::array<rhi::Buffer*, 3> slotBuffers{};
+    std::array<rojoRHI::Buffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
     std::array<float, 3> slotPrevious{};
-    std::vector<std::unique_ptr<rhi::Buffer>> frames;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         scene.objects[0].position.x = positions[i];
         const float previous = scene.objects[0].previousModel[3].x;
@@ -390,7 +389,7 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
 //======================================================================================================================
 TEST_CASE("Local light table slots preserve each submitted row across three-frame overlap",
           "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     const auto light = scene.addLight({.type = render::LocalLightType::Point,
@@ -404,9 +403,9 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     // Six distinct nonzero values: a repeated or zero-valued position would be indistinguishable
     // from an unwritten row's default-constructed LightRow{} (position (0,0,0), range 0).
     const std::array<float, 6> positions = {-2.1f, -1.4f, -0.7f, 0.7f, 1.4f, 2.1f};
-    std::array<rhi::Buffer*, 3> slotBuffers{};
+    std::array<rojoRHI::Buffer*, 3> slotBuffers{};
     std::array<float, 3> slotPositions{};
-    std::vector<std::unique_ptr<rhi::Buffer>> frames;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         REQUIRE(scene
                     .updateLight(*light, {.type = render::LocalLightType::Point,
@@ -434,14 +433,14 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
 TEST_CASE(
     "Removing a no-longer-authored texture retains submitted bindings through paced retirement",
     "[gpu][scene-tables]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
     const std::array<uint8_t, 4> black = {0, 0, 0, 255};
-    const rhi::TextureMip mip{.data = black.data(), .bytesPerRow = 4};
+    const rojoRHI::TextureMip mip{.data = black.data(), .bytesPerRow = 4};
     auto texture = (*device)->createTexture({.width = 1,
                                              .height = 1,
-                                             .format = rhi::Format::RGBA8Unorm,
+                                             .format = rojoRHI::Format::RGBA8Unorm,
                                              .sampled = true,
                                              .label = "lmx.test.sceneTables.retiringTexture"},
                                             std::span(&mip, 1));
@@ -455,7 +454,7 @@ TEST_CASE(
     scene.material(material).emissiveMap.reset();
     scene.removeTexture(id);
     REQUIRE_FALSE(scene.tryTexture(id));
-    std::vector<std::unique_ptr<rhi::Buffer>> fallback;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> fallback;
     for (uint32_t frame = 0; frame < 3; ++frame) {
         fallback.push_back(submitTables(**device, scene, *renderer, false));
     }

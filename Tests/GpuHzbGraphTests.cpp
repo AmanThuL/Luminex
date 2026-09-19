@@ -8,7 +8,7 @@
 TEST_CASE("occlusion graph roots every HZB mip and reads the immediately preceding pyramid",
           "[gpu][hzb][occlusion-graph]") {
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
     auto scene = lmx::scene::loadVisibilityLabScene(**device, 1024);

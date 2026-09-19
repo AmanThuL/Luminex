@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "RHI/TextureDesc.h"
+#include <rojoRHI/TextureDesc.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -34,13 +34,13 @@ std::string_view bakeFilterName(BakeMode mode);
 
 /// A full mip chain baked in memory: one 2D image, RGBA8, tightly packed and mip-major (matches
 /// Asset/DdsLoader.h's DdsImage payload layout for a single face). `mips` is createTexture-ready
-/// -- MaterialLab hands it to rhi::Device::createTexture directly, without ever touching a file.
-/// Move-only because each TextureMip points into `payload`; a default copy would leave the copied
-/// descriptors pointing into the source object's storage.
+/// -- MaterialLab hands it to rojoRHI::Device::createTexture directly, without ever touching a
+/// file. Move-only because each TextureMip points into `payload`; a default copy would leave the
+/// copied descriptors pointing into the source object's storage.
 struct BakedMipChain {
     uint32_t width = 0, height = 0, mipLevels = 1; ///< Base extent and full level count.
     std::vector<std::byte> payload;                ///< Owned, tightly packed RGBA8 mip bytes.
-    std::vector<rhi::TextureMip> mips;             ///< Upload views pointing into `payload`.
+    std::vector<rojoRHI::TextureMip> mips;         ///< Upload views pointing into `payload`.
 
     /// Creates an empty chain ready to receive owned payload and views.
     BakedMipChain() = default;

@@ -13,7 +13,7 @@
 namespace lmx::render {
 
 //======================================================================================================================
-LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rhi::CommandList& commands,
+LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
                                               const SceneView& view,
                                               std::optional<GraphBuffer> lights,
                                               const FrameExtents& extents,

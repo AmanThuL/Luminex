@@ -1,6 +1,6 @@
 #pragma once
 
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -12,9 +12,9 @@
 
 namespace {
 
-using namespace lmx::rhi;
+using namespace rojoRHI;
 
-struct FakeCommandList : lmx::rhi::CommandList {
+struct FakeCommandList : rojoRHI::CommandList {
     struct Request {
         uint32_t slot = 0;
         const void* data = nullptr;
@@ -126,22 +126,22 @@ struct FakeCommandList : lmx::rhi::CommandList {
     }
 };
 
-struct FakeGraphicsPipeline final : lmx::rhi::GraphicsPipeline {
+struct FakeGraphicsPipeline final : rojoRHI::GraphicsPipeline {
     std::string label;
 };
 
-struct FakeComputePipeline final : lmx::rhi::ComputePipeline {
+struct FakeComputePipeline final : rojoRHI::ComputePipeline {
     std::string label;
 };
 
 // Deterministic allocation policy and no-op GPU objects for graph declarations.
-struct FakeDevice final : lmx::rhi::Device {
+struct FakeDevice final : rojoRHI::Device {
     static constexpr uint64_t kTextureAlignment = 16384;
     static constexpr uint64_t kBufferAlignment = 256;
     static constexpr uint64_t kBytesPerTexel = 4;
 
     // The heap retains its requested size; placed objects own descriptors and no GPU storage.
-    struct FakeHeap final : lmx::rhi::Heap {
+    struct FakeHeap final : rojoRHI::Heap {
 
         //==============================================================================================================
         explicit FakeHeap(uint64_t bytes) : m_size(bytes) {}
@@ -156,12 +156,12 @@ struct FakeDevice final : lmx::rhi::Device {
     // Tests may advance this directly or use endFrame to rotate the pool's frame slots.
     uint64_t frame = 0;
     FakeCommandList commands;
-    struct TextureObject final : lmx::rhi::Texture {
-        lmx::rhi::TextureDesc desc;
+    struct TextureObject final : rojoRHI::Texture {
+        rojoRHI::TextureDesc desc;
         std::string label;
 
         //==============================================================================================================
-        explicit TextureObject(const lmx::rhi::TextureDesc& value)
+        explicit TextureObject(const rojoRHI::TextureDesc& value)
             : desc(value), label(value.label) {
             desc.label = label;
         }
@@ -173,20 +173,20 @@ struct FakeDevice final : lmx::rhi::Device {
         uint32_t height() const override { return desc.height; }
 
         //==============================================================================================================
-        lmx::rhi::Format format() const override { return desc.format; }
+        rojoRHI::Format format() const override { return desc.format; }
 
         //==============================================================================================================
         uint32_t mipLevels() const override { return desc.mipLevels; }
 
         //==============================================================================================================
         uint32_t arrayLayers() const override {
-            return desc.kind == lmx::rhi::TextureKind::Cube ? 6 : 1;
+            return desc.kind == rojoRHI::TextureKind::Cube ? 6 : 1;
         }
 
         //==============================================================================================================
         void readback(void*, uint64_t) override { std::abort(); }
     };
-    struct BufferObject final : lmx::rhi::Buffer {
+    struct BufferObject final : rojoRHI::Buffer {
         std::vector<std::byte> storage;
 
         //==============================================================================================================
@@ -218,24 +218,24 @@ struct FakeDevice final : lmx::rhi::Device {
             std::memcpy(storage.data() + offset, source, size);
         }
     };
-    lmx::rhi::DeviceCapabilities deviceCaps;
+    rojoRHI::DeviceCapabilities deviceCaps;
     bool failTemporalScalerCreation = false;
-    std::vector<lmx::rhi::TemporalScalerDesc> temporalScalerCreations;
+    std::vector<rojoRHI::TemporalScalerDesc> temporalScalerCreations;
     std::deque<std::string> temporalScalerLabels;
-    struct FakeTemporalScaler final : lmx::rhi::TemporalScaler {};
+    struct FakeTemporalScaler final : rojoRHI::TemporalScaler {};
 
     //==================================================================================================================
-    const lmx::rhi::DeviceCapabilities& capabilities() const override { return deviceCaps; }
+    const rojoRHI::DeviceCapabilities& capabilities() const override { return deviceCaps; }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::TemporalScaler>>
-    createTemporalScaler(const lmx::rhi::TemporalScalerDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::TemporalScaler>>
+    createTemporalScaler(const rojoRHI::TemporalScalerDesc& desc) override {
         temporalScalerLabels.emplace_back(desc.label);
         temporalScalerCreations.push_back(desc);
         temporalScalerCreations.back().label = temporalScalerLabels.back();
         if (!deviceCaps.temporalScaler.available || failTemporalScalerCreation) {
-            return std::unexpected(lmx::rhi::Error{lmx::rhi::ErrorCode::ResourceCreationFailed,
-                                                   "fake temporal scaler unavailable"});
+            return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::ResourceCreationFailed,
+                                                  "fake temporal scaler unavailable"});
         }
         return std::make_unique<FakeTemporalScaler>();
     }
@@ -246,8 +246,8 @@ struct FakeDevice final : lmx::rhi::Device {
     }
 
     //==================================================================================================================
-    lmx::rhi::SizeAlign textureSizeAlign(const lmx::rhi::TextureDesc& desc) const override {
-        const uint32_t faces = desc.kind == lmx::rhi::TextureKind::Cube ? 6 : 1;
+    rojoRHI::SizeAlign textureSizeAlign(const rojoRHI::TextureDesc& desc) const override {
+        const uint32_t faces = desc.kind == rojoRHI::TextureKind::Cube ? 6 : 1;
         uint64_t texels = 0;
         for (uint32_t level = 0; level < desc.mipLevels; ++level) {
             const uint64_t width = desc.width >> level;
@@ -259,86 +259,85 @@ struct FakeDevice final : lmx::rhi::Device {
     }
 
     //==================================================================================================================
-    lmx::rhi::SizeAlign bufferSizeAlign(const lmx::rhi::BufferDesc& desc) const override {
+    rojoRHI::SizeAlign bufferSizeAlign(const rojoRHI::BufferDesc& desc) const override {
         return {.size = alignUp(desc.size, kBufferAlignment), .alignment = kBufferAlignment};
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Swapchain>>
-    createSwapchain(const lmx::rhi::SwapchainDesc&) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Swapchain>>
+    createSwapchain(const rojoRHI::SwapchainDesc&) override {
         std::abort();
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>>
-    createBuffer(const lmx::rhi::BufferDesc& desc, const void* initialData) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Buffer>>
+    createBuffer(const rojoRHI::BufferDesc& desc, const void* initialData) override {
         return std::make_unique<BufferObject>(desc.size, initialData);
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Texture>>
-    createTexture(const lmx::rhi::TextureDesc& desc,
-                  std::span<const lmx::rhi::TextureMip>) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+    createTexture(const rojoRHI::TextureDesc& desc, std::span<const rojoRHI::TextureMip>) override {
         return std::make_unique<TextureObject>(desc);
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Heap>>
-    createHeap(const lmx::rhi::HeapDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Heap>>
+    createHeap(const rojoRHI::HeapDesc& desc) override {
         return std::make_unique<FakeHeap>(desc.size);
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Texture>>
-    createPlacedTexture(lmx::rhi::Heap&, uint64_t, const lmx::rhi::TextureDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
+    createPlacedTexture(rojoRHI::Heap&, uint64_t, const rojoRHI::TextureDesc& desc) override {
         return std::make_unique<TextureObject>(desc);
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Buffer>>
-    createPlacedBuffer(lmx::rhi::Heap&, uint64_t, const lmx::rhi::BufferDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Buffer>>
+    createPlacedBuffer(rojoRHI::Heap&, uint64_t, const rojoRHI::BufferDesc& desc) override {
         return std::make_unique<BufferObject>(desc.size);
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::Sampler>>
-    createSampler(const lmx::rhi::SamplerDesc&) override {
-        return std::make_unique<lmx::rhi::Sampler>();
+    rojoRHI::Result<std::unique_ptr<rojoRHI::Sampler>>
+    createSampler(const rojoRHI::SamplerDesc&) override {
+        return std::make_unique<rojoRHI::Sampler>();
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::ShaderLibrary>>
+    rojoRHI::Result<std::unique_ptr<rojoRHI::ShaderLibrary>>
     loadShaderLibrary(std::string_view) override {
-        return std::make_unique<lmx::rhi::ShaderLibrary>();
+        return std::make_unique<rojoRHI::ShaderLibrary>();
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::GraphicsPipeline>>
-    createGraphicsPipeline(const lmx::rhi::GraphicsPipelineDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::GraphicsPipeline>>
+    createGraphicsPipeline(const rojoRHI::GraphicsPipelineDesc& desc) override {
         auto result = std::make_unique<FakeGraphicsPipeline>();
         result->label = desc.label;
         return result;
     }
 
     //==================================================================================================================
-    lmx::rhi::Result<std::unique_ptr<lmx::rhi::ComputePipeline>>
-    createComputePipeline(const lmx::rhi::ComputePipelineDesc& desc) override {
+    rojoRHI::Result<std::unique_ptr<rojoRHI::ComputePipeline>>
+    createComputePipeline(const rojoRHI::ComputePipelineDesc& desc) override {
         auto result = std::make_unique<FakeComputePipeline>();
         result->label = desc.label;
         return result;
     }
 
     //==================================================================================================================
-    lmx::rhi::CommandList& beginFrame() override { return commands; }
+    rojoRHI::CommandList& beginFrame() override { return commands; }
 
     //==================================================================================================================
-    void endFrame(lmx::rhi::Swapchain*) override { ++frame; }
+    void endFrame(rojoRHI::Swapchain*) override { ++frame; }
 
     //==================================================================================================================
     void waitIdle() override {}
 
     //==================================================================================================================
-    std::span<const lmx::rhi::PassTiming> passTimings() const override { return {}; }
+    std::span<const rojoRHI::PassTiming> passTimings() const override { return {}; }
 
     //==================================================================================================================
     uint64_t passTimingsFrame() const override { return 0; }

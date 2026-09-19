@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
 #include "Render/Camera.h"
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
@@ -20,6 +19,7 @@
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TemporalResolve.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -43,8 +43,8 @@ class DisplayStage;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, slot, size, every field's offset and type) to
-/// rhi::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds instead
-/// of leaving them a hex dump.
+/// rojoRHI::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds
+/// instead of leaving them a hex dump.
 ///
 /// Free-standing and idempotent -- re-registering a struct replaces it -- because the layouts
 /// describe the *shaders*, not any one Renderer: Renderer::create calls it, and a caller with no
@@ -58,10 +58,11 @@ void registerUniformLayoutsForCapture();
 ///
 /// The scene renders in half float because that is what holds radiance above 1.0; the display
 /// target is the 8-bit surface the viewport, the swapchain, and the screenshot all expect.
-constexpr rhi::Format kSceneColorFormat = rhi::Format::RGBA16Float;
+constexpr rojoRHI::Format kSceneColorFormat = rojoRHI::Format::RGBA16Float;
 /// Eight-bit BGRA storage of kSdrDisplayDomain; UNORM stores its already-encoded sRGB bytes.
-constexpr rhi::Format kDisplayFormat = rhi::Format::BGRA8Unorm;
-static_assert(kDisplayFormat == rhi::Format::BGRA8Unorm && kSdrDisplayDomain.bitsPerChannel == 8,
+constexpr rojoRHI::Format kDisplayFormat = rojoRHI::Format::BGRA8Unorm;
+static_assert(kDisplayFormat == rojoRHI::Format::BGRA8Unorm &&
+                  kSdrDisplayDomain.bitsPerChannel == 8,
               "display storage must match the named domain's channel precision");
 
 /// Floats in the persistent exposure buffer: `{ applied, previous }`. `applied` is what the scene
@@ -81,15 +82,15 @@ public:
 
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
-    static rhi::Result<std::unique_ptr<Renderer>> create(rhi::Device& device, uint32_t width,
-                                                         uint32_t height, bool cpuReadback = false);
+    static rojoRHI::Result<std::unique_ptr<Renderer>>
+    create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool cpuReadback = false);
 
     /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
     /// new size. The shadow map is fixed-size and untouched.
     /// The caller guarantees the GPU is idle (Device::waitIdle) first: frames still in flight hold
     /// the old textures in their residency set and their encoders, and dropping them here would
     /// free memory the GPU is reading.
-    rhi::Result<void> resize(uint32_t width, uint32_t height);
+    rojoRHI::Result<void> resize(uint32_t width, uint32_t height);
 
     /// Declares this frame's shadow, scene(+sky), and display passes into `graph`, importing the
     /// renderer's own targets, and answers with the display-target version the display pass
@@ -99,8 +100,8 @@ public:
     /// Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
     /// and everything `view` borrows must outlive that call.
-    GraphTexture declarePasses(RenderGraph& graph, rhi::CommandList& commands, const Camera& camera,
-                               const SceneView& view);
+    GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
+                               const Camera& camera, const SceneView& view);
 
     /// Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants
@@ -110,12 +111,12 @@ public:
     /// barrierForSampling covers the one case the graph cannot see: a caller that samples
     /// colorTarget() from a pass it encodes by hand afterwards has declared nothing, so the
     /// transition to a shader read is emitted on its behalf.
-    void render(rhi::CommandList& commands, const Camera& camera, const SceneView& view,
+    void render(rojoRHI::CommandList& commands, const Camera& camera, const SceneView& view,
                 bool barrierForSampling = true);
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
     /// Barriered to ShaderRead when render() returned with barrierForSampling == true.
-    rhi::Texture& colorTarget();
+    rojoRHI::Texture& colorTarget();
 
     /// Colour domain of colorTarget(), shared by presentation, capture and diagnostics.
     constexpr DisplayDomain displayDomain() const { return kSdrDisplayDomain; }
@@ -128,7 +129,7 @@ public:
     /// TemporalStatus::extents' render extent, which a frame below scale 1 leaves smaller than the
     /// allocation. The texels outside that rectangle are whatever an earlier frame left there, so a
     /// reader at a render scale below 1 has to crop to the active rectangle.
-    rhi::Texture& hdrColorTarget();
+    rojoRHI::Texture& hdrColorTarget();
 
     /// The last declared frame's depth buffer, D32Float and reversed (near = 1, falling toward 0
     /// with distance). Held past the scene pass and sampled rather than discarded, so a caller can
@@ -140,7 +141,7 @@ public:
     /// declared rendered into; a frame with temporal off renders into slot 0. Like the scene
     /// colour, it is allocated at the output extent and written only inside the origin-anchored
     /// rectangle of TemporalStatus::extents' render extent.
-    rhi::Texture& depthTarget();
+    rojoRHI::Texture& depthTarget();
 
     /// What the last declared frame decided about its history. Advanced by declarePasses(), so it
     /// describes the frame just declared rather than the one about to be.
@@ -163,21 +164,21 @@ public:
     /// The frame's motion target in kMotionFormat, allocated with the scene targets and so never
     /// null after a successful create(). Borrowed: the renderer owns it and replaces it on
     /// resize().
-    rhi::Texture* motionTarget() { return m_motion.get(); }
+    rojoRHI::Texture* motionTarget() { return m_motion.get(); }
     /// Returns the borrowed reactive attachment, with motionTarget ownership and readback terms.
-    rhi::Texture* reactiveTarget() { return m_reactive.get(); }
+    rojoRHI::Texture* reactiveTarget() { return m_reactive.get(); }
 
     /// The colour history slot the frame just declared wrote, in kSceneColorFormat: the resolve's
     /// output under NativeTaa and the raw copy under Raw, so it always holds that frame's output.
     /// Borrowed on motionTarget()'s terms; a frame with temporal off leaves slot 0 untouched and
     /// this reports it anyway.
-    rhi::Texture* historyTarget();
+    rojoRHI::Texture* historyTarget();
 
     /// The persistent kExposureBufferFloats pair the frame's exposure passes keep. Created with
     /// the renderer and never replaced, so it is never null. Readable from the CPU only when
     /// create() was given cpuReadback -- the tests and the offscreen path; the windowed App never
     /// reads it back, which is the whole point of keeping the feedback GPU-resident.
-    rhi::Buffer& exposureBuffer();
+    rojoRHI::Buffer& exposureBuffer();
 
     /// Returns the current target width in pixels.
     uint32_t width() const { return m_width; }
@@ -196,12 +197,12 @@ public:
     float timeSeconds = 0.0f;
 
 private:
-    Renderer(rhi::Device& device, bool cpuReadback);
-    std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rhi::CommandList& commands,
+    Renderer(rojoRHI::Device& device, bool cpuReadback);
+    std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);
 
-    LightClusterOutputs prepareLighting(RenderGraph& graph, rhi::CommandList& commands,
+    LightClusterOutputs prepareLighting(RenderGraph& graph, rojoRHI::CommandList& commands,
                                         const SceneView& view, std::optional<GraphBuffer> lights,
                                         const FrameExtents& extents,
                                         const CameraFrameState& cameraState);
@@ -209,7 +210,7 @@ private:
 
     GraphTexture prepareOcclusion(RenderGraph& graph, const Camera& camera, const SceneView& view,
                                   const FrameExtents& extents, const CameraFrameState& cameraState);
-    void declareOcclusion(RenderGraph& graph, rhi::CommandList& commands, const SceneView& view,
+    void declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                           GraphTexture depth, GraphTexture& display);
     // Creates the motion and reactive attachments at the current extent, replacing any pair
     // already held. Called from resize() -- and so from create(), which resizes once -- so both
@@ -217,9 +218,9 @@ private:
     //
     // Its own function rather than resize()'s body because the two allocations answer to
     // kMotionFormat and kReactiveFormat rather than to the scene targets'.
-    rhi::Result<void> createTemporalTargets();
+    rojoRHI::Result<void> createTemporalTargets();
 
-    rhi::Device& m_device;
+    rojoRHI::Device& m_device;
     // render()'s own pool for bloom's transients, since a caller without a graph of its own (the
     // --screenshot path, most GPU tests) has no pool to hand declarePasses(); a caller building a
     // graph of its own frame (the App) supplies its own instead and this member goes unused.
@@ -234,15 +235,15 @@ private:
     std::unique_ptr<DisplayStage> m_displayStage;
     // The scene renders into m_hdrColor and the display transform resolves it into m_color, so
     // the two always share an extent and are replaced together by resize().
-    std::unique_ptr<rhi::Texture> m_hdrColor;
-    std::unique_ptr<rhi::Texture> m_color;
-    std::unique_ptr<rhi::Texture> m_shadowMap;
+    std::unique_ptr<rojoRHI::Texture> m_hdrColor;
+    std::unique_ptr<rojoRHI::Texture> m_color;
+    std::unique_ptr<rojoRHI::Texture> m_shadowMap;
     // Allocated with the scene targets and replaced by resize() like them, whether or not any
     // frame declares the temporal path: the allocation is permanent and reported through
     // TemporalStatus::historyBytes. Freeing on disable would drop memory the frames still in
     // flight hold in their residency sets, and the caller's idle guarantee covers resize() alone.
-    std::unique_ptr<rhi::Texture> m_motion;
-    std::unique_ptr<rhi::Texture> m_reactive;
+    std::unique_ptr<rojoRHI::Texture> m_motion;
+    std::unique_ptr<rojoRHI::Texture> m_reactive;
     // The reconstruction stage, which owns both history pairs -- the depth the scene pass renders
     // into included -- and every pass that reads or writes them. Created with the renderer and
     // resized alongside the scene targets, so its slots always share their extent.
@@ -253,13 +254,13 @@ private:
     // shades to the right answer rather than nothing at all: white is the identity for the
     // material factors, a flat normal leaves the tangent frame alone, and a black cube plus a zero
     // DFG table make both image-based terms vanish.
-    std::unique_ptr<rhi::Texture> m_whiteTexture;
-    std::unique_ptr<rhi::Texture> m_flatNormalTexture;
-    std::unique_ptr<rhi::Texture> m_blackCubeTexture;
-    std::unique_ptr<rhi::Texture> m_zeroDfgTexture;
-    std::unique_ptr<rhi::Sampler> m_linearSampler;
-    std::unique_ptr<rhi::Sampler> m_shadowSampler;
-    std::unique_ptr<rhi::Sampler> m_iblSampler;
+    std::unique_ptr<rojoRHI::Texture> m_whiteTexture;
+    std::unique_ptr<rojoRHI::Texture> m_flatNormalTexture;
+    std::unique_ptr<rojoRHI::Texture> m_blackCubeTexture;
+    std::unique_ptr<rojoRHI::Texture> m_zeroDfgTexture;
+    std::unique_ptr<rojoRHI::Sampler> m_linearSampler;
+    std::unique_ptr<rojoRHI::Sampler> m_shadowSampler;
+    std::unique_ptr<rojoRHI::Sampler> m_iblSampler;
     // What the previous declared frame was, recorded every frame -- temporal on or off -- because
     // that is what makes re-enabling distinguishable from the first frame ever declared.
     std::optional<FrameSignature> m_previousSignature;
@@ -269,11 +270,11 @@ private:
     // exists only where the import states it: a temporal frame ends by reading motion (when it
     // draws a debug view) and by copying out of the scene colour, and the next frame's first
     // access has to be ordered behind whichever of those actually happened.
-    rhi::TextureUse m_previousMotionUse = rhi::TextureUse::RenderTarget;
+    rojoRHI::TextureUse m_previousMotionUse = rojoRHI::TextureUse::RenderTarget;
     // The reactive attachment is written by every temporal frame and read only by the resolve, so
     // its terminal use is what the frame's mode decided rather than a constant.
-    rhi::TextureUse m_previousReactiveUse = rhi::TextureUse::RenderTarget;
-    rhi::TextureUse m_previousSceneColorUse = rhi::TextureUse::ShaderRead;
+    rojoRHI::TextureUse m_previousReactiveUse = rojoRHI::TextureUse::RenderTarget;
+    rojoRHI::TextureUse m_previousSceneColorUse = rojoRHI::TextureUse::ShaderRead;
     uint32_t m_temporalFrame = 0; // free-running; the jitter sequence wraps it itself
     // The history slot the frame just declared used, which is what depthTarget() and
     // historyTarget() report: m_temporalFrame % 2 on a temporal frame and 0 otherwise. Recorded
@@ -285,8 +286,8 @@ private:
     std::unique_ptr<GpuVisibility> m_gpuVisibility;
     std::unique_ptr<HzbStage> m_hzbStage;
     std::unique_ptr<OcclusionReference> m_occlusionReference;
-    std::unique_ptr<rhi::ShaderLibrary> m_hzbDebugLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_hzbDebugPipeline;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_hzbDebugLibrary;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_hzbDebugPipeline;
     HzbSource m_occlusionSource;
     HzbSource m_currentOcclusionSource;
     OcclusionParams m_occlusionParams;

@@ -13,7 +13,7 @@ using lmx::test::FixtureSceneView;
 // checker's perspective compresses toward the horizon; accumulation is what is supposed to settle
 // that without the scene having moved at all.
 TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -72,7 +72,7 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
 // covered only on the jitter samples that happen to land inside it, so the accumulation has to
 // carry the pole's brightness across the samples that miss it rather than averaging it away.
 TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -155,7 +155,7 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
 // quad has left -- so the region has to converge on the raw picture rather than on what was there,
 // and the rejection mask has to say why in the pixels that were vacated this frame.
 TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -283,7 +283,7 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
 // the reactive attachment is what has to make the pixel take this frame's colour instead of fading
 // the step in over the accumulation's time constant.
 TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -373,7 +373,7 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
 // seed records is what the resolve corrects it by -- without which the accumulated picture would
 // lag the raw one by the accumulation's whole time constant.
 TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -421,7 +421,7 @@ TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][tempo
 // raises it can only show what it shaded; the count then climbs one declared frame at a time until
 // the accumulation is a full jitter period old.
 TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
     auto device = createDevice();
@@ -481,7 +481,7 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
 // first accumulated frame after a raw one derives no reason at all and blends from the copy the raw
 // frame committed.
 TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     using lmx::render::HistoryResetReason;
 
     auto device = createDevice();
@@ -538,7 +538,7 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
 // nothing reads back and shows the pre-temporal picture. It is the reference the accumulated mode
 // is compared against, so it has to be the pre-temporal image and not merely close to it.
 TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));

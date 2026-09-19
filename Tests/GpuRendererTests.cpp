@@ -10,7 +10,7 @@ using lmx::test::FixtureSceneView;
 //======================================================================================================================
 // Separated red and blue cubes catch argument-table last-write reuse across per-draw uniforms.
 TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -41,7 +41,7 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
 //======================================================================================================================
 // Overlapping geometry must resolve by depth rather than submission order.
 TEST_CASE("renderer depth test beats draw order", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -97,7 +97,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
 //======================================================================================================================
 // A magenta destination makes a missing draw visible while the copied image pins the pass barrier.
 TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -161,7 +161,7 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
 //======================================================================================================================
 // An interior probe and total coverage bound distinguish wireframe from empty and solid output.
 TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -223,7 +223,7 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
 // The corner pins the sky through the display transform; a cube probe proves depth keeps geometry
 // in front of it.
 TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
     const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};
@@ -297,7 +297,7 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
 // The editor reads these labels straight out of the device, so the frame's passes have to arrive
 // named and in the order the graph ran them -- an unnamed or missing pass is an invisible pass.
 TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -355,7 +355,7 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
 // scene pass's writes and this pass's sample, so a correct image is what proves the graph derived
 // the transition.
 TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -429,7 +429,7 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
 // declaration layer: a pass body reaching for a resource it never declared is refused mid-frame,
 // with the pass and the resource named.
 TEST_CASE("a pass resolving an undeclared texture is refused while the frame runs", "[gpu]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));

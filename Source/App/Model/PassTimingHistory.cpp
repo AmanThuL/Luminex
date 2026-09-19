@@ -43,7 +43,7 @@ std::vector<size_t> sortedPassTimingIndices(std::span<const PassTimingSummary> r
 }
 
 //======================================================================================================================
-bool PassTimingHistory::addFrame(uint64_t frameId, std::span<const rhi::PassTiming> timings) {
+bool PassTimingHistory::addFrame(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings) {
     if (frameId == 0 || frameId <= m_lastFrameId) {
         return false;
     }
@@ -52,13 +52,13 @@ bool PassTimingHistory::addFrame(uint64_t frameId, std::span<const rhi::PassTimi
     const bool scheduleChanged =
         timings.size() != m_series.size() ||
         !std::equal(timings.begin(), timings.end(), m_series.begin(),
-                    [](const rhi::PassTiming& timing, const Series& series) {
+                    [](const rojoRHI::PassTiming& timing, const Series& series) {
                         return timing.label == series.label;
                     });
     if (scheduleChanged) {
         m_series.clear();
         m_series.reserve(timings.size());
-        for (const rhi::PassTiming& timing : timings) {
+        for (const rojoRHI::PassTiming& timing : timings) {
             m_series.push_back({.label = timing.label, .samples = {}});
         }
     }

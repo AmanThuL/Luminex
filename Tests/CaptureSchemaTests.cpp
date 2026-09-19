@@ -1,12 +1,12 @@
-#include "RHI/CaptureSchema.h"
 #include "Render/Renderer.h"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <rojoRHI/CaptureSchema.h>
 #include <sstream>
 
-using lmx::rhi::debug::CaptureSchema;
+using rojoRHI::debug::CaptureSchema;
 
 namespace {
 
@@ -29,7 +29,7 @@ TEST_CASE("CaptureSchema registers and unregisters resources") {
     schema.resetForTest();
     int textureKey = 0, bufferKey = 0;
     schema.registerTexture(&textureKey, "lmx.test.tex",
-                           {.width = 4, .height = 2, .format = lmx::rhi::Format::D32Float});
+                           {.width = 4, .height = 2, .format = rojoRHI::Format::D32Float});
     schema.registerBuffer(&bufferKey, "lmx.test.buf", 256);
     std::string json = writeAndRead(schema);
     REQUIRE(json.find("\"lmx.test.tex\"") != std::string::npos);
@@ -49,14 +49,14 @@ TEST_CASE("CaptureSchema registers and unregisters resources") {
 TEST_CASE("CaptureSchema records frame-data ranges inside the frame window") {
     auto& schema = CaptureSchema::instance();
     schema.resetForTest();
-    schema.recordFrameDataUpload({"lmx.device.frameData.0.page.0", 1, 0, 64, 256, 0x1000});
+    schema.recordFrameDataUpload({"rojorhi.device.frameData.0.page.0", 1, 0, 64, 256, 0x1000});
     schema.beginFrameRecords();
-    schema.recordFrameDataUpload({"lmx.device.frameData.1.page.2", 3, 1536, 304, 512, 0x2b00});
+    schema.recordFrameDataUpload({"rojorhi.device.frameData.1.page.2", 3, 1536, 304, 512, 0x2b00});
     schema.endFrameRecords();
-    schema.recordFrameDataUpload({"lmx.device.frameData.2.page.0", 5, 0, 16, 256, 0x3000});
+    schema.recordFrameDataUpload({"rojorhi.device.frameData.2.page.0", 5, 0, 16, 256, 0x3000});
 
     const std::string json = writeAndRead(schema);
-    REQUIRE(json.find("\"lmx.device.frameData.1.page.2\"") != std::string::npos);
+    REQUIRE(json.find("\"rojorhi.device.frameData.1.page.2\"") != std::string::npos);
     REQUIRE(json.find("frameData.0.page.0") == std::string::npos);
     REQUIRE(json.find("frameData.2.page.0") == std::string::npos);
     // Every field the record exists to carry, so a dropped one fails here rather than in a capture.
@@ -100,7 +100,7 @@ TEST_CASE("CaptureSchema writes context and layouts") {
 // needed to pin them -- which is what keeps this the test that fails first when a uniform struct
 // changes shape without the sidecar being told.
 TEST_CASE("renderer registers the four uniform struct layouts") {
-    auto& schema = lmx::rhi::debug::CaptureSchema::instance();
+    auto& schema = rojoRHI::debug::CaptureSchema::instance();
     schema.resetForTest();
     lmx::render::registerUniformLayoutsForCapture();
     const std::string json = writeAndRead(schema);

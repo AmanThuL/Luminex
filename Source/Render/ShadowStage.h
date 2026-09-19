@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "RHI/RHI.h"
 #include "Render/DrawSubmission.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -50,30 +50,30 @@ struct ShadowStageInputs {
     std::vector<GraphBuffer> sceneBuffers; ///< Five read-only scene pool/table imports.
     GraphTexture shadowMap;                ///< D32Float attachment version to write.
     glm::mat4 lightViewProj;               ///< World-to-light clip transform, reversed depth.
-    rhi::Texture* whiteTexture;            ///< Non-null neutral diffuse fallback owned by Renderer.
-    rhi::Sampler* linearSampler;           ///< Non-null material sampler owned by Renderer.
+    rojoRHI::Texture* whiteTexture;        ///< Non-null neutral diffuse fallback owned by Renderer.
+    rojoRHI::Sampler* linearSampler;       ///< Non-null material sampler owned by Renderer.
 };
 
 /// Owns shadow pipelines; Renderer keeps the stage alive through graph execution.
 class ShadowStage {
 public:
     /// Creates all opaque and masked variants; propagates library or pipeline creation errors.
-    static rhi::Result<std::unique_ptr<ShadowStage>> create(rhi::Device& device);
+    static rojoRHI::Result<std::unique_ptr<ShadowStage>> create(rojoRHI::Device& device);
 
     /// Registers the shared shadow-pass capture layout idempotently, without a device.
     static void registerUniformLayoutsForCapture();
 
     /// Declares the depth pass and returns its written version. Copies frame values; borrows
     /// commands and view resources until execution on those commands completes.
-    GraphTexture declare(RenderGraph& graph, rhi::CommandList& commands, const SceneView& view,
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                          const ShadowStageInputs& inputs);
 
 private:
     ShadowStage() = default;
-    std::unique_ptr<rhi::ShaderLibrary> m_shadowLibrary;
-    std::unique_ptr<rhi::ShaderLibrary> m_maskShadowLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_shadowPipeline;
-    std::array<std::unique_ptr<rhi::GraphicsPipeline>, 2> m_maskShadowPipelines;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_shadowLibrary;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_maskShadowLibrary;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_shadowPipeline;
+    std::array<std::unique_ptr<rojoRHI::GraphicsPipeline>, 2> m_maskShadowPipelines;
 };
 
 } // namespace lmx::render

@@ -71,7 +71,7 @@ GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const Camera& camera
     return m_hzbStage->importPrevious(graph);
 }
 //======================================================================================================================
-void Renderer::declareOcclusion(RenderGraph& graph, rhi::CommandList& commands,
+void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands,
                                 const SceneView& view, GraphTexture depth, GraphTexture& display) {
     if (!view.occlusionEnabled)
         return;
@@ -99,8 +99,8 @@ void Renderer::declareOcclusion(RenderGraph& graph, rhi::CommandList& commands,
                                                          .vertexEntry = "vertexMain",
                                                          .fragmentEntry = "fragmentMain",
                                                          .colorFormat = kDisplayFormat,
-                                                         .depthFormat = rhi::Format::Unknown,
-                                                         .cullMode = rhi::CullMode::None,
+                                                         .depthFormat = rojoRHI::Format::Unknown,
+                                                         .cullMode = rojoRHI::CullMode::None,
                                                          .label = "lmx.render.hzbDebugPipeline"});
         LMX_ASSERT(pipeline.has_value(), pipeline.error().message);
         m_hzbDebugPipeline = std::move(*pipeline);

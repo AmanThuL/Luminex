@@ -26,50 +26,52 @@ namespace {
 // The RHI use a declaration stands for on either side of a derived barrier. The role decides it
 // almost alone; only a plain read has to ask the pass kind, because a compute pass reads through a
 // storage binding where a raster pass reads through a sampled one.
-rhi::TextureUse textureUseOf(PassKind kind, UseRole role) {
+rojoRHI::TextureUse textureUseOf(PassKind kind, UseRole role) {
     if (kind == PassKind::External) {
-        return isWriteRole(role) ? rhi::TextureUse::ExternalWrite : rhi::TextureUse::ExternalRead;
+        return isWriteRole(role) ? rojoRHI::TextureUse::ExternalWrite
+                                 : rojoRHI::TextureUse::ExternalRead;
     }
     switch (role) {
     case UseRole::Read:
-        return kind == PassKind::Compute ? rhi::TextureUse::StorageRead
-                                         : rhi::TextureUse::ShaderRead;
+        return kind == PassKind::Compute ? rojoRHI::TextureUse::StorageRead
+                                         : rojoRHI::TextureUse::ShaderRead;
     case UseRole::ShaderRead:
-        return rhi::TextureUse::ShaderRead;
+        return rojoRHI::TextureUse::ShaderRead;
     case UseRole::IndirectArgument:
-        return rhi::TextureUse::ShaderRead;
+        return rojoRHI::TextureUse::ShaderRead;
     case UseRole::Write:
-        return rhi::TextureUse::StorageWrite;
+        return rojoRHI::TextureUse::StorageWrite;
     case UseRole::ColorAttachment:
     case UseRole::DepthAttachment:
-        return rhi::TextureUse::RenderTarget;
+        return rojoRHI::TextureUse::RenderTarget;
     case UseRole::CopySource:
-        return rhi::TextureUse::CopySource;
+        return rojoRHI::TextureUse::CopySource;
     case UseRole::CopyDestination:
-        return rhi::TextureUse::CopyDestination;
+        return rojoRHI::TextureUse::CopyDestination;
     }
-    return rhi::TextureUse::ShaderRead;
+    return rojoRHI::TextureUse::ShaderRead;
 }
 
 //======================================================================================================================
-rhi::BufferUse bufferUseOf(PassKind kind, UseRole role) {
+rojoRHI::BufferUse bufferUseOf(PassKind kind, UseRole role) {
     switch (role) {
     case UseRole::Read:
-        return kind == PassKind::Compute ? rhi::BufferUse::StorageRead : rhi::BufferUse::ShaderRead;
+        return kind == PassKind::Compute ? rojoRHI::BufferUse::StorageRead
+                                         : rojoRHI::BufferUse::ShaderRead;
     case UseRole::ShaderRead:
-        return rhi::BufferUse::ShaderRead;
+        return rojoRHI::BufferUse::ShaderRead;
     case UseRole::IndirectArgument:
-        return rhi::BufferUse::IndirectArgument;
+        return rojoRHI::BufferUse::IndirectArgument;
     case UseRole::Write:
     case UseRole::ColorAttachment:
     case UseRole::DepthAttachment:
-        return rhi::BufferUse::StorageWrite;
+        return rojoRHI::BufferUse::StorageWrite;
     case UseRole::CopySource:
-        return rhi::BufferUse::CopySource;
+        return rojoRHI::BufferUse::CopySource;
     case UseRole::CopyDestination:
-        return rhi::BufferUse::CopyDestination;
+        return rojoRHI::BufferUse::CopyDestination;
     }
-    return rhi::BufferUse::ShaderRead;
+    return rojoRHI::BufferUse::ShaderRead;
 }
 
 //======================================================================================================================
@@ -141,17 +143,18 @@ std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const Resol
 // The canonical range covering both, expressed the way a whole-resource declaration is: a union
 // that reaches the end of the chain keeps the sentinel rather than a resolved count, so a barrier
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
-rhi::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
-                                        uint32_t mipLevels, uint32_t arrayLayers) {
+rojoRHI::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
+                                            uint32_t mipLevels, uint32_t arrayLayers) {
     const uint32_t firstMip = std::min(a.firstMip, b.firstMip);
     const uint32_t lastMip = std::max(a.lastMip, b.lastMip);
     const uint32_t firstLayer = std::min(a.firstLayer, b.firstLayer);
     const uint32_t lastLayer = std::max(a.lastLayer, b.lastLayer);
     return {.baseMipLevel = firstMip,
-            .mipLevelCount = lastMip + 1 >= mipLevels ? rhi::kAllMipLevels : lastMip - firstMip + 1,
+            .mipLevelCount =
+                lastMip + 1 >= mipLevels ? rojoRHI::kAllMipLevels : lastMip - firstMip + 1,
             .baseArrayLayer = firstLayer,
-            .arrayLayerCount =
-                lastLayer + 1 >= arrayLayers ? rhi::kAllArrayLayers : lastLayer - firstLayer + 1};
+            .arrayLayerCount = lastLayer + 1 >= arrayLayers ? rojoRHI::kAllArrayLayers
+                                                            : lastLayer - firstLayer + 1};
 }
 
 } // namespace
@@ -164,48 +167,51 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // clears what was covered, so the transition is owed again.
     //
     // Coverage is per emitted range *and* per consuming stage class, because those are the two axes
-    // a barrier is scoped on (rhi::CommandList::textureBarrier states the model). A barrier orders
-    // the passes it sits between, so a reader of mip 1 is not ordered by a barrier that named mip 0
-    // for an earlier reader; and a barrier consumed by a compute pass is scoped to that pass's
-    // stages, so it orders nothing for a later raster reader of the same subresources. A pass's
-    // kind is its stage class here, including opaque external operations. Passes of one kind are
-    // ordered among themselves, so one barrier serves every later reader of that kind. Two kinds
-    // whose stages happen to overlap
-    // in a backend are still treated as distinct, which costs a redundant barrier rather than a
-    // missed one. Whole-resource declarations -- what every raster pass here makes -- produce one
-    // whole-resource range that encloses every later whole-resource reader of the same kind, so one
-    // transition still serves them all.
+    // a barrier is scoped on (rojoRHI::CommandList::textureBarrier states the model). A barrier
+    // orders the passes it sits between, so a reader of mip 1 is not ordered by a barrier that
+    // named mip 0 for an earlier reader; and a barrier consumed by a compute pass is scoped to that
+    // pass's stages, so it orders nothing for a later raster reader of the same subresources. A
+    // pass's kind is its stage class here, including opaque external operations. Passes of one kind
+    // are ordered among themselves, so one barrier serves every later reader of that kind. Two
+    // kinds whose stages happen to overlap in a backend are still treated as distinct, which costs
+    // a redundant barrier rather than a missed one. Whole-resource declarations -- what every
+    // raster pass here makes -- produce one whole-resource range that encloses every later
+    // whole-resource reader of the same kind, so one transition still serves them all.
     struct Covered {
         ResolvedRange range;
         PassKind consumer = PassKind::Raster;
     };
     struct TextureWriter {
         ResolvedRange range;
-        rhi::TextureUse use = rhi::TextureUse::RenderTarget;
+        rojoRHI::TextureUse use = rojoRHI::TextureUse::RenderTarget;
         bool writes = true;
         std::vector<Covered> covered;
     };
     struct WriteState {
         bool bufferWritten = false;
-        rhi::BufferUse bufferUse = rhi::BufferUse::StorageWrite;
+        rojoRHI::BufferUse bufferUse = rojoRHI::BufferUse::StorageWrite;
         std::vector<Covered> bufferCovered;
         std::vector<TextureWriter> textureWriters;
     };
     std::vector<WriteState> pending(m_resources.size());
 
-    const auto textureUseWrites = [](rhi::TextureUse use) {
-        return use == rhi::TextureUse::RenderTarget || use == rhi::TextureUse::StorageWrite ||
-               use == rhi::TextureUse::CopyDestination || use == rhi::TextureUse::ExternalWrite;
+    const auto textureUseWrites = [](rojoRHI::TextureUse use) {
+        return use == rojoRHI::TextureUse::RenderTarget ||
+               use == rojoRHI::TextureUse::StorageWrite ||
+               use == rojoRHI::TextureUse::CopyDestination ||
+               use == rojoRHI::TextureUse::ExternalWrite;
     };
-    const auto bufferUseWrites = [](rhi::BufferUse use) {
-        return use == rhi::BufferUse::StorageWrite || use == rhi::BufferUse::CopyDestination;
+    const auto bufferUseWrites = [](rojoRHI::BufferUse use) {
+        return use == rojoRHI::BufferUse::StorageWrite ||
+               use == rojoRHI::BufferUse::CopyDestination;
     };
 
     // A texture accessed in an earlier frame starts with that whole-resource state. Prior writes
     // participate in RAW and WAW; prior reads skip RAW but remain available to the WAW loop below,
     // which emits the cross-frame WAR before this frame overwrites them.
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
-        if (const std::optional<rhi::TextureUse>& access = m_resources[index].priorTextureAccess) {
+        if (const std::optional<rojoRHI::TextureUse>& access =
+                m_resources[index].priorTextureAccess) {
             const Resource& resource = m_resources[index];
             pending[index].textureWriters.push_back(
                 {.range = {.firstMip = 0,
@@ -238,13 +244,13 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // consuming pass emits.
     struct PendingRead {
         ResolvedRange range;
-        rhi::TextureUse use = rhi::TextureUse::ShaderRead;
+        rojoRHI::TextureUse use = rojoRHI::TextureUse::ShaderRead;
     };
     struct ReadState {
         std::vector<PendingRead> textureReads;
         // Buffers carry no subresource ranges, so a pending buffer read is always the whole
         // resource and only the distinct uses are worth keeping, in first-read order.
-        std::vector<rhi::BufferUse> bufferReads;
+        std::vector<rojoRHI::BufferUse> bufferReads;
     };
     std::vector<ReadState> pendingReads(m_resources.size());
     std::vector<DebugTransition> transitions;
@@ -253,7 +259,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // accesses declared in this frame. This preserves the real use in debug records and lets a
     // prior read followed by another read remain barrier-free.
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
-        const std::optional<rhi::BufferUse>& access = m_resources[index].priorBufferAccess;
+        const std::optional<rojoRHI::BufferUse>& access = m_resources[index].priorBufferAccess;
         if (!access) {
             continue;
         }
@@ -307,9 +313,9 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             const auto [toKind, toRoles] = usesAt(entry.resource, entry.firstPosition);
             const UseRole toRole = toRoles.front();
             if (m_resources[entry.resource].kind == ResourceKind::Buffer) {
-                std::vector<rhi::BufferUse> emitted;
+                std::vector<rojoRHI::BufferUse> emitted;
                 for (const UseRole fromRole : fromRoles) {
-                    const rhi::BufferUse from = bufferUseOf(fromKind, fromRole);
+                    const rojoRHI::BufferUse from = bufferUseOf(fromKind, fromRole);
                     if (std::ranges::find(emitted, from) != emitted.end()) {
                         continue;
                     }
@@ -322,9 +328,9 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                                            .aliasedFrom = previous.resource});
                 }
             } else {
-                std::vector<rhi::TextureUse> emitted;
+                std::vector<rojoRHI::TextureUse> emitted;
                 for (const UseRole fromRole : fromRoles) {
-                    const rhi::TextureUse from = textureUseOf(fromKind, fromRole);
+                    const rojoRHI::TextureUse from = textureUseOf(fromKind, fromRole);
                     if (std::ranges::find(emitted, from) != emitted.end()) {
                         continue;
                     }
@@ -384,7 +390,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                                        .bufferFrom = state.bufferUse,
                                        .bufferTo = bufferUseOf(pass.kind, read.role)});
             } else {
-                rhi::TextureSubresourceRange covered = read.range;
+                rojoRHI::TextureSubresourceRange covered = read.range;
                 for (uint32_t later = index + 1; later < pass.declarations.size(); ++later) {
                     const Declaration& other = pass.declarations[later];
                     const bool otherReads = !other.isWrite || loadsAttachment(other);
@@ -401,7 +407,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                     resolveRange(covered, resource.mipLevels, resource.arrayLayers);
                 struct NeededBarrier {
                     ResolvedRange range;
-                    rhi::TextureUse from = rhi::TextureUse::RenderTarget;
+                    rojoRHI::TextureUse from = rojoRHI::TextureUse::RenderTarget;
                 };
                 std::vector<NeededBarrier> needed;
                 for (TextureWriter& writer : pending[read.resource].textureWriters) {
@@ -508,7 +514,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 // Buffers carry no subresource ranges, so any pending read is the whole resource
                 // and every write discharges it completely -- there is no partial case to preserve.
                 // One barrier per distinct reading use, so the producing side covers every reader.
-                for (const rhi::BufferUse readUse : reads.bufferReads) {
+                for (const rojoRHI::BufferUse readUse : reads.bufferReads) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Buffer,
@@ -525,7 +531,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 // that reader too.
                 std::vector<PendingRead> remaining;
                 remaining.reserve(reads.textureReads.size());
-                std::vector<rhi::TextureUse> overlappedUses;
+                std::vector<rojoRHI::TextureUse> overlappedUses;
                 for (const PendingRead& pendingRead : reads.textureReads) {
                     if (!rangesOverlap(pendingRead.range, writeRange)) {
                         remaining.push_back(pendingRead);
@@ -540,7 +546,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                         remaining.push_back({.range = piece, .use = pendingRead.use});
                     }
                 }
-                for (const rhi::TextureUse readUse : overlappedUses) {
+                for (const rojoRHI::TextureUse readUse : overlappedUses) {
                     transitions.push_back({.beforePass = passIndex,
                                            .resource = declaration.resource,
                                            .kind = GraphResourceKind::Texture,
@@ -566,7 +572,7 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
             const Resource& resource = m_resources[read.resource];
             ReadState& reads = pendingReads[read.resource];
             if (resource.kind == ResourceKind::Buffer) {
-                const rhi::BufferUse use = bufferUseOf(pass.kind, read.role);
+                const rojoRHI::BufferUse use = bufferUseOf(pass.kind, read.role);
                 if (std::ranges::find(reads.bufferReads, use) == reads.bufferReads.end()) {
                     reads.bufferReads.push_back(use);
                 }

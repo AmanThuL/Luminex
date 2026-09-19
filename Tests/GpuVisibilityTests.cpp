@@ -4,7 +4,6 @@
 namespace {
 namespace scene = lmx::scene;
 namespace render = lmx::render;
-namespace rhi = lmx::rhi;
 
 //======================================================================================================================
 render::MeshData visibilityQuad() {
@@ -31,7 +30,7 @@ scene::Scene visibilityScene() {
 }
 
 //======================================================================================================================
-std::unique_ptr<render::Renderer> visibilityRenderer(rhi::Device& device) {
+std::unique_ptr<render::Renderer> visibilityRenderer(rojoRHI::Device& device) {
     auto renderer = render::Renderer::create(device, kSize, kSize, true);
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
@@ -42,10 +41,10 @@ std::unique_ptr<render::Renderer> visibilityRenderer(rhi::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rhi::Buffer> submitVisibility(rhi::Device& device, scene::Scene& scene,
-                                              render::Renderer& renderer,
-                                              render::SubmissionMode mode, bool cull,
-                                              bool wait = true) {
+std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene::Scene& scene,
+                                                  render::Renderer& renderer,
+                                                  render::SubmissionMode mode, bool cull,
+                                                  bool wait = true) {
     auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
                                          .cpuReadback = true,
                                          .label = "lmx.test.sceneTables.frame"},
@@ -65,14 +64,14 @@ std::unique_ptr<rhi::Buffer> submitVisibility(rhi::Device& device, scene::Scene&
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
     renderer.render(commands, render::Camera{}, view, false);
-    commands.textureBarrier(renderer.colorTarget(), rhi::TextureUse::RenderTarget,
-                            rhi::TextureUse::CopySource);
+    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
+                            rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
     commands.copyTextureToBuffer(renderer.colorTarget(), {.width = kSize, .height = kSize},
                                  **snapshot, {.bytesPerRow = kSize * 4});
     commands.endCopyPass();
-    commands.textureBarrier(renderer.colorTarget(), rhi::TextureUse::CopySource,
-                            rhi::TextureUse::RenderTarget);
+    commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::CopySource,
+                            rojoRHI::TextureUse::RenderTarget);
     commands.beginRenderPass({.colorTarget = &renderer.colorTarget(),
                               .clear = false,
                               .label = "lmx.test.sceneTables.restoreTarget"});
@@ -86,7 +85,7 @@ std::unique_ptr<rhi::Buffer> submitVisibility(rhi::Device& device, scene::Scene&
 }
 
 //======================================================================================================================
-std::vector<uint8_t> visibilityPixels(rhi::Buffer& buffer) {
+std::vector<uint8_t> visibilityPixels(rojoRHI::Buffer& buffer) {
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
     buffer.readback(pixels.data(), pixels.size());
     return pixels;
@@ -97,7 +96,7 @@ std::vector<uint8_t> visibilityPixels(rhi::Buffer& buffer) {
 //======================================================================================================================
 TEST_CASE("production visibility and submission modes preserve raster output",
           "[gpu][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = visibilityScene();
     const auto mesh = scene.objects.front().mesh;
@@ -135,12 +134,12 @@ TEST_CASE("production visibility and submission modes preserve raster output",
 //======================================================================================================================
 TEST_CASE("visibility buffers retain four overlapping frame lists and images",
           "[gpu][visibility]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = visibilityScene();
     REQUIRE(scene.finalize(**device));
     auto renderer = visibilityRenderer(**device);
-    std::array<std::unique_ptr<rhi::Buffer>, 4> snapshots;
+    std::array<std::unique_ptr<rojoRHI::Buffer>, 4> snapshots;
     for (uint32_t frame = 0; frame < 4; ++frame) {
         if (frame == 2) {
             const auto mesh = scene.objects[0].mesh;
@@ -182,12 +181,12 @@ TEST_CASE("visibility buffers retain four overlapping frame lists and images",
 //======================================================================================================================
 TEST_CASE("draw submission slots grow and retire with paced scene capacity",
           "[gpu][visibility][submission]") {
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     REQUIRE(device);
     auto scene = visibilityScene();
     REQUIRE(scene.finalize(**device));
     render::DrawSubmission submission(**device);
-    std::array<rhi::Buffer*, 3> rows{};
+    std::array<rojoRHI::Buffer*, 3> rows{};
     std::array<std::vector<uint32_t>, 3> expected;
     uint64_t grownFrame = 0;
     for (uint32_t frame = 0; frame < 7; ++frame) {

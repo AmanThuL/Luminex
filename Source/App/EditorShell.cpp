@@ -17,7 +17,7 @@
 #include "App/Panels/ViewportPanel.h"
 #include "Core/Assert.h"
 #include "Core/Log.h"
-#include "RHI/Metal4/Metal4ImGui.h"
+#include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -201,7 +201,7 @@ EditorShell::EditorShell(SDL_Window* window, scene::SceneLibrary& library,
     : m_window(window), m_library(library), m_consoleModel(std::move(consoleLog)) {}
 
 //======================================================================================================================
-std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device& device,
+std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::Device& device,
                                                  scene::SceneLibrary& library,
                                                  scene::SceneId initialScene,
                                                  std::shared_ptr<ConsoleLog> consoleLog) {
@@ -227,7 +227,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
         return nullptr;
     }
     // ImGui's pipeline format must match the swapchain drawable.
-    if (!rhi::metal4::imguiInit(device, rhi::Format::BGRA8Unorm)) {
+    if (!rojoRHI::metal4::imguiInit(device, rojoRHI::Format::BGRA8Unorm)) {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
         return nullptr;
@@ -259,7 +259,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rhi::Device
                       library.entry(initialScene).displayName, scene.error().message);
         releaseRenderGraphPanelState(self->m_renderGraphPanel);
         ImGui_ImplSDL3_Shutdown();
-        rhi::metal4::imguiShutdown();
+        rojoRHI::metal4::imguiShutdown();
         ImGui::DestroyContext();
         return nullptr;
     }
@@ -320,12 +320,12 @@ EditorShell::~EditorShell() {
     releaseRenderGraphPanelState(m_renderGraphPanel);
     // Backends unregister from the ImGui context, so destroy the context last.
     ImGui_ImplSDL3_Shutdown();
-    rhi::metal4::imguiShutdown();
+    rojoRHI::metal4::imguiShutdown();
     ImGui::DestroyContext();
 }
 
 //======================================================================================================================
-bool EditorShell::applyPendingViewportResize(rhi::Device& device, render::Renderer& renderer) {
+bool EditorShell::applyPendingViewportResize(rojoRHI::Device& device, render::Renderer& renderer) {
     if (m_viewportWidth == 0 || m_viewportHeight == 0) {
         return true;
     }
@@ -339,7 +339,7 @@ bool EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
     // In-flight encoders and residency sets retain the old targets; drain before replacement.
     device.waitIdle();
     // Remove the old target from ImGui's persistent residency set before freeing it.
-    rhi::metal4::imguiForgetTexture(renderer.colorTarget());
+    rojoRHI::metal4::imguiForgetTexture(renderer.colorTarget());
     if (auto resized = renderer.resize(m_viewportWidth, m_viewportHeight); !resized) {
         // Renderer::resize can replace some targets before a later allocation fails. Do not
         // declare another frame against mixed extents, even if the requested size now matches.
@@ -347,7 +347,7 @@ bool EditorShell::applyPendingViewportResize(rhi::Device& device, render::Render
                       m_viewportHeight, resized.error().message);
         return false;
     }
-    rhi::metal4::imguiForgetTexture(m_selectionOutline->target());
+    rojoRHI::metal4::imguiForgetTexture(m_selectionOutline->target());
     if (auto result = m_selectionOutline->resize(renderer.width(), renderer.height()); !result) {
         LMX_LOG_ERROR("Selection presentation resize failed: {}", result.error().message);
         m_showSelectionOutline = false;
@@ -421,7 +421,7 @@ void EditorShell::updateUiScaleShortcuts() {
 }
 
 //======================================================================================================================
-void EditorShell::buildUI(rhi::Device& device, render::Renderer& renderer, float deltaSeconds,
+void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, float deltaSeconds,
                           const FrameRecordRing& frameRecords) {
     applyPendingScene(device);
     const RetainedFrame* newestTimed = frameRecords.newestTimedFrame();
@@ -605,7 +605,7 @@ void EditorShell::buildMainMenu() {
 }
 
 //======================================================================================================================
-void EditorShell::buildPanels(rhi::Device& device, render::Renderer& renderer,
+void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& renderer,
                               const FrameRecordRing& frameRecords) {
     m_visibilityDisplay.publishReadings(ImGui::GetTime());
     m_lightingDisplay.publishReadings(ImGui::GetTime());
@@ -743,7 +743,7 @@ void EditorShell::setPanelVisible(EditorPanel panel, bool visible) {
 }
 
 //======================================================================================================================
-rhi::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
+rojoRHI::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
     m_settings.localLightMode = options.localLightMode;
     m_settings.lightCheck = options.lightCheck;
     m_settings.lightDebugView = options.lightDebugView;
@@ -770,7 +770,7 @@ rhi::Result<void> EditorShell::primeTemporal(const AppOptions& options) {
 }
 
 //======================================================================================================================
-rhi::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
+rojoRHI::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
     return m_session.prepareFrame(frameNumber);
 }
 
@@ -820,7 +820,7 @@ render::SceneView EditorShell::sceneView() {
 
 //======================================================================================================================
 render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
-                                                   rhi::CommandList& commands,
+                                                   rojoRHI::CommandList& commands,
                                                    render::GraphTexture display,
                                                    const render::SceneView& view,
                                                    const render::Renderer& renderer) {
@@ -911,7 +911,7 @@ void EditorShell::commitFrame() {
 }
 
 //======================================================================================================================
-void EditorShell::applyPendingScene(rhi::Device& device) {
+void EditorShell::applyPendingScene(rojoRHI::Device& device) {
     const auto requested = m_sceneLoading.consumeRequest();
     if (!requested) {
         return;
@@ -925,7 +925,7 @@ void EditorShell::applyPendingScene(rhi::Device& device) {
 }
 
 //======================================================================================================================
-bool EditorShell::selectScene(rhi::Device& device, scene::SceneId id) {
+bool EditorShell::selectScene(rojoRHI::Device& device, scene::SceneId id) {
     if (id == m_activeSceneId) {
         return false;
     }

@@ -51,7 +51,8 @@ HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<HzbStage>> HzbStage::create(rhi::Device& device, bool cpuReadback) {
+rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& device,
+                                                            bool cpuReadback) {
     auto stage = std::make_unique<HzbStage>();
     stage->m_device = &device;
     stage->m_cpuReadback = cpuReadback;
@@ -91,17 +92,17 @@ rhi::Result<std::unique_ptr<HzbStage>> HzbStage::create(rhi::Device& device, boo
 }
 
 //======================================================================================================================
-rhi::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) {
+rojoRHI::Result<void> HzbStage::resize(uint32_t outputWidth, uint32_t outputHeight) {
     if (outputWidth == m_outputWidth && outputHeight == m_outputHeight) {
         return {};
     }
     const HzbLayout layout = hzbLayout(outputWidth, outputHeight);
-    std::array<std::unique_ptr<rhi::Texture>, 2> textures;
+    std::array<std::unique_ptr<rojoRHI::Texture>, 2> textures;
     for (uint32_t index = 0; index < textures.size(); ++index) {
         const std::string label = std::format("lmx.render.hzb{}", index);
         auto texture = m_device->createTexture({.width = layout.width,
                                                 .height = layout.height,
-                                                .format = rhi::Format::R32Float,
+                                                .format = rojoRHI::Format::R32Float,
                                                 .mipLevels = layout.levelCount,
                                                 .sampled = true,
                                                 .storageWrite = true,
@@ -127,14 +128,14 @@ GraphTexture HzbStage::importPrevious(RenderGraph& graph) const {
     LMX_ASSERT(m_textures[m_lastBuilt], "HZB must be resized before import");
     const std::string name = std::format("lmx.render.hzb{}", m_lastBuilt);
     if (m_sources[m_lastBuilt].built) {
-        return graph.importTexture(*m_textures[m_lastBuilt], rhi::Format::R32Float, name,
-                                   rhi::TextureUse::ShaderRead);
+        return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name,
+                                   rojoRHI::TextureUse::ShaderRead);
     }
-    return graph.importTexture(*m_textures[m_lastBuilt], rhi::Format::R32Float, name);
+    return graph.importTexture(*m_textures[m_lastBuilt], rojoRHI::Format::R32Float, name);
 }
 
 //======================================================================================================================
-GraphTexture HzbStage::build(RenderGraph& graph, rhi::CommandList& commands, GraphTexture depth,
+GraphTexture HzbStage::build(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture depth,
                              HzbSource source) {
     LMX_ASSERT(m_textures[m_next], "HZB must be resized before build");
     LMX_ASSERT(source.activeWidth > 0 && source.activeHeight > 0 &&
@@ -143,15 +144,17 @@ GraphTexture HzbStage::build(RenderGraph& graph, rhi::CommandList& commands, Gra
     const uint32_t slot = m_next;
     const std::string name = std::format("lmx.render.hzb{}", slot);
     GraphTexture pyramid =
-        m_sources[slot].built ? graph.importTexture(*m_textures[slot], rhi::Format::R32Float, name,
-                                                    rhi::TextureUse::ShaderRead)
-                              : graph.importTexture(*m_textures[slot], rhi::Format::R32Float, name);
+        m_sources[slot].built
+            ? graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name,
+                                  rojoRHI::TextureUse::ShaderRead)
+            : graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name);
     for (uint32_t level = 0; level < m_layout.levelCount; ++level) {
         const bool fromDepth = level == 0;
         const GraphTexture input = fromDepth ? depth : pyramid;
-        const rhi::TextureSubresourceRange inputRange{.baseMipLevel = fromDepth ? 0 : level - 1,
-                                                      .mipLevelCount = 1};
-        const rhi::TextureSubresourceRange outputRange{.baseMipLevel = level, .mipLevelCount = 1};
+        const rojoRHI::TextureSubresourceRange inputRange{.baseMipLevel = fromDepth ? 0 : level - 1,
+                                                          .mipLevelCount = 1};
+        const rojoRHI::TextureSubresourceRange outputRange{.baseMipLevel = level,
+                                                           .mipLevelCount = 1};
         const HzbReduceParams params{
             .sourceWidth =
                 fromDepth ? source.activeWidth : hzbLevelExtent(source.activeWidth, level - 1),
@@ -172,7 +175,7 @@ GraphTexture HzbStage::build(RenderGraph& graph, rhi::CommandList& commands, Gra
                 commands.bindComputePipeline(*m_reducePipeline);
                 commands.bindTexture(0, **sourceTexture);
                 commands.bindStorageTexture(1, **outputTexture, {.range = outputRange},
-                                            rhi::StorageAccess::Write);
+                                            rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(0, params);
                 commands.dispatch(divRoundUp(params.destinationWidth, kThreads),
                                   divRoundUp(params.destinationHeight, kThreads), 1);
@@ -184,7 +187,7 @@ GraphTexture HzbStage::build(RenderGraph& graph, rhi::CommandList& commands, Gra
     // Merely exporting the texture roots the writers but emits no terminal transition.
     const GraphBuffer publication =
         m_published ? graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish",
-                                         rhi::BufferUse::StorageWrite)
+                                         rojoRHI::BufferUse::StorageWrite)
                     : graph.importBuffer(*m_publishBuffer, "lmx.render.hzbPublish");
     ComputePassDesc publish;
     publish.shaderTextureReads.push_back(pyramid);
@@ -198,7 +201,7 @@ GraphTexture HzbStage::build(RenderGraph& graph, rhi::CommandList& commands, Gra
             LMX_ASSERT(texture && buffer, "HZB publication resources unavailable");
             commands.bindComputePipeline(*m_publishPipeline);
             commands.bindTexture(0, **texture);
-            commands.bindStorageBuffer(1, **buffer, rhi::StorageAccess::Write);
+            commands.bindStorageBuffer(1, **buffer, rojoRHI::StorageAccess::Write);
             commands.bindFrameData(0, levels);
             commands.dispatch(1, 1, 1);
         });

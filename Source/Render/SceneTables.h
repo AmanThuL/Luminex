@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <span>
 
-namespace lmx::rhi {
+namespace rojoRHI {
 class Buffer;
 }
 
@@ -155,19 +155,19 @@ static_assert(offsetof(DrawUniforms, firstEntry) == 0);
 /// Non-owning frame bindings; Scene owns all buffers until submitted readers have retired.
 /// CPU rows may be consumed only before the next scene preparation or object-table mutation.
 struct SceneTables {
-    rhi::Buffer* vertices = nullptr;  ///< Immutable packed geometry vertices.
-    rhi::Buffer* indices = nullptr;   ///< Immutable rebased uint32 geometry indices.
-    rhi::Buffer* meshes = nullptr;    ///< Immutable mesh rows for the paced frame slot.
-    rhi::Buffer* instances = nullptr; ///< Instance rows for the paced frame slot.
-    rhi::Buffer* materials = nullptr; ///< Material rows for the paced frame slot.
-    uint32_t meshCount = 0;           ///< Number of addressable mesh slots.
-    uint32_t instanceCount = 0;       ///< Number of addressable instance slots, including holes.
-    uint32_t materialCount = 0;       ///< Number of addressable material slots, including holes.
+    rojoRHI::Buffer* vertices = nullptr;  ///< Immutable packed geometry vertices.
+    rojoRHI::Buffer* indices = nullptr;   ///< Immutable rebased uint32 geometry indices.
+    rojoRHI::Buffer* meshes = nullptr;    ///< Immutable mesh rows for the paced frame slot.
+    rojoRHI::Buffer* instances = nullptr; ///< Instance rows for the paced frame slot.
+    rojoRHI::Buffer* materials = nullptr; ///< Material rows for the paced frame slot.
+    uint32_t meshCount = 0;               ///< Number of addressable mesh slots.
+    uint32_t instanceCount = 0; ///< Number of addressable instance slots, including holes.
+    uint32_t materialCount = 0; ///< Number of addressable material slots, including holes.
     std::span<const InstanceRow> instanceRows; ///< CPU rows exactly matching the prepared GPU slot.
     uint32_t instanceCapacity = 0; ///< Allocated instance slots; draw buffers grow with this count.
-    rhi::Buffer* lights = nullptr; ///< Local light rows for the paced slot; null until one exists.
-    uint32_t lightRowCount = 0;    ///< Addressable light row slots, including free slots.
-    uint32_t lightCapacity = 0;    ///< Allocated light slots; zero until one exists.
+    rojoRHI::Buffer* lights = nullptr;   ///< Local light rows for the paced slot, or null if none.
+    uint32_t lightRowCount = 0;          ///< Addressable light row slots, including free slots.
+    uint32_t lightCapacity = 0;          ///< Allocated light slots; zero until one exists.
     std::span<const LightRow> lightRows; ///< CPU rows exactly matching the prepared GPU slot.
     uint32_t liveLightCount = 0; ///< Enabled local lights this frame; zero disables local passes.
 };

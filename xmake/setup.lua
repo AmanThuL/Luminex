@@ -168,7 +168,7 @@ task("setup")
                format("ThirdParty/imgui is at %s; expected pinned commit %s", imgui_head, imgui_pin))
 
         local imgui_patch = path.join(os.projectdir(),
-                                      "RHI/Tools/Patches/imgui-metal4-remove-texture.patch")
+                                      "RojoRHI/Tools/Patches/imgui-metal4-remove-texture.patch")
         apply_maintained_patch("ThirdParty/imgui", imgui_patch)
 
         if not os.isdir("ThirdParty/imgui-node-editor") then

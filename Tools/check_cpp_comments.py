@@ -19,10 +19,10 @@ except ImportError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("Source", "RHI", "Benchmarks")
+SOURCE_ROOTS = ("Source", "RojoRHI", "Benchmarks")
 # Test sources carry no file envelope, wherever they live: the top-level Tests root is already
 # outside SOURCE_ROOTS, and the RHI component's own test directory is excluded on the same rule.
-EXCLUDED_ROOTS = ("RHI/Tests",)
+EXCLUDED_ROOTS = ("RojoRHI/Tests",)
 SOURCE_SUFFIXES = {".h", ".cpp"}
 FILE_RULER = "//" + "-" * 118
 
@@ -51,8 +51,8 @@ def public_header_files(root: Path) -> list[Path]:
     explicit exported include tree; backend and shared implementation headers are excluded.
     """
     source = (root / "Source").rglob("*.h") if (root / "Source").is_dir() else ()
-    rhi = (root / "RHI/Include").rglob("*.h") if (root / "RHI/Include").is_dir() else ()
-    imgui_root = root / "RHI/Backends/Metal4/ImGui/Include"
+    rhi = (root / "RojoRHI/Include").rglob("*.h") if (root / "RojoRHI/Include").is_dir() else ()
+    imgui_root = root / "RojoRHI/Backends/Metal4/ImGui/Include"
     imgui = imgui_root.rglob("*.h") if imgui_root.is_dir() else ()
     contract_path = root / "Tools/module_contract.json"
     private: set[str] = set()
@@ -245,7 +245,7 @@ def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -
     elif relative.parts[0] == "Experiments":
         module = "/".join(relative.parts[:2])
     else:
-        module = "RHI"
+        module = "RojoRHI"
     candidates = [entry for entry in entries if f"/{module}/" in f"/{entry['file']}"]
     if not candidates:
         candidates = entries

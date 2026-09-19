@@ -6,7 +6,7 @@
 #include "Render/ShadowStage.h"
 
 #include "Core/Assert.h"
-#include "RHI/CaptureSchema.h"
+#include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -31,7 +31,7 @@ static_assert(sizeof(ShadowPassUniforms) == 64);
 // depth is linear in light-space distance and reversing it negates the slope without changing
 // its size, which leaves the same 32 covering the same kernel. Tests/GpuRendererTests.cpp's
 // sloped-bias case is the instrument that pins the sign.
-constexpr rhi::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
+constexpr rojoRHI::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
 
 constexpr uint32_t kVertexBufferSlot = 0;
 constexpr uint32_t kPassUniformsSlot = 2;
@@ -42,7 +42,7 @@ constexpr uint32_t kLinearSamplerSlot = 0;
 
 //======================================================================================================================
 void ShadowStage::registerUniformLayoutsForCapture() {
-    using rhi::debug::CaptureSchema;
+    using rojoRHI::debug::CaptureSchema;
     CaptureSchema& schema = CaptureSchema::instance();
 
     schema.registerUniformStruct(
@@ -98,7 +98,7 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 }
 
 //======================================================================================================================
-rhi::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rhi::Device& device) {
+rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Device& device) {
     std::unique_ptr<ShadowStage> self(new ShadowStage);
 
     if (auto library = device.loadShaderLibrary("Shaders/ShadowPass"); library) {
@@ -111,16 +111,16 @@ rhi::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rhi::Device& devic
             device.createGraphicsPipeline({.library = self->m_shadowLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
-                                           .colorFormat = rhi::Format::Unknown,
-                                           .depthFormat = rhi::Format::D32Float,
+                                           .colorFormat = rojoRHI::Format::Unknown,
+                                           .depthFormat = rojoRHI::Format::D32Float,
                                            .depthTestEnable = true,
                                            .depthWriteEnable = true,
                                            // Store the light-facing surface, not the back face.
-                                           .cullMode = rhi::CullMode::Back,
+                                           .cullMode = rojoRHI::CullMode::Back,
                                            // fitShadowOrtho is reversed too, so the surface
                                            // nearest the light is the largest depth and the map
                                            // keeps what compares Greater against its 0 clear.
-                                           .depthCompare = rhi::DepthCompare::Greater,
+                                           .depthCompare = rojoRHI::DepthCompare::Greater,
                                            .depthBias = kShadowDepthBias,
                                            .label = "lmx.render.shadowPipeline"});
         pipeline) {
@@ -139,12 +139,12 @@ rhi::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rhi::Device& devic
             {.library = self->m_maskShadowLibrary.get(),
              .vertexEntry = "vertexMain",
              .fragmentEntry = "fragmentMain",
-             .colorFormat = rhi::Format::Unknown,
-             .depthFormat = rhi::Format::D32Float,
+             .colorFormat = rojoRHI::Format::Unknown,
+             .depthFormat = rojoRHI::Format::D32Float,
              .depthTestEnable = true,
              .depthWriteEnable = true,
-             .cullMode = doubleSided ? rhi::CullMode::None : rhi::CullMode::Back,
-             .depthCompare = rhi::DepthCompare::Greater,
+             .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
+             .depthCompare = rojoRHI::DepthCompare::Greater,
              .depthBias = kShadowDepthBias,
              .label = doubleSided ? "lmx.render.maskShadowPipeline.doubleSided"
                                   : "lmx.render.maskShadowPipeline"});
@@ -158,7 +158,7 @@ rhi::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rhi::Device& devic
 }
 
 //======================================================================================================================
-GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands,
+GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                   const SceneView& view, const ShadowStageInputs& inputs) {
     const GraphTexture shadowMap = inputs.shadowMap;
     PassDesc shadowDesc;
@@ -179,7 +179,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
                 commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
-            rhi::GraphicsPipeline* bound = nullptr;
+            rojoRHI::GraphicsPipeline* bound = nullptr;
             commands.bindBuffer(kVisibleRowsSlot, *inputs.draws.rows);
             if (inputs.draws.mode != SubmissionMode::Direct)
                 commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{0});
@@ -207,7 +207,7 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rhi::CommandList& commands
                 } else {
                     commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
                                                  uint64_t{run.argumentIndex} *
-                                                     sizeof(rhi::DrawIndexedIndirectArgs));
+                                                     sizeof(rojoRHI::DrawIndexedIndirectArgs));
                 }
             }
         });

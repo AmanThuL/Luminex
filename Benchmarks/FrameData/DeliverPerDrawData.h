@@ -6,7 +6,7 @@
 
 #include "Core/Align.h"
 #include "Core/Assert.h"
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <memory>
@@ -17,7 +17,7 @@ namespace lmx::bench {
 /// Mirrors the incumbent Metal 4 backend's fixed per-frame transient-uniform capacity, as recorded
 /// by ADR 0010 and the M5.1 evidence this seam's baseline path reproduces (still present, under its
 /// own name, in the backend source the `m5.2-baseline` tag checks out). Backend-private and not
-/// part of the public `RHI/Include` surface `FrameDataBench` links against, so this is a
+/// part of the public `RojoRHI/Include` surface `FrameDataBench` links against, so this is a
 /// deliberately duplicated, independent tracker -- not a shared symbol -- exactly as the archived
 /// M5.1 adapters at tag `m5.1-noapi-evidence` had to duplicate it to decide client-side whether a
 /// call would fit before making it, since the incumbent path's overflow was a fatal assert with no
@@ -43,9 +43,9 @@ inline constexpr uint64_t kRingAlignmentBytes = 256;
 /// therefore unused on the candidate path.
 struct DeliveryContext {
     /// `device` must outlive every call this context is passed to.
-    explicit DeliveryContext(rhi::Device& device) : device(&device) {}
+    explicit DeliveryContext(rojoRHI::Device& device) : device(&device) {}
 
-    rhi::Device* device = nullptr;
+    rojoRHI::Device* device = nullptr;
 
     /// Mirrors the backend's per-frame ring bump cursor. Reset to zero once per frame by
     /// `beginFrame()`, matching the real ring's own per-frame reset.
@@ -55,7 +55,7 @@ struct DeliveryContext {
     /// (destroys) them. Safe to destroy at that point because the harness waits the device fully
     /// idle after every frame before the next one ever records a command (Runner.cpp) -- the same
     /// safety argument `RhiAdapter.cpp`'s own per-draw buffer replacement relies on.
-    std::vector<std::unique_ptr<rhi::Buffer>> overflowBuffers;
+    std::vector<std::unique_ptr<rojoRHI::Buffer>> overflowBuffers;
 
     /// Cumulative caller-side overflow buffers created across the whole run. `F-FIT-512` and both
     /// static workloads must finish a run with this at zero -- they never exceed the simulated
@@ -84,7 +84,7 @@ struct DeliveryContext {
 /// `size` name the bytes to copy, which the caller may reuse or free immediately after the call
 /// returns. Valid only inside a render or compute pass, per `bindFrameData`'s own contract.
 inline void deliverPerDrawData([[maybe_unused]] DeliveryContext& context,
-                               rhi::CommandList& commands, uint32_t slot, const void* data,
+                               rojoRHI::CommandList& commands, uint32_t slot, const void* data,
                                uint64_t size) {
     commands.bindFrameData(slot, data, size);
 }

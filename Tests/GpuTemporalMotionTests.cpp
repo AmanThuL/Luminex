@@ -11,7 +11,7 @@ using lmx::test::FixtureSceneView;
 // A camera that moved between two frames over a static surface: every probe texel must carry the
 // UV delta motionBetween() derives for the surface point that texel sees.
 TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -67,7 +67,7 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
 // The same oracle with the camera still and the object moved: motion has to come from the item's
 // own previous transform, not from the camera pair alone.
 TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -125,7 +125,7 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
 // unjittered pair, so a still camera over a still surface writes exactly zero however the sequence
 // has advanced.
 TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -167,7 +167,7 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
 // An item whose motion is undefined writes the sentinel rather than a plausible zero, because a
 // consumer has to be able to tell "did not move" from "cannot be reprojected".
 TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -206,7 +206,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
 // scene colour, motion is zero, so the difference the reprojection view shows is black everywhere
 // the geometry covers.
 TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -236,7 +236,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     // The committed history is this frame's scene colour, and a still scene reprojects onto
     // itself: history and scene colour must agree bit for bit, which is the difference the
     // diagnostic reports as exactly zero.
-    lmx::rhi::Texture* history = (*renderer)->historyTarget();
+    rojoRHI::Texture* history = (*renderer)->historyTarget();
     REQUIRE(history != nullptr);
     std::vector<uint8_t> historyTexels(size_t{kSize} * kSize * 8);
     history->readback(historyTexels.data(), historyTexels.size());
@@ -265,7 +265,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
 // one. The expected texel is computed on the CPU with Source/Render/Temporal.h's
 // renderSamplePosition, so what the case pins is the mapping and not a hand-picked pixel.
 TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -393,7 +393,7 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
 // renderer's motion attachment -- moving tracks carry motion, the static reference carries none,
 // and the invalid cube carries the sentinel, all in one image.
 TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -472,7 +472,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
 // the opposite edge -- here a bright emissive surface against a black one -- and the reprojection
 // view lights up along a whole column that never moved relative to what it reprojects onto.
 TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -547,7 +547,7 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
 // signal before neighbourhood clipping, which would hide a sampler's energy loss on a flat patch.
 TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
           "[gpu][temporal][taa-reprojection]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     auto device = createDevice();
     INFO(errorOf(device));
@@ -609,7 +609,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
 // use, over a scene that is nothing but sky -- the sphere covers every texel, so the probes read
 // the sky path rather than a piece of geometry in front of it.
 TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
 
     constexpr std::array<uint8_t, 4> kSkyTexel = {0, 128, 255, 255};
     const TextureMip skyMip{.data = kSkyTexel.data(), .bytesPerRow = 4};

@@ -105,8 +105,8 @@ class ProjectPolicyTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_process_policy_covers_extracted_build_scripts(self) -> None:
-        for path in ("xmake/setup.lua", "Source/Core/xmake.lua", "RHI/xmake.lua",
-                     "RHI/xmake/targets.lua"):
+        for path in ("xmake/setup.lua", "Source/Core/xmake.lua", "RojoRHI/xmake.lua",
+                     "RojoRHI/xmake/targets.lua"):
             with self.subTest(path=path):
                 errors: list[str] = []
                 with mock.patch.object(policy, "read_text", return_value="-- Close the backlog."):

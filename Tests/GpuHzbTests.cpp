@@ -19,7 +19,7 @@ static_assert(sizeof(ReadbackParams) == 16);
 void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     using namespace lmx;
     using namespace lmx::render;
-    auto device = rhi::createDevice();
+    auto device = rojoRHI::createDevice();
     INFO(errorOf(device));
     REQUIRE(device);
     auto stage = HzbStage::create(**device, true);
@@ -28,7 +28,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     REQUIRE((*stage)->resize(outputWidth, outputHeight));
     auto depth = (*device)->createTexture({.width = outputWidth,
                                            .height = outputHeight,
-                                           .format = rhi::Format::D32Float,
+                                           .format = rojoRHI::Format::D32Float,
                                            .renderTarget = true,
                                            .sampled = true,
                                            .label = "lmx.test.hzbDepth"});
@@ -38,12 +38,12 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
     auto raster = (*device)->createGraphicsPipeline({.library = depthLibrary->get(),
                                                      .vertexEntry = "vertexMain",
                                                      .fragmentEntry = "fragmentMain",
-                                                     .colorFormat = rhi::Format::Unknown,
-                                                     .depthFormat = rhi::Format::D32Float,
+                                                     .colorFormat = rojoRHI::Format::Unknown,
+                                                     .depthFormat = rojoRHI::Format::D32Float,
                                                      .depthTestEnable = true,
                                                      .depthWriteEnable = true,
-                                                     .cullMode = rhi::CullMode::None,
-                                                     .depthCompare = rhi::DepthCompare::Greater,
+                                                     .cullMode = rojoRHI::CullMode::None,
+                                                     .depthCompare = rojoRHI::DepthCompare::Greater,
                                                      .label = "lmx.test.hzbDepthPipeline"});
     INFO(errorOf(raster));
     REQUIRE(raster);
@@ -62,7 +62,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
                                              .label = "lmx.test.hzbReadback"},
                                             nullptr);
     REQUIRE(readback);
-    std::array<rhi::Texture*, 2> identities{};
+    std::array<rojoRHI::Texture*, 2> identities{};
     for (uint32_t frame = 0; frame < 6; ++frame) {
         const bool half = frame == 1 || frame == 3;
         const bool sky = frame == 4;
@@ -75,9 +75,9 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         auto& commands = (*device)->beginFrame();
         RenderGraph graph;
         const auto depthInput =
-            frame == 0 ? graph.importTexture(**depth, rhi::Format::D32Float, "lmx.test.depth")
-                       : graph.importTexture(**depth, rhi::Format::D32Float, "lmx.test.depth",
-                                             rhi::TextureUse::ShaderRead);
+            frame == 0 ? graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth")
+                       : graph.importTexture(**depth, rojoRHI::Format::D32Float, "lmx.test.depth",
+                                             rojoRHI::TextureUse::ShaderRead);
         PassDesc rasterDesc;
         rasterDesc.depth = DepthAttachment{.handle = depthInput, .store = StoreOp::Store};
         rasterDesc.renderAreaWidth = width;
@@ -103,7 +103,7 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         REQUIRE((*stage)->previousSource().built);
         GraphBuffer buffer = frame == 0 ? graph.importBuffer(**readback, "lmx.test.hzbReadback")
                                         : graph.importBuffer(**readback, "lmx.test.hzbReadback",
-                                                             rhi::BufferUse::StorageWrite);
+                                                             rojoRHI::BufferUse::StorageWrite);
         std::vector<uint32_t> offsets;
         uint32_t offset = 0;
         for (uint32_t input = 0; input <= layout.levelCount; ++input) {
@@ -119,7 +119,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
             const auto texture = sourceDepth ? source : pyramid;
             ComputePassDesc desc;
             desc.shaderTextureReads.emplace_back(
-                texture, rhi::TextureSubresourceRange{.baseMipLevel = level, .mipLevelCount = 1});
+                texture,
+                rojoRHI::TextureSubresourceRange{.baseMipLevel = level, .mipLevelCount = 1});
             desc.bufferWrites.push_back(buffer);
             graph.addComputePass(std::format("lmx.test.hzb.read{}", input), std::move(desc),
                                  [&, params, texture, buffer](const PassResources& resources) {
@@ -129,7 +130,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
                                      REQUIRE(b);
                                      commands.bindComputePipeline(**reader);
                                      commands.bindTexture(0, **t);
-                                     commands.bindStorageBuffer(1, **b, rhi::StorageAccess::Write);
+                                     commands.bindStorageBuffer(1, **b,
+                                                                rojoRHI::StorageAccess::Write);
                                      commands.bindFrameData(0, params);
                                      commands.dispatch(divRoundUp(params.width, 8u),
                                                        divRoundUp(params.height, 8u), 1);

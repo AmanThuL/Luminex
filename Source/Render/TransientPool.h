@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <memory>
@@ -42,7 +42,7 @@ class TransientPool {
 public:
     /// Binds the pool to the device its heaps and placed resources are created on. Nothing is
     /// allocated here: a pool that no frame ever reserves memory from owns no GPU objects.
-    explicit TransientPool(rhi::Device& device) : m_device(device) {}
+    explicit TransientPool(rojoRHI::Device& device) : m_device(device) {}
 
     /// Non-copyable: it owns heaps and the resources placed in them, and a copy would duplicate the
     /// slot rotation that keeps them alive.
@@ -66,17 +66,18 @@ public:
     /// One reservation per frame, whatever it asks for: a second one is refused rather than handing
     /// a second caller offsets into a heap the first caller's resources are still live in. Two
     /// graphs that both declare transients therefore belong in two frames.
-    rhi::Result<void> reserve(uint64_t bytes);
+    rojoRHI::Result<void> reserve(uint64_t bytes);
 
     /// Places a texture at `offset` in the open slot's heap and keeps it alive until that slot is
     /// reused. Requires a preceding reserve() whose bytes cover the placement.
-    rhi::Result<rhi::Texture*> placeTexture(const rhi::TextureDesc& desc, uint64_t offset);
+    rojoRHI::Result<rojoRHI::Texture*> placeTexture(const rojoRHI::TextureDesc& desc,
+                                                    uint64_t offset);
     /// The buffer counterpart of placeTexture.
-    rhi::Result<rhi::Buffer*> placeBuffer(const rhi::BufferDesc& desc, uint64_t offset);
+    rojoRHI::Result<rojoRHI::Buffer*> placeBuffer(const rojoRHI::BufferDesc& desc, uint64_t offset);
 
     /// The device the pool's resources are created on, and the one whose textureSizeAlign and
     /// bufferSizeAlign a graph plans its layout against.
-    rhi::Device& device() const { return m_device; }
+    rojoRHI::Device& device() const { return m_device; }
 
     /// Every heap the pool still owns: the live generation of each slot plus every generation
     /// waiting to be released. Exposed so a test can assert that toggling and resizing a frame
@@ -94,7 +95,7 @@ private:
     // declared after the heap so they are destroyed first -- a placed resource must not outlive
     // the memory it sits in.
     struct Slot {
-        std::unique_ptr<rhi::Heap> heap;
+        std::unique_ptr<rojoRHI::Heap> heap;
         uint64_t bytes = 0;
         // Whether the open frame has already reserved this slot. Tracked rather than inferred from
         // the placed resources below, because a reservation that happens to ask for the bytes the
@@ -103,8 +104,8 @@ private:
         // The frame that most recently placed into `heap`, which is what dates the generation
         // when it is retired.
         uint64_t lastFrame = 0;
-        std::vector<std::unique_ptr<rhi::Texture>> textures;
-        std::vector<std::unique_ptr<rhi::Buffer>> buffers;
+        std::vector<std::unique_ptr<rojoRHI::Texture>> textures;
+        std::vector<std::unique_ptr<rojoRHI::Buffer>> buffers;
     };
 
     // A generation taken out of service, with the frame number after which nothing can still be
@@ -112,14 +113,14 @@ private:
     // uses, restated here so the release rule is checkable rather than inferred from which slot
     // happened to own the heap.
     struct Retiring {
-        std::unique_ptr<rhi::Heap> heap;
+        std::unique_ptr<rojoRHI::Heap> heap;
         uint64_t releaseAtFrame = 0;
     };
 
     Slot& openSlot();
     const Slot& openSlot() const;
 
-    rhi::Device& m_device;
+    rojoRHI::Device& m_device;
     Slot m_slots[kTransientFrameSlots];
     std::vector<Retiring> m_retiring;
     // The frame beginFrame() last opened; zero until it has been called, which is what makes a

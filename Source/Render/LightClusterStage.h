@@ -63,11 +63,11 @@ public:
     static void registerLayoutsForCapture();
 
     /// Loads the safe-math clustering kernels and allocates every paced slot.
-    static rhi::Result<std::unique_ptr<LightClusterStage>> create(rhi::Device& device);
+    static rojoRHI::Result<std::unique_ptr<LightClusterStage>> create(rojoRHI::Device& device);
 
     /// Declares the four passes and retains the declaration's readback context. Returns an
     /// undeclared result when the frame is not clustered or has no live light.
-    LightClusterOutputs declare(RenderGraph& graph, rhi::CommandList& commands,
+    LightClusterOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                 const LightClusterInputs& inputs);
 
     /// Fixture-only logical write limits; both must be nonzero and neither may exceed the frozen
@@ -82,26 +82,26 @@ public:
     std::vector<RetiredLightClusters> takeRetired();
 
 private:
-    explicit LightClusterStage(rhi::Device& device) : m_device(device) {}
+    explicit LightClusterStage(rojoRHI::Device& device) : m_device(device) {}
 
     // One paced set of owned buffers. `used` is what says a later frame's import must seed the
     // previous access, exactly as GpuVisibility's slots do.
     struct Slot {
-        std::unique_ptr<rhi::Buffer> grid, indices, counts, counters;
+        std::unique_ptr<rojoRHI::Buffer> grid, indices, counts, counters;
         bool used = false;
         bool shaderRead = false;
     };
     struct Pending {
         uint64_t frameNumber = 0;
         bool captureLists = false;
-        rhi::Buffer *grid = nullptr, *indices = nullptr, *counters = nullptr;
+        rojoRHI::Buffer *grid = nullptr, *indices = nullptr, *counters = nullptr;
     };
 
     RetiredLightClusters readback(const Pending& pending) const;
 
-    rhi::Device& m_device;
-    std::array<std::unique_ptr<rhi::ShaderLibrary>, 3> m_libraries;
-    std::array<std::unique_ptr<rhi::ComputePipeline>, 3> m_pipelines;
+    rojoRHI::Device& m_device;
+    std::array<std::unique_ptr<rojoRHI::ShaderLibrary>, 3> m_libraries;
+    std::array<std::unique_ptr<rojoRHI::ComputePipeline>, 3> m_pipelines;
     std::array<Slot, 3> m_slots;
     std::vector<Pending> m_pending;
     std::vector<RetiredLightClusters> m_retired;

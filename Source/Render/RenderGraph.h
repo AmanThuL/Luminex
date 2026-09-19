@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "RHI/RHI.h"
 #include "Render/CompiledFrameRecord.h"
 #include "Render/TransientPool.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <expected>
@@ -76,20 +76,20 @@ constexpr GraphBuffer nextVersion(GraphBuffer handle) {
 
 /// Describes a texture the graph creates, owns, and destroys within one frame.
 ///
-/// It mirrors rhi::TextureDesc minus the two things a transient cannot have: initial contents, and
-/// CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
+/// It mirrors rojoRHI::TextureDesc minus the two things a transient cannot have: initial contents,
+/// and CPU-visible storage. A transient is device-private memory the graph places in a heap, so a
 /// caller that needs to read a result back imports a texture of its own instead. The name is passed
 /// beside the descriptor, exactly as importTexture takes one, and becomes the GPU object's label.
 struct TransientTextureDesc {
-    uint32_t width = 0;                              ///< Extent in texels.
-    uint32_t height = 0;                             ///< Extent in texels.
-    rhi::Format format = rhi::Format::Unknown;       ///< Pixel format.
-    rhi::TextureKind kind = rhi::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
-    uint32_t mipLevels = 1;                          ///< Mip levels allocated for each face.
-    bool renderTarget = false;                       ///< Enables render-target use.
-    bool sampled = false;                            ///< Enables shader reads.
-    bool storageRead = false;                        ///< Enables storage-binding reads.
-    bool storageWrite = false;                       ///< Enables storage-binding writes.
+    uint32_t width = 0;                                      ///< Extent in texels.
+    uint32_t height = 0;                                     ///< Extent in texels.
+    rojoRHI::Format format = rojoRHI::Format::Unknown;       ///< Pixel format.
+    rojoRHI::TextureKind kind = rojoRHI::TextureKind::Tex2D; ///< Two-dimensional or cubemap.
+    uint32_t mipLevels = 1;    ///< Mip levels allocated for each face.
+    bool renderTarget = false; ///< Enables render-target use.
+    bool sampled = false;      ///< Enables shader reads.
+    bool storageRead = false;  ///< Enables storage-binding reads.
+    bool storageWrite = false; ///< Enables storage-binding writes.
 };
 
 /// The buffer counterpart of TransientTextureDesc, on the same terms.
@@ -110,13 +110,13 @@ struct TransientBufferDesc {
 /// A GraphTexture converts implicitly, so `textureReads.push_back(handle)` still declares the whole
 /// resource and existing passes need no range of their own.
 struct TextureUseDesc {
-    GraphTexture handle;                ///< The version the pass touches.
-    rhi::TextureSubresourceRange range; ///< Subresources of it the pass touches.
+    GraphTexture handle;                    ///< The version the pass touches.
+    rojoRHI::TextureSubresourceRange range; ///< Subresources of it the pass touches.
 
     /// Declares the whole of `handle`.
     TextureUseDesc(GraphTexture texture) : handle(texture) {}
     /// Declares `subresources` of `handle`.
-    TextureUseDesc(GraphTexture texture, const rhi::TextureSubresourceRange& subresources)
+    TextureUseDesc(GraphTexture texture, const rojoRHI::TextureSubresourceRange& subresources)
         : handle(texture), range(subresources) {}
 };
 
@@ -156,10 +156,10 @@ struct DepthAttachment {
     LoadOp load = LoadOp::Clear;      ///< Whether prior contents are preserved.
     StoreOp store = StoreOp::Discard; ///< Whether produced contents remain readable.
     /// 0 is the far plane, because depth is reversed everywhere above this layer (Camera.cpp
-    /// derives it). It differs from rhi::RenderPassDesc's 1.0, which is the API's neutral default
-    /// and belongs to no convention; this one belongs to the renderer's, so a pass that omits it
-    /// clears to the value its Greater test will accept anything against rather than to the value
-    /// that would reject every fragment it draws.
+    /// derives it). It differs from rojoRHI::RenderPassDesc's 1.0, which is the API's neutral
+    /// default and belongs to no convention; this one belongs to the renderer's, so a pass that
+    /// omits it clears to the value its Greater test will accept anything against rather than to
+    /// the value that would reject every fragment it draws.
     float clearDepth = 0.0f;
 };
 
@@ -177,9 +177,9 @@ struct PassDesc {
     /// Colour attachments past the primary, in attachment order: `extraColor[0]` is attachment 1,
     /// which a fragment shader writes as SV_Target1. Each is an attachment on `color`'s terms --
     /// it declares its own attachment use and produces the next version of what it names -- and
-    /// each shares the primary's extent. A pass may declare at most rhi::kMaxExtraColorTargets of
-    /// them, may not declare one without a primary, since extras are attachments 1 and up, and may
-    /// not name one texture twice across its colour attachments.
+    /// each shares the primary's extent. A pass may declare at most rojoRHI::kMaxExtraColorTargets
+    /// of them, may not declare one without a primary, since extras are attachments 1 and up, and
+    /// may not name one texture twice across its colour attachments.
     std::vector<ColorAttachment> extraColor;
     /// Writes that are not attachments. Each names the version it consumes and produces the next.
     std::vector<TextureUseDesc> textureWrites; ///< Non-attachment texture writes.
@@ -239,9 +239,9 @@ struct ExternalPassDesc {
 class PassResources {
 public:
     /// The imported texture behind a declared handle, never null on success.
-    GraphResult<rhi::Texture*> texture(GraphTexture handle) const;
+    GraphResult<rojoRHI::Texture*> texture(GraphTexture handle) const;
     /// The imported buffer behind a declared handle, never null on success.
-    GraphResult<rhi::Buffer*> buffer(GraphBuffer handle) const;
+    GraphResult<rojoRHI::Buffer*> buffer(GraphBuffer handle) const;
 
 private:
     friend class RenderGraph;
@@ -263,9 +263,9 @@ using ExecuteFn = std::function<void(const PassResources&)>;
 /// acyclic graph and answers with the order to run them in, so a mis-declared frame fails on the
 /// CPU with a message instead of on the GPU as a hazard.
 ///
-/// The graph borrows what it does not own: an imported rhi::Texture or rhi::Buffer must outlive it,
-/// and the handles it issues mean nothing once it is gone. Declaring a fresh graph per frame is the
-/// intended use -- it holds no GPU memory of its own between frames.
+/// The graph borrows what it does not own: an imported rojoRHI::Texture or rojoRHI::Buffer must
+/// outlive it, and the handles it issues mean nothing once it is gone. Declaring a fresh graph per
+/// frame is the intended use -- it holds no GPU memory of its own between frames.
 ///
 /// A resource is either imported or transient (ADR 0008). An imported one is the caller's for the
 /// caller's own reasons -- it persists, it can be exported, read back, or presented, and it is
@@ -285,19 +285,20 @@ public:
     /// Brings an existing texture into the graph as version 0. `format` snapshots the attachment
     /// interpretation the graph validates and must match texture.format(); `name` appears in
     /// validation messages and is copied. `texture` must outlive the graph.
-    GraphTexture importTexture(rhi::Texture& texture, rhi::Format format, std::string_view name);
+    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                               std::string_view name);
 
     /// The same import when a pass in an earlier frame last accessed this persistent texture.
     /// `previousUse` seeds hazard derivation across the command-buffer boundary: a prior write is
     /// ordered before this frame's first read or write, while a prior read is ordered only before
     /// this frame's first write. The whole texture is assumed because no previous-frame range is
     /// available to this fresh graph.
-    GraphTexture importTexture(rhi::Texture& texture, rhi::Format format, std::string_view name,
-                               rhi::TextureUse previousUse);
+    GraphTexture importTexture(rojoRHI::Texture& texture, rojoRHI::Format format,
+                               std::string_view name, rojoRHI::TextureUse previousUse);
 
     /// Brings an existing buffer into the graph as version 0, on importTexture's terms. Buffers
     /// carry no format because no rule inspects one.
-    GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name);
+    GraphBuffer importBuffer(rojoRHI::Buffer& buffer, std::string_view name);
 
     /// The same import when a pass in an earlier frame last accessed this persistent buffer.
     ///
@@ -308,8 +309,8 @@ public:
     ///
     /// This is for persistent feedback and other buffers reused across in-flight frames. A buffer
     /// with no earlier-frame access uses the overload above.
-    GraphBuffer importBuffer(rhi::Buffer& buffer, std::string_view name,
-                             rhi::BufferUse previousUse);
+    GraphBuffer importBuffer(rojoRHI::Buffer& buffer, std::string_view name,
+                             rojoRHI::BufferUse previousUse);
 
     /// Declares a texture the graph creates for this frame and nothing else, as version 0.
     ///
@@ -445,7 +446,7 @@ public:
     /// It is emitted whatever ranges either side declared -- the hazard is over the memory, not
     /// over the subresources -- and it is what makes an aliased frame match an unaliased one.
     ///
-    /// Every reader is covered, on both axes a barrier is scoped on (rhi::CommandList::
+    /// Every reader is covered, on both axes a barrier is scoped on (rojoRHI::CommandList::
     /// textureBarrier states the model): a later reader is left unbarriered only when an
     /// already-emitted barrier for that same write named a range enclosing the whole of what it
     /// reads *and* was consumed by a pass of its own kind. A barrier orders the passes it sits
@@ -465,7 +466,7 @@ public:
     /// Answers with the record compileFrame(`frameId`) produced, which is the record of what this
     /// call encoded: the barriers listed in it are the barriers emitted, because both come from the
     /// one compilation rather than from two derivations that could drift apart.
-    CompiledFrameRecord execute(rhi::CommandList& commands, uint64_t frameId);
+    CompiledFrameRecord execute(rojoRHI::CommandList& commands, uint64_t frameId);
 
     /// The resources pass `passIndex` declared, for the pass body to resolve handles through.
     /// Resolution depends on declarations alone, so this is answerable before and independently of
@@ -478,15 +479,15 @@ private:
     enum class ResourceKind { Texture, Buffer };
 
     // One declared resource, imported or transient. The shape fields are carried here rather than
-    // read back off the rhi::Texture because a transient has no texture until execute() places it,
-    // and the range and attachment rules have to answer the same way for both kinds.
+    // read back off the rojoRHI::Texture because a transient has no texture until execute() places
+    // it, and the range and attachment rules have to answer the same way for both kinds.
     struct Resource {
         ResourceKind kind = ResourceKind::Texture;
         std::string name;
         // Null for a transient until execute() places it; borrowed for an import.
-        rhi::Texture* texture = nullptr;
-        rhi::Buffer* buffer = nullptr;
-        rhi::Format format = rhi::Format::Unknown;
+        rojoRHI::Texture* texture = nullptr;
+        rojoRHI::Buffer* buffer = nullptr;
+        rojoRHI::Format format = rojoRHI::Format::Unknown;
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t mipLevels = 1;
@@ -499,8 +500,8 @@ private:
         TransientBufferDesc bufferDesc;
         // Set only by the persistent-import overloads. A fresh per-frame graph cannot otherwise
         // see the last access still in flight in an earlier command buffer.
-        std::optional<rhi::TextureUse> priorTextureAccess;
-        std::optional<rhi::BufferUse> priorBufferAccess;
+        std::optional<rojoRHI::TextureUse> priorTextureAccess;
+        std::optional<rojoRHI::BufferUse> priorBufferAccess;
     };
 
     // Where one transient sits in the frame's heap, alongside the lifetime that justified it.
@@ -530,7 +531,7 @@ private:
         uint32_t resource = 0;
         uint32_t version = 0;
         UseRole role = UseRole::Read;
-        rhi::TextureSubresourceRange range;
+        rojoRHI::TextureSubresourceRange range;
         bool isWrite = false;
     };
 
@@ -590,8 +591,8 @@ private:
     AliasPlan planTransients(const Schedule& schedule) const;
 
     // The RHI descriptors a transient's Resource compiles to, labelled with its name.
-    rhi::TextureDesc textureDescOf(const Resource& resource) const;
-    rhi::BufferDesc bufferDescOf(const Resource& resource) const;
+    rojoRHI::TextureDesc textureDescOf(const Resource& resource) const;
+    rojoRHI::BufferDesc bufferDescOf(const Resource& resource) const;
 
     // Reserves the frame's transient heap and places every used transient in it, filling in the
     // resource pointers the pass bodies resolve. Failure is programmer error and aborts, on

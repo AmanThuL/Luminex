@@ -15,19 +15,19 @@ namespace lmx::render {
 class DisplayStage {
 public:
     // Initialization phases preserve Renderer's resource creation order.
-    rhi::Result<void> loadLibraries(rhi::Device& device);
-    rhi::Result<void> createPipelines(rhi::Device& device);
+    rojoRHI::Result<void> loadLibraries(rojoRHI::Device& device);
+    rojoRHI::Result<void> createPipelines(rojoRHI::Device& device);
     // Allocates the valid black texture bound when bloom is disabled.
-    rhi::Result<void> createResources(rhi::Device& device);
+    rojoRHI::Result<void> createResources(rojoRHI::Device& device);
     // Declares the output transform, with its input versions fixed before callbacks execute.
-    void declare(RenderGraph& graph, rhi::CommandList& commands, GraphTexture displayInput,
+    void declare(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture displayInput,
                  GraphTexture bloomResult, GraphTexture displayColor, bool bloomEnabled,
                  float bloomIntensity);
 
 private:
-    std::unique_ptr<rhi::ShaderLibrary> m_displayLibrary;
-    std::unique_ptr<rhi::GraphicsPipeline> m_displayPipeline;
-    std::unique_ptr<rhi::Texture> m_blackBloomFallback;
+    std::unique_ptr<rojoRHI::ShaderLibrary> m_displayLibrary;
+    std::unique_ptr<rojoRHI::GraphicsPipeline> m_displayPipeline;
+    std::unique_ptr<rojoRHI::Texture> m_blackBloomFallback;
 };
 
 } // namespace lmx::render

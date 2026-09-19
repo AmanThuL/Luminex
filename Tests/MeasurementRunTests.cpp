@@ -34,7 +34,7 @@ TEST_CASE("Measurement plans drain only after every exact frame retires", "[app]
     REQUIRE(run.recordCpu({.frameId = 10, .sequenceFrame = 2, .lighting = {.frameNumber = 10}}));
     REQUIRE(run.state() == MeasurementState::Draining);
     REQUIRE_FALSE(run.nextFrame());
-    const std::array<lmx::rhi::PassTiming, 1> timings = {{{"scene", 1.5}}};
+    const std::array<rojoRHI::PassTiming, 1> timings = {{{"scene", 1.5}}};
     REQUIRE(run.retire(10, timings));
     REQUIRE(run.state() == MeasurementState::Draining);
     REQUIRE(run.retire(10, timings));
@@ -67,7 +67,7 @@ TEST_CASE("Missing or contradictory measurement evidence invalidates a run", "[a
             run.recordCpu({.frameId = 3, .sequenceFrame = 1, .lighting = {.frameNumber = 3}}));
     }
     SECTION("future GPU frame") {
-        const std::array<lmx::rhi::PassTiming, 1> future = {{{"scene", 1}}};
+        const std::array<rojoRHI::PassTiming, 1> future = {{{"scene", 1}}};
         REQUIRE_FALSE(run.retire(2, future));
     }
     SECTION("duplicate CPU frame") {
@@ -78,8 +78,8 @@ TEST_CASE("Missing or contradictory measurement evidence invalidates a run", "[a
         REQUIRE_FALSE(run.retire(1, {}));
     }
     SECTION("conflicting GPU duplicate") {
-        const std::array<lmx::rhi::PassTiming, 1> first = {{{"scene", 1}}};
-        const std::array<lmx::rhi::PassTiming, 1> second = {{{"scene", 2}}};
+        const std::array<rojoRHI::PassTiming, 1> first = {{{"scene", 1}}};
+        const std::array<rojoRHI::PassTiming, 1> second = {{{"scene", 2}}};
         REQUIRE(run.retire(1, first));
         REQUIRE_FALSE(run.retire(1, second));
     }
@@ -100,7 +100,7 @@ TEST_CASE("Declared pass inventory is required at retirement", "[app][measuremen
     REQUIRE(run.start({.warmupFrames = 0, .measuredFrames = 1}, testProvenance()));
     REQUIRE(run.recordCpu(
         {.frameId = 1, .expectedPasses = {"shadow", "scene"}, .lighting = {.frameNumber = 1}}));
-    const std::array<lmx::rhi::PassTiming, 1> missing = {{{"scene", 1}}};
+    const std::array<rojoRHI::PassTiming, 1> missing = {{{"scene", 1}}};
     REQUIRE_FALSE(run.retire(1, missing));
     REQUIRE(run.state() == MeasurementState::Cancelled);
 }

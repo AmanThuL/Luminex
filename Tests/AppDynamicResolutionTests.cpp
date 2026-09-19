@@ -20,7 +20,7 @@ render::CompiledFrameRecord recordWithId(uint64_t frameId) {
 }
 
 //======================================================================================================================
-RetainedFrame timedFrame(uint64_t frameId, std::vector<rhi::PassTiming> timings) {
+RetainedFrame timedFrame(uint64_t frameId, std::vector<rojoRHI::PassTiming> timings) {
     RetainedFrame frame;
     frame.record = recordWithId(frameId);
     frame.timings = std::move(timings);
@@ -32,7 +32,7 @@ RetainedFrame timedFrame(uint64_t frameId, std::vector<rhi::PassTiming> timings)
 
 //======================================================================================================================
 TEST_CASE("frameGpuMilliseconds sums every pass's GPU time", "[app]") {
-    const std::vector<rhi::PassTiming> timings = {
+    const std::vector<rojoRHI::PassTiming> timings = {
         {.label = "shadow", .gpuMilliseconds = 1.5},
         {.label = "scene", .gpuMilliseconds = 4.25},
         {.label = "display", .gpuMilliseconds = 0.75},
@@ -80,7 +80,8 @@ TEST_CASE("a newest timed frame is observed once per frame number", "[app]") {
     applyDynamicResolution(state, controller, settings, nullptr);
     controller.declared(1);
 
-    const std::vector<rhi::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     const RetainedFrame frame = timedFrame(1, overBudget);
 
     applyDynamicResolution(state, controller, settings, &frame);
@@ -179,7 +180,8 @@ TEST_CASE("over-budget frames are not judged while temporal is off", "[app]") {
     settings.temporalEnabled = false;
     settings.renderScale = 0.8f;
 
-    const std::vector<rhi::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     for (uint64_t frameId = 1; frameId <= 8; ++frameId) {
         controller.declared(frameId);
         const RetainedFrame frame = timedFrame(frameId, overBudget);
@@ -209,7 +211,8 @@ TEST_CASE("re-enabling temporal reseeds from the retained scale and drops the id
     settings.temporalEnabled = false;
     settings.renderScale = 0.8f; // The value retained from when the controller last ran.
 
-    const std::vector<rhi::PassTiming> overBudget = {{.label = "scene", .gpuMilliseconds = 40.0}};
+    const std::vector<rojoRHI::PassTiming> overBudget = {
+        {.label = "scene", .gpuMilliseconds = 40.0}};
     const RetainedFrame idleFrame = timedFrame(7, overBudget);
     controller.declared(7);
     applyDynamicResolution(state, controller, settings, &idleFrame);
@@ -234,7 +237,7 @@ TEST_CASE("inactive controller retains its last measurement and matching frame",
     render::ResolutionController controller;
     EditorRenderSettings settings;
     settings.dynamicResolutionEnabled = true;
-    const std::vector<rhi::PassTiming> timings = {{.label = "scene", .gpuMilliseconds = 7.5}};
+    const std::vector<rojoRHI::PassTiming> timings = {{.label = "scene", .gpuMilliseconds = 7.5}};
     const auto measured = timedFrame(10, timings);
     controller.declared(10);
     applyDynamicResolution(state, controller, settings, &measured);

@@ -18,10 +18,10 @@ using namespace lmx::app;
 //======================================================================================================================
 TEST_CASE("pass timing history summarizes retired frames without sampling one twice", "[app]") {
     PassTimingHistory history;
-    const std::array first = {rhi::PassTiming{.label = "shadow", .gpuMilliseconds = 0.02},
-                              rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.20}};
-    const std::array second = {rhi::PassTiming{.label = "shadow", .gpuMilliseconds = 0.04},
-                               rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.40}};
+    const std::array first = {rojoRHI::PassTiming{.label = "shadow", .gpuMilliseconds = 0.02},
+                              rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.20}};
+    const std::array second = {rojoRHI::PassTiming{.label = "shadow", .gpuMilliseconds = 0.04},
+                               rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.40}};
 
     REQUIRE(history.addFrame(7, first));
     REQUIRE_FALSE(history.addFrame(7, second));
@@ -43,10 +43,10 @@ TEST_CASE("pass timing history summarizes retired frames without sampling one tw
 // series distinct.
 TEST_CASE("pass timing history preserves duplicate labels by schedule position", "[app]") {
     PassTimingHistory history;
-    const std::array first = {rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
-                              rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.9}};
-    const std::array second = {rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.3},
-                               rhi::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.7}};
+    const std::array first = {rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.1},
+                              rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.9}};
+    const std::array second = {rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.3},
+                               rojoRHI::PassTiming{.label = "duplicate", .gpuMilliseconds = 0.7}};
 
     history.addFrame(1, first);
     history.addFrame(2, second);
@@ -60,11 +60,11 @@ TEST_CASE("pass timing history preserves duplicate labels by schedule position",
 //======================================================================================================================
 TEST_CASE("pass timing history resets when the compiled schedule changes", "[app]") {
     PassTimingHistory history;
-    const std::array original = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 2.0},
-                                 rhi::PassTiming{.label = "display", .gpuMilliseconds = 4.0}};
-    const std::array changed = {rhi::PassTiming{.label = "scene", .gpuMilliseconds = 0.2},
-                                rhi::PassTiming{.label = "bloom", .gpuMilliseconds = 0.4},
-                                rhi::PassTiming{.label = "display", .gpuMilliseconds = 0.6}};
+    const std::array original = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 2.0},
+                                 rojoRHI::PassTiming{.label = "display", .gpuMilliseconds = 4.0}};
+    const std::array changed = {rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 0.2},
+                                rojoRHI::PassTiming{.label = "bloom", .gpuMilliseconds = 0.4},
+                                rojoRHI::PassTiming{.label = "display", .gpuMilliseconds = 0.6}};
 
     history.addFrame(1, original);
     REQUIRE(history.addFrame(2, changed));
@@ -82,7 +82,7 @@ TEST_CASE("pass timing history evicts samples beyond its rolling capacity", "[ap
     PassTimingHistory history;
     for (uint64_t frame = 1; frame <= PassTimingHistory::kSampleCapacity + 1; ++frame) {
         const std::array timing = {
-            rhi::PassTiming{.label = "scene", .gpuMilliseconds = static_cast<double>(frame)}};
+            rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = static_cast<double>(frame)}};
         history.addFrame(frame, timing);
     }
 

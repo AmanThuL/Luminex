@@ -55,10 +55,10 @@ TEST_CASE("a transient taking another's bytes is barriered against it", "[render
     REQUIRE(reuse.aliasedFrom.has_value());
     REQUIRE(*reuse.aliasedFrom == 0);
     REQUIRE(reuse.kind == GraphResourceKind::Texture);
-    REQUIRE(reuse.textureFrom == rhi::TextureUse::ShaderRead);
-    REQUIRE(reuse.textureTo == rhi::TextureUse::RenderTarget);
-    REQUIRE(reuse.range.mipLevelCount == rhi::kAllMipLevels);
-    REQUIRE(reuse.range.arrayLayerCount == rhi::kAllArrayLayers);
+    REQUIRE(reuse.textureFrom == rojoRHI::TextureUse::ShaderRead);
+    REQUIRE(reuse.textureTo == rojoRHI::TextureUse::RenderTarget);
+    REQUIRE(reuse.range.mipLevelCount == rojoRHI::kAllMipLevels);
+    REQUIRE(reuse.range.arrayLayerCount == rojoRHI::kAllArrayLayers);
 
     // The two ordinary transitions carry no alias, so an observer can tell the two kinds apart.
     REQUIRE_FALSE(record->debug.transitions[0].aliasedFrom.has_value());
@@ -78,7 +78,7 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
 
     const TransientTextureDesc desc{.width = 64,
                                     .height = 64,
-                                    .format = rhi::Format::RGBA16Float,
+                                    .format = rojoRHI::Format::RGBA16Float,
                                     .mipLevels = 2,
                                     .storageRead = true,
                                     .storageWrite = true};
@@ -86,9 +86,9 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
     const GraphTexture second = graph.createTexture(desc, "lmx.transient.second");
     const GraphBuffer ordering = graph.importBuffer(orderingBuffer, "ordering");
     const GraphTexture output =
-        graph.importTexture(outputTexture, rhi::Format::BGRA8Unorm, "output");
-    constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
-    constexpr rhi::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+        graph.importTexture(outputTexture, rojoRHI::Format::BGRA8Unorm, "output");
+    constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    constexpr rojoRHI::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
 
     ComputePassDesc openFirst;
     openFirst.textureWrites.push_back({first, kMip0});
@@ -117,16 +117,16 @@ TEST_CASE("an alias boundary includes every use of the closing pass", "[render][
     INFO(errorOf(record));
     REQUIRE(record.has_value());
 
-    std::vector<rhi::TextureUse> closingUses;
+    std::vector<rojoRHI::TextureUse> closingUses;
     for (const DebugTransition& transition : record->debug.transitions) {
         if (transition.aliasedFrom == std::optional{first.index}) {
             closingUses.push_back(transition.textureFrom);
             REQUIRE(transition.beforePass == 2);
-            REQUIRE(transition.textureTo == rhi::TextureUse::StorageWrite);
+            REQUIRE(transition.textureTo == rojoRHI::TextureUse::StorageWrite);
         }
     }
-    REQUIRE(closingUses == std::vector<rhi::TextureUse>{rhi::TextureUse::ShaderRead,
-                                                        rhi::TextureUse::StorageWrite});
+    REQUIRE(closingUses == std::vector<rojoRHI::TextureUse>{rojoRHI::TextureUse::ShaderRead,
+                                                            rojoRHI::TextureUse::StorageWrite});
 }
 
 //======================================================================================================================
@@ -149,7 +149,7 @@ TEST_CASE("a culled transient releases the frame slot heap", "[render][graph]") 
     RenderGraph graph(pool);
     graph.createTexture(kTransientColor, "lmx.transient.culled");
     const GraphTexture output =
-        graph.importTexture(outputTexture, rhi::Format::BGRA8Unorm, "output");
+        graph.importTexture(outputTexture, rojoRHI::Format::BGRA8Unorm, "output");
     PassDesc display;
     display.color = ColorAttachment{.handle = output};
     graph.addPass("lmx.pass.display", display, kNoWork);
@@ -173,7 +173,7 @@ TEST_CASE("two transients whose lifetimes overlap get separate placements", "[re
     RenderGraph graph(pool);
     const GraphTexture first = graph.createTexture(kTransientColor, "lmx.transient.first");
     const GraphTexture second = graph.createTexture(kTransientColor, "lmx.transient.second");
-    const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+    const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
     PassDesc writeFirst;
     writeFirst.color = ColorAttachment{.handle = first};
@@ -212,14 +212,14 @@ TEST_CASE("transients of differing descriptors never share bytes", "[render][gra
         {"format",
          {.width = 64,
           .height = 64,
-          .format = rhi::Format::RGBA8Unorm,
+          .format = rojoRHI::Format::RGBA8Unorm,
           .renderTarget = true,
           .sampled = true}},
         // Same format and footprint, one extra usage.
         {"usage",
          {.width = 64,
           .height = 64,
-          .format = rhi::Format::RGBA16Float,
+          .format = rojoRHI::Format::RGBA16Float,
           .renderTarget = true,
           .sampled = true,
           .storageWrite = true}},
@@ -227,7 +227,7 @@ TEST_CASE("transients of differing descriptors never share bytes", "[render][gra
         {"extent",
          {.width = 128,
           .height = 128,
-          .format = rhi::Format::RGBA16Float,
+          .format = rojoRHI::Format::RGBA16Float,
           .renderTarget = true,
           .sampled = true}},
     }};
@@ -290,7 +290,7 @@ TEST_CASE("a transient no scheduled pass touches is not placed", "[render][graph
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
-    const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+    const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
     PassDesc dead;
     dead.color = ColorAttachment{.handle = scratch};
@@ -323,7 +323,7 @@ TEST_CASE("a transient consumed before it is written fails to compile", "[render
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
-    const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+    const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
     PassDesc read;
     read.textureReads.push_back(scratch);
@@ -349,7 +349,7 @@ TEST_CASE("a transient loaded as an attachment fails to compile", "[render][grap
     FakeTexture outTarget{64, 64, "out"};
     RenderGraph graph(pool);
     const GraphTexture scratch = graph.createTexture(kTransientColor, "lmx.transient.scratch");
-    const GraphTexture out = graph.importTexture(outTarget, rhi::Format::BGRA8Unorm, "out");
+    const GraphTexture out = graph.importTexture(outTarget, rojoRHI::Format::BGRA8Unorm, "out");
 
     PassDesc load;
     load.color = ColorAttachment{.handle = scratch, .load = LoadOp::Load};
@@ -478,8 +478,8 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
         });
     REQUIRE(reuse != record->debug.transitions.end());
     REQUIRE(reuse->kind == GraphResourceKind::Buffer);
-    REQUIRE(reuse->bufferFrom == rhi::BufferUse::StorageRead);
-    REQUIRE(reuse->bufferTo == rhi::BufferUse::StorageWrite);
+    REQUIRE(reuse->bufferFrom == rojoRHI::BufferUse::StorageRead);
+    REQUIRE(reuse->bufferTo == rojoRHI::BufferUse::StorageWrite);
 }
 
 //======================================================================================================================
@@ -501,10 +501,10 @@ TEST_CASE("exposure and bloom passes are culled when both features are off", "[r
     FakeBuffer exposureBufferFake{4, "exposure"};
 
     RenderGraph graph(pool);
-    const GraphTexture sceneColor = graph.importTexture(sceneColorTexture, rhi::Format::RGBA16Float,
-                                                        "lmx.render.sceneColorHdr");
+    const GraphTexture sceneColor = graph.importTexture(
+        sceneColorTexture, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
     const GraphTexture displayColor = graph.importTexture(
-        displayColorTexture, rhi::Format::BGRA8Unorm, "lmx.render.displayColor");
+        displayColorTexture, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
     const GraphBuffer histogramBuffer =
         graph.importBuffer(histogramBufferFake, "lmx.render.histogramBuffer");
     const GraphBuffer exposureBuffer =
@@ -538,20 +538,20 @@ TEST_CASE("exposure and bloom passes are culled when both features are off", "[r
     // conditional -- here it is not declared, so nothing roots the upsample pass's write.
     const GraphTexture bloomChain = graph.createTexture({.width = 32,
                                                          .height = 32,
-                                                         .format = rhi::Format::RGBA16Float,
+                                                         .format = rojoRHI::Format::RGBA16Float,
                                                          .mipLevels = 2,
                                                          .storageRead = true,
                                                          .storageWrite = true},
                                                         "lmx.render.bloomChain");
     const GraphTexture bloomBlur = graph.createTexture({.width = 32,
                                                         .height = 32,
-                                                        .format = rhi::Format::RGBA16Float,
+                                                        .format = rojoRHI::Format::RGBA16Float,
                                                         .mipLevels = 1,
                                                         .storageRead = true,
                                                         .storageWrite = true},
                                                        "lmx.render.bloomBlur");
-    constexpr rhi::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
-    constexpr rhi::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
+    constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
+    constexpr rojoRHI::TextureSubresourceRange kMip1{.baseMipLevel = 1, .mipLevelCount = 1};
 
     ComputePassDesc thresholdDesc;
     thresholdDesc.textureReads.push_back(sceneColorRead);

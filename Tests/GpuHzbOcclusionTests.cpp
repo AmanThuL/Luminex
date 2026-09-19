@@ -47,7 +47,7 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
           "[gpu][hzb][occlusion-probe][hzb-occlusion]") {
     using namespace lmx;
     using namespace lmx::render;
-    using namespace lmx::rhi;
+    using namespace rojoRHI;
     constexpr uint32_t outputWidth = 129;
     constexpr uint32_t outputHeight = 75;
     auto device = createDevice();
