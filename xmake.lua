@@ -14,5 +14,5 @@ includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/depen
 -- First-party targets keep source membership and dependency declarations beside their units.
 includes("Source/Core/xmake.lua", "RHI/xmake.lua", "Source/Render/xmake.lua",
          "Source/Asset/xmake.lua", "Source/Scene/xmake.lua", "Source/App/Model/xmake.lua",
-         "Source/App/xmake.lua", "Tests/xmake.lua", "Tools/TextureBake/xmake.lua",
-         "Benchmarks/FrameData/xmake.lua")
+         "Source/App/xmake.lua", "Tests/xmake.lua", "RHI/Tests/xmake.lua",
+         "Tools/TextureBake/xmake.lua", "Benchmarks/FrameData/xmake.lua")

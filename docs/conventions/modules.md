@@ -26,6 +26,7 @@ and AppModel static target.
 | `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `rhi-public`, `asset`, `scene`, `render` | glm |
 | `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `rhi-public`, `rhi-impl`, `metal4-backend`, `imgui-adapter`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
 | `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `rhi-public`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
+| `rhi-tests` | `RHI/Tests` (`RHITests`) | — | CPU-only contract cases for the RHI component, in a binary that links the RHI target alone | `rhi-public` | catch2, glm |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core`, `rhi-public` | glm |
 
@@ -46,6 +47,12 @@ callback that forwards them into the project log, so spdlog stays a `core` depen
 hands back the interface, and no test names a backend, adapter or `RHI/Source` header. That the
 Tests target links the `RHI` target is the link-level view, a target's dependency closure, which the
 link checks own; it is not an include edge and does not widen this row.
+
+`rhi-tests` keeps the component's CPU-only cases inside the component: its sources live under
+`RHI/Tests`, include `RHI/` headers and their own fixture only, and build into the separate
+`RHITests` binary, which links the `RHI` target and no other project library. Its messages reach the
+`RHI/Message.h` stderr default, because the forwarding sink belongs to `render`. The two test
+binaries partition the suite: a case lives in exactly one of them.
 
 ### Directory ownership
 

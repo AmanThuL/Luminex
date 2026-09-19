@@ -117,7 +117,9 @@ jobs:
         run: python3 Tools/check_module_deps.py --link
 
       - name: Unit tests
-        run: xmake test Tests/unit
+        run: |
+          xmake test Tests/unit
+          xmake test RHITests/unit
 
       # GitHub's hosted macOS runner exposes an Apple Paravirtual device without Metal 4.
       # Compile and inventory the suite here; run it on Metal 4 hardware before merge.

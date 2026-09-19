@@ -247,8 +247,25 @@
         "Tests/GpuTemporalTestSupport.h",
         "Tests/GpuTestSupport.h",
         "Tests/GraphTestSupport.h",
-        "Tests/RHIValidateTestSupport.h",
         "Tests/RenderGraphTestSupport.h"
+      ]
+    },
+    "rhi-tests": {
+      "paths": [
+        "RHI/Tests"
+      ],
+      "targets": [
+        "RHITests"
+      ],
+      "units": [
+        "rhi-public"
+      ],
+      "thirdParty": [
+        "catch2",
+        "glm"
+      ],
+      "privateHeaders": [
+        "RHI/Tests/RHIValidateTestSupport.h"
       ]
     },
     "texture-bake": {
@@ -334,6 +351,11 @@
         "Asset",
         "Scene",
         "AppModel"
+      ]
+    },
+    "RHITests": {
+      "deps": [
+        "RHI"
       ]
     },
     "TextureBake": {
