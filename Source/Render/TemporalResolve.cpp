@@ -53,7 +53,7 @@ TemporalResolve::~TemporalResolve() = default;
 
 //======================================================================================================================
 rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRHI::Device& device,
-                                                                      bool cpuReadback) {
+                                                                          bool cpuReadback) {
     auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
 
     if (auto library = device.loadShaderLibrary("Shaders/TemporalReproject"); library) {
@@ -321,8 +321,9 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     LMX_ASSERT(slot < 2, "TemporalResolve::recordFrame: slot must be 0 or 1");
     const uint32_t other = 1 - slot;
     m_vendor->recordMode(mode);
-    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal ? rojoRHI::TextureUse::ExternalRead
-                                                                  : rojoRHI::TextureUse::ShaderRead;
+    m_depthUse[slot] = mode == ReconstructionMode::VendorTemporal
+                           ? rojoRHI::TextureUse::ExternalRead
+                           : rojoRHI::TextureUse::ShaderRead;
     if (mode == ReconstructionMode::NativeTaa ||
         (mode == ReconstructionMode::VendorTemporal &&
          debugView == TemporalDebugView::ReprojectedHistory)) {
@@ -336,7 +337,8 @@ void TemporalResolve::recordFrame(uint32_t slot, ReconstructionMode mode,
     // colour.
     const bool readCurrent = mode == ReconstructionMode::NativeTaa || upscaled ||
                              debugView == TemporalDebugView::HistoryAge;
-    m_colorUse[slot] = readCurrent ? rojoRHI::TextureUse::ShaderRead : rojoRHI::TextureUse::CopyDestination;
+    m_colorUse[slot] =
+        readCurrent ? rojoRHI::TextureUse::ShaderRead : rojoRHI::TextureUse::CopyDestination;
     if (mode == ReconstructionMode::VendorTemporal) {
         // Retain the opaque producer stage set across frames even though display samples it.
         m_colorUse[slot] = rojoRHI::TextureUse::ExternalWrite;

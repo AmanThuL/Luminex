@@ -25,7 +25,7 @@ struct LightingCommands final : FakeCommandList {
 
     //==================================================================================================================
     rojoRHI::GpuAddress bindFrameData(uint32_t slot, const void* data, uint64_t size,
-                                  uint64_t alignment) override {
+                                      uint64_t alignment) override {
         snapshot.operations.push_back("uniform:" + std::to_string(slot) + ":" +
                                       std::to_string(alignment));
         const auto* bytes = static_cast<const std::byte*>(data);
@@ -59,14 +59,16 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void bindStorageTexture(uint32_t slot, rojoRHI::Texture& texture, const rojoRHI::TextureViewDesc& view,
+    void bindStorageTexture(uint32_t slot, rojoRHI::Texture& texture,
+                            const rojoRHI::TextureViewDesc& view,
                             rojoRHI::StorageAccess access) override {
         snapshot.operations.push_back("storageTexture:" + std::to_string(static_cast<int>(access)));
         bindTexture(slot, texture, view);
     }
 
     //==================================================================================================================
-    void bindStorageBuffer(uint32_t slot, rojoRHI::Buffer& buffer, rojoRHI::StorageAccess access) override {
+    void bindStorageBuffer(uint32_t slot, rojoRHI::Buffer& buffer,
+                           rojoRHI::StorageAccess access) override {
         snapshot.operations.push_back("storageBuffer:" + std::to_string(static_cast<int>(access)));
         bindBuffer(slot, buffer);
     }
@@ -96,7 +98,8 @@ struct LightingCommands final : FakeCommandList {
     }
 
     //==================================================================================================================
-    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer& arguments, uint64_t offset) override {
+    void drawIndexedIndirect(rojoRHI::Buffer&, rojoRHI::Buffer& arguments,
+                             uint64_t offset) override {
         snapshot.operations.push_back("indirect:" + std::to_string(offset));
         auto& bytes = snapshot.payloads.emplace_back(arguments.size());
         arguments.readback(bytes.data(), bytes.size());

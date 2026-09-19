@@ -246,7 +246,8 @@ void VisibilityDisplay::retire(const render::VisibilityStatus& status) {
     m_pending.erase(m_pending.begin(), std::next(found));
 }
 //======================================================================================================================
-void VisibilityDisplay::observeTimings(uint64_t frame, std::span<const rojoRHI::PassTiming> timings) {
+void VisibilityDisplay::observeTimings(uint64_t frame,
+                                       std::span<const rojoRHI::PassTiming> timings) {
     if (timings.empty() || (!m_timings.empty() && m_timings.back().frame >= frame))
         return;
     m_timings.push_back({.frame = frame, .passes = {timings.begin(), timings.end()}});

@@ -142,9 +142,9 @@ TEST_CASE("Measurement schema separates pyramid build cost and rejects scored re
     status.occlusionCheck.enabled = true;
     REQUIRE(run.retireVisibility(status));
     const std::array<rojoRHI::PassTiming, 4> timings{{{"lmx.pass.visibility.classify", 0.25},
-                                                  {"lmx.pass.hzb.level0", 0.5},
-                                                  {"lmx.pass.hzb.publish", 0.0625},
-                                                  {"lmx.pass.hzb.debug", 0.125}}};
+                                                      {"lmx.pass.hzb.level0", 0.5},
+                                                      {"lmx.pass.hzb.publish", 0.0625},
+                                                      {"lmx.pass.hzb.debug", 0.125}}};
     REQUIRE(run.retireLighting({.frameNumber = 1, .isRetired = true}));
     REQUIRE(run.retire(1, timings));
     REQUIRE(run.finishDrain());

@@ -92,7 +92,8 @@ void LightClusterStage::registerLayoutsForCapture() {
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<LightClusterStage>> LightClusterStage::create(rojoRHI::Device& device) {
+rojoRHI::Result<std::unique_ptr<LightClusterStage>>
+LightClusterStage::create(rojoRHI::Device& device) {
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     for (uint32_t i = 0; i < names.size(); ++i) {
@@ -212,19 +213,19 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     ComputePassDesc count;
     count.shaderBufferReads = {lights};
     count.bufferWrites = {counts};
-    graph.addComputePass("lmx.pass.light.count", std::move(count),
-                         [=, this, &commands](const PassResources& resources) {
-                             const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
-                             const GraphResult<rojoRHI::Buffer*> target = resources.buffer(counts);
-                             LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
-                             LMX_ASSERT(target.has_value(), target.error().message);
-                             commands.bindComputePipeline(*m_pipelines[0]);
-                             commands.bindFrameData(kParamsSlot, params);
-                             commands.bindBuffer(kLightsSlot, **lightRows);
-                             commands.bindStorageBuffer(kCountsSlot, **target,
-                                                        rojoRHI::StorageAccess::Write);
-                             commands.dispatch(groups, 1, 1);
-                         });
+    graph.addComputePass(
+        "lmx.pass.light.count", std::move(count),
+        [=, this, &commands](const PassResources& resources) {
+            const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
+            const GraphResult<rojoRHI::Buffer*> target = resources.buffer(counts);
+            LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
+            LMX_ASSERT(target.has_value(), target.error().message);
+            commands.bindComputePipeline(*m_pipelines[0]);
+            commands.bindFrameData(kParamsSlot, params);
+            commands.bindBuffer(kLightsSlot, **lightRows);
+            commands.bindStorageBuffer(kCountsSlot, **target, rojoRHI::StorageAccess::Write);
+            commands.dispatch(groups, 1, 1);
+        });
     const auto countsFilled = nextVersion(counts);
 
     ComputePassDesc scan;

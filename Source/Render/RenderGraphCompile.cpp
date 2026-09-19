@@ -324,9 +324,10 @@ RenderGraph::AliasPlan RenderGraph::planTransients(const Schedule& schedule) con
             // here: only the backend knows the layout it will choose, and a plan built on a guess
             // would place resources where they do not fit.
             rojoRHI::Device& device = m_transients->device();
-            const rojoRHI::SizeAlign footprint = resource.kind == ResourceKind::Texture
-                                                 ? device.textureSizeAlign(textureDescOf(resource))
-                                                 : device.bufferSizeAlign(bufferDescOf(resource));
+            const rojoRHI::SizeAlign footprint =
+                resource.kind == ResourceKind::Texture
+                    ? device.textureSizeAlign(textureDescOf(resource))
+                    : device.bufferSizeAlign(bufferDescOf(resource));
             entry.size = footprint.size;
             entry.alignment = footprint.alignment;
             klass = aliasClassOf(resource.kind == ResourceKind::Texture, resource.format,

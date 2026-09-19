@@ -3,11 +3,11 @@
 /// @brief Declares CPU draw preparation and three paced GPU submission slots.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include <rojoRHI/RHI.h>
 #include "Render/Visibility.h"
 #include <array>
 #include <memory>
 #include <optional>
+#include <rojoRHI/RHI.h>
 #include <vector>
 
 namespace lmx::render {
@@ -22,19 +22,19 @@ struct DrawRun {
 };
 /// Per-view command list borrowing the Renderer-owned current slot.
 struct DrawList {
-    std::vector<DrawRun> runs;        ///< CPU command order, one run per direct/indirect entry.
-    uint32_t firstEntry = 0;          ///< First row in the view's contiguous range.
-    uint32_t entryCount = 0;          ///< Number of submitted instances.
+    std::vector<DrawRun> runs;            ///< CPU command order, one run per direct/indirect entry.
+    uint32_t firstEntry = 0;              ///< First row in the view's contiguous range.
+    uint32_t entryCount = 0;              ///< Number of submitted instances.
     rojoRHI::Buffer* rows = nullptr;      ///< Current paced visible-row allocation.
     rojoRHI::Buffer* arguments = nullptr; ///< Current paced indirect argument allocation.
     SubmissionMode mode = SubmissionMode::Indirect; ///< Command encoder choice.
 };
 /// Pure builder output shared by CPU tests and the production upload path.
 struct PreparedSubmission {
-    std::vector<uint32_t> rows;                          ///< Scene range followed by shadow range.
+    std::vector<uint32_t> rows; ///< Scene range followed by shadow range.
     std::vector<rojoRHI::DrawIndexedIndirectArgs> arguments; ///< One argument record per run.
-    DrawList scene;                                      ///< Scene commands.
-    DrawList shadow;                                     ///< Shadow commands.
+    DrawList scene;                                          ///< Scene commands.
+    DrawList shadow;                                         ///< Shadow commands.
 };
 /// Builds rows and arguments deterministically without touching a GPU.
 PreparedSubmission buildDrawSubmission(const SceneView& view, const VisibilityResult& scene,
@@ -46,7 +46,7 @@ public:
     explicit DrawSubmission(rojoRHI::Device& device);
     /// Prepares only the slot retired by the current beginFrame; allocation errors propagate.
     rojoRHI::Result<void> prepare(uint64_t frameNumber, const SceneView& view,
-                              const VisibilityResult& scene, const VisibilityResult& shadow);
+                                  const VisibilityResult& scene, const VisibilityResult& shadow);
     /// Last prepared scene commands, valid through graph execution.
     const DrawList& scene() const { return m_prepared.scene; }
     /// Last prepared shadow commands, valid through graph execution.

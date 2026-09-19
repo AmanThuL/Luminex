@@ -5,7 +5,8 @@ TEST_CASE("an imported texture enters the graph at version 0", "[render][graph]"
     FakeTexture color{64, 64};
     RenderGraph graph;
 
-    const GraphTexture handle = graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
+    const GraphTexture handle =
+        graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
     REQUIRE(handle.version == 0);
     REQUIRE(nextVersion(handle) == GraphTexture{handle.index, 1});
@@ -29,7 +30,8 @@ TEST_CASE("a producer is scheduled before its consumer whatever the declaration 
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
@@ -107,7 +109,8 @@ TEST_CASE("a buffer write orders the pass that reads its result", "[render][grap
 TEST_CASE("reading a version no pass writes is rejected", "[render][graph]") {
     FakeTexture shadowMap{1024, 1024};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.textureReads.push_back(nextVersion(shadow));
@@ -133,7 +136,8 @@ TEST_CASE("a discarded attachment cannot be consumed", "[render][graph]") {
         RenderGraph graph;
         const GraphTexture shadow =
             graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
-        const GraphTexture color = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+        const GraphTexture color =
+            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
 
         PassDesc shadowPass;
         shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Discard};
@@ -201,7 +205,8 @@ TEST_CASE("attachments of different extents are rejected", "[render][graph]") {
     RenderGraph graph;
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -226,7 +231,8 @@ TEST_CASE("attachments differing only in height are rejected", "[render][graph]"
     RenderGraph graph;
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -242,7 +248,8 @@ TEST_CASE("attachments differing only in height are rejected", "[render][graph]"
 TEST_CASE("a depth format in the color attachment is rejected", "[render][graph]") {
     FakeTexture shadowMap{1024, 1024};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = shadow};
@@ -342,7 +349,8 @@ TEST_CASE("PassResources resolves every texture the pass declared", "[render][gr
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 
@@ -369,7 +377,8 @@ TEST_CASE("PassResources refuses a texture the pass did not declare", "[render][
     FakeTexture shadowMap{1024, 1024};
     FakeTexture color{64, 64};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
 

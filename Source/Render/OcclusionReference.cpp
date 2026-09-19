@@ -22,7 +22,8 @@ static_assert(offsetof(ReferenceParams, instanceRow) == 64);
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(rojoRHI::Device& device) {
+rojoRHI::Result<std::unique_ptr<OcclusionReference>>
+OcclusionReference::create(rojoRHI::Device& device) {
     auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(device));
     auto library = device.loadShaderLibrary("Shaders/OcclusionReference");
     if (!library)
@@ -40,7 +41,8 @@ rojoRHI::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(
                      .depthFormat = rojoRHI::Format::D32Float,
                      .depthTestEnable = true,
                      .depthWriteEnable = true,
-                     .fillMode = wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
+                     .fillMode =
+                         wireframe ? rojoRHI::FillMode::Wireframe : rojoRHI::FillMode::Solid,
                      .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                      .depthCompare = rojoRHI::DepthCompare::Greater,
                      .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
@@ -70,10 +72,11 @@ rojoRHI::Result<std::unique_ptr<OcclusionReference>> OcclusionReference::create(
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                              const SceneView& view,
-                                              const glm::mat4& viewProjection, uint32_t width,
-                                              uint32_t height, bool strictView) {
+rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
+                                                  rojoRHI::CommandList& commands,
+                                                  const SceneView& view,
+                                                  const glm::mat4& viewProjection, uint32_t width,
+                                                  uint32_t height, bool strictView) {
     LMX_ASSERT(width != 0 && height != 0, "reference requires a nonempty active extent");
     const uint64_t frame = m_device.frameNumber();
     LMX_ASSERT(frame > 0, "reference requires an open paced frame");
@@ -101,12 +104,16 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph, rojoRHI::C
                    "reference ID row plus one must not overflow");
         pending.observations.push_back({item.instanceIdentity, item.instanceRow});
     }
-    const auto ids = graph.createTexture(
-        {.width = width, .height = height, .format = rojoRHI::Format::RGBA8Unorm, .renderTarget = true},
-        "occlusionReferenceIds");
-    const auto depth = graph.createTexture(
-        {.width = width, .height = height, .format = rojoRHI::Format::D32Float, .renderTarget = true},
-        "occlusionReferenceDepth");
+    const auto ids = graph.createTexture({.width = width,
+                                          .height = height,
+                                          .format = rojoRHI::Format::RGBA8Unorm,
+                                          .renderTarget = true},
+                                         "occlusionReferenceIds");
+    const auto depth = graph.createTexture({.width = width,
+                                            .height = height,
+                                            .format = rojoRHI::Format::D32Float,
+                                            .renderTarget = true},
+                                           "occlusionReferenceDepth");
     PassDesc pass;
     if (!view.items.empty()) {
         LMX_ASSERT(view.tables.vertices && view.tables.indices && view.tables.instances &&

@@ -149,8 +149,9 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                                        float backingScale, bool visible) {
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
     if (!visible) {
-        const auto output = graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm,
-                                                "selectionDisplay", rojoRHI::TextureUse::ShaderRead);
+        const auto output =
+            graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
+                                rojoRHI::TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
@@ -229,8 +230,9 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output = graph.importTexture(
-        *m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay", rojoRHI::TextureUse::ShaderRead);
+    const GraphTexture output =
+        graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
+                            rojoRHI::TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};

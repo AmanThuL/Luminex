@@ -151,7 +151,8 @@ struct RecordingCommandList final : rojoRHI::CommandList {
     std::deque<std::string> temporalLabels;
 
     //==================================================================================================================
-    void temporalScale(rojoRHI::TemporalScaler&, const rojoRHI::TemporalScaleParams& params) override {
+    void temporalScale(rojoRHI::TemporalScaler&,
+                       const rojoRHI::TemporalScaleParams& params) override {
         temporalLabels.emplace_back(params.label);
         temporalScales.push_back(params);
         temporalScales.back().label = temporalLabels.back();
@@ -213,8 +214,8 @@ struct RecordingCommandList final : rojoRHI::CommandList {
     void copyBuffer(rojoRHI::Buffer&, uint64_t, rojoRHI::Buffer&, uint64_t, uint64_t) override {}
 
     //==================================================================================================================
-    void copyBufferToTexture(rojoRHI::Buffer&, const rojoRHI::BufferTextureLayout&, rojoRHI::Texture&,
-                             const rojoRHI::TextureCopyRegion&) override {}
+    void copyBufferToTexture(rojoRHI::Buffer&, const rojoRHI::BufferTextureLayout&,
+                             rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&) override {}
 
     //==================================================================================================================
     void copyTextureToBuffer(rojoRHI::Texture&, const rojoRHI::TextureCopyRegion&, rojoRHI::Buffer&,
@@ -228,15 +229,17 @@ struct RecordingCommandList final : rojoRHI::CommandList {
     void fillBuffer(rojoRHI::Buffer&, uint64_t, uint64_t, uint8_t) override {}
 
     //==================================================================================================================
-    void bufferBarrier(rojoRHI::Buffer& buffer, const rojoRHI::BufferRange&, rojoRHI::BufferUse from,
-                       rojoRHI::BufferUse to, rojoRHI::BarrierOptions) override {
+    void bufferBarrier(rojoRHI::Buffer& buffer, const rojoRHI::BufferRange&,
+                       rojoRHI::BufferUse from, rojoRHI::BufferUse to,
+                       rojoRHI::BarrierOptions) override {
         events.push_back("barrier " + static_cast<FakeBuffer&>(buffer).name + " " + useName(from) +
                          "->" + useName(to));
     }
 
     //==================================================================================================================
     void textureBarrier(rojoRHI::Texture& texture, const rojoRHI::TextureSubresourceRange& range,
-                        rojoRHI::TextureUse from, rojoRHI::TextureUse to, rojoRHI::BarrierOptions) override {
+                        rojoRHI::TextureUse from, rojoRHI::TextureUse to,
+                        rojoRHI::BarrierOptions) override {
         // A whole-resource range is what a pass with no subresource detail declares and is the
         // common case, so it is left out of the log; a narrowed one is spelled out, because a
         // barrier covering the wrong subresources is exactly what these cases are looking for.
@@ -261,7 +264,9 @@ struct RecordingCommandList final : rojoRHI::CommandList {
     void bindSampler(uint32_t, rojoRHI::Sampler&) override {}
 
     //==================================================================================================================
-    rojoRHI::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override { return {}; }
+    rojoRHI::GpuAddress bindFrameData(uint32_t, const void*, uint64_t, uint64_t) override {
+        return {};
+    }
 
     //==================================================================================================================
     void draw(uint32_t, uint32_t) override {}
@@ -284,7 +289,8 @@ namespace {
 // multiple of the size, which keeps the packing readable in the assertions.
 [[maybe_unused]] constexpr TransientTextureDesc kTransientColor{.width = 64,
                                                                 .height = 64,
-                                                                .format = rojoRHI::Format::RGBA16Float,
+                                                                .format =
+                                                                    rojoRHI::Format::RGBA16Float,
                                                                 .renderTarget = true,
                                                                 .sampled = true};
 

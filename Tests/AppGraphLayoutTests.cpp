@@ -69,13 +69,16 @@ struct BloomFrame {
 //======================================================================================================================
 void declareBloomFrame(BloomFrame& frame) {
     RenderGraph& graph = frame.graph;
-    frame.scene =
-        graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float, "lmx.render.sceneColorHdr");
-    frame.first = graph.importTexture(frame.bloomA, rojoRHI::Format::RGBA16Float, "lmx.render.bloomA");
-    frame.second = graph.importTexture(frame.bloomB, rojoRHI::Format::RGBA16Float, "lmx.render.bloomB");
-    frame.third = graph.importTexture(frame.bloomC, rojoRHI::Format::RGBA16Float, "lmx.render.bloomC");
-    frame.display =
-        graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm, "lmx.render.displayColor");
+    frame.scene = graph.importTexture(frame.sceneColor, rojoRHI::Format::RGBA16Float,
+                                      "lmx.render.sceneColorHdr");
+    frame.first =
+        graph.importTexture(frame.bloomA, rojoRHI::Format::RGBA16Float, "lmx.render.bloomA");
+    frame.second =
+        graph.importTexture(frame.bloomB, rojoRHI::Format::RGBA16Float, "lmx.render.bloomB");
+    frame.third =
+        graph.importTexture(frame.bloomC, rojoRHI::Format::RGBA16Float, "lmx.render.bloomC");
+    frame.display = graph.importTexture(frame.displayColor, rojoRHI::Format::BGRA8Unorm,
+                                        "lmx.render.displayColor");
 
     PassDesc scenePass;
     scenePass.color = ColorAttachment{.handle = frame.scene};
@@ -122,7 +125,8 @@ struct SplitFrame {
 //======================================================================================================================
 void declareSplitFrame(SplitFrame& frame) {
     RenderGraph& graph = frame.graph;
-    const GraphTexture mid = graph.importTexture(frame.mid, rojoRHI::Format::RGBA16Float, "lmx.mid");
+    const GraphTexture mid =
+        graph.importTexture(frame.mid, rojoRHI::Format::RGBA16Float, "lmx.mid");
     const GraphTexture display =
         graph.importTexture(frame.displayColor, rojoRHI::Format::RGBA16Float, "lmx.displayColor");
     const GraphTexture out =

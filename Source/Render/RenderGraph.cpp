@@ -219,15 +219,16 @@ GraphTexture RenderGraph::createTexture(const TransientTextureDesc& desc, std::s
                std::format("transient texture '{}' is declared on a graph with no TransientPool: "
                            "a graph that creates resources needs somewhere to place them",
                            name));
-    m_resources.push_back({.kind = ResourceKind::Texture,
-                           .name = std::string(name),
-                           .format = desc.format,
-                           .width = desc.width,
-                           .height = desc.height,
-                           .mipLevels = desc.mipLevels,
-                           .arrayLayers = desc.kind == rojoRHI::TextureKind::Cube ? kCubeFaceCount : 1,
-                           .transient = true,
-                           .textureDesc = desc});
+    m_resources.push_back(
+        {.kind = ResourceKind::Texture,
+         .name = std::string(name),
+         .format = desc.format,
+         .width = desc.width,
+         .height = desc.height,
+         .mipLevels = desc.mipLevels,
+         .arrayLayers = desc.kind == rojoRHI::TextureKind::Cube ? kCubeFaceCount : 1,
+         .transient = true,
+         .textureDesc = desc});
     return {.index = static_cast<uint32_t>(m_resources.size() - 1), .version = 0};
 }
 
@@ -484,11 +485,11 @@ CompiledFrameRecord RenderGraph::execute(rojoRHI::CommandList& commands, uint64_
             const DebugTransition& transition = record->debug.transitions[nextTransition];
             const Resource& resource = m_resources[transition.resource];
             const rojoRHI::BarrierOptions options = transition.aliasedFrom
-                                                    ? rojoRHI::BarrierOptions::ResourceAlias
-                                                    : rojoRHI::BarrierOptions::None;
+                                                        ? rojoRHI::BarrierOptions::ResourceAlias
+                                                        : rojoRHI::BarrierOptions::None;
             if (transition.kind == GraphResourceKind::Buffer) {
-                commands.bufferBarrier(*resource.buffer, rojoRHI::BufferRange{}, transition.bufferFrom,
-                                       transition.bufferTo, options);
+                commands.bufferBarrier(*resource.buffer, rojoRHI::BufferRange{},
+                                       transition.bufferFrom, transition.bufferTo, options);
             } else {
                 commands.textureBarrier(*resource.texture, transition.range, transition.textureFrom,
                                         transition.textureTo, options);

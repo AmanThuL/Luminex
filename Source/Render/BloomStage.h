@@ -18,8 +18,9 @@ public:
     rojoRHI::Result<void> loadLibraries(rojoRHI::Device& device);
     rojoRHI::Result<void> createPipelines(rojoRHI::Device& device);
     // Declares threshold/downsample/upsample even when display will cull their unused result.
-    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture displayInput,
-                         uint32_t sceneWidth, uint32_t sceneHeight, float bloomThreshold);
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                         GraphTexture displayInput, uint32_t sceneWidth, uint32_t sceneHeight,
+                         float bloomThreshold);
 
 private:
     std::unique_ptr<rojoRHI::ShaderLibrary> m_bloomThresholdLibrary;

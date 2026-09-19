@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include <rojoRHI/RHI.h>
 #include "Render/Camera.h"
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
@@ -20,6 +19,7 @@
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TemporalResolve.h"
+#include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
@@ -43,8 +43,8 @@ class DisplayStage;
 
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, slot, size, every field's offset and type) to
-/// rojoRHI::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds instead
-/// of leaving them a hex dump.
+/// rojoRHI::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds
+/// instead of leaving them a hex dump.
 ///
 /// Free-standing and idempotent -- re-registering a struct replaces it -- because the layouts
 /// describe the *shaders*, not any one Renderer: Renderer::create calls it, and a caller with no
@@ -61,7 +61,8 @@ void registerUniformLayoutsForCapture();
 constexpr rojoRHI::Format kSceneColorFormat = rojoRHI::Format::RGBA16Float;
 /// Eight-bit BGRA storage of kSdrDisplayDomain; UNORM stores its already-encoded sRGB bytes.
 constexpr rojoRHI::Format kDisplayFormat = rojoRHI::Format::BGRA8Unorm;
-static_assert(kDisplayFormat == rojoRHI::Format::BGRA8Unorm && kSdrDisplayDomain.bitsPerChannel == 8,
+static_assert(kDisplayFormat == rojoRHI::Format::BGRA8Unorm &&
+                  kSdrDisplayDomain.bitsPerChannel == 8,
               "display storage must match the named domain's channel precision");
 
 /// Floats in the persistent exposure buffer: `{ applied, previous }`. `applied` is what the scene
@@ -81,8 +82,8 @@ public:
 
     /// cpuReadback puts the color target in shared storage so Texture::readback() works. It exists
     /// for the GPU tests and the --screenshot path; the windowed App leaves it false.
-    static rojoRHI::Result<std::unique_ptr<Renderer>> create(rojoRHI::Device& device, uint32_t width,
-                                                         uint32_t height, bool cpuReadback = false);
+    static rojoRHI::Result<std::unique_ptr<Renderer>>
+    create(rojoRHI::Device& device, uint32_t width, uint32_t height, bool cpuReadback = false);
 
     /// Recreates the scene targets -- and the motion and history targets alongside them -- at the
     /// new size. The shadow map is fixed-size and untouched.
@@ -99,8 +100,8 @@ public:
     /// Nothing is encoded here. The pass bodies run when the graph executes, and they encode into
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
     /// and everything `view` borrows must outlive that call.
-    GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands, const Camera& camera,
-                               const SceneView& view);
+    GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
+                               const Camera& camera, const SceneView& view);
 
     /// Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants

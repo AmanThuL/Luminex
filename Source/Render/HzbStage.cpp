@@ -51,7 +51,8 @@ HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& device, bool cpuReadback) {
+rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& device,
+                                                            bool cpuReadback) {
     auto stage = std::make_unique<HzbStage>();
     stage->m_device = &device;
     stage->m_cpuReadback = cpuReadback;
@@ -143,15 +144,17 @@ GraphTexture HzbStage::build(RenderGraph& graph, rojoRHI::CommandList& commands,
     const uint32_t slot = m_next;
     const std::string name = std::format("lmx.render.hzb{}", slot);
     GraphTexture pyramid =
-        m_sources[slot].built ? graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name,
-                                                    rojoRHI::TextureUse::ShaderRead)
-                              : graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name);
+        m_sources[slot].built
+            ? graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name,
+                                  rojoRHI::TextureUse::ShaderRead)
+            : graph.importTexture(*m_textures[slot], rojoRHI::Format::R32Float, name);
     for (uint32_t level = 0; level < m_layout.levelCount; ++level) {
         const bool fromDepth = level == 0;
         const GraphTexture input = fromDepth ? depth : pyramid;
         const rojoRHI::TextureSubresourceRange inputRange{.baseMipLevel = fromDepth ? 0 : level - 1,
-                                                      .mipLevelCount = 1};
-        const rojoRHI::TextureSubresourceRange outputRange{.baseMipLevel = level, .mipLevelCount = 1};
+                                                          .mipLevelCount = 1};
+        const rojoRHI::TextureSubresourceRange outputRange{.baseMipLevel = level,
+                                                           .mipLevelCount = 1};
         const HzbReduceParams params{
             .sourceWidth =
                 fromDepth ? source.activeWidth : hzbLevelExtent(source.activeWidth, level - 1),

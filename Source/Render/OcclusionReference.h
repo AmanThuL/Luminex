@@ -20,9 +20,9 @@ public:
     /// Call only inside an open paced frame. Scene bindings outlive graph execution. Extents
     /// are the active render rectangle; viewProjection is its current jittered raster matrix.
     /// strictView indicates unchanged unjittered view, coverage and active extent.
-    rojoRHI::Result<void> declare(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
-                              const glm::mat4& viewProjection, uint32_t width, uint32_t height,
-                              bool strictView = false);
+    rojoRHI::Result<void> declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                  const SceneView& view, const glm::mat4& viewProjection,
+                                  uint32_t width, uint32_t height, bool strictView = false);
     /// Copies every completed slot to owned CPU observations before any slot may be recycled.
     /// Caller guarantees GPU completion through completedFrame using pacing or waitIdle.
     void retireThrough(uint64_t completedFrame);

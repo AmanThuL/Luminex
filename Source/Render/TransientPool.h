@@ -70,7 +70,8 @@ public:
 
     /// Places a texture at `offset` in the open slot's heap and keeps it alive until that slot is
     /// reused. Requires a preceding reserve() whose bytes cover the placement.
-    rojoRHI::Result<rojoRHI::Texture*> placeTexture(const rojoRHI::TextureDesc& desc, uint64_t offset);
+    rojoRHI::Result<rojoRHI::Texture*> placeTexture(const rojoRHI::TextureDesc& desc,
+                                                    uint64_t offset);
     /// The buffer counterpart of placeTexture.
     rojoRHI::Result<rojoRHI::Buffer*> placeBuffer(const rojoRHI::BufferDesc& desc, uint64_t offset);
 

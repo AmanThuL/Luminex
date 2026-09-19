@@ -83,14 +83,14 @@ enum class SinkKind {
 struct DebugResource {
     std::string name;                                    ///< The name it was imported under.
     GraphResourceKind kind = GraphResourceKind::Texture; ///< Texture or buffer.
-    rojoRHI::Format format = rojoRHI::Format::Unknown;           ///< Declared format; Unknown for a buffer.
+    rojoRHI::Format format = rojoRHI::Format::Unknown;   ///< Declared format; Unknown for a buffer.
 };
 
 /// One declared use of one resource version by one pass, in the order the pass declared it.
 struct DebugUse {
-    uint32_t resource = 0;              ///< Index into CompiledFrameDebug::resources.
-    uint32_t version = 0;               ///< The version the pass named.
-    UseRole role = UseRole::Read;       ///< What the pass does with it.
+    uint32_t resource = 0;                  ///< Index into CompiledFrameDebug::resources.
+    uint32_t version = 0;                   ///< The version the pass named.
+    UseRole role = UseRole::Read;           ///< What the pass does with it.
     rojoRHI::TextureSubresourceRange range; ///< Subresources covered; whole-resource for a buffer.
 };
 
@@ -136,7 +136,7 @@ struct DebugTransition {
     uint32_t beforePass = 0; ///< Index of the pass the barrier precedes.
     uint32_t resource = 0;   ///< Index into CompiledFrameDebug::resources.
     GraphResourceKind kind = GraphResourceKind::Texture; ///< Which use pair applies.
-    rojoRHI::TextureSubresourceRange range;                  ///< Subresources covered; textures only.
+    rojoRHI::TextureSubresourceRange range;              ///< Subresources covered; textures only.
     rojoRHI::TextureUse textureFrom = rojoRHI::TextureUse::RenderTarget; ///< Producing texture use.
     rojoRHI::TextureUse textureTo = rojoRHI::TextureUse::ShaderRead;     ///< Consuming texture use.
     rojoRHI::BufferUse bufferFrom = rojoRHI::BufferUse::StorageWrite;    ///< Producing buffer use.
@@ -199,10 +199,11 @@ struct CompiledFrameDebug {
 
 /// A compiled frame together with the frame it belongs to.
 ///
-/// `frameId` is the RHI device's number for the frame being recorded (rojoRHI::Device::frameNumber()),
-/// which is the same numbering rojoRHI::Device::passTimingsFrame() reports -- so an observer holding
-/// records for the frames in flight joins a retired frame's timings to the record that describes it
-/// by comparing the two numbers rather than by guessing at a lag.
+/// `frameId` is the RHI device's number for the frame being recorded
+/// (rojoRHI::Device::frameNumber()), which is the same numbering
+/// rojoRHI::Device::passTimingsFrame() reports -- so an observer holding records for the frames in
+/// flight joins a retired frame's timings to the record that describes it by comparing the two
+/// numbers rather than by guessing at a lag.
 struct CompiledFrameRecord {
     uint64_t frameId = 0;     ///< The device frame number this frame was compiled for.
     CompiledFrameDebug debug; ///< What compilation decided.

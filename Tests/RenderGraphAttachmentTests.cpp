@@ -155,7 +155,8 @@ TEST_CASE("a depth format in an extra color attachment is rejected", "[render][g
     RenderGraph graph;
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};
@@ -200,7 +201,8 @@ TEST_CASE("an extra color attachment without a primary is rejected", "[render][g
     FakeTexture depth{64, 64, "sceneDepth"};
     FakeTexture motion{64, 64, "motionVectors"};
     RenderGraph graph;
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
     const GraphTexture motionVectors =
         graph.importTexture(motion, rojoRHI::Format::RG16Float, "motionVectors");
 
@@ -414,7 +416,8 @@ TEST_CASE("a render area larger than an attachment is rejected", "[render][graph
     RenderGraph graph;
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     PassDesc scene;
     scene.color = ColorAttachment{.handle = sceneColor};

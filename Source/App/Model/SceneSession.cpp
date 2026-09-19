@@ -196,8 +196,8 @@ bool SceneSession::localLightRigEnabled() const {
 //======================================================================================================================
 rojoRHI::Result<void> SceneSession::setLocalLightRig(bool enabled) {
     if (!localLightRigAvailable()) {
-        return std::unexpected(
-            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Local-light rig is available only in Sponza"});
+        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
+                                              "Local-light rig is available only in Sponza"});
     }
     auto result = m_lightRigs[m_scene].setEnabled(scene(), enabled);
     if (result)
@@ -248,7 +248,8 @@ bool SceneSession::localLightChanged(scene::LightId id) const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::editLocalLight(scene::LightId id, const render::LocalLight& light) {
+rojoRHI::Result<void> SceneSession::editLocalLight(scene::LightId id,
+                                                   const render::LocalLight& light) {
     if (const auto* current = scene().light(id))
         m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
     return scene().updateLight(id, light);
@@ -258,7 +259,8 @@ rojoRHI::Result<void> SceneSession::editLocalLight(scene::LightId id, const rend
 rojoRHI::Result<void> SceneSession::resetLocalLight(scene::LightId id) {
     const auto original = localLightDefault(id);
     if (!original)
-        return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
+        return std::unexpected(
+            rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "Light no longer exists"});
     return scene().updateLight(id, *original);
 }
 
@@ -289,7 +291,7 @@ uint32_t SceneSession::lightLabPileCapacity() const {
 rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
     if (!lightLabPileAvailable() || count > lightLabPileCapacity())
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
-                                          "Pile exceeds available LightLab light capacity"});
+                                              "Pile exceeds available LightLab light capacity"});
     auto& pile = m_defaults.at(m_scene).pileLights;
     std::erase_if(pile, [&](auto id) { return scene().light(id) == nullptr; });
     std::vector<scene::LightId> added;

@@ -128,7 +128,8 @@ public:
     rojoRHI::Result<void> primeTemporal(const AppOptions& options);
 
     /// Appends editor-only selection presentation; returns scene display unchanged without a cue.
-    render::GraphTexture declareSelection(render::RenderGraph& graph, rojoRHI::CommandList& commands,
+    render::GraphTexture declareSelection(render::RenderGraph& graph,
+                                          rojoRHI::CommandList& commands,
                                           render::GraphTexture display,
                                           const render::SceneView& view,
                                           const render::Renderer& renderer);

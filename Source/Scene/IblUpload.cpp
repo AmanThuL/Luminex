@@ -77,14 +77,16 @@ uploadCubeChain(rojoRHI::Device& device, std::span<const asset::ibl::CpuCubemap>
 
 //======================================================================================================================
 rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> uploadDfgLut(rojoRHI::Device& device,
-                                                        const std::vector<glm::vec2>& lut,
-                                                        uint32_t size, const std::string& label) {
+                                                                const std::vector<glm::vec2>& lut,
+                                                                uint32_t size,
+                                                                const std::string& label) {
     std::vector<uint16_t> halves(lut.size() * 2);
     for (size_t texel = 0; texel < lut.size(); ++texel) {
         halves[texel * 2] = glm::packHalf1x16(lut[texel].x);
         halves[texel * 2 + 1] = glm::packHalf1x16(lut[texel].y);
     }
-    const rojoRHI::TextureMip mip{.data = halves.data(), .bytesPerRow = uint64_t{size} * kHalf2Stride};
+    const rojoRHI::TextureMip mip{.data = halves.data(),
+                                  .bytesPerRow = uint64_t{size} * kHalf2Stride};
     const std::array<rojoRHI::TextureMip, 1> mips = {mip};
     return device.createTexture({.width = size,
                                  .height = size,
@@ -107,7 +109,7 @@ uploadCubemap(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env, std::s
 
 //======================================================================================================================
 rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
-                                  std::string_view label, GenerationOptions options) {
+                                      std::string_view label, GenerationOptions options) {
     LMX_ASSERT(env.faceSize > 0, "ibl::generate: the environment cube has no texels");
     LMX_ASSERT(options.specularBaseFaceSize >= (1u << (asset::ibl::kSpecularMipCount - 1)),
                "ibl::generate: the specular base extent must hold every roughness mip");

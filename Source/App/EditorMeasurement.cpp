@@ -94,7 +94,8 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     m_measurementFeedback.clear();
 }
 //======================================================================================================================
-void EditorShell::retireMeasurement(uint64_t frameId, std::span<const rojoRHI::PassTiming> timings) {
+void EditorShell::retireMeasurement(uint64_t frameId,
+                                    std::span<const rojoRHI::PassTiming> timings) {
     m_visibilityDisplay.observeTimings(frameId, timings);
     m_lightingDisplay.observeTimings(frameId, timings);
     if (m_measurement.active())

@@ -33,15 +33,15 @@ namespace lmx::render {
 struct DrawItem {
     /// Opaque full generational identity; zero for hand-built views.
     uint64_t instanceIdentity = 0;
-    uint32_t instanceRow = 0;          ///< Stable instance slot; independent of draw-list position.
-    MeshRow mesh;                      ///< Range in the scene geometry pool.
-    rojoRHI::Texture* diffuse = nullptr;   ///< Null selects the white fallback.
-    rojoRHI::Texture* normalMap = nullptr; ///< Null selects the flat-normal fallback.
+    uint32_t instanceRow = 0; ///< Stable instance slot; independent of draw-list position.
+    MeshRow mesh;             ///< Range in the scene geometry pool.
+    rojoRHI::Texture* diffuse = nullptr;           ///< Null selects the white fallback.
+    rojoRHI::Texture* normalMap = nullptr;         ///< Null selects the flat-normal fallback.
     rojoRHI::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
     rojoRHI::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
     rojoRHI::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
-    AlphaMode alphaMode = AlphaMode::Opaque;   ///< Coverage pipeline selection.
-    bool doubleSided = false;                  ///< Masked culling pipeline selection.
+    AlphaMode alphaMode = AlphaMode::Opaque;       ///< Coverage pipeline selection.
+    bool doubleSided = false;                      ///< Masked culling pipeline selection.
 };
 
 /// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the

@@ -250,7 +250,8 @@ TEST_CASE("duplicate pass labels consume timings once in schedule order", "[app]
     FakeTexture orphanTarget{64};
     FakeTexture displayTarget{64};
     RenderGraph graph;
-    const GraphTexture scene = graph.importTexture(sceneTarget, rojoRHI::Format::BGRA8Unorm, "scene");
+    const GraphTexture scene =
+        graph.importTexture(sceneTarget, rojoRHI::Format::BGRA8Unorm, "scene");
     const GraphTexture orphan =
         graph.importTexture(orphanTarget, rojoRHI::Format::BGRA8Unorm, "orphan");
     const GraphTexture display =

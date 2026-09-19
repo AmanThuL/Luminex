@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include <rojoRHI/Device.h>
 #include "Render/LightingStatus.h"
 #include "Render/Visibility.h"
+#include <rojoRHI/Device.h>
 
 #include <cstdint>
 #include <optional>

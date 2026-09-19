@@ -28,7 +28,8 @@ namespace {
 // storage binding where a raster pass reads through a sampled one.
 rojoRHI::TextureUse textureUseOf(PassKind kind, UseRole role) {
     if (kind == PassKind::External) {
-        return isWriteRole(role) ? rojoRHI::TextureUse::ExternalWrite : rojoRHI::TextureUse::ExternalRead;
+        return isWriteRole(role) ? rojoRHI::TextureUse::ExternalWrite
+                                 : rojoRHI::TextureUse::ExternalRead;
     }
     switch (role) {
     case UseRole::Read:
@@ -55,7 +56,8 @@ rojoRHI::TextureUse textureUseOf(PassKind kind, UseRole role) {
 rojoRHI::BufferUse bufferUseOf(PassKind kind, UseRole role) {
     switch (role) {
     case UseRole::Read:
-        return kind == PassKind::Compute ? rojoRHI::BufferUse::StorageRead : rojoRHI::BufferUse::ShaderRead;
+        return kind == PassKind::Compute ? rojoRHI::BufferUse::StorageRead
+                                         : rojoRHI::BufferUse::ShaderRead;
     case UseRole::ShaderRead:
         return rojoRHI::BufferUse::ShaderRead;
     case UseRole::IndirectArgument:
@@ -142,16 +144,17 @@ std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const Resol
 // that reaches the end of the chain keeps the sentinel rather than a resolved count, so a barrier
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
 rojoRHI::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
-                                        uint32_t mipLevels, uint32_t arrayLayers) {
+                                            uint32_t mipLevels, uint32_t arrayLayers) {
     const uint32_t firstMip = std::min(a.firstMip, b.firstMip);
     const uint32_t lastMip = std::max(a.lastMip, b.lastMip);
     const uint32_t firstLayer = std::min(a.firstLayer, b.firstLayer);
     const uint32_t lastLayer = std::max(a.lastLayer, b.lastLayer);
     return {.baseMipLevel = firstMip,
-            .mipLevelCount = lastMip + 1 >= mipLevels ? rojoRHI::kAllMipLevels : lastMip - firstMip + 1,
+            .mipLevelCount =
+                lastMip + 1 >= mipLevels ? rojoRHI::kAllMipLevels : lastMip - firstMip + 1,
             .baseArrayLayer = firstLayer,
-            .arrayLayerCount =
-                lastLayer + 1 >= arrayLayers ? rojoRHI::kAllArrayLayers : lastLayer - firstLayer + 1};
+            .arrayLayerCount = lastLayer + 1 >= arrayLayers ? rojoRHI::kAllArrayLayers
+                                                            : lastLayer - firstLayer + 1};
 }
 
 } // namespace
@@ -164,17 +167,16 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     // clears what was covered, so the transition is owed again.
     //
     // Coverage is per emitted range *and* per consuming stage class, because those are the two axes
-    // a barrier is scoped on (rojoRHI::CommandList::textureBarrier states the model). A barrier orders
-    // the passes it sits between, so a reader of mip 1 is not ordered by a barrier that named mip 0
-    // for an earlier reader; and a barrier consumed by a compute pass is scoped to that pass's
-    // stages, so it orders nothing for a later raster reader of the same subresources. A pass's
-    // kind is its stage class here, including opaque external operations. Passes of one kind are
-    // ordered among themselves, so one barrier serves every later reader of that kind. Two kinds
-    // whose stages happen to overlap
-    // in a backend are still treated as distinct, which costs a redundant barrier rather than a
-    // missed one. Whole-resource declarations -- what every raster pass here makes -- produce one
-    // whole-resource range that encloses every later whole-resource reader of the same kind, so one
-    // transition still serves them all.
+    // a barrier is scoped on (rojoRHI::CommandList::textureBarrier states the model). A barrier
+    // orders the passes it sits between, so a reader of mip 1 is not ordered by a barrier that
+    // named mip 0 for an earlier reader; and a barrier consumed by a compute pass is scoped to that
+    // pass's stages, so it orders nothing for a later raster reader of the same subresources. A
+    // pass's kind is its stage class here, including opaque external operations. Passes of one kind
+    // are ordered among themselves, so one barrier serves every later reader of that kind. Two
+    // kinds whose stages happen to overlap in a backend are still treated as distinct, which costs
+    // a redundant barrier rather than a missed one. Whole-resource declarations -- what every
+    // raster pass here makes -- produce one whole-resource range that encloses every later
+    // whole-resource reader of the same kind, so one transition still serves them all.
     struct Covered {
         ResolvedRange range;
         PassKind consumer = PassKind::Raster;
@@ -194,18 +196,22 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
     std::vector<WriteState> pending(m_resources.size());
 
     const auto textureUseWrites = [](rojoRHI::TextureUse use) {
-        return use == rojoRHI::TextureUse::RenderTarget || use == rojoRHI::TextureUse::StorageWrite ||
-               use == rojoRHI::TextureUse::CopyDestination || use == rojoRHI::TextureUse::ExternalWrite;
+        return use == rojoRHI::TextureUse::RenderTarget ||
+               use == rojoRHI::TextureUse::StorageWrite ||
+               use == rojoRHI::TextureUse::CopyDestination ||
+               use == rojoRHI::TextureUse::ExternalWrite;
     };
     const auto bufferUseWrites = [](rojoRHI::BufferUse use) {
-        return use == rojoRHI::BufferUse::StorageWrite || use == rojoRHI::BufferUse::CopyDestination;
+        return use == rojoRHI::BufferUse::StorageWrite ||
+               use == rojoRHI::BufferUse::CopyDestination;
     };
 
     // A texture accessed in an earlier frame starts with that whole-resource state. Prior writes
     // participate in RAW and WAW; prior reads skip RAW but remain available to the WAW loop below,
     // which emits the cross-frame WAR before this frame overwrites them.
     for (uint32_t index = 0; index < m_resources.size(); ++index) {
-        if (const std::optional<rojoRHI::TextureUse>& access = m_resources[index].priorTextureAccess) {
+        if (const std::optional<rojoRHI::TextureUse>& access =
+                m_resources[index].priorTextureAccess) {
             const Resource& resource = m_resources[index];
             pending[index].textureWriters.push_back(
                 {.range = {.firstMip = 0,

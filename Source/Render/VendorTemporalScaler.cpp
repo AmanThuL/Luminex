@@ -58,7 +58,8 @@ bool vendorHistoryReset(HistoryResetReason reason, ReconstructionMode previousMo
 }
 
 //======================================================================================================================
-rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents, glm::vec2 jitterPixels) {
+rojoRHI::TemporalScaleParams vendorTemporalParams(const FrameExtents& extents,
+                                                  glm::vec2 jitterPixels) {
     const glm::vec2 offset = jitterTexelOffset(jitterPixels);
     return {.inputContentWidth = extents.renderWidth,
             .inputContentHeight = extents.renderHeight,
@@ -188,10 +189,10 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
                                    label);
     };
     VendorTemporalPacked packed{
-        makeTexture(rojoRHI::Format::RG16Float, "lmx.render.vendorMotion", inputs.extents.outputWidth,
-                    inputs.extents.outputHeight),
-        makeTexture(rojoRHI::Format::R8Unorm, "lmx.render.vendorReactive", inputs.extents.outputWidth,
-                    inputs.extents.outputHeight),
+        makeTexture(rojoRHI::Format::RG16Float, "lmx.render.vendorMotion",
+                    inputs.extents.outputWidth, inputs.extents.outputHeight),
+        makeTexture(rojoRHI::Format::R8Unorm, "lmx.render.vendorReactive",
+                    inputs.extents.outputWidth, inputs.extents.outputHeight),
         makeTexture(rojoRHI::Format::R16Float, "lmx.render.vendorExposure", 1, 1)};
     ComputePassDesc desc;
     desc.shaderTextureReads = {inputs.motion, inputs.reactive};
@@ -210,7 +211,8 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
             commands.bindComputePipeline(*m_packPipeline);
             commands.bindTexture(0, *texture(inputs.motion));
             commands.bindTexture(1, *texture(inputs.reactive));
-            commands.bindStorageTexture(2, *texture(packed.motion), {}, rojoRHI::StorageAccess::Write);
+            commands.bindStorageTexture(2, *texture(packed.motion), {},
+                                        rojoRHI::StorageAccess::Write);
             commands.bindStorageTexture(3, *texture(packed.reactive), {},
                                         rojoRHI::StorageAccess::Write);
             commands.bindStorageTexture(4, *texture(packed.exposure), {},

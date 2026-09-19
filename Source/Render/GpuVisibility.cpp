@@ -51,8 +51,8 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
         while (capacity < needed)
             capacity *= 2;
         Slot replacement;
-        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes, const char* name,
-                            bool writable) -> rojoRHI::Result<void> {
+        auto allocate = [&](std::unique_ptr<rojoRHI::Buffer>& buffer, uint64_t bytes,
+                            const char* name, bool writable) -> rojoRHI::Result<void> {
             auto result = m_device.createBuffer(
                 {.size = bytes,
                  .storageRead = true,
@@ -157,7 +157,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     const auto chunks = graph.importBuffer(*slot.chunks, "lmx.draw.chunks");
     const auto views = graph.importBuffer(*slot.views, "lmx.draw.views");
     const auto states = import(*slot.states, "lmx.draw.states", rojoRHI::BufferUse::StorageRead);
-    const auto counters = import(*slot.counters, "lmx.draw.counters", rojoRHI::BufferUse::StorageWrite);
+    const auto counters =
+        import(*slot.counters, "lmx.draw.counters", rojoRHI::BufferUse::StorageWrite);
     const auto chunkBytes = std::max<uint64_t>(4, tables.chunks.size() * 4);
     const auto counts = graph.createBuffer(
         {.size = chunkBytes, .storageRead = true, .storageWrite = true}, "lmx.draw.chunkCounts");

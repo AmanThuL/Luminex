@@ -119,7 +119,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
             const auto texture = sourceDepth ? source : pyramid;
             ComputePassDesc desc;
             desc.shaderTextureReads.emplace_back(
-                texture, rojoRHI::TextureSubresourceRange{.baseMipLevel = level, .mipLevelCount = 1});
+                texture,
+                rojoRHI::TextureSubresourceRange{.baseMipLevel = level, .mipLevelCount = 1});
             desc.bufferWrites.push_back(buffer);
             graph.addComputePass(std::format("lmx.test.hzb.read{}", input), std::move(desc),
                                  [&, params, texture, buffer](const PassResources& resources) {
@@ -129,7 +130,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
                                      REQUIRE(b);
                                      commands.bindComputePipeline(**reader);
                                      commands.bindTexture(0, **t);
-                                     commands.bindStorageBuffer(1, **b, rojoRHI::StorageAccess::Write);
+                                     commands.bindStorageBuffer(1, **b,
+                                                                rojoRHI::StorageAccess::Write);
                                      commands.bindFrameData(0, params);
                                      commands.dispatch(divRoundUp(params.width, 8u),
                                                        divRoundUp(params.height, 8u), 1);

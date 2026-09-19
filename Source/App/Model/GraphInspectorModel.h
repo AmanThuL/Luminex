@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include <rojoRHI/RHI.h>
 #include "Render/CompiledFrameRecord.h"
+#include <rojoRHI/RHI.h>
 
 #include <cstdint>
 #include <optional>
@@ -19,7 +19,7 @@ namespace lmx::app {
 struct GraphInspectorResourceRow {
     uint32_t index = 0; ///< Index into CompiledFrameDebug::resources.
     render::GraphResourceKind kind = render::GraphResourceKind::Texture; ///< Texture or buffer.
-    std::string name;                          ///< The name it was declared under.
+    std::string name;                                  ///< The name it was declared under.
     rojoRHI::Format format = rojoRHI::Format::Unknown; ///< Declared format; Unknown for a buffer.
 };
 

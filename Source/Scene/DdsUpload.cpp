@@ -13,9 +13,9 @@ namespace lmx::scene {
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoRHI::Device& device,
-                                                                       std::string_view path,
-                                                                       bool srgb,
-                                                                       std::string_view label) {
+                                                                           std::string_view path,
+                                                                           bool srgb,
+                                                                           std::string_view label) {
     asset::AssetResult<asset::DdsImage> image = asset::loadDds(path);
     if (!image) {
         return std::unexpected(image.error());

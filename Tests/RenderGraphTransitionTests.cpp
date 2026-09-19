@@ -9,10 +9,12 @@ TEST_CASE("execute encodes the schedule as labelled render passes", "[render][gr
     FakeTexture color{64, 64, "sceneColor"};
     FakeTexture depth{64, 64, "sceneDepth"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
     const GraphTexture sceneColor =
         graph.importTexture(color, rojoRHI::Format::BGRA8Unorm, "sceneColor");
-    const GraphTexture sceneDepth = graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
+    const GraphTexture sceneDepth =
+        graph.importTexture(depth, rojoRHI::Format::D32Float, "sceneDepth");
 
     RecordingCommandList commands;
     rojoRHI::Texture* resolvedShadow = nullptr;
@@ -69,9 +71,12 @@ TEST_CASE("execute transitions a sampled render target once", "[render][graph]")
     FakeTexture firstColor{64, 64, "first"};
     FakeTexture secondColor{64, 64, "second"};
     RenderGraph graph;
-    const GraphTexture shadow = graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
-    const GraphTexture first = graph.importTexture(firstColor, rojoRHI::Format::BGRA8Unorm, "first");
-    const GraphTexture second = graph.importTexture(secondColor, rojoRHI::Format::BGRA8Unorm, "second");
+    const GraphTexture shadow =
+        graph.importTexture(shadowMap, rojoRHI::Format::D32Float, "shadowMap");
+    const GraphTexture first =
+        graph.importTexture(firstColor, rojoRHI::Format::BGRA8Unorm, "first");
+    const GraphTexture second =
+        graph.importTexture(secondColor, rojoRHI::Format::BGRA8Unorm, "second");
 
     PassDesc shadowPass;
     shadowPass.depth = DepthAttachment{.handle = shadow, .store = StoreOp::Store};
@@ -127,7 +132,8 @@ TEST_CASE("execute transitions a render target again after it is rewritten", "[r
     FakeTexture pingPong{64, 64, "pingPong"};
     FakeTexture other{64, 64, "other"};
     RenderGraph graph;
-    const GraphTexture target = graph.importTexture(pingPong, rojoRHI::Format::BGRA8Unorm, "pingPong");
+    const GraphTexture target =
+        graph.importTexture(pingPong, rojoRHI::Format::BGRA8Unorm, "pingPong");
     const GraphTexture scratch = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
 
     PassDesc write;
@@ -401,7 +407,8 @@ TEST_CASE("a write-after-read barrier survives a partial-overlap discharge", "[r
     const GraphTexture bloom = graph.importTexture(chain, rojoRHI::Format::RGBA16Float, "bloom");
     const GraphTexture sink = graph.importTexture(other, rojoRHI::Format::BGRA8Unorm, "other");
 
-    static constexpr rojoRHI::TextureSubresourceRange kMips0to3{.baseMipLevel = 0, .mipLevelCount = 4};
+    static constexpr rojoRHI::TextureSubresourceRange kMips0to3{.baseMipLevel = 0,
+                                                                .mipLevelCount = 4};
     static constexpr rojoRHI::TextureSubresourceRange kMip0{.baseMipLevel = 0, .mipLevelCount = 1};
     static constexpr rojoRHI::TextureSubresourceRange kMip2{.baseMipLevel = 2, .mipLevelCount = 1};
 
@@ -484,11 +491,11 @@ TEST_CASE("a fully covered read is completely discharged", "[render][graph]") {
 
 //======================================================================================================================
 // A barrier orders the passes it sits between, so the range it names has to cover the reader it
-// sits in front of -- one of the two axes a barrier is scoped on (rojoRHI::CommandList::textureBarrier
-// states the model; the consuming stage class is the other, two cases below). One writer of the
-// whole chain and two readers of different mips is the case that tells the two range rules apart:
-// "one transition per write" would leave the second reader unordered, and only the second reader's
-// own barrier states the dependency it actually has.
+// sits in front of -- one of the two axes a barrier is scoped on
+// (rojoRHI::CommandList::textureBarrier states the model; the consuming stage class is the other,
+// two cases below). One writer of the whole chain and two readers of different mips is the case
+// that tells the two range rules apart: "one transition per write" would leave the second reader
+// unordered, and only the second reader's own barrier states the dependency it actually has.
 TEST_CASE("each reader of a distinct range gets its own transition", "[render][graph]") {
     FakeTexture chain{64, 64, "chain", 4};
     FakeTexture first{64, 64, "first"};
@@ -790,8 +797,8 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current write") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm,
-                                                         "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture texture = graph.importTexture(
+            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
         PassDesc overwrite;
         overwrite.color = ColorAttachment{.handle = texture};
         graph.addPass("lmx.pass.overwrite", overwrite, kNoWork);
@@ -806,8 +813,8 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current loaded attachment") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm,
-                                                         "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture texture = graph.importTexture(
+            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
         PassDesc loadAndOverwrite;
         loadAndOverwrite.color =
             ColorAttachment{.handle = texture, .load = LoadOp::Load, .store = StoreOp::Store};
@@ -823,9 +830,11 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior write before current read") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(
-            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::RenderTarget);
-        const GraphTexture color = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+        const GraphTexture texture =
+            graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm, "persistent",
+                                rojoRHI::TextureUse::RenderTarget);
+        const GraphTexture color =
+            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;
         sample.textureReads.push_back(texture);
         sample.color = ColorAttachment{.handle = color};
@@ -841,9 +850,10 @@ TEST_CASE("a texture import carries its previous-frame access", "[render][graph]
 
     SECTION("prior read before current read") {
         RenderGraph graph;
-        const GraphTexture texture = graph.importTexture(persistent, rojoRHI::Format::BGRA8Unorm,
-                                                         "persistent", rojoRHI::TextureUse::ShaderRead);
-        const GraphTexture color = graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
+        const GraphTexture texture = graph.importTexture(
+            persistent, rojoRHI::Format::BGRA8Unorm, "persistent", rojoRHI::TextureUse::ShaderRead);
+        const GraphTexture color =
+            graph.importTexture(output, rojoRHI::Format::BGRA8Unorm, "output");
         PassDesc sample;
         sample.textureReads.push_back(texture);
         sample.color = ColorAttachment{.handle = color};

@@ -1,9 +1,9 @@
-#include <rojoRHI/CaptureSchema.h>
 #include "Render/Renderer.h"
 #include <catch2/catch_test_macros.hpp>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <rojoRHI/CaptureSchema.h>
 #include <sstream>
 
 using rojoRHI::debug::CaptureSchema;
