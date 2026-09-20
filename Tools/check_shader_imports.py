@@ -15,9 +15,18 @@ IMPORT = re.compile(r"\bimport\b([^;]*)(?:;|$)")
 MODULE_NAME = re.compile(r"[A-Za-z_]\w*(?:(?:::|\.)[A-Za-z_]\w*)*")
 ENTRY = re.compile(r'\[\s*shader\s*\(')
 INCLUDE = re.compile(r"^\s*#\s*include\b", re.MULTILINE)
-# Each Slang tree, paired with the directory holding its shared modules. The repository tree serves
-# App, Tests and the benchmark. The RHI component owns its own self-contained tree and checker.
-TREES = (("Shaders", "Modules"),)
+# The repository's Slang tree, serving App, Tests and the benchmark, and the folders it is laid out
+# in: modules shared by more than one pass family in Common/, oracles in Tests/, and one folder per
+# family under Passes/. The RHI component owns its own self-contained tree and checker.
+TREE = "Shaders"
+COMMON = "Common"
+TESTS = "Tests"
+PASSES = "Passes"
+# R3.2 moves the tree into those folders one family at a time. While this is set the checker also
+# accepts the layout being moved away from, entries at the tree root and shared modules in Modules/,
+# so that every commit of the move sequence passes policy. The edit that ends the sequence drops it.
+LEGACY = True
+LEGACY_MODULES = "Modules"
 
 
 def without_comments(text: str) -> str:
@@ -28,55 +37,77 @@ def without_comments(text: str) -> str:
     )
 
 
-def check_shaders(root: Path) -> tuple[list[str], int, int]:
-    """Check every Slang tree in the repository, each in its own namespace.
+def placement(relative: Path) -> tuple[str, str]:
+    """Locate a source by the folder whose rules govern it and, for a pass, its family.
 
-    A tree is a shader root paired with the directory its shared modules live in. The trees are
-    deliberately independent: each compiles into its own target directory, so two trees may own the
-    same output basename, and neither may import the other's modules.
+    A source the layout has no place for reports an empty folder.
     """
-    errors: list[str] = []
-    files = imports = 0
-    for tree, modules in TREES:
-        shaders = root / tree
-        if not shaders.is_dir():
-            continue
-        tree_errors, tree_files, tree_imports = check_tree(root, shaders, modules)
-        errors += tree_errors
-        files += tree_files
-        imports += tree_imports
-    return errors, files, imports
+    parts = relative.parts
+    if len(parts) > 1 and parts[0] in (COMMON, TESTS):
+        return parts[0], ""
+    if len(parts) == 3 and parts[0] == PASSES:
+        return PASSES, parts[1]
+    if LEGACY and len(parts) == 1:
+        return TREE, ""
+    if LEGACY and len(parts) > 1 and parts[0] == LEGACY_MODULES:
+        return LEGACY_MODULES, ""
+    return "", ""
 
 
-def check_tree(root: Path, shaders: Path, modules_dir: str) -> tuple[list[str], int, int]:
+def check_shaders(root: Path) -> tuple[list[str], int, int]:
+    """Check the repository's Slang tree, which owns one runtime artifact namespace.
+
+    The RHI component's tree is deliberately independent: it compiles into its own target directory,
+    so it may own the same output basenames, it may not import this tree's modules, and its own
+    checker covers it.
+    """
+    shaders = root / TREE
+    if not shaders.is_dir():
+        return [], 0, 0
+    return check_tree(root, shaders)
+
+
+def check_tree(root: Path, shaders: Path) -> tuple[list[str], int, int]:
     files = sorted(shaders.rglob("*.slang"))
     errors: list[str] = []
     names: dict[str, Path] = {}
-    modules: dict[str, Path] = {}
+    # Every source with the folder rules it answers to, its family, and its text with comments and
+    # strings masked. Imports resolve only once the whole tree has declared its modules.
+    sources: list[tuple[Path, str, str, str, str]] = []
+    # Import name to defining file and the family that owns it; an empty family is shared.
+    modules: dict[str, tuple[Path, str]] = {}
     for path in files:
+        reported = path.relative_to(root)
         relative = path.relative_to(shaders)
         key = path.stem.casefold()
         if key in names:
             errors.append(
-                f"{path.relative_to(root)}: duplicate shader output basename '{path.stem}' "
+                f"{reported}: duplicate shader output basename '{path.stem}' "
                 f"also owned by {names[key].relative_to(root)}"
             )
         names[key] = path
-        if relative.is_relative_to(modules_dir):
-            name = ".".join(relative.relative_to(modules_dir).with_suffix("").parts)
-            modules[name] = path
-
-    imports = 0
-    for path in files:
-        relative = path.relative_to(root)
         text = without_comments(path.read_text(encoding="utf-8"))
         # Strings cannot contain directives, but a quoted import operand must still be rejected
         # explicitly instead of disappearing while strings are masked. Preserve line numbers.
         masked = re.sub(
             r'"(?:\\.|[^"\\])*"', lambda match: re.sub(r"[^\n]", "?", match.group()), text
         )
-        if path.relative_to(shaders).is_relative_to(modules_dir) and ENTRY.search(masked):
-            errors.append(f"{relative}: shared modules cannot declare shader entry points")
+        folder, family = placement(relative)
+        sources.append((path, folder, family, text, masked))
+        if not folder:
+            errors.append(f"{reported}: a shader source must live in Common/, Tests/ or Passes/<family>/")
+        elif folder in (COMMON, LEGACY_MODULES):
+            if ENTRY.search(masked):
+                errors.append(f"{reported}: shared modules cannot declare shader entry points")
+            modules[".".join(relative.relative_to(folder).with_suffix("").parts)] = (path, "")
+        elif folder == PASSES and not ENTRY.search(masked):
+            modules[path.stem] = (path, family)
+
+    # The files that define a module; every other file the tree holds is an entry point.
+    defined = {path for path, _ in modules.values()}
+    imports = 0
+    for path, folder, family, text, masked in sources:
+        relative = path.relative_to(root)
         for match in INCLUDE.finditer(masked):
             line = text.count("\n", 0, match.start()) + 1
             errors.append(f"{relative}:{line}: use module imports instead of textual includes")
@@ -88,17 +119,33 @@ def check_tree(root: Path, shaders: Path, modules_dir: str) -> tuple[list[str], 
                 errors.append(f"{relative}:{line}: expected a named module import ending in ';'")
                 continue
             name = name.replace("::", ".")
-            if name in modules:
+            owner = modules.get(name)
+            if owner is not None:
+                _, home = owner
+                # An oracle tests any module; otherwise a family's own module stays inside it.
+                if not home or folder == TESTS or home == family:
+                    continue
+                errors.append(
+                    f"{relative}:{line}: import '{name}' is local to "
+                    f"{(shaders / PASSES / home).relative_to(root)}; "
+                    "only sources in that folder may import it"
+                )
                 continue
             other = names.get(name.split(".")[-1].casefold())
-            if other is not None and not other.relative_to(shaders).is_relative_to(modules_dir):
+            if other is None or other in defined:
+                errors.append(f"{relative}:{line}: unresolved module import '{name}'")
+                continue
+            target = other.relative_to(root)
+            if LEGACY and not other.relative_to(shaders).is_relative_to(PASSES):
                 errors.append(
-                    f"{relative}:{line}: import '{name}' reaches entry point "
-                    f"{other.relative_to(root)}; imports may target "
-                    f"{(shaders / modules_dir).relative_to(root)} only"
+                    f"{relative}:{line}: import '{name}' reaches entry point {target}; "
+                    f"imports may target {(shaders / LEGACY_MODULES).relative_to(root)} only"
                 )
             else:
-                errors.append(f"{relative}:{line}: unresolved module import '{name}'")
+                errors.append(
+                    f"{relative}:{line}: import '{name}' reaches entry point {target}; "
+                    "only modules are importable"
+                )
     return errors, len(files), imports
 
 
