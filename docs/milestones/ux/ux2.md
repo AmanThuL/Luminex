@@ -5,8 +5,8 @@
 First draft for owner revision. UX2 makes a scene a saved document instead of C++ code, rebuilds
 the Hierarchy around that document, gives lights and objects an authored enabled state that is
 distinct from culling, folds the two single-model scenes into labs, and gives the application an
-icon. Unlike [R2](r/r2.md) and [R3](r/r3.md) it changes behaviour, so it carries its own gates and an
-explicit re-baseline. [Part IV](../roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy)
+icon. Unlike [R2](../r/r2.md) and [R3](../r/r3.md) it changes behaviour, so it carries its own gates and an
+explicit re-baseline. [Part IV](../../roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy)
 owns the outcome and gates; this record keeps the contract, evidence and limits.
 
 **Placement:** R4 → **UX2** → N1.
@@ -69,7 +69,7 @@ rail's keys, since neither file shows them readably.
 
 The light model already matches `KHR_lights_punctual`: linear colour times intensity under the
 candela/lux relation, radian cone angles, and the same smooth range window
-([ADR 0023](../decisions/0023-local-light-and-cluster-contract.md)). Two differences are handled
+([ADR 0023](../../decisions/0023-local-light-and-cluster-contract.md)). Two differences are handled
 at load: Luminex requires a finite range, so a punctual light without one is skipped with a
 Console warning; glTF encodes direction as node rotation, so a spot's direction is derived from
 its node.
@@ -90,7 +90,7 @@ row, so CPU and GPU classification exclude the same set and the row ABI keeps it
 requests the reset a light toggle requests today and invalidates occlusion coverage, because the
 previous frame's HZB may contain an occluder that no longer draws. A measurement run freezes the
 enabled population of lights and objects at its start. A new ADR records the document contract
-and these semantics, amending what [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md)
+and these semantics, amending what [ADR 0021](../../decisions/0021-gpu-scene-handoff-contract.md)
 says about population.
 
 ## UX2.1 — Scene documents under the existing editor
@@ -153,7 +153,7 @@ still restores the preview state and never marks the document dirty.
       arch · bricks · …
 ```
 
-**Exit gate:** the [UX1 completion tasks](../roadmap/editor-experience.md#completion-gate) still
+**Exit gate:** the [UX1 completion tasks](../../roadmap/editor-experience.md#completion-gate) still
 pass on the new layout; an operator can disable an object, edit a light, change exposure, save,
 relaunch and find all three; Revert restores the file's state; schema 3 workspaces open without
 loss of scale or window bounds. Unverified gestures are recorded as unverified.
