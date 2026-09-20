@@ -96,7 +96,7 @@ and orphan separators. It must not use a regular expression to guess C++ functio
 
 `Tools/check_cpp_comments.py` enforces file envelopes and uses the compilation database plus Clang's
 parsed comments and AST to reject undocumented API in public `Source` headers (excluding the
-module contract's checked `privateHeaders`), the exported `RojoRHI/Include`
-tree, and experimental public headers under `Experiments/*/Include`. RHI backend and implementation
-headers are not public API. The same compilation pass enables `-Wdocumentation` as an error so
+module contract's checked `privateHeaders`) and experimental public headers under
+`Experiments/*/Include`. The component's own copy of the checker covers `RojoRHI/Include`, and its
+backend and implementation headers are not public API. The same compilation pass enables `-Wdocumentation` as an error so
 malformed tags and parameter names fail policy too.
