@@ -14,7 +14,7 @@ copied materials and current/previous transforms. That span is not a persistent 
 The review finds the existing frame-data, temporal, synchronization and capability contracts
 suitable for that migration. What needs an explicit decision is the meaning and lifetime of
 identities and table updates, without prematurely choosing a universal scene layout or RHI.
-The [gate record](../milestones/interface-gate-b.md) owns the evidence and admission result.
+The [gate record](../milestones/m6/interface-gate-b.md) owns the evidence and admission result.
 
 ## Decision
 

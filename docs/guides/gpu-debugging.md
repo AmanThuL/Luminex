@@ -43,7 +43,7 @@ The path must be absolute. The first frame the run compiles is written and no la
 file is the same whether the run lasted one frame or ten thousand. It lists the imported resources,
 the declared sinks, each scheduled pass with its uses in schedule order, each culled pass with the
 reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
-driver-reported value, so it answers "was this pass declared, ordered, and kept?" — not "how long did it take", which is the timing trace's question.
+driver-reported value, so it answers "was this pass declared, ordered, and kept?" rather than "how long did it take", which is the timing trace's question.
 
 Reach for a graph dump first when a pass appears to do nothing: a pass listed under `culled` never ran, and its reason explains why. The detached Render Graph window displays one coherent
 frame as a grouped node canvas with selection-scoped details. Live publishes a complete owned
@@ -74,7 +74,7 @@ border source and destination are depth-tested. App declares `lmx.pass.selection
 `lmx.pass.selection.outline` through Render's `SelectionOutline` utility, then samples its separate
 SDR output target. Their GPU costs appear in graph/timing records. They never write scene targets
 or temporal history, and ordinary offscreen screenshots/sequences do not invoke them. See the
-[UX1 design](../specs/2026-09-14-ux1-editor-experience-design.md) and [active acceptance record](../milestones/ux1.md) for scope and validation status.
+[UX1 design](../milestones/ux/ux1-design.md) and [active acceptance record](../milestones/ux/ux1.md) for scope and validation status.
 
 ## Capture and inspect a frame
 
@@ -101,8 +101,8 @@ add `--render-scale <0.5..1.0>` (offscreen) or `LMX_DYNAMIC_RESOLUTION_BUDGET_MS
 run, letting the controller pick the scale the captured frame lands at); the manifest and dumped
 images then show `lmx.pass.temporal.upscale`'s inputs and the scene pass's render area/scissor
 instead of the native resolve's. Inspect the generated manifest first, then decoded uniforms and resource images. The capture's schema sidecar records one
-`frameDataUploads` entry per `bindFrameData` call in the captured frame — page label, slot, offset,
-size, alignment, and GPU address — which is what to check when tracing an upload to its page; the
+`frameDataUploads` entry per `bindFrameData` call in the captured frame (page label, slot, offset,
+size, alignment, and GPU address), which is what to check when tracing an upload to its page; the
 dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page
 joins with the confidence recorded in the manifest; the Metal capture bundle is not a documented interchange format.
 
@@ -182,7 +182,7 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 
 ## Inspect local lighting
 
-`--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting shows requested/effective mode, capacities, retired counters, list memory and exact-frame pass costs at 250 ms; overflow/check warnings update immediately.
+`--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting shows requested/effective mode, capacities, retired counters, list memory and exact-frame pass costs at 250 ms; overflow/check warnings update immediately.
 LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode.
 Hierarchy > Local lights is clipped, selects full LightId identities and enables/disables each light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB colour, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause to retain manual orbit-position edits. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
 
@@ -195,7 +195,7 @@ LMX_LIGHT_CHECK_DUMP=/absolute/new-check.bin xmake run App --scene light-lab --l
 `--light-check` compares retired GPU grids, ascending index lists and all counters with a CPU mirror captured at declaration. Counter/check failures fail screenshot/sequence completion. `--light-view count|overflow|missed` requires Clustered, conflicts with non-off temporal/HZB views, and selects a post-display output without changing temporal history. Both checking and non-off light views require `--unscored` with `--measure`.
 Count uses 0 black, 1–4 blue, 5–16 green, 17–64 yellow and 65–128 red. Overflow paints truncated froxels magenta over 25% display brightness. Missed paints pure red when a reaching light is absent from an untruncated list, yellow when absent from a truncated list, otherwise black; sky is black. It tests range/cone reach without the surface normal. Pure-black missed captures are valid, so that mode bypasses the ordinary flat-image rejection.
 `LMX_LIGHT_CHECK_DUMP` is a screenshot/sequence evidence hook requiring `--light-check` and a new nonempty path. It writes a versioned little-endian header plus each live clustered frame's ID, extents, row count, capacities, CPU/GPU grids, index prefixes and counters; flush/close failures fail the run. Zero-live frames have no list record. The sequence manifest separately retains actual frame/extents and lighting status. `LMX_DYNAMIC_RESOLUTION_BUDGET_MS` also works in screenshot/sequence runs when temporal is enabled, recording controller-selected extents; use fixed scale for image pairs.
-`python3 Tools/Lighting/missed_oracle.py --input /absolute/new-missed --out /absolute/new-oracle.json` audits the native Missed PNG sequence and manifest; `--allow-yellow` is only for intentional overflow fixtures. Its `--selftest` runs without a GPU. The independent [lighting validation record](../milestones/m7.5-validation.md) separates development checks, formal family results, the default decision and actual capture/editor evidence. A debug image or unit pass alone does not establish those gates.
+`python3 Tools/Lighting/missed_oracle.py --input /absolute/new-missed --out /absolute/new-oracle.json` audits the native Missed PNG sequence and manifest; `--allow-yellow` is only for intentional overflow fixtures. Its `--selftest` runs without a GPU. The independent [lighting validation record](../milestones/m7/m7.5-validation.md) separates development checks, formal family results, the default decision and actual capture/editor evidence. A debug image or unit pass alone does not establish those gates.
 
 ## Measure visibility and submission
 
@@ -259,7 +259,7 @@ These tests validate the parsers and report generation without requiring a GPU c
 
 M5 added histogram auto-exposure and bloom as passes declared every frame; dead-pass culling keeps
 only the features that are enabled. With both features off, `--screenshot` output must stay byte-identical to what the pre-M5 tip rendered.
-There is no golden-image automation for this -- the procedure below, re-run by hand, is the accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
+There is no golden-image automation for this. The procedure below, re-run by hand, is the accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
 `LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Screenshot.cpp`), an undocumented-to-users env var that exists solely for this check.
 
 Build the baseline from the commit before the change under test (substitute the actual parent commit), then the tip, capturing all three scenes both times:
@@ -284,7 +284,7 @@ done
 ```
 
 `cmp` exits non-zero and names the first differing byte offset on any mismatch, so silence-implies-
-identical does not apply -- check that all three scenes actually printed `IDENTICAL`. Bloom's own
+identical does not apply: check that all three scenes actually printed `IDENTICAL`. Bloom's own
 effect is checked the opposite way: capture once more without `LMX_SCREENSHOT_NO_BLOOM` and confirm
 the file differs from the bloom-off capture (`cmp` reports a byte offset) and opens as a plausible image (no full-screen white, no NaN speckle) rather than asserting a specific diff.
 

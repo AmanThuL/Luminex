@@ -20,7 +20,7 @@ that decomposes the accepted boundary without expanding it.
 The dividing point is the change from a trustworthy moving image and execution substrate to
 shared GPU scene data and its consumers. Foundation completion supplies those contracts;
 [interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
-approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
+approved entry to M7.1 in its [separate review](milestones/m6/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
 
 ## Execution sequence
@@ -42,10 +42,10 @@ the row says otherwise.
 | 7 | [M7.3](roadmap/gpu-driven-hybrid-rendering.md#m73--gpu-visibility-and-work-generation) GPU visibility and work generation | II | Owner-accepted for integration | M7.2 |
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
-| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r2.md) | M7 complete |
-| 11 | [R3.1–R3.6](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r3.md) | R2 |
-| 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r4.md) | R3 |
-| 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux2.md) | R4 |
+| 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r/r2.md) | M7 complete |
+| 11 | [R3.1–R3.6](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r/r3.md) | R2 |
+| 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r/r4.md) | R3 |
+| 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux/ux2.md) | R4 |
 | 14 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX2; technically gate B |
 | 15 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
 | 16 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
@@ -70,19 +70,19 @@ shader variants are deduplicated if the experiment supports it, and scenes becom
 before new rendering work starts. Identifiers are names, not ordinals:
 M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
 already use them; the Step column carries the order.
-[UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
+[UX1](milestones/ux/ux1.md) is implemented and owner-accepted for integration after manual review.
 M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
 and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
-profile passes 15/15. [The record](milestones/m7.1.md) retains both results and limits. Its executor
-plan is closed; [M7.2 acceptance](milestones/m7.2-validation.md#owner-acceptance-and-integration) authorizes integration on 2026-09-15 after manual review, retaining original/revised image-gate failures (13/15 and 9/15). Its plan is closed; no new tolerance or performance adoption follows. Gate B is preserved.
+profile passes 15/15. [The record](milestones/m7/m7.1.md) retains both results and limits. Its executor
+plan is closed; [M7.2 acceptance](milestones/m7/m7.2-validation.md#owner-acceptance-and-integration) authorizes integration on 2026-09-15 after manual review, retaining original/revised image-gate failures (13/15 and 9/15). Its plan is closed; no new tolerance or performance adoption follows. Gate B is preserved.
 
 ## Current baseline
 
-The accepted rendering baseline is [M7.5](milestones/m7.5.md), owner-accepted for integration on
-2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7.5-followup.md)
+The accepted rendering baseline is [M7.5](milestones/m7/m7.5.md), owner-accepted for integration on
+2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7/m7.5-followup.md)
 passes exact causal/current-camera checks while retaining historical-camera replay failures.
-Its [validation record](milestones/m7.5-validation.md#owner-acceptance-and-integration) preserves
-original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6.5.md):
+Its [validation record](milestones/m7/m7.5-validation.md#owner-acceptance-and-integration) preserves
+original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6/m6.5.md):
 explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
@@ -90,43 +90,43 @@ runs remain intact, and the drift is not fixed. UX1 adds the accepted editor exp
 adds owner-accepted GPU scene foundations with a scoped vendor comparison criterion; its plan
 is closed and the owner approved main integration on 2026-09-15.
 
-This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
+This builds on [M6.4](milestones/m6/m6.4.md): optional MetalFX reconstruction, native fallback,
 masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
 encoder inspection remain explicit follow-ups, not completed checks.
 
-[M6.1](milestones/m6.1.md)–[M6.3](milestones/m6.3.md) provide rigid-object/camera motion, native
+[M6.1](milestones/m6/m6.1.md)–[M6.3](milestones/m6/m6.3.md) provide rigid-object/camera motion, native
 TAA with exposure correction, temporal upscaling and dynamic resolution. Their base is the
 scene-linear PBR/HDR renderer, validating graph, transient pooling, frame-data path and selection
 workspace documented in [Part I](roadmap/rendering-foundations.md). Current implementation detail
 belongs to the [architecture](architecture/overview.md) and [frame walkthrough](frame-pipeline.md).
-[R1.1](milestones/r1.1.md) adds the module contract, dependency checks and standalone Source header
+[R1.1](milestones/r/r1.1.md) adds the module contract, dependency checks and standalone Source header
 checks, with an explicit migration allowlist.
-[R1.2](milestones/r1.2.md) separates CPU Asset from GPU Scene and clears their migration
-allowances. [R1.3](milestones/r1.3.md) adds AppModel and shared scene/frame preparation; the owner
+[R1.2](milestones/r/r1.2.md) separates CPU Asset from GPU Scene and clears their migration
+allowances. [R1.3](milestones/r/r1.3.md) adds AppModel and shared scene/frame preparation; the owner
 accepted it into local main on 2026-09-13 with an explicit
-[six-hash image parity exception](milestones/r1.3.md#unresolved-image-parity). That comparison
+[six-hash image parity exception](milestones/r/r1.3.md#unresolved-image-parity). That comparison
 remains failed and unexplained; R1.3 is not an integration blocker, and the exception relaxes no
-later slice's validation. [R1.4](milestones/r1.4.md) separates the shadow/scene draw stages and
+later slice's validation. [R1.4](milestones/r/r1.4.md) separates the shadow/scene draw stages and
 compiled record; its strict parent/candidate matrix passes without exception.
-[R1.5](milestones/r1.5.md) completes all five consolidation, decomposition, header-visibility and
+[R1.5](milestones/r/r1.5.md) completes all five consolidation, decomposition, header-visibility and
 build/shader groups. The owner accepted its
-[two-hash image parity exception](milestones/r1.5.md#integration) on 2026-09-13; that comparison
+[two-hash image parity exception](milestones/r/r1.5.md#integration) on 2026-09-13; that comparison
 remains failed and unexplained, with no outstanding integration blocker or relaxation of later
 validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
-[Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
+[Interface gate B](milestones/m6/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
 under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 [editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
-The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the owner's acceptance
-after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
+The [UX1 milestone](milestones/ux/ux1.md) records implemented P1–P3 behavior, the owner's acceptance
+after manual review, and retained validation limits. Its [design](milestones/ux/ux1-design.md)
 is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
-paced scene tables through retained CPU drawing; its [record](milestones/m7.1.md) owns evidence
-and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
+paced scene tables through retained CPU drawing; its [record](milestones/m7/m7.1.md) owns evidence
+and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
 
 ## Project direction and delivery
 
 Luminex is a Metal 4-first modern rendering playground and portfolio: visible image quality and
 verifiable graphics engineering are both outcomes. The
-[foundation goals](specs/2026-08-07-luminex-upgrade-design.md) and
+[foundation goals](decisions/0000-founding-design.md) and
 [research synthesis](research/2026-08-09-rendering-pipeline-synthesis.md) motivate a graph-scheduled,
 GPU-driven hybrid renderer whose raster, screen-space, ray, reconstruction and cache paths share
 scene, material, light and temporal semantics. Grow the thin RHI through actual consumers.

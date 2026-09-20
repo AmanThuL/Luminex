@@ -1,6 +1,6 @@
 # ADR 0002: Metal 4 native as the first RHI backend
 
-**Status**: Accepted (2026-08-07) · **Spec**: ../specs/2026-08-07-luminex-upgrade-design.md (D2)
+**Status**: Accepted (2026-08-07) · **Spec**: 0000-founding-design.md (D2)
 
 ## Context
 The only dev machine is Apple Silicon macOS, so a native backend gets Xcode GPU debugging of our own

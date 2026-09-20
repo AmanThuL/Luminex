@@ -6,7 +6,7 @@
 /// @details FrameDataBench: the production frame-data benchmark. Times the RHI's
 ///        per-frame data-delivery path -- CommandList::bindFrameData, reached through this
 ///        benchmark's one delivery seam (DeliverPerDrawData.h) -- over the five frozen workloads in
-///        docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11. The paired driver's
+///        docs/milestones/m5/m5.2-design.md section 11. The paired driver's
 ///        baseline side builds this same seam from the frozen `m5.2-baseline` tag, where the
 ///        delivery seam still reaches the incumbent RHI's transient-uniform delivery path.
 ///        Renders offscreen only: no window, no ImGui, no scene assets, just deterministic

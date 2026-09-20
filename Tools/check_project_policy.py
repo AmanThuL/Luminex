@@ -17,7 +17,7 @@ SKIP_PARTS = {".git", "build", "ThirdParty"}
 SKIP_PREFIXES = (("Assets", "Fetched"),)
 STATUS_DIRS = {
     "architecture", "conventions", "decisions", "guides", "milestones", "plans",
-    "postmortems", "research", "roadmap", "specs",
+    "research", "roadmap",
 }
 LINE_BUDGETS = {
     "AGENTS.md": 250,
@@ -27,10 +27,10 @@ LINE_BUDGETS = {
     "docs/guides/": 300,
     "docs/milestones/": 300,
     "docs/plans/": 300,
-    "docs/postmortems/": 300,
     "docs/roadmap.md": 300,
     "docs/roadmap/": 300,
 }
+BUDGET_EXEMPT = re.compile(r"^docs/milestones/.+-design\.md$")
 HOME_PATH = re.compile(
     r"(?i)(?:/" + r"Users/[^/\s`]+|/" + r"home/[^/\s`]+|[A-Z]:\\Users\\[^\\\s`]+)"
 )
@@ -209,6 +209,9 @@ def check_markdown(files: list[Path], errors: list[str]) -> None:
                 if not valid:
                     errors.append(f"{path}: unsupported document status: {status.group(1).strip()}")
 
+        if path.parts[:2] == ("docs", "milestones") and len(path.parts) == 3:
+            errors.append(f"{path}: milestone documents belong in a series folder")
+
     active: list[Path] = []
     for path in markdown:
         if path.parts[:2] != ("docs", "plans"):
@@ -226,6 +229,8 @@ def check_line_budgets(files: list[Path], errors: list[str]) -> None:
         if text is None:
             continue
         name = path.as_posix()
+        if BUDGET_EXEMPT.match(name):
+            continue
         for prefix, budget in LINE_BUDGETS.items():
             if name == prefix or (prefix.endswith("/") and name.startswith(prefix)):
                 lines = len(text.splitlines())

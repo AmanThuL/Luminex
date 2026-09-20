@@ -1,6 +1,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LocalLight.h
-/// @brief Declares the CPU-authored point/spot light docs/milestones/m7.5.md's light model defines.
+/// @brief Declares the CPU-authored point/spot light docs/milestones/m7/m7.5.md's light model
+/// defines.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once

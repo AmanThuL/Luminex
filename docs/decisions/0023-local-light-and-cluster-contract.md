@@ -7,7 +7,7 @@
 The renderer already evaluates three directional lights, image-based lighting and emissive in
 scene-linear space before one pre-exposure multiply. Point and spot lights need a common physical
 interpretation and a bounded selection path without changing those existing terms. The
-[M7.5 specification](../milestones/m7.5.md) owns the frozen constants and verification families.
+[M7.5 specification](../milestones/m7/m7.5.md) owns the frozen constants and verification families.
 [ADR 0021](0021-gpu-scene-handoff-contract.md) continues to own scene identity and paced updates.
 
 ## Decision
@@ -97,7 +97,7 @@ removal/allocation rollback. Hierarchy owns individual enable checkboxes; Render
 The shared punctual accumulator now applies normal-footprint NDF filtering before divergent
 list traversal, using Tokuyoshi/Kaplanyan 2021 Eq.13. It changes only punctual specular alpha;
 authored roughness, directional/IBL terms, attenuation and the 64-byte ABI remain unchanged.
-The [follow-up](../milestones/m7.5-followup.md) records filtering/content diagnostics, a passing
+The [follow-up](../milestones/m7/m7.5-followup.md) records filtering/content diagnostics, a passing
 exact zero-enabled causal gate and current-camera 15/15 replay. Historical-camera repeatability
 remains failed/unresolved; original F5 failures and frozen costs are not relabelled.
 Mode-only editor changes at zero enabled lights preserve temporal continuity; content/live-mode
@@ -107,11 +107,11 @@ exposure and reset state, with a nonempty qualifying set and no added pixel tole
 ## Consequences
 
 The owner accepted this implemented contract on 2026-09-19 after visual review and authorized
-integration. [Acceptance and limits](../milestones/m7.5-validation.md#owner-acceptance-and-integration)
+integration. [Acceptance and limits](../milestones/m7/m7.5-validation.md#owner-acceptance-and-integration)
 retain original and historical-camera failures; acceptance does not convert them to passing gates.
 Direct was the provisional default through the frozen candidate collection. Family 2 lossless lists and scoped
 family 3 exact images then passed, satisfying the fixed rule for Clustered default adoption;
-Direct remains the reference. The [default decision](../milestones/m7.5-validation.md#default-decision)
+Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision)
 records that scope. Zero-light parent comparisons, temporal difference reports, overflow checks,
 cost and GPU capture remain separate conclusions in the validation record; default adoption does not waive a failed gate.
 

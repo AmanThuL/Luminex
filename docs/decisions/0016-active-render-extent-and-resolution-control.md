@@ -1,8 +1,8 @@
 # ADR 0016: Active render extent, output-extent capacity and a pure resolution controller
 
 **Status**: Accepted (2026-09-09) · **Roadmap**: ../roadmap.md (M6.3) ·
-**Spec**: ../specs/2026-09-09-m6.3-taau-dynamic-resolution-design.md ·
-**Milestone**: ../milestones/m6.3.md
+**Spec**: ../milestones/m6/m6.3-design.md ·
+**Milestone**: ../milestones/m6/m6.3.md
 
 ## Context
 
@@ -144,6 +144,6 @@ candidate follow-up; it changes the kernel, so it is not taken here.
 [ADR 0013](0013-temporal-motion-and-history-contract.md) — `ExtentChanged`'s original definition,
 narrowed here. [ADR 0014](0014-temporal-reconstruction-and-exposure-correction.md) and
 [ADR 0015](0015-temporal-slot-terminal-access.md) — the reconstruction contract and terminal-use
-table this ADR extends. Spec: `../specs/2026-09-09-m6.3-taau-dynamic-resolution-design.md` (§10's
+table this ADR extends. Spec: `../milestones/m6/m6.3-design.md` (§10's
 2026-09-09 amendment records the ghosting-tolerance measurements in full). Milestone:
-`../milestones/m6.3.md`.
+`../milestones/m6/m6.3.md`.

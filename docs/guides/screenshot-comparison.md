@@ -50,7 +50,7 @@ xmake run App --scene temporal-lab --frames 32 --visibility off --submission ind
 cmp /absolute/cull-indirect.bmp /absolute/off-indirect.bmp
 ```
 
-For the [CPU visibility/indirect verification](../milestones/m7.2.md#output-preservation-and-comparison-rule),
+For the [CPU visibility/indirect verification](../milestones/m7/m7.2.md#output-preservation-and-comparison-rule),
 culled versus unculled and indirect versus direct require exact bytes in all fifteen cases; a
 passing tolerant comparison does not satisfy those gates. Compare matching BMP bytes/hashes and
 retain each result. Batched versus direct uses `strict`, because sorting can change depth ties.
@@ -58,7 +58,7 @@ Parent versus candidate retains strict results and the explicitly scoped MetalFX
 TAA sequence frames retain strict comparison. The milestone record owns outcomes and pending
 review. Commands here do not claim a passing matrix or owner acceptance.
 
-The [first-principles reassessment](../milestones/m7.2-visibility-followup.md) preserves that
+The [first-principles reassessment](../milestones/m7/m7.2-visibility-followup.md) preserves that
 failure: exact pre-temporal fixtures passed, but a separately frozen empirical-range experiment
 failed its independent holdout. Its [verifier procedure](visibility-image-validation.md) remains
 experimental and does not supersede the original gate.
@@ -84,7 +84,7 @@ whole-image one-step brightness change from passing solely because of the pixel 
 Its 0.1 budget means a tenth of a code value averaged across all RGB samples. These are explicit
 engineering tolerances, not Apple-specified limits or a calibrated guarantee of perceptual equality.
 The profile is opt-in and does not supersede a milestone's recorded acceptance criteria.
-The owner accepted it for the frozen [M7.1 comparison](../milestones/m7.1.md#image-comparison-criteria);
+The owner accepted it for the frozen [M7.1 comparison](../milestones/m7/m7.1.md#image-comparison-criteria);
 that scoped acceptance does not set the gate for later milestones.
 
 Self-tests pin inclusive area/mean boundaries and verify that full-image +1/+4 code-value changes,
@@ -126,11 +126,11 @@ cells report differing pixels, >8/255
 pixels, max/mean delta and LDR-FLIP beside null controls without a new acceptance threshold.
 This scoped requirement is separate from the parent/candidate fifteen-cell zero-light matrix
 and its inherited profile. The original Off/Direct/Clustered zero-live exact gate remains 11/15 FAIL.
-The [follow-up](../milestones/m7.5-followup.md#f5-diagnosis-and-prospective-gate) proposes exact causal
+The [follow-up](../milestones/m7/m7.5-followup.md#f5-diagnosis-and-prospective-gate) proposes exact causal
 invariants plus separately reported temporal repeatability; controlled results are pending. This
 proposal does not replace the original exact requirement before disposition. Preserve failures and controls independently; a temporal difference cannot explain
 away a list-oracle failure. Clustered is now the default after the lossless-list and scoped
-exact-image gates passed; Direct remains the reference. The [default decision](../milestones/m7.5-validation.md#default-decision)
+exact-image gates passed; Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision)
 records that correctness scope separately from other families, performance and owner acceptance.
 
 For current Sponza zero-enabled controls, use `--local-light-rig off`; `--local-lights off` alone
@@ -145,7 +145,7 @@ pixel and reconstructs position under that frame's jittered projection, independ
 history; it does not compare shaded colours or evaluate N.L. Sky and a valid clean run are black.
 The Count palette and Overflow overlay are inspection aids, not shaded image-agreement inputs.
 Use [the raw diagnostic hook](gpu-debugging.md#inspect-local-lighting) to retain exact CPU/GPU list
-records alongside manifests. Formal results belong in [M7.5 validation](../milestones/m7.5-validation.md);
+records alongside manifests. Formal results belong in [M7.5 validation](../milestones/m7/m7.5-validation.md);
 development smoke and a black single frame do not substitute for the complete rail matrix.
 
 Audit the native Missed PNG sequence with:

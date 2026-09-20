@@ -1,6 +1,6 @@
 # ADR 0001: Build system — xmake
 
-**Status**: Accepted (2026-08-07) · **Spec**: ../specs/2026-08-07-luminex-upgrade-design.md (D1)
+**Status**: Accepted (2026-08-07) · **Spec**: 0000-founding-design.md (D1)
 
 ## Context
 The initial repository used Premake. Research (Aug 2026) found decade-old Xcode/Metal gaps;

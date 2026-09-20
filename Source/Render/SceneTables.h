@@ -45,7 +45,7 @@ constexpr uint32_t kLightClusterGridSlot = 9;
 constexpr uint32_t kLightClusterIndexSlot = 10;
 /// Per-pass `LocalLightParams` frame-data binding selecting the local-light path.
 constexpr uint32_t kLocalLightParamsSlot = 11;
-/// Maximum live local lights per scene (docs/milestones/m7.5.md's light table).
+/// Maximum live local lights per scene (docs/milestones/m7/m7.5.md's light table).
 constexpr uint32_t kMaxLocalLights = 4096;
 /// Per-draw instance selector binding in scene and shadow entries.
 constexpr uint32_t kDrawUniformsSlot = 1;
@@ -122,7 +122,7 @@ static_assert(offsetof(MeshRow, boundsPadding1) == 44);
 /// Stable local point/spot light slot contents; `range == 0` marks a free slot. `strength` is
 /// `colour * intensity` decoded once at build, `spotScale`/`spotOffset` encode the cone term for
 /// both light types (a point light stores 0/1), and `boundCentre`/`boundRadius` are the CPU-
-/// computed world bounding sphere `LocalLightMath.h` derives -- see docs/milestones/m7.5.md's
+/// computed world bounding sphere `LocalLightMath.h` derives -- see docs/milestones/m7/m7.5.md's
 /// light table.
 struct alignas(16) LightRow {
     glm::vec3 position{0.0f};               ///< World-space origin, metres.

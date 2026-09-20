@@ -8,7 +8,7 @@
 The user explicitly approved closing M5.6 as **reliability failure / DEFER / no accepted
 performance conclusion**. [ADR 0012](../decisions/0012-gpu-submission-defer.md) and the
 [roadmap](../roadmap.md) own this accepted terminal exception. The
-[milestone record](../milestones/m5.6.md) records closure, not successful original acceptance.
+[milestone record](../milestones/m5/m5.6.md) records closure, not successful original acceptance.
 Production retains its existing renderer/RHI and gains no experimental implementation.
 
 The exception permits stopping without the full 1,920-pair matrix. It does not turn incomplete
@@ -72,7 +72,7 @@ Inspect retained sources without restarting the failed workload:
 
 ```sh
 git show m5.6-gpu-submission-evidence:Experiments/GpuSubmission/README.md
-git show m5.6-gpu-submission-evidence:docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md
+git show m5.6-gpu-submission-evidence:docs/milestones/m5/m5.6-design.md
 git show m5.6-gpu-submission-evidence:docs/plans/2026-09-06-m5.6-gpu-work-submission.md
 ```
 

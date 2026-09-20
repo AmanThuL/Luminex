@@ -27,7 +27,7 @@ shipped evidence. In particular, M5.6 closed with no adopted submission path or 
 conclusion. M6.4 retains manual/capture follow-ups, and M6.5 closed with EDR deferred and a narrow
 historical-hash exception. Their closure does not record a pass for every original gate.
 [Interface gate B](#m6--temporal-and-display-foundation) passes in its
-[2026-09-13 review](../milestones/interface-gate-b.md), after [R1](codebase-module-boundaries.md),
+[2026-09-13 review](../milestones/m6/interface-gate-b.md), after [R1](codebase-module-boundaries.md),
 approving M7.1 entry while preserving those limits.
 
 ## M4 — Correct image formation
@@ -149,7 +149,7 @@ approving M7.1 entry while preserving those limits.
 **Outcome:** closed as reliability failure / **DEFER**, with no accepted performance conclusion.
 Production retains M5.5 rendering behavior; no GPU-submission implementation is adopted.
 
-**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](../decisions/0012-gpu-submission-defer.md), [milestone](../milestones/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
+**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](../decisions/0012-gpu-submission-defer.md), [milestone](../milestones/m5/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
 
 **Retained evidence:** four native modes, seeded workload/CPU oracle and separate public-RHI
 reference; pre-collection correctness tests; incomplete paired corpus and all failures; bounded
@@ -180,7 +180,7 @@ and a universal GPU score. Experiment-local instance tables do not define persis
 
 **Interface gate B:** M6.1 → M6.2 → M6.3 → M6.4; M6.5's bounded evaluation completes the display decision. Before M7, verify ADR 0010 conformance and approve the temporal, root-data, binding, synchronization, capability and minimal scene-identity semantics its first consumers need. Do not freeze all future GPU-scene layouts or implement them here. A new production submission capability still needs its own evidence. D3D12, when scheduled, must pass checkpoint A and reproduce the PBR/HDR/TAA frame without redefining shared semantics; another backend or an EDR adoption is not a gate.
 
-**Gate B disposition:** [PASS (2026-09-13)](../milestones/interface-gate-b.md), following M6.5 and
+**Gate B disposition:** [PASS (2026-09-13)](../milestones/m6/interface-gate-b.md), following M6.5 and
 R1. [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) approves the first-consumer
 identity/update semantics alongside the retained contracts. M7.1 may be planned; no GPU-scene
 implementation or new submission capability is adopted, and prior evidence limits remain open.
@@ -233,7 +233,7 @@ This completes the deferred real-scene comparison; blended transparency remains 
 
 **Acceptance:** Integrated by owner authorization on 2026-09-12 with automated and real-scene
 comparison evidence. Manual Sponza switching and Xcode inspection of opaque work remain follow-ups;
-the [milestone record](../milestones/m6.4.md) preserves the unproven screenshot drift and capture limits.
+the [milestone record](../milestones/m6/m6.4.md) preserves the unproven screenshot drift and capture limits.
 
 **Defer:** Display/EDR evaluation to M6.5; other vendor adapters and frame generation to independent research.
 
@@ -253,9 +253,9 @@ This exception closes M6.5 without claiming a hash-gate pass or a drift repair.
 
 **Follow-up:** isolate and correct the scene diffuse/UV-derivative drift; independently resolve
 shader-validation bloom resource/view usage reports. Preserve the
-[milestone evidence](../milestones/m6.5.md#open-parity-investigation), establish a reproduction and
+[milestone evidence](../milestones/m6/m6.5.md#open-parity-investigation), establish a reproduction and
 validate any correction before making performance or repeatability claims. Neither a shared root
 cause nor an authorized reference-image change is implied. The separate
-[interface gate B review](../milestones/interface-gate-b.md) preserves this limit.
+[interface gate B review](../milestones/m6/interface-gate-b.md) preserves this limit.
 
 **Defer:** An adopted EDR path when evidence is insufficient; platform output never changes upstream scene or temporal semantics.

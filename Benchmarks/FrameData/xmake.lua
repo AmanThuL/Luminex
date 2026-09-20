@@ -1,4 +1,4 @@
--- Frame-data benchmark (docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11): times the
+-- Frame-data benchmark (docs/milestones/m5/m5.2-design.md section 11): times the
 -- production RHI's per-frame data-delivery path over five frozen offscreen workloads. The baseline
 -- half of a comparison builds this same target from the `m5.2-baseline` tag, whose tree still
 -- delivers frame data through the incumbent path. Links the production RHI only -- no
