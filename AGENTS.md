@@ -60,7 +60,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   ./RojoRHITests "[checkpoint-a]") && (cd build/macosx/arm64/release/test && MTL_DEBUG_LAYER=1 ./Tests
   "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD). `python3 Tools/check_checkpoint_a.py` checks the split against the frozen inventory.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
-  `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build).
+  `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build). `RojoRHI/` owns its own `.clang-format`, `.gitignore` and standalone `format`/`policy` tasks (no `-P`, since a custom task keeps its own option menu; run with `RojoRHI/` as the project root); until the submodule mount, Luminex's root `policy` task also runs the component's checkers by path, so coverage never lapses.
 - **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer*
   checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory
   holding an `xmake.lua`. In a worktree, run the checkers directly from its root instead: `python3
@@ -68,7 +68,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error`
   (first regenerate that worktree's `compile_commands.json` with `xmake project -k
   compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself);
-  `python3 RojoRHI/Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`.
+  `python3 RojoRHI/Tools/check_rhi_headers.py`; `python3 Tools/check_cpp_layout.py`; `python3 RojoRHI/Tools/check_project_policy.py`; `python3 RojoRHI/Tools/check_shader_imports.py`; `python3 RojoRHI/Tools/check_cpp_layout.py --compile-commands compile_commands.json`; `python3 RojoRHI/Tools/check_cpp_comments.py --compile-commands compile_commands.json --public-api-docs error` (the component's checkers read Luminex's root database, which also covers the ImGui adapter); the component's Python suite discovers separately with `python3 -m unittest discover -s RojoRHI/Tools/tests -t RojoRHI`.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
   build; both the bench binary and the driver support `--selftest`.
