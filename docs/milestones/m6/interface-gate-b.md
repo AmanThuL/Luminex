@@ -71,7 +71,7 @@ The first build invocation supplied two positional targets, which xmake rejected
 its diagnostic is retained in `build.log`. The two separate valid builds above replace that command.
 This is an invocation correction, not a waived build failure. The GPU run uses runtime MSL.
 
-The [R1.5 verification](../r1.5.md#verification) remains the recorded full GPU/temporal, capture and
+The [R1.5 verification](../r/r1.5.md#verification) remains the recorded full GPU/temporal, capture and
 rendered-output evidence for the unchanged executable source. This gate reruns the CPU suite and
 checkpoint A; it does not claim a fresh full GPU suite, image comparison, vendor inspection or
 performance measurement. Documentation policy and local link review validate the handoff edits.
@@ -84,7 +84,7 @@ performance measurement. Documentation policy and local link review validate the
   Existing automated fallback/capability evidence does not complete those checks.
 - [M6.5](m6.5.md) retains EDR DEFER and its accepted historical screenshot-hash exception.
   The drift remains unresolved.
-- [R1.3](../r1.3.md#unresolved-image-parity) and [R1.5](../r1.5.md#unresolved-image-parity) retain their
+- [R1.3](../r/r1.3.md#unresolved-image-parity) and [R1.5](../r/r1.5.md#unresolved-image-parity) retain their
   explicitly accepted slice-specific parity exceptions. Failed comparisons stay failed and
   unexplained. Gate B approves interface entry; it does not grant an M7 image-parity exception.
 

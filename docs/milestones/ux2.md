@@ -5,7 +5,7 @@
 First draft for owner revision. UX2 makes a scene a saved document instead of C++ code, rebuilds
 the Hierarchy around that document, gives lights and objects an authored enabled state that is
 distinct from culling, folds the two single-model scenes into labs, and gives the application an
-icon. Unlike [R2](r2.md) and [R3](r3.md) it changes behaviour, so it carries its own gates and an
+icon. Unlike [R2](r/r2.md) and [R3](r/r3.md) it changes behaviour, so it carries its own gates and an
 explicit re-baseline. [Part IV](../roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy)
 owns the outcome and gates; this record keeps the contract, evidence and limits.
 

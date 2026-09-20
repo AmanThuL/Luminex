@@ -20,10 +20,10 @@ in a chain, `Core → RHI → Render → Engine → App`, Engine holding CPU dec
 `TextureBake` linking Metal to reach the decoders, `Renderer.cpp` and `RenderGraph.cpp` near 2,000
 lines each with `Renderer.h` carrying the frame input contract, fourteen App sources compiled by
 both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, and helpers settled
-at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
-added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
-shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
-accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed; R1.5 is complete as recorded below. The subsequent [separate gate B review](../milestones/m6/interface-gate-b.md) approves M7.1 entry.
+at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r/r1.1.md)
+added enforcement and moved the adapter, [R1.2](../milestones/r/r1.2.md) separated Asset and Scene and
+shared the leaf contracts, and [R1.3](../milestones/r/r1.3.md) added AppModel and a shared session,
+accepted with the exception below. [R1.4](../milestones/r/r1.4.md) completes the prerequisite with strict parity passed; R1.5 is complete as recorded below. The subsequent [separate gate B review](../milestones/m6/interface-gate-b.md) approves M7.1 entry.
 
 ## Target module contract
 
@@ -106,7 +106,7 @@ and every output kept in the slice's evidence bundle outside the source tree.
   Performance is not a claim of R1.
 
 **Recorded exceptions:** on 2026-09-13 the owner explicitly accepted local main integration for
-R1.3's [six unresolved hashes](../milestones/r1.3.md#unresolved-image-parity) and R1.5's [two unresolved hashes](../milestones/r1.5.md#integration), each at its eight-round cap.
+R1.3's [six unresolved hashes](../milestones/r/r1.3.md#unresolved-image-parity) and R1.5's [two unresolved hashes](../milestones/r/r1.5.md#integration), each at its eight-round cap.
 Both image comparisons remain failed and unexplained; neither slice remains an integration blocker.
 These exceptions relax nothing for later slices: each meets the full protocol above.
 
@@ -249,7 +249,7 @@ any change to pass order or content; any shader change, which waits for the cand
 
 ## R1.5 — Consolidation and decomposition
 
-All five groups are implemented in one commit, with the owner's [two-hash exception](../milestones/r1.5.md#integration).
+All five groups are implemented in one commit, with the owner's [two-hash exception](../milestones/r/r1.5.md#integration).
 This is not a gate B prerequisite; later slices still meet the full comparison protocol.
 
 - Core helpers with two or more consumers of one contract: whole-file read; JSON string escaping

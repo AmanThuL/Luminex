@@ -9,7 +9,7 @@ protocol and R1, which is complete; this file holds the milestones the owner pla
 They add no rendering scope. Unless a section states otherwise they use the
 [R1 comparison protocol](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations)
 unchanged, and earlier parity exceptions relax nothing here. Proposed records hold design detail:
-[R2](../milestones/r2.md), [R3](../milestones/r3.md), [R4](../milestones/r4.md).
+[R2](../milestones/r/r2.md), [R3](../milestones/r/r3.md), [R4](../milestones/r/r4.md).
 
 ## R2 — RHI becomes RojoRHI
 
@@ -87,7 +87,7 @@ policy is green in both.
 **Implemented 2026-09-20.** `RojoRHI/` is a submodule pinned to `rojo-rhi` `8da2a79`; CI checks it
 out anonymously (no credential needed, the repository is public); `Tools/check_submodule_pin.py`
 enforces the pin is reachable from `origin/main`. See the
-[validation record](../milestones/r2.4-validation.md) for evidence and limits.
+[validation record](../milestones/r/r2.4-validation.md) for evidence and limits.
 
 ## R3 — Subsystems and tree restructure
 
