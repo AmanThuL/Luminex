@@ -16,6 +16,13 @@ includes("xmake/shaders.lua", "xmake/setup.lua", "xmake/tasks.lua", "xmake/depen
 -- RojoRHI/xmake.lua carries root settings for a standalone configure and is deliberately not included.
 rojorhi_thirdparty = path.join(os.scriptdir(), "ThirdParty")
 rojorhi_imgui_target = "ImGui"
+if not os.isfile(path.join(os.scriptdir(), "RojoRHI/xmake/targets.lua")) then
+    -- Description scope has no raise/error/assert/os.exit, and a missing `includes` only warns,
+    -- so stop by calling an undefined name whose spelling repeats the instruction.
+    print("error: RojoRHI/ is empty: run `git submodule update --init` from the repository root")
+    local run_git_submodule_update_init_RojoRHI_is_empty
+    run_git_submodule_update_init_RojoRHI_is_empty()
+end
 includes("RojoRHI/xmake/targets.lua")
 
 -- First-party targets keep source membership and dependency declarations beside their units.

@@ -169,6 +169,8 @@ task("setup")
 
         local imgui_patch = path.join(os.projectdir(),
                                       "RojoRHI/Tools/Patches/imgui-metal4-remove-texture.patch")
+        assert(os.isfile(imgui_patch),
+               "RojoRHI/ is empty: run `git submodule update --init`, then `xmake setup` again")
         apply_maintained_patch("ThirdParty/imgui", imgui_patch)
 
         if not os.isdir("ThirdParty/imgui-node-editor") then
