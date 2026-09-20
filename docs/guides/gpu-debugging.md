@@ -74,7 +74,7 @@ border source and destination are depth-tested. App declares `lmx.pass.selection
 `lmx.pass.selection.outline` through Render's `SelectionOutline` utility, then samples its separate
 SDR output target. Their GPU costs appear in graph/timing records. They never write scene targets
 or temporal history, and ordinary offscreen screenshots/sequences do not invoke them. See the
-[UX1 design](../specs/2026-09-14-ux1-editor-experience-design.md) and [active acceptance record](../milestones/ux1.md) for scope and validation status.
+[UX1 design](../milestones/ux/ux1-design.md) and [active acceptance record](../milestones/ux/ux1.md) for scope and validation status.
 
 ## Capture and inspect a frame
 

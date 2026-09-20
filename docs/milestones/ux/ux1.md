@@ -4,15 +4,15 @@
 
 All P1–P3 areas and manual-review refinements are implemented. On 2026-09-14 the owner accepted
 the result and requested local-main integration, a PR and merge when ready. The executor plan
-is closed and removed. The [roadmap](../roadmap/editor-experience.md) owns scope; the
-[implemented design](../specs/2026-09-14-ux1-editor-experience-design.md) owns presentation.
+is closed and removed. The [roadmap](../../roadmap/editor-experience.md) owns scope; the
+[implemented design](ux1-design.md) owns presentation.
 Owner acceptance does not certify every automated check below. M7.1 remains inactive.
 
 ## Baseline and integration
 
 Work started in a sibling worktree from local main `5dee208`, preserving the rebuilt parent App,
 shaders and original workspace outside source before editing. The rendering baseline remains M6.5
-plus R1. [Gate B](m6/interface-gate-b.md) and [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md)
+plus R1. [Gate B](../m6/interface-gate-b.md) and [ADR 0021](../../decisions/0021-gpu-scene-handoff-contract.md)
 remain accepted; editor-local names and indices do not implement GPU scene identity.
 
 The first two local stage commits are `64a9e60` (coherent diagnostics) and `8d57e6f` (subject recovery
@@ -37,7 +37,7 @@ content and reflow narrow rows. Shared delayed hover help explains non-obvious e
 reset scope and disabled controls without replacing visible failure reasons. Rendering Inspector has Exposure, Bloom, Shadows, Reconstruction,
 Resolution and Display & Details groups. Camera/object/light fields identify XYZ, angles, world
 units and scene-linear RGB. Reset defaults and operator controls are documented in the
-[GPU debugging guide](../guides/gpu-debugging.md#restore-editor-settings).
+[GPU debugging guide](../../guides/gpu-debugging.md#restore-editor-settings).
 
 Requested and effective reconstruction are separate. Off retains requests while reporting actual
 full-resolution output and inactive dependencies. Vendor fallback retains the request and reason.

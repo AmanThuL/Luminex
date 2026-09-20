@@ -2,9 +2,9 @@
 
 **Status**: Implemented
 
-This design translates the accepted [UX1 boundary](../roadmap/editor-experience.md) into one
-coherent editor experience. The [audit](../research/2026-09-14-editor-uiux-audit.md) supplies the
-observed baseline; the [milestone record](../milestones/ux1.md) records shipped behavior,
+This design translates the accepted [UX1 boundary](../../roadmap/editor-experience.md) into one
+coherent editor experience. The [audit](../../research/2026-09-14-editor-uiux-audit.md) supplies the
+observed baseline; the [milestone record](ux1.md) records shipped behavior,
 owner acceptance and evidence limits. The completed executor plan has been removed.
 
 ## User tasks and information hierarchy
@@ -296,7 +296,7 @@ belong in AppModel where applicable. ImGui layout, native-window behavior and dr
 App/Panels and EditorShell. Scene owns source labels and local geometry bounds; SceneSession
 retains authored editor reset defaults on first activation and samples current-time animation
 defaults. Renderer observers provide truthful record/status data without taking an ImGui dependency.
-Keep the established [module contract](../conventions/modules.md) and record lifetimes intact.
+Keep the established [module contract](../../conventions/modules.md) and record lifetimes intact.
 
 The roadmap owns the complete acceptance gate. The plan supplies concrete state-transition,
 snapshot and interaction checks. Use tests for behavioral risks, screenshots for readability,
