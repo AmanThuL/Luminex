@@ -75,6 +75,14 @@ project file, so project settings, requires and the language level are declared 
 RojoRHI owns a minimal setup task and a test-only copy of the shader rule so that it builds and
 tests with no Luminex checkout; the production shader rule stays in Luminex.
 
+**Superseded text (R2.4).** "Developed in the private `rojo-rhi` repository" above, and "hosted CI
+needs a read-only credential for the private submodule" and "a public repository stay[s] deferred"
+below, are superseded by R2.4's owner decision
+([R2 record](../milestones/r2.md#r24--extract-mount-and-wire),
+[R2.4 design spec](../specs/2026-09-20-r2.4-extract-mount-wire-design.md)), not by this ADR's
+acceptance: `rojo-rhi` was published publicly under the Apache-2.0 license, so CI checks it out
+anonymously and no credential exists; only releases and a package registry entry stay deferred.
+
 ## Consequences
 
 An interface change now costs two pull requests and a pin bump, and hosted CI needs a read-only

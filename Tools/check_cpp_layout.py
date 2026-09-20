@@ -14,7 +14,7 @@ from typing import Any, BinaryIO
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CPP_ROOTS = ("Source", "RojoRHI", "Tests", "Benchmarks")
+CPP_ROOTS = ("Source", "Tests", "Benchmarks")
 FUNCTION_SYMBOL_KINDS = {6, 9, 12}  # Method, Constructor, Function (LSP SymbolKind)
 RULER = re.compile(r"^\s*//.*(?:={8,}|-{8,})")
 SEPARATOR_BODY = re.compile(r"^//={100,}$")

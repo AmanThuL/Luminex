@@ -1,14 +1,10 @@
 # xmake
 /.xmake/
 /build/
-# a standalone configure of the RHI component writes these beside its own root
-/RojoRHI/.xmake/
-/RojoRHI/build/
 
 # fetched third-party (see `xmake setup`)
 /ThirdParty/*
 !/ThirdParty/README.md
-/RojoRHI/ThirdParty/
 /Assets/Fetched/
 
 # tooling

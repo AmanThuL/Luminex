@@ -48,7 +48,7 @@ include root `RojoRHI/Include`.
 |---|---|
 | `render`, `scene`, `app-model`, `benchmarks` | `"*"` |
 | `app-shell` | `"*"`, and `rojoRHI/Metal4/Metal4ImGui.h` |
-| `tests` | `"*"`, and `RojoRHI/Tests/RhiGpuTestSupport.h` |
+| `tests` | `"*"` |
 | `asset`, `texture-bake` | `rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, and nothing else |
 
 [ADR 0024](../decisions/0024-rhi-relocation-to-rojorhi.md) supersedes in part the four `rhi-*`
@@ -74,10 +74,9 @@ Rules the entry carries:
   target without failing the target-closure check, which is how the standalone build stays
   standalone. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
-`tests` takes one header out of the component's own suite, `RojoRHI/Tests/RhiGpuTestSupport.h`, the GPU
-bootstrap that `Tests/GpuTestSupport.h` layers its Asset, Render and Scene helpers onto. The edge
-points into the component, never out of it; when the component leaves the repository, the repository
-suite keeps its own copy of the bootstrap. The two test binaries partition the suite: a case lives
+`tests` takes no header out of the component's own suite: the repository suite keeps its own copy
+of the GPU bootstrap, merged into `Tests/GpuTestSupport.h` alongside its Asset, Render and Scene
+helpers, so no edge reaches `RojoRHI/Tests`. The two test binaries partition the suite: a case lives
 in exactly one of them, and `RojoRHITests` links the `RojoRHI` target and no other project library.
 
 ### Directory ownership

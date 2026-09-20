@@ -105,13 +105,15 @@ class ProjectPolicyTests(unittest.TestCase):
         self.assertEqual(errors, [])
 
     def test_process_policy_covers_extracted_build_scripts(self) -> None:
-        for path in ("xmake/setup.lua", "Source/Core/xmake.lua", "RojoRHI/xmake.lua",
-                     "RojoRHI/xmake/targets.lua"):
+        for path in ("xmake/setup.lua", "Source/Core/xmake.lua"):
             with self.subTest(path=path):
                 errors: list[str] = []
                 with mock.patch.object(policy, "read_text", return_value="-- Close the backlog."):
                     policy.check_process_narration([Path(path)], errors)
                 self.assertEqual(len(errors), 1)
+
+    def test_component_paths_are_not_process_roots(self):
+        self.assertFalse(any(root.startswith("RojoRHI") for root in policy.PROCESS_ROOTS))
 
 
 if __name__ == "__main__":

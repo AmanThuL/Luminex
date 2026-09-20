@@ -13,8 +13,8 @@ unchanged, and earlier parity exceptions relax nothing here. Proposed records ho
 
 ## R2 — RHI becomes RojoRHI
 
-**Outcome:** the RHI is the private `rojo-rhi` repository, mounted at `RojoRHI/` as a submodule
-with its own conventions, ADRs, conformance tests and CI. Luminex remains the primary project and
+**Outcome:** the RHI is the separately published, Apache-2.0 `rojo-rhi` repository, mounted at
+`RojoRHI/` as a submodule with its own conventions, ADRs, conformance tests and CI. Luminex remains the primary project and
 the RHI's required consumer; every RHI edit is a RojoRHI commit. This supersedes R1's deferral of
 a standalone RHI and the earlier candidate that waited for a second backend.
 
@@ -28,8 +28,8 @@ default labels, targets `RojoRHI` and `RojoRHIMetal4ImGui`. xmake in both reposi
 addition; every pre-existing test case passes under its name in one of the two repositories.
 
 **Defer:** a second backend ([ADR 0007](../decisions/0007-d3d12-backend-target.md) still governs
-it); releases, a package registry entry or a public repository; any RHI capability or semantic
-change; unifying the two shader rules.
+it); releases or a package registry entry; any RHI capability or semantic change; unifying the two
+shader rules.
 
 ### R2.1 — RojoRHI foundations
 
@@ -74,14 +74,20 @@ exactly as the substitution predicts. Renderer-owned `lmx.*` labels, `LMX_*` var
 
 **Deliver:** an immutable tag on the last in-tree commit; `git filter-repo` extraction keeping
 history for every path RojoRHI receives; after the owner confirms, `rojo-rhi` `main` replaced by
-the result; the submodule mount with Luminex including the component's targets file; CI in both
-repositories, with a read-only credential for the private submodule; a policy check that the
-pinned commit is reachable from `rojo-rhi` `main`; `AGENTS.md`, conventions, architecture and
-worktree guidance updated.
+the result and the repository made public under Apache-2.0; the submodule mount with Luminex
+including the component's targets file; CI in both repositories, with anonymous submodule checkout
+now that `rojo-rhi` is public; a policy check that the pinned commit is reachable from `rojo-rhi`
+`main`; `AGENTS.md`, architecture and worktree guidance updated, and Luminex's own conventions
+scoped to stop at the mount, since the component now carries and enforces its own.
 
 **Exit gate:** a fresh recursive clone builds; Luminex at the mount commit matches the
 pre-extraction tag under the protocol; `rojo-rhi` builds and passes with no Luminex checkout;
 policy is green in both.
+
+**Implemented 2026-09-20.** `RojoRHI/` is a submodule pinned to `rojo-rhi` `8da2a79`; CI checks it
+out anonymously (no credential needed, the repository is public); `Tools/check_submodule_pin.py`
+enforces the pin is reachable from `origin/main`. See the
+[validation record](../milestones/r2.4-validation.md) for evidence and limits.
 
 ## R3 — Subsystems and tree restructure
 
