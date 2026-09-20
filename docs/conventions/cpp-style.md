@@ -11,8 +11,9 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
   branch and uses `lmx::experimental::<name>`. Accepted evidence is frozen with an immutable tag;
   only conclusions, ADRs, and adopted production code return to `main`.
 - **Files**: one primary type per header; `PascalCase.h/.cpp` named after it. `#pragma once`.
-  Every project-owned source or header under `Source/`, `RojoRHI/`, or `Experiments/` starts with the
-  file envelope defined below.
+  Every project-owned source or header under `Source/` or `Experiments/` starts with the
+  file envelope defined below. `RojoRHI/` is a mounted submodule that carries and enforces its
+  own conventions; a Luminex commit never edits a file under it.
 - **Includes**: own header first, then project (`"Core/..."`), then third-party, then std. Blank line between groups.
 - **Errors**: use the owning domain's `std::expected` alias at creation and loading boundaries
   (`rojoRHI::Result<T>` for GPU work, `lmx::asset::AssetResult<T>` for assets); use `LMX_ASSERT` for contract
@@ -23,8 +24,9 @@ Formatting is owned by `.clang-format` (`xmake format`). This file covers what a
 
 ## File headers
 
-Every hand-written project-owned `.h` and `.cpp` file under `Source/`, `RojoRHI/`, or `Experiments/`
-starts at its first physical line with this four-line envelope. Both ruler lines are exactly 120
+Every hand-written project-owned `.h` and `.cpp` file under `Source/` or `Experiments/`
+starts at its first physical line with this four-line envelope; `RojoRHI/` is out of scope, since
+the mounted component enforces its own file-envelope convention. Both ruler lines are exactly 120
 ASCII characters (`//` followed by 118 `-` characters):
 
 ```cpp
