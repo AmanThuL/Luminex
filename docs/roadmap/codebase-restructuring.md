@@ -153,6 +153,12 @@ metallib inventory and runtime artifact paths unchanged, importer rebuilds intac
 fallback loading, basename collisions still rejected. The format check holds at every commit,
 because renaming a shader folder lengthens every path that names it in C++ source.
 
+**Implemented 2026-09-20.** `Shaders/` holds `Common/`, ten `Passes/<family>/` folders and
+`Tests/`; `xmake/shaders.lua` resolves modules from `Common/` and, for oracles, from the family
+folders, `Tools/check_shader_imports.py` enforces placement and import locality, and the runtime
+still loads `Shaders/<basename>`. See the
+[validation record](../milestones/r/r3.2-validation.md) for evidence and limits.
+
 ### R3.3 — Engine
 
 **Outcome:** scene description lives below the renderer, as in Donut's engine.
