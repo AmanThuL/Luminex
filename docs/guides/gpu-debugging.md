@@ -43,7 +43,7 @@ The path must be absolute. The first frame the run compiles is written and no la
 file is the same whether the run lasted one frame or ten thousand. It lists the imported resources,
 the declared sinks, each scheduled pass with its uses in schedule order, each culled pass with the
 reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
-driver-reported value, so it answers "was this pass declared, ordered, and kept?" — not "how long did it take", which is the timing trace's question.
+driver-reported value, so it answers "was this pass declared, ordered, and kept?" rather than "how long did it take", which is the timing trace's question.
 
 Reach for a graph dump first when a pass appears to do nothing: a pass listed under `culled` never ran, and its reason explains why. The detached Render Graph window displays one coherent
 frame as a grouped node canvas with selection-scoped details. Live publishes a complete owned
@@ -101,8 +101,8 @@ add `--render-scale <0.5..1.0>` (offscreen) or `LMX_DYNAMIC_RESOLUTION_BUDGET_MS
 run, letting the controller pick the scale the captured frame lands at); the manifest and dumped
 images then show `lmx.pass.temporal.upscale`'s inputs and the scene pass's render area/scissor
 instead of the native resolve's. Inspect the generated manifest first, then decoded uniforms and resource images. The capture's schema sidecar records one
-`frameDataUploads` entry per `bindFrameData` call in the captured frame — page label, slot, offset,
-size, alignment, and GPU address — which is what to check when tracing an upload to its page; the
+`frameDataUploads` entry per `bindFrameData` call in the captured frame (page label, slot, offset,
+size, alignment, and GPU address), which is what to check when tracing an upload to its page; the
 dump tool's decoded output remains `uniforms.json`. Treat label joins and positional frame-data-page
 joins with the confidence recorded in the manifest; the Metal capture bundle is not a documented interchange format.
 
@@ -259,7 +259,7 @@ These tests validate the parsers and report generation without requiring a GPU c
 
 M5 added histogram auto-exposure and bloom as passes declared every frame; dead-pass culling keeps
 only the features that are enabled. With both features off, `--screenshot` output must stay byte-identical to what the pre-M5 tip rendered.
-There is no golden-image automation for this -- the procedure below, re-run by hand, is the accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
+There is no golden-image automation for this. The procedure below, re-run by hand, is the accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
 `LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Screenshot.cpp`), an undocumented-to-users env var that exists solely for this check.
 
 Build the baseline from the commit before the change under test (substitute the actual parent commit), then the tip, capturing all three scenes both times:
@@ -284,7 +284,7 @@ done
 ```
 
 `cmp` exits non-zero and names the first differing byte offset on any mismatch, so silence-implies-
-identical does not apply -- check that all three scenes actually printed `IDENTICAL`. Bloom's own
+identical does not apply: check that all three scenes actually printed `IDENTICAL`. Bloom's own
 effect is checked the opposite way: capture once more without `LMX_SCREENSHOT_NO_BLOOM` and confirm
 the file differs from the bloom-off capture (`cmp` reports a byte offset) and opens as a plausible image (no full-screen white, no NaN speckle) rather than asserting a specific diff.
 
