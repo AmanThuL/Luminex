@@ -280,7 +280,7 @@ toolchain is present. Shared modules live in `Shaders/Modules/`, test oracles in
 entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
 Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
 
-The root component is a physical and build boundary, not yet a separately published library: it has
+The root component is a physical and build boundary: `RojoRHI/` mounts the separately published Apache-2.0 `rojo-rhi` repository as a submodule pinned to a commit reachable from its `main`; it has
 no Core dependency but still builds, tests and passes policy inside this repository. The RHI grows
 only when a rendering feature supplies a real portability requirement. Metal is the first implementation, not
 the public vocabulary: accepted contracts do not leak native handles upward. ADR 0010 selected an

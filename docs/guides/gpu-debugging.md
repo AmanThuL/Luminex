@@ -266,7 +266,7 @@ Build the baseline from the commit before the change under test (substitute the 
 
 ```bash
 git worktree add /tmp/lmx-baseline <baseline-commit>
-cd /tmp/lmx-baseline && xmake setup -P . && xmake -P .
+cd /tmp/lmx-baseline && git submodule update --init && xmake setup -P . && xmake -P .
 for scene in sponza damaged-helmet material-lab; do
   LMX_SCREENSHOT_NO_BLOOM=1 xmake run -P . App --scene "$scene" \
     --screenshot "/tmp/lmx-baseline-$scene.bmp"
