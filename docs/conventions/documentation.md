@@ -42,9 +42,9 @@ silently override an accepted higher-precedence decision.
    restated in an ADR or roadmap.
 
 README and `AGENTS.md` are navigation and operation surfaces. They summarize; they do not introduce
-new architecture decisions. Implemented retained designs change only in path references but may
-remain as design context, with anything beyond needing the owner's approval as an explicit
-exception, and current documents cannot depend on deleted executor plans.
+new architecture decisions. Implemented retained designs change only in path references; anything
+beyond that needs the owner's approval as an explicit exception. They may remain as design context.
+Current documents cannot depend on deleted executor plans.
 
 Public-facing surfaces such as README, GitHub About, release text, and gallery captions describe
 what the renderer does now before naming a short set of future feature themes. They do not expose
