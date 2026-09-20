@@ -51,6 +51,12 @@ class ProjectPolicyTests(unittest.TestCase):
             policy.check_markdown([path], errors)
         self.assertTrue(any("unsupported document status" in error for error in errors))
 
+    def test_markdown_check_rejects_record_outside_series_folder(self) -> None:
+        errors: list[str] = []
+        with mock.patch.object(policy, "read_text", return_value="# X\n\n**Status**: Proposed\n"):
+            policy.check_markdown([Path("docs/milestones/r9.md")], errors)
+        self.assertTrue(any("series folder" in error for error in errors))
+
     def test_status_tables_drop_removed_folders(self) -> None:
         self.assertNotIn("specs", policy.STATUS_DIRS)
         self.assertNotIn("postmortems", policy.STATUS_DIRS)

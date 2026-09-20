@@ -209,6 +209,9 @@ def check_markdown(files: list[Path], errors: list[str]) -> None:
                 if not valid:
                     errors.append(f"{path}: unsupported document status: {status.group(1).strip()}")
 
+        if path.parts[:2] == ("docs", "milestones") and len(path.parts) == 3:
+            errors.append(f"{path}: milestone documents belong in a series folder")
+
     active: list[Path] = []
     for path in markdown:
         if path.parts[:2] != ("docs", "plans"):
