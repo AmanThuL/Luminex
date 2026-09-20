@@ -27,7 +27,7 @@ struct WorkloadSpec {
     uint64_t blockSize = 0; ///< Dynamic per-draw block size in bytes; 0 for Static.
 };
 
-/// The five frozen cases from docs/specs/2026-08-12-m5.2-rhi-frame-data-design.md section 11, in
+/// The five frozen cases from docs/milestones/m5/m5.2-design.md section 11, in
 /// the spec table's order. Frozen: do not add, remove, reorder, or resize without updating that
 /// spec and the milestone plan it decomposes.
 inline constexpr WorkloadSpec kWorkloads[] = {

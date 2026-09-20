@@ -3,7 +3,7 @@
 **Status**: Implemented (2026-08-11)
 
 This plan executes the accepted design in
-`docs/specs/2026-08-11-m5-execution-substrate-design.md`. `docs/roadmap.md` owns the M5 outcome,
+`docs/milestones/m5/m5-design.md`. `docs/roadmap.md` owns the M5 outcome,
 deliverables, exit gate, portability checkpoint A, and deferrals; this plan decomposes that
 boundary without expanding it.
 
@@ -146,7 +146,7 @@ disabled features reproduce pre-M5 output; all coverage stays green.
    reversed-Z, storage hazards, load/store behavior, indirect arguments, frame-slot retirement —
    into a named suite any future backend must pass unchanged.
 2. Record the freeze as an ADR in `docs/decisions/` naming the suite and its covered semantics.
-3. Write `docs/milestones/m5.md` with shipped behavior, evidence, and deliberate limits; update
+3. Write `docs/milestones/m5/m5.md` with shipped behavior, evidence, and deliberate limits; update
    the roadmap's current-baseline section; refresh `AGENTS.md` where commands or architecture
    contracts changed; close this plan per `docs/conventions/documentation.md`.
 

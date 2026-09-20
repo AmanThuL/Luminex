@@ -2,7 +2,7 @@
 
 **Status**: Accepted (2026-08-12) · **Roadmap**: ../roadmap.md (M5.1) ·
 **Evidence**: ../research/2026-08-12-execution-model-evidence.md ·
-**Spec**: ../specs/2026-08-12-m5.1-rhi-execution-model-design.md
+**Spec**: ../milestones/m5/m5.1-design.md
 
 ## Context
 

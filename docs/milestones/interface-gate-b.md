@@ -78,7 +78,7 @@ performance measurement. Documentation policy and local link review validate the
 
 ## Preserved limits
 
-- [M5.6](m5.6.md) remains reliability failure / DEFER, with no accepted production speedup or
+- [M5.6](m5/m5.6.md) remains reliability failure / DEFER, with no accepted production speedup or
   adopted ICB path. Frozen experiment source/evidence remains untouched.
 - [M6.4](m6.4.md) retains manual Sponza switching and Xcode opaque-encoder inspection follow-ups.
   Existing automated fallback/capability evidence does not complete those checks.

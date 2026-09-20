@@ -149,7 +149,7 @@ approving M7.1 entry while preserving those limits.
 **Outcome:** closed as reliability failure / **DEFER**, with no accepted performance conclusion.
 Production retains M5.5 rendering behavior; no GPU-submission implementation is adopted.
 
-**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](../decisions/0012-gpu-submission-defer.md), [milestone](../milestones/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
+**State:** the user approved terminal closure on 2026-09-06 ([ADR 0012](../decisions/0012-gpu-submission-defer.md), [milestone](../milestones/m5/m5.6.md)). Repeated no-validation timeouts/GPU resets remain unresolved. The prescribed 1,920-pair matrix was not completed; partial results are not accepted evidence. Source and historical plan/spec are frozen at `m5.6-gpu-submission-evidence`, not promoted to production.
 
 **Retained evidence:** four native modes, seeded workload/CPU oracle and separate public-RHI
 reference; pre-collection correctness tests; incomplete paired corpus and all failures; bounded
