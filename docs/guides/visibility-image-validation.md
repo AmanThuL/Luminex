@@ -3,7 +3,7 @@
 **Status**: Proposed — experimental replacement gate failed; not adopted
 
 This experiment evaluated a replacement for the final-SDR cull/off comparison in
-[M7.2](../milestones/m7.2.md). The owner requested a first-principles reassessment after the
+[M7.2](../milestones/m7/m7.2.md). The owner requested a first-principles reassessment after the
 original exact comparison failed. Its 13/15 result remains historical evidence. This procedure
 does not change the renderer, reference images, indirect/direct gate or parent/candidate profiles.
 
@@ -124,6 +124,6 @@ audit must also check that the freeze digest still matches the pre-holdout recor
 120/60 scheduled fresh captures completed once with matching commands. Never reuse raw paths
 across calibration and holdout; identical image hashes are expected for successful exact repeats.
 
-The [follow-up record](../milestones/m7.2-visibility-followup.md) owns results: exact attachment
+The [follow-up record](../milestones/m7/m7.2-visibility-followup.md) owns results: exact attachment
 fixtures passed, but the independent image gate passed only 9/15 cases, including five off
 controls outside calibration. This method is not an adopted acceptance rule in AGENTS.md.

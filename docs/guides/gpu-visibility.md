@@ -4,7 +4,7 @@
 
 CPU classification with indirect submission remains the default. GPU classification is an explicit
 alternative that produces draw rows and indexed arguments through the render graph. The
-[milestone](../milestones/m7.3.md) owns its verification results and acceptance state; this guide
+[milestone](../milestones/m7/m7.3.md) owns its verification results and acceptance state; this guide
 explains operation and diagnostics. No measurement here selects a new default.
 
 ## Run and inspect
