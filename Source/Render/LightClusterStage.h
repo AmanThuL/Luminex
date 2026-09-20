@@ -56,7 +56,7 @@ struct RetiredLightClusters {
 
 /// Owns three paced slots of grid, list, count and counter buffers plus the three kernels, and
 /// declares `lmx.pass.light.reset|count|scan|fill` over them. The kernels reproduce
-/// `buildLightClusters` bit for bit; see Shaders/Modules/LightCluster.slang.
+/// `buildLightClusters` bit for bit; see Shaders/Passes/LocalLights/LightCluster.slang.
 class LightClusterStage {
 public:
     /// Registers the scalar-packed kernel parameter layout without creating a GPU device.

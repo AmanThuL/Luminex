@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LocalLightMath.h
-/// @brief Declares the CPU mirror of Shaders/Modules/LocalLights.slang's ComputePunctualLight.
+/// @brief Declares the CPU mirror of Shaders/Common/LocalLights.slang's ComputePunctualLight.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -33,7 +33,7 @@ float spotTerm(float cosTheta, float spotScale, float spotOffset);
 /// direct-loop or clustering pass uses this to admit a light before any shading is evaluated.
 bool lightReaches(const LightRow& row, glm::vec3 worldPosition);
 
-/// CPU mirror of Shaders/Modules/Lighting.slang's `ComputePunctualLight`: joins the same GGX/Smith/
+/// CPU mirror of Shaders/Common/Lighting.slang's `ComputePunctualLight`: joins the same GGX/Smith/
 /// Schlick BRDF core `ComputeDirectionalLight` uses with `row`'s distance attenuation and cone
 /// term. Returns exact `glm::vec3(0)` through one ordered early-out when the surface is at or
 /// beyond `row`'s range, the cone term is zero, or the surface normal faces away from the light;

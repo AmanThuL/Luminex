@@ -1,4 +1,4 @@
-// Test-only oracle for Shaders/Modules/Lighting.slang's ComputePunctualLight: one thread per
+// Test-only oracle for Shaders/Common/Lighting.slang's ComputePunctualLight: one thread per
 // sample, evaluating the shipped function on a host-supplied light row and surface and writing the
 // scene-linear result straight back. Nothing here reimplements the light model -- the point is to
 // run the production function and let Tests/GpuLocalLightTests.cpp hold it against

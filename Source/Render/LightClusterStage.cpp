@@ -15,10 +15,10 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/Modules/LightCluster.slang's LightClusterParams. Matrices travel as their four
-// glm columns because a Slang float4x4 in a cbuffer leaves the column/row convention to codegen,
-// while `column[c][r]` names exactly what `m[c][r]` names here; the slice table rides in float4s
-// because cbuffer packing pads a scalar array element to sixteen bytes.
+// Mirrors Shaders/Passes/LocalLights/LightCluster.slang's LightClusterParams. Matrices travel as
+// their four glm columns because a Slang float4x4 in a cbuffer leaves the column/row convention to
+// codegen, while `column[c][r]` names exactly what `m[c][r]` names here; the slice table rides in
+// float4s because cbuffer packing pads a scalar array element to sixteen bytes.
 struct LightClusterKernelParams {
     std::array<glm::vec4, 4> view{};
     std::array<glm::vec4, 4> inverseProjection{};
