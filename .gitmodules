@@ -1,0 +1,3 @@
+[submodule "RojoRHI"]
+	path = RojoRHI
+	url = https://github.com/AmanThuL/rojo-rhi.git
