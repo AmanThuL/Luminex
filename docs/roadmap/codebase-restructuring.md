@@ -77,7 +77,8 @@ history for every path RojoRHI receives; after the owner confirms, `rojo-rhi` `m
 the result and the repository made public under Apache-2.0; the submodule mount with Luminex
 including the component's targets file; CI in both repositories, with anonymous submodule checkout
 now that `rojo-rhi` is public; a policy check that the pinned commit is reachable from `rojo-rhi`
-`main`; `AGENTS.md`, conventions, architecture and worktree guidance updated.
+`main`; `AGENTS.md`, architecture and worktree guidance updated, and Luminex's own conventions
+scoped to stop at the mount, since the component now carries and enforces its own.
 
 **Exit gate:** a fresh recursive clone builds; Luminex at the mount commit matches the
 pre-extraction tag under the protocol; `rojo-rhi` builds and passes with no Luminex checkout;
