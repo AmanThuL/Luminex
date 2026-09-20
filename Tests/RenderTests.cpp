@@ -313,10 +313,10 @@ TEST_CASE("plane mesh spans its half extent with +Y normals", "[render]") {
 }
 
 //======================================================================================================================
-// Shaders/ScenePass.slang hardcodes the prefiltered chain's level count so the roughness-to-mip map
-// is a compile-time constant in the fragment. Nothing links the two, so this is the statement that
-// the shader and the generator agree; a chain generated at a different depth would otherwise shift
-// every specular lookup by a fraction of a mip with no build error.
+// Shaders/Passes/Scene/ScenePass.slang hardcodes the prefiltered chain's level count so the
+// roughness-to-mip map is a compile-time constant in the fragment. Nothing links the two, so this
+// is the statement that the shader and the generator agree; a chain generated at a different depth
+// would otherwise shift every specular lookup by a fraction of a mip with no build error.
 TEST_CASE("the scene shader's specular mip count matches the IBL generator's", "[render]") {
     REQUIRE(lmx::asset::ibl::kSpecularMipCount == 5);
 }

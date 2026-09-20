@@ -31,7 +31,7 @@ using temporal_detail::kResolveSceneColorSlot;
 
 namespace {
 
-// Mirrors Shaders/TemporalResolve.slang's TemporalResolveParams.
+// Mirrors Shaders/Passes/Temporal/TemporalResolve.slang's TemporalResolveParams.
 struct TemporalResolveParams {
     uint32_t width = 0;
     uint32_t height = 0;

@@ -1,12 +1,12 @@
 // Temporal upscaling (M6.3 spec 7): one dispatch per *output* pixel reconstructs the presented
-// image out of a jittered render image smaller than it. It is Shaders/TemporalResolve.slang's
-// accumulation with three differences -- the current colour is resampled at the position this
-// output pixel's centre was sampled at rather than loaded one-to-one, the previous depth slot is
-// addressed at the extent it was rendered at rather than at this frame's, and the blend weight
-// carries a sample-proximity term, so an output pixel whose nearest jittered sample fell near its
-// own centre trusts this frame more than one that fell between samples. Over a jitter period every
-// output pixel receives near-centre samples, which is what lets the accumulation converge on
-// detail no single render-extent frame holds.
+// image out of a jittered render image smaller than it. It is
+// Shaders/Passes/Temporal/TemporalResolve.slang's accumulation with three differences -- the
+// current colour is resampled at the position this output pixel's centre was sampled at rather than
+// loaded one-to-one, the previous depth slot is addressed at the extent it was rendered at rather
+// than at this frame's, and the blend weight carries a sample-proximity term, so an output pixel
+// whose nearest jittered sample fell near its own centre trusts this frame more than one that fell
+// between samples. Over a jitter period every output pixel receives near-centre samples, which is
+// what lets the accumulation converge on detail no single render-extent frame holds.
 //
 // A separate file rather than a branch in the native kernel, so scale 1 keeps M6.2's compiled
 // output exactly. Everything here runs on pre-exposed scene-linear radiance and stays there;
@@ -23,8 +23,9 @@ import TemporalCommon;
 
 struct TemporalUpscaleParams
 {
-    // Shaders/TemporalResolve.slang's TemporalResolveParams, field for field and in its order, so
-    // the two kernels' blocks stay comparable and the CPU mirror grows by appending only.
+    // Shaders/Passes/Temporal/TemporalResolve.slang's TemporalResolveParams, field for field and in
+    // its order, so the two kernels' blocks stay comparable and the CPU mirror grows by appending
+    // only.
     uint width;  // Active render extent, which every render-extent input is read within.
     uint height;
     uint historyValid;      // 0 on a reset frame: steps 2-5, 7 and 8 are skipped and no history is read.
@@ -89,9 +90,9 @@ StructuredBuffer<float> gExposure : register(t0); // → MSL [[buffer(0)]]
 ConstantBuffer<TemporalUpscaleParams> gParams : register(b1); // → MSL [[buffer(1)]]
 
 // Five-tap Catmull-Rom over the output-extent history. Copied from
-// Shaders/TemporalResolve.slang's sampleHistoryCatmullRom, which stays the source of truth for the
-// weights, the five-tap renormalisation and the negative-lobe clamp: the copy exists because the
-// fetch names its own texture, not because the two differ.
+// Shaders/Passes/Temporal/TemporalResolve.slang's sampleHistoryCatmullRom, which stays the source
+// of truth for the weights, the five-tap renormalisation and the negative-lobe clamp: the copy
+// exists because the fetch names its own texture, not because the two differ.
 float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
 {
     float2 samplePosition = uv * extent;
@@ -122,9 +123,9 @@ float3 sampleHistoryCatmullRom(float2 uv, float2 extent)
 }
 
 // A tap position in render texels, turned into a UV the sampler may take. Copied from
-// Shaders/SpatialUpscale.slang's activeUv: the clamp keeps every tap's bilinear footprint inside
-// the active rectangle, and the division is by the *allocated* extent because that is the texture
-// the UV addresses.
+// Shaders/Passes/Temporal/SpatialUpscale.slang's activeUv: the clamp keeps every tap's bilinear
+// footprint inside the active rectangle, and the division is by the *allocated* extent because that
+// is the texture the UV addresses.
 float2 activeUv(float2 position)
 {
     float2 render = float2(float(gParams.width), float(gParams.height));
@@ -133,8 +134,8 @@ float2 activeUv(float2 position)
 }
 
 // Five-tap Catmull-Rom over the render image, at a position in render texels. It is
-// Shaders/SpatialUpscale.slang's sampleCurrentCatmullRom exactly, which is what makes the spatial
-// reference and this kernel differ by the accumulation alone.
+// Shaders/Passes/Temporal/SpatialUpscale.slang's sampleCurrentCatmullRom exactly, which is what
+// makes the spatial reference and this kernel differ by the accumulation alone.
 float3 sampleCurrentCatmullRom(float2 samplePosition)
 {
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;

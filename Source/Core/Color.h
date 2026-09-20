@@ -29,7 +29,7 @@ inline glm::vec4 srgbToLinear(const glm::vec4& c) {
 }
 
 /// The exact inverse of srgbToLinear -- same IEC 61966-2-1 piecewise curve
-/// Shaders/Modules/Encode.slang's linearToSrgbChannel uses, so a CPU-baked level and a
+/// Shaders/Common/Encode.slang's linearToSrgbChannel uses, so a CPU-baked level and a
 /// shader-encoded pixel agree bit-for-bit up to float precision. Clamped first: c is expected in
 /// [0,1], and pow() of a negative base is undefined.
 inline float linearToSrgb(float c) {
