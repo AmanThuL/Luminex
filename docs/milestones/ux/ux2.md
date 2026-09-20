@@ -164,7 +164,7 @@ loss of scale or window bounds. Unverified gestures are recorded as unverified.
 the binary as `Fonts/` is; a small AppKit unit in the App shell that sets the application icon at
 startup for the Dock, the switcher and both detached windows. Headless runs skip it. An `.app`
 bundle was rejected for now: shader, font and scene loading resolve against the working directory.
-Then the whole-application pass, the architecture and guide pages, `AGENTS.md`, and the dev journal.
+Then the whole-application pass, the architecture and guide pages, and `AGENTS.md`.
 
 **Exit gate:** the icon appears on a fresh launch; all earlier slice gates hold together.
 
