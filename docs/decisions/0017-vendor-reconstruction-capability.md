@@ -7,7 +7,7 @@
 The engine already owns motion, jitter, depth, exposure, output-capacity allocations and two
 interchangeable colour-history slots. A vendor algorithm must consume that contract without
 changing scene rendering or the native reference kernels. The
-[design](../specs/2026-09-12-m6.4-metalfx-temporal-adapter-design.md) supplies the boundary;
+[design](../milestones/m6/m6.4-design.md) supplies the boundary;
 this decision records the backend findings and adapter conventions that implement it.
 
 ## Decision
@@ -131,7 +131,7 @@ The vendor path is opt-in and backend-specific behind a neutral capability. Nati
 declarations, shaders, tolerances and checkpoint cases remain the reference. MetalFX owns opaque
 internal allocation and image-quality behavior; its creation cost, private scratch and history
 are additional to the graph's transient footprint. The
-[milestone record](../milestones/m6.4.md) owns measurements and validation evidence;
+[milestone record](../milestones/m6/m6.4.md) owns measurements and validation evidence;
 [frame pipeline](../frame-pipeline.md) and [GPU debugging](../guides/gpu-debugging.md) own current
 operation. [ADR 0016](0016-active-render-extent-and-resolution-control.md) continues to own render
 extent and controller policy.

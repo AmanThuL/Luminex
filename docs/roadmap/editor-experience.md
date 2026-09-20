@@ -13,7 +13,7 @@ from completed acceptance.
 The roadmap entry's [execution sequence](../roadmap.md#execution-sequence) places UX1 as
 **interface gate B (PASS) → UX1 → M7.1**. Finish the complete UX1 boundary below before opening
 the M7.1 executor plan. The
-[gate B record](../milestones/interface-gate-b.md) and
+[gate B record](../milestones/m6/interface-gate-b.md) and
 [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) remain accepted: UX1 changes project
 priority without invalidating or repeating the technical handoff review.
 
@@ -85,7 +85,7 @@ All required areas above must pass the following observable tasks on the actual 
   gesture as unverified, never as a pass inferred from source or screenshots.
 
 Retain before/after screenshots and action/result records outside published source; document
-actual coverage, unresolved defects and evidence limits in the [UX1 milestone record](../milestones/ux1.md),
+actual coverage, unresolved defects and evidence limits in the [UX1 milestone record](../milestones/ux/ux1.md),
 which records owner acceptance for integration and the limits of automated evidence.
 The original audit's tool limitations require new verification, not inherited passes. Apply the
 [engineering evidence rules](../conventions/engineering.md#validation-evidence) by change risk;
@@ -109,10 +109,10 @@ GPU scene identities/tables remain owned by M7.1. UX1 may expose current source 
 scene-local identifiers for disambiguation, without presenting them as durable GPU IDs. No
 renderer feature, new backend, HDR/EDR path or broad UI framework replacement expands UX1.
 
-The [implemented design](../specs/2026-09-14-ux1-editor-experience-design.md) records the interaction
+The [implemented design](../milestones/ux/ux1-design.md) records the interaction
 contract. On 2026-09-14 the owner accepted the result after manual review and requested integration
 and PR merge. The executor plan is closed. This acceptance does not turn unverified automated
-gestures or known GPU/image limitations into passes; the [milestone](../milestones/ux1.md) retains
+gestures or known GPU/image limitations into passes; the [milestone](../milestones/ux/ux1.md) retains
 them. M7.1 is eligible for a separate plan and remains inactive.
 
 ## UX2 — Scene documents and hierarchy
@@ -127,16 +127,16 @@ the refactoring comparison protocol.
 or the look, saves, relaunches and finds the same scene; the Hierarchy shows only scene content;
 an authored disabled state is never confused with culling; the application has an icon.
 
-**Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` — `KHR_lights_punctual`,
+**Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` (`KHR_lights_punctual`,
 glTF cameras and animations with keys in a standard external buffer, and one `LMX_scene` extension
-for asset references, overrides, lab generators, enabled state and the saved look — loaded under
+for asset references, overrides, lab generators, enabled state and the saved look) loaded under
 the unchanged editor, replacing the C++ light rig, camera rails and initial cameras (UX2.1);
 Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a six-scene catalog
 (UX2.2); enabled state for lights and objects across Scene, both classification paths, counters
 and measurement (UX2.3); a scene-only Hierarchy, the Inspector header checkbox, a Rendering panel
 for renderer configuration, workspace schema 4 and Open/Save/Save As/Revert (UX2.4); the
 application icon and whole-application acceptance (UX2.5). The scene's look is saved; renderer
-configuration stays with the editor session and CLI. The [proposed record](../milestones/ux2.md)
+configuration stays with the editor session and CLI. The [proposed record](../milestones/ux/ux2.md)
 holds the contract.
 
 **Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`

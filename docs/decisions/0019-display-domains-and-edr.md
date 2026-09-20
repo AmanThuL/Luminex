@@ -11,8 +11,8 @@ temporal semantics in ADRs 0006 and 0013–0017.
 
 An isolated macOS probe evaluates extended-linear presentation on the development machine's
 built-in Liquid Retina XDR display. It is evidence for a future display choice, not production
-presentation code. The [design spec](../specs/2026-09-12-m6.5-display-boundary-edr-design.md)
-and [milestone record](../milestones/m6.5.md) preserve the evaluation and accepted closure limits.
+presentation code. The [design spec](../milestones/m6/m6.5-design.md)
+and [milestone record](../milestones/m6/m6.5.md) preserve the evaluation and accepted closure limits.
 
 ## Verified SDR contract
 
@@ -122,4 +122,4 @@ archive SHA-256 is `d44224edeb81b380c84349105b652d33ee5a7375dac94fb86cab61ac82ad
 The retained `Tools/EdrProbe/imgui-linear.patch` reproduces the private backend changes against
 the pinned maintained ImGui copy, without committing ThirdParty contents.
 
-The [milestone evidence](../milestones/m6.5.md) records automated output checks and their limits.
+The [milestone evidence](../milestones/m6/m6.5.md) records automated output checks and their limits.

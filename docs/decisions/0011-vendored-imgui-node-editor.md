@@ -1,7 +1,7 @@
 # ADR 0011: The Render Graph node view is drawn with a vendored, patched imgui-node-editor
 
 **Status**: Accepted (2026-09-04) · **Roadmap**: ../roadmap.md (M5.4) ·
-**Spec**: ../specs/2026-09-04-m5.4-render-graph-node-view-design.md
+**Spec**: ../milestones/m5/m5.4-design.md
 
 ## Context
 

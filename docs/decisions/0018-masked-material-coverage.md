@@ -39,5 +39,5 @@ mips, alpha-to-coverage, translucent blending, transmission and deforming foliag
 by this decision. Temporal reconstruction can expose these content limitations; difference maps
 must not attribute every such artifact to the reconstruction algorithm.
 
-The [design extension](../specs/2026-09-12-m6.4-metalfx-temporal-adapter-design.md) owns the bounded
-real-scene comparison work; the [milestone record](../milestones/m6.4.md) owns measured evidence.
+The [design extension](../milestones/m6/m6.4-design.md) owns the bounded
+real-scene comparison work; the [milestone record](../milestones/m6/m6.4.md) owns measured evidence.

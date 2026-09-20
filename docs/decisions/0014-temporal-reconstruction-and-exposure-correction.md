@@ -1,8 +1,8 @@
 # ADR 0014: Temporal reconstruction contract, ping-pong ownership and exposure correction
 
 **Status**: Accepted (2026-09-08) · **Roadmap**: ../roadmap.md (M6.2) ·
-**Spec**: ../specs/2026-09-07-m6.2-native-taa-exposure-design.md ·
-**Milestone**: ../milestones/m6.2.md
+**Spec**: ../milestones/m6/m6.2-design.md ·
+**Milestone**: ../milestones/m6/m6.2.md
 
 ## Context
 
@@ -108,8 +108,8 @@ flips alone, not real disocclusion. `kDisocclusionTolerance` stays at its spec-f
 
 ## Cross-references
 
-Spec: `docs/specs/2026-09-07-m6.2-native-taa-exposure-design.md` (amended 2026-09-08 for the
+Spec: `docs/milestones/m6/m6.2-design.md` (amended 2026-09-08 for the
 dilated disocclusion test, the rate-0 adaptation guard, the auto→manual correction-ratio bound,
 and the `TemporalInputs`/`recordFrame` contract additions). ADR: `docs/decisions/0013-temporal-
-motion-and-history-contract.md`. Plan: `docs/plans/2026-09-07-m6.2-native-taa-exposure.md`.
-Milestone: `docs/milestones/m6.2.md`.
+motion-and-history-contract.md`. Plan: `docs/plans/2026-09-07-m6.2-native-taa-exposure.md` (tag
+r3.1-closed-plans). Milestone: `docs/milestones/m6/m6.2.md`.

@@ -3,40 +3,37 @@ Metal 4-first rendering playground / portfolio (macOS 26+, Apple Silicon), with 
 one backend. Direction: graph-scheduled GPU-driven hybrid rendering with shared scene/material/
 light/temporal semantics, visible quality and reproducible evidence. Future scope and prerequisites
 live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
-## Luminex development journal
-At session start, read `~/Documents/Obsidian_我的笔记/Projects/Renderers/Luminex Dev Journal/AGENTS.md`
-and that directory's `Luminex · 开发日记.md`, including in worktrees. For journal changes, update
-its index in the same task and follow its Context, Chinese prose/English terms, debugging evidence,
-real editor screenshots and editable-diagram standard. Report unavailable vault access honestly.
 ## Golden sources
-- Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
+- Founding design: `docs/decisions/0000-founding-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md` · Evidence storage/recovery: `docs/guides/evidence-archive.md`
+- Design and planning write to two places: a brainstormed design is the `Proposed` milestone record
+  in its series folder under `docs/milestones/`; an executor plan goes to `docs/plans/`.
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-module-boundaries.md` (contract and R1) with `codebase-restructuring.md` (R2 RHI→RojoRHI submodule, R3 Donut-style Core/Engine/Render/App subsystems and tree restructure, R4 shader source deduplication), `docs/roadmap/editor-experience.md` (UX1 before M7.1; UX2 scene documents/hierarchy before N1), and
   `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
-- Gate B passes after R1 (`docs/milestones/interface-gate-b.md`); ADR 0021 owns the approved
+- Gate B passes after R1 (`docs/milestones/m6/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
-  after manual review; `docs/milestones/ux1.md` retains evidence limits. Its executor plan is closed.
-  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged. M7.4 is implemented and owner-accepted for integration on 2026-09-18; `docs/milestones/m7.4-validation.md` retains its 13/15 failed exact-image gate and mixed costs. Occlusion stays off; its executor plan is closed. M7.5 is implemented and owner-accepted for integration on 2026-09-19 after visual review; its executor plan is closed. Clustered remains default by the passed list/scoped-image gates. [Acceptance](docs/milestones/m7.5-validation.md#owner-acceptance-and-integration) retains original 11/15 failed zero-light mode invariance and frozen costs; the [follow-up](docs/milestones/m7.5-followup.md) records authored-light controls, the camera tour, flicker corrections, passing exact causal/current-camera 15/15 gates and unresolved historical-camera replay.
-- Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order: accepted post-M7 order R2 → R3 → R4 → UX2 → N1; R2.1 (RojoRHI conventions/ADRs in `rojo-rhi`, accepted ADR 0024) is owner-accepted 2026-09-19 with its plan closed, R2.2 (in-place decoupling, `RHITests`, standalone `RHI/` root) is owner-accepted 2026-09-19 with its plan closed, R2.3 (mechanical rename to `rojoRHI`, `RojoRHI/`, `RojoRHITests`) is owner-accepted 2026-09-20 with its plan closed, R2.4 (extract, mount and wire; `RojoRHI/` is now a git submodule of the public, Apache-2.0 `rojo-rhi` repository) is implemented 2026-09-20 with its pull request pending owner review, the rest inactive, with `Proposed` records `docs/milestones/r2.md`, `r3.md`, `r4.md`, `ux2.md` (M8/M9 keep their identifiers though M9 delivers first); transparency belongs to M8, cluster LOD
+  after manual review; `docs/milestones/ux/ux1.md` retains evidence limits. Its executor plan is closed.
+  M7.1 is implemented and owner-accepted after manual verification; `docs/milestones/m7/m7.1.md` retains passing Xcode replay and 11/15 original versus 15/15 accepted scoped vendor-profile comparisons. Its plan is closed; the owner approved main integration on 2026-09-15 and M7.2 is owner-accepted for integration on 2026-09-15 after manual review; its plan is closed, original/revised image gates remain failed (13/15 and 9/15), and no new tolerance or performance adoption follows (`docs/milestones/m7/m7.2-validation.md#owner-acceptance-and-integration`). M7.3 is implemented and owner-accepted for integration on 2026-09-16; `docs/milestones/m7/m7.3-validation.md` retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. Its plan is closed; defaults are unchanged. M7.4 is implemented and owner-accepted for integration on 2026-09-18; `docs/milestones/m7/m7.4-validation.md` retains its 13/15 failed exact-image gate and mixed costs. Occlusion stays off; its executor plan is closed. M7.5 is implemented and owner-accepted for integration on 2026-09-19 after visual review; its executor plan is closed. Clustered remains default by the passed list/scoped-image gates. [Acceptance](docs/milestones/m7/m7.5-validation.md#owner-acceptance-and-integration) retains original 11/15 failed zero-light mode invariance and frozen costs; the [follow-up](docs/milestones/m7/m7.5-followup.md) records authored-light controls, the camera tour, flicker corrections, passing exact causal/current-camera 15/15 gates and unresolved historical-camera replay.
+- Roadmap entry: M6 has five temporal/display slices; M7 ends after five scene/visibility/lighting slices; M8 has five shadow/indirect/transparency/atmosphere slices; N1 has four inference-lab slices; `docs/roadmap.md#execution-sequence` owns the cross-part order: accepted post-M7 order R2 → R3 → R4 → UX2 → N1; R2.1 (RojoRHI conventions/ADRs in `rojo-rhi`, accepted ADR 0024) is owner-accepted 2026-09-19 with its plan closed, R2.2 (in-place decoupling, `RHITests`, standalone `RHI/` root) is owner-accepted 2026-09-19 with its plan closed, R2.3 (mechanical rename to `rojoRHI`, `RojoRHI/`, `RojoRHITests`) is owner-accepted 2026-09-20 with its plan closed, R2.4 (extract, mount and wire; `RojoRHI/` is now a git submodule of the public, Apache-2.0 `rojo-rhi` repository) is implemented 2026-09-20 with its pull request pending owner review, R3.1 (documentation records: milestone series folders, each retained design beside its record, closed plans deleted and reachable from tag `r3.1-closed-plans`) is owner-accepted 2026-09-20 with its plan closed, the rest inactive, with `Proposed` records `docs/milestones/r/r2.md`, `docs/milestones/r/r3.md`, `docs/milestones/r/r4.md`, `docs/milestones/ux/ux2.md` (M8/M9 keep their identifiers though M9 delivers first); transparency belongs to M8, cluster LOD
   to M9, area lights to a separate extension, learned passes to Part V. Planned boundaries, not capabilities; no neural, clustered-geometry or ray-traced path exists; clustered local lighting is implemented.
-- Current baseline: `docs/milestones/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
+- Current baseline: `docs/milestones/m6/m6.5.md` (explicit SDR/UI/capture domains, tagged PNG,
   EDR DEFER and an accepted historical-hash exception; ADR 0019) over
-  `docs/milestones/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
+  `docs/milestones/m6/m6.4.md` (opt-in vendor reconstruction, masked San Miguel and
   offline comparison; ADRs 0017–0018, evidence limits and follow-up QA recorded there) over
-  `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
-  `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
-  `docs/milestones/m6.1.md` (temporal state/motion, ADR 0013) over `docs/milestones/m5.5.md`
-  (graph legibility/detached window) over `docs/milestones/m5.4.md` (graph nodes, ADR 0011) over
-  `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
-  (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
+  `docs/milestones/m6/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
+  `docs/milestones/m6/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
+  `docs/milestones/m6/m6.1.md` (temporal state/motion, ADR 0013) over `docs/milestones/m5/m5.5.md`
+  (graph legibility/detached window) over `docs/milestones/m5/m5.4.md` (graph nodes, ADR 0011) over
+  `docs/milestones/m5/m5.3.md` (editor workspace and selection) over `docs/milestones/m5/m5.2.md`
+  (frame-data path, ADR 0010) over `docs/milestones/m5/m5.1.md` over `docs/milestones/m5/m5.md`
 - M5.6 closed as reliability failure / DEFER, with no accepted performance conclusion (ADR 0012).
-  Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5.6.md`.
+  Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5/m5.6.md`.
   Verified raw bundles are GitHub Release attachments; local originals were deleted. Restore:
   `docs/guides/gpu-submission-archive.md`. Baseline remained M5.5; M6 was unblocked.
 ## Commands
 - Clone with `git clone --recursive` so `RojoRHI/` (a git submodule of the public `rojo-rhi` repository) populates; a plain clone or a new worktree instead needs `git submodule update --init` before configuring.
-- Setup (once): `brew install xmake`, `xmake setup` — fetches pinned ThirdParty deps (metal-cpp,
+- Setup (once): `brew install xmake`, `xmake setup`, which fetches pinned ThirdParty deps (metal-cpp,
   slang, Dear ImGui docking-branch commit, imgui-node-editor, Inter 4.1 font/license), Damaged Helmet, the CC0 Studio
   Small 09 HDRI, and the official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored
   `Assets/Fetched/`, with upstream provenance/license metadata.
@@ -52,7 +49,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   and bakes referenced textures. `Assets/Fetched/SanMiguel/` preserves source metadata, license and
   conversion provenance; archive and converted-tree hashes are pinned in `xmake/setup.lua`.
 - Editor setup (once, for clangd): `xmake project -k compile_commands` writes
-  `compile_commands.json` (gitignored) — without it clangd reports spurious diagnostics.
+  `compile_commands.json` (gitignored); without it clangd reports spurious diagnostics.
 - Build: `xmake` · Run: `xmake run App` · Tests: `xmake test` runs four groups (`Tests/unit`, `Tests/gpu`, `RojoRHITests/unit`, `RojoRHITests/gpu`; CPU-only: `xmake test Tests/unit RojoRHITests/unit`). Standalone RojoRHI: `xmake setup -P RojoRHI` (or copy/symlink `ThirdParty` into `RojoRHI/`), then `xmake f -P RojoRHI` and `xmake build -P RojoRHI RojoRHITests`; a bare copy of `RojoRHI/` builds and tests the same way from its own root.
 - **Gotcha**: Tests has `set_default(false)`: plain `xmake` does not relink tests after source edits. GPU regression uses `[gpu]~[.]`; hidden replay diagnostics require their explicit filter.
   `xmake test` rebuilds; before running Tests directly, run `xmake build Tests` to avoid stale passes.
@@ -62,8 +59,8 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   "[checkpoint-a]")` — a future backend must pass this filter unchanged; each working directory must be that binary's build directory (shaders resolve relative to CWD). `python3 Tools/check_checkpoint_a.py` checks the split against the frozen inventory.
 - Format: `xmake format` (check: `xmake format --check`) · Policy: `xmake policy` (also runs
   `check_module_deps.py`/`check_source_headers.py`; `--link` needs a build, so CI runs it after Build). `RojoRHI/` is a git submodule; the root `policy` task runs `Tools/check_submodule_pin.py` (fails unless the pinned commit is reachable from `rojo-rhi`'s `origin/main`) but no longer walks the component's own checkers, which run in `rojo-rhi`'s own CI. Two-repository rule: a Luminex commit never edits a file under `RojoRHI/`; an RHI change is a `rojo-rhi` commit that reaches Luminex as a pin bump.
-- **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer* checkout, not the worktree — xmake resolves its project root to the outermost ancestor directory holding an `xmake.lua`. A worktree also needs `git submodule update --init` once after creation, before configuring, or `xmake f` fails at the missing `RojoRHI/` checkout.
-  In a worktree, run the checkers directly from its root instead: `python3 Tools/check_project_policy.py`; `python3 Tools/check_module_deps.py`; `python3 Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error` (first regenerate that worktree's `compile_commands.json` with `xmake project -k compile_commands -P .` — a prerequisite the comment checker reads, not a checker itself); `python3 Tools/check_cpp_layout.py`; `python3 Tools/check_submodule_pin.py`.
+- **Gotcha**: `xmake policy` run from inside a nested git worktree silently validates the *outer* checkout, not the worktree: xmake resolves its project root to the outermost ancestor directory holding an `xmake.lua`. A worktree also needs `git submodule update --init` once after creation, before configuring, or `xmake f` fails at the missing `RojoRHI/` checkout.
+  In a worktree, run the checkers directly from its root instead: `python3 Tools/check_project_policy.py`; `python3 Tools/check_module_deps.py`; `python3 Tools/check_source_headers.py`; `python3 Tools/check_cpp_comments.py --public-api-docs error` (first regenerate that worktree's `compile_commands.json` with `xmake project -k compile_commands -P .`, a prerequisite the comment checker reads, not a checker itself); `python3 Tools/check_cpp_layout.py`; `python3 Tools/check_submodule_pin.py`.
   `RojoRHI/`'s own checkers (`check_project_policy.py`, `check_shader_imports.py`, `check_cpp_comments.py`, `check_rhi_headers.py`, `check_cpp_layout.py`), format/policy tasks and Python suite (`python3 -m unittest discover -s RojoRHI/Tools/tests -t RojoRHI`) run from inside the mount with `-P .`, e.g. `python3 RojoRHI/Tools/check_project_policy.py`; they are no longer part of Luminex's root `policy` task, and run in `rojo-rhi`'s own CI.
 - Frame-data benchmark: `xmake build FrameDataBench` then `python3
   Tools/Bench/frame_data_paired.py` for paired CPU-encoding measurements against a frozen baseline
@@ -72,36 +69,36 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   selected by default (File > Open Scene catalog); `--windowed` keeps the fixed 1280×720
   default size instead. Offscreen: `xmake run App --screenshot <out.bmp>` or `--scene
   <sponza|damaged-helmet|milk-truck|material-lab|temporal-lab|san-miguel|visibility-lab|light-lab> --screenshot <out.bmp>`. `--frames N`
-  (default 1) renders N frames before writing the last — the temporal warmup control — advancing
+  (default 1) renders N frames before writing the last (the temporal warmup control), advancing
   the scene's animation by 1/60 s and following its camera track (if any) between them.
   `.png` uses tagged PNG with display/frame metadata; `.bmp` preserves the historical bytes.
   In both windowed and screenshot runs, `--temporal <off|raw|taa|metalfx>` (default `taa`; a bare
   `--temporal` also means `taa`) selects the reconstruction, and
   `--temporal-view off|motion|reprojection|reprojected|rejection|weight|age`
   selects a diagnostic overlay (naming a view still implies temporal on; `--temporal off` with a
-  non-`off` view is an error) — e.g. `xmake run App --scene temporal-lab --frames 32 --temporal-view
+  non-`off` view is an error). Example: `xmake run App --scene temporal-lab --frames 32 --temporal-view
   rejection --screenshot out.bmp`. `--render-scale <0.5..1.0>` (default 1.0) sets the render scale
   the temporal path reconstructs from (conflicts with `--temporal off` below 1.0, since the temporal
   path is what reconstructs a sub-output render). `metalfx` requests the device temporal scaler,
   with Native TAA fallback when unsupported or creation fails; `rejection`, `weight`, and `age`
   conflict with `--temporal metalfx`. Vendor scale is clamped to the supported range, and Native TAA
   stays the default and reference. Running the binary directly requires CWD = its
-  build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures —
+  build dir (shaders resolve relative to CWD). Sponza's first load decodes its referenced textures;
   expect several seconds in a debug build.
 - Visibility: `--classify cpu|gpu` (CPU default), GPU-only `--classify-check`, `--visibility cull|off`, `--submission direct|indirect|batched` (cull/indirect defaults; GPU forbids direct). Lab-only `--lab-instances N` defaults 4096. `--occlusion on` adds previous-frame HZB under GPU/cull; `--occlusion-check` uses an independent ID oracle;
   `--hzb-level K` visualizes a mip; `--lab-occluders N` is lab-only. `--measure out.json --warmup W --frames N` records schema 4 costs; `--unscored` permits instrumentation/check mode. Paired controls and retired diagnostics: `docs/guides/gpu-visibility.md`.
-- Local lights: `--local-lights off|direct|clustered` (Clustered default); unshadowed point/spot lights affect opaque/masked surfaces. LightLab `--lab-lights N` defaults 256, `--lab-light-pile P` defaults 0, N≥1 and N+P≤4096. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on, with explicit off disabling all rig lights while retaining IDs/rows. Its camera rail tours both corridor levels in 120 seconds through the atrium. `--light-check` and non-off `--light-view off|count|overflow|missed` require Clustered (non-off views conflict with temporal/HZB views); diagnostic measurement requires `--unscored`. `LMX_LIGHT_CHECK_DUMP` writes raw frame-keyed CPU/GPU list evidence for checked screenshot/sequence runs to a new path. Schema 4 joins retired lighting to every frame, including Off/Direct/zero-live; `lightingGpuMs` sums `lmx.pass.light.*` separately from scene cost. `Tools/Bench/lighting_paired.py --control local` compares Direct/Clustered; `--control zero --parent /frozen/parent/App` compares parent schema 3 with candidate schema 4. `Tools/Lighting/missed_oracle.py` audits PNG pixels/manifests. Both tools offer `--selftest`. Procedures: `docs/guides/gpu-debugging.md#inspect-local-lighting`. [Default decision](docs/milestones/m7.5-validation.md#default-decision): family 2 lossless lists and scoped family 3 exact images passed; Direct remains the reference.
+- Local lights: `--local-lights off|direct|clustered` (Clustered default); unshadowed point/spot lights affect opaque/masked surfaces. LightLab `--lab-lights N` defaults 256, `--lab-light-pile P` defaults 0, N≥1 and N+P≤4096. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on, with explicit off disabling all rig lights while retaining IDs/rows. Its camera rail tours both corridor levels in 120 seconds through the atrium. `--light-check` and non-off `--light-view off|count|overflow|missed` require Clustered (non-off views conflict with temporal/HZB views); diagnostic measurement requires `--unscored`. `LMX_LIGHT_CHECK_DUMP` writes raw frame-keyed CPU/GPU list evidence for checked screenshot/sequence runs to a new path. Schema 4 joins retired lighting to every frame, including Off/Direct/zero-live; `lightingGpuMs` sums `lmx.pass.light.*` separately from scene cost. `Tools/Bench/lighting_paired.py --control local` compares Direct/Clustered; `--control zero --parent /frozen/parent/App` compares parent schema 3 with candidate schema 4. `Tools/Lighting/missed_oracle.py` audits PNG pixels/manifests. Both tools support `--selftest`. Procedures: `docs/guides/gpu-debugging.md#inspect-local-lighting`. [Default decision](docs/milestones/m7/m7.5-validation.md#default-decision): family 2 lossless lists and scoped family 3 exact images passed; Direct remains the reference.
 - Sequences: `--capture-sequence <directory> --frames N --warmup W` saves N numbered PNGs (or `--capture-format bmp`) after W
   unsaved frames at 60 Hz, plus a v2 camera/settings/status/display/container/UI manifest, into a new or empty directory.
   It conflicts with `--screenshot`; vendor fallback fails the sequence. `Tools/TemporalCompare/`
   builds synchronized Raw/Native/MetalFX reports and optional CPU LDR-FLIP maps of final sRGB output;
   these measure differences against Native TAA, not ground-truth accuracy or realtime performance.
 - Debug: Metal validation `MTL_DEBUG_LAYER=1 xmake run App`; GPU capture: press `c` in-app, or use
-  Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut) — both need
-  `MTL_CAPTURE_ENABLED=1` — then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
+  Debug > Capture Next GPU Frame in the main menu (shown with its `C` shortcut); both need
+  `MTL_CAPTURE_ENABLED=1`. Then open the .gputrace in Xcode. Automated runs: `LMX_MAX_FRAMES=N`
   exits after N frames; `LMX_CAPTURE_AT_FRAME=N` captures without a keypress;
   `LMX_DYNAMIC_RESOLUTION_BUDGET_MS=<ms>` starts the editor with dynamic resolution on and that GPU
-  budget before the frame loop begins, and logs every controller scale change at INFO — the
+  budget before the frame loop begins, and logs every controller scale change at INFO, the
   automation hook for controller-settling evidence. Performance publishes a coherent 60-retired-
   frame rolling snapshot at 4 Hz, with sortable pass costs, frame interval/FPS, extents and memory.
   `Freeze metrics` freezes the whole snapshot; frozen `Clear history` empties it; `Resume metrics`
@@ -143,7 +140,7 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
   parity checks: `docs/guides/gpu-debugging.md`.
 ## Architecture
-`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) and, independently, the root `RojoRHI/` component — no Core dependency, its own private `RojoRHI/Source/Base` (assert/log/align/JSON) and one public `RojoRHI/Include/rojoRHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RojoRHI/xmake.lua` plus `RojoRHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RojoRHI`); the repository root includes `RojoRHI/xmake/targets.lua` and nothing else from the component. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui patch and buffer probe (`RojoRHI/Include/rojoRHI`: public `rojoRHI`
+`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers and dispatch division; public spdlog/glm) and, independently, the root `RojoRHI/` component, with no Core dependency, its own private `RojoRHI/Source/Base` (assert/log/align/JSON) and one public `RojoRHI/Include/rojoRHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RojoRHI/xmake.lua` plus `RojoRHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RojoRHI`); the repository root includes `RojoRHI/xmake/targets.lua` and nothing else from the component. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui patch and buffer probe (`RojoRHI/Include/rojoRHI`: public `rojoRHI`
 interfaces with **no Metal or ImGui types**; `RojoRHI/Source`: shared implementation;
 `RojoRHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables (16 buffer / 16 texture / 8 sampler slots; texture slots cleared at each render/compute pass)
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
@@ -162,8 +159,8 @@ output copied to CPU-readable outputs; `R16Float` supports sampled/storage expos
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
-into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame —
-schedule, barriers, transient lifetimes and assignments, memory totals — that `GraphDump.h` renders
+into `TransientPool`'s per-frame-slot placement heaps, and a `CompiledFrameRecord` per frame
+(schedule, barriers, transient lifetimes and assignments, memory totals) that `GraphDump.h` renders
 as deterministic text; `CompiledFrameRecord.h` owns the observer contract; graph compile/transitions/validation/ranges are separate units; `FrameDeclaration` shares graph execution;
 `SceneView.h` describes mesh ranges/textures and borrows CPU rows plus five geometry/material GPU buffers and live-only lights; 240 B instances/48 B meshes carry world/local AABBs. CPU-default five-plane visibility or opt-in `GpuVisibility` reset/classify/scan/emit feeds paced b4 row lists and indirect args; 16 B firstEntry selects b5/b6 rows. Direct/indirect/batched modes retain per-run textures. Opt-in `HzbStage`/`Occlusion` consume previous source-space depth with global coverage invalidation; `OcclusionReference` checks direct IDs and recovery at retirement. `Renderer` imports five read-only geometry/material `lmx.scene.*` buffers, live-only `lmx.scene.lights`, plus `lmx.draw.rows`/`lmx.draw.args` and composes `ShadowStage`/`SceneStage` and private `ExposureStage`/`BloomStage`/`DisplayStage`; these own pipelines/resources and declare histogram exposure
 (clear/accumulate/resolve with bounded adaptation, GPU-resident `{applied, previous}` feedback into
@@ -197,7 +194,7 @@ RenderGraph dependency. `SceneSession` retains per-scene authored transform/ligh
 first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats the Scene tables topic counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
 independent rendering reset scopes; `SelectionBounds` uses shared Render AABB transforms on mesh bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
-paired with declared-frame counts, and compatible live retired timing. Renderer’s
+paired with declared-frame counts, and compatible live retired timing. Renderer's
 per-frame reset field retains its original meaning. `DynamicResolutionState::lastObservedFrame`
 is the consumed/skipped publication cursor; `lastMeasurementFrame` pairs with the last controller
 measurement. `MeasurementRun` shares exact frame/GPU joins with serialized-retirement headless and unscored interactive runs. `FrameRecordRing` retains declaration-time counts/extents/context with compiled

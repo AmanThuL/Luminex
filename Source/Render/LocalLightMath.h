@@ -14,7 +14,7 @@
 namespace lmx::render {
 
 /// Builds `light`'s 64-byte GPU row: decodes strength and the cone term, and derives the world
-/// bounding sphere docs/milestones/m7.5.md's light table specifies. This is the only gate before
+/// bounding sphere docs/milestones/m7/m7.5.md's light table specifies. This is the only gate before
 /// those values reach the GPU, so it fails with an RHI `InvalidDesc` error for any non-finite
 /// `position`, `colour`, `intensity` or `direction` component, a nonpositive, non-finite or NaN
 /// `range`, `innerCone >= outerCone`, `outerCone > 89deg`, or (for a spot) a zero direction; never

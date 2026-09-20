@@ -77,7 +77,7 @@ holds the borrowed frame input independently of the renderer.
   `OcclusionHistory` globally retains on invalid source/camera/coverage evidence or wireframe.
   `OcclusionReference` draws every candidate directly into private ID/depth targets and joins
   generational missing-frame streaks at retirement; [contracts](../guides/gpu-visibility.md).
-  `LocalLightMode` selects Off, Direct (reference) or Clustered (default) in one shared punctual-light loop; the [default decision](../milestones/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independent of cost; owner acceptance is recorded separately. Shared punctual normal-footprint filtering broadens only its specular lobe; directional/IBL terms stay unchanged. Current diagnostics and limits are in the [follow-up](../milestones/m7.5-followup.md).
+  `LocalLightMode` selects Off, Direct (reference) or Clustered (default) in one shared punctual-light loop; the [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independent of cost; owner acceptance is recorded separately. Shared punctual normal-footprint filtering broadens only its specular lobe; directional/IBL terms stay unchanged. Current diagnostics and limits are in the [follow-up](../milestones/m7/m7.5-followup.md).
   Point/spot terms follow the directional sum before ambient/emissive and the single pre-exposure
   multiply. Local lights affect opaque/masked surfaces without shadows; `PassUniforms` stays 400 B.
   A sixth `lmx.scene.lights` import exists only with live lights. Clustered adds a public

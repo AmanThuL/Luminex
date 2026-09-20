@@ -4,7 +4,7 @@
 **Research date**: 2026-08-12
 
 Evidence document for the M5.1 experiment defined in
-`docs/specs/2026-08-12-m5.1-rhi-execution-model-design.md`. It holds the mapping classification, the
+`docs/milestones/m5/m5.1-design.md`. It holds the mapping classification, the
 recorded environment, all scored measurements with their uncertainty, unscored exploratory results
 kept separate, rubric scoring, and gate results. It becomes `Frozen — non-normative` at milestone
 close; decisions derived from it are restated in the closing ADR, never here.

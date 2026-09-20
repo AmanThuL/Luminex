@@ -18,7 +18,7 @@ supports readback but no persistent CPU write interface, while the direct draw A
 instancing overload. A private Metal host can compare all submission modes with the same mapped
 slot storage and binding path, with the unchanged RHI as a correctness anchor. Such native timings
 do not measure production RHI overhead or promise M7's speedup; the later production benchmark
-must establish that separately. The proposed [design](../specs/2026-09-06-m5.6-gpu-work-submission-design.md)
+must establish that separately. The proposed [design](../milestones/m5/m5.6-design.md)
 makes that distinction explicit. This is a refinement of experiment control, not a new RHI decision.
 
 ## Recommendation and ranking
