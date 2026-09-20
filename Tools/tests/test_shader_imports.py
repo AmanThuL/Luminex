@@ -80,6 +80,44 @@ class ShaderImportTests(unittest.TestCase):
         errors, _, _ = self.check({"Scene.slang": '#include "Tests/Oracle.slang"'})
         self.assertTrue(any("textual includes" in error for error in errors))
 
+    def test_family_entries_import_siblings_and_common(self) -> None:
+        errors, files, imports = self.check({
+            "Passes/Visibility/Classify.slang": '[shader("compute")] void m(){}\n'
+                                                "import Visibility; import SceneTables;",
+            "Passes/Visibility/Visibility.slang": "import SceneTables;",
+            "Common/SceneTables.slang": "float value;",
+            "Tests/Probe.slang": "import Visibility;",
+        })
+        self.assertEqual(errors, [])
+        self.assertEqual((files, imports), (4, 4))
+
+    def test_family_local_module_is_private_to_its_folder(self) -> None:
+        for importer in ("Passes/Scene/Scene.slang", "Common/Shared.slang"):
+            with self.subTest(importer=importer):
+                errors, _, _ = self.check({
+                    importer: "import Visibility;",
+                    "Passes/Visibility/Visibility.slang": "float value;",
+                })
+                self.assertTrue(any("is local to Shaders/Passes/Visibility" in e for e in errors))
+
+    def test_imports_never_reach_family_entries(self) -> None:
+        errors, _, _ = self.check({
+            "Passes/Scene/A.slang": "import B;",
+            "Passes/Scene/B.slang": '[shader("fragment")] void m(){}',
+        })
+        self.assertTrue(any("reaches entry point" in e for e in errors))
+
+    def test_files_outside_the_three_folders_fail(self) -> None:
+        for stray in ("Passes/Loose.slang", "Passes/Scene/Deep/X.slang", "Other/X.slang"):
+            with self.subTest(stray=stray):
+                errors, _, _ = self.check({stray: "float value;"})
+                self.assertTrue(any("must live in Common/, Tests/ or Passes/<family>/" in e
+                                    for e in errors))
+
+    def test_collisions_are_rejected_across_family_folders(self) -> None:
+        errors, _, _ = self.check({"Passes/Scene/Dup.slang": "", "Passes/Bloom/dup.slang": ""})
+        self.assertTrue(any("duplicate shader output basename" in e for e in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
