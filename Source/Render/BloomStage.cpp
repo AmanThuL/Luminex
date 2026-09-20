@@ -16,7 +16,7 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/BloomThreshold.slang's BloomThresholdParams.
+// Mirrors Shaders/Passes/Bloom/BloomThreshold.slang's BloomThresholdParams.
 struct BloomThresholdParams {
     float threshold;
     uint32_t srcWidth;
@@ -27,7 +27,7 @@ struct BloomThresholdParams {
 static_assert(sizeof(BloomThresholdParams) == 20,
               "must match BloomThreshold.slang's BloomThresholdParams");
 
-// Mirrors Shaders/BloomDownsample.slang's BloomDownsampleParams.
+// Mirrors Shaders/Passes/Bloom/BloomDownsample.slang's BloomDownsampleParams.
 struct BloomDownsampleParams {
     uint32_t srcWidth;
     uint32_t srcHeight;
@@ -37,7 +37,7 @@ struct BloomDownsampleParams {
 static_assert(sizeof(BloomDownsampleParams) == 16,
               "must match BloomDownsample.slang's BloomDownsampleParams");
 
-// Mirrors Shaders/BloomUpsample.slang's BloomUpsampleParams.
+// Mirrors Shaders/Passes/Bloom/BloomUpsample.slang's BloomUpsampleParams.
 struct BloomUpsampleParams {
     uint32_t smallWidth;
     uint32_t smallHeight;

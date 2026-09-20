@@ -70,8 +70,9 @@ static_assert(kDisplayFormat == rojoRHI::Format::BGRA8Unorm &&
 /// temporal frame. The buffer is the single source of both, in manual and auto mode alike, so a
 /// temporal resolve correcting a history for the exposure it was recorded at never needs a
 /// CPU-remembered value that could disagree with what the GPU actually applied across a mode
-/// switch. Shaders/ExposureSeed.slang and Shaders/ExposureResolve.slang write the pair;
-/// Shaders/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
+/// switch. Shaders/Passes/Exposure/ExposureSeed.slang and
+/// Shaders/Passes/Exposure/ExposureResolve.slang write the pair;
+/// Shaders/Passes/Exposure/HistogramAccumulate.slang and the auto scene/sky pipelines read index 0.
 constexpr uint32_t kExposureBufferFloats = 2;
 
 /// Owns frame targets and pipelines and declares the frame's render-graph passes.

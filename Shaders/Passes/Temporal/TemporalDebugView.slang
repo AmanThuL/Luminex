@@ -31,8 +31,8 @@ static const uint kViewRejectionMask = 4u;
 static const uint kViewBlendWeight = 5u;
 static const uint kViewHistoryAge = 6u;
 
-// Mirrors Shaders/TemporalResolve.slang's reason codes, which the rejection mask stores as
-// R = code / 255 with kClippedBit set alongside.
+// Mirrors Shaders/Passes/Temporal/TemporalResolve.slang's reason codes, which the rejection mask
+// stores as R = code / 255 with kClippedBit set alongside.
 static const uint kReasonNone = 0u;
 static const uint kReasonOffScreen = 1u;
 static const uint kReasonInvalid = 2u;

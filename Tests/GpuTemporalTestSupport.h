@@ -348,9 +348,9 @@ inline float pixelForWorldX(const Camera& camera, float worldX, float distance) 
 }
 
 //======================================================================================================================
-// The flat colour Shaders/TemporalDebugView.slang draws the RejectionMask in for a reason code.
-// One mirror of the shader's legend, so a case names the reason it expects by the shared constant
-// in Render/TemporalResolve.h and never by a colour spelled out at the assertion.
+// The flat colour Shaders/Passes/Temporal/TemporalDebugView.slang draws the RejectionMask in for a
+// reason code. One mirror of the shader's legend, so a case names the reason it expects by the
+// shared constant in Render/TemporalResolve.h and never by a colour spelled out at the assertion.
 //
 // The clipped flag adds half a unit of green on top, which is why a case comparing all three
 // channels has to expect a reason whose green is already saturated or absent.

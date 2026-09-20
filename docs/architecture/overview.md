@@ -93,7 +93,7 @@ holds the borrowed frame input independently of the renderer.
   SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
   and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
   `Render/FrameDeclaration` shares graph construction/execution across application loops and returns the accepted record for App-side retention. Render also owns
-  camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Modules/Motion.slang`): the previous
+  camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Common/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
   when `SceneView::temporal.enabled` is set. The `TemporalResolve` reconstruction stage (ADR 0014)
@@ -110,10 +110,10 @@ holds the borrowed frame input independently of the renderer.
   rectangle a scale below 1.0 confines the scene pass and reconstruction to, and `TemporalHistory`'s
   `ExtentChanged` now fires on an output-extent change alone (superseding ADR 0013's clause), so a
   render-scale change alone derives `None` and reuses history. `TemporalResolve` selects between the
-  native `NativeTaa` kernel (`Shaders/TemporalResolve.slang`, unchanged since M6.2) and the upscale
-  kernel (`Shaders/TemporalUpscale.slang`) by whether render equals output extent and history was not just accumulated at another one; `Raw` gets the matching split against
-  `Shaders/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
-  `Shaders/Modules/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
+  native `NativeTaa` kernel (`Shaders/Passes/Temporal/TemporalResolve.slang`, unchanged since M6.2) and the upscale
+  kernel (`Shaders/Passes/Temporal/TemporalUpscale.slang`) by whether render equals output extent and history was not just accumulated at another one; `Raw` gets the matching split against
+  `Shaders/Passes/Temporal/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
+  `Shaders/Passes/Temporal/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
   class with no device, graph or App dependency that proposes the next render scale from a retired
   frame's summed GPU pass time against a budget, with hysteresis. `VendorTemporal` selects a composed `VendorTemporalScaler` inside the existing resolve stage
   ([ADR 0017](../decisions/0017-vendor-reconstruction-capability.md)). It lazily creates the device
@@ -276,7 +276,7 @@ holds the borrowed frame input independently of the renderer.
   is the comparison baseline, not ground truth. Neither FLIP nor its Python dependencies enter App.
 
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
-toolchain is present. Shared modules live in `Shaders/Modules/`, test oracles in `Shaders/Tests/`;
+toolchain is present. Common modules live in `Shaders/Common/`, family entries and local modules in `Shaders/Passes/<family>/`, test oracles in `Shaders/Tests/`;
 entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
 Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
 

@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file LocalLightMath.cpp
-/// @brief Implements the CPU mirror of Shaders/Modules/LocalLights.slang's ComputePunctualLight.
+/// @brief Implements the CPU mirror of Shaders/Common/LocalLights.slang's ComputePunctualLight.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/LocalLightMath.h"
@@ -18,7 +18,7 @@ namespace lmx::render {
 
 namespace {
 
-// Mirrors Shaders/Modules/Lighting.slang's constant of the same name.
+// Mirrors Shaders/Common/Lighting.slang's constant of the same name.
 constexpr float kPi = std::numbers::pi_v<float>;
 
 // The frozen bound-radius inflation factor docs/milestones/m7/m7.5.md's light table fixes.
@@ -29,7 +29,7 @@ constexpr float kBoundRadiusInflation = 1.0f + 1.0f / 1024.0f; // 1 + 2^-10
 constexpr float kTightConeSphereLimit = std::numbers::pi_v<float> / 4.0f; // 45 degrees
 
 //======================================================================================================================
-// Mirrors Shaders/Modules/Lighting.slang's D_GGX.
+// Mirrors Shaders/Common/Lighting.slang's D_GGX.
 float dGgx(float noh, float alpha) {
     const float a2 = alpha * alpha;
     const float d = noh * noh * (a2 - 1.0f) + 1.0f;
@@ -37,7 +37,7 @@ float dGgx(float noh, float alpha) {
 }
 
 //======================================================================================================================
-// Mirrors Shaders/Modules/Lighting.slang's V_SmithHeightCorrelated.
+// Mirrors Shaders/Common/Lighting.slang's V_SmithHeightCorrelated.
 float vSmithHeightCorrelated(float nov, float nol, float alpha) {
     const float a2 = alpha * alpha;
     const float view = nov * std::sqrt(nol * nol * (1.0f - a2) + a2);
@@ -46,7 +46,7 @@ float vSmithHeightCorrelated(float nov, float nol, float alpha) {
 }
 
 //======================================================================================================================
-// Mirrors Shaders/Modules/Lighting.slang's F_Schlick.
+// Mirrors Shaders/Common/Lighting.slang's F_Schlick.
 glm::vec3 fSchlick(const glm::vec3& f0, float voh) {
     const float f = 1.0f - voh;
     const float f5 = f * f * f * f * f;
@@ -165,7 +165,7 @@ glm::vec3 computePunctualLight(const LightRow& row, glm::vec3 position, glm::vec
         return glm::vec3(0.0f);
     }
 
-    // Shaders/Modules/Lighting.slang's ComputeDirectionalLight saturates N.L before use; mirrored
+    // Shaders/Common/Lighting.slang's ComputeDirectionalLight saturates N.L before use; mirrored
     // here so a non-unit shading normal (common off interpolated vertex normals) matches the GPU
     // exactly rather than only flooring at zero.
     const float nol = std::clamp(glm::dot(normal, lightVec), 0.0f, 1.0f);

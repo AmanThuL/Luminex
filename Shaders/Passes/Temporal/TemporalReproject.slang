@@ -65,9 +65,9 @@ void computeTemporalReproject(uint3 tid: SV_DispatchThreadID)
     // output pixel reads its current colour.
     float2 samplePosition = (float2(tid.xy) + 0.5) * ratio + gParams.jitterOffset;
     // Motion is a render-extent signal, and the texel to take it from is the one that sample falls
-    // in -- Shaders/TemporalUpscale.slang's nearest texel, so the diagnostic measures the motion of
-    // the surface it compares. Clamped so the last row and column of a rounded render extent stay
-    // addressable.
+    // in -- Shaders/Passes/Temporal/TemporalUpscale.slang's nearest texel, so the diagnostic
+    // measures the motion of the surface it compares. Clamped so the last row and column of a
+    // rounded render extent stay addressable.
     int2 motionCoord = clamp(int2(floor(samplePosition)), int2(0, 0), int2(render) - 1);
     float2 motion = gMotion.Load(int3(motionCoord, 0)).xy;
     if (isinf(motion.x) || isinf(motion.y))
