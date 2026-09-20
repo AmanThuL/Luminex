@@ -25,18 +25,26 @@ silently override an accepted higher-precedence decision.
    Define each boundary once and link to its owner from summaries and dependency tables.
 5. **Active plan** (`docs/plans/`): an accepted change currently being executed. It may contain
    sequencing and exit criteria but does not become a permanent dependency of source comments.
-6. **Milestone record** (`docs/milestones/`): compact shipped behavior, evidence, known limits, and
-   durable deviations at a boundary. Before implementation, a `Proposed` milestone specification
-   may summarize the intended design and verification; at closure, update it with actual behavior
-   and evidence. The roadmap continues to own the boundary and completion gate.
-7. **Postmortem** (`docs/postmortems/`): closed symptom, evidence, root cause, correction, prevention.
+6. **Milestone record** (`docs/milestones/<series>/`): compact shipped behavior, evidence, known
+   limits, and durable deviations at a boundary. A new design is written today as the `Proposed`
+   milestone record in its series folder; before implementation, it may summarize the intended
+   design and verification. Older milestones instead retain a design as `<id>-design.md` in the
+   same series folder, a historical form no longer used for new work; such a design changes only
+   in path references once its slice is implemented, and anything beyond that needs the owner's
+   approval as an explicit exception. The founding design at
+   `docs/decisions/0000-founding-design.md` predates the ADR series and is not itself an ADR. At
+   closure, update the record with actual behavior and evidence. The roadmap continues to own the
+   boundary and completion gate.
+7. **Postmortem** (`docs/milestones/<series>/`, not a folder of its own): closed symptom, evidence,
+   root cause, correction, prevention.
 8. **Research** (`docs/research/`): dated evidence and synthesis. It is frozen and non-normative;
    milestone sequences inside it are historical proposals, and decisions derived from it must be
    restated in an ADR or roadmap.
 
 README and `AGENTS.md` are navigation and operation surfaces. They summarize; they do not introduce
-new architecture decisions. Implemented historical specs may remain as frozen design context, but
-current documents cannot depend on deleted executor plans.
+new architecture decisions. Implemented retained designs change only in path references but may
+remain as design context, with anything beyond needing the owner's approval as an explicit
+exception, and current documents cannot depend on deleted executor plans.
 
 Public-facing surfaces such as README, GitHub About, release text, and gallery captions describe
 what the renderer does now before naming a short set of future feature themes. They do not expose
@@ -46,7 +54,7 @@ capability. Detailed sequencing and gates belong in the roadmap and internal rec
 ## Status lifecycle
 
 Use one explicit `**Status**:` field near the top of every ADR, convention, roadmap, active plan,
-milestone, postmortem, research note, and retained spec.
+milestone, postmortem, research note, and retained design.
 
 - `Proposed`: open for decision; not binding.
 - `Accepted`: binding and current.
@@ -71,5 +79,5 @@ remove the executor plan from the published baseline.
 - Keep operational documents concise: README and `AGENTS.md` at most 250 lines; conventions,
   architecture, guides, milestones, postmortems, the active plan, and each roadmap file at most
   300 lines. The roadmap uses a short entry and named parts instead of a larger single-file
-  exception. These are line budgets, not word limits. Frozen research and historical specs are exempt.
+  exception. These are line budgets, not word limits. Frozen research and retained designs are exempt.
 - Keep raw captures, temporary measurements, and recovery bundles outside the published source tree.
