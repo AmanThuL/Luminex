@@ -22,11 +22,6 @@ TREE = "Shaders"
 COMMON = "Common"
 TESTS = "Tests"
 PASSES = "Passes"
-# R3.2 moves the tree into those folders one family at a time. While this is set the checker also
-# accepts the layout being moved away from, entries at the tree root and shared modules in Modules/,
-# so that every commit of the move sequence passes policy. The edit that ends the sequence drops it.
-LEGACY = True
-LEGACY_MODULES = "Modules"
 
 
 def without_comments(text: str) -> str:
@@ -47,10 +42,6 @@ def placement(relative: Path) -> tuple[str, str]:
         return parts[0], ""
     if len(parts) == 3 and parts[0] == PASSES:
         return PASSES, parts[1]
-    if LEGACY and len(parts) == 1:
-        return TREE, ""
-    if LEGACY and len(parts) > 1 and parts[0] == LEGACY_MODULES:
-        return LEGACY_MODULES, ""
     return "", ""
 
 
@@ -96,7 +87,7 @@ def check_tree(root: Path, shaders: Path) -> tuple[list[str], int, int]:
         sources.append((path, folder, family, text, masked))
         if not folder:
             errors.append(f"{reported}: a shader source must live in Common/, Tests/ or Passes/<family>/")
-        elif folder in (COMMON, LEGACY_MODULES):
+        elif folder == COMMON:
             if ENTRY.search(masked):
                 errors.append(f"{reported}: shared modules cannot declare shader entry points")
             modules[".".join(relative.relative_to(folder).with_suffix("").parts)] = (path, "")
@@ -136,16 +127,10 @@ def check_tree(root: Path, shaders: Path) -> tuple[list[str], int, int]:
                 errors.append(f"{relative}:{line}: unresolved module import '{name}'")
                 continue
             target = other.relative_to(root)
-            if LEGACY and not other.relative_to(shaders).is_relative_to(PASSES):
-                errors.append(
-                    f"{relative}:{line}: import '{name}' reaches entry point {target}; "
-                    f"imports may target {(shaders / LEGACY_MODULES).relative_to(root)} only"
-                )
-            else:
-                errors.append(
-                    f"{relative}:{line}: import '{name}' reaches entry point {target}; "
-                    "only modules are importable"
-                )
+            errors.append(
+                f"{relative}:{line}: import '{name}' reaches entry point {target}; "
+                "only modules are importable"
+            )
     return errors, len(files), imports
 
 
