@@ -272,8 +272,8 @@ This is not a gate B prerequisite; later slices still meet the full comparison p
 - Shader structure: test-oracle shaders move under `Shaders/Tests/` and shared modules under
   `Shaders/Modules/`, with the rule's dependency glob widened, import search paths passed to the
   compiler and basename collisions rejected; an import check beside the module checker holds the Slang
-  dependency rule — entry points and modules import modules only, production never imports a test
-  oracle — and fails on any other edge; and the shader-style convention records the twin rule the
+  dependency rule (entry points and modules import modules only, production never imports a test
+  oracle) and fails on any other edge; and the shader-style convention records the twin rule the
   variant files carry in comments today: which files are twins, the one difference each pair keeps,
   and that every other edit is mirrored. This item moves and documents; it deduplicates nothing.
 

@@ -62,8 +62,8 @@ Luminex target; GPU runs are validation-clean.
 
 ### R2.3 — Mechanical rename
 
-**Deliver:** one commit reproducible from the recorded substitution — namespace, macros, include
-root, targets, default label strings and the directory `RHI/` → `RojoRHI/` — with Luminex call
+**Deliver:** one commit reproducible from the recorded substitution (namespace, macros, include
+root, targets, default label strings and the directory `RHI/` → `RojoRHI/`) with Luminex call
 sites; formatting separate.
 
 **Exit gate:** the protocol holds with one declared difference: default labels and log text change
@@ -91,8 +91,8 @@ enforces the pin is reachable from `origin/main`. See the
 
 ## R3 — Subsystems and tree restructure
 
-**Outcome:** Luminex has Donut's four subsystems — `Source/Core`, `Source/Engine`,
-`Source/Render`, `Source/App` — over the `RojoRHI/` submodule, with Donut's dependency direction:
+**Outcome:** Luminex has Donut's four subsystems (`Source/Core`, `Source/Engine`,
+`Source/Render`, `Source/App`) over the `RojoRHI/` submodule, with Donut's dependency direction:
 Render depends on Engine, and Engine never on Render. Every tree has a second level matching its
 responsibilities, and no leaf folder holds one file or more than about sixteen. Rendered output
 and shipped behaviour do not change.
@@ -114,22 +114,24 @@ out of Render; renaming Stage classes or test tags; everything UX2 owns.
 
 ### R3.1 — Documentation records
 
-**Deliver:** `docs/milestones/<series>/` folders — `m1-m4`, `m5`, `m6` (with interface gate B),
-`m7`, `r` and `ux` — so no series folder holds a single file; each frozen design beside its record
+**Deliver:** `docs/milestones/<series>/` folders for `m1-m4`, `m5`, `m6` (with interface gate B),
+`m7`, `r` and `ux`, so no series folder holds a single file; each frozen design beside its record
 as `<id>-design.md`; the two postmortems in the series of their period; the founding design
 (D1–D10) in `docs/decisions/`; `docs/specs/` and `docs/postmortems/` removed; the fifteen closed
 plans deleted as the documentation convention already requires, leaving `docs/plans/` as the one
 transient folder. The convention, the policy checker's tables and `AGENTS.md` follow; `AGENTS.md`
 states that a brainstormed design is written as the `Proposed` milestone record and a plan goes
-to `docs/plans/`. Then the living documents — README, `AGENTS.md`, `docs/conventions/`,
-`docs/guides/`, `docs/architecture/`, `docs/frame-pipeline.md`, `docs/roadmap.md` with its parts,
-and milestone records that are not frozen — are copyedited into plain technical prose, one commit
-per folder, with every claim, number, identifier, date, status value, gate result and evidence
-limit preserved and no heading moved; accepted ADRs, the founding design, every `-design.md`,
-research notes and postmortems are left as they are. Four tracked mentions of the owner's personal
-development notes kept outside the repository — in `AGENTS.md` and one clause each in the frozen
-R2.3 design, the frozen R2.4 design and the UX2 record — are removed, an owner-approved exception
-to the links-only rule scoped to those two frozen designs' single clauses.
+to `docs/plans/`.
+
+Then the living documents (README, `AGENTS.md`, `docs/conventions/`, `docs/guides/`,
+`docs/architecture/`, `docs/frame-pipeline.md`, `docs/roadmap.md` with its parts, and milestone
+records that are not frozen) are copyedited into plain technical prose, one commit per folder,
+with every claim, number, identifier, date, status value, gate result and evidence limit preserved
+and no heading moved; accepted ADRs, the founding design, every `-design.md`, research notes and
+postmortems are not copyedited. Four tracked mentions of the owner's personal development notes
+kept outside the repository (in `AGENTS.md` and one clause each in the frozen R2.3 design, the
+frozen R2.4 design and the UX2 record) are removed, an owner-approved exception to the links-only
+rule scoped to those two frozen designs' single clauses.
 
 **Exit gate:** policy green, every local link resolving, no document type losing its status field
 or precedence. Documents only; the comparison protocol does not apply.
@@ -153,12 +155,12 @@ fallback loading, basename collisions still rejected.
 
 **Deliver:** the ADR, accepted first. `Source/Engine/Asset/` (own library; `Image/`, `Model/`,
 `Texture/`) and `Source/Engine/{Scene,Types,Upload,Catalog}/` replacing `Source/Asset` and
-`Source/Scene`. The scene vocabulary leaves Render for `Engine/Types/` — `Mesh`, `Camera`,
-`AlphaMode.h`, `LocalLight.h`, `LocalLightMath` — and the table row ABI `SceneTables.h` for
+`Source/Scene`. The scene vocabulary leaves Render for `Engine/Types/` (`Mesh`, `Camera`,
+`AlphaMode.h`, `LocalLight.h`, `LocalLightMath`) and the table row ABI `SceneTables.h` for
 `Engine/Scene/`; `Bounds.h`, glm-only math with consumers in three units, goes to Core as Donut's
 `core/math/box.h` does. Two leaf-header extractions the old headers keep including: `DrawItem` and
 `DirectionalLight` out of `SceneView.h`, `MotionClass` out of `Temporal.h`. `Scene::view()`
-becomes a Render-side builder, so `SceneView` — scene description plus renderer settings — stays
+becomes a Render-side builder, so `SceneView`, scene description plus renderer settings, stays
 Render's input contract and the renderer still consumes a plain struct. The module contract
 reverses the edge and the checker rejects any Engine include of Render. Then one mechanical
 commit: target `Scene` → `Engine`, `lmx::scene` → `lmx::engine`, and the moved vocabulary
@@ -181,7 +183,7 @@ per pass family holding its stages, CPU mirrors, checks and readbacks.
 
 **Deliver:** `App/{Shell,Headless}`; `Model/` and `Panels/` kept as checked layers, because the
 checker proves by directory that AppModel reaches no ImGui, SDL or Metal; feature folders repeated
-under both — `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, `Options`, and
+under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, `Options`, and
 `Rendering/{Settings,Temporal,Lighting,Visibility}` in Model; `Scene`, `Inspector`, `Viewport`,
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
@@ -210,7 +212,7 @@ pipeline stays separate. Entry is satisfied: M7.1 settled the binding model, so 
 the code M7 keeps. It runs after R3.2 has placed the family in `Shaders/Passes/Scene/` and before
 M8 and M9 multiply the mirrored edits the twin rule demands today.
 
-**Scope:** the `ScenePass` family — four files of 320 to 346 lines that differ by exposure source
+**Scope:** the `ScenePass` family, four files of 320 to 346 lines that differ by exposure source
 and alpha coverage. Thin entry-point files over one shared implementation module, with
 compile-time choices and no runtime branch: the runtime-branch regression behind the twin files
 justifies separate pipelines, not whole-file duplication. `TemporalResolve` and `TemporalUpscale`

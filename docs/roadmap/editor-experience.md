@@ -127,9 +127,9 @@ the refactoring comparison protocol.
 or the look, saves, relaunches and finds the same scene; the Hierarchy shows only scene content;
 an authored disabled state is never confused with culling; the application has an icon.
 
-**Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` — `KHR_lights_punctual`,
+**Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` (`KHR_lights_punctual`,
 glTF cameras and animations with keys in a standard external buffer, and one `LMX_scene` extension
-for asset references, overrides, lab generators, enabled state and the saved look — loaded under
+for asset references, overrides, lab generators, enabled state and the saved look) loaded under
 the unchanged editor, replacing the C++ light rig, camera rails and initial cameras (UX2.1);
 Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a six-scene catalog
 (UX2.2); enabled state for lights and objects across Scene, both classification paths, counters
