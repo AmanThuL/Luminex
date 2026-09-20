@@ -102,6 +102,9 @@ dependency reversal, target and namespace renames and decompositions by responsi
 scope where the structure needs them, each as its own commit under the comparison protocol. No
 pass label, shader basename, CLI option, schema, file format or test case name changes. Moves are
 one commit per destination folder, reproducible from a recorded path and include substitution.
+`xmake format --check` passes at every commit, not only in CI: a recorded substitution lengthens
+the paths, string literals and comments that name what moved, and a line crossing the 100-column
+budget is invisible to the policy checker and the tests.
 A new ADR supersedes the parts of [ADR 0020](../decisions/0020-module-layering-and-units.md) that
 retired the Engine name and let Scene depend on Render; it keeps Asset a separately linked,
 CPU-only library inside `Engine/`, so `TextureBake` and GPU-free builds still link no Metal.
@@ -147,7 +150,14 @@ that a family-local module is imported only from its own folder.
 **Exit gate:** [R1.5](codebase-module-boundaries.md#r15--consolidation-and-decomposition)'s build
 and shader evidence: generated MSL identical to the parent's once `#line` directives are dropped,
 metallib inventory and runtime artifact paths unchanged, importer rebuilds intact, the runtime-MSL
-fallback loading, basename collisions still rejected.
+fallback loading, basename collisions still rejected. The format check holds at every commit,
+because renaming a shader folder lengthens every path that names it in C++ source.
+
+**Implemented 2026-09-20.** `Shaders/` holds `Common/`, ten `Passes/<family>/` folders and
+`Tests/`; `xmake/shaders.lua` resolves modules from `Common/` and, for oracles, from the family
+folders, `Tools/check_shader_imports.py` enforces placement and import locality, and the runtime
+still loads `Shaders/<basename>`. See the
+[validation record](../milestones/r/r3.2-validation.md) for evidence and limits.
 
 ### R3.3 — Engine
 
@@ -166,9 +176,10 @@ reverses the edge and the checker rejects any Engine include of Render. Then one
 commit: target `Scene` → `Engine`, `lmx::scene` → `lmx::engine`, and the moved vocabulary
 `lmx::render` → `lmx::engine`; `lmx::asset` stays, naming the checked CPU-only unit.
 
-**Exit gate:** the protocol holds at every commit; the Asset archive still has no undefined RHI
-references and `TextureBake` links neither Engine nor a Metal framework; the Engine archive has no
-undefined `lmx::render` references; every test case is present under its name.
+**Exit gate:** the protocol and the format check hold at every commit; the Asset archive still has
+no undefined RHI references and `TextureBake` links neither Engine nor a Metal framework; the
+Engine archive has no undefined `lmx::render` references; every test case is present under its
+name.
 
 ### R3.4 — Render
 
@@ -177,7 +188,8 @@ compiled record), `Render/Renderer/` (orchestrator and its partial units, `Scene
 builder, `DisplayDomain.h`) and `Render/Passes/<the same ten names as the shaders>/`, one folder
 per pass family holding its stages, CPU mirrors, checks and readbacks.
 
-**Exit gate:** the protocol holds; graph dumps and capture semantics match the parent.
+**Exit gate:** the protocol and the format check hold; graph dumps and capture semantics match the
+parent.
 
 ### R3.5 — App
 
@@ -188,8 +200,8 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
-**Exit gate:** the protocol holds; scripted editor runs are validation-clean; workspace schema 3
-files load unchanged; AppModel still links no ImGui, SDL or Metal.
+**Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
+workspace schema 3 files load unchanged; AppModel still links no ImGui, SDL or Metal.
 
 ### R3.6 — Tests and architecture pages
 
@@ -202,7 +214,7 @@ RojoRHI, and the frame walkthrough beside them. README's directory table, the mo
 and `AGENTS.md` describe the tree as built.
 
 **Exit gate:** the test inventory equals the parent's by case name; each page is within budget;
-policy green.
+policy and the format check green.
 
 ## R4 — Shader source deduplication
 

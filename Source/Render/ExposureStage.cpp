@@ -16,9 +16,9 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/HistogramAccumulate.slang's HistogramParams. Every field is a scalar, so HLSL
-// cbuffer packing (which Slang's Metal path still follows) leaves them contiguous -- no vector
-// field ever forces a gap here.
+// Mirrors Shaders/Passes/Exposure/HistogramAccumulate.slang's HistogramParams. Every field is a
+// scalar, so HLSL cbuffer packing (which Slang's Metal path still follows) leaves them contiguous
+// -- no vector field ever forces a gap here.
 struct HistogramParams {
     float logLuminanceMin;
     float logLuminanceMax;
@@ -28,14 +28,14 @@ struct HistogramParams {
 static_assert(sizeof(HistogramParams) == 16,
               "must match HistogramAccumulate.slang's HistogramParams");
 
-// Mirrors Shaders/ExposureSeed.slang's ExposureSeedParams.
+// Mirrors Shaders/Passes/Exposure/ExposureSeed.slang's ExposureSeedParams.
 struct ExposureSeedParams {
     float exposure;
 };
 static_assert(sizeof(ExposureSeedParams) == 4,
               "must match ExposureSeed.slang's ExposureSeedParams");
 
-// Mirrors Shaders/ExposureResolve.slang's ExposureResolveParams.
+// Mirrors Shaders/Passes/Exposure/ExposureResolve.slang's ExposureResolveParams.
 struct ExposureResolveParams {
     float lowPercentile;
     float highPercentile;

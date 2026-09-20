@@ -6,10 +6,18 @@
 --
 -- Every check below is scoped to the target's own Slang sources, so a target compiling a
 -- different shader tree is neither constrained by nor rebuilt for a tree it never reads. A target
--- whose modules live outside Shaders/Modules names its own directory with
--- set_values("slang.moduledir", "<repository-relative dir>"). The RHI component carries an
--- equivalent rule of its own over its own shader tree, so the target-directory guard looks for
--- either rule name.
+-- whose modules live outside the Luminex shader tree names its own directory with
+-- set_values("slang.moduledir", "<repository-relative dir>"), and that directory is then the whole
+-- include list. The RHI component carries an equivalent rule of its own over its own shader tree,
+-- so the target-directory guard looks for either rule name.
+--
+-- Module resolution follows the shader tree's shape. Slang resolves `import X;` against the
+-- importing file's own directory before any -I directory, so a pass family's shaders find the
+-- modules that sit beside them in Shaders/Passes/<family>/ with no search path at all. The include
+-- list therefore names only Shaders/Common, the modules shared across families -- which is what
+-- makes slangc itself reject a shader that reaches for another family's module, before the import
+-- checker runs. Shaders/Tests/ is the one exception: an oracle belongs to no family and may test a
+-- family-local module, so an oracle source also receives every Shaders/Passes/<family>/ directory.
 rule("slang2metallib")
     set_extensions(".slang")
     on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
@@ -44,15 +52,34 @@ rule("slang2metallib")
             names[basename] = shader
         end
 
-        local moduledir = target:values("slang.moduledir") or "Shaders/Modules"
+        -- The include list, sorted so that two builds of the same source emit the same command
+        -- line. A basename is unique across the whole shader tree, so the order never decides
+        -- which file an import resolves to; it only keeps the build reproducible.
+        local moduledir = target:values("slang.moduledir")
+        local includedirs = {}
+        if moduledir then
+            table.insert(includedirs, path.join(os.projectdir(), moduledir))
+        else
+            table.insert(includedirs, path.join(os.projectdir(), "Shaders/Common"))
+            local relative = path.relative(path.absolute(sourcefile, os.projectdir()),
+                                           os.projectdir())
+            if relative:startswith("Shaders/Tests/") then
+                table.join2(includedirs, os.dirs(path.join(os.projectdir(), "Shaders/Passes/*")))
+            end
+        end
+        table.sort(includedirs)
+
         local outdir = path.join(target:targetdir(), "Shaders")
         local name = path.basename(sourcefile)
         local msl = path.join(outdir, name .. ".metal")
         local slangc = path.join(os.projectdir(), "ThirdParty/slang/bin/slangc")
         batchcmds:mkdir(outdir)
         batchcmds:show_progress(opt.progress, "${color.build.object}slang %s", sourcefile)
-        local slangargs = {sourcefile, "-I", path.join(os.projectdir(), moduledir),
-                           "-target", "metal", "-o", msl}
+        local slangargs = {sourcefile}
+        for _, includedir in ipairs(includedirs) do
+            table.join2(slangargs, {"-I", includedir})
+        end
+        table.join2(slangargs, {"-target", "metal", "-o", msl})
         local visibility = name:startswith("Visibility") or (name:startswith("Occlusion") and name ~= "OcclusionReference") or name:startswith("Hzb") or name:startswith("LightCluster")
         if visibility then table.join2(slangargs, {"-fp-mode", "precise"}) end
         batchcmds:vrunv(slangc, slangargs)
@@ -68,22 +95,26 @@ rule("slang2metallib")
             if visibility then table.join2(metalargs, {"-fno-fast-math", "-ffp-contract=off"}) end
             batchcmds:vrunv("xcrun", metalargs)
         end
-        -- Every .slang source of this target, plus every module under its include directory, and
-        -- deliberately so: `import Shadow;` makes ShadowSmoke.slang depend on Shadow.slang, and
-        -- nothing here can see that edge -- slangc's CLI has no depfile mode wired up, and parsing
-        -- `import` lines out of the source would be a second, silently-drifting implementation of
-        -- Slang's module resolution. Without this, editing a module leaves every importer's
-        -- .metal/.metallib stale. The module directory is listed separately because a module is an
-        -- input the compiler resolves through -I, not a source the target compiles: a target whose
-        -- pattern does not happen to sweep its own modules in would otherwise miss them entirely.
-        -- The conservative list rebuilds all of the target's shaders whenever any entry or module
-        -- it can reach changes, without duplicating the compiler's dependency resolver.
+        -- Every .slang source of this target, plus every module under each of its include
+        -- directories, and deliberately so: `import Shadow;` makes ShadowSmoke.slang depend on
+        -- Shadow.slang, and nothing here can see that edge -- slangc's CLI has no depfile mode
+        -- wired up, and parsing `import` lines out of the source would be a second,
+        -- silently-drifting implementation of Slang's module resolution. Without this, editing a
+        -- module leaves every importer's .metal/.metallib stale. The include directories are swept
+        -- separately because a module is an input the compiler resolves through -I, not a source
+        -- the target compiles: a target whose pattern does not happen to sweep its own modules in
+        -- would otherwise miss them entirely. Sweeping all of them, not just the first, is what
+        -- rebuilds an oracle when the family module it tests changes. The conservative list
+        -- rebuilds all of the target's shaders whenever any entry or module it can reach changes,
+        -- without duplicating the compiler's dependency resolver.
         local depfiles = {}
         for _, shader in ipairs(sources) do
             depfiles[path.absolute(shader, os.projectdir())] = true
         end
-        for _, module in ipairs(os.files(path.join(os.projectdir(), moduledir, "**.slang"))) do
-            depfiles[path.absolute(module)] = true
+        for _, includedir in ipairs(includedirs) do
+            for _, module in ipairs(os.files(path.join(includedir, "**.slang"))) do
+                depfiles[path.absolute(module)] = true
+            end
         end
         local dependencies = table.orderkeys(depfiles)
         batchcmds:add_depfiles(dependencies)

@@ -23,7 +23,7 @@ using temporal_detail::viewReadsReprojected;
 
 namespace {
 
-// Mirrors Shaders/TemporalReproject.slang's TemporalReprojectParams.
+// Mirrors Shaders/Passes/Temporal/TemporalReproject.slang's TemporalReprojectParams.
 struct TemporalReprojectParams {
     uint32_t width = 0; // The output extent: the pass's dispatch bound.
     uint32_t height = 0;
@@ -36,7 +36,7 @@ struct TemporalReprojectParams {
 static_assert(sizeof(TemporalReprojectParams) == 32,
               "must match TemporalReproject.slang's TemporalReprojectParams");
 
-// Mirrors Shaders/TemporalDebugView.slang's TemporalDebugViewParams.
+// Mirrors Shaders/Passes/Temporal/TemporalDebugView.slang's TemporalDebugViewParams.
 struct TemporalDebugViewParams {
     uint32_t view = 0;
     uint32_t renderWidth = 0; // The motion target's active rectangle; every other input is output.
@@ -64,16 +64,16 @@ constexpr uint32_t kDebugViewResolvedSlot = 4;    // texture
 constexpr uint32_t kDebugViewParamsSlot = 0;      // buffer
 
 //======================================================================================================================
-// The view selector Shaders/TemporalDebugView.slang branches on. Off never reaches the shader --
-// the pass is not declared in that mode -- so it maps to the same value MotionVectors does rather
-// than to a code the fragment has no branch for.
+// The view selector Shaders/Passes/Temporal/TemporalDebugView.slang branches on. Off never reaches
+// the shader -- the pass is not declared in that mode -- so it maps to the same value MotionVectors
+// does rather than to a code the fragment has no branch for.
 uint32_t debugViewSelector(TemporalDebugView view) {
     return view == TemporalDebugView::Off ? 1u : static_cast<uint32_t>(view);
 }
 
 //======================================================================================================================
-// Shaders/TemporalReproject.slang's block: the pass runs over the output extent and resamples the
-// render extent's active rectangle to meet it, on spatialUpscaleParams()' terms.
+// Shaders/Passes/Temporal/TemporalReproject.slang's block: the pass runs over the output extent and
+// resamples the render extent's active rectangle to meet it, on spatialUpscaleParams()' terms.
 TemporalReprojectParams reprojectParams(const TemporalInputs& inputs) {
     const SpatialUpscaleParams resampling = spatialUpscaleParams(inputs);
     return TemporalReprojectParams{.width = resampling.outputWidth,

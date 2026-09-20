@@ -1,12 +1,25 @@
+// The auto-exposure twin of ScenePass.slang (spec 9): byte-for-byte identical except the final
+// multiply reads the persistent exposure buffer instead of PassUniforms.preExposure. A separate
+// file rather than a runtime branch in one shader, because a branch that is never taken still
+// gives the compiler a different fragment to schedule around -- proven by an M5 parity check that
+// failed by a single rounding bit in one pixel once ScenePass.slang carried the branch. Splitting
+// the two into their own compiled pipelines (Renderer.cpp's m_scenePipeline vs
+// m_scenePipelineAuto, selected by SceneView::autoExposureEnabled, the same pattern the wireframe
+// pipeline already uses) means the manual pipeline's shader source -- and therefore its compiled
+// output -- is untouched by auto-exposure's existence, which is what parity with pre-M5 output
+// actually requires. Keep every other edit to this file mirrored in ScenePass.slang and vice
+// versa; the two are meant to diverge in exactly one place.
+//
 // Forward linear-space metallic-roughness pass: analytic directional lights with a GGX BRDF,
 // image-based lighting from the scene's generated IBL set, normal mapping, occlusion, emissive, and
 // light-0 shadows. Output is scene-linear radiance scaled by exposure; nothing here encodes,
-// because the target is a half-float scene-colour buffer and Shaders/DisplayTransform.slang owns
-// the encode.
+// because the target is a half-float scene-colour buffer and
+// Shaders/Passes/Display/DisplayTransform.slang owns the encode.
 //
 // Slots -- resource classes use separate index spaces:
 //   buffers   b0 vertices, b1 first-entry DrawUniforms, b2 per-pass PassUniforms
-//             b4 visible rows, b5 instances, b6 materials
+//             b4 visible rows, b5 instances, b6 materials, b3 the persistent
+//             exposure buffer (spec 9) -- this variant's one difference from ScenePass.slang
 //             b8 light rows, b9 cluster grid, b10 cluster index list,
 //             b11 LocalLightParams
 //   textures  per-draw material set: t0 base colour, t1 normal, t4 metallic-roughness,
@@ -16,9 +29,10 @@
 //   samplers  s0 linear (wrap, anisotropic), s1 shadow comparison, s2 linear clamped with a linear
 //             mip filter, for the IBL set only
 //
-// t2 belongs to the sky cubemap, which only Shaders/Sky.slang reads; the sky draws inside this same
-// render pass, so the slot is bound there rather than here. This fragment no longer samples the sky
-// directly -- its ad-hoc mirror reflection was replaced by the prefiltered environment on t8.
+// t2 belongs to the sky cubemap, which only Shaders/Passes/Scene/SkyAuto.slang reads; the sky draws
+// inside this same render pass, so the slot is bound there rather than here. This fragment no
+// longer samples the sky directly -- its ad-hoc mirror reflection was replaced by the prefiltered
+// environment on t8.
 import Lighting;
 import LocalLights;
 import SceneTables;
@@ -78,6 +92,11 @@ struct PassUniforms
 
 [[vk::binding(2, 0)]]
 ConstantBuffer<PassUniforms> gPass : register(b2); // → MSL [[buffer(2)]]
+
+// The persistent exposure buffer (spec 9's feedback buffer). This pipeline only ever binds while
+// auto-exposure is on, so it is always read -- unlike ScenePass.slang, which never binds it at all.
+[[vk::binding(3, 0)]]
+StructuredBuffer<float> gExposureOverride : register(t3); // → MSL [[buffer(3)]]
 
 [[vk::binding(0, 2)]]
 Texture2D gDiffuse : register(t0); // → MSL [[texture(0)]]
@@ -256,9 +275,11 @@ SurfaceShading shadeSurfaceDetailed(VSOutput input)
     litColor += emissiveTerm;
 
     // Pre-exposed, still linear: the display transform is the only thing that leaves this space.
+    // The one difference from ScenePass.slang: the multiplier comes from the persistent exposure
+    // buffer (spec 9), not PassUniforms.preExposure.
     SurfaceShading shaded;
-    shaded.color = float4(litColor * gPass.preExposure, baseColorSample.a);
-    shaded.emissive = emissiveTerm * gPass.preExposure;
+    shaded.color = float4(litColor * gExposureOverride[0], baseColorSample.a);
+    shaded.emissive = emissiveTerm * gExposureOverride[0];
     return shaded;
 }
 

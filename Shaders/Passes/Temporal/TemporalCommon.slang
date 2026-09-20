@@ -1,8 +1,8 @@
 // The accumulation vocabulary the temporal kernels share: the frozen constants, the rejection
 // reason codes, and the small colour and depth helpers the neighbourhood clip and the disocclusion
-// test are written in. Shaders/TemporalResolve.slang is the source of truth for the algorithm
-// these pieces belong to; this module exists so the native and the upscaling kernel cannot drift
-// apart on a constant or a colour space.
+// test are written in. Shaders/Passes/Temporal/TemporalResolve.slang is the source of truth for the
+// algorithm these pieces belong to; this module exists so the native and the upscaling kernel
+// cannot drift apart on a constant or a colour space.
 //
 // The five-tap Catmull-Rom fetch is deliberately *not* here: each kernel's fetch addresses its own
 // texture -- the output-extent history in one case, the active rectangle of a render-extent image

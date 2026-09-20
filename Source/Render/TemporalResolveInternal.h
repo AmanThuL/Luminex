@@ -8,7 +8,7 @@
 
 namespace lmx::render::temporal_detail {
 
-// Mirrors Shaders/SpatialUpscale.slang's SpatialUpscaleParams.
+// Mirrors Shaders/Passes/Temporal/SpatialUpscale.slang's SpatialUpscaleParams.
 struct SpatialUpscaleParams {
     uint32_t renderWidth = 0;
     uint32_t renderHeight = 0;
@@ -21,9 +21,9 @@ struct SpatialUpscaleParams {
 static_assert(sizeof(SpatialUpscaleParams) == 32,
               "must match SpatialUpscale.slang's SpatialUpscaleParams");
 
-// Mirrors Shaders/TemporalUpscale.slang's TemporalUpscaleParams: TemporalResolveParams' fields, in
-// its order and with its trailing pad, then the four the upscaling kernel appends. Appending is
-// what keeps the two blocks comparable field for field.
+// Mirrors Shaders/Passes/Temporal/TemporalUpscale.slang's TemporalUpscaleParams:
+// TemporalResolveParams' fields, in its order and with its trailing pad, then the four the
+// upscaling kernel appends. Appending is what keeps the two blocks comparable field for field.
 struct TemporalUpscaleParams {
     uint32_t width = 0; // The active render extent, which the render-extent inputs are read within.
     uint32_t height = 0;
@@ -58,8 +58,8 @@ constexpr uint32_t kResolveSamplerSlot = 0;       // sampler
 constexpr uint32_t kResolveExposureSlot = 0;      // buffer
 constexpr uint32_t kResolveParamsSlot = 1;        // buffer
 
-// Shaders/TemporalUpscale.slang's slot map is the resolve's above, kResolve* for kResolve*, which
-// is what lets one declaration serve both kernels.
+// Shaders/Passes/Temporal/TemporalUpscale.slang's slot map is the resolve's above, kResolve* for
+// kResolve*, which is what lets one declaration serve both kernels.
 
 constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 

@@ -15,7 +15,7 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/DisplayTransform.slang's DisplayParams.
+// Mirrors Shaders/Passes/Display/DisplayTransform.slang's DisplayParams.
 struct DisplayParams {
     float bloomIntensity;
 };

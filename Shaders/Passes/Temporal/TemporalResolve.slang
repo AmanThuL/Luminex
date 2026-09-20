@@ -14,8 +14,8 @@
 // exposure pair (read), 1 params.
 //
 // The frozen constants, the rejection reason codes and the colour and depth helpers live in
-// Shaders/TemporalCommon.slang, which Shaders/TemporalUpscale.slang shares with this file; the
-// algorithm they belong to is this one's.
+// Shaders/Passes/Temporal/TemporalCommon.slang, which Shaders/Passes/Temporal/TemporalUpscale.slang
+// shares with this file; the algorithm they belong to is this one's.
 import Motion;
 import TemporalCommon;
 

@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 // Run directly against CPU reference implementations that mirror the shaders line for line --
-// Shaders/HistogramAccumulate.slang, Shaders/ExposureResolve.slang, and
-// Shaders/BloomThreshold.slang
+// Shaders/Passes/Exposure/HistogramAccumulate.slang, Shaders/Passes/Exposure/ExposureResolve.slang,
+// and Shaders/Passes/Bloom/BloomThreshold.slang
 // -- rather than through Renderer::declarePasses(), so a failure here points at one kernel's math
 // instead of the whole frame's wiring (spec 9/10).
 
@@ -78,9 +78,10 @@ std::array<uint32_t, kBins> cpuHistogram(std::span<const glm::vec3> pixels, floa
     return bins;
 }
 
-// The two floats Shaders/ExposureResolve.slang and Shaders/ExposureSeed.slang keep in
-// lmx.render.exposureBuffer: what the scene pass multiplies by next, and what it multiplied by on
-// the previous declared temporal frame (M6.2 spec 7).
+// The two floats Shaders/Passes/Exposure/ExposureResolve.slang and
+// Shaders/Passes/Exposure/ExposureSeed.slang keep in lmx.render.exposureBuffer: what the scene pass
+// multiplies by next, and what it multiplied by on the previous declared temporal frame (M6.2 spec
+// 7).
 struct ExposurePair {
     float applied = 1.0f;
     float previous = 1.0f;

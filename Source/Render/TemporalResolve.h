@@ -86,10 +86,10 @@ constexpr float kReactiveEmissiveScale = 4.0f;
 /// Storage format of `lmx.render.reactive`: one byte of "do not accumulate me" per pixel.
 constexpr rojoRHI::Format kReactiveFormat = rojoRHI::Format::R8Unorm;
 
-/// Why a pixel could not reuse its history, in the order Shaders/TemporalResolve.slang and
-/// Shaders/TemporalUpscale.slang test them:
-/// the first that applies wins. The rejection transient stores `code / 255` in its red channel,
-/// with kRejectionClippedBit set alongside when the neighbourhood clip moved the history.
+/// Why a pixel could not reuse its history, in the order
+/// Shaders/Passes/Temporal/TemporalResolve.slang and Shaders/Passes/Temporal/TemporalUpscale.slang
+/// test them: the first that applies wins. The rejection transient stores `code / 255` in its red
+/// channel, with kRejectionClippedBit set alongside when the neighbourhood clip moved the history.
 constexpr uint32_t kRejectionReasonNone = 0;        ///< The history was reprojected and blended.
 constexpr uint32_t kRejectionReasonOffScreen = 1;   ///< The history position left the extent.
 constexpr uint32_t kRejectionReasonInvalid = 2;     ///< Motion carried the undefined sentinel.
@@ -221,17 +221,18 @@ private:
     GraphTexture declareHistoryCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const TemporalInputs& inputs);
 
-    // The Raw mode's upscaled commit: Shaders/SpatialUpscale.slang resamples the active rectangle
-    // of this frame's scene colour into the whole colour slot. Same invariant as the copy it
-    // replaces -- this frame's colour slot holds this frame's output -- and the same export, since
-    // the consumer is the next frame.
+    // The Raw mode's upscaled commit: Shaders/Passes/Temporal/SpatialUpscale.slang resamples the
+    // active rectangle of this frame's scene colour into the whole colour slot. Same invariant as
+    // the copy it replaces -- this frame's colour slot holds this frame's output -- and the same
+    // export, since the consumer is the next frame.
     GraphTexture declareSpatialCommit(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const TemporalInputs& inputs);
 
-    // The NativeTaa mode's upscaling accumulation: Shaders/TemporalUpscale.slang over the output
-    // extent, reading the render extent's active rectangle. Same declaration, diagnostics and
-    // export as declareResolve(); it also serves the one scale-1 frame whose predecessor ran at
-    // another render extent, which is why it carries the previous render extent in its block.
+    // The NativeTaa mode's upscaling accumulation: Shaders/Passes/Temporal/TemporalUpscale.slang
+    // over the output extent, reading the render extent's active rectangle. Same declaration,
+    // diagnostics and export as declareResolve(); it also serves the one scale-1 frame whose
+    // predecessor ran at another render extent, which is why it carries the previous render extent
+    // in its block.
     void declareUpscale(RenderGraph& graph, rojoRHI::CommandList& commands,
                         const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
                         TemporalResolveOutputs& outputs);

@@ -46,9 +46,10 @@ constexpr uint32_t kUpscaleParamsSlot = 0;     // buffer
 namespace temporal_detail {
 
 //======================================================================================================================
-// Shaders/SpatialUpscale.slang's block. The allocated extent is the output one: every render-extent
-// target is allocated at capacity and used through an origin-anchored active rectangle, so a UV
-// over one of them is taken over the output extent whatever the frame rasterised at.
+// Shaders/Passes/Temporal/SpatialUpscale.slang's block. The allocated extent is the output one:
+// every render-extent target is allocated at capacity and used through an origin-anchored active
+// rectangle, so a UV over one of them is taken over the output extent whatever the frame rasterised
+// at.
 SpatialUpscaleParams spatialUpscaleParams(const TemporalInputs& inputs) {
     return SpatialUpscaleParams{.renderWidth = inputs.extents.renderWidth,
                                 .renderHeight = inputs.extents.renderHeight,
@@ -60,10 +61,11 @@ SpatialUpscaleParams spatialUpscaleParams(const TemporalInputs& inputs) {
 }
 
 //======================================================================================================================
-// Shaders/TemporalUpscale.slang's block. The render extent is what the kernel reads its inputs
-// within, the output extent what it dispatches over, and the allocated extent the output one on
-// spatialUpscaleParams()' terms. The previous render extent is carried separately because the
-// previous depth slot is addressed at the extent it was rendered at, which a scale change moves.
+// Shaders/Passes/Temporal/TemporalUpscale.slang's block. The render extent is what the kernel reads
+// its inputs within, the output extent what it dispatches over, and the allocated extent the output
+// one on spatialUpscaleParams()' terms. The previous render extent is carried separately because
+// the previous depth slot is addressed at the extent it was rendered at, which a scale change
+// moves.
 TemporalUpscaleParams temporalUpscaleParams(const TemporalInputs& inputs, bool historyValid,
                                             uint32_t writeDiagnostics) {
     return TemporalUpscaleParams{.width = inputs.extents.renderWidth,
