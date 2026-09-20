@@ -2,8 +2,8 @@
 // Forward linear-space metallic-roughness pass: analytic directional lights with a GGX BRDF,
 // image-based lighting from the scene's generated IBL set, normal mapping, occlusion, emissive, and
 // light-0 shadows. Output is scene-linear radiance scaled by exposure; nothing here encodes,
-// because the target is a half-float scene-colour buffer and Shaders/DisplayTransform.slang owns
-// the encode.
+// because the target is a half-float scene-colour buffer and
+// Shaders/Passes/Display/DisplayTransform.slang owns the encode.
 //
 // Slots -- resource classes use separate index spaces:
 //   buffers   b0 vertices, b1 first-entry DrawUniforms, b2 per-pass PassUniforms
@@ -17,9 +17,10 @@
 //   samplers  s0 linear (wrap, anisotropic), s1 shadow comparison, s2 linear clamped with a linear
 //             mip filter, for the IBL set only
 //
-// t2 belongs to the sky cubemap, which only Shaders/Sky.slang reads; the sky draws inside this same
-// render pass, so the slot is bound there rather than here. This fragment no longer samples the sky
-// directly -- its ad-hoc mirror reflection was replaced by the prefiltered environment on t8.
+// t2 belongs to the sky cubemap, which only Shaders/Passes/Scene/Sky.slang reads; the sky draws
+// inside this same render pass, so the slot is bound there rather than here. This fragment no
+// longer samples the sky directly -- its ad-hoc mirror reflection was replaced by the prefiltered
+// environment on t8.
 import Lighting;
 import LocalLights;
 import SceneTables;

@@ -22,7 +22,7 @@
 namespace lmx::render {
 namespace {
 
-// Mirrors Shaders/Modules/Lighting.slang's DirLight.
+// Mirrors Shaders/Common/Lighting.slang's DirLight.
 struct DirLightUniform {
     glm::vec3 strength;     // 0
     float strengthPadding;  // 12
@@ -31,7 +31,7 @@ struct DirLightUniform {
 };
 static_assert(sizeof(DirLightUniform) == 32, "must match Lighting.slang's DirLight");
 
-// Mirrors Shaders/ScenePass.slang's PassUniforms.
+// Mirrors Shaders/Passes/Scene/ScenePass.slang's PassUniforms.
 struct PassUniforms {
     glm::mat4 viewProj;        // 0
     glm::mat4 shadowTransform; // 64
@@ -50,7 +50,7 @@ struct PassUniforms {
 };
 static_assert(sizeof(PassUniforms) == 400, "must match ScenePass.slang's PassUniforms");
 
-// Mirrors Shaders/Sky.slang's SkyUniforms.
+// Mirrors Shaders/Passes/Scene/Sky.slang's SkyUniforms.
 struct SkyUniforms {
     glm::mat4 viewProj;  // 0 -- unjittered on the temporal path; jitterNdc offsets the raster
     glm::vec3 eyePos;    // 64
@@ -86,7 +86,7 @@ static_assert(offsetof(LocalLightParams, gridX) == 8);
 static_assert(offsetof(LocalLightParams, activeWidth) == 28);
 static_assert(offsetof(LocalLightParams, sliceDepth) == 36);
 
-// Shaders/Modules/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
+// Shaders/Common/Shadow.slang's kShadowFilterPcf / kShadowFilterPcss.
 constexpr int32_t kShadowFilterPcf = 0;
 constexpr int32_t kShadowFilterPcss = 1;
 
@@ -97,14 +97,14 @@ constexpr uint32_t kPassUniformsSlot = 2;
 // bindBuffer (a plain buffer read, not a storage binding) so a *raster* pass may read it --
 // bindStorageBuffer is compute-pass-only.
 constexpr uint32_t kExposureOverrideSlot = 3;
-// The scene pass's texture slot map, which Shaders/ScenePass.slang's header documents in full.
-// Two groups share one index space: a per-draw material set rebound for every DrawItem, and a
-// per-pass shared set bound once before the draw loop.
+// The scene pass's texture slot map, which Shaders/Passes/Scene/ScenePass.slang's header documents
+// in full. Two groups share one index space: a per-draw material set rebound for every DrawItem,
+// and a per-pass shared set bound once before the draw loop.
 //
-// Slot 2 is the sky cubemap. Only Shaders/Sky.slang reads it, and the sky draws at the end of this
-// same render pass, so it is bound beside that draw rather than with the shared set -- the scene
-// fragment stopped sampling the sky when the prefiltered environment (slot 8) replaced its ad-hoc
-// mirror reflection.
+// Slot 2 is the sky cubemap. Only Shaders/Passes/Scene/Sky.slang reads it, and the sky draws at the
+// end of this same render pass, so it is bound beside that draw rather than with the shared set --
+// the scene fragment stopped sampling the sky when the prefiltered environment (slot 8) replaced
+// its ad-hoc mirror reflection.
 constexpr uint32_t kDiffuseTextureSlot = 0;
 constexpr uint32_t kNormalTextureSlot = 1;
 constexpr uint32_t kSkyTextureSlot = 2;
@@ -803,8 +803,8 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                     commands.bindPipeline(view.autoExposureEnabled ? *m_skyPipelineAuto
                                                                    : *m_skyPipeline);
                 }
-                // Shaders/Sky.slang/SkyAuto.slang are the only readers of this slot, so it is
-                // bound here rather than with the pass's shared set.
+                // Shaders/Passes/Scene/Sky.slang and SkyAuto.slang are the only readers of this
+                // slot, so it is bound here rather than with the pass's shared set.
                 commands.bindTexture(kSkyTextureSlot, *view.skyCubemap);
                 commands.bindFrameData(kPassUniformsSlot, sky);
                 commands.drawIndexed(*view.tables.indices, view.skySphere->indexCount,

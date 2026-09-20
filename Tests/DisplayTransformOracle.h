@@ -1,10 +1,10 @@
 #pragma once
 
-// CPU mirror of the display transform Shaders/DisplayTransform.slang applies: the Khronos PBR
-// Neutral tone map followed by the sRGB encode from Shaders/Encode.slang. Rendering tests that
-// probe the display target state their expectation as a scene-linear radiance and push it through
-// here, so the number in the test is derived from the same math the GPU runs rather than measured
-// off an image.
+// CPU mirror of the display transform Shaders/Passes/Display/DisplayTransform.slang applies: the
+// Khronos PBR Neutral tone map followed by the sRGB encode from Shaders/Common/Encode.slang.
+// Rendering tests that probe the display target state their expectation as a scene-linear radiance
+// and push it through here, so the number in the test is derived from the same math the GPU runs
+// rather than measured off an image.
 //
 // Kept beside the tests rather than in Source/: nothing that ships needs a CPU copy of the
 // transform, and a mirror that the shader is checked against has to be written independently of it.
@@ -24,16 +24,16 @@ inline float srgbDecode(float encoded) {
 }
 
 //======================================================================================================================
-// Mirrors Shaders/Encode.slang's linearToSrgbChannel, saturation included.
+// Mirrors Shaders/Common/Encode.slang's linearToSrgbChannel, saturation included.
 inline float srgbEncode(float linear) {
     const float c = std::clamp(linear, 0.0f, 1.0f);
     return c <= 0.0031308f ? 12.92f * c : 1.055f * std::pow(c, 1.0f / 2.4f) - 0.055f;
 }
 
 //======================================================================================================================
-// Mirrors Shaders/DisplayTransform.slang's pbrNeutralToneMap. Not per-channel: the black offset
-// keys off the smallest channel and the shoulder desaturates toward the peak, so a colour's three
-// channels move together.
+// Mirrors Shaders/Passes/Display/DisplayTransform.slang's pbrNeutralToneMap. Not per-channel: the
+// black offset keys off the smallest channel and the shoulder desaturates toward the peak, so a
+// colour's three channels move together.
 inline glm::vec3 pbrNeutralToneMap(glm::vec3 color) {
     constexpr float kStartCompression = 0.8f - 0.04f;
     constexpr float kDesaturation = 0.15f;

@@ -444,7 +444,7 @@ TEST_CASE("lightReaches ignores surface orientation", "[render][light]") {
 
 //======================================================================================================================
 // A non-unit shading normal (e.g. off unnormalized interpolated vertex normals) can dot to more
-// than 1 with a unit light vector; Shaders/Modules/Lighting.slang's ComputeDirectionalLight
+// than 1 with a unit light vector; Shaders/Common/Lighting.slang's ComputeDirectionalLight
 // saturates N.L before using it, and this mirror must match or a GPU/CPU oracle comparison would
 // disagree whenever that happens.
 TEST_CASE("N.L is saturated to [0, 1] before it scales the result", "[render][light]") {

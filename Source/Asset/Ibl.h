@@ -50,9 +50,9 @@ inline constexpr uint32_t kDfgSampleCount = 1024;      ///< Samples per DFG texe
 ///     +Y: ( u,  1,  v)      -Y: ( u, -1, -v)
 ///     +Z: ( u, -v,  1)      -Z: (-u, -v, -1)
 /// x therefore runs left-to-right and y top-to-bottom within a face, which is the row order
-/// createTexture's upload expects. A direction that Shaders/Sky.slang samples the scene's sky cube
-/// with lands on the same texel these generators read, so an irradiance cube built here is oriented
-/// like the environment it came from rather than mirrored or rotated off it.
+/// createTexture's upload expects. A direction that Shaders/Passes/Scene/Sky.slang samples the
+/// scene's sky cube with lands on the same texel these generators read, so an irradiance cube built
+/// here is oriented like the environment it came from rather than mirrored or rotated off it.
 struct CpuCubemap {
     uint32_t faceSize = 0;                                    ///< Square face extent in texels.
     std::array<std::vector<glm::vec4>, kCubeFaceCount> faces; ///< Linear RGBA face texels.

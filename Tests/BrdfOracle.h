@@ -1,6 +1,6 @@
 #pragma once
 
-// CPU mirror of the shading model Shaders/Lighting.slang evaluates: GGX specular with
+// CPU mirror of the shading model Shaders/Common/Lighting.slang evaluates: GGX specular with
 // height-correlated Smith visibility and Schlick Fresnel for analytic lights, and the split-sum
 // image-based reconstruction with multiple-scattering compensation. Rendering tests state their
 // expectation as a surface plus a lighting configuration and push it through here, so the number in
@@ -31,7 +31,7 @@
 
 namespace lmx::test::brdf {
 
-// Mirrors Shaders/Lighting.slang's constants of the same names.
+// Mirrors Shaders/Common/Lighting.slang's constants of the same names.
 inline constexpr float kDielectricF0 = 0.04f;
 inline constexpr float kMinRoughness = 0.045f;
 inline constexpr float kPi = 3.141592653589793f;

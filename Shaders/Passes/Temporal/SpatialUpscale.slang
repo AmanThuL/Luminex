@@ -45,10 +45,10 @@ float2 activeUv(float2 position)
     return clamp(position, float2(0.5, 0.5), render - 0.5) / allocated;
 }
 
-// Five-tap Catmull-Rom over the render image. Copied from Shaders/TemporalResolve.slang's
-// sampleHistoryCatmullRom, which stays the source of truth for the kernel: the weights, the
-// five-tap renormalisation and the negative-lobe clamp are that function's, with the taps taken
-// over the active rectangle instead of a whole-texture UV.
+// Five-tap Catmull-Rom over the render image. Copied from
+// Shaders/Passes/Temporal/TemporalResolve.slang's sampleHistoryCatmullRom, which stays the source
+// of truth for the kernel: the weights, the five-tap renormalisation and the negative-lobe clamp
+// are that function's, with the taps taken over the active rectangle instead of a whole-texture UV.
 float3 sampleCurrentCatmullRom(float2 samplePosition)
 {
     float2 texelCenter = floor(samplePosition - 0.5) + 0.5;
