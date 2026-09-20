@@ -12,7 +12,7 @@ Owner acceptance does not certify every automated check below. M7.1 remains inac
 
 Work started in a sibling worktree from local main `5dee208`, preserving the rebuilt parent App,
 shaders and original workspace outside source before editing. The rendering baseline remains M6.5
-plus R1. [Gate B](interface-gate-b.md) and [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md)
+plus R1. [Gate B](m6/interface-gate-b.md) and [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md)
 remain accepted; editor-local names and indices do not implement GPU scene identity.
 
 The first two local stage commits are `64a9e60` (coherent diagnostics) and `8d57e6f` (subject recovery

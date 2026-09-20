@@ -23,7 +23,7 @@ both App and Tests, a flat 63-file Tests tree with two files over 3,000 lines, a
 at first use with divergent contracts because nothing checked direction. [R1.1](../milestones/r1.1.md)
 added enforcement and moved the adapter, [R1.2](../milestones/r1.2.md) separated Asset and Scene and
 shared the leaf contracts, and [R1.3](../milestones/r1.3.md) added AppModel and a shared session,
-accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed; R1.5 is complete as recorded below. The subsequent [separate gate B review](../milestones/interface-gate-b.md) approves M7.1 entry.
+accepted with the exception below. [R1.4](../milestones/r1.4.md) completes the prerequisite with strict parity passed; R1.5 is complete as recorded below. The subsequent [separate gate B review](../milestones/m6/interface-gate-b.md) approves M7.1 entry.
 
 ## Target module contract
 
@@ -95,7 +95,7 @@ and every output kept in the slice's evidence bundle outside the source tree.
   the commit merges only once a cause is found and fixed or the parent produces that hash within
   the maximum; at the maximum, sampling stops and the slice records the blocker. `reference.json`,
   the strict runner's failure behaviour and the
-  [M6.5 exception](../milestones/m6.5.md#open-parity-investigation) stay as they are: no retry
+  [M6.5 exception](../milestones/m6/m6.5.md#open-parity-investigation) stay as they are: no retry
   until passing, no widened exception, no re-baseline.
 - Pass labels, schedule and transient assignments do not change. No shader, uniform layout or
   `SceneView` field changes. An RHI public header changes only by moving existing declarations

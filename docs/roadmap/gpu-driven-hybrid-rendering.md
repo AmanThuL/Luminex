@@ -15,7 +15,7 @@ owns the accepted UX1-before-M7.1 delivery order, and
 [Neural and Learned Rendering](neural-rendering.md#placement-and-ownership) owns the accepted
 order after M7: N1 → M9 → M8 → M10 → M11. That order sets priority; the gates below are unchanged.
 [Interface gate B](rendering-foundations.md#m6--temporal-and-display-foundation) explicitly
-approves entry in its [2026-09-13 review](../milestones/interface-gate-b.md), after the structural
+approves entry in its [2026-09-13 review](../milestones/m6/interface-gate-b.md), after the structural
 [R1](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations) milestone.
 The review verifies ADR 0010 conformance and the temporal, root-data, binding, synchronization
 and capability contracts; [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md) records the
