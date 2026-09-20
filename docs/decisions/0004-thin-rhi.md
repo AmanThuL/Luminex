@@ -1,6 +1,6 @@
 # ADR 0004: RHI philosophy — thin, explicit, honest
 
-**Status**: Accepted (2026-08-07) · **Spec**: ../specs/2026-08-07-luminex-upgrade-design.md (§4)
+**Status**: Accepted (2026-08-07) · **Spec**: 0000-founding-design.md (§4)
 
 ## Context
 `lmx::rhi` needs to model the shared conceptual core of Metal 4 / Vulkan / D3D12 without speculating

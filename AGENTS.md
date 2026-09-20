@@ -9,7 +9,7 @@ and that directory's `Luminex · 开发日记.md`, including in worktrees. For j
 its index in the same task and follow its Context, Chinese prose/English terms, debugging evidence,
 real editor screenshots and editable-diagram standard. Report unavailable vault access honestly.
 ## Golden sources
-- Spec: `docs/specs/2026-08-07-luminex-upgrade-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
+- Spec: `docs/decisions/0000-founding-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md` · Evidence storage/recovery: `docs/guides/evidence-archive.md`
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
   `docs/roadmap/codebase-module-boundaries.md` (contract and R1) with `codebase-restructuring.md` (R2 RHI→RojoRHI submodule, R3 Donut-style Core/Engine/Render/App subsystems and tree restructure, R4 shader source deduplication), `docs/roadmap/editor-experience.md` (UX1 before M7.1; UX2 scene documents/hierarchy before N1), and

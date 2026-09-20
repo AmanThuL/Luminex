@@ -126,7 +126,7 @@ and retained evidence limits. M7.2 CPU visibility and indirect submission are ow
 
 Luminex is a Metal 4-first modern rendering playground and portfolio: visible image quality and
 verifiable graphics engineering are both outcomes. The
-[foundation goals](specs/2026-08-07-luminex-upgrade-design.md) and
+[foundation goals](decisions/0000-founding-design.md) and
 [research synthesis](research/2026-08-09-rendering-pipeline-synthesis.md) motivate a graph-scheduled,
 GPU-driven hybrid renderer whose raster, screen-space, ray, reconstruction and cache paths share
 scene, material, light and temporal semantics. Grow the thin RHI through actual consumers.

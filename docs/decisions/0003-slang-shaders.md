@@ -1,6 +1,6 @@
 # ADR 0003: Shader pipeline — Slang, two-step MSL compile
 
-**Status**: Accepted (2026-08-07) · **Spec**: ../specs/2026-08-07-luminex-upgrade-design.md (D5, D6)
+**Status**: Accepted (2026-08-07) · **Spec**: 0000-founding-design.md (D5, D6)
 
 ## Context
 One `.slang` source can target MSL now and SPIR-V/DXIL for future backends. Slang's direct-to-metallib
