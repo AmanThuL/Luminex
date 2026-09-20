@@ -18,8 +18,6 @@
 -- makes slangc itself reject a shader that reaches for another family's module, before the import
 -- checker runs. Shaders/Tests/ is the one exception: an oracle belongs to no family and may test a
 -- family-local module, so an oracle source also receives every Shaders/Passes/<family>/ directory.
--- Shaders/Modules is listed alongside Shaders/Common while the tree still holds that directory;
--- slangc accepts an -I directory that does not exist, so naming both costs nothing.
 rule("slang2metallib")
     set_extensions(".slang")
     on_buildcmd_file(function (target, batchcmds, sourcefile, opt)
@@ -63,7 +61,6 @@ rule("slang2metallib")
             table.insert(includedirs, path.join(os.projectdir(), moduledir))
         else
             table.insert(includedirs, path.join(os.projectdir(), "Shaders/Common"))
-            table.insert(includedirs, path.join(os.projectdir(), "Shaders/Modules"))
             local relative = path.relative(path.absolute(sourcefile, os.projectdir()),
                                            os.projectdir())
             if relative:startswith("Shaders/Tests/") then
