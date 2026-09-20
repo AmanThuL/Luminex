@@ -121,7 +121,15 @@ as `<id>-design.md`; the two postmortems in the series of their period; the foun
 plans deleted as the documentation convention already requires, leaving `docs/plans/` as the one
 transient folder. The convention, the policy checker's tables and `AGENTS.md` follow; `AGENTS.md`
 states that a brainstormed design is written as the `Proposed` milestone record and a plan goes
-to `docs/plans/`.
+to `docs/plans/`. Then the living documents — README, `AGENTS.md`, `docs/conventions/`,
+`docs/guides/`, `docs/architecture/`, `docs/frame-pipeline.md`, `docs/roadmap.md` with its parts,
+and milestone records that are not frozen — are copyedited into plain technical prose, one commit
+per folder, with every claim, number, identifier, date, status value, gate result and evidence
+limit preserved and no heading moved; accepted ADRs, the founding design, every `-design.md`,
+research notes and postmortems are left as they are. Four tracked mentions of the owner's personal
+development notes kept outside the repository — in `AGENTS.md` and one clause each in the frozen
+R2.3 design, the frozen R2.4 design and the UX2 record — are removed, an owner-approved exception
+to the links-only rule scoped to those two frozen designs' single clauses.
 
 **Exit gate:** policy green, every local link resolving, no document type losing its status field
 or precedence. Documents only; the comparison protocol does not apply.
