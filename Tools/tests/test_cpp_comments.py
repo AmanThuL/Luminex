@@ -28,7 +28,7 @@ class CppCommentTests(unittest.TestCase):
 
     def test_file_header_starts_on_first_line_and_matches_basename(self) -> None:
         text = "\n" + source("Other.h")
-        errors = comments.check_file_header(Path("RojoRHI/Include/rojoRHI/Example.h"), text)
+        errors = comments.check_file_header(Path("Benchmarks/Example.h"), text)
         self.assertTrue(any(":1:" in error for error in errors))
         self.assertTrue(any("basename" in error or "expected" in error for error in errors))
 
@@ -40,45 +40,35 @@ class CppCommentTests(unittest.TestCase):
         self.assertTrue(any("non-empty" in error for error in errors))
         self.assertTrue(any("closing" in error for error in errors))
 
-    def test_owned_roots_include_source_and_root_rhi_but_not_tests(self) -> None:
+    def test_owned_roots_include_source_and_benchmarks_but_not_tests(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in (
                 "Source/App.cpp",
-                "RojoRHI/Include/rojoRHI/RHI.h",
+                "Benchmarks/Bench.cpp",
                 "Tests/Test.cpp",
-                # Test sources are exempt wherever they live, including inside the RHI component.
-                "RojoRHI/Tests/RHITest.cpp",
-                "RojoRHI/Tests/RHITestSupport.h",
             ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("", encoding="utf-8")
             self.assertEqual(
                 [path.relative_to(root).as_posix() for path in comments.project_cpp_files(root)],
-                ["RojoRHI/Include/rojoRHI/RHI.h", "Source/App.cpp"],
+                ["Benchmarks/Bench.cpp", "Source/App.cpp"],
             )
 
-    def test_public_header_roots_exclude_rhi_backend_headers(self) -> None:
+    def test_public_header_roots_only_walk_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for relative in (
                 "Source/App/Public.h",
-                "RojoRHI/Include/rojoRHI/RHI.h",
-                "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h",
-                "RojoRHI/Backends/Metal4/Source/Private.h",
-                "RojoRHI/Source/Validate.h",
+                "Benchmarks/Public.h",
             ):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("", encoding="utf-8")
             self.assertEqual(
                 [path.relative_to(root).as_posix() for path in comments.public_header_files(root)],
-                [
-                    "RojoRHI/Backends/Metal4/ImGui/Include/rojoRHI/Metal4/Metal4ImGui.h",
-                    "RojoRHI/Include/rojoRHI/RHI.h",
-                    "Source/App/Public.h",
-                ],
+                ["Source/App/Public.h"],
             )
 
     def test_private_source_headers_keep_envelopes_but_are_not_exported_api(self) -> None:

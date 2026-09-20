@@ -62,6 +62,12 @@ jobs:
       - name: Policy checker tests
         run: python3 -m unittest discover -s Tools/tests -v
 
+      - name: RojoRHI policy checker tests
+        run: python3 -m unittest discover -s RojoRHI/Tools/tests -t RojoRHI -v
+
+      - name: RojoRHI project policy
+        run: python3 RojoRHI/Tools/check_project_policy.py
+
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
@@ -109,6 +115,14 @@ jobs:
         run: |
           python3 Tools/check_module_deps.py
           python3 Tools/check_source_headers.py
+
+      - name: RojoRHI source policy
+        run: |
+          python3 RojoRHI/Tools/check_shader_imports.py
+          python3 RojoRHI/Tools/check_rhi_headers.py
+          python3 RojoRHI/Tools/check_cpp_layout.py --compile-commands compile_commands.json
+          python3 RojoRHI/Tools/check_cpp_comments.py --compile-commands compile_commands.json \
+            --public-api-docs error
 
       - name: Build
         run: xmake -y
