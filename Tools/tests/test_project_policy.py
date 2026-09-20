@@ -45,11 +45,24 @@ class ProjectPolicyTests(unittest.TestCase):
         self.assertIn("outside metadata", errors[0])
 
     def test_markdown_check_rejects_unknown_status(self) -> None:
-        path = Path("docs/specs/example.md")
+        path = Path("docs/milestones/r/example.md")
         errors: list[str] = []
         with mock.patch.object(policy, "read_text", return_value="# Example\n\n**Status**: Maybe\n"):
             policy.check_markdown([path], errors)
         self.assertTrue(any("unsupported document status" in error for error in errors))
+
+    def test_status_tables_drop_removed_folders(self) -> None:
+        self.assertNotIn("specs", policy.STATUS_DIRS)
+        self.assertNotIn("postmortems", policy.STATUS_DIRS)
+        self.assertNotIn("docs/postmortems/", policy.LINE_BUDGETS)
+
+    def test_line_budget_exempts_retained_designs(self) -> None:
+        errors: list[str] = []
+        paths = [Path("docs/milestones/m6/m6.2-design.md"), Path("docs/milestones/m6/m6.2.md")]
+        with mock.patch.object(policy, "read_text", return_value="line\n" * 301):
+            policy.check_line_budgets(paths, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("m6.2.md", errors[0])
 
     def test_commit_policy_rejects_process_transcript_and_past_tense_subject(self) -> None:
         records = (
