@@ -1,6 +1,6 @@
 # Luminex — one frame with visibility, local lighting and reconstruction (2026-09-18)
 
-Native TAA, CPU culling, indirect submission and Clustered local lighting are defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](milestones/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+Native TAA, CPU culling, indirect submission and Clustered local lighting are defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
@@ -252,7 +252,7 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **GGX metallic-roughness** (`Lighting.slang`): Trowbridge-Reitz D, height-correlated Smith
   visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and energy-conserving Lambert diffuse.
   Perceptual roughness floors at 0.045 before squaring. Split-sum IBL uses Fdez-Agüera multiple-scattering compensation; occlusion attenuates image-based terms only.
-- **Local lights**: relative intensity × linear colour uses finite-range inverse-square attenuation, a 0.01 m distance floor and squared spot-cone response. Exact range/cone/back-face early-outs precede the shared GGX core. The punctual accumulator applies Tokuyoshi/Kaplanyan 2021 Eq.13 normal-footprint specular filtering before divergent light traversal; authored roughness, directional lighting and IBL stay unchanged. See [follow-up](milestones/m7.5-followup.md); local shadows and glTF light import are absent.
+- **Local lights**: relative intensity × linear colour uses finite-range inverse-square attenuation, a 0.01 m distance floor and squared spot-cone response. Exact range/cone/back-face early-outs precede the shared GGX core. The punctual accumulator applies Tokuyoshi/Kaplanyan 2021 Eq.13 normal-footprint specular filtering before divergent light traversal; authored roughness, directional lighting and IBL stay unchanged. See [follow-up](milestones/m7/m7.5-followup.md); local shadows and glTF light import are absent.
 - **Exposure/display**: fragments pre-expose linear radiance before the scene target. Manual
   exposure is `exp2(EV)`; auto uses the persistent `{applied, previous}` pair with bounded histogram
   adaptation. Temporal history is corrected by `applied / previous` before clipping/blending.

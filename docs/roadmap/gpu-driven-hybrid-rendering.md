@@ -9,7 +9,7 @@ shipped capabilities. Numerical order alone does not determine when an area may 
 
 ## Entry from the rendering foundation
 
-M7.1 is implemented and owner-accepted; [its record](../milestones/m7.1.md) retains evidence and
+M7.1 is implemented and owner-accepted; [its record](../milestones/m7/m7.1.md) retains evidence and
 limits. [Editor Experience](editor-experience.md#placement-and-ownership)
 owns the accepted UX1-before-M7.1 delivery order, and
 [Neural and Learned Rendering](neural-rendering.md#placement-and-ownership) owns the accepted
@@ -23,15 +23,15 @@ minimal scene-identity/update semantics the first consumers must implement. M6.5
 DEFER did not by themselves pass the review. M7.1 implementation and validation, including Xcode
 Replay, are complete. On 2026-09-15 the owner accepted the result after manual verification,
 including the scoped MetalFX profile (15/15); original image criteria remain 11/15.
-[Its record](../milestones/m7.1.md) owns both results and limits. The executor plan is closed;
-the owner approved main integration on 2026-09-15. [M7.2 acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) also authorizes integration after manual review on that date, retaining original/revised failed image gates (13/15 and 9/15); its plan is closed.
+[Its record](../milestones/m7/m7.1.md) owns both results and limits. The executor plan is closed;
+the owner approved main integration on 2026-09-15. [M7.2 acceptance](../milestones/m7/m7.2-validation.md#owner-acceptance-and-integration) also authorizes integration after manual review on that date, retaining original/revised failed image gates (13/15 and 9/15); its plan is closed.
 
-The accepted baseline through [M7.5](../milestones/m7.5.md) supplies shared scene identities,
+The accepted baseline through [M7.5](../milestones/m7/m7.5.md) supplies shared scene identities,
 paced GPU tables, CPU visibility and indirect drawing, opt-in GPU classification and opt-in
-previous-frame HZB occlusion. [M7.5](../milestones/m7.5.md) implements point/spot lights, a Direct
+previous-frame HZB occlusion. [M7.5](../milestones/m7/m7.5.md) implements point/spot lights, a Direct
 reference and clustered assignment/shading, with LightLab, a Sponza rig and light diagnostics.
 Owner acceptance on 2026-09-19 authorizes integration. F2/F3 select Clustered; original strict
-parent/mode failures and unresolved historical-camera replay remain in the [validation record](../milestones/m7.5-validation.md).
+parent/mode failures and unresolved historical-camera replay remain in the [validation record](../milestones/m7/m7.5-validation.md).
 The three directional lights and temporal inputs retain their contracts. The
 [architecture](../architecture/overview.md) owns current implementation details.
 
@@ -91,7 +91,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.2 — CPU visibility reference and indirect baseline
 
-**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 is owner-accepted for integration on 2026-09-16.
+**Integration decision:** Owner-accepted on 2026-09-15 after manual review; [durable acceptance](../milestones/m7/m7.2-validation.md#owner-acceptance-and-integration) retains the original 13/15 and revised 9/15 image gates as failures. This permits integration without relabelling those gates, introducing tolerance or claiming performance adoption. M7.3 is owner-accepted for integration on 2026-09-16.
 
 **Outcome:** A maintained CPU frustum-visibility oracle and a competent indirect-draw production baseline over the shared tables give M7.3 a measured reference.
 
@@ -103,7 +103,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.3 — GPU visibility and work generation
 
-**Implementation state:** Implemented; [owner-accepted for integration](../milestones/m7.3-validation.md#owner-acceptance-and-integration) on 2026-09-16. The [validation record](../milestones/m7.3-validation.md) retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. CPU/indirect remains the default.
+**Implementation state:** Implemented; [owner-accepted for integration](../milestones/m7/m7.3-validation.md#owner-acceptance-and-integration) on 2026-09-16. The [validation record](../milestones/m7/m7.3-validation.md) retains both 14/15 failed GPU/CPU exact-image gates and the incomplete ICB capture gate. CPU/indirect remains the default.
 
 **Outcome:** GPU frustum visibility and work generation have a validated production path measured against the M7.2 reference.
 
@@ -115,7 +115,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.4 — Conservative occlusion
 
-**Implementation state:** [Implemented](../milestones/m7.4.md); [owner-accepted for integration](../milestones/m7.4-validation.md#owner-acceptance-and-integration) on 2026-09-18 after manual review, with automated and [native verification](../milestones/m7.4-editor-validation.md) recorded. The [validation record](../milestones/m7.4-validation.md) retains the failed 13/15 exact-image gate and mixed performance costs. Occlusion is opt-in and off by default; the executor plan is closed.
+**Implementation state:** [Implemented](../milestones/m7/m7.4.md); [owner-accepted for integration](../milestones/m7/m7.4-validation.md#owner-acceptance-and-integration) on 2026-09-18 after manual review, with automated and [native verification](../milestones/m7/m7.4-editor-validation.md) recorded. The [validation record](../milestones/m7/m7.4-validation.md) retains the failed 13/15 exact-image gate and mixed performance costs. Occlusion is opt-in and off by default; the executor plan is closed.
 
 **Outcome:** A conservative HZB and spatial occlusion test reject work hidden in the previous frame; temporal validity is approximate, strict where view and coverage are unchanged or invalidated, and bounded by a recovery deadline under continuous camera motion.
 
@@ -127,7 +127,7 @@ shared guide or RHI capability with its first real consumer and keep its fallbac
 
 ## M7.5 — Clustered local lighting
 
-**Implementation state:** [Implemented](../milestones/m7.5.md), [owner-accepted for integration](../milestones/m7.5-validation.md#owner-acceptance-and-integration) on 2026-09-19 after visual review; executor plan closed. F2/F3 select Clustered. Original strict parent comparison remains 12/15 (scoped vendor 15/15), and exact zero-light mode equality remains failed at 11/15. The [follow-up](../milestones/m7.5-followup.md) passes the exact causal gate and current-camera 15/15 replay; historical-camera replay still fails. Acceptance preserves those distinct scopes, frozen costs and the absence of a new performance claim.
+**Implementation state:** [Implemented](../milestones/m7/m7.5.md), [owner-accepted for integration](../milestones/m7/m7.5-validation.md#owner-acceptance-and-integration) on 2026-09-19 after visual review; executor plan closed. F2/F3 select Clustered. Original strict parent comparison remains 12/15 (scoped vendor 15/15), and exact zero-light mode equality remains failed at 11/15. The [follow-up](../milestones/m7/m7.5-followup.md) passes the exact causal gate and current-camera 15/15 replay; historical-camera replay still fails. Acceptance preserves those distinct scopes, frozen costs and the absence of a new performance claim.
 
 **Outcome:** Opaque scenes support bounded point/spot lighting through a validated clustered Forward+ path.
 

@@ -21,10 +21,10 @@ namespace {
 // Mirrors Shaders/Modules/Lighting.slang's constant of the same name.
 constexpr float kPi = std::numbers::pi_v<float>;
 
-// The frozen bound-radius inflation factor docs/milestones/m7.5.md's light table fixes.
+// The frozen bound-radius inflation factor docs/milestones/m7/m7.5.md's light table fixes.
 constexpr float kBoundRadiusInflation = 1.0f + 1.0f / 1024.0f; // 1 + 2^-10
 
-// A spot's tight cone sphere applies only up to this half-angle; docs/milestones/m7.5.md's light
+// A spot's tight cone sphere applies only up to this half-angle; docs/milestones/m7/m7.5.md's light
 // table falls back to the range sphere beyond it.
 constexpr float kTightConeSphereLimit = std::numbers::pi_v<float> / 4.0f; // 45 degrees
 

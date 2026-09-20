@@ -73,15 +73,15 @@ already use them; the Step column carries the order.
 [UX1](milestones/ux1.md) is implemented and owner-accepted for integration after manual review.
 M7.1 is implemented and owner-accepted after manual verification on 2026-09-15. Xcode Replay
 and validation pass; the original image criterion passes 11/15 and the accepted scoped MetalFX
-profile passes 15/15. [The record](milestones/m7.1.md) retains both results and limits. Its executor
-plan is closed; [M7.2 acceptance](milestones/m7.2-validation.md#owner-acceptance-and-integration) authorizes integration on 2026-09-15 after manual review, retaining original/revised image-gate failures (13/15 and 9/15). Its plan is closed; no new tolerance or performance adoption follows. Gate B is preserved.
+profile passes 15/15. [The record](milestones/m7/m7.1.md) retains both results and limits. Its executor
+plan is closed; [M7.2 acceptance](milestones/m7/m7.2-validation.md#owner-acceptance-and-integration) authorizes integration on 2026-09-15 after manual review, retaining original/revised image-gate failures (13/15 and 9/15). Its plan is closed; no new tolerance or performance adoption follows. Gate B is preserved.
 
 ## Current baseline
 
-The accepted rendering baseline is [M7.5](milestones/m7.5.md), owner-accepted for integration on
-2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7.5-followup.md)
+The accepted rendering baseline is [M7.5](milestones/m7/m7.5.md), owner-accepted for integration on
+2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7/m7.5-followup.md)
 passes exact causal/current-camera checks while retaining historical-camera replay failures.
-Its [validation record](milestones/m7.5-validation.md#owner-acceptance-and-integration) preserves
+Its [validation record](milestones/m7/m7.5-validation.md#owner-acceptance-and-integration) preserves
 original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6/m6.5.md):
 explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
@@ -119,8 +119,8 @@ under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the owner's acceptance
 after manual review, and retained validation limits. Its [design](specs/2026-09-14-ux1-editor-experience-design.md)
 is implemented and its executor plan is closed. M7.1 implements shared identities, geometry and
-paced scene tables through retained CPU drawing; its [record](milestones/m7.1.md) owns evidence
-and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
+paced scene tables through retained CPU drawing; its [record](milestones/m7/m7.1.md) owns evidence
+and retained evidence limits. M7.2 CPU visibility and indirect submission are owner-accepted for integration on 2026-09-15 with failed image gates retained; M7.3 GPU visibility is implemented with [validation](milestones/m7/m7.3-validation.md) and failed exact-image gates retained; owner acceptance and integration authorization were recorded on 2026-09-16.
 
 ## Project direction and delivery
 
