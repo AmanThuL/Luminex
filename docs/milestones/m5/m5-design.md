@@ -42,7 +42,7 @@ substrate end-to-end.
 | 4 | Transient ownership and pooling | Graph-created transient resources, lifetime analysis, per-frame-slot pools with conservative aliasing, pooling on/off parity, resize/toggle generations, superseding ADR for the graph's import-only rule |
 | 5 | Frame observability | Read-only Render Graph panel over retained frame records: uses, schedule and culling reasons, lifetimes, transitions, reuse, exact per-frame timing, transient high-water mark, alias savings; Stats keeps a stable rolling per-pass summary with a pause control |
 | 6 | Histogram exposure and bloom | One-frame-feedback histogram exposure with explicit resets; threshold/downsample/upsample bloom chain on per-mip storage views; Render Settings toggles |
-| 7 | Checkpoint A freeze and record | Named frozen conformance suite (upload/layout, views, sRGB, reversed-Z, storage hazards, load/store, indirect arguments, frame-slot retirement), `docs/milestones/m5.md`, roadmap baseline update |
+| 7 | Checkpoint A freeze and record | Named frozen conformance suite (upload/layout, views, sRGB, reversed-Z, storage hazards, load/store, indirect arguments, frame-slot retirement), `docs/milestones/m5/m5.md`, roadmap baseline update |
 
 ## 4. RHI substrate surface
 

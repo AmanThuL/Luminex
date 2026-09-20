@@ -80,7 +80,7 @@ nor an RHI extension follows automatically from this experiment. Any adoption ne
 production evidence and the missing gates; frozen experimental code is not promoted.
 
 Historical documents belong to the local frozen evidence tag `m5.6-gpu-submission-evidence`:
-`docs/specs/2026-09-06-m5.6-gpu-work-submission-design.md`,
+`docs/milestones/m5/m5.6-design.md`,
 `docs/research/2026-09-06-gpu-submission-evidence.md`, the historical executor plan and all
 per-attempt research notes, including `docs/research/2026-09-06-gpu-submission-diagnostic.md`
 and the dependency, instrumentation and argument-source diagnostics. These are frozen tag inventory,
@@ -90,5 +90,5 @@ Keep raw bundles outside the published tree. Reopening follows the closure repor
 fault in an isolated session without hiding overlap, validate any proven fix and complete fresh
 collection under a new freeze. Do not replace failed attempts. Correctness, reliable retirement,
 capture visibility and honest capability coverage remain adoption prerequisites.
-[M5.6](../milestones/m5.6.md) is closed under this terminal contract; experimental code stays off main.
+[M5.6](../milestones/m5/m5.6.md) is closed under this terminal contract; experimental code stays off main.
 Root-cause investigation is separate future work, not an active M5.6 plan or required closure step.

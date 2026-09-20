@@ -26,12 +26,12 @@ real editor screenshots and editable-diagram standard. Report unavailable vault 
   offline comparison; ADRs 0017–0018, evidence limits and follow-up QA recorded there) over
   `docs/milestones/m6.3.md` (temporal upscaling and dynamic resolution, ADR 0016) over
   `docs/milestones/m6.2.md` (native TAA and exposure stability, ADRs 0014–0015) over
-  `docs/milestones/m6.1.md` (temporal state/motion, ADR 0013) over `docs/milestones/m5.5.md`
-  (graph legibility/detached window) over `docs/milestones/m5.4.md` (graph nodes, ADR 0011) over
-  `docs/milestones/m5.3.md` (editor workspace and selection) over `docs/milestones/m5.2.md`
-  (frame-data path, ADR 0010) over `docs/milestones/m5.1.md` over `docs/milestones/m5.md`
+  `docs/milestones/m6.1.md` (temporal state/motion, ADR 0013) over `docs/milestones/m5/m5.5.md`
+  (graph legibility/detached window) over `docs/milestones/m5/m5.4.md` (graph nodes, ADR 0011) over
+  `docs/milestones/m5/m5.3.md` (editor workspace and selection) over `docs/milestones/m5/m5.2.md`
+  (frame-data path, ADR 0010) over `docs/milestones/m5/m5.1.md` over `docs/milestones/m5/m5.md`
 - M5.6 closed as reliability failure / DEFER, with no accepted performance conclusion (ADR 0012).
-  Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5.6.md`.
+  Evidence/source are frozen at `m5.6-gpu-submission-evidence`; see `docs/milestones/m5/m5.6.md`.
   Verified raw bundles are GitHub Release attachments; local originals were deleted. Restore:
   `docs/guides/gpu-submission-archive.md`. Baseline remained M5.5; M6 was unblocked.
 ## Commands
