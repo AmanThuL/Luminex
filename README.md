@@ -40,7 +40,7 @@ Requires **Apple Silicon, macOS 26+, Xcode 26 and Homebrew**.
 
 ```bash
 brew install xmake
-git clone https://github.com/AmanThuL/Luminex.git
+git clone --recursive https://github.com/AmanThuL/Luminex.git
 cd Luminex
 xmake setup
 xmake
