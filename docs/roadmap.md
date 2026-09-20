@@ -20,7 +20,7 @@ that decomposes the accepted boundary without expanding it.
 The dividing point is the change from a trustworthy moving image and execution substrate to
 shared GPU scene data and its consumers. Foundation completion supplies those contracts;
 [interface gate B](roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
-approved entry to M7.1 in its [separate review](milestones/interface-gate-b.md). The second part's
+approved entry to M7.1 in its [separate review](milestones/m6/interface-gate-b.md). The second part's
 [dependency map](roadmap/gpu-driven-hybrid-rendering.md#dependency-map) explains independent entry.
 
 ## Execution sequence
@@ -82,7 +82,7 @@ The accepted rendering baseline is [M7.5](milestones/m7.5.md), owner-accepted fo
 2026-09-19 after visual review. F2/F3 select its Clustered default; the [follow-up](milestones/m7.5-followup.md)
 passes exact causal/current-camera checks while retaining historical-camera replay failures.
 Its [validation record](milestones/m7.5-validation.md#owner-acceptance-and-integration) preserves
-original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6.5.md):
+original failed image gates and cost disclosure; occlusion remains opt-in. The display foundation remains [M6.5](milestones/m6/m6.5.md):
 explicit SDR/UI/capture domains, tagged PNG,
 manifest v2 with v1 comparison compatibility, and EDR DEFER (ADR 0019). The owner accepted closure
 on 2026-09-13 with a narrow historical screenshot-drift exception; original hashes and failed
@@ -90,11 +90,11 @@ runs remain intact, and the drift is not fixed. UX1 adds the accepted editor exp
 adds owner-accepted GPU scene foundations with a scoped vendor comparison criterion; its plan
 is closed and the owner approved main integration on 2026-09-15.
 
-This builds on [M6.4](milestones/m6.4.md): optional MetalFX reconstruction, native fallback,
+This builds on [M6.4](milestones/m6/m6.4.md): optional MetalFX reconstruction, native fallback,
 masked San Miguel and offline comparisons. Its manual Sponza switching review and Xcode opaque-
 encoder inspection remain explicit follow-ups, not completed checks.
 
-[M6.1](milestones/m6.1.md)–[M6.3](milestones/m6.3.md) provide rigid-object/camera motion, native
+[M6.1](milestones/m6/m6.1.md)–[M6.3](milestones/m6/m6.3.md) provide rigid-object/camera motion, native
 TAA with exposure correction, temporal upscaling and dynamic resolution. Their base is the
 scene-linear PBR/HDR renderer, validating graph, transient pooling, frame-data path and selection
 workspace documented in [Part I](roadmap/rendering-foundations.md). Current implementation detail
@@ -113,7 +113,7 @@ build/shader groups. The owner accepted its
 [two-hash image parity exception](milestones/r1.5.md#integration) on 2026-09-13; that comparison
 remains failed and unexplained, with no outstanding integration blocker or relaxation of later
 validation. R1.1–R1.4's structural prerequisite and R1.5 are complete.
-[Interface gate B](milestones/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
+[Interface gate B](milestones/m6/interface-gate-b.md) passes on 2026-09-13, approving entry to M7.1
 under [ADR 0021](decisions/0021-gpu-scene-handoff-contract.md). The
 [editor audit](research/2026-09-14-editor-uiux-audit.md) motivates the intervening UX1 work.
 The [UX1 milestone](milestones/ux1.md) records implemented P1–P3 behavior, the owner's acceptance

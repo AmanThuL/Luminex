@@ -1,8 +1,8 @@
 # ADR 0015: Temporal slot imports follow the final access
 
 **Status**: Accepted (2026-09-08) · **Roadmap**: ../roadmap.md (M6.2) ·
-**Spec**: ../specs/2026-09-07-m6.2-native-taa-exposure-design.md ·
-**Milestone**: ../milestones/m6.2.md
+**Spec**: ../milestones/m6/m6.2-design.md ·
+**Milestone**: ../milestones/m6/m6.2.md
 
 ## Context
 

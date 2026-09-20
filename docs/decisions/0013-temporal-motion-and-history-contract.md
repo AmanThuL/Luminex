@@ -1,8 +1,8 @@
 # ADR 0013: Temporal motion convention, history ownership and additive attachment growth
 
 **Status**: Accepted (2026-09-07) · **Roadmap**: ../roadmap.md (M6.1) ·
-**Spec**: ../specs/2026-09-07-m6.1-temporal-state-motion-design.md ·
-**Milestone**: ../milestones/m6.1.md
+**Spec**: ../milestones/m6/m6.1-design.md ·
+**Milestone**: ../milestones/m6/m6.1.md
 
 ## Context
 

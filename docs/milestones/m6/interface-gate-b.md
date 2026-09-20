@@ -6,9 +6,9 @@
 
 **PASS — entry to M7.1 approved.** The owner requested this review after M6.5 and R1 completion.
 The review verifies the current interfaces against ADR 0010 and the temporal ADRs, and adopts
-the minimal first-consumer semantics in [ADR 0021](../decisions/0021-gpu-scene-handoff-contract.md).
+the minimal first-consumer semantics in [ADR 0021](../../decisions/0021-gpu-scene-handoff-contract.md).
 No blocking interface defect was found in the reviewed scope. This is the separate review that
-[Rendering Foundations](../roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
+[Rendering Foundations](../../roadmap/rendering-foundations.md#m6--temporal-and-display-foundation)
 requires; M6/R1 completion alone did not approve it.
 
 M7.1 is eligible for its own implementation plan. Stable GPU identities/tables, GPU visibility
@@ -28,7 +28,7 @@ The Performance panel is paused for capture;
 its visible numbers are incidental UI state, not benchmark evidence. A CSS title bar replaces the
 native title bar, with a decorative background and shadow; captured scene/UI content is unchanged
 apart from uniform display scaling. The original capture and composition HTML remain in
-`/tmp/luminex-readme-gallery`; [asset notices](../../THIRD_PARTY_NOTICES.md) cover the new image.
+`/tmp/luminex-readme-gallery`; [asset notices](../../../THIRD_PARTY_NOTICES.md) cover the new image.
 This presentation work changes no renderer code, golden reference or interface acceptance rule.
 
 ## Reviewed contracts and evidence
@@ -71,20 +71,20 @@ The first build invocation supplied two positional targets, which xmake rejected
 its diagnostic is retained in `build.log`. The two separate valid builds above replace that command.
 This is an invocation correction, not a waived build failure. The GPU run uses runtime MSL.
 
-The [R1.5 verification](r1.5.md#verification) remains the recorded full GPU/temporal, capture and
+The [R1.5 verification](../r1.5.md#verification) remains the recorded full GPU/temporal, capture and
 rendered-output evidence for the unchanged executable source. This gate reruns the CPU suite and
 checkpoint A; it does not claim a fresh full GPU suite, image comparison, vendor inspection or
 performance measurement. Documentation policy and local link review validate the handoff edits.
 
 ## Preserved limits
 
-- [M5.6](m5/m5.6.md) remains reliability failure / DEFER, with no accepted production speedup or
+- [M5.6](../m5/m5.6.md) remains reliability failure / DEFER, with no accepted production speedup or
   adopted ICB path. Frozen experiment source/evidence remains untouched.
 - [M6.4](m6.4.md) retains manual Sponza switching and Xcode opaque-encoder inspection follow-ups.
   Existing automated fallback/capability evidence does not complete those checks.
 - [M6.5](m6.5.md) retains EDR DEFER and its accepted historical screenshot-hash exception.
   The drift remains unresolved.
-- [R1.3](r1.3.md#unresolved-image-parity) and [R1.5](r1.5.md#unresolved-image-parity) retain their
+- [R1.3](../r1.3.md#unresolved-image-parity) and [R1.5](../r1.5.md#unresolved-image-parity) retain their
   explicitly accepted slice-specific parity exceptions. Failed comparisons stay failed and
   unexplained. Gate B approves interface entry; it does not grant an M7 image-parity exception.
 
