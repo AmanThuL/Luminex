@@ -215,11 +215,11 @@ waits, UI sink and presentation scheduling; full structure: `docs/architecture/o
 `LightClusters` mirrors fixed 16×9×24 pixel-aligned froxels; `LightClusterStage` owns three paced reset/count/scan/fill slots with 128 lights/froxel and 65,536 indices. Shared `LocalLights.slang` selects Off/Direct/Clustered using b8 lights/b9 grid/b10 indices/b11 frame params; PassUniforms stays 400 B. Normal-footprint filtering broadens only punctual specular alpha; authored roughness/directional/IBL remain unchanged. Zero-enabled frames add no light import/pass. `LightingStatus` joins declaration-time mirror and retired GPU lists/counters; post-display Count/Overflow/Missed diagnostics preserve scene/history. `LightingDisplay` owns 250 ms coherent readings with immediate warnings; accepted ADR 0023 owns the contract; validation records retain failed historical gates.
 `Render/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
 the read-only Inspector Display details (domain, encoded SDR UI, backing scale and 1:1 status).
-Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Modules/` owns
-Encode, Lighting, LocalLights, Shadow, Motion, Tonemap, TemporalCommon, SceneTables and AlphaMask. `Shaders/*.slang` entries:
+Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Common/` owns
+Encode, Lighting, LocalLights, Shadow, Motion, Tonemap, SceneTables and AlphaMask. Each pass family's entries and local modules live in `Shaders/Passes/<family>/`:
 ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
-DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack,
+DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (with module TemporalCommon),
 SelectionMask and SelectionOutline (editor-only).
 `Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
 ## Hard rules
@@ -234,7 +234,7 @@ SelectionMask and SelectionOutline (editor-only).
   adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
   authored color constants, including the editor's clear color, decode via `lmx::srgbToLinear` in `Core/Color.h` once at scene build or
-  pass declaration. Nothing upstream of `Shaders/DisplayTransform.slang` encodes sRGB.
+  pass declaration. Nothing upstream of `Shaders/Passes/Display/DisplayTransform.slang` encodes sRGB.
 - Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
   rendering behavior and uses plain feature themes for future work. It never exposes milestone
   numbers, task/plan status, or an unimplemented backend as a current capability. `CLAUDE.md`

@@ -71,9 +71,9 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       reactive, the previous colour slot, the exposure pair → this frame's colour slot directly
 │       (no copy) and, only when sunk, the rejection/reprojected transients. Dilated motion/
 │       disocclusion, history exposure correction, YCoCg clipping, an inverse-luminance blend
-│       saturating to 1 on rejection or full reactive weight (`Shaders/TemporalResolve.slang`,
-│       ADR 0014); any other frame runs lmx.pass.temporal.upscale instead (`Shaders/
-│       TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled writes this frame's
+│       saturating to 1 on rejection or full reactive weight (`Shaders/Passes/Temporal/TemporalResolve.slang`,
+│       ADR 0014); any other frame runs lmx.pass.temporal.upscale instead
+│       (`Shaders/Passes/Temporal/TemporalUpscale.slang`, ADR 0016). Raw: commitHistory or commitUpscaled writes this frame's
 │       colour slot instead, right here
 ├─ 4. lmx.pass.exposure.clearHistogram   copy → histogram buffer (256 × uint32, fillBuffer 0)
 ├─ 5. lmx.pass.exposure.histogram        compute, over the render extent, reads *raw* scene color +
@@ -94,7 +94,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       may read and write one texture only through disjoint ranges (spec 6)
 ├─ 10. lmx.pass.display     fullscreen triangle: Load the resolved colour (Raw reads raw scene
 │       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
-│       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Modules/Tonemap.slang, shared with the
+│       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Common/Tonemap.slang, shared with the
 │       debug view) → sRGB encode → display color (BGRA8Unorm), described by
 │       Render/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
@@ -294,7 +294,7 @@ Sponza startup is synchronous; Metal is the only backend. UI blends straight alp
 sRGB. The Viewport maps pixels 1:1 after resize debounce and stretches the old target during it. Detached windows remain SDR. EDR is deferred; future scope belongs to the roadmap.
 
 Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
-[vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/` holds entries,
-`Shaders/Modules/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
+[vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/Passes/<family>/` holds entries,
+`Shaders/Common/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
 
 UI zoom applies before NewFrame; debounced resize preserves camera, render scale and saved layouts.
