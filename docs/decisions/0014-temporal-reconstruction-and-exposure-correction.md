@@ -111,5 +111,5 @@ flips alone, not real disocclusion. `kDisocclusionTolerance` stays at its spec-f
 Spec: `docs/milestones/m6/m6.2-design.md` (amended 2026-09-08 for the
 dilated disocclusion test, the rate-0 adaptation guard, the auto→manual correction-ratio bound,
 and the `TemporalInputs`/`recordFrame` contract additions). ADR: `docs/decisions/0013-temporal-
-motion-and-history-contract.md`. Plan: `docs/plans/2026-09-07-m6.2-native-taa-exposure.md`.
-Milestone: `docs/milestones/m6/m6.2.md`.
+motion-and-history-contract.md`. Plan: `docs/plans/2026-09-07-m6.2-native-taa-exposure.md` (tag
+r3.1-closed-plans). Milestone: `docs/milestones/m6/m6.2.md`.
