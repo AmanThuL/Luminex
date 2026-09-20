@@ -19,10 +19,10 @@ except ImportError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_ROOTS = ("Source", "RojoRHI", "Benchmarks")
+SOURCE_ROOTS = ("Source", "Benchmarks")
 # Test sources carry no file envelope, wherever they live: the top-level Tests root is already
-# outside SOURCE_ROOTS, and the RHI component's own test directory is excluded on the same rule.
-EXCLUDED_ROOTS = ("RojoRHI/Tests",)
+# outside SOURCE_ROOTS.
+EXCLUDED_ROOTS = ()
 SOURCE_SUFFIXES = {".h", ".cpp"}
 FILE_RULER = "//" + "-" * 118
 
@@ -47,13 +47,9 @@ def project_cpp_files(root: Path) -> list[Path]:
 def public_header_files(root: Path) -> list[Path]:
     """Return headers whose declarations form project API.
 
-    Source visibility follows the module contract. The standalone RHI component has an
-    explicit exported include tree; backend and shared implementation headers are excluded.
+    Source visibility follows the module contract.
     """
     source = (root / "Source").rglob("*.h") if (root / "Source").is_dir() else ()
-    rhi = (root / "RojoRHI/Include").rglob("*.h") if (root / "RojoRHI/Include").is_dir() else ()
-    imgui_root = root / "RojoRHI/Backends/Metal4/ImGui/Include"
-    imgui = imgui_root.rglob("*.h") if imgui_root.is_dir() else ()
     contract_path = root / "Tools/module_contract.json"
     private: set[str] = set()
     if contract_path.exists():
@@ -64,7 +60,7 @@ def public_header_files(root: Path) -> list[Path]:
         status = (root / name).stat()
         private_identities.add((status.st_dev, status.st_ino))
     public = []
-    for path in [*source, *rhi, *imgui]:
+    for path in [*source]:
         status = path.stat()
         if (status.st_dev, status.st_ino) not in private_identities:
             public.append(path)
@@ -245,7 +241,7 @@ def _entry_for_header(header: Path, entries: list[dict[str, Any]], root: Path) -
     elif relative.parts[0] == "Experiments":
         module = "/".join(relative.parts[:2])
     else:
-        module = "RojoRHI"
+        module = relative.parts[0]
     candidates = [entry for entry in entries if f"/{module}/" in f"/{entry['file']}"]
     if not candidates:
         candidates = entries
