@@ -3,7 +3,7 @@
 /// @brief Implements shadow pipeline creation, uniforms and draw declaration.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/ShadowStage.h"
+#include "Render/Passes/Shadow/ShadowStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
