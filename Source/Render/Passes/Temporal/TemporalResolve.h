@@ -58,6 +58,7 @@ struct TemporalInputs {
 /// The handles the stage produces. The two diagnostics are graph transients declared only when a
 /// debug view sinks them, so a frame showing no view leaves them default-constructed.
 struct TemporalResolveOutputs {
+    GraphTexture displayResult; ///< Display version after an optional temporal debug overlay.
     GraphTexture resolved;    ///< This frame's colour slot: the resolve's output, or the raw copy.
     GraphTexture rejection;   ///< RGBA8Unorm transient: reason, blend weight, clipped flag.
     GraphTexture reprojected; ///< RGBA16Float transient: the exposure-corrected history.
@@ -174,12 +175,13 @@ public:
     /// declared.
     ///
     /// `displayResult` names the display version the debug view draws over on entry -- the version
-    /// the display pass produces, which the caller may not have declared yet -- and is replaced by
-    /// the version the debug view produced. The graph's schedule is topological, so declaring the
-    /// view against a version its producer has yet to declare still orders it after that producer.
+    /// the display pass produces, which the caller may not have declared yet. The returned
+    /// `displayResult` is the version the debug view produced, or the input when no view is drawn.
+    /// The graph's schedule is topological, so declaring the view against a version its producer
+    /// has yet to declare still orders it after that producer.
     TemporalResolveOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                    const TemporalInputs& inputs, TemporalDebugView debugView,
-                                   GraphTexture& displayResult);
+                                   GraphTexture displayResult);
 
     /// Records what the frame just declared left in each colour slot, so the next frame's imports
     /// state the use its barriers must be derived against. `historyValid` is what decides whether

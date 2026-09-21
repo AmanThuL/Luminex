@@ -287,7 +287,7 @@ GraphTexture TemporalResolve::importColor(RenderGraph& graph, uint32_t slot) {
 TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                 const TemporalInputs& inputs,
                                                 TemporalDebugView debugView,
-                                                GraphTexture& displayResult) {
+                                                GraphTexture displayResult) {
     const bool historyValid = inputs.resetReason == HistoryResetReason::None;
 
     // Declared wherever there is history to reproject; nothing but the ReprojectionError view
@@ -306,6 +306,7 @@ TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rojoRHI::Com
     const bool nativeKernel =
         !upscaled && (!historyValid || sameExtents(inputs.previousExtents, inputs.extents));
     TemporalResolveOutputs outputs;
+    outputs.displayResult = displayResult;
     if (inputs.mode == ReconstructionMode::NativeTaa) {
         if (nativeKernel) {
             declareResolve(graph, commands, inputs, viewReadsRejection(debugView),
@@ -328,8 +329,8 @@ TemporalResolveOutputs TemporalResolve::declare(RenderGraph& graph, rojoRHI::Com
     if (debugView != TemporalDebugView::Off) {
         const bool readsDiagnostic =
             debugView == TemporalDebugView::ReprojectionError && historyValid;
-        displayResult = declareDebugView(graph, commands, debugView, inputs, outputs, diagnostic,
-                                         readsDiagnostic, displayResult);
+        outputs.displayResult = declareDebugView(graph, commands, debugView, inputs, outputs,
+                                                 diagnostic, readsDiagnostic, displayResult);
     }
     return outputs;
 }
