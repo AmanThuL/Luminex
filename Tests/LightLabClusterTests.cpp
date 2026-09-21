@@ -2,7 +2,7 @@
 /// @file LightLabClusterTests.cpp
 /// @brief Pins overflow-free light assignment along the authored lab camera and orbit tracks.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Scene/LightLab.h"
+#include "Engine/Catalog/LightLab.h"
 
 #include "Engine/Types/Camera.h"
 #include "Engine/Types/LocalLightMath.h"

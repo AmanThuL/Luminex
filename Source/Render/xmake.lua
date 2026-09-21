@@ -5,5 +5,5 @@ target("Render")
     add_files("*.cpp")
     add_files("Visibility.cpp", "Occlusion.cpp", "LightClusters.cpp",
               {cxflags = "-ffp-contract=off"})
-    add_deps("Core", "RojoRHI", "Engine", "Scene")
+    add_deps("Core", "RojoRHI", "Engine")
     add_packages("glm", {public = true})

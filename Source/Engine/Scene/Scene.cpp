@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Engine/Scene/Scene.h"
-#include "Scene/SponzaLightRig.h"
+#include "Engine/Catalog/SponzaLightRig.h"
 
-#include "Scene/SponzaCameraTour.h"
+#include "Engine/Catalog/SponzaCameraTour.h"
 
 #include "Asset/RepositoryAsset.h"
 

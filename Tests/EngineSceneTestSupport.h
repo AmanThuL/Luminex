@@ -15,13 +15,13 @@
 #include "BrdfOracle.h"
 #include "Core/Color.h"
 #include "DisplayTransformOracle.h"
+#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Types/Camera.h"
 #include "Engine/Types/Mesh.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
 #include "Render/Renderer.h"
-#include "Scene/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>

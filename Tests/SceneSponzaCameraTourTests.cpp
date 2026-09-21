@@ -3,7 +3,7 @@
 /// @brief Tests the Sponza tour's corridor coverage, pacing and seamless playback.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/SponzaCameraTour.h"
+#include "Engine/Catalog/SponzaCameraTour.h"
 
 #include "Engine/Scene/Scene.h"
 

@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/ExposureReset.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
 
 using namespace lmx;
 using namespace lmx::app;

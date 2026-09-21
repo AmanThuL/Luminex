@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/SceneSession.h"
-#include "Scene/LightLab.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/LightLab.h"
+#include "Engine/Catalog/SceneLibrary.h"
 
 #include "Engine/Types/LocalLightMath.h"
 
