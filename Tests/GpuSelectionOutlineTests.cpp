@@ -2,7 +2,7 @@
 
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/GraphDump.h"
-#include "Render/SelectionOutline.h"
+#include "Render/Passes/SelectionOutline/SelectionOutline.h"
 
 #include "SceneTableTestSupport.h"
 #include <algorithm>
