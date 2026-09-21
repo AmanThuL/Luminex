@@ -18,6 +18,11 @@
 
 namespace lmx::render {
 
+namespace graph_detail {
+/// Private transition-derivation state, defined with the graph implementation.
+struct TransitionState;
+} // namespace graph_detail
+
 /// Validating, serial render-pass declaration graph.
 class RenderGraph;
 
@@ -583,6 +588,13 @@ private:
     // rather than deriving its own, so the record and the command stream cannot disagree. The plan
     // is taken as well as the schedule because a reuse boundary is a barrier the declarations
     // alone cannot show.
+    void seedTextureTransitions(graph_detail::TransitionState& state) const;
+    void seedBufferTransitions(graph_detail::TransitionState& state) const;
+    void deriveAliasTransitions(const Schedule& schedule, const AliasPlan& plan, uint32_t position,
+                                graph_detail::TransitionState& state) const;
+    void deriveReadTransitions(uint32_t passIndex, graph_detail::TransitionState& state) const;
+    void deriveWriteTransitions(uint32_t passIndex, graph_detail::TransitionState& state) const;
+    void recordTransitionAccesses(uint32_t passIndex, graph_detail::TransitionState& state) const;
     std::vector<DebugTransition> deriveTransitions(const Schedule& schedule,
                                                    const AliasPlan& plan) const;
 
