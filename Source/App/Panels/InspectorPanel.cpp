@@ -12,8 +12,8 @@
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorLighting.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 
 #include <glm/glm.hpp>
 #include <imgui.h>

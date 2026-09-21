@@ -6,7 +6,7 @@
 #include "App/Model/AppOptions.h"
 
 #include "Core/Util/Parse.h"
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 
 #include <cmath>
 #include <cstddef>

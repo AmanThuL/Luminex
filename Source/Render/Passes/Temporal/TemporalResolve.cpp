@@ -3,11 +3,11 @@
 /// @brief Owns temporal history, initialization and reconstruction routing.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/TemporalResolve.h"
-#include "Render/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
+#include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Render/VendorTemporalScaler.h"
+#include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>

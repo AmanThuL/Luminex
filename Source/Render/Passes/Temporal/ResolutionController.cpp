@@ -3,7 +3,7 @@
 /// @brief Implements the GPU-time resolution controller's hysteresis and attribution.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/ResolutionController.h"
+#include "Render/Passes/Temporal/ResolutionController.h"
 
 #include <algorithm>
 #include <cmath>

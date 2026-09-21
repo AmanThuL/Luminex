@@ -14,11 +14,11 @@
 #include "Render/Passes/Scene/DrawSubmission.h"
 #include "Render/Passes/Scene/SceneStage.h"
 #include "Render/Passes/Shadow/ShadowStage.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Renderer/DisplayDomain.h"
 #include "Render/Renderer/SceneView.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
-#include "Render/TemporalResolve.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>

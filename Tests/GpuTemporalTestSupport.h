@@ -7,8 +7,8 @@
 #include "Render/Graph/GraphDump.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -55,7 +55,7 @@ inline FixtureSceneView temporalSceneView(std::span<const FixtureDrawItem> items
 
 //======================================================================================================================
 // The motion target is RG16Float, so a readback carries IEEE halves. Widening them here keeps the
-// oracle comparisons in the same units Source/Render/Temporal.h states motion in.
+// oracle comparisons in the same units Source/Render/Passes/Temporal/Temporal.h states motion in.
 inline float halfToFloat(uint16_t bits) {
     const uint32_t sign = uint32_t{bits & 0x8000u} << 16;
     const uint32_t exponent = (bits >> 10) & 0x1Fu;
@@ -350,7 +350,8 @@ inline float pixelForWorldX(const Camera& camera, float worldX, float distance) 
 //======================================================================================================================
 // The flat colour Shaders/Passes/Temporal/TemporalDebugView.slang draws the RejectionMask in for a
 // reason code. One mirror of the shader's legend, so a case names the reason it expects by the
-// shared constant in Render/TemporalResolve.h and never by a colour spelled out at the assertion.
+// shared constant in Render/Passes/Temporal/TemporalResolve.h and never by a colour spelled out at
+// the assertion.
 //
 // The clipped flag adds half a unit of green on top, which is why a case comparing all three
 // channels has to expect a reason whose green is already saturated or absent.

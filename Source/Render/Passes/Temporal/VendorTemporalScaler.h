@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/TemporalResolve.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
 
 namespace lmx::render {
 

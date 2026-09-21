@@ -3,7 +3,7 @@
 /// @brief Implements the ordered history reset derivation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 
 namespace lmx::render {
 namespace {

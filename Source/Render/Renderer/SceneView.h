@@ -11,9 +11,9 @@
 #include "Engine/Material/AlphaMode.h"
 #include "Engine/Scene/DrawItem.h"
 #include "Engine/Scene/SceneTables.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 #include "Render/Passes/Visibility/Visibility.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
