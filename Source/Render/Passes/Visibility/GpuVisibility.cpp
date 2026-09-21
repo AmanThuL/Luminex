@@ -112,12 +112,17 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
 
 //======================================================================================================================
 GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                            const SceneView& view, const FrustumPlanes& planes,
-                                            const PreparedSubmission& submission,
-                                            GraphBuffer instances, GraphBuffer meshes,
-                                            GraphBuffer rows, GraphBuffer arguments,
-                                            VisibilityStatus& status, GraphTexture pyramid,
-                                            OcclusionParams occlusion) {
+                                            const SceneView& view,
+                                            const GpuVisibilityInputs& inputs,
+                                            VisibilityStatus& status) {
+    const auto& planes = inputs.planes;
+    const auto& submission = inputs.submission;
+    auto instances = inputs.instances;
+    auto meshes = inputs.meshes;
+    const auto rows = inputs.rows;
+    const auto arguments = inputs.arguments;
+    const auto pyramid = inputs.pyramid;
+    auto occlusion = inputs.occlusion;
     auto tables = buildVisibilityTables(view, submission, planes);
     auto& slot = m_slots[m_device.frameNumber() % 3];
     const auto prepared = prepareSlot(slot, tables);

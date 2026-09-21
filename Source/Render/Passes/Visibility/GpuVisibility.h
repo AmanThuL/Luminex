@@ -7,6 +7,19 @@
 #include "Render/Passes/Visibility/VisibilityTables.h"
 
 namespace lmx::render {
+/// Borrowed visibility inputs; CPU references need only survive declaration, graph handles this
+/// frame.
+struct GpuVisibilityInputs {
+    const FrustumPlanes& planes;          ///< Current guarded camera frustum.
+    const PreparedSubmission& submission; ///< Paced scene and shadow draw lists to classify.
+    GraphBuffer instances;       ///< Read-only instance rows, or absent for empty geometry.
+    GraphBuffer meshes;          ///< Read-only mesh rows, or absent for empty geometry.
+    GraphBuffer rows;            ///< Visible-row buffer version to write.
+    GraphBuffer arguments;       ///< Indirect-argument buffer version to write.
+    GraphTexture pyramid{};      ///< Optional previous-frame depth pyramid.
+    OcclusionParams occlusion{}; ///< Coverage and projection state for the optional pyramid.
+};
+
 /// Versioned GPU-produced draw inputs.
 struct GpuVisibilityOutputs {
     GraphBuffer rows;      ///< Emitted row-list version.
@@ -19,11 +32,8 @@ public:
     static rojoRHI::Result<std::unique_ptr<GpuVisibility>> create(rojoRHI::Device& device);
     /// Declares the four visibility passes and retains the declaration's readback context.
     GpuVisibilityOutputs declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                 const SceneView& view, const FrustumPlanes& planes,
-                                 const PreparedSubmission& submission, GraphBuffer instances,
-                                 GraphBuffer meshes, GraphBuffer rows, GraphBuffer arguments,
-                                 VisibilityStatus& status, GraphTexture pyramid = {},
-                                 OcclusionParams occlusion = {});
+                                 const SceneView& view, const GpuVisibilityInputs& inputs,
+                                 VisibilityStatus& status);
     /// Copies final declaration metrics after graph preparation completes.
     void recordDeclarationStatus(const VisibilityStatus& status) {
         m_pending.back().status = status;
