@@ -1,8 +1,8 @@
 #include "GraphTestSupport.h"
 
 #include "Render/Graph/GraphDump.h"
+#include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Renderer/Renderer.h"
-#include "Render/VendorTemporalScaler.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

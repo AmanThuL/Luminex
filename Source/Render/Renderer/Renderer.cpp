@@ -8,8 +8,8 @@
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
+#include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
-#include "Render/VendorTemporalScaler.h"
 #include <chrono>
 
 #include "Core/Diagnostics/Assert.h"

@@ -7,8 +7,8 @@
 
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Passes/Scene/DrawSubmission.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 #include "Render/Renderer/SceneView.h"
-#include "Render/TemporalHistory.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>

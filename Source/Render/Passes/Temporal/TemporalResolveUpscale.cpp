@@ -3,8 +3,8 @@
 /// @brief Declares spatial commits and temporal upscaling at output extent.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/TemporalResolve.h"
-#include "Render/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
+#include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

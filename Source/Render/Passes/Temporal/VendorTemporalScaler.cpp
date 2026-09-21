@@ -2,7 +2,7 @@
 /// @file VendorTemporalScaler.cpp
 /// @brief Translates temporal inputs and declares the capability-selected vendor kernel.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/VendorTemporalScaler.h"
+#include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"

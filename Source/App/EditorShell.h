@@ -25,8 +25,8 @@
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "Engine/View/Camera.h"
+#include "Render/Passes/Temporal/ResolutionController.h"
 #include "Render/Renderer/Renderer.h"
-#include "Render/ResolutionController.h"
 #include "Render/SelectionOutline.h"
 #include "Scenes/SceneLibrary.h"
 

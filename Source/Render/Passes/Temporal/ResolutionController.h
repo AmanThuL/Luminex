@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 
 #include <array>
 #include <cstdint>

@@ -6,8 +6,8 @@
 #pragma once
 
 #include "Render/Graph/RenderGraph.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>

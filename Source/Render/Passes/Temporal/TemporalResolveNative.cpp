@@ -3,8 +3,8 @@
 /// @brief Declares native temporal accumulation and raw history commits.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/TemporalResolve.h"
-#include "Render/TemporalResolveInternal.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
+#include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

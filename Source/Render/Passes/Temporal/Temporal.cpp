@@ -3,7 +3,7 @@
 /// @brief Implements the jitter sequence, per-frame camera state and motion conversions.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Sequence.h"

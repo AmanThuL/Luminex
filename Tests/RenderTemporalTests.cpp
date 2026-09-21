@@ -5,8 +5,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include "Engine/View/Camera.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 
 #include <cmath>
 #include <optional>
