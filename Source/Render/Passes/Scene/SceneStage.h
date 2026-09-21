@@ -19,6 +19,10 @@
 #include <vector>
 
 namespace lmx::render {
+namespace scene_detail {
+struct PassUniforms;
+struct LocalLightParams;
+} // namespace scene_detail
 
 /// Frame values and Renderer-owned resources borrowed by the scene and sky pass.
 /// Graph handles belong to this frame; every pointer is non-null and survives graph execution.
@@ -76,6 +80,14 @@ public:
 
 private:
     SceneStage() = default;
+
+    void draw(rojoRHI::CommandList& commands, const SceneView& view, const SceneStageInputs& inputs,
+              const scene_detail::PassUniforms& passUniforms,
+              const scene_detail::LocalLightParams& localLightParams, GraphTexture shadowRead,
+              GraphBuffer exposureCurrent, bool temporalEnabled,
+              const CameraFrameState& cameraState, const CameraFrameState& previousCamera,
+              glm::vec2 jitterNdc, const PassResources& resources);
+
     // Replay needs valid bindings even for unused slots. Immutable fallbacks stay outside the
     // graph so zero-light declarations retain their resource and pass topology.
     std::unique_ptr<rojoRHI::Buffer> m_fallbackLightRows;
