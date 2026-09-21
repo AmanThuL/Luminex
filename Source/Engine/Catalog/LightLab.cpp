@@ -7,9 +7,9 @@
 
 #include "Engine/Scene/Scene.h"
 
-#include "Asset/GeometryGenerator.h"
 #include "Core/Assert.h"
 #include "Core/Color.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Types/Mesh.h"
 #include "Engine/Upload/SceneEnvironment.h"
 

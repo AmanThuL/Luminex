@@ -2,7 +2,7 @@
 
 #include "GpuTestSupport.h"
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"

@@ -7,7 +7,7 @@
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
-#include "Asset/SceneAnimation.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 
 #include <format>
 #include <iomanip>

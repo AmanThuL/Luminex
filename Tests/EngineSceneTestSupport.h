@@ -9,12 +9,12 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#include "Asset/SceneAnimation.h"
 #include "Asset/TextureBake.h"
-#include "Asset/Transform.h"
 #include "BrdfOracle.h"
 #include "Core/Color.h"
 #include "DisplayTransformOracle.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
+#include "Engine/Asset/Model/Transform.h"
 #include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Types/Camera.h"

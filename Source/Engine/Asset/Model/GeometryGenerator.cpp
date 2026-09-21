@@ -3,7 +3,7 @@
 /// @brief Implements deterministic procedural geometry generation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 
 #include "Core/Assert.h"
 

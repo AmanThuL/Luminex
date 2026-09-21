@@ -3,9 +3,9 @@
 /// @brief Implements glTF scene parsing and asset decoding.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/GltfLoader.h"
+#include "Engine/Asset/Model/GltfLoader.h"
 
-#include "Asset/Transform.h"
+#include "Engine/Asset/Model/Transform.h"
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>

@@ -3,7 +3,7 @@
 /// @brief Implements rigid, camera, and emissive track sampling and playback queries.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/SceneAnimation.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 
 #include "Core/Assert.h"
 

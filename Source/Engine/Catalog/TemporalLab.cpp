@@ -5,10 +5,10 @@
 
 #include "Engine/Scene/Scene.h"
 
-#include "Asset/GeometryGenerator.h"
-#include "Asset/SceneAnimation.h"
 #include "Asset/TextureBake.h"
 #include "Core/Color.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/glm.hpp>
