@@ -5,6 +5,7 @@
 
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer/Renderer.h"
@@ -44,13 +45,9 @@ rojoRHI::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Dev
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     {
-        auto pipeline = device.createGraphicsPipeline({.library = self->m_displayLibrary.get(),
-                                                       .vertexEntry = "vertexMain",
-                                                       .fragmentEntry = "fragmentMain",
-                                                       .colorFormat = kDisplayFormat,
-                                                       .depthFormat = rojoRHI::Format::Unknown,
-                                                       .cullMode = rojoRHI::CullMode::None,
-                                                       .label = "lmx.render.displayPipeline"});
+        auto pipeline = device.createGraphicsPipeline(
+            fullscreenPipelineDesc(self->m_displayLibrary.get(), "fragmentMain", kDisplayFormat,
+                                   "lmx.render.displayPipeline"));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -61,14 +58,10 @@ rojoRHI::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Dev
     // texture load in that mode, but the argument table must still contain a bound texture.
     {
         const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
-        const rojoRHI::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
         {
-            auto texture = device.createTexture({.width = 1,
-                                                 .height = 1,
-                                                 .format = kSceneColorFormat,
-                                                 .sampled = true,
-                                                 .label = "lmx.render.blackBloomFallback"},
-                                                std::span{&mip, 1});
+            auto texture =
+                createTexel(device, kSceneColorFormat, rojoRHI::TextureKind::Tex2D,
+                            std::as_bytes(std::span{kZeroHalf4}), "lmx.render.blackBloomFallback");
             if (!texture) {
                 return std::unexpected(texture.error());
             }

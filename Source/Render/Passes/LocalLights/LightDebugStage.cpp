@@ -6,6 +6,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 
 namespace lmx::render {
 namespace {
@@ -27,12 +28,8 @@ rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRH
         return std::unexpected(library.error());
     }
     stage->m_library = std::move(*library);
-    auto pipeline = device.createGraphicsPipeline({.library = stage->m_library.get(),
-                                                   .vertexEntry = "vertexMain",
-                                                   .fragmentEntry = "fragmentMain",
-                                                   .colorFormat = kDisplayFormat,
-                                                   .cullMode = rojoRHI::CullMode::None,
-                                                   .label = "lmx.render.lightDebugPipeline"});
+    auto pipeline = device.createGraphicsPipeline(fullscreenPipelineDesc(
+        stage->m_library.get(), "fragmentMain", kDisplayFormat, "lmx.render.lightDebugPipeline"));
     if (!pipeline) {
         return std::unexpected(pipeline.error());
     }
