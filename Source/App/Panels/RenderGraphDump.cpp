@@ -6,7 +6,7 @@
 #include "App/Panels/RenderGraphPanelInternal.h"
 
 #include "Core/Diagnostics/Log.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <filesystem>
 #include <format>

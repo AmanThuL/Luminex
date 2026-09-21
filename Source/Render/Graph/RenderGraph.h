@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/CompiledFrameRecord.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/CompiledFrameRecord.h"
+#include "Render/Graph/TransientPool.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>

@@ -3,8 +3,8 @@
 /// @brief Validates graph attachment, subresource and transient declarations.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/RenderGraph.h"
-#include "Render/RenderGraphInternal.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/RenderGraphInternal.h"
 
 #include <algorithm>
 #include <format>

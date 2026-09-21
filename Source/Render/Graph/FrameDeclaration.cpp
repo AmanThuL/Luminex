@@ -3,7 +3,7 @@
 /// @brief Implements shared application frame declaration and accepted-record production.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/FrameDeclaration.h"
+#include "Render/Graph/FrameDeclaration.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer.h"

@@ -3,7 +3,7 @@
 /// @brief Owns fixed-slot GPU visibility passes and frame-keyed retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "Render/RenderGraph.h"
+#include "Render/Graph/RenderGraph.h"
 #include "Render/VisibilityTables.h"
 
 namespace lmx::render {

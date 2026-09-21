@@ -3,7 +3,7 @@
 /// @brief Implements per-frame-slot placement heaps and their generation lifetime.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/TransientPool.h"
+#include "Render/Graph/TransientPool.h"
 
 #include "Core/Diagnostics/Assert.h"
 

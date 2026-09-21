@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Render/DrawSubmission.h"
-#include "Render/RenderGraph.h"
+#include "Render/Graph/RenderGraph.h"
 #include "Render/SceneView.h"
 #include <rojoRHI/RHI.h>
 

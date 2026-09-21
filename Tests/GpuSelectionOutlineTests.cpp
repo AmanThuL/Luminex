@@ -1,7 +1,7 @@
 #include "GpuTestSupport.h"
 
-#include "Render/FrameDeclaration.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/FrameDeclaration.h"
+#include "Render/Graph/GraphDump.h"
 #include "Render/SelectionOutline.h"
 
 #include "SceneTableTestSupport.h"

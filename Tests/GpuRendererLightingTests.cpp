@@ -5,7 +5,7 @@
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <algorithm>
 #include <array>

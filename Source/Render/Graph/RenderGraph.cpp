@@ -3,11 +3,11 @@
 /// @brief Implements render-graph declarations, resource access and execution.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/RenderGraph.h"
-#include "Render/RenderGraphInternal.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/RenderGraphInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <algorithm>
 #include <format>

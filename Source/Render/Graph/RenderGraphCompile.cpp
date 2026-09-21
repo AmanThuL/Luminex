@@ -3,8 +3,8 @@
 /// @brief Compiles schedules and assigns transient lifetimes and placement.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/RenderGraph.h"
-#include "Render/RenderGraphInternal.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/RenderGraphInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
