@@ -2,7 +2,7 @@
 /// @file HzbStage.cpp
 /// @brief Implements padded depth-pyramid allocation and per-mip graph reduction.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/HzbStage.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

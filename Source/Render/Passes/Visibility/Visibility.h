@@ -7,9 +7,9 @@
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Frustum.h"
 #include "Engine/Scene/SceneTables.h"
-#include "Render/Occlusion.h"
-#include "Render/OcclusionCheck.h"
-#include "Render/OcclusionHistory.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
+#include "Render/Passes/Occlusion/OcclusionCheck.h"
+#include "Render/Passes/Occlusion/OcclusionHistory.h"
 #include <array>
 #include <span>
 #include <vector>

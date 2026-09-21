@@ -1,8 +1,8 @@
 #include "GpuTestSupport.h"
 
 #include "Core/Math/Scalar.h"
-#include "Render/HzbStage.h"
-#include "Render/Occlusion.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
 
 #include <algorithm>
 #include <bit>

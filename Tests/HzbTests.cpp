@@ -1,4 +1,4 @@
-#include "Render/HzbStage.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
 #include <rojoRHI/Validate.h>
 
 #include <catch2/catch_test_macros.hpp>

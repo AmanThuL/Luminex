@@ -2,7 +2,7 @@
 /// @file OcclusionReference.cpp
 /// @brief Renders direct candidate IDs and joins retired geometry visibility observations.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
 #include <algorithm>
 #include <cstddef>

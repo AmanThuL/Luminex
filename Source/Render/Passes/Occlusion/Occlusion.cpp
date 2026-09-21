@@ -2,7 +2,7 @@
 /// @file Occlusion.cpp
 /// @brief Mirrors the ordered shader box test without floating-point contraction.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/Occlusion.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
 #include "Core/Diagnostics/Assert.h"
 #include <algorithm>
 #include <cmath>

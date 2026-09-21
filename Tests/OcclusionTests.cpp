@@ -1,6 +1,6 @@
 #include "Engine/View/Camera.h"
-#include "Render/Occlusion.h"
-#include "Render/OcclusionHistory.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
+#include "Render/Passes/Occlusion/OcclusionHistory.h"
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <limits>

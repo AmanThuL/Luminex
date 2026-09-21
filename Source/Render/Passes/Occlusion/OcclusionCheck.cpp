@@ -2,7 +2,7 @@
 /// @file OcclusionCheck.cpp
 /// @brief Computes generation-safe per-instance missing-frame streaks.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/OcclusionCheck.h"
+#include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include <algorithm>
 
 namespace lmx::render {
