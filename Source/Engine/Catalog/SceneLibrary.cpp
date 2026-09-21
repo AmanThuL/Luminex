@@ -6,6 +6,7 @@
 #include "Engine/Catalog/SceneLibrary.h"
 
 #include "Engine/Asset/RepositoryAsset.h"
+#include "Engine/Catalog/CatalogScenes.h"
 
 #include "Core/Diagnostics/Assert.h"
 

@@ -1,5 +1,6 @@
 #include "App/Model/SceneSession.h"
 #include "Core/Util/Sha256.h"
+#include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Types/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
@@ -535,6 +536,38 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
     // The bounds describe the posed geometry: the quad spans x in [-1, 1] about the clip's origin,
     // not about the authored (10, 0, 0).
     REQUIRE(glm::vec3((*scene)->boundingSphere).x == Catch::Approx(0.0f).margin(1e-4));
+}
+
+//======================================================================================================================
+// A light added by the authoring callback receives an animation index only when the callback runs
+// before finalize, which freezes that index space.
+TEST_CASE("loadGltfScene runs authoring before finalize", "[scene][gpu]") {
+    const std::optional<std::filesystem::path> path =
+        findRepoAsset("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb");
+    if (!path) {
+        SKIP("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb not present (xmake setup fetches "
+             "it) -- skipping the asset-gated pin");
+    }
+
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device.has_value());
+    std::optional<LightId> authored;
+    auto scene = loadGltfScene(**device, path->string(), "DamagedHelmet",
+                               [&authored](Scene& target) -> rojoRHI::Result<void> {
+                                   auto id = target.addLight(lmx::engine::LocalLight{});
+                                   if (!id) {
+                                       return std::unexpected(id.error());
+                                   }
+                                   authored = *id;
+                                   return {};
+                               });
+    INFO(describeSceneError(scene));
+    REQUIRE(scene.has_value());
+    REQUIRE(authored.has_value());
+    REQUIRE((*scene)->light(*authored) != nullptr);
+    const std::optional<LightId> animated = (*scene)->animationLightId(0);
+    REQUIRE(animated.has_value());
+    REQUIRE(*animated == *authored);
 }
 
 //======================================================================================================================

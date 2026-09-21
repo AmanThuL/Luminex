@@ -55,7 +55,7 @@ rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                               "Local-light rig belongs to a different scene"});
     }
-    if (scene.m_sponzaLightIds.empty()) {
+    if (scene.rigLightIds().empty()) {
         if (!enabled)
             return {};
         if (scene.localLights().size() + kRigLightCount > engine::kMaxLocalLights) {
@@ -72,7 +72,7 @@ rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
             }
             authored.push_back(*id);
         }
-        scene.m_sponzaLightIds = std::move(authored);
+        scene.setRigLightIds(std::move(authored));
     }
     m_scene = &scene;
     for (const auto id : lightIds()) {
@@ -97,7 +97,7 @@ bool SponzaLightRig::enabled() const {
 
 //======================================================================================================================
 std::span<const LightId> SponzaLightRig::lightIds() const {
-    return m_scene ? m_scene->sponzaLightIds() : std::span<const LightId>{};
+    return m_scene ? m_scene->rigLightIds() : std::span<const LightId>{};
 }
 
 } // namespace lmx::engine

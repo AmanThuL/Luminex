@@ -1,4 +1,5 @@
 #include "Engine/Asset/Texture/Ibl.h"
+#include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>

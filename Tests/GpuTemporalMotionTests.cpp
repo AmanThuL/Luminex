@@ -1,3 +1,4 @@
+#include "Engine/Catalog/CatalogScenes.h"
 #include "GpuTemporalTestSupport.h"
 #include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/SceneSession.h"
+#include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Catalog/LightLab.h"
 #include "Engine/Catalog/SceneLibrary.h"
 
