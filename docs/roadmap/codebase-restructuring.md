@@ -187,8 +187,7 @@ Evidence, deviations and limits: [validation record](../milestones/r/r3.3-valida
 
 ### R3.4 — Core
 
-**Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning.
-**Implemented 2026-09-21:** evidence and limits in the [validation record](../milestones/r/r3.4-validation.md).
+**Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning. **Implemented 2026-09-21:** evidence and limits in the [validation record](../milestones/r/r3.4-validation.md).
 
 **Deliver:** [ADR 0026](../decisions/0026-core-charter-and-placement.md), accepted first: Core's
 charter, glm as the one vector vocabulary, and the rule that domain-free math and data structures go to Core whatever their consumer count while a
@@ -210,6 +209,7 @@ unit tests; the duplicates the record lists are gone; the Engine archive defines
 symbol; R3.3's archive checks and every pre-existing test case name still pass.
 
 ### R3.5 — Render
+**In progress 2026-09-22:** the accepted [record](../milestones/r/r3.5.md) is executing in two PRs.
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
 compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
