@@ -3,7 +3,7 @@
 /// @brief Implements display resources and pass declaration.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/DisplayStage.h"
+#include "Render/Passes/Display/DisplayStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer/Renderer.h"

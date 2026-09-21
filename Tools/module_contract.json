@@ -103,7 +103,7 @@
       "privateHeaders": [
         "Source/Render/Passes/Exposure/ExposureStage.h",
         "Source/Render/Passes/Bloom/BloomStage.h",
-        "Source/Render/DisplayStage.h",
+        "Source/Render/Passes/Display/DisplayStage.h",
         "Source/Render/Graph/RenderGraphInternal.h",
         "Source/Render/Passes/Temporal/TemporalResolveInternal.h"
       ]
