@@ -9,7 +9,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 - Design and planning write to two places: a brainstormed design is the `Proposed` milestone record
   in its series folder under `docs/milestones/`; an executor plan goes to `docs/plans/`.
 - Roadmap parts: `docs/roadmap/rendering-foundations.md` (M4–M6.5 and gate B), `docs/roadmap/gpu-driven-hybrid-rendering.md` (M7–M11 and independent research),
-  `docs/roadmap/codebase-module-boundaries.md` (contract and R1) with `codebase-restructuring.md` (R2 RHI→RojoRHI submodule, R3 Donut-style Core/Engine/Render/App subsystems and tree restructure, R4 shader source deduplication), `docs/roadmap/editor-experience.md` (UX1 before M7.1; UX2 scene documents/hierarchy before N1), and
+  `docs/roadmap/codebase-module-boundaries.md` (contract and R1) with `codebase-restructuring.md` (R2 RHI→RojoRHI submodule, R3 Donut-style Core/Engine/Render/App subsystems and tree restructure, seven slices: R3.4 Core math/containers with Engine decomposition and a `Source/Scenes` catalog unit under proposed ADR 0026, then R3.5 Render, R3.6 App, R3.7 Tests, R4 shader source deduplication), `docs/roadmap/editor-experience.md` (UX1 before M7.1; UX2 scene documents/hierarchy before N1), and
   `docs/roadmap/neural-rendering.md` (N1–N4 learned-rendering studies; accepted post-M7 order N1 → M9 → M8 → M10 → M11; hardware floor; ADR 0022 proposed MSL tensor-module exception).
 - Gate B passes after R1 (`docs/milestones/m6/interface-gate-b.md`); ADR 0021 owns the approved
   scene-identity/update handoff contract. UX1 is implemented and owner-accepted for integration
