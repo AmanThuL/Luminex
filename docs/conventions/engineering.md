@@ -95,3 +95,5 @@ Result<void> because it allocates per frame. Existing pipeline labels under `lmx
 `lmx.light.*`, `lmx.selection.*`, `lmx.occlusion.reference.*` and `lmx.pipeline.temporal.vendor.*`
 remain unchanged. SelectionOutline and OcclusionReference retain their independent direct-item
 loops; they share scene-table binding, while draw-run encoding belongs to Scene and Shadow.
+
+R3.5 measured adoption exception: Scene retains `encodeDrawRuns` and all four stages retain `bindSceneTables`; Shadow keeps its explicit run loop after the fixed fallback selected the measured Scene-only candidate. The [validation record](../milestones/r/r3.5-validation.md) owns the frozen paired decision.
