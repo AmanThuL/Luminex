@@ -85,10 +85,16 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
                             m_drawSubmission.argumentUse());
     if (view.classifyMode == ClassifyMode::Gpu) {
         const auto output = m_gpuVisibility->declare(
-            graph, commands, view, planes, m_drawSubmission.prepared(),
-            sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[3],
-            sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[2], rows, arguments,
-            m_visibilityStatus, m_previousPyramid, m_occlusionParams);
+            graph, commands, view,
+            {.planes = planes,
+             .submission = m_drawSubmission.prepared(),
+             .instances = sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[3],
+             .meshes = sceneBuffers.empty() ? GraphBuffer{} : sceneBuffers[2],
+             .rows = rows,
+             .arguments = arguments,
+             .pyramid = m_previousPyramid,
+             .occlusion = m_occlusionParams},
+            m_visibilityStatus);
         rows = output.rows;
         arguments = output.arguments;
     } else {
