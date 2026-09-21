@@ -1,7 +1,7 @@
-// Thin CLI wrapper around Source/Asset/TextureBake.{h,cpp} -- decodes one PNG/JPG, bakes a full
-// linear-light box-filtered mip chain, and writes it as an uncompressed A8R8G8B8 DDS plus a
-// sibling "<out>.dds.json" manifest. All the deterministic math lives in Asset so unit tests
-// exercise it directly; this file only does argv parsing and file I/O.
+// Thin CLI wrapper around Source/Engine/Asset/Texture/TextureBake.{h,cpp} -- decodes one
+// PNG/JPG, bakes a full linear-light box-filtered mip chain, and writes it as an uncompressed
+// A8R8G8B8 DDS plus a sibling "<out>.dds.json" manifest. All the deterministic math lives in
+// Asset so unit tests exercise it directly; this file only does argv parsing and file I/O.
 //
 // Usage: TextureBake <in.png|jpg> <out.dds> --srgb|--linear|--normal-map [--source-name NAME]
 //   --srgb        base-color images: decode sRGB -> linear, filter, re-encode sRGB.

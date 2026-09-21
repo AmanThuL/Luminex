@@ -61,7 +61,7 @@ float lightLabRange(uint32_t n);
 /// == 1) is a spot pointing down with a deterministic tilt; the rest, including every pile light,
 /// are points. Two calls at the same `(n, pile)` produce identical fields and byte-identical packed
 /// LightRows: the seed, palette and derived values are fixed functions of the light's index.
-/// `n` must be at least 1 and `n + pile` must not exceed `render::kMaxLocalLights`.
+/// `n` must be at least 1 and `n + pile` must not exceed `engine::kMaxLocalLights`.
 std::vector<engine::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
 
 /// Builds the closed-form orbit tracks for `lightLabLights(n, pile)`'s orbiting grid lights (index

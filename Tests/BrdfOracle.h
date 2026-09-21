@@ -87,7 +87,7 @@ inline glm::vec3 f0Of(const Surface& surface) {
 
 //======================================================================================================================
 // One analytic directional light. `normal` and `toEye` are unit; `lightDirection` is the way the
-// rays travel, matching render::DirectionalLight::direction.
+// rays travel, matching engine::DirectionalLight::direction.
 inline glm::vec3 directionalLight(const glm::vec3& strength, const glm::vec3& lightDirection,
                                   const glm::vec3& normal, const glm::vec3& toEye,
                                   const Surface& surface) {

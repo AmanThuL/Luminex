@@ -32,7 +32,7 @@ struct RigidTrack {
     bool step = false;
 };
 
-/// One camera pose in a camera track. Angles follow `render::Camera`: yaw about +Y, pitch about
+/// One camera pose in a camera track. Angles follow `engine::Camera`: yaw about +Y, pitch about
 /// the camera's right axis, both in radians.
 struct CameraKey {
     double time = 0.0;        ///< Seconds from the clip start; keys are sorted.
@@ -60,8 +60,8 @@ struct EmissiveTrack {
 
 /// One closed-form orbit driving a scene local light's position. `light` indexes the scene's
 /// authored lights in creation order (the order `Scene::addLight` was called), not a scene
-/// `LightId` directly: `Source/Asset` may not depend on `Source/Scene`
-/// (Tools/module_contract.json), so `Scene` itself owns the mapping from this index back to the
+/// `LightId` directly: ADR 0025 layers `asset` below `engine` below `render`, enforced by
+/// `Tools/module_contract.json`, so `Scene` itself owns the mapping from this index back to the
 /// `LightId` it assigned (`Scene::animationLightId`). That index space freezes at
 /// `Scene::finalize`: `light` must reference a light added *before* finalize, since tracks are
 /// authored before a scene plays; a light added afterward (a runtime rig toggle, say) has no
