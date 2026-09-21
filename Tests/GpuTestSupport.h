@@ -2,8 +2,8 @@
 
 #include "Asset/Asset.h"
 #include "Asset/GeometryGenerator.h"
-#include "Render/Camera.h"
-#include "Render/Mesh.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/Mesh.h"
 #include "Render/Renderer.h"
 #include <rojoRHI/RHI.h>
 

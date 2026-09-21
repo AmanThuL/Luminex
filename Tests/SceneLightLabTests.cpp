@@ -7,7 +7,7 @@
 #include "Scene/LightLab.h"
 #include "Scene/SceneLibrary.h"
 
-#include "Render/LocalLightMath.h"
+#include "Engine/Types/LocalLightMath.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

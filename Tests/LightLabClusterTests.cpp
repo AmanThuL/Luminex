@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Scene/LightLab.h"
 
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLightMath.h"
 
 #include <catch2/catch_test_macros.hpp>
 

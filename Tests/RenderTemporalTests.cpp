@@ -4,7 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 

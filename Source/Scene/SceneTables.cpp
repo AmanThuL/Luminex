@@ -7,7 +7,7 @@
 
 #include "Core/Assert.h"
 #include "Core/Log.h"
-#include "Render/LocalLightMath.h"
+#include "Engine/Types/LocalLightMath.h"
 
 #include <algorithm>
 #include <array>

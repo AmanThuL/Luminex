@@ -4,14 +4,14 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/Mesh.h"
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
 #include "Render/HzbStage.h"
 #include "Render/LightClusterStage.h"
 #include "Render/LightDebugStage.h"
 #include "Render/LightingStatus.h"
-#include "Render/Mesh.h"
 #include "Render/RenderGraph.h"
 #include "Render/SceneStage.h"
 #include "Render/SceneView.h"

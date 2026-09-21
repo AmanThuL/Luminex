@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/LocalLight.h"
+#include "Engine/Types/LocalLight.h"
 
 #include <cstdint>
 

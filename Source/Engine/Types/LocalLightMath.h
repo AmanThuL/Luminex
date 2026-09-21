@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "Render/LocalLight.h"
-#include "Render/SceneTables.h"
+#include "Engine/Scene/SceneTables.h"
+#include "Engine/Types/LocalLight.h"
 #include <rojoRHI/Result.h>
 
 #include <glm/vec3.hpp>

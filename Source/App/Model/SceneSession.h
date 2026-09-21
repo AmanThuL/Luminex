@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 #include "Scene/Scene.h"
 #include "Scene/SponzaLightRig.h"
 

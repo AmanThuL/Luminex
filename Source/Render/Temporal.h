@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 #include <rojoRHI/Format.h>
 
 #include <glm/mat4x4.hpp>

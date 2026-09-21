@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "Render/SceneTables.h"
+#include "Engine/Scene/SceneTables.h"
 
 #include <cstring>
 

@@ -10,7 +10,7 @@
 #include "Asset/GeometryGenerator.h"
 #include "Core/Assert.h"
 #include "Core/Color.h"
-#include "Render/Mesh.h"
+#include "Engine/Types/Mesh.h"
 #include "Scene/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>

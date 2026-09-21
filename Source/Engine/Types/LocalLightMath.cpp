@@ -3,7 +3,7 @@
 /// @brief Implements the CPU mirror of Shaders/Common/LocalLights.slang's ComputePunctualLight.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/LocalLightMath.h"
+#include "Engine/Types/LocalLightMath.h"
 
 #include "Core/Bounds.h"
 
