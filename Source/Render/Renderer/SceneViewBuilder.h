@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Engine/Scene/DrawItem.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 
 #include <vector>
 

@@ -13,7 +13,7 @@
 #include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 
 #include <cstdint>
 #include <string_view>

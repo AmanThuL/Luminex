@@ -7,7 +7,7 @@
 
 #include "Render/DrawSubmission.h"
 #include "Render/Graph/RenderGraph.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include "Render/TemporalHistory.h"
 #include <rojoRHI/RHI.h>
 

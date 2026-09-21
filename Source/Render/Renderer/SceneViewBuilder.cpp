@@ -3,7 +3,7 @@
 /// @brief Composes a SceneView from a scene's draw items and public frame inputs.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Scene/Scene.h"

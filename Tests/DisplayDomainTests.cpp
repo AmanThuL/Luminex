@@ -1,6 +1,6 @@
 #include "Engine/Asset/Image/PngImage.h"
-#include "Render/DisplayDomain.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/DisplayDomain.h"
+#include "Render/Renderer/Renderer.h"
 #include <rojoRHI/Validate.h>
 
 #include <catch2/catch_test_macros.hpp>

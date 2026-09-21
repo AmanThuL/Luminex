@@ -14,7 +14,7 @@
 #include "Core/Util/Parse.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/RenderGraph.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include "Render/RhiLog.h"
 #include "Scenes/SceneLibrary.h"
 #include <rojoRHI/CaptureSchema.h>

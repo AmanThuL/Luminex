@@ -5,7 +5,7 @@
 #pragma once
 
 #include "Render/Graph/RenderGraph.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 
 #include <memory>
 
