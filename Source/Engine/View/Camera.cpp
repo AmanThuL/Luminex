@@ -48,9 +48,9 @@ glm::mat4 Camera::viewMatrix() const {
 
 //======================================================================================================================
 glm::mat4 Camera::projectionMatrix(float aspect) const {
-    // farZ is untouched by all of this. It stays on the Camera as scene data (SceneCamera carries
-    // it, the editor round-trips it) and this projection simply does not read it -- see the note
-    // on the field in Camera.h.
+    // farZ is not a projection input: the reversed infinite projection has no far plane. It stays
+    // on the Camera as scene data (SceneCamera carries it, the editor round-trips it) and this
+    // projection simply does not read it -- see the note on the field in Camera.h.
     return perspectiveReversedInfinite(fovY, aspect, nearZ);
 }
 
