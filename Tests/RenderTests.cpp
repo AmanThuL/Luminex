@@ -7,8 +7,8 @@
 
 #include "BrdfOracle.h"
 
-#include "Asset/Ibl.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Texture/Ibl.h"
 #include "Engine/Types/Camera.h"
 #include "Engine/Types/Mesh.h"
 #include "Render/Renderer.h"

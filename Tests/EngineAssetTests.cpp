@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Asset/TextureBake.h"
 #include "Engine/Asset/Image/DdsLoader.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include <rojoRHI/RHI.h>
 
 #include <array>

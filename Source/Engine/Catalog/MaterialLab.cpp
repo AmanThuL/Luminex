@@ -7,11 +7,11 @@
 
 #include "Asset/RepositoryAsset.h"
 
-#include "Asset/TextureBake.h"
 #include "Core/Color.h"
 #include "Core/Log.h"
 #include "Engine/Asset/Image/HdrEnvironment.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Upload/IblUpload.h"
 #include "Engine/Upload/SceneEnvironment.h"
 

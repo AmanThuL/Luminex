@@ -5,7 +5,7 @@
 #include "Engine/Upload/IblUpload.h"
 #include "GpuTestSupport.h"
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 #include "Engine/Scene/Scene.h"
 #include "EngineTestSupport.h"
 
