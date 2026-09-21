@@ -113,11 +113,16 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                           ? temporalOutputs.resolved
                                           : sceneColorRead;
 
-    m_exposureStage->declareMetering(graph, commands, view, state.extents, sceneColorRead,
-                                     imports.exposureCurrent);
+    m_exposureStage->declareMetering(graph, commands, view,
+                                     {.extents = state.extents,
+                                      .sceneColorRead = sceneColorRead,
+                                      .exposureCurrent = imports.exposureCurrent});
 
-    const GraphTexture bloomResult = m_bloomStage->declare(
-        graph, commands, displayInput, sceneWidth, sceneHeight, view.bloomThreshold);
+    const GraphTexture bloomResult = m_bloomStage->declare(graph, commands,
+                                                           {.displayInput = displayInput,
+                                                            .sceneWidth = sceneWidth,
+                                                            .sceneHeight = sceneHeight,
+                                                            .bloomThreshold = view.bloomThreshold});
 
     const bool lightDebugEnabled =
         view.lightDebugView != engine::LightDebugView::Off && lightClusters.declared;
@@ -136,8 +141,12 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
                                                                .sampled = true},
                                                               "lmx.render.lightDebugSource")
                                         : imports.displayColor;
-    m_displayStage->declare(graph, commands, displayInput, bloomResult, displayDestination,
-                            view.bloomEnabled, view.bloomIntensity);
+    m_displayStage->declare(graph, commands,
+                            {.displayInput = displayInput,
+                             .bloomResult = bloomResult,
+                             .displayColor = displayDestination,
+                             .bloomEnabled = view.bloomEnabled,
+                             .bloomIntensity = view.bloomIntensity});
     if (lightDebugEnabled) {
         if (!m_lightDebug) {
             auto stage = LightDebugStage::create(m_device);

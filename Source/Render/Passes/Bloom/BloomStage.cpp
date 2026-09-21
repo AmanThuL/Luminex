@@ -68,74 +68,75 @@ constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<void> BloomStage::loadLibraries(rojoRHI::Device& device) {
+rojoRHI::Result<std::unique_ptr<BloomStage>> BloomStage::create(rojoRHI::Device& device) {
+    std::unique_ptr<BloomStage> self(new BloomStage);
+
     {
         auto library = device.loadShaderLibrary("Shaders/BloomThreshold");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_bloomThresholdLibrary = std::move(*library);
+        self->m_bloomThresholdLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/BloomDownsample");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_bloomDownsampleLibrary = std::move(*library);
+        self->m_bloomDownsampleLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/BloomUpsample");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_bloomUpsampleLibrary = std::move(*library);
+        self->m_bloomUpsampleLibrary = std::move(*library);
     }
-    return {};
-}
 
-//======================================================================================================================
-rojoRHI::Result<void> BloomStage::createPipelines(rojoRHI::Device& device) {
     {
         auto pipeline = device.createComputePipeline(
-            {.library = m_bloomThresholdLibrary.get(),
+            {.library = self->m_bloomThresholdLibrary.get(),
              .computeEntry = "computeBloomThreshold",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomThresholdPipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_bloomThresholdPipeline = std::move(*pipeline);
+        self->m_bloomThresholdPipeline = std::move(*pipeline);
     }
     {
         auto pipeline = device.createComputePipeline(
-            {.library = m_bloomDownsampleLibrary.get(),
+            {.library = self->m_bloomDownsampleLibrary.get(),
              .computeEntry = "computeBloomDownsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomDownsamplePipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_bloomDownsamplePipeline = std::move(*pipeline);
+        self->m_bloomDownsamplePipeline = std::move(*pipeline);
     }
     {
         auto pipeline = device.createComputePipeline(
-            {.library = m_bloomUpsampleLibrary.get(),
+            {.library = self->m_bloomUpsampleLibrary.get(),
              .computeEntry = "computeBloomUpsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomUpsamplePipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_bloomUpsamplePipeline = std::move(*pipeline);
+        self->m_bloomUpsamplePipeline = std::move(*pipeline);
     }
 
-    return {};
+    return self;
 }
 
 //======================================================================================================================
 GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                 GraphTexture displayInput, uint32_t sceneWidth,
-                                 uint32_t sceneHeight, float bloomThreshold) {
+                                 const BloomInputs& inputs) {
+    const auto displayInput = inputs.displayInput;
+    const auto sceneWidth = inputs.sceneWidth;
+    const auto sceneHeight = inputs.sceneHeight;
+    const auto bloomThreshold = inputs.bloomThreshold;
     // ---- Bloom (spec 10). Two graph-created transients: `bloomChain`'s mips hold the threshold
     // and the downsample chain, and `bloomBlur`'s mips hold the upsample-accumulate walk back up
     // -- a second transient rather than accumulating into bloomChain in place, because one compute

@@ -83,9 +83,7 @@ void registerUniformLayoutsForCapture() {
 
 //======================================================================================================================
 Renderer::Renderer(rojoRHI::Device& device, bool cpuReadback)
-    : m_device(device), m_transientPool(device), m_exposureStage(std::make_unique<ExposureStage>()),
-      m_bloomStage(std::make_unique<BloomStage>()),
-      m_displayStage(std::make_unique<DisplayStage>()), m_drawSubmission(device),
+    : m_device(device), m_transientPool(device), m_drawSubmission(device),
       m_cpuReadback(cpuReadback) {}
 
 //======================================================================================================================
@@ -112,26 +110,23 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
         return std::unexpected(stage.error());
     }
 
-    if (auto result = self->m_displayStage->loadLibraries(device); !result) {
-        return std::unexpected(result.error());
+    auto displayStage = DisplayStage::create(device);
+    if (!displayStage) {
+        return std::unexpected(displayStage.error());
     }
-    if (auto result = self->m_exposureStage->loadLibraries(device); !result) {
-        return std::unexpected(result.error());
-    }
-    if (auto result = self->m_bloomStage->loadLibraries(device); !result) {
-        return std::unexpected(result.error());
-    }
-    if (auto result = self->m_displayStage->createPipelines(device); !result) {
-        return std::unexpected(result.error());
-    }
+    self->m_displayStage = std::move(*displayStage);
 
-    if (auto result = self->m_exposureStage->createPipelines(device); !result) {
-        return std::unexpected(result.error());
+    auto exposureStage = ExposureStage::create(device, cpuReadback);
+    if (!exposureStage) {
+        return std::unexpected(exposureStage.error());
     }
+    self->m_exposureStage = std::move(*exposureStage);
 
-    if (auto result = self->m_bloomStage->createPipelines(device); !result) {
-        return std::unexpected(result.error());
+    auto bloomStage = BloomStage::create(device);
+    if (!bloomStage) {
+        return std::unexpected(bloomStage.error());
     }
+    self->m_bloomStage = std::move(*bloomStage);
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
     if (auto shadowMap = device.createTexture({.width = kShadowMapSize,
@@ -172,14 +167,6 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto result = self->m_displayStage->createResources(device); !result) {
-        return std::unexpected(result.error());
-    }
-
-    if (auto result = self->m_exposureStage->createResources(device, cpuReadback); !result) {
-        return std::unexpected(result.error());
-    }
-
     if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
                                              .addressMode = rojoRHI::AddressMode::Wrap,
                                              .maxAnisotropy = 16,
