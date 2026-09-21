@@ -101,6 +101,7 @@
         "glm"
       ],
       "privateHeaders": [
+        "Source/Render/Passes/Scene/SceneStageInternal.h",
         "Source/Render/Passes/Exposure/ExposureStage.h",
         "Source/Render/Passes/Bloom/BloomStage.h",
         "Source/Render/Passes/Display/DisplayStage.h",
