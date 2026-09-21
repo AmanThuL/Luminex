@@ -3,7 +3,7 @@
 /// @brief Implements GPU uploads for CPU-generated environment lighting.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 
 #include "Core/Assert.h"
 

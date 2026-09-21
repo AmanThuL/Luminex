@@ -6,7 +6,7 @@
 #include "Engine/Scene/Scene.h"
 
 #include "Core/Color.h"
-#include "Scene/SceneEnvironment.h"
+#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 

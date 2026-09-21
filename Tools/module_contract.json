@@ -72,7 +72,7 @@
         "glm"
       ],
       "privateHeaders": [
-        "Source/Scene/SceneEnvironment.h"
+        "Source/Engine/Upload/SceneEnvironment.h"
       ]
     },
     "render": {

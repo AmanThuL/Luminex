@@ -3,7 +3,7 @@
 /// @brief Implements the shared sky, image-based lighting, and directional-light rig.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/SceneEnvironment.h"
+#include "Engine/Upload/SceneEnvironment.h"
 
 #include "Asset/GeometryGenerator.h"
 #include "Core/Color.h"

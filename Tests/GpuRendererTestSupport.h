@@ -2,8 +2,8 @@
 
 #include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
+#include "Engine/Upload/IblUpload.h"
 #include "GpuTestSupport.h"
-#include "Scene/IblUpload.h"
 
 #include "Asset/Ibl.h"
 #include "Engine/Scene/Scene.h"

@@ -12,8 +12,8 @@
 #include "Asset/TextureBake.h"
 #include "Core/Color.h"
 #include "Core/Log.h"
-#include "Scene/IblUpload.h"
-#include "Scene/SceneEnvironment.h"
+#include "Engine/Upload/IblUpload.h"
+#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>

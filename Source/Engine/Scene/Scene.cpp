@@ -17,8 +17,8 @@
 #include "Core/Assert.h"
 #include "Core/Color.h"
 #include "Core/Log.h"
-#include "Scene/DdsUpload.h"
-#include "Scene/SceneEnvironment.h"
+#include "Engine/Upload/DdsUpload.h"
+#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
