@@ -6,8 +6,13 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <limits>
+#include <type_traits>
 #include <vector>
+
+static_assert(std::forward_iterator<lmx::RingBuffer<int>::iterator>);
+static_assert(std::forward_iterator<lmx::RingBuffer<int>::const_iterator>);
 
 //======================================================================================================================
 TEST_CASE("DirtySet::resize marks only new entries, for every consumer", "[core]") {
@@ -191,13 +196,17 @@ TEST_CASE("RingBuffer's const_iterator works with std::minmax_element and std::v
     }
     REQUIRE(ring.size() == 4);
 
+    // Iterating through a const view is what selects const_iterator.
+    const auto& view = ring;
+    static_assert(std::is_same_v<decltype(view.begin()), lmx::RingBuffer<int>::const_iterator>);
+
     // std::minmax_element needs a real std::iterator_traits<const_iterator>: iterator_category,
     // value_type, difference_type, reference and pointer must all be present.
-    const auto [minIt, maxIt] = std::minmax_element(ring.begin(), ring.end());
+    const auto [minIt, maxIt] = std::minmax_element(view.begin(), view.end());
     REQUIRE(*minIt == 1);
     REQUIRE(*maxIt == 9);
 
-    const std::vector<int> copied(ring.begin(), ring.end());
+    const std::vector<int> copied(view.begin(), view.end());
     REQUIRE(copied == std::vector<int>{1, 9, 3, 7});
 }
 
