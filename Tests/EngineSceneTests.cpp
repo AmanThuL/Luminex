@@ -1,4 +1,5 @@
 #include "App/Model/SceneSession.h"
+#include "Core/Util/Sha256.h"
 #include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Types/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
@@ -166,8 +167,8 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     REQUIRE(bakedMip1.size() == fallbackMip1.size());
     INFO(describe("baked mip1 centre", 32, 32, pixelAt(bakedMip1, 32, 32)));
     INFO(describe("fallback mip1 centre", 32, 32, pixelAt(fallbackMip1, 32, 32)));
-    REQUIRE(sha256Hex(std::as_bytes(std::span(bakedMip1))) ==
-            sha256Hex(std::as_bytes(std::span(fallbackMip1))));
+    REQUIRE(lmx::sha256Hex(std::as_bytes(std::span(bakedMip1))) ==
+            lmx::sha256Hex(std::as_bytes(std::span(fallbackMip1))));
 }
 
 //======================================================================================================================

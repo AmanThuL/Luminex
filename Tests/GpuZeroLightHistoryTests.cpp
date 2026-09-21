@@ -1,6 +1,6 @@
 #include "GpuRendererTestSupport.h"
 
-#include "Engine/Asset/Texture/TextureBake.h"
+#include "Core/Util/Sha256.h"
 #include "Render/SceneViewBuilder.h"
 
 #include <cstdlib>
@@ -96,7 +96,7 @@ bool hasHdrColorDetail(const Bytes& bytes) {
 
 //======================================================================================================================
 std::string digest(const Bytes& bytes) {
-    return lmx::asset::sha256Hex(std::as_bytes(std::span(bytes)));
+    return lmx::sha256Hex(std::as_bytes(std::span(bytes)));
 }
 
 //======================================================================================================================
