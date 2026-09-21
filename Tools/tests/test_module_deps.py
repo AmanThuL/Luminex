@@ -160,6 +160,27 @@ class ContractLoadingTests(unittest.TestCase):
             with self.assertRaisesRegex(modules.ModuleContractError, "ghost"):
                 modules.load_contract(write_contract(root, contract), root)
 
+    def test_forbidden_undefined_prefixes_load_as_a_string_or_a_nonempty_list(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for prefixes in ("lmx::app::", ["lmx::app::", "rojoRHI::"]):
+                with self.subTest(prefixes=prefixes):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["targets"]["Core"]["forbidUndefined"] = prefixes
+                    modules.load_contract(write_contract(root, contract), root)
+
+    def test_an_empty_or_malformed_forbidden_undefined_list_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for prefixes in ([], "", ["lmx::app::", ""], ["lmx::app::", 1], 1, {"lmx::app::": True}):
+                with self.subTest(prefixes=prefixes):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["targets"]["Core"]["forbidUndefined"] = prefixes
+                    with self.assertRaisesRegex(modules.ModuleContractError, "target Core field forbidUndefined"):
+                        modules.load_contract(write_contract(root, contract), root)
+
     def test_unsupported_schema_version_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1155,6 +1176,43 @@ class CheckLinkTests(unittest.TestCase):
             self.assertEqual(
                 errors, ["Asset: undefined symbol rojoRHI::Device::~Device() references rojoRHI::"]
             )
+
+    def test_forbidden_undefined_list_rejects_a_symbol_under_any_listed_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+            contract = {"targets": {"Asset": {"deps": ["Core"], "forbidUndefined": ["rojoRHI::", "lmx::render::"]}}}
+
+            def run(args, **kwargs):
+                if args[0] == "nm":
+                    return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__a\n__b\n__c\n")
+                self.assertEqual(args[0], "c++filt")
+                return FakeCompleted(
+                    stdout="lmx::render::Renderer::~Renderer()\nlmx::core::log()\nrojoRHI::Device::~Device()\n"
+                )
+
+            errors: list[str] = []
+            modules.check_link(targets, contract, [], errors, run=run)
+            self.assertEqual(
+                errors,
+                [
+                    "Asset: undefined symbol lmx::render::Renderer::~Renderer() references lmx::render::",
+                    "Asset: undefined symbol rojoRHI::Device::~Device() references rojoRHI::",
+                ],
+            )
+
+    def test_forbidden_undefined_list_passes_an_archive_outside_every_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+            contract = {"targets": {"Asset": {"deps": ["Core"], "forbidUndefined": ["rojoRHI::", "lmx::render::"]}}}
+
+            def run(args, **kwargs):
+                if args[0] == "nm":
+                    return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__a\n")
+                return FakeCompleted(stdout="lmx::core::log()\n")
+
+            errors: list[str] = []
+            modules.check_link(targets, contract, [], errors, run=run)
+            self.assertEqual(errors, [])
 
     def test_missing_target_file_is_a_could_not_run_error(self) -> None:
         targets = {"TextureBake": {"deps": [], "packages": [], "frameworks": [], "targetfile": ""}}

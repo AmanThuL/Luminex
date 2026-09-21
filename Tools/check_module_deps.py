@@ -259,6 +259,16 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
         for field in ("deps", "frameworks"):
             if field in target and not isinstance(target[field], list):
                 raise ModuleContractError(f"target {name} field {field} must hold a list")
+        if "forbidUndefined" in target:
+            prefixes = target["forbidUndefined"]
+            if isinstance(prefixes, str):
+                prefixes = [prefixes]
+            if (not isinstance(prefixes, list) or not prefixes
+                    or not all(isinstance(item, str) and item for item in prefixes)):
+                raise ModuleContractError(
+                    f"target {name} field forbidUndefined must hold a symbol prefix "
+                    "or a nonempty list of them"
+                )
     contract.setdefault("thirdPartyTargets", [])
     prefixes = contract.setdefault("thirdPartyPrefixes", {})
     if not isinstance(prefixes, dict) or not all(
@@ -856,6 +866,11 @@ def undefined_symbols(archive: Path, run=subprocess.run) -> list[str]:
     return demangled.stdout.splitlines()
 
 
+def forbidden_prefixes(entry: dict) -> tuple[str, ...]:
+    """A target's `forbidUndefined` symbol prefixes: one string or a list of them."""
+    return tuple(as_list(entry.get("forbidUndefined")))
+
+
 def check_link(
     targets: dict[str, dict], contract: dict, allowlist: list[dict], errors: list[str], run=subprocess.run
 ) -> None:
@@ -879,11 +894,13 @@ def check_link(
                     continue
                 errors.append(f"{name}: links {framework} outside its allowed set")
 
-        prefix = entry.get("forbidUndefined")
-        if prefix:
+        prefixes = forbidden_prefixes(entry)
+        if prefixes:
             for symbol in undefined_symbols(path, run=run):
-                if symbol.startswith(prefix):
-                    errors.append(f"{name}: undefined symbol {symbol} references {prefix}")
+                for prefix in prefixes:
+                    if symbol.startswith(prefix):
+                        errors.append(f"{name}: undefined symbol {symbol} references {prefix}")
+                        break
 
 
 def report_budgets(files: list[Path], contract: dict, root: Path) -> list[str]:
