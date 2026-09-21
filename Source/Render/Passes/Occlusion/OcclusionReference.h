@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Render/Graph/RenderGraph.h"
-#include "Render/OcclusionCheck.h"
+#include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include "Render/Renderer/SceneView.h"
 #include <array>
 #include <memory>

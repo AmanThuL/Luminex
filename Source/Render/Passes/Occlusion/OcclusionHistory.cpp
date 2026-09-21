@@ -2,7 +2,7 @@
 /// @file OcclusionHistory.cpp
 /// @brief Derives global invalidation before any previous-view rejection.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/OcclusionHistory.h"
+#include "Render/Passes/Occlusion/OcclusionHistory.h"
 #include <cmath>
 #include <glm/geometric.hpp>
 namespace lmx::render {

@@ -3,7 +3,7 @@
 /// @brief Coordinates CPU declarations and separately retired GPU visibility diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
-#include "Render/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/Renderer.h"
 #include <chrono>

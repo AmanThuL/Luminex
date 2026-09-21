@@ -1,5 +1,5 @@
 #include "GpuTestSupport.h"
-#include "Render/Occlusion.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
 #include <bit>
 #include <cmath>
 #include <limits>

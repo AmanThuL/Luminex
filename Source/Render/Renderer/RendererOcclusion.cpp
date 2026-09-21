@@ -3,7 +3,7 @@
 /// @brief Coordinates source-space depth evidence and independent retired visibility checks.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
-#include "Render/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
 namespace lmx::render {
