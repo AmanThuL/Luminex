@@ -3,7 +3,7 @@
 /// @brief Implements exposure resources and pass declaration.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/ExposureStage.h"
+#include "Render/Passes/Exposure/ExposureStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

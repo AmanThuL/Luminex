@@ -6,7 +6,7 @@
 #include "Render/Renderer/Renderer.h"
 #include "Render/BloomStage.h"
 #include "Render/DisplayStage.h"
-#include "Render/ExposureStage.h"
+#include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
