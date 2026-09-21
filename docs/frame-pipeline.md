@@ -235,7 +235,7 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **Vendor scaler**: lazy, output-extent-owned, recreated only on output resize. Packed textures
   are frame transients. Each encoded frame slot retains scaler state until retirement. A public
   fence bridges MetalFX's opaque encoders; CPU-readable outputs use creation-time private scratch and an in-call copy, included in external timing. Private outputs are written directly.
-- **Scenes are cached for the device's lifetime** (`Engine/Catalog/SceneLibrary.h`). GPU resources build on
+- **Scenes are cached for the device's lifetime** (`Source/Scenes/SceneLibrary.h`). GPU resources build on
   first selection; destruction requires retired GPU reads, while removed textures retire after three frames. IDs
   resolve to per-draw pointers/fallbacks. Only referenced images upload; decoded CPU data is freed.
 - **IBL assets** (`Source/Engine/Asset/Texture/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered

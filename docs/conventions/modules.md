@@ -7,7 +7,9 @@ the units and third-party packages listed for it and on nothing else; anything a
 is forbidden, and the policy checker rejects it. The layering, the unit names and the namespace
 renames are decided in [ADR 0020](../decisions/0020-module-layering-and-units.md), narrowed by
 [ADR 0025](../decisions/0025-engine-subsystem-and-render-on-engine.md) for the Engine subsystem and
-the render-on-engine edge; the migration order lives in the
+the render-on-engine edge, and by
+[ADR 0026](../decisions/0026-core-charter-and-placement.md) for the placement rule and Core's
+ownership row; the migration order lives in the
 [refactoring roadmap](../roadmap/codebase-module-boundaries.md).
 
 ## Units
@@ -17,13 +19,14 @@ and AppModel static target.
 
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
-| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with their corner transform (`Bounds.h`) | — | spdlog, glm |
-| `asset` | `Source/Engine/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
-| `engine` | `Source/Engine` outside `Asset` (`Engine`) | `lmx::engine` | Scene vocabulary — `Camera`, mesh geometry, `LocalLightMath`, `AlphaMode`, `LocalLight`, `DrawItem`, `DirectionalLight`, `MotionClass` and the shared scene-table row ABI/bindings — plus GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, initial camera | `core`, `asset` | glm |
+| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, whole-file reading, JSON escaping; the geometry and algorithms over glm types — AABBs with their corner transform, spheres, frusta, colour transfer, TRS transforms, reversed-infinite-Z and orthographic-fit projections, low-discrepancy sequences, IBL sampling measures, alignment and dispatch division; the generic containers: a generational handle with its slot allocator, a dirty set, an interval, a ring buffer; numeric parsing, SHA-256, a stopwatch, ASCII lowercasing | — | spdlog, glm |
+| `asset` | `Source/Engine/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery | `core` | glm, cgltf, stb |
+| `engine` | `Source/Engine` outside `Asset` (`Engine`) | `lmx::engine` | Scene vocabulary — `Camera`, mesh geometry, `LocalLightMath`, `AlphaMode`, `LocalLight`, `DrawItem`, `DirectionalLight`, `MotionClass` and the shared scene-table row ABI/bindings — plus GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, environment rig, playback, initial camera | `core`, `asset` | glm |
+| `scenes` | `Source/Scenes` (`Scenes`) | `lmx::scenes` | The catalog: `SceneLibrary` and `SceneId`, the four labs, San Miguel, the Sponza light rig and camera tour | `core`, `asset`, `engine` | glm |
 | `render` | `Source/Render` (`Render`) | `lmx::render` | `SceneView` production via the builder, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core`, `engine`, `asset` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `engine`, `render` | glm |
-| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `engine`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
-| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `engine`, `app-model` | glm, catch2 |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `engine`, `render`, `scenes` | glm |
+| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `engine`, `app-model`, `scenes` | glm, imgui, imgui-node-editor, libsdl3 |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `engine`, `app-model`, `scenes` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core` | glm |
 
@@ -53,7 +56,7 @@ include root `RojoRHI/Include`.
 
 | Consumer | May include |
 |---|---|
-| `render`, `engine`, `app-model`, `benchmarks` | `"*"` |
+| `render`, `engine`, `app-model`, `scenes`, `benchmarks` | `"*"` |
 | `app-shell` | `"*"`, and `rojoRHI/Metal4/Metal4ImGui.h` |
 | `tests` | `"*"` |
 | `asset`, `texture-bake` | `rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, and nothing else |
@@ -115,8 +118,14 @@ Ownership comes from one explicit map from unit to paths, never from inference:
 
 ## Placement rules
 
-- A helper with no domain meaning and consumers in two or more units, sharing one contract, goes to
-  `core`. One consumer keeps it local; a domain meaning keeps it in the owning unit.
+- The placement rule, as [ADR 0026](../decisions/0026-core-charter-and-placement.md) states it:
+  "Math and data structures with no domain meaning go to `core` whatever their consumer count. A
+  domain meaning keeps code in its owning unit: a function that takes or returns a scene, asset,
+  render or app type, or that fixes a constant belonging to one (the 16×9×24 froxel grid, the
+  light-row layout), is not generic, and the generic part is cut out from under it rather than the
+  whole moved. Every other helper keeps ADR 0020's two-consumer rule." Every other helper:
+  consumers in two or more units, sharing one contract, goes to `core`; one consumer keeps it
+  local.
 - Extraction preserves each caller's contract. Two helpers with different contracts keep different
   names and a test that pins the difference. A behaviour change is its own commit with its own
   test, never part of a move.
@@ -216,16 +225,24 @@ weakest one is deliberately last:
    non-virtual RHI symbols only and be a backstop under the include and framework layers, never a
    substitute for them.
 
+## Core's archive check
+
+A `forbidUndefined` entry on the `Core` archive uses the same archive-layer technique as `Asset`'s
+`rojoRHI::` check above, aimed at every unit above it instead of one: `Core` forbids
+`lmx::asset::`, `lmx::engine::`, `lmx::scenes::`, `lmx::render::`, `lmx::app::` and `rojoRHI::`.
+`forbidUndefined` takes a list of prefixes, not one.
+
 ## Render depends on engine, not the reverse
 
 Two checks hold the render-on-engine edge [ADR 0025](../decisions/0025-engine-subsystem-and-render-on-engine.md)
-states: the unit table rejects any `engine` file that includes a Render header, and a
-`forbidUndefined: lmx::render::` entry on the `Engine` archive fails `--link` if it names an
-undefined `lmx::render::` symbol — the same archive-layer technique `Asset`'s `rojoRHI::` check
-above uses, aimed at Render instead of the RHI component. Render's reach into the scene itself
-(`Engine/Scene/Scene.h`), beyond the `Engine/Types/` vocabulary and `SceneTables.h` it includes
-widely, is confined to one translation unit, `Render/SceneViewBuilder.cpp`; review holds that,
-not the checker.
+states: the unit table rejects any `engine` file that includes a Render header, and
+`forbidUndefined: lmx::render::` and `lmx::scenes::` entries on the `Engine` archive fail `--link`
+if either names an undefined symbol — the same archive-layer technique `Asset`'s `rojoRHI::` check
+above uses, aimed at Render and the catalog unit instead of the RHI component. Render's reach into
+the scene itself (`Engine/Scene/Scene.h`), beyond the `Engine/View/`, `Engine/Lights/`,
+`Engine/Geometry/` and `Engine/Material/` vocabulary and `SceneTables.h` it includes widely, is
+confined to one translation unit, `Render/SceneViewBuilder.cpp`; review holds that, not the
+checker.
 
 ## Review budgets
 

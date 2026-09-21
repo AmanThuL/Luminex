@@ -10,7 +10,7 @@ target. Core owns shared colour transfer and contract-preserving primitives; `Re
 holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
-  JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with the eight-corner transform (`Bounds.h`); spdlog and glm are public packages.
+  JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with the eight-corner transform (`Math/Aabb.h`); spdlog and glm are public packages.
 - **RHI** builds and tests from its own root (`xmake -P RojoRHI`): `RojoRHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
   dependency — a private `RojoRHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
   is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
