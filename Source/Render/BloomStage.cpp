@@ -6,7 +6,7 @@
 #include "Render/BloomStage.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 #include "Render/Renderer.h"
 
 #include <algorithm>

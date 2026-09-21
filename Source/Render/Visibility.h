@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
 #include "Engine/Scene/SceneTables.h"
 #include "Render/Occlusion.h"
 #include "Render/OcclusionCheck.h"

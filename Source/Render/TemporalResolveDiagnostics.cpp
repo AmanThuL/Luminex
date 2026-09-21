@@ -7,7 +7,7 @@
 #include "Render/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>

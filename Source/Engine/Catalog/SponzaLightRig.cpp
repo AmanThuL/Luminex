@@ -5,7 +5,7 @@
 
 #include "Engine/Catalog/SponzaLightRig.h"
 
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
 
 #include <array>
 #include <utility>

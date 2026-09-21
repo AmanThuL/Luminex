@@ -6,7 +6,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 
 #include <algorithm>
 #include <cstddef>
