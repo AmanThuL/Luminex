@@ -306,11 +306,11 @@ glm::vec3 mirrorOf(const PunctualSample& sample) {
 } // namespace
 
 //======================================================================================================================
-// Shaders/Common/Lighting.slang's ComputePunctualLight and Source/Engine/Types/LocalLightMath.cpp's
-// computePunctualLight are one light model written twice; every clustered-shading claim downstream
-// rests on them staying one. The table below is fixed in this file rather than sampled randomly, so
-// a failure names the configuration -- a range boundary, a cone edge, a back-facing normal -- and
-// reruns identically.
+// Shaders/Common/Lighting.slang's ComputePunctualLight and
+// Source/Engine/Lights/LocalLightMath.cpp's computePunctualLight are one light model written twice;
+// every clustered-shading claim downstream rests on them staying one. The table below is fixed in
+// this file rather than sampled randomly, so a failure names the configuration -- a range boundary,
+// a cone edge, a back-facing normal -- and reruns identically.
 TEST_CASE("the punctual light shader matches its CPU mirror over a fixed sample table",
           "[gpu][light]") {
     using namespace lmx;

@@ -275,7 +275,7 @@ bool runSelfTests(std::vector<std::string>& failures) {
         }
     };
 
-    // alignUp (Core/Align.h): every overflow decision depends on this arithmetic being
+    // alignUp (Core/Math/Align.h): every overflow decision depends on this arithmetic being
     // exactly right at the ring boundary. Post-migration, only the baseline (m5.2-baseline tag)
     // build's delivery seam still exercises this ring math -- the candidate's bindFrameData path
     // never reaches it -- so these checks now guard the baseline build's path alone.

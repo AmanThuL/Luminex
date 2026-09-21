@@ -34,7 +34,7 @@ constexpr Sphere kSphere{{1.0f, 2.0f, 3.0f}, 5.0f};
 
 //======================================================================================================================
 TEST_CASE("perspectiveReversedInfinite matches the camera projection it replaces", "[core]") {
-    // Captured from Source/Engine/Types/Camera.cpp's Camera::projectionMatrix at 52945a6 via
+    // Captured from Source/Engine/View/Camera.cpp's Camera::projectionMatrix at 52945a6 via
     // std::format("{:a}", ...). The inputs are glm::radians(60.0f), glm::radians(35.0f) and
     // 16.0f / 9.0f, written as the hexfloats those expressions produce.
     SECTION("60 degrees, 16:9, near 0.1") {
