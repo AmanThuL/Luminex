@@ -3,7 +3,7 @@
 /// @brief Implements byte-preserving JSON string-content escaping.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Core/Json.h"
+#include "Core/IO/Json.h"
 
 namespace lmx {
 

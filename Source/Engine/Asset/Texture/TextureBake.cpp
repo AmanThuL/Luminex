@@ -7,7 +7,7 @@
 
 #include "Core/Color.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Json.h"
+#include "Core/IO/Json.h"
 
 #include <glm/glm.hpp>
 

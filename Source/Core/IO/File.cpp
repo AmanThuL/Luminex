@@ -3,7 +3,7 @@
 /// @brief Implements whole-file binary reading and stage-specific failures.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Core/File.h"
+#include "Core/IO/File.h"
 
 #include <fstream>
 
