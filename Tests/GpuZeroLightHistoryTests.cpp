@@ -1,7 +1,8 @@
 #include "GpuRendererTestSupport.h"
 
-#include "Engine/Asset/Texture/TextureBake.h"
+#include "Core/Util/Sha256.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/CatalogScenes.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -96,7 +97,7 @@ bool hasHdrColorDetail(const Bytes& bytes) {
 
 //======================================================================================================================
 std::string digest(const Bytes& bytes) {
-    return lmx::asset::sha256Hex(std::as_bytes(std::span(bytes)));
+    return lmx::sha256Hex(std::as_bytes(std::span(bytes)));
 }
 
 //======================================================================================================================
@@ -341,7 +342,7 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
           "[.][gpu][zero-light-history-sponza]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::engine::loadSponzaScene(**device);
+    auto scene = lmx::scenes::loadSponzaScene(**device);
     REQUIRE(scene);
     const std::vector ids((*scene)->localLights().begin(), (*scene)->localLights().end());
     for (const auto id : ids) {

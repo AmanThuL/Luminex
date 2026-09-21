@@ -64,8 +64,26 @@
         "glm"
       ],
       "privateHeaders": [
-        "Source/Engine/Upload/SceneEnvironment.h"
+        "Source/Engine/Scene/PacedTable.h",
+        "Source/Engine/Scene/SceneStorage.h"
       ]
+    },
+    "scenes": {
+      "paths": [
+        "Source/Scenes"
+      ],
+      "targets": [
+        "Scenes"
+      ],
+      "units": [
+        "core",
+        "asset",
+        "engine"
+      ],
+      "thirdParty": [
+        "glm"
+      ],
+      "privateHeaders": []
     },
     "render": {
       "paths": [
@@ -101,7 +119,8 @@
         "core",
         "asset",
         "render",
-        "engine"
+        "engine",
+        "scenes"
       ],
       "thirdParty": [
         "glm"
@@ -123,7 +142,8 @@
         "asset",
         "render",
         "app-model",
-        "engine"
+        "engine",
+        "scenes"
       ],
       "thirdParty": [
         "glm",
@@ -159,7 +179,8 @@
         "render",
         "asset",
         "app-model",
-        "engine"
+        "engine",
+        "scenes"
       ],
       "thirdParty": [
         "glm",
@@ -237,6 +258,9 @@
         "engine": [
           "*"
         ],
+        "scenes": [
+          "*"
+        ],
         "render": [
           "*"
         ],
@@ -262,7 +286,15 @@
   },
   "targets": {
     "Core": {
-      "deps": []
+      "deps": [],
+      "forbidUndefined": [
+        "lmx::asset::",
+        "lmx::engine::",
+        "lmx::scenes::",
+        "lmx::render::",
+        "lmx::app::",
+        "rojoRHI::"
+      ]
     },
     "RojoRHI": {
       "deps": []
@@ -291,7 +323,8 @@
         "ImGuiNodeEditor",
         "Asset",
         "AppModel",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     },
     "Tests": {
@@ -301,7 +334,8 @@
         "Render",
         "Asset",
         "AppModel",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     },
     "RojoRHITests": {
@@ -334,7 +368,18 @@
         "RojoRHI",
         "Asset"
       ],
-      "forbidUndefined": "lmx::render::"
+      "forbidUndefined": [
+        "lmx::render::",
+        "lmx::scenes::"
+      ]
+    },
+    "Scenes": {
+      "deps": [
+        "Core",
+        "RojoRHI",
+        "Asset",
+        "Engine"
+      ]
     },
     "AppModel": {
       "deps": [
@@ -342,7 +387,8 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     }
   }

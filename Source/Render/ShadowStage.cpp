@@ -5,7 +5,8 @@
 
 #include "Render/ShadowStage.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Projection.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -54,37 +55,14 @@ void ShadowStage::registerUniformLayoutsForCapture() {
 
 //======================================================================================================================
 ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& lightDir) {
-    const glm::vec3 center{boundingSphere};
-    const float radius = boundingSphere.w;
-    LMX_ASSERT(radius > 0.0f, "fitShadowOrtho: the bounding sphere's radius must be positive");
-    LMX_ASSERT(glm::length(lightDir) > 0.0f,
-               "fitShadowOrtho: the light direction must not be the zero vector");
-
-    const glm::vec3 direction = glm::normalize(lightDir);
-    // Offset from the sphere center so translated scenes retain the same fitted light volume.
-    const glm::vec3 eye = center - 2.0f * radius * direction;
-
-    // Avoid lookAt's degenerate cross product when light direction is parallel to world up.
-    constexpr glm::vec3 kWorldUp{0.0f, 1.0f, 0.0f};
-    const glm::vec3 up =
-        std::abs(glm::dot(direction, kWorldUp)) > 0.999f ? glm::vec3{0.0f, 0.0f, 1.0f} : kWorldUp;
-    const glm::mat4 lightView = glm::lookAtRH(eye, center, up);
-
-    const glm::vec3 centerLS = glm::vec3(lightView * glm::vec4(center, 1.0f));
-    // Right-handed view space looks down -z, so positive near/far distances use -centerLS.z: the
-    // frustum runs from r to 3r about a centre 2r out.
-    //
     // Reversed to match the camera (Camera.cpp): the near plane maps to 1, the far plane to 0, so
     // "nearer to the light" is the numerically larger depth throughout -- the shadow map, the
     // GreaterEqual comparison sampler that reads it, and the Greater depth test that fills it all
-    // agree on one direction. The reversal is expressed by handing orthoRH_ZO its far distance as
-    // near and vice versa, which is exactly a z negate-and-offset applied to the standard form and
-    // leaves the xy fit untouched.
-    const float nearDistance = -centerLS.z - radius;
-    const float farDistance = -centerLS.z + radius;
-    const glm::mat4 lightProj =
-        glm::orthoRH_ZO(centerLS.x - radius, centerLS.x + radius, centerLS.y - radius,
-                        centerLS.y + radius, farDistance, nearDistance);
+    // agree on one direction.
+    const OrthoFit fit =
+        fitOrthoToSphere(Sphere{glm::vec3(boundingSphere), boundingSphere.w}, lightDir);
+    const glm::mat4& lightView = fit.view;
+    const glm::mat4& lightProj = fit.projection;
 
     // Map NDC xy to texture coordinates and flip y; Metal depth already uses [0, 1].
     glm::mat4 ndcToTexcoord{1.0f};

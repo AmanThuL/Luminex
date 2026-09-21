@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/EditorShell.h"
 #include "App/Model/LightingDiagnostics.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 namespace lmx::app {
 

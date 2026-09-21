@@ -59,7 +59,7 @@ public:
 private:
     struct ObjectSnapshot {
         engine::InstanceId id;
-        std::optional<asset::DecomposedTransform> transform;
+        std::optional<DecomposedTransform> transform;
         std::optional<float> emissiveStrength;
     };
     /// The one field a light orbit track owns; Stop rewrites only this into the light's *current*

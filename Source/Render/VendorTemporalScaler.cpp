@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/VendorTemporalScaler.h"
 
-#include "Core/Assert.h"
-#include "Core/Log.h"
-#include "Core/Math.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
+#include "Core/Math/Scalar.h"
 
 #include <algorithm>
 #include <cstddef>

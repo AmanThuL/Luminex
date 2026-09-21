@@ -15,8 +15,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
+#include "Engine/View/Camera.h"
 #include "Render/Renderer.h"
 #include <rojoRHI/RHI.h>
 

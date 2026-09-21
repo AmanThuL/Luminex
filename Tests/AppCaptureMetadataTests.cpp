@@ -45,7 +45,7 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
     status.reconstruction = render::ReconstructionMode::NativeTaa;
     status.vendorFallback = render::VendorFallback::Unsupported;
     REQUIRE(
-        captureFrameMetadataJson(engine::defaultSceneId(), 32, 31, TemporalMode::Vendor,
+        captureFrameMetadataJson(scenes::defaultSceneId(), 32, 31, TemporalMode::Vendor,
                                  render::TemporalDebugView::MotionVectors, 0.5f, status,
                                  "test GPU") ==
         R"({"scene":"sponza","frameCount":32,"simulationFrame":31,)"
@@ -55,11 +55,11 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
         R"("localLightMode":"clustered","lightDebugView":"off","lightCheck":false,)"
         R"("localLightRig":true,"labLights":256,"labLightPile":0,"lighting":null,"liveLightCount":0,)"
         R"("labInstances":4096,"device":"test GPU"})");
-    const auto off = captureFrameMetadataJson(engine::defaultSceneId(), 1, 0, TemporalMode::Off,
+    const auto off = captureFrameMetadataJson(scenes::defaultSceneId(), 1, 0, TemporalMode::Off,
                                               render::TemporalDebugView::Off, 1, status, "GPU");
     REQUIRE(off.contains(R"("effectiveMode":"off")"));
     const auto configured = captureFrameMetadataJson(
-        engine::defaultSceneId(), 1, 0, TemporalMode::Off, render::TemporalDebugView::Off, 1,
+        scenes::defaultSceneId(), 1, 0, TemporalMode::Off, render::TemporalDebugView::Off, 1,
         status, "GPU", false, render::SubmissionMode::Batched, 1024);
     REQUIRE(configured.contains(
         R"("visibilityEnabled":false,"submission":"batched","classify":"cpu","classifyCheck":false,"visibility":null,"localLightMode":"clustered","lightDebugView":"off","lightCheck":false,"localLightRig":true,"labLights":256,"labLightPile":0,"lighting":null,"liveLightCount":0,"labInstances":1024)"));

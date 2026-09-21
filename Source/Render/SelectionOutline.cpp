@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/SelectionOutline.h"
 
-#include "Core/Assert.h"
-#include "Engine/Types/Camera.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Engine/View/Camera.h"
 
 #include <algorithm>
 #include <array>

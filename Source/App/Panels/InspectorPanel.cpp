@@ -733,7 +733,7 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     editor_style::message(session.objectChanged(index) ? "Changed from authored pose"
                                                        : "Authored pose");
     if (editor_style::beginFields("objectFields")) {
-        asset::DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
+        DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
         bool edited =
             editor_style::vector3("Position (world)", "position", &transform.position.x, 0.05f);
         edited |= editor_style::vector3("Rotation (XYZ degrees)", "rotation",

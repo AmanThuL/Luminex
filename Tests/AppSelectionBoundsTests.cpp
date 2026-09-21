@@ -72,7 +72,7 @@ TEST_CASE("missing and invalid selection bounds remain unavailable without movin
     engine::Scene scene;
     scene.objects.emplace_back();
     const EditorSelection selection{
-        .sceneId = engine::SceneId{0}, .subject = EditorSubject::Object, .index = 0};
+        .sceneId = scenes::SceneId{0}, .subject = EditorSubject::Object, .index = 0};
     REQUIRE_FALSE(selectedObjectBounds(scene, selection));
     scene.objects[0].mesh = scene.addMesh({}, "selection.empty");
     REQUIRE_FALSE(selectedObjectBounds(scene, selection));

@@ -5,10 +5,10 @@
 
 #include "App/Model/SceneSession.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Catalog/LightLab.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/LightLab.h"
 
 #include <algorithm>
 #include <iterator>
@@ -124,12 +124,12 @@ void SceneSession::followCameraTrack() {
 }
 
 //======================================================================================================================
-asset::DecomposedTransform SceneSession::objectDefault(size_t index) const {
+DecomposedTransform SceneSession::objectDefault(size_t index) const {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
     for (const auto& track : scene().animation.tracks) {
         if (track.objectIndex == index) {
             const auto pose =
-                asset::decomposeTransform(asset::sampleRigidTrack(track, scene().animationTime));
+                decomposeTransform(asset::sampleRigidTrack(track, scene().animationTime));
             LMX_ASSERT(pose.has_value(), "Authored track pose must decompose");
             return *pose;
         }
@@ -146,7 +146,7 @@ bool SceneSession::objectChanged(size_t index) const {
 }
 
 //======================================================================================================================
-void SceneSession::editObject(size_t index, const asset::DecomposedTransform& transform) {
+void SceneSession::editObject(size_t index, const DecomposedTransform& transform) {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
     auto& object = scene().objects[index];
     object.position = transform.position;
@@ -187,7 +187,7 @@ bool SceneSession::localLightRigAvailable() const {
 bool SceneSession::localLightRigEnabled() const {
     if (!localLightRigAvailable())
         return false;
-    for (const auto id : m_scene->sponzaLightIds()) {
+    for (const auto id : m_scene->rigLightIds()) {
         if (const auto* light = m_scene->light(id); light && light->enabled)
             return true;
     }
@@ -299,7 +299,7 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
     if (count > pile.size()) {
         // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
         // helper's one unused grid light plus the requested pile obey the generator's 4096 limit.
-        const auto authored = engine::lightLabLights(1, count);
+        const auto authored = scenes::lightLabLights(1, count);
         for (size_t i = pile.size(); i < count; ++i) {
             const auto id = scene().addLight(authored[i + 1]);
             if (!id) {

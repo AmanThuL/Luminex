@@ -28,6 +28,7 @@ includes("RojoRHI/xmake/targets.lua")
 -- First-party targets keep source membership and dependency declarations beside their units.
 includes("Source/Core/xmake.lua", "Source/Render/xmake.lua",
          "Source/Engine/xmake.lua",
-         "Source/Engine/Asset/xmake.lua", "Source/App/Model/xmake.lua",
+         "Source/Engine/Asset/xmake.lua",
+         "Source/Scenes/xmake.lua", "Source/App/Model/xmake.lua",
          "Source/App/xmake.lua", "Tests/xmake.lua",
          "Tools/TextureBake/xmake.lua", "Benchmarks/FrameData/xmake.lua")

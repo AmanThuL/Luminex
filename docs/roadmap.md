@@ -43,7 +43,7 @@ the row says otherwise.
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
 | 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r/r2.md) | M7 complete |
-| 11 | [R3.1–R3.6](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r/r3.md) | R2 |
+| 11 | [R3.1–R3.7](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | Inactive; [proposed record](milestones/r/r3.md) | R2 |
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r/r4.md) | R3 |
 | 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux/ux2.md) | R4 |
 | 14 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX2; technically gate B |
@@ -147,7 +147,7 @@ Each milestone has one recognizable completion outcome. Use a few independently 
 implementation steps belong in a just-in-time plan or PR, not an expanding series of milestone IDs.
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M9–M11 retain bounded work
 areas until planned. R milestones in Part III restructure code between rendering milestones and add no
-rendering scope; R2 has four slices, R3 six and R4 two. Part IV owns editor experience and its completion
+rendering scope; R2 has four slices, R3 seven and R4 two. Part IV owns editor experience and its completion
 criteria independently of the rendering and structural milestones; UX2 has five slices. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
 is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,

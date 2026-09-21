@@ -10,13 +10,13 @@
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
-#include "Core/Log.h"
-#include "Core/Parse.h"
-#include "Engine/Catalog/SceneLibrary.h"
+#include "Core/Diagnostics/Log.h"
+#include "Core/Util/Parse.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/RenderGraph.h"
 #include "Render/Renderer.h"
 #include "Render/RhiLog.h"
+#include "Scenes/SceneLibrary.h"
 #include <rojoRHI/CaptureSchema.h>
 #include <rojoRHI/Metal4/Metal4Capture.h>
 #include <rojoRHI/Metal4/Metal4ImGui.h>
@@ -101,7 +101,7 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::engine::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
+    lmx::scenes::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
                                            options.labLights, options.labLightPile);
 
     // Swapchain dimensions follow the backing store, not logical window points.

@@ -71,7 +71,7 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
     std::ostringstream file;
     file << std::setprecision(17)
          << "{\n\"schemaVersion\":2,\"complete\":" << (complete ? "true" : "false")
-         << ",\"scene\":" << jsonString(engine::sceneIdString(options.initialScene))
+         << ",\"scene\":" << jsonString(scenes::sceneIdString(options.initialScene))
          << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
          << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
          << ",\"width\":" << width << ",\"height\":" << height
@@ -158,7 +158,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const engine::Ca
 }
 
 //======================================================================================================================
-std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
+std::string captureFrameMetadataJson(scenes::SceneId scene, uint32_t frameCount,
                                      uint32_t simulationFrame, TemporalMode requested,
                                      render::TemporalDebugView debugView, float renderScale,
                                      const render::TemporalStatus& status, std::string_view device,
@@ -168,7 +168,7 @@ std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
                                      const AppOptions* options,
                                      const render::LightingStatus* lighting) {
     std::ostringstream out;
-    out << std::setprecision(17) << "{\"scene\":" << jsonString(engine::sceneIdString(scene))
+    out << std::setprecision(17) << "{\"scene\":" << jsonString(scenes::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
         << ",\"requestedMode\":" << jsonString(captureModeName(requested)) << ",\"effectiveMode\":"
         << jsonString(requested == TemporalMode::Off ? "off"
@@ -191,7 +191,7 @@ std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
                lightDebugViewName(options ? options->lightDebugView : engine::LightDebugView::Off))
         << ",\"lightCheck\":" << (options && options->lightCheck ? "true" : "false")
         << ",\"localLightRig\":"
-        << ((options ? options->localLightRig : scene == engine::defaultSceneId()) ? "true"
+        << ((options ? options->localLightRig : scene == scenes::defaultSceneId()) ? "true"
                                                                                    : "false")
         << ",\"labLights\":" << (options ? options->labLights : 256)
         << ",\"labLightPile\":" << (options ? options->labLightPile : 0)

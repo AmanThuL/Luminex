@@ -5,7 +5,7 @@
 
 #include "Engine/Asset/Image/BmpImage.h"
 
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <fstream>
 

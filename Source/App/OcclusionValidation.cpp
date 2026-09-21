@@ -3,7 +3,7 @@
 /// @brief Validates the isolated offscreen active-extent recovery diagnostic.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/OcclusionValidation.h"
-#include "Core/Parse.h"
+#include "Core/Util/Parse.h"
 #include <cmath>
 #include <cstdlib>
 

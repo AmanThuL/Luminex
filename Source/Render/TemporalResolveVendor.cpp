@@ -6,8 +6,8 @@
 #include "Render/TemporalResolve.h"
 #include "Render/TemporalResolveInternal.h"
 
-#include "Core/Assert.h"
-#include "Core/Math.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Scalar.h"
 #include "Render/VendorTemporalScaler.h"
 
 #include <glm/mat4x4.hpp>

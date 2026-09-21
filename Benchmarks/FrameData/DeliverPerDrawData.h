@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Core/Align.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Align.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>

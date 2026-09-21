@@ -3,31 +3,14 @@
 /// @brief Implements five-plane conservative classification from canonical shared rows.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Visibility.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/SceneView.h"
-#include <cmath>
 
 namespace lmx::render {
 
 //======================================================================================================================
 FrustumPlanes extractFrustumPlanes(const glm::mat4& matrix) {
-    FrustumPlanes result;
-    if (!isFinite(matrix))
-        return result;
-    const auto rows = glm::transpose(matrix);
-    result.planes = {rows[3] + rows[0], rows[3] - rows[0], rows[3] + rows[1], rows[3] - rows[1],
-                     rows[3] - rows[2]};
-    for (auto& plane : result.planes) {
-        const float length = glm::length(glm::vec3(plane));
-        if (!std::isfinite(length) || length <= 0)
-            return result;
-        plane /= length;
-        plane.w += kVisibilityGuardWorldUnits;
-        if (!std::isfinite(plane.w))
-            return result;
-    }
-    result.valid = true;
-    return result;
+    return extractFrustum(matrix, kVisibilityGuardWorldUnits);
 }
 
 //======================================================================================================================
@@ -50,15 +33,7 @@ InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::I
         !isValidAabb(result.worldBounds))
         return bypass(VisibilityReason::UnreliableBounds);
     for (const auto& plane : planes.planes) {
-        const glm::vec3 positive{plane.x >= 0 ? row.worldBoundsMax.x : row.worldBoundsMin.x,
-                                 plane.y >= 0 ? row.worldBoundsMax.y : row.worldBoundsMin.y,
-                                 plane.z >= 0 ? row.worldBoundsMax.z : row.worldBoundsMin.z};
-        const float x = plane.x * positive.x;
-        const float y = plane.y * positive.y;
-        const float z = plane.z * positive.z;
-        const float xy = x + y;
-        const float xyz = xy + z;
-        if (xyz + plane.w < 0) {
+        if (planeRejects(plane, result.worldBounds)) {
             result.state = VisibilityState::Rejected;
             break;
         }

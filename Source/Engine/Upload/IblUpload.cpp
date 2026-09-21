@@ -5,7 +5,7 @@
 
 #include "Engine/Upload/IblUpload.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <glm/gtc/packing.hpp>
 

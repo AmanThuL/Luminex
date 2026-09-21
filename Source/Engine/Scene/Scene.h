@@ -1,33 +1,35 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Scene.h
-/// @brief Declares scene data, transforms, views, and scene loaders.
+/// @brief Declares scene data, transforms, views, and the glTF scene loader.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
 
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
+#include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Asset/Model/Transform.h"
-#include "Engine/Scene/MaterialRecord.h"
+#include "Engine/Geometry/Mesh.h"
+#include "Engine/Lights/DirectionalLight.h"
+#include "Engine/Lights/LocalLight.h"
+#include "Engine/Material/MaterialRecord.h"
+#include "Engine/Scene/DrawItem.h"
+#include "Engine/Scene/MotionClass.h"
 #include "Engine/Scene/SceneIds.h"
 #include "Engine/Scene/SceneTableStats.h"
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/DirectionalLight.h"
-#include "Engine/Types/DrawItem.h"
-#include "Engine/Types/LocalLight.h"
-#include "Engine/Types/Mesh.h"
-#include "Engine/Types/MotionClass.h"
+#include "Engine/View/Camera.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace lmx::engine {
@@ -107,8 +109,12 @@ public:
     std::span<const LightId> localLights() const;
     /// Number of enabled lights contributing to rendering; disabled lights still occupy capacity.
     uint32_t enabledLightCount() const;
-    /// Immutable authored Sponza rig identities, including disabled or subsequently removed lights.
-    std::span<const LightId> sponzaLightIds() const { return m_sponzaLightIds; }
+    /// Authored rig identities, including disabled or subsequently removed lights.
+    std::span<const LightId> rigLightIds() const { return m_rigLightIds; }
+    /// Records the authored rig identities that rigLightIds() reports. The scene's authoring
+    /// callback sets it once; a non-empty list means the rig is already authored and is not
+    /// authored again.
+    void setRigLightIds(std::vector<LightId> ids) { m_rigLightIds = std::move(ids); }
     /// Resolves a `LightOrbitTrack::light` creation-order index (the order `addLight` was called,
     /// among lights added before `finalize`) to the `LightId` it was assigned, for playback and
     /// session code outside Scene. The index space freezes at `finalize`: a light added afterward
@@ -199,62 +205,25 @@ public:
     void fillDrawItems(std::vector<engine::DrawItem>& items) const;
 
 private:
-    friend class SponzaLightRig;
-    std::vector<LightId> m_sponzaLightIds;
+    std::vector<LightId> m_rigLightIds;
     void validateObjects() const;
     struct Storage;
     std::unique_ptr<Storage> m_storage;
 };
 
+/// Authors scene content, such as local lights, into a loaded scene before it is finalized.
+using SceneAuthoring = std::function<rojoRHI::Result<void>(Scene&)>;
+
 /// Builds a Scene from the .gltf or .glb file at `path` (absolute, or relative to the working
 /// directory): uploads its meshes, materials and textures, carries its first animation in as rigid
 /// tracks, poses the scene at the clip's t = 0, fits the bounding sphere to that posed geometry,
 /// seeds every object's previous transform, and attaches the shared neutral environment. `name`
-/// names the scene and prefixes every GPU object's debug label. The camera is left at its default:
-/// each catalog scene below fits its own after calling this.
-asset::AssetResult<std::unique_ptr<Scene>>
-loadGltfScene(rojoRHI::Device& device, std::string_view path, std::string_view name);
-
-/// Crytek Sponza from the McGuire Computer Graphics Archive. `xmake setup` converts the pinned OBJ
-/// archive to core glTF; camera and bounding sphere are computed from the loaded AABB.
-asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rojoRHI::Device& device);
-
-/// Khronos' DamagedHelmet sample (Assets/Fetched/DamagedHelmet, fetched by `xmake setup`). No
-/// floor -- a model showcase, floating near the origin.
-asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rojoRHI::Device& device);
-
-/// Deterministic code-generated diagnostics: a material sweep sphere grid plus horizontal color,
-/// texture, normal, and depth lanes. A fetched studio HDRI upgrades its lighting, with a neutral
-/// deterministic fallback that keeps the scene always available.
-asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device& device);
-
-/// Khronos' CesiumMilkTruck sample (Assets/Fetched/CesiumMilkTruck, fetched by `xmake setup`).
-/// Its wheel clip loads as rigid tracks, so the truck is the fetched rigid-motion reference;
-/// camera and bounding sphere are computed from the loaded AABB.
-asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& device);
-
-/// Deterministic code-generated temporal diagnostics: a checkerboard floor under a rotating cube,
-/// a sphere orbiting a static reference cube, a row of oscillating poles, and one cube flagged
-/// `engine::MotionClass::Invalid`, all driven by looping tracks alongside a looping camera track.
-asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device& device);
-
-/// San Miguel's pinned realtime variant with masked foliage and a looping camera rail. Optional
-/// assets are fetched by `xmake setup --san-miguel`; missing assets return NotFound with that hint.
-asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& device);
-
-/// Builds a seeded repeated-geometry visibility lab with exactly instanceCount candidates.
-/// Counts from 1 through 1,048,576 include up to five initial-camera boundary probes.
-/// Adds occluderCount slabs (0..1,024) with wide gaps; zero preserves the original scene bytes.
-asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rojoRHI::Device& device,
-                                                                  uint32_t instanceCount = 4096,
-                                                                  uint32_t occluderCount = 0);
-
-/// Builds a deterministic material field (matte floor, pillar/sphere sweep) under lightCount local
-/// lights (1..engine::kMaxLocalLights) on a jittered grid whose range scales with
-/// 1/sqrt(lightCount), plus pileCount extra lights (default 0) stacked at one point; lightCount +
-/// pileCount must not exceed engine::kMaxLocalLights. See Source/Engine/Catalog/LightLab.h for the
-/// device-free generation this wraps.
-asset::AssetResult<std::unique_ptr<Scene>>
-loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
+/// names the scene and prefixes every GPU object's debug label. A nonempty `beforeFinalize` runs
+/// last before finalize, so lights it adds receive animation indices; its failure fails the load.
+/// The camera is left at its default for the caller to fit.
+asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device,
+                                                         std::string_view path,
+                                                         std::string_view name,
+                                                         const SceneAuthoring& beforeFinalize = {});
 
 } // namespace lmx::engine

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "Core/Util/Sha256.h"
 #include "Engine/Asset/Image/DdsLoader.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include <rojoRHI/RHI.h>
@@ -290,9 +291,9 @@ std::array<uint8_t, 4> pixelAt(const std::vector<std::byte>& payload, size_t off
 // White and black 2x2 quadrants arranged diagonally: filtering never mixes colours within a
 // uniform quadrant, so level 1 (2x2) must equal the four quadrant colours exactly -- no sRGB math
 // needed to check that level. Level 2 (1x1) averages white and black through the sRGB curve:
-// linear mean (1+0+0+1)/4 = 0.5, and Core/Color.h's linearToSrgb(0.5) is the same 0.735... value
-// already pinned elsewhere in this codebase as byte 188 (e.g. Tests/GpuRendererTests.cpp's "the
-// scene pass encodes its linear output to sRGB").
+// linear mean (1+0+0+1)/4 = 0.5, and Core/Math/Color.h's linearToSrgb(0.5) is the same 0.735...
+// value already pinned elsewhere in this codebase as byte 188 (e.g. Tests/GpuRendererTests.cpp's
+// "the scene pass encodes its linear output to sRGB").
 TEST_CASE("bakeMips --srgb filters a 4x4 diagonal image to exact level 1 and level 2 bytes",
           "[asset]") {
     constexpr std::array<uint8_t, 4> kWhite = {255, 255, 255, 255};
@@ -429,7 +430,7 @@ TEST_CASE("baking the same image twice produces byte-identical DDS and manifest 
     // binary buffer containing arbitrary control bytes has, in practice, crashed that
     // stringification rather than reporting cleanly. Two independent bakes producing the same
     // hash is exactly as strong a determinism proof, and it stays diagnosable on failure.
-    REQUIRE(sha256Hex(first.payload) == sha256Hex(second.payload));
+    REQUIRE(lmx::sha256Hex(first.payload) == lmx::sha256Hex(second.payload));
     REQUIRE(first.mipLevels == second.mipLevels);
 
     const TempFile ddsA(".dds", std::vector<std::byte>{});
@@ -444,11 +445,11 @@ TEST_CASE("baking the same image twice produces byte-identical DDS and manifest 
     const std::vector<char> bytesB((std::istreambuf_iterator<char>(fb)),
                                    std::istreambuf_iterator<char>());
     REQUIRE(bytesA.size() == bytesB.size());
-    REQUIRE(sha256Hex(std::as_bytes(std::span(bytesA))) ==
-            sha256Hex(std::as_bytes(std::span(bytesB))));
+    REQUIRE(lmx::sha256Hex(std::as_bytes(std::span(bytesA))) ==
+            lmx::sha256Hex(std::as_bytes(std::span(bytesB))));
 
-    const std::string hashA = sha256Hex(std::as_bytes(std::span(pixels)));
-    const std::string hashB = sha256Hex(std::as_bytes(std::span(pixels)));
+    const std::string hashA = lmx::sha256Hex(std::as_bytes(std::span(pixels)));
+    const std::string hashB = lmx::sha256Hex(std::as_bytes(std::span(pixels)));
     REQUIRE(hashA == hashB);
     const TempFile manifestA(".dds.json", std::vector<std::byte>{});
     const TempFile manifestB(".dds.json", std::vector<std::byte>{});
@@ -497,9 +498,10 @@ TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payl
 // produces for the same bytes.
 TEST_CASE("sha256Hex matches the published SHA-256 test vectors for the empty string and 'abc'",
           "[asset]") {
-    REQUIRE(sha256Hex({}) == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    REQUIRE(lmx::sha256Hex({}) ==
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
     const std::array<char, 3> abc = {'a', 'b', 'c'};
-    REQUIRE(sha256Hex(std::as_bytes(std::span(abc))) ==
+    REQUIRE(lmx::sha256Hex(std::as_bytes(std::span(abc))) ==
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
 }
 
