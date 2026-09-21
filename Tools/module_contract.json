@@ -107,7 +107,8 @@
         "Source/Render/Passes/Display/DisplayStage.h",
         "Source/Render/Graph/RenderGraphInternal.h",
         "Source/Render/Passes/Temporal/TemporalResolveInternal.h",
-        "Source/Render/Renderer/RendererInternal.h"
+        "Source/Render/Renderer/RendererInternal.h",
+        "Source/Render/Common/GraphResources.h"
       ]
     },
     "app-model": {
