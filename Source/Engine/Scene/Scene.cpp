@@ -13,6 +13,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Sphere.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Texture/Ibl.h"
@@ -288,25 +289,22 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
     }
     scene->resetMotion();
 
-    glm::vec3 aabbMin{std::numeric_limits<float>::max()};
-    glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
+    Aabb aabb = emptyAabb();
     for (const SceneObject& object : scene->objects) {
         const glm::mat4 model = object.modelMatrix();
         const asset::GeoData& mesh = gltfScene.meshes[object.mesh.slot];
         for (const asset::VertexPNTU& v : mesh.vertices) {
             const glm::vec3 world = glm::vec3(model * glm::vec4(v.px, v.py, v.pz, 1.0f));
-            aabbMin = glm::min(aabbMin, world);
-            aabbMax = glm::max(aabbMax, world);
+            expand(aabb, world);
         }
     }
-    if (aabbMin.x > aabbMax.x) {
+    if (aabb.minimum.x > aabb.maximum.x) {
         return std::unexpected(asset::AssetError{
             asset::AssetErrorCode::Malformed,
             std::string(sceneName) + " scene: active glTF scene contains no geometry"});
     }
-    const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
     // Half the AABB diagonal gives a conservative world-space bounding sphere.
-    scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
+    scene->boundingSphere = toVec4(boundingSphere(aabb));
 
     if (auto sky = attachNeutralEnvironment(device, *scene, sceneName); !sky) {
         return std::unexpected(sky.error());
