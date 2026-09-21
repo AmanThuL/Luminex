@@ -9,6 +9,8 @@
 
 #include "Engine/Scene/SceneTables.h"
 #include "Engine/Types/AlphaMode.h"
+#include "Engine/Types/DirectionalLight.h"
+#include "Engine/Types/DrawItem.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/Visibility.h"
@@ -27,29 +29,6 @@ class Texture;
 }
 
 namespace lmx::render {
-
-/// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive
-/// execution.
-struct DrawItem {
-    /// Opaque full generational identity; zero for hand-built views.
-    uint64_t instanceIdentity = 0;
-    uint32_t instanceRow = 0; ///< Stable instance slot; independent of draw-list position.
-    MeshRow mesh;             ///< Range in the scene geometry pool.
-    rojoRHI::Texture* diffuse = nullptr;           ///< Null selects the white fallback.
-    rojoRHI::Texture* normalMap = nullptr;         ///< Null selects the flat-normal fallback.
-    rojoRHI::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
-    rojoRHI::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
-    rojoRHI::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
-    AlphaMode alphaMode = AlphaMode::Opaque;       ///< Coverage pipeline selection.
-    bool doubleSided = false;                      ///< Masked culling pipeline selection.
-};
-
-/// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
-/// rays travel (so a light overhead points down).
-struct DirectionalLight {
-    glm::vec3 strength{0.5f};               ///< Scene-linear RGB radiance.
-    glm::vec3 direction{0.0f, -1.0f, 0.0f}; ///< Direction rays travel in world space.
-};
 
 /// Runtime-selectable, not a pipeline permutation: it is a uniform the shader branches on, so the
 /// editor's combo box costs one integer rather than a second set of pipelines.
