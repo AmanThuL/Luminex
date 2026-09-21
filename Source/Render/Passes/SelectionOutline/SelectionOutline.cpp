@@ -6,6 +6,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/View/Camera.h"
+#include "Render/Common/Formats.h"
 
 #include <algorithm>
 #include <array>
@@ -86,7 +87,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
     auto outline = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
                                                   .vertexEntry = "vertexMain",
                                                   .fragmentEntry = "fragmentMain",
-                                                  .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                  .colorFormat = kDisplayFormat,
                                                   .cullMode = rojoRHI::CullMode::None,
                                                   .label = "lmx.selection.outline"});
     if (!outline) {
@@ -96,7 +97,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
     auto passthrough = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
                                                       .vertexEntry = "vertexMain",
                                                       .fragmentEntry = "fragmentCopy",
-                                                      .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                      .colorFormat = kDisplayFormat,
                                                       .cullMode = rojoRHI::CullMode::None,
                                                       .label = "lmx.selection.passthrough"});
     if (!passthrough)
@@ -130,7 +131,7 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
 rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) {
     auto target = m_device.createTexture({.width = width,
                                           .height = height,
-                                          .format = rojoRHI::Format::BGRA8Unorm,
+                                          .format = kDisplayFormat,
                                           .renderTarget = true,
                                           .sampled = true,
                                           .cpuReadback = m_readback,
@@ -149,9 +150,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                                        float backingScale, bool visible) {
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
     if (!visible) {
-        const auto output =
-            graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
-                                rojoRHI::TextureUse::ShaderRead);
+        const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
+                                                rojoRHI::TextureUse::ShaderRead);
         PassDesc passthrough;
         passthrough.textureReads = {display};
         passthrough.color = ColorAttachment{.handle = output};
@@ -230,9 +230,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const GraphTexture coverageRead = nextVersion(mask);
     const GraphTexture selectedDepthRead = nextVersion(depth);
     const GraphTexture sceneDepthRead = nextVersion(sceneDepth);
-    const GraphTexture output =
-        graph.importTexture(*m_target, rojoRHI::Format::BGRA8Unorm, "selectionDisplay",
-                            rojoRHI::TextureUse::ShaderRead);
+    const GraphTexture output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
+                                                    rojoRHI::TextureUse::ShaderRead);
     PassDesc composite;
     composite.textureReads = {display, coverageRead, selectedDepthRead, sceneDepthRead};
     composite.color = ColorAttachment{.handle = output};
