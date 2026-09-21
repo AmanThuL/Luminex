@@ -5,6 +5,7 @@
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
@@ -154,16 +155,14 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
                                                             row, view.visibilityEnabled, v == 1));
             }
     m_pending.push_back(std::move(pending));
-    auto import = [&](rojoRHI::Buffer& buffer, const char* name, rojoRHI::BufferUse use) {
-        return slot.used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
-    };
     const auto candidates = graph.importBuffer(*slot.candidates, "lmx.draw.candidates");
     const auto runs = graph.importBuffer(*slot.runs, "lmx.draw.runs");
     const auto chunks = graph.importBuffer(*slot.chunks, "lmx.draw.chunks");
     const auto views = graph.importBuffer(*slot.views, "lmx.draw.views");
-    const auto states = import(*slot.states, "lmx.draw.states", rojoRHI::BufferUse::StorageRead);
-    const auto counters =
-        import(*slot.counters, "lmx.draw.counters", rojoRHI::BufferUse::StorageWrite);
+    const auto states = importPaced(graph, *slot.states, "lmx.draw.states",
+                                    rojoRHI::BufferUse::StorageRead, slot.used);
+    const auto counters = importPaced(graph, *slot.counters, "lmx.draw.counters",
+                                      rojoRHI::BufferUse::StorageWrite, slot.used);
     const auto chunkBytes = std::max<uint64_t>(4, tables.chunks.size() * 4);
     const auto counts = graph.createBuffer(
         {.size = chunkBytes, .storageRead = true, .storageWrite = true}, "lmx.draw.chunkCounts");
@@ -172,12 +171,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
             ? graph.createBuffer({.size = chunkBytes, .storageRead = true, .storageWrite = true},
                                  "lmx.draw.chunkOffsets")
             : GraphBuffer{};
-    CopyPassDesc reset;
-    reset.bufferDestinations.push_back(counters);
-    graph.addCopyPass("lmx.pass.visibility.reset", std::move(reset),
-                      [&commands, counters](const PassResources& resources) {
-                          commands.fillBuffer(lmx::render::buffer(resources, counters), 0, 160, 0);
-                      });
+    declareZeroFill(graph, commands, "lmx.pass.visibility.reset", counters, 160);
     auto bindRead = [&commands](const PassResources& resources, uint32_t index,
                                 GraphBuffer handle) {
         commands.bindBuffer(index, lmx::render::buffer(resources, handle));

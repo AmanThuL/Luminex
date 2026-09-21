@@ -5,6 +5,7 @@
 
 #include "Render/Passes/LocalLights/LightClusterStage.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/PacedSlots.h"
 #include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
@@ -184,29 +185,23 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
                          .indices = slot.indices.get(),
                          .counters = slot.counters.get()});
 
-    auto import = [&](rojoRHI::Buffer& buffer, const char* name, rojoRHI::BufferUse use) {
-        return slot.used ? graph.importBuffer(buffer, name, use) : graph.importBuffer(buffer, name);
-    };
-    const auto grid =
-        import(*slot.grid, "lmx.light.grid",
-               slot.shaderRead ? rojoRHI::BufferUse::ShaderRead : rojoRHI::BufferUse::StorageRead);
-    const auto indices =
-        import(*slot.indices, "lmx.light.indices",
-               slot.shaderRead ? rojoRHI::BufferUse::ShaderRead : rojoRHI::BufferUse::StorageWrite);
-    const auto counts = import(*slot.counts, "lmx.light.counts", rojoRHI::BufferUse::StorageRead);
-    const auto counters =
-        import(*slot.counters, "lmx.light.counters", rojoRHI::BufferUse::StorageWrite);
+    const auto grid = importPaced(graph, *slot.grid, "lmx.light.grid",
+                                  slot.shaderRead ? rojoRHI::BufferUse::ShaderRead
+                                                  : rojoRHI::BufferUse::StorageRead,
+                                  slot.used);
+    const auto indices = importPaced(graph, *slot.indices, "lmx.light.indices",
+                                     slot.shaderRead ? rojoRHI::BufferUse::ShaderRead
+                                                     : rojoRHI::BufferUse::StorageWrite,
+                                     slot.used);
+    const auto counts = importPaced(graph, *slot.counts, "lmx.light.counts",
+                                    rojoRHI::BufferUse::StorageRead, slot.used);
+    const auto counters = importPaced(graph, *slot.counters, "lmx.light.counters",
+                                      rojoRHI::BufferUse::StorageWrite, slot.used);
 
     // The counters the scan writes are complete on their own; the fill is what makes them a
     // reconciling total of bytes the GPU actually holds, so the zero fill is the stated start.
-    CopyPassDesc reset;
-    reset.bufferDestinations.push_back(counters);
-    graph.addCopyPass("lmx.pass.light.reset", std::move(reset),
-                      [&commands, counters](const PassResources& resources) {
-                          auto& buffer = lmx::render::buffer(resources, counters);
-                          commands.fillBuffer(buffer, 0,
-                                              kLightClusterCounterWords * sizeof(uint32_t), 0);
-                      });
+    declareZeroFill(graph, commands, "lmx.pass.light.reset", counters,
+                    kLightClusterCounterWords * sizeof(uint32_t));
     const auto countersReset = nextVersion(counters);
 
     const uint32_t groups = divRoundUp(kClusterCount, kThreadsPerGroup);

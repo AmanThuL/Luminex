@@ -3,6 +3,7 @@
 /// @brief Decodes retired froxel-grid counters and, when asked, the grid and index list.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/PacedSlots.h"
 #include "Render/Passes/LocalLights/LightClusterStage.h"
 
 #include <algorithm>
@@ -37,19 +38,14 @@ RetiredLightClusters LightClusterStage::readback(const Pending& pending) const {
 
 //======================================================================================================================
 void LightClusterStage::retireThrough(uint64_t completedFrame) {
-    for (const auto& pending : m_pending)
-        if (pending.frameNumber <= completedFrame)
-            m_retired.push_back(readback(pending));
-    std::erase_if(m_pending, [completedFrame](const Pending& pending) {
-        return pending.frameNumber <= completedFrame;
-    });
+    lmx::render::retireThrough(
+        m_pending, completedFrame, [](const auto& pending) { return pending.frameNumber; },
+        [this](auto& pending) { m_retired.push_back(readback(pending)); });
 }
 
 //======================================================================================================================
 std::vector<RetiredLightClusters> LightClusterStage::takeRetired() {
-    auto result = std::move(m_retired);
-    m_retired.clear();
-    return result;
+    return lmx::render::takeRetired(m_retired);
 }
 
 } // namespace lmx::render

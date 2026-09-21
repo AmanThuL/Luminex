@@ -3,6 +3,7 @@
 /// @brief Coordinates light-list declaration, paced retirement and frame-keyed diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/PacedSlots.h"
 #include "Render/Renderer/Renderer.h"
 
 #include "Core/Diagnostics/Assert.h"
@@ -79,40 +80,38 @@ void Renderer::retireLightingThrough(uint64_t frame) {
         m_lightClusters->retireThrough(frame);
         clusters = m_lightClusters->takeRetired();
     }
-    for (auto status : m_pendingLighting) {
-        if (status.frameNumber > frame)
-            continue;
-        if (status.effective == engine::LocalLightMode::Clustered) {
-            const auto result =
-                std::ranges::find(clusters, status.frameNumber, &RetiredLightClusters::frameNumber);
-            LMX_ASSERT(result != clusters.end(), "retired clusters must join their declared frame");
-            status.counters = result->counters;
-            status.listBytes = uint64_t{result->counters.assigned} * sizeof(uint32_t);
-            if (status.checkEnabled) {
-                LMX_ASSERT(status.checkFrame, "checked declaration must own its CPU mirror");
-                auto evidence = std::make_shared<LightClusterCheckFrame>(*status.checkFrame);
-                evidence->gpu = {.grid = std::move(result->grid),
-                                 .indices = std::move(result->indices),
-                                 .counters = result->counters};
-                status.check = checkLightClusters(evidence->cpu, evidence->gpu.grid,
-                                                  evidence->gpu.indices, evidence->gpu.counters);
-                status.checkFrame = std::move(evidence);
+    lmx::render::retireThrough(
+        m_pendingLighting, frame, [](const LightingStatus& status) { return status.frameNumber; },
+        [this, &clusters](auto status) {
+            if (status.effective == engine::LocalLightMode::Clustered) {
+                const auto result = std::ranges::find(clusters, status.frameNumber,
+                                                      &RetiredLightClusters::frameNumber);
+                LMX_ASSERT(result != clusters.end(),
+                           "retired clusters must join their declared frame");
+                status.counters = result->counters;
+                status.listBytes = uint64_t{result->counters.assigned} * sizeof(uint32_t);
+                if (status.checkEnabled) {
+                    LMX_ASSERT(status.checkFrame, "checked declaration must own its CPU mirror");
+                    auto evidence = std::make_shared<LightClusterCheckFrame>(*status.checkFrame);
+                    evidence->gpu = {.grid = std::move(result->grid),
+                                     .indices = std::move(result->indices),
+                                     .counters = result->counters};
+                    status.check =
+                        checkLightClusters(evidence->cpu, evidence->gpu.grid, evidence->gpu.indices,
+                                           evidence->gpu.counters);
+                    status.checkFrame = std::move(evidence);
+                }
             }
-        }
-        status.isRetired = true;
-        if (status.frameNumber == m_lightingStatus.frameNumber)
-            m_lightingStatus = status;
-        m_retiredLighting.push_back(status);
-    }
-    std::erase_if(m_pendingLighting,
-                  [frame](const LightingStatus& status) { return status.frameNumber <= frame; });
+            status.isRetired = true;
+            if (status.frameNumber == m_lightingStatus.frameNumber)
+                m_lightingStatus = status;
+            m_retiredLighting.push_back(status);
+        });
 }
 
 //======================================================================================================================
 std::vector<LightingStatus> Renderer::takeRetiredLighting() {
-    auto result = std::move(m_retiredLighting);
-    m_retiredLighting.clear();
-    return result;
+    return lmx::render::takeRetired(m_retiredLighting);
 }
 
 //======================================================================================================================

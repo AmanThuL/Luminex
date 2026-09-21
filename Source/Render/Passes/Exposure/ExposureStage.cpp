@@ -6,6 +6,7 @@
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/PacedSlots.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -241,13 +242,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     const GraphBuffer histogramImport = graph.importBuffer(
         *m_histogramBuffer, "lmx.render.histogramBuffer", rojoRHI::BufferUse::StorageRead);
 
-    CopyPassDesc histogramClearDesc;
-    histogramClearDesc.bufferDestinations.push_back(histogramImport);
-    graph.addCopyPass("lmx.pass.exposure.clearHistogram", std::move(histogramClearDesc),
-                      [&commands, histogramImport](const PassResources& resources) {
-                          auto& histogram = lmx::render::buffer(resources, histogramImport);
-                          commands.fillBuffer(histogram, 0, kHistogramBufferSize, 0);
-                      });
+    declareZeroFill(graph, commands, "lmx.pass.exposure.clearHistogram", histogramImport,
+                    kHistogramBufferSize);
     const GraphBuffer histogramCleared = nextVersion(histogramImport);
 
     // Metering reads the raw scene colour, which is a render-extent signal: the pass dispatches
