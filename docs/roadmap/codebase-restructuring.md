@@ -188,6 +188,7 @@ Evidence, deviations and limits: [validation record](../milestones/r/r3.3-valida
 ### R3.4 — Core
 
 **Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning.
+**Implemented 2026-09-21:** evidence and limits in the [validation record](../milestones/r/r3.4-validation.md).
 
 **Deliver:** [ADR 0026](../decisions/0026-core-charter-and-placement.md), accepted first: Core's
 charter, glm as the one vector vocabulary, and the rule that domain-free math and data structures go to Core whatever their consumer count while a
@@ -198,11 +199,10 @@ SHA-256 and string helpers ([sources and cuts](../milestones/r/r3.md#what-moves-
 extraction is two commits, the Core type with its tests and then the call sites; a duplicate is
 unified only where pinned output proves the contracts identical.
 
-Engine in the same slice, as the first consumer: `Engine/Types/` divides into `View/`, `Lights/`,
-`Geometry/` and `Material/`; the five identifier structs become `Handle<Tag>` aliases of the same
-layout; `SceneTables.cpp` and `Scene.cpp` are decomposed by responsibility; `Catalog/` becomes its
-own unit `Source/Scenes` (target `Scenes`), so Engine holds no authored content. Render and App
-adopt Core only where a whole function or helper leaves them.
+Engine, the first consumer: `Engine/Types/` divides into `View/`, `Lights/`, `Geometry/` and
+`Material/`; the five identifier structs become same-layout `Handle<Tag>` aliases; `SceneTables.cpp`
+and `Scene.cpp` are decomposed; `Catalog/` becomes the unit `Source/Scenes` (target `Scenes`), so
+Engine holds no authored content. Render and App adopt Core only where a whole helper leaves them.
 
 **Exit gate:** the protocol and the format check hold at every commit, image and bake hashes
 exact; Core reaches no Engine, Render, App or RojoRHI header or symbol; every Core type has direct
