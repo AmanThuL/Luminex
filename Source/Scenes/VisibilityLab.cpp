@@ -17,7 +17,7 @@
 #include <cmath>
 #include <string>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 namespace {
 constexpr double kDuration = 12.0;
 constexpr float kSpacing = 3.0f;
@@ -79,7 +79,7 @@ float jitter(uint32_t& state) {
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>>
+asset::AssetResult<std::unique_ptr<engine::Scene>>
 loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t occluderCount) {
     if (instanceCount == 0 || instanceCount > 1048576) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
@@ -89,15 +89,16 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "VisibilityLab occluders must be 0..1024"});
     }
-    auto scene = std::make_unique<Scene>();
+    auto scene = std::make_unique<engine::Scene>();
     scene->name = "VisibilityLab";
     auto cube = engine::makeCube();
     for (size_t i = 0; i < cube.vertices.size(); ++i) {
         cube.vertices[i].u = (i % 4 == 1 || i % 4 == 2) ? 1.0f : 0.0f;
         cube.vertices[i].v = i % 4 >= 2 ? 1.0f : 0.0f;
     }
-    const std::array<MeshId, 2> meshes{scene->addMesh(std::move(cube), "VisibilityLab.cube"),
-                                       scene->addMesh(makeIcosphere(), "VisibilityLab.icosphere")};
+    const std::array<engine::MeshId, 2> meshes{
+        scene->addMesh(std::move(cube), "VisibilityLab.cube"),
+        scene->addMesh(makeIcosphere(), "VisibilityLab.icosphere")};
     const std::array<uint8_t, 16> maskPixels{255, 255, 255, 255, 255, 255, 255, 0,
                                              255, 255, 255, 0,   255, 255, 255, 255};
     const rojoRHI::TextureMip maskMip{.data = maskPixels.data(), .bytesPerRow = 8};
@@ -116,9 +117,9 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
                                            {0.15f, 0.52f, 0.85f, 1},
                                            {0.82f, 0.68f, 0.12f, 1},
                                            {0.24f, 0.72f, 0.48f, 1}}};
-    std::array<MaterialId, 4> materials;
+    std::array<engine::MaterialId, 4> materials;
     for (size_t i = 0; i < materials.size(); ++i) {
-        MaterialRecord material;
+        engine::MaterialRecord material;
         material.albedo = srgbToLinear(colors[i]);
         material.roughness = 0.35f + static_cast<float>(i) * 0.15f;
         if (i >= 2) {
@@ -162,7 +163,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         add("Grid " + std::to_string(grid), glm::vec3(x, y, z) + offset, 1.0f, i);
     }
     if (occluderCount != 0) {
-        MaterialRecord opaque;
+        engine::MaterialRecord opaque;
         opaque.albedo = srgbToLinear(glm::vec4(0.28f, 0.32f, 0.38f, 1.0f));
         opaque.roughness = 0.9f;
         const auto opaqueId = scene->addMaterial(opaque);
@@ -214,7 +215,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
     scene->animation.duration = kDuration;
     scene->animation.loop = true;
     scene->resetMotion();
-    if (auto environment = attachNeutralEnvironment(device, *scene, "VisibilityLab");
+    if (auto environment = engine::attachNeutralEnvironment(device, *scene, "VisibilityLab");
         !environment) {
         return std::unexpected(environment.error());
     }
@@ -225,4 +226,4 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
     return scene;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

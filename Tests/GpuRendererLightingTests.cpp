@@ -56,7 +56,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
 
     auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
@@ -188,7 +188,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -706,7 +706,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
          {lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct}) {
         auto device = rojoRHI::createDevice();
         REQUIRE(device);
-        auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
+        auto scene = lmx::scenes::loadLightLabScene(**device, 256, 0);
         REQUIRE(scene);
         auto renderer = Renderer::create(**device, 64, 64, true);
         REQUIRE(renderer);
@@ -809,7 +809,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
+    auto scene = lmx::scenes::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene);
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     // Temporal off writes HDR/depth only. Raw, unjittered temporal frames also initialize the
@@ -874,7 +874,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::engine::loadLightLabScene(**device, 64, 0);
+    auto scene = lmx::scenes::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);

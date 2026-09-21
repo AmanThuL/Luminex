@@ -342,7 +342,7 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
           "[.][gpu][zero-light-history-sponza]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::engine::loadSponzaScene(**device);
+    auto scene = lmx::scenes::loadSponzaScene(**device);
     REQUIRE(scene);
     const std::vector ids((*scene)->localLights().begin(), (*scene)->localLights().end());
     for (const auto id : ids) {

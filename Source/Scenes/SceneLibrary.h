@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 /// Stable catalog handle whose index is meaningful only for the built-in scene catalog.
 struct SceneId {
@@ -71,7 +71,7 @@ public:
     /// Returns metadata for a valid catalog handle.
     const SceneEntry& entry(SceneId id) const;
     /// Loads a scene on first access and returns the library-owned instance.
-    asset::AssetResult<Scene*> get(SceneId id);
+    asset::AssetResult<engine::Scene*> get(SceneId id);
 
 private:
     rojoRHI::Device& m_device;
@@ -80,7 +80,7 @@ private:
     uint32_t m_labLights;
     uint32_t m_labLightPile;
     std::vector<SceneEntry> m_entries;
-    std::vector<std::unique_ptr<Scene>> m_scenes;
+    std::vector<std::unique_ptr<engine::Scene>> m_scenes;
 };
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

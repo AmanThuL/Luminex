@@ -118,7 +118,7 @@ bool consumeCameraCut(TemporalEditorState& state) {
 
 //======================================================================================================================
 void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& /*settings*/,
-                     engine::SceneId /*id*/) {
+                     scenes::SceneId /*id*/) {
     ++state.sceneGeneration;
     state.liveTimedPassSumMilliseconds.reset();
     state.liveMeasurementFrame = 0;

@@ -13,10 +13,10 @@
 #include <filesystem>
 #include <utility>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& device) {
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadSanMiguelScene(rojoRHI::Device& device) {
     const auto assetPath = asset::findRepositoryAsset("Assets/Fetched/SanMiguel/SanMiguel.gltf",
                                                       asset::RepositoryAssetKind::RegularFile);
     if (!assetPath) {
@@ -24,11 +24,11 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& d
             asset::AssetError{asset::AssetErrorCode::NotFound,
                               "San Miguel assets missing; run xmake setup --san-miguel"});
     }
-    auto result = loadGltfScene(device, assetPath->string(), "SanMiguel");
+    auto result = engine::loadGltfScene(device, assetPath->string(), "SanMiguel");
     if (!result) {
         return std::unexpected(result.error());
     }
-    Scene& scene = **result;
+    engine::Scene& scene = **result;
     scene.name = "San Miguel";
     constexpr double kDuration = 12.0;
     constexpr glm::vec3 kStart{8.0f, 1.8f, 12.0f};
@@ -61,4 +61,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& d
     return result;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

@@ -36,7 +36,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const engine::Ca
 /// requested number of saved frames (total rendered frames for a screenshot); simulationFrame
 /// is the zero-based rendered frame including warmup. Device and status describe the actual run.
 std::string captureFrameMetadataJson(
-    engine::SceneId scene, uint32_t frameCount, uint32_t simulationFrame, TemporalMode requested,
+    scenes::SceneId scene, uint32_t frameCount, uint32_t simulationFrame, TemporalMode requested,
     render::TemporalDebugView debugView, float renderScale, const render::TemporalStatus& status,
     std::string_view device, bool visibilityEnabled = true,
     render::SubmissionMode submission = render::SubmissionMode::Indirect,

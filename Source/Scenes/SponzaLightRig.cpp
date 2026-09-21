@@ -10,7 +10,7 @@
 #include <array>
 #include <utility>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -46,7 +46,7 @@ std::array<engine::LocalLight, kRigLightCount> rigLights() {
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
+rojoRHI::Result<void> SponzaLightRig::setEnabled(engine::Scene& scene, bool enabled) {
     if (scene.name != "Sponza") {
         return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                               "Local-light rig is available only in Sponza"});
@@ -62,7 +62,7 @@ rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
             return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                                   "Sponza rig requires 16 free local-light slots"});
         }
-        std::vector<LightId> authored;
+        std::vector<engine::LightId> authored;
         for (const auto& light : rigLights()) {
             const auto id = scene.addLight(light);
             if (!id) {
@@ -96,8 +96,8 @@ bool SponzaLightRig::enabled() const {
 }
 
 //======================================================================================================================
-std::span<const LightId> SponzaLightRig::lightIds() const {
-    return m_scene ? m_scene->rigLightIds() : std::span<const LightId>{};
+std::span<const engine::LightId> SponzaLightRig::lightIds() const {
+    return m_scene ? m_scene->rigLightIds() : std::span<const engine::LightId>{};
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

@@ -30,7 +30,7 @@ AppOptionsResult fail(std::string message) {
 // drift from the IDs `--scene` actually accepts.
 std::string sceneIdList(std::string_view separator) {
     std::string result;
-    for (std::string_view id : engine::sceneStableIds()) {
+    for (std::string_view id : scenes::sceneStableIds()) {
         if (!result.empty()) {
             result += separator;
         }
@@ -126,7 +126,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
     bool warmupSpecified = false;
     CaptureFormat captureFormat = CaptureFormat::Png;
     bool captureFormatSpecified = false;
-    std::string_view sceneName = engine::sceneIdString(engine::defaultSceneId());
+    std::string_view sceneName = scenes::sceneIdString(scenes::defaultSceneId());
     bool maximized = true;
     uint32_t frames = 1;
     TemporalMode temporal = TemporalMode::Taa;
@@ -465,7 +465,7 @@ AppOptionsResult parseAppOptions(std::span<const std::string_view> arguments) {
                     "reconstruct a render scale below 1.0");
     }
 
-    const std::optional<engine::SceneId> sceneId = engine::parseSceneId(sceneName);
+    const std::optional<scenes::SceneId> sceneId = scenes::parseSceneId(sceneName);
     if (!sceneId) {
         return fail("unknown scene ID '" + std::string(sceneName) +
                     "'; valid IDs: " + sceneIdList(", "));

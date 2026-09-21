@@ -9,7 +9,7 @@ TEST_CASE("loadMaterialLabScene builds deterministic diagnostics without requiri
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -58,7 +58,7 @@ TEST_CASE("loadMaterialLabScene uses its neutral fallback when the studio enviro
     const auto loadAndCheckFallback = [] {
         auto device = rojoRHI::createDevice();
         REQUIRE(device.has_value());
-        auto scene = loadMaterialLabScene(**device);
+        auto scene = lmx::scenes::loadMaterialLabScene(**device);
         INFO(describeSceneError(scene));
         REQUIRE(scene.has_value());
         REQUIRE((*scene)->skyCubemap != nullptr);
@@ -87,7 +87,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     for (const lmx::engine::DirectionalLight& light : (*scene)->lights) {
@@ -101,7 +101,7 @@ TEST_CASE("loadMaterialLabScene's sphere grid sweeps roughness across columns an
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -130,7 +130,7 @@ TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pa
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -170,7 +170,7 @@ TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pa
 TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -197,7 +197,7 @@ TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally p
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -245,7 +245,7 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -325,7 +325,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -492,7 +492,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMaterialLabScene(**device);
+    auto scene = lmx::scenes::loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 

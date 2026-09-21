@@ -14,7 +14,7 @@
 #include <cmath>
 #include <vector>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -87,7 +87,7 @@ glm::vec3 atDistance(const std::vector<glm::vec3>& points, const std::vector<dou
 } // namespace
 
 //======================================================================================================================
-void authorSponzaCameraTour(Scene& scene) {
+void authorSponzaCameraTour(engine::Scene& scene) {
     const auto points = roundedRoute();
     std::vector<double> distances(points.size(), 0.0);
     for (size_t i = 1; i < points.size(); ++i)
@@ -123,4 +123,4 @@ void authorSponzaCameraTour(Scene& scene) {
     scene.initialCamera.pitch = keys.front().pitch;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

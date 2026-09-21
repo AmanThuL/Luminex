@@ -299,7 +299,7 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
     if (count > pile.size()) {
         // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
         // helper's one unused grid light plus the requested pile obey the generator's 4096 limit.
-        const auto authored = engine::lightLabLights(1, count);
+        const auto authored = scenes::lightLabLights(1, count);
         for (size_t i = pile.size(); i < count; ++i) {
             const auto id = scene().addLight(authored[i + 1]);
             if (!id) {

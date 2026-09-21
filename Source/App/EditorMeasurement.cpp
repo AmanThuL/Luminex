@@ -55,7 +55,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.height = renderer.height();
     plan.labInstances = m_labInstances;
     plan.labOccluders = m_labOccluders;
-    plan.scene = engine::sceneIdString(m_activeSceneId);
+    plan.scene = scenes::sceneIdString(m_activeSceneId);
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
     plan.classify = classifyModeName(m_settings.classifyMode);

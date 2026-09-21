@@ -156,7 +156,7 @@ private:
     engine::Scene* m_scene = nullptr;
     engine::Camera m_camera;
     std::unordered_map<const engine::Scene*, Defaults> m_defaults;
-    std::unordered_map<const engine::Scene*, engine::SponzaLightRig> m_lightRigs;
+    std::unordered_map<const engine::Scene*, scenes::SponzaLightRig> m_lightRigs;
 };
 
 } // namespace lmx::app

@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 /// Lights-per-froxel reference count: `lightLabRange` returns `kLightLabReferenceRange` at exactly
 /// this population, and scales as `1/sqrt(n)` away from it so density (lights per unit footprint
@@ -70,4 +70,4 @@ std::vector<engine::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
 /// returned track's `period` is `kLightLabOrbitPeriod`, which divides `kLightLabRailDuration`.
 std::vector<asset::LightOrbitTrack> lightLabTracks(uint32_t n, uint32_t pile);
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

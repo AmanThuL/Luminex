@@ -24,7 +24,7 @@
 #include <string>
 #include <utility>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -122,25 +122,26 @@ asset::AssetError uploadFailure(rojoRHI::Error error) {
 //======================================================================================================================
 // Adds the fixed pillar/sphere/floor field spanning the material range; returns the scene's field
 // bounding box so the caller can fit a bounding sphere around the renderable geometry.
-void addMaterialField(Scene& scene, Aabb& bounds) {
-    MaterialRecord floorMaterial;
+void addMaterialField(engine::Scene& scene, Aabb& bounds) {
+    engine::MaterialRecord floorMaterial;
     floorMaterial.albedo = srgbToLinear(glm::vec4(0.5f, 0.5f, 0.52f, 1.0f));
     floorMaterial.roughness = 0.85f;
     floorMaterial.metallic = 0.0f;
-    const MaterialId floorMaterialId = scene.addMaterial(floorMaterial);
-    const MeshId floorMesh = scene.addMesh(engine::makePlane(kFloorHalfExtent), "LightLab.floor");
+    const engine::MaterialId floorMaterialId = scene.addMaterial(floorMaterial);
+    const engine::MeshId floorMesh =
+        scene.addMesh(engine::makePlane(kFloorHalfExtent), "LightLab.floor");
     scene.addObject({.name = "Floor", .mesh = floorMesh, .material = floorMaterialId});
     expand(bounds, glm::vec3(-kFloorHalfExtent, 0.0f, -kFloorHalfExtent));
     expand(bounds, glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
 
-    const MeshId pillarMesh = scene.addMesh(engine::makeCube(), "LightLab.pillar");
-    const MeshId sphereMesh =
+    const engine::MeshId pillarMesh = scene.addMesh(engine::makeCube(), "LightLab.pillar");
+    const engine::MeshId sphereMesh =
         scene.addMesh(engine::fromGeo(asset::makeSphere(kSphereRadius, 24, 16)), "LightLab.sphere");
     const std::array<glm::vec3, 4> palette = lightPalette();
 
-    std::array<MaterialId, kFieldColumnCount> materials;
+    std::array<engine::MaterialId, kFieldColumnCount> materials;
     for (uint32_t c = 0; c < kFieldColumnCount; ++c) {
-        MaterialRecord material;
+        engine::MaterialRecord material;
         material.albedo = glm::vec4(palette[c % palette.size()], 1.0f);
         const uint32_t roughnessIndex = c % (kFieldColumnCount / 2);
         material.roughness = 0.08f + static_cast<float>(roughnessIndex) * (1.0f - 0.08f) /
@@ -298,7 +299,7 @@ std::vector<asset::CameraKey> lightLabCameraTrack() {
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>>
+asset::AssetResult<std::unique_ptr<engine::Scene>>
 loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCount) {
     if (lightCount == 0 || lightCount > engine::kMaxLocalLights) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
@@ -311,7 +312,7 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
                                                   std::to_string(engine::kMaxLocalLights)});
     }
 
-    auto scene = std::make_unique<Scene>();
+    auto scene = std::make_unique<engine::Scene>();
     scene->name = "LightLab";
     scene->lightLabGridCount = lightCount;
 
@@ -340,7 +341,8 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
                             .nearZ = kLightLabCameraNearZ,
                             .farZ = 300.0f};
 
-    if (auto environment = attachNeutralEnvironment(device, *scene, "LightLab"); !environment) {
+    if (auto environment = engine::attachNeutralEnvironment(device, *scene, "LightLab");
+        !environment) {
         return std::unexpected(environment.error());
     }
     if (auto finalized = scene->finalize(device); !finalized) {
@@ -349,4 +351,4 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
     return scene;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

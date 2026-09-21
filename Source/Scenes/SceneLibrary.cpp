@@ -14,11 +14,11 @@
 #include <filesystem>
 #include <utility>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
-using SceneBuilder = asset::AssetResult<std::unique_ptr<Scene>> (*)(rojoRHI::Device&);
+using SceneBuilder = asset::AssetResult<std::unique_ptr<engine::Scene>> (*)(rojoRHI::Device&);
 
 struct SceneDescriptor {
     std::string_view stableId;
@@ -144,7 +144,7 @@ const SceneEntry& SceneLibrary::entry(SceneId id) const {
 }
 
 //======================================================================================================================
-asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
+asset::AssetResult<engine::Scene*> SceneLibrary::get(SceneId id) {
     const size_t index = descriptorIndex(id);
     if (m_scenes[index] != nullptr) {
         return m_scenes[index].get();
@@ -168,4 +168,4 @@ asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
     return m_scenes[index].get();
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

@@ -165,8 +165,8 @@ int runOffscreen(AppOptions options) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    engine::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
-    const engine::SceneEntry& entry = library.entry(sceneId);
+    scenes::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
+    const scenes::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
         return 1;
