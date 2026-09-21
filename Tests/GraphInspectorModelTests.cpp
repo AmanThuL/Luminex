@@ -2,8 +2,8 @@
 
 #include "App/Model/GraphInspectorModel.h"
 #include "GraphTestSupport.h"
-#include "Render/RenderGraph.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 
 #include <array>
 #include <string>

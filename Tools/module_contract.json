@@ -104,7 +104,7 @@
         "Source/Render/ExposureStage.h",
         "Source/Render/BloomStage.h",
         "Source/Render/DisplayStage.h",
-        "Source/Render/RenderGraphInternal.h",
+        "Source/Render/Graph/RenderGraphInternal.h",
         "Source/Render/TemporalResolveInternal.h"
       ]
     },
@@ -126,7 +126,7 @@
         "glm"
       ],
       "forbidHeaders": [
-        "Source/Render/RenderGraph.h"
+        "Source/Render/Graph/RenderGraph.h"
       ],
       "privateHeaders": []
     },

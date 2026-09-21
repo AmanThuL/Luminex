@@ -1,7 +1,7 @@
 #include "GpuTestSupport.h"
 
-#include "Render/RenderGraph.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 
 #include <ranges>
 

@@ -7,7 +7,7 @@
 #include "App/Model/AppOptions.h"
 #include "App/Model/MeasurementRun.h"
 #include "Engine/Scene/SceneTableStats.h"
-#include "Render/CompiledFrameRecord.h"
+#include "Render/Graph/CompiledFrameRecord.h"
 #include "Render/Visibility.h"
 
 namespace lmx::app {

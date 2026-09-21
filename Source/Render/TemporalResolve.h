@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/RenderGraph.h"
+#include "Render/Graph/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include <rojoRHI/RHI.h>

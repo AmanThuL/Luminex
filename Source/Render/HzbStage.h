@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/RenderGraph.h"
+#include "Render/Graph/RenderGraph.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>

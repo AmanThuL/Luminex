@@ -3,7 +3,7 @@
 /// @brief Implements the deterministic text dump of a compiled render-graph frame.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include "Core/Diagnostics/Log.h"
 

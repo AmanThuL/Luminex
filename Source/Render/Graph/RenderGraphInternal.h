@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/RenderGraph.h"
+#include "Render/Graph/RenderGraph.h"
 
 namespace lmx::render::graph_detail {
 

@@ -19,7 +19,7 @@
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
 #include "Engine/Scene/Scene.h"
-#include "Render/FrameDeclaration.h"
+#include "Render/Graph/FrameDeclaration.h"
 #include "Render/Renderer.h"
 #include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>

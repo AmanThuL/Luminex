@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/CompiledFrameRecord.h"
+#include "Render/Graph/CompiledFrameRecord.h"
 
 #include <string>
 

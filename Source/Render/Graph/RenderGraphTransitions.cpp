@@ -3,8 +3,8 @@
 /// @brief Derives resource transitions and alias handoffs for a compiled schedule.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/RenderGraph.h"
-#include "Render/RenderGraphInternal.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/RenderGraphInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
 

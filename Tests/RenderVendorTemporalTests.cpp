@@ -1,6 +1,6 @@
 #include "GraphTestSupport.h"
 
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 #include "Render/Renderer.h"
 #include "Render/VendorTemporalScaler.h"
 

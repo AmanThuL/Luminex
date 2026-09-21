@@ -4,11 +4,11 @@
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
-#include "Render/GraphDump.h"
-#include "Render/RenderGraph.h"
+#include "Render/Graph/GraphDump.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
-#include "Render/TransientPool.h"
 
 #include <catch2/catch_approx.hpp>
 

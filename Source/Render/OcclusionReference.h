@@ -3,8 +3,8 @@
 /// @brief Owns independent all-candidate ID rendering and paced reference readback.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Render/Graph/RenderGraph.h"
 #include "Render/OcclusionCheck.h"
-#include "Render/RenderGraph.h"
 #include "Render/SceneView.h"
 #include <array>
 #include <memory>
