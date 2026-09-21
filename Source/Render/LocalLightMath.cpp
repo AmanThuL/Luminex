@@ -5,7 +5,7 @@
 
 #include "Render/LocalLightMath.h"
 
-#include "Render/Bounds.h"
+#include "Core/Bounds.h"
 
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>

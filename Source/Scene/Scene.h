@@ -8,7 +8,7 @@
 #include "Asset/Asset.h"
 #include "Asset/SceneAnimation.h"
 #include "Asset/Transform.h"
-#include "Render/Bounds.h"
+#include "Core/Bounds.h"
 #include "Render/Camera.h"
 #include "Render/LocalLight.h"
 #include "Render/Mesh.h"

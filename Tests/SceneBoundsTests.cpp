@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Asset/GeometryGenerator.h"
-#include "Render/Bounds.h"
+#include "Core/Bounds.h"
 #include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
