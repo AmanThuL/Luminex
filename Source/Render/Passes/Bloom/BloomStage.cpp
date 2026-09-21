@@ -3,7 +3,7 @@
 /// @brief Implements bloom resources and pass declaration.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/BloomStage.h"
+#include "Render/Passes/Bloom/BloomStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
