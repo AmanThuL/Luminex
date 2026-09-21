@@ -20,6 +20,10 @@ namespace lmx {
 /// next push evicts the oldest. Index 0 is always the oldest held value.
 template <typename T>
 class RingBuffer {
+    static_assert(
+        !std::is_same_v<T, bool>,
+        "RingBuffer<bool> would store std::vector<bool> proxies, which break const T& access");
+
 public:
     /// Constructs a buffer retaining at most `capacity` values.
     explicit RingBuffer(uint32_t capacity) : m_capacity(capacity) {
