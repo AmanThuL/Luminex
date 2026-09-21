@@ -15,8 +15,8 @@
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/Panels/ScenePanel.h"
 #include "App/Panels/ViewportPanel.h"
-#include "Core/Assert.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <SDL3/SDL.h>

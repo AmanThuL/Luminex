@@ -5,7 +5,7 @@
 
 #include "Engine/Asset/Model/SceneAnimation.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/matrix_transform.hpp>

@@ -3,7 +3,7 @@
 /// @brief Initializes the process-wide logging backend.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <spdlog/sinks/stdout_color_sinks.h>
 

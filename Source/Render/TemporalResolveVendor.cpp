@@ -6,7 +6,7 @@
 #include "Render/TemporalResolve.h"
 #include "Render/TemporalResolveInternal.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Math.h"
 #include "Render/VendorTemporalScaler.h"
 

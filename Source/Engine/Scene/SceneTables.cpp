@@ -5,8 +5,8 @@
 
 #include "Engine/Scene/Scene.h"
 
-#include "Core/Assert.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
 #include "Engine/Types/LocalLightMath.h"
 
 #include <algorithm>

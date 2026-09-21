@@ -3,7 +3,7 @@
 /// @brief Mirrors the ordered shader box test without floating-point contraction.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Occlusion.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>

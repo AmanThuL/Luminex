@@ -12,7 +12,7 @@
 #include "Render/VendorTemporalScaler.h"
 #include <chrono>
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <array>
 #include <cmath>

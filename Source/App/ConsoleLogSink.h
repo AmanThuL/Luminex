@@ -6,7 +6,7 @@
 #pragma once
 
 #include "App/Model/ConsoleLog.h"
-#include "Core/LogSink.h"
+#include "Core/Diagnostics/LogSink.h"
 
 #include <memory>
 

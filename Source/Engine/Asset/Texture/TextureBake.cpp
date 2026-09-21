@@ -5,8 +5,8 @@
 
 #include "Engine/Asset/Texture/TextureBake.h"
 
-#include "Core/Assert.h"
 #include "Core/Color.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Json.h"
 
 #include <glm/glm.hpp>

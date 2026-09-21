@@ -10,7 +10,7 @@
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 #include "Core/Parse.h"
 #include "Engine/Catalog/SceneLibrary.h"
 #include "Render/FrameDeclaration.h"

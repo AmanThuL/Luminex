@@ -3,7 +3,7 @@
 /// @brief Implements five-plane conservative classification from canonical shared rows.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Visibility.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/SceneView.h"
 #include <cmath>
 

@@ -5,7 +5,7 @@
 
 #include "Render/Renderer.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <algorithm>
 #include <limits>

@@ -7,7 +7,7 @@
 #include "Render/RenderGraphInternal.h"
 
 #include "Core/Align.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <algorithm>
 #include <format>

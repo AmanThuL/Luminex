@@ -5,7 +5,7 @@
 
 #include "Render/ShadowStage.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>

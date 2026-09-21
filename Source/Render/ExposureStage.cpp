@@ -5,7 +5,7 @@
 
 #include "Render/ExposureStage.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Math.h"
 #include "Render/Renderer.h"
 
