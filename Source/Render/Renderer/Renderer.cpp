@@ -102,6 +102,7 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
         temporalInputs.mode = state.reconstruction;
         temporalOutputs = m_temporalResolve->declare(graph, commands, temporalInputs,
                                                      state.debugView, displayResult);
+        displayResult = temporalOutputs.displayResult;
     }
 
     // What bloom and the display transform read: the colour slot whenever the frame accumulated or
