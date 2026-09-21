@@ -57,73 +57,88 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
                                                                           bool cpuReadback) {
     auto self = std::unique_ptr<TemporalResolve>(new TemporalResolve(device, cpuReadback));
 
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalReproject"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/TemporalReproject");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_reprojectLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalResolve"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/TemporalResolve");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_resolveLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalDebugView"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/TemporalDebugView");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_debugViewLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/SpatialUpscale"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/SpatialUpscale");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_spatialUpscaleLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/TemporalUpscale"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/TemporalUpscale");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_temporalUpscaleLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
 
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = self->m_reprojectLibrary.get(),
              .computeEntry = "computeTemporalReproject",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalReprojectPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_reprojectPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = self->m_resolveLibrary.get(),
              .computeEntry = "computeTemporalResolve",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalResolvePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_resolvePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = self->m_spatialUpscaleLibrary.get(),
              .computeEntry = "computeSpatialUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.spatialUpscalePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_spatialUpscalePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = self->m_temporalUpscaleLibrary.get(),
              .computeEntry = "computeTemporalUpscale",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.temporalUpscalePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_temporalUpscalePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             device.createGraphicsPipeline({.library = self->m_debugViewLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
@@ -131,40 +146,43 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
                                            .depthFormat = rojoRHI::Format::Unknown,
                                            .cullMode = rojoRHI::CullMode::None,
                                            .label = "lmx.render.temporalDebugViewPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_debugViewPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
-    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+    {
+        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
                                              .addressMode = rojoRHI::AddressMode::Clamp,
                                              .label = "lmx.render.temporalSampler"});
-        sampler) {
+        if (!sampler) {
+            return std::unexpected(sampler.error());
+        }
         self->m_sampler = std::move(*sampler);
-    } else {
-        return std::unexpected(sampler.error());
     }
 
-    if (auto texture = device.createTexture({.width = 1,
+    {
+        auto texture = device.createTexture({.width = 1,
                                              .height = 1,
                                              .format = rojoRHI::Format::RGBA16Float,
                                              .storageWrite = true,
                                              .label = "lmx.render.temporalDiagnosticFallback"});
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_diagnosticFallback = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
-    if (auto texture = device.createTexture({.width = 1,
+    {
+        auto texture = device.createTexture({.width = 1,
                                              .height = 1,
                                              .format = rojoRHI::Format::RGBA16Float,
                                              .sampled = true,
                                              .label = "lmx.render.temporalViewFallback"});
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_viewFallback = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
     return self;
 }

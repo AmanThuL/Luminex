@@ -16,29 +16,33 @@ rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::D
                                "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
     for (uint32_t i = 0; i < names.size(); ++i) {
         auto library = device.loadShaderLibrary("Shaders/" + std::string(names[i]));
-        if (!library)
+        if (!library) {
             return std::unexpected(library.error());
+        }
         self->m_libraries[i] = std::move(*library);
         auto pipeline =
             device.createComputePipeline({.library = self->m_libraries[i].get(),
                                           .computeEntry = "computeMain",
                                           .threadsPerThreadgroup = {256, 1, 1},
                                           .label = "lmx.visibility." + std::string(names[i])});
-        if (!pipeline)
+        if (!pipeline) {
             return std::unexpected(pipeline.error());
+        }
         self->m_pipelines[i] = std::move(*pipeline);
     }
     const engine::InstanceRow emptyInstance;
     const engine::MeshRow emptyMesh;
     auto instance = device.createBuffer(
         {.size = sizeof(emptyInstance), .label = "lmx.visibility.emptyInstances"}, &emptyInstance);
-    if (!instance)
+    if (!instance) {
         return std::unexpected(instance.error());
+    }
     self->m_emptyInstances = std::move(*instance);
     auto mesh = device.createBuffer(
         {.size = sizeof(emptyMesh), .label = "lmx.visibility.emptyMeshes"}, &emptyMesh);
-    if (!mesh)
+    if (!mesh) {
         return std::unexpected(mesh.error());
+    }
     self->m_emptyMeshes = std::move(*mesh);
     return self;
 }
@@ -61,8 +65,9 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
                  .cpuWrite = !writable,
                  .label = std::string(name) + "." + std::to_string(m_device.frameNumber() % 3)},
                 nullptr);
-            if (!result)
+            if (!result) {
                 return std::unexpected(result.error());
+            }
             buffer = std::move(*result);
             return {};
         };

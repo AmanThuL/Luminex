@@ -69,55 +69,64 @@ constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 
 //======================================================================================================================
 rojoRHI::Result<void> BloomStage::loadLibraries(rojoRHI::Device& device) {
-    if (auto library = device.loadShaderLibrary("Shaders/BloomThreshold"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/BloomThreshold");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_bloomThresholdLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/BloomDownsample"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/BloomDownsample");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_bloomDownsampleLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/BloomUpsample"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/BloomUpsample");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_bloomUpsampleLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
     return {};
 }
 
 //======================================================================================================================
 rojoRHI::Result<void> BloomStage::createPipelines(rojoRHI::Device& device) {
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = m_bloomThresholdLibrary.get(),
              .computeEntry = "computeBloomThreshold",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomThresholdPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_bloomThresholdPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = m_bloomDownsampleLibrary.get(),
              .computeEntry = "computeBloomDownsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomDownsamplePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_bloomDownsamplePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = m_bloomUpsampleLibrary.get(),
              .computeEntry = "computeBloomUpsample",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.bloomUpsamplePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_bloomUpsamplePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     return {};

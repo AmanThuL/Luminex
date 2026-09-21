@@ -22,8 +22,9 @@ static_assert(sizeof(DebugParams) == 188);
 rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRHI::Device& device) {
     auto stage = std::unique_ptr<LightDebugStage>(new LightDebugStage);
     auto library = device.loadShaderLibrary("Shaders/LightDebugView");
-    if (!library)
+    if (!library) {
         return std::unexpected(library.error());
+    }
     stage->m_library = std::move(*library);
     auto pipeline = device.createGraphicsPipeline({.library = stage->m_library.get(),
                                                    .vertexEntry = "vertexMain",
@@ -31,8 +32,9 @@ rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRH
                                                    .colorFormat = kDisplayFormat,
                                                    .cullMode = rojoRHI::CullMode::None,
                                                    .label = "lmx.render.lightDebugPipeline"});
-    if (!pipeline)
+    if (!pipeline) {
         return std::unexpected(pipeline.error());
+    }
     stage->m_pipeline = std::move(*pipeline);
     return stage;
 }

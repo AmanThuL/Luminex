@@ -98,8 +98,9 @@ LightClusterStage::create(rojoRHI::Device& device) {
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
     for (uint32_t i = 0; i < names.size(); ++i) {
         auto library = device.loadShaderLibrary("Shaders/" + std::string(names[i]));
-        if (!library)
+        if (!library) {
             return std::unexpected(library.error());
+        }
         self->m_libraries[i] = std::move(*library);
         // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
         // makes every range and every counter a function of the declarations alone.
@@ -109,8 +110,9 @@ LightClusterStage::create(rojoRHI::Device& device) {
                                           .computeEntry = "computeMain",
                                           .threadsPerThreadgroup = {threads, 1, 1},
                                           .label = "lmx.light." + std::string(names[i])});
-        if (!pipeline)
+        if (!pipeline) {
             return std::unexpected(pipeline.error());
+        }
         self->m_pipelines[i] = std::move(*pipeline);
     }
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
@@ -123,25 +125,30 @@ LightClusterStage::create(rojoRHI::Device& device) {
                                                .cpuReadback = readback,
                                                .label = name + suffix},
                                               nullptr);
-            if (!result)
+            if (!result) {
                 return std::unexpected(result.error());
+            }
             buffer = std::move(*result);
             return {};
         };
         auto& owned = self->m_slots[slot];
         auto result = allocate(owned.grid, kGridBytes, "lmx.light.grid", true);
-        if (!result)
+        if (!result) {
             return std::unexpected(result.error());
+        }
         result = allocate(owned.indices, kIndexBytes, "lmx.light.indices", true);
-        if (!result)
+        if (!result) {
             return std::unexpected(result.error());
+        }
         result = allocate(owned.counts, kCountBytes, "lmx.light.counts", false);
-        if (!result)
+        if (!result) {
             return std::unexpected(result.error());
+        }
         result = allocate(owned.counters, kLightClusterCounterWords * sizeof(uint32_t),
                           "lmx.light.counters", true);
-        if (!result)
+        if (!result) {
             return std::unexpected(result.error());
+        }
     }
     return self;
 }

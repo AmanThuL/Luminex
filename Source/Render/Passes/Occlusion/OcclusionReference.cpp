@@ -26,8 +26,9 @@ rojoRHI::Result<std::unique_ptr<OcclusionReference>>
 OcclusionReference::create(rojoRHI::Device& device) {
     auto self = std::unique_ptr<OcclusionReference>(new OcclusionReference(device));
     auto library = device.loadShaderLibrary("Shaders/OcclusionReference");
-    if (!library)
+    if (!library) {
         return std::unexpected(library.error());
+    }
     self->m_library = std::move(*library);
     for (uint32_t wireframe = 0; wireframe < 2; ++wireframe) {
         for (uint32_t masked = 0; masked < 2; ++masked) {
@@ -46,16 +47,18 @@ OcclusionReference::create(rojoRHI::Device& device) {
                      .cullMode = doubleSided ? rojoRHI::CullMode::None : rojoRHI::CullMode::Back,
                      .depthCompare = rojoRHI::DepthCompare::Greater,
                      .label = std::format("lmx.occlusion.reference.pipeline.{}", index)});
-                if (!pipeline)
+                if (!pipeline) {
                     return std::unexpected(pipeline.error());
+                }
                 self->m_pipelines[index] = std::move(*pipeline);
             }
         }
     }
     auto sampler =
         device.createSampler({.maxAnisotropy = 16, .label = "lmx.occlusion.reference.sampler"});
-    if (!sampler)
+    if (!sampler) {
         return std::unexpected(sampler.error());
+    }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
     const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
@@ -65,8 +68,9 @@ OcclusionReference::create(rojoRHI::Device& device) {
                                          .sampled = true,
                                          .label = "lmx.occlusion.reference.white"},
                                         std::span{&mip, 1});
-    if (!texture)
+    if (!texture) {
         return std::unexpected(texture.error());
+    }
     self->m_white = std::move(*texture);
     return self;
 }
@@ -88,8 +92,9 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
         auto buffer = m_device.createBuffer(
             {.size = byteCount, .cpuReadback = true, .label = "lmx.occlusion.reference.readback"},
             nullptr);
-        if (!buffer)
+        if (!buffer) {
             return std::unexpected(buffer.error());
+        }
         slot.buffer = std::move(*buffer);
         slot.used = false;
     }
