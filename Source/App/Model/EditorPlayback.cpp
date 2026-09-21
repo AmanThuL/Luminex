@@ -32,8 +32,7 @@ void EditorPlayback::capture(const SceneSession& session, bool followRail) {
         const auto& object = scene.objects[track.objectIndex];
         auto& saved = snapshot.objects[object.id.slot];
         saved.id = object.id;
-        saved.transform =
-            asset::DecomposedTransform{object.position, object.eulerDegrees, object.scale};
+        saved.transform = DecomposedTransform{object.position, object.eulerDegrees, object.scale};
     }
     for (const auto& track : scene.animation.emissiveTracks) {
         LMX_ASSERT(track.objectIndex < scene.objects.size(), "emissive track object must exist");

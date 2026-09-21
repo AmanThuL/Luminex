@@ -248,7 +248,7 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
                                                      std::string(sceneName) +
                                                          " scene: instance index is out of range"});
         }
-        const auto decomposed = asset::decomposeTransform(instance.world);
+        const auto decomposed = decomposeTransform(instance.world);
         if (!decomposed) {
             return std::unexpected(asset::AssetError{
                 asset::AssetErrorCode::Malformed,
@@ -325,8 +325,7 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
 
 //======================================================================================================================
 glm::mat4 SceneObject::modelMatrix() const {
-    return asset::composeTransform(
-        {.position = position, .eulerDegrees = eulerDegrees, .scale = scale});
+    return composeTransform({.position = position, .eulerDegrees = eulerDegrees, .scale = scale});
 }
 
 //======================================================================================================================
@@ -357,7 +356,7 @@ void Scene::advanceAnimation(double dt) {
 void Scene::animate(double seconds) {
     for (const asset::RigidTrack& track : animation.tracks) {
         LMX_ASSERT(track.objectIndex < objects.size(), "RigidTrack.objectIndex out of range");
-        const auto decomposed = asset::decomposeTransform(asset::sampleRigidTrack(track, seconds));
+        const auto decomposed = decomposeTransform(asset::sampleRigidTrack(track, seconds));
         LMX_ASSERT(decomposed.has_value(), "a rigid track sampled to an indecomposable pose");
         SceneObject& object = objects[track.objectIndex];
         object.position = decomposed->position;
