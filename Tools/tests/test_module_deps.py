@@ -1524,7 +1524,10 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
 
     def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
-        self.assertEqual(self.contract["pendingPaths"], [])
+        self.assertNotIn("pendingPaths", self.contract)
+        for unit in self.contract["units"].values():
+            for path in unit["paths"]:
+                self.assertTrue((self.root / path).exists(), path)
 
     def test_no_target_or_unit_names_the_dissolved_scene_target(self) -> None:
         self.assertNotIn("Scene", self.contract["targets"])
