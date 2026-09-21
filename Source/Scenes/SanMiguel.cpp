@@ -3,7 +3,7 @@
 /// @brief Loads the masked courtyard scene and authors its deterministic comparison camera rail.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/CatalogScenes.h"
+#include "Scenes/CatalogScenes.h"
 
 #include "Engine/Asset/RepositoryAsset.h"
 

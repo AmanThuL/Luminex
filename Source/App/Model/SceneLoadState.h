@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Engine/Catalog/SceneLibrary.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <optional>
 #include <string>

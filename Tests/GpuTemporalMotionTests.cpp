@@ -1,7 +1,7 @@
-#include "Engine/Catalog/CatalogScenes.h"
 #include "GpuTemporalTestSupport.h"
 #include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
+#include "Scenes/CatalogScenes.h"
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;

@@ -18,10 +18,10 @@
 #include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
+#include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>

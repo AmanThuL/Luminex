@@ -1,7 +1,7 @@
-#include "Engine/Catalog/CatalogScenes.h"
-#include "Engine/Catalog/SceneLibrary.h"
 #include "GpuTestSupport.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/CatalogScenes.h"
+#include "Scenes/SceneLibrary.h"
 
 namespace {
 namespace render = lmx::render;

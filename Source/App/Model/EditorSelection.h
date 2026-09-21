@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <cstddef>
 #include <optional>

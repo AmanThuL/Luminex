@@ -17,9 +17,6 @@
     "production": 1000,
     "tests": 1500
   },
-  "pendingPaths": [
-    "Source/Scenes"
-  ],
   "units": {
     "core": {
       "paths": [
@@ -68,8 +65,7 @@
       ],
       "privateHeaders": [
         "Source/Engine/Scene/PacedTable.h",
-        "Source/Engine/Scene/SceneStorage.h",
-        "Source/Engine/Upload/SceneEnvironment.h"
+        "Source/Engine/Scene/SceneStorage.h"
       ]
     },
     "scenes": {
@@ -327,7 +323,8 @@
         "ImGuiNodeEditor",
         "Asset",
         "AppModel",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     },
     "Tests": {
@@ -337,7 +334,8 @@
         "Render",
         "Asset",
         "AppModel",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     },
     "RojoRHITests": {
@@ -386,7 +384,8 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Engine"
+        "Engine",
+        "Scenes"
       ]
     }
   }
