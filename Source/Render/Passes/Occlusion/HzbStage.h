@@ -60,12 +60,14 @@ public:
     GraphTexture importPrevious(RenderGraph& graph) const;
     /// Declares each reduction and a rooted publish read; alternates by build count.
     /// The caller must execute this graph before declaring another build. Source depth is sampled.
-    GraphTexture build(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture depth,
-                       HzbSource source);
+    GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture depth,
+                         HzbSource source);
     /// Returns allocated dimensions and combined pyramid texel bytes.
     const HzbLayout& layout() const { return m_layout; }
 
 private:
+    HzbStage() = default;
+
     rojoRHI::Device* m_device = nullptr;
     bool m_cpuReadback = false;
     uint32_t m_outputWidth = 0;

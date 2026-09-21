@@ -33,6 +33,8 @@ public:
                          const LightDebugInputs& inputs);
 
 private:
+    LightDebugStage() = default;
+
     std::unique_ptr<rojoRHI::ShaderLibrary> m_library;
     std::unique_ptr<rojoRHI::GraphicsPipeline> m_pipeline;
 };

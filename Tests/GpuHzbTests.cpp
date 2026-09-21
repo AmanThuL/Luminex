@@ -91,8 +91,8 @@ void validatePyramid(uint32_t outputWidth, uint32_t outputHeight) {
         });
         const auto source = nextVersion(depthInput);
         const auto pyramid =
-            (*stage)->build(graph, commands, source,
-                            {.frameNumber = frame, .activeWidth = width, .activeHeight = height});
+            (*stage)->declare(graph, commands, source,
+                              {.frameNumber = frame, .activeWidth = width, .activeHeight = height});
         auto* identity = &(*stage)->previousTexture();
         if (frame < 2)
             identities[frame] = identity;

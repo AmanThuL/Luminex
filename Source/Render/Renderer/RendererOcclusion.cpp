@@ -75,7 +75,7 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
                                 const SceneView& view, GraphTexture depth, GraphTexture& display) {
     if (!view.occlusionEnabled)
         return;
-    const auto pyramid = m_hzbStage->build(graph, commands, depth, m_currentOcclusionSource);
+    const auto pyramid = m_hzbStage->declare(graph, commands, depth, m_currentOcclusionSource);
     m_occlusionSource = m_hzbStage->previousSource();
     if (view.occlusionCheck) {
         if (!m_occlusionReference) {

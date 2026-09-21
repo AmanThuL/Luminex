@@ -54,7 +54,7 @@ HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
 //======================================================================================================================
 rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& device,
                                                             bool cpuReadback) {
-    auto stage = std::make_unique<HzbStage>();
+    auto stage = std::unique_ptr<HzbStage>(new HzbStage);
     stage->m_device = &device;
     stage->m_cpuReadback = cpuReadback;
     auto reduceLibrary = device.loadShaderLibrary("Shaders/HzbReduce");
@@ -136,8 +136,8 @@ GraphTexture HzbStage::importPrevious(RenderGraph& graph) const {
 }
 
 //======================================================================================================================
-GraphTexture HzbStage::build(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture depth,
-                             HzbSource source) {
+GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
+                               GraphTexture depth, HzbSource source) {
     LMX_ASSERT(m_textures[m_next], "HZB must be resized before build");
     LMX_ASSERT(source.activeWidth > 0 && source.activeHeight > 0 &&
                    source.activeWidth <= m_outputWidth && source.activeHeight <= m_outputHeight,
