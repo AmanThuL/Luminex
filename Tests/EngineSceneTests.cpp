@@ -121,7 +121,8 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 // byte-identical -- compared as hashes so a mismatch stays diagnosable rather than asking Catch2
 // to print a 16KB byte vector (see Tests/EngineAssetTests.cpp's determinism test for the same
 // reasoning). Both loads start from the same stb_image-decoded JPEG bytes and run through the
-// same bakeMips code (Source/Asset/TextureBake.h), so equality is exact, not approximate.
+// same bakeMips code (Source/Engine/Asset/Texture/TextureBake.h), so equality is exact, not
+// approximate.
 TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offline bake would",
           "[gpu]") {
     const std::optional<std::filesystem::path> path =

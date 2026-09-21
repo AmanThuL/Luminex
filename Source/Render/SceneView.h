@@ -129,10 +129,10 @@ struct SceneView {
     std::optional<engine::MeshRow> skySphere;
     rojoRHI::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
-    /// (Source/Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,
-    /// and the split-sum DFG table. This is what replaced the flat ambient term -- an environment
-    /// the surface actually samples per normal and per reflection vector, rather than one constant
-    /// added to every pixel.
+    /// (Source/Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered
+    /// radiance chain, and the split-sum DFG table. This is what replaced the flat ambient term --
+    /// an environment the surface actually samples per normal and per reflection vector, rather
+    /// than one constant added to every pixel.
     ///
     /// Independently nullable, and null is a supported state rather than an incomplete one: the
     /// renderer substitutes its black-cube and zero-DFG fallbacks, which make both image-based

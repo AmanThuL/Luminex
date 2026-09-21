@@ -155,9 +155,9 @@ public:
     std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
     std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
     /// Image-based lighting generated from the same authored sky radiance skyCubemap carries
-    /// (Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain, and
-    /// the split-sum DFG table. Published together with the sky by the scene-build path, so a scene
-    /// that has a skyCubemap has all three.
+    /// (Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance
+    /// chain, and the split-sum DFG table. Published together with the sky by the scene-build path,
+    /// so a scene that has a skyCubemap has all three.
     std::unique_ptr<rojoRHI::Texture> irradianceMap;     ///< Diffuse irradiance cubemap.
     std::unique_ptr<rojoRHI::Texture> prefilteredEnvMap; ///< GGX-prefiltered environment chain.
     std::unique_ptr<rojoRHI::Texture> dfgLut; ///< Split-sum material response lookup table.
@@ -252,7 +252,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rojoRHI::Devic
 /// Builds a deterministic material field (matte floor, pillar/sphere sweep) under lightCount local
 /// lights (1..render::kMaxLocalLights) on a jittered grid whose range scales with
 /// 1/sqrt(lightCount), plus pileCount extra lights (default 0) stacked at one point; lightCount +
-/// pileCount must not exceed render::kMaxLocalLights. See Source/Scene/LightLab.h for the
+/// pileCount must not exceed render::kMaxLocalLights. See Source/Engine/Catalog/LightLab.h for the
 /// device-free generation this wraps.
 asset::AssetResult<std::unique_ptr<Scene>>
 loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
