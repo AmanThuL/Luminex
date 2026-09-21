@@ -109,7 +109,8 @@
         "Source/Render/Passes/Temporal/TemporalResolveInternal.h",
         "Source/Render/Renderer/RendererInternal.h",
         "Source/Render/Common/GraphResources.h",
-        "Source/Render/Common/StageSetup.h"
+        "Source/Render/Common/StageSetup.h",
+        "Source/Render/Common/PacedSlots.h"
       ]
     },
     "app-model": {
