@@ -216,10 +216,10 @@ compiled record), `Render/Renderer/` (orchestrator and its partial units, `Scene
 builder, `DisplayDomain.h`) and `Render/Passes/<the same ten names as the shaders>/`, one folder
 per pass family holding its stages, CPU mirrors, checks and readbacks.
 
-Then the code: stage math (frustum, shadow fit, jitter, froxel-sphere test) and range algebra come
-from Core; `Renderer.cpp` and `SceneStage.cpp` are decomposed by responsibility; the shape the
-stages share is written into the engineering convention and followed; repeated pipeline and resource
-setup moves into shared helpers. No class name, label, `SceneView` field or interface changes.
+Then the code: stage math and range algebra come from Core; `Renderer.cpp`, `SceneStage.cpp` and
+barrier derivation are decomposed; the stages' shared shape enters the engineering convention and is
+followed; repeated setup and draw encoding move into shared helpers. No class name, label or
+`SceneView` field changes; signatures change only as the [record](../milestones/r/r3.5.md) lists.
 
 **Exit gate:** the protocol and the format check hold; graph dumps and capture semantics match the
 parent; no Render source implements math that Core's charter claims.
