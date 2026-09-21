@@ -3,7 +3,7 @@
 /// @brief Implements deterministic SDR PNG chunks, validation, and decoding.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/PngImage.h"
+#include "Engine/Asset/Image/PngImage.h"
 
 #include <stb/stb_image.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION

@@ -3,7 +3,7 @@
 /// @brief Implements deterministic top-down BGRA bitmap writing.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/BmpImage.h"
+#include "Engine/Asset/Image/BmpImage.h"
 
 #include "Core/Log.h"
 

@@ -5,7 +5,7 @@
 
 #include "Engine/Upload/DdsUpload.h"
 
-#include "Asset/DdsLoader.h"
+#include "Engine/Asset/Image/DdsLoader.h"
 
 #include <utility>
 
