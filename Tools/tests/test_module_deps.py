@@ -1579,7 +1579,10 @@ class RepositoryContractTests(unittest.TestCase):
                 self.assertIsNone(modules.owner_of(Path(path), self.contract))
 
     def test_the_engine_archive_may_not_reference_render(self) -> None:
-        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
+        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], ["lmx::render::", "lmx::scenes::"])
+
+    def test_the_catalog_folder_is_gone_from_engine(self) -> None:
+        self.assertFalse((self.root / "Source/Engine/Catalog").exists())
 
     def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
         self.assertNotIn("pendingPaths", self.contract)
