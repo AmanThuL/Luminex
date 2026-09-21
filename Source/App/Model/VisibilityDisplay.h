@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
+#include "Engine/Scene/Scene.h"
 #include "Render/Visibility.h"
-#include "Scene/Scene.h"
 #include <rojoRHI/Device.h>
 
 #include <deque>

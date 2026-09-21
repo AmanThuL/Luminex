@@ -1,6 +1,6 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTemporalTestSupport.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/Scene.h"
 
 #include <algorithm>
 

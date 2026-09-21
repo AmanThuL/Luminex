@@ -3,7 +3,7 @@
 /// @brief Builds seeded repeated geometry, boundary probes, and a looping visibility camera rail.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include "Core/Color.h"
 #include "Scene/SceneEnvironment.h"

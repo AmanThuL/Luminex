@@ -3,12 +3,12 @@
 #include "GpuTestSupport.h"
 
 #include "Asset/GeometryGenerator.h"
+#include "Engine/Scene/Scene.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TransientPool.h"
-#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 

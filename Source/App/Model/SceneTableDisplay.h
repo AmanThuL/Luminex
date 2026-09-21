@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Scene/SceneTableStats.h"
+#include "Engine/Scene/SceneTableStats.h"
 #include <array>
 #include <string>
 #include <string_view>

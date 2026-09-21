@@ -1,8 +1,8 @@
+#include "Engine/Scene/Scene.h"
 #include "Engine/Types/LocalLightMath.h"
 #include "GpuTestSupport.h"
 #include "Render/LightDebugStage.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
 #include <algorithm>

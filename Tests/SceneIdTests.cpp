@@ -1,4 +1,4 @@
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 

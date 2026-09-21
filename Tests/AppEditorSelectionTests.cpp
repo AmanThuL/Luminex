@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/EditorSelection.h"
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
 #include <array>

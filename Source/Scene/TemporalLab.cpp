@@ -3,7 +3,7 @@
 /// @brief Builds the deterministic temporal-diagnostic scene.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include "Asset/GeometryGenerator.h"
 #include "Asset/SceneAnimation.h"

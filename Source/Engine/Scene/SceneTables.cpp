@@ -3,7 +3,7 @@
 /// @brief Implements scene identities, pooled geometry and paced table updates.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include "Core/Assert.h"
 #include "Core/Log.h"

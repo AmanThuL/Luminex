@@ -6,7 +6,7 @@
 #include "Render/SceneViewBuilder.h"
 
 #include "Core/Assert.h"
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include <iterator>
 

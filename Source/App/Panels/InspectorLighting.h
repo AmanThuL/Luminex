@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Scene/SceneIds.h"
+#include "Engine/Scene/SceneIds.h"
 
 namespace lmx::app {
 
