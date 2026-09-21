@@ -7,7 +7,7 @@
 
 #include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Scene/Scene.h"
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/SceneView.h"
 
 #include <array>

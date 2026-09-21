@@ -3,7 +3,7 @@
 /// @brief Implements free-fly camera movement and reversed-depth transforms.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 
 #include "Core/Math/Projection.h"
 

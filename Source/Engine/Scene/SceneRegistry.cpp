@@ -7,8 +7,8 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Aabb.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneStorage.h"
-#include "Engine/Types/LocalLightMath.h"
 
 #include <algorithm>
 #include <limits>

@@ -9,15 +9,15 @@
 #include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Scene/MaterialRecord.h"
+#include "Engine/Geometry/Mesh.h"
+#include "Engine/Lights/DirectionalLight.h"
+#include "Engine/Lights/LocalLight.h"
+#include "Engine/Material/MaterialRecord.h"
+#include "Engine/Scene/DrawItem.h"
+#include "Engine/Scene/MotionClass.h"
 #include "Engine/Scene/SceneIds.h"
 #include "Engine/Scene/SceneTableStats.h"
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/DirectionalLight.h"
-#include "Engine/Types/DrawItem.h"
-#include "Engine/Types/LocalLight.h"
-#include "Engine/Types/Mesh.h"
-#include "Engine/Types/MotionClass.h"
+#include "Engine/View/Camera.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>

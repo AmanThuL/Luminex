@@ -1,8 +1,8 @@
 #include "GpuTestSupport.h"
 
+#include "Engine/Lights/LocalLight.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneTables.h"
-#include "Engine/Types/LocalLight.h"
-#include "Engine/Types/LocalLightMath.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>

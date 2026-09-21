@@ -13,7 +13,7 @@
 #include "Core/Math/Color.h"
 #include "Core/Math/Sphere.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
 #include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>

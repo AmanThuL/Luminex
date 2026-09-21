@@ -1,4 +1,4 @@
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/DrawSubmission.h"
 #include "Render/SceneView.h"
 #include <catch2/catch_approx.hpp>

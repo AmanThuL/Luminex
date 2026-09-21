@@ -12,7 +12,7 @@
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Texture/TextureBake.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
 #include "Engine/Upload/DdsUpload.h"
 #include "Engine/Upload/SceneEnvironment.h"
 

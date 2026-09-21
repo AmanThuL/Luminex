@@ -3,7 +3,7 @@
 /// @brief Builds built-in CPU mesh geometry.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
 
 #include <glm/glm.hpp>
 

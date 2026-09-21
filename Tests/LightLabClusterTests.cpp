@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Engine/Catalog/LightLab.h"
 
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/LocalLightMath.h"
+#include "Engine/Lights/LocalLightMath.h"
+#include "Engine/View/Camera.h"
 #include "Render/LightClusters.h"
 
 #include <catch2/catch_test_macros.hpp>

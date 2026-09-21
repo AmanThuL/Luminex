@@ -2,7 +2,7 @@
 #include "Core/Util/Sha256.h"
 #include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Catalog/SponzaLightRig.h"
-#include "Engine/Types/LocalLightMath.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
 #include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"

@@ -5,9 +5,9 @@
 
 #include "BrdfOracle.h"
 
+#include "Engine/Lights/LocalLight.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneTables.h"
-#include "Engine/Types/LocalLight.h"
-#include "Engine/Types/LocalLightMath.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

@@ -5,8 +5,8 @@
 
 #pragma once
 
+#include "Engine/Material/AlphaMode.h"
 #include "Engine/Scene/SceneTables.h"
-#include "Engine/Types/AlphaMode.h"
 
 #include <cstdint>
 

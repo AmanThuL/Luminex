@@ -1,7 +1,7 @@
 #include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/Scene.h"
-#include "Engine/Types/LocalLightMath.h"
 #include "GpuTestSupport.h"
 #include "Render/LightDebugStage.h"
 #include "Render/SceneViewBuilder.h"
