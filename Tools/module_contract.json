@@ -110,7 +110,8 @@
         "Source/Render/Renderer/RendererInternal.h",
         "Source/Render/Common/GraphResources.h",
         "Source/Render/Common/StageSetup.h",
-        "Source/Render/Common/PacedSlots.h"
+        "Source/Render/Common/PacedSlots.h",
+        "Source/Render/Common/DrawEncoding.h"
       ]
     },
     "app-model": {
