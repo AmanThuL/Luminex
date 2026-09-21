@@ -7,7 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Color.h"
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 #include "Render/TemporalResolve.h"
 #include <rojoRHI/CaptureSchema.h>
 

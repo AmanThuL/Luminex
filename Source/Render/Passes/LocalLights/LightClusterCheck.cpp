@@ -2,7 +2,7 @@
 /// @file LightClusterCheck.cpp
 /// @brief Counts exact GPU and CPU differences without hiding length or overflow mismatches.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/LightClusterCheck.h"
+#include "Render/Passes/LocalLights/LightClusterCheck.h"
 
 #include <algorithm>
 #include <array>

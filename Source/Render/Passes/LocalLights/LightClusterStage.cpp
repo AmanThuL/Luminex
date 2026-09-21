@@ -3,7 +3,7 @@
 /// @brief Allocates the paced froxel grid and declares deterministic count, scan and fill passes.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/LightClusterStage.h"
+#include "Render/Passes/LocalLights/LightClusterStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

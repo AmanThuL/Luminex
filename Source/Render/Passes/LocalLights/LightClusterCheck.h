@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 
 namespace lmx::render {
 /// Owned raw evidence from one checked declaration, retained only when list checking is enabled.

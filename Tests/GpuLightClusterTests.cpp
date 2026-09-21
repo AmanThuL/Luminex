@@ -2,8 +2,8 @@
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"
-#include "Render/LightClusterStage.h"
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusterStage.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 
 #include <algorithm>
 #include <format>
