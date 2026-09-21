@@ -67,6 +67,8 @@
         "glm"
       ],
       "privateHeaders": [
+        "Source/Engine/Scene/PacedTable.h",
+        "Source/Engine/Scene/SceneStorage.h",
         "Source/Engine/Upload/SceneEnvironment.h"
       ]
     },
