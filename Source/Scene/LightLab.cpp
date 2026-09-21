@@ -11,7 +11,7 @@
 #include "Core/Assert.h"
 #include "Core/Color.h"
 #include "Engine/Types/Mesh.h"
-#include "Scene/SceneEnvironment.h"
+#include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 

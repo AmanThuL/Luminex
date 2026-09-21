@@ -1,5 +1,5 @@
 #include "EngineTestSupport.h"
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 
 #include <catch2/catch_test_macros.hpp>
 

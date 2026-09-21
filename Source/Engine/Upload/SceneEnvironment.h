@@ -7,7 +7,7 @@
 
 #include "Asset/Asset.h"
 #include "Engine/Scene/Scene.h"
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 #include <rojoRHI/RHI.h>
 
 #include <memory>

@@ -3,7 +3,7 @@
 /// @brief Implements DDS decoding and GPU texture upload.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/DdsUpload.h"
+#include "Engine/Upload/DdsUpload.h"
 
 #include "Asset/DdsLoader.h"
 

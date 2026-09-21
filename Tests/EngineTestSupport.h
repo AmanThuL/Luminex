@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Asset/Ibl.h"
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/vec3.hpp>
