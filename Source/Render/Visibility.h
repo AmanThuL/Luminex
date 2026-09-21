@@ -5,6 +5,7 @@
 #pragma once
 
 #include "Core/Math/Aabb.h"
+#include "Core/Math/Frustum.h"
 #include "Engine/Scene/SceneTables.h"
 #include "Render/Occlusion.h"
 #include "Render/OcclusionCheck.h"
@@ -64,11 +65,8 @@ enum class VisibilityReason {
     NonFiniteTransform, ///< Object transform contains a nonfinite component.
     Occluded            ///< Rejected using the previous-frame HZB.
 };
-/// Five inward normalized half-spaces; reversed infinite projection has no far plane.
-struct FrustumPlanes {
-    std::array<glm::vec4, 5> planes{}; ///< Left, right, bottom, top, near; dot(n,p)+w >= 0 inside.
-    bool valid = false;                ///< Invalid projection conservatively bypasses candidates.
-};
+/// Five inward normalized half-spaces; an invalid frustum conservatively bypasses candidates.
+using FrustumPlanes = Frustum;
 /// An owned candidate record, independent of future scene object order.
 struct InstanceVisibility {
     uint64_t instanceIdentity = 0; ///< Opaque complete generational identity from declaration.

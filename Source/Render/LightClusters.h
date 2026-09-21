@@ -103,14 +103,15 @@ uint32_t clusterSlice(float depth, std::span<const float, kClusterSliceBoundaryC
 glm::uvec2 clusterTile(glm::uvec2 pixel, glm::uvec2 activeOrigin, glm::uvec2 activeExtent);
 
 /// Returns `tile`'s half-open pixel-edge span on one axis of an `extent`-wide active rectangle
-/// divided into `tileCount` tiles: `{ceilDiv(tile * extent, tileCount), ceilDiv((tile + 1) *
-/// extent, tileCount)}`, where `ceilDiv(a, b)` is `(a + b - 1) / b` in unsigned arithmetic. This is
-/// exactly the set of pixels `clusterTile` assigns to `tile`, so a froxel box built from these
-/// edges covers each of its pixels' whole area - `clusterTile` divides the pixel index while the
-/// shaded point is the pixel centre, and a rectangle cut at `tile * extent / tileCount` would leave
-/// the last pixel of a tile partly outside its own froxel. The span is empty
-/// (`low == high`) only when `extent < tileCount`; such a tile holds no pixel, is never looked up,
-/// and is never given lights. `tile` must be below `tileCount` and `tileCount` must be nonzero.
+/// divided into `tileCount` tiles: `{divRoundUp(tile * extent, tileCount), divRoundUp((tile + 1) *
+/// extent, tileCount)}`, where `divRoundUp(a, b)` (Core/Math/Scalar.h) is `(a + b - 1) / b` in
+/// unsigned arithmetic. This is exactly the set of pixels `clusterTile` assigns to `tile`, so a
+/// froxel box built from these edges covers each of its pixels' whole area - `clusterTile` divides
+/// the pixel index while the shaded point is the pixel centre, and a rectangle cut at
+/// `tile * extent / tileCount` would leave the last pixel of a tile partly outside its own froxel.
+/// The span is empty (`low == high`) only when `extent < tileCount`; such a tile holds no pixel, is
+/// never looked up, and is never given lights. `tile` must be below `tileCount` and `tileCount`
+/// must be nonzero.
 glm::uvec2 clusterTileEdges(uint32_t tile, uint32_t tileCount, uint32_t extent);
 
 /// Builds the grid and index list the `lmx.pass.light.count`/`scan`/`fill` kernels must reproduce
