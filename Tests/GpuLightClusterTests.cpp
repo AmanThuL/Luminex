@@ -1,9 +1,9 @@
 #include "GpuTestSupport.h"
 
+#include "Engine/Types/LocalLight.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/LightClusterStage.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLight.h"
-#include "Render/LocalLightMath.h"
 
 #include <algorithm>
 #include <format>
@@ -14,7 +14,7 @@ using namespace lmx::render;
 // A camera plus the jittered projection the scene pass would rasterize with; the same shape
 // LightClustersTests.cpp builds its mirror inputs from.
 struct TestView {
-    Camera camera;
+    lmx::engine::Camera camera;
     glm::mat4 projection{1.0f};
     uint32_t width = 0;
     uint32_t height = 0;
@@ -64,18 +64,19 @@ glm::vec3 pixelCentreViewPoint(const TestView& view, glm::uvec2 pixel, float dis
 }
 
 //======================================================================================================================
-LightRow makePoint(glm::vec3 position, float range) {
-    LocalLight light;
+lmx::engine::LightRow makePoint(glm::vec3 position, float range) {
+    lmx::engine::LocalLight light;
     light.position = position;
     light.range = range;
-    const auto row = makeLightRow(light);
+    const auto row = lmx::engine::makeLightRow(light);
     REQUIRE(row.has_value());
     return *row;
 }
 
 //======================================================================================================================
 // A tiny point light sitting exactly on a pixel centre at `distance`, in world space.
-LightRow makeProbe(const TestView& view, glm::uvec2 pixel, float distance, float range) {
+lmx::engine::LightRow makeProbe(const TestView& view, glm::uvec2 pixel, float distance,
+                                float range) {
     const glm::vec3 viewPoint = pixelCentreViewPoint(view, pixel, distance);
     const glm::mat4 viewToWorld = glm::inverse(view.camera.viewMatrix());
     return makePoint(glm::vec3{viewToWorld * glm::vec4(viewPoint, 1.0f)}, range);
@@ -87,7 +88,7 @@ uint32_t froxelIndex(glm::uvec2 tile, uint32_t slice) {
 }
 
 //======================================================================================================================
-uint32_t liveRows(const std::vector<LightRow>& rows, uint32_t rowCount) {
+uint32_t liveRows(const std::vector<lmx::engine::LightRow>& rows, uint32_t rowCount) {
     uint32_t live = 0;
     for (uint32_t row = 0; row < rowCount; ++row) {
         live += rows[row].boundRadius > 0.0f ? 1u : 0u;
@@ -114,16 +115,16 @@ double nextRange(Rng& rng, double low, double high) {
 //======================================================================================================================
 // 256 mixed point and spot lights spread over the volume the views below look into. LightLab does
 // not exist yet, so the field is built here and is a pure function of its seed.
-std::vector<LightRow> deterministicLightField(uint64_t seed) {
+std::vector<lmx::engine::LightRow> deterministicLightField(uint64_t seed) {
     Rng rng{seed};
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 256; ++i) {
-        LocalLight light;
+        lmx::engine::LocalLight light;
         light.position = {float(nextRange(rng, -25.0, 25.0)), float(nextRange(rng, -8.0, 12.0)),
                           float(nextRange(rng, -45.0, 10.0))};
         light.range = float(nextRange(rng, 0.3, 4.0));
         if (i % 3 == 0) {
-            light.type = LocalLightType::Spot;
+            light.type = lmx::engine::LocalLightType::Spot;
             const glm::vec3 direction{float(nextRange(rng, -1.0, 1.0)),
                                       float(nextRange(rng, -1.0, 1.0)),
                                       float(nextRange(rng, -1.0, 1.0))};
@@ -132,7 +133,7 @@ std::vector<LightRow> deterministicLightField(uint64_t seed) {
             light.innerCone = float(nextRange(rng, 0.05, 0.3));
             light.outerCone = light.innerCone + float(nextRange(rng, 0.05, 0.9));
         }
-        const auto row = makeLightRow(light);
+        const auto row = lmx::engine::makeLightRow(light);
         REQUIRE(row.has_value());
         rows.push_back(*row);
     }
@@ -164,8 +165,9 @@ struct ClusterRun {
 //======================================================================================================================
 // Declares, executes and retires one clustering frame, and builds the mirror over the same inputs.
 ClusterRun runClusters(rojoRHI::Device& device, LightClusterStage& stage,
-                       const std::vector<LightRow>& rows, const LightClusterParams& params) {
-    auto lights = device.createBuffer({.size = rows.size() * sizeof(LightRow),
+                       const std::vector<lmx::engine::LightRow>& rows,
+                       const LightClusterParams& params) {
+    auto lights = device.createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
                                        .storageRead = true,
                                        .label = "lmx.test.lightCluster.rows"},
                                       rows.data());
@@ -243,7 +245,7 @@ TEST_CASE("the GPU froxel grid equals the mirror over a 256-light field", "[gpu]
     auto stage = makeStage(**device);
     auto rows = deterministicLightField(0x9E3779B97F4A7C15ull);
     // A free slot must never be listed, on either side.
-    rows.push_back(LightRow{});
+    rows.push_back(lmx::engine::LightRow{});
 
     // A 1280x720 output, the same output at half render scale, and an odd extent that divides
     // neither 16 nor 9, so the pixel-aligned rectangles include straddling tiles.
@@ -283,7 +285,7 @@ TEST_CASE("froxel face and slice boundary probes equal the mirror", "[gpu][light
     const float farDistance = view.camera.nearZ / params.sliceDepth[slice + 1];
     // A millimetre light is far narrower than the half pixel separating the two tiles at this
     // distance, so each face probe belongs to exactly one froxel column.
-    std::vector<LightRow> rows{
+    std::vector<lmx::engine::LightRow> rows{
         makeProbe(view, {6, 3}, nearDistance, 0.001f),           // the last pixel of tile 0
         makeProbe(view, {7, 3}, nearDistance, 0.001f),           // the first pixel of tile 1
         makeProbe(view, {40, 20}, nearDistance, 0.001f),         // on the slice's near boundary
@@ -336,7 +338,7 @@ TEST_CASE("the open slice's conservative rule equals the mirror on the GPU",
     auto stage = makeStage(**device);
 
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{
+    const std::vector<lmx::engine::LightRow> rows{
         makePoint({0.0f, 0.0f, -500.0f}, 20.0f),   // far, on the view axis
         makeProbe(view, {1150, 40}, 400.0f, 1.0f), // far, off axis on one side
         makeProbe(view, {130, 680}, 400.0f, 1.0f), // far, off axis on the other
@@ -360,7 +362,7 @@ TEST_CASE("a near plane collapsing slices equals the mirror on the GPU", "[gpu][
 
     // nearZ 0.5 is past the first exponential boundaries, so the slices they close are degenerate.
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.5f, 1280, 720, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 60.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 60.0f)};
     const auto params = makeParams(view, 1);
     uint32_t degenerate = 0;
     for (uint32_t slice = 0; slice + 1 < kClusterSliceCount; ++slice) {
@@ -382,7 +384,7 @@ TEST_CASE("a tile owning no pixel lists nothing on the GPU either", "[gpu][light
 
     // Ten columns over sixteen tiles: six tiles own no pixel at all.
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 10, 8, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 60.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 60.0f)};
     const auto params = makeParams(view, 1);
     const auto run = runClusters(**device, *stage, rows, params);
     REQUIRE(run.mirror.counters.assigned > 0);
@@ -397,7 +399,7 @@ TEST_CASE("capacity overrides reproduce both overflow kinds on the GPU", "[gpu][
     auto stage = makeStage(**device);
 
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 10; ++i) {
         rows.push_back(makePoint({0.0f, 0.0f, 0.0f}, 1000.0f));
     }
@@ -440,12 +442,13 @@ TEST_CASE("the stage declares nothing without clustered lights", "[gpu][light-cl
     REQUIRE(device);
     auto stage = makeStage(**device);
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, -2.0f}, 4.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -2.0f}, 4.0f)};
     const auto params = makeParams(view, 1);
 
-    auto lights = (*device)->createBuffer(
-        {.size = sizeof(LightRow), .storageRead = true, .label = "lmx.test.lightCluster.rows"},
-        rows.data());
+    auto lights = (*device)->createBuffer({.size = sizeof(lmx::engine::LightRow),
+                                           .storageRead = true,
+                                           .label = "lmx.test.lightCluster.rows"},
+                                          rows.data());
     REQUIRE(lights);
     for (const bool clustered : {false, true}) {
         RenderGraph graph;
@@ -498,7 +501,7 @@ TEST_CASE("paced cluster slots retain exact shrinking lists and raster barriers"
     for (const uint32_t count : counts) {
         const auto params = makeParams(view, count);
         expected.push_back(buildLightClusters(rows, params));
-        auto buffer = (*device)->createBuffer({.size = rows.size() * sizeof(LightRow),
+        auto buffer = (*device)->createBuffer({.size = rows.size() * sizeof(lmx::engine::LightRow),
                                                .storageRead = true,
                                                .label = "lmx.test.shrinkingLightRows"},
                                               rows.data());

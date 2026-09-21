@@ -18,7 +18,7 @@ TEST_CASE("app options default to a windowed Sponza scene", "[app][options]") {
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Windowed);
-    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "sponza");
+    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath.empty());
     REQUIRE(result->maximized);
     REQUIRE(result->renderScale == 1.0f);
@@ -42,7 +42,7 @@ TEST_CASE("--windowed composes with --scene", "[app][options]") {
 
     REQUIRE(result);
     REQUIRE_FALSE(result->maximized);
-    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
 }
 
 //======================================================================================================================
@@ -67,7 +67,7 @@ TEST_CASE("app options select screenshot mode and a stable scene ID", "[app][opt
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Screenshot);
-    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "sponza");
+    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "sponza");
     REQUIRE(result->screenshotPath == "capture.bmp");
 }
 
@@ -406,7 +406,7 @@ TEST_CASE("the scene catalog's stable IDs match what the CLI advertises", "[app]
     const std::array<std::string_view, 8> expected = {
         "sponza",       "damaged-helmet", "milk-truck",     "material-lab",
         "temporal-lab", "san-miguel",     "visibility-lab", "light-lab"};
-    const std::span<const std::string_view> ids = lmx::scene::sceneStableIds();
+    const std::span<const std::string_view> ids = lmx::engine::sceneStableIds();
 
     REQUIRE(ids.size() == expected.size());
     for (size_t i = 0; i < expected.size(); ++i) {
@@ -432,7 +432,7 @@ TEST_CASE("app options keep the last repeated values and ignore a bare separator
 
     REQUIRE(result);
     REQUIRE(result->mode == RunMode::Screenshot);
-    REQUIRE(lmx::scene::sceneIdString(result->initialScene) == "damaged-helmet");
+    REQUIRE(lmx::engine::sceneIdString(result->initialScene) == "damaged-helmet");
     REQUIRE(result->screenshotPath == "last.bmp");
 }
 
@@ -635,12 +635,12 @@ TEST_CASE("local light options default to Clustered and the authored Sponza rig"
           "[app][options]") {
     const auto defaults = parseAppOptions({});
     REQUIRE(defaults);
-    REQUIRE(defaults->localLightMode == lmx::render::LocalLightMode::Clustered);
+    REQUIRE(defaults->localLightMode == lmx::engine::LocalLightMode::Clustered);
     REQUIRE(defaults->localLightRig);
     for (const auto& [text, mode] :
-         std::array{std::pair{"off", lmx::render::LocalLightMode::Off},
-                    std::pair{"direct", lmx::render::LocalLightMode::Direct},
-                    std::pair{"clustered", lmx::render::LocalLightMode::Clustered}}) {
+         std::array{std::pair{"off", lmx::engine::LocalLightMode::Off},
+                    std::pair{"direct", lmx::engine::LocalLightMode::Direct},
+                    std::pair{"clustered", lmx::engine::LocalLightMode::Clustered}}) {
         const std::array<std::string_view, 2> args{"--local-lights", text};
         const auto parsed = parseAppOptions(args);
         REQUIRE(parsed);

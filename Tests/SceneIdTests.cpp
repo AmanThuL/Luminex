@@ -1,11 +1,11 @@
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <limits>
 #include <type_traits>
 
-using namespace lmx::scene;
+using namespace lmx::engine;
 
 static_assert(!std::is_convertible_v<InstanceId, MeshId>);
 static_assert(!std::is_convertible_v<MeshId, MaterialId>);
@@ -16,7 +16,7 @@ TEST_CASE("Scene handles reject foreign stores and stale instance generations",
           "[scene][scene-tables]") {
     Scene first;
     Scene second;
-    const auto mesh = first.addMesh(lmx::render::makeCube(), "lmx.test.identity.mesh");
+    const auto mesh = first.addMesh(lmx::engine::makeCube(), "lmx.test.identity.mesh");
     const auto material = first.addMaterial({});
     const auto a = first.addObject({.mesh = mesh, .material = material});
     const auto b =
@@ -48,7 +48,7 @@ TEST_CASE("Scene handles reject foreign stores and stale instance generations",
 TEST_CASE("Scene identity exhaustion retires a slot instead of resurrecting stale handles",
           "[scene][scene-tables]") {
     Scene scene;
-    const auto mesh = scene.addMesh(lmx::render::makeCube(), "lmx.test.identity.exhaustion");
+    const auto mesh = scene.addMesh(lmx::engine::makeCube(), "lmx.test.identity.exhaustion");
     const auto material = scene.addMaterial({});
     const auto oldest = scene.addObject({.mesh = mesh, .material = material});
     auto current = oldest;
@@ -70,7 +70,7 @@ TEST_CASE("Scene identity exhaustion retires a slot instead of resurrecting stal
 TEST_CASE("Removing an instance preserves animation targets after dense editor indices shift",
           "[scene][scene-tables]") {
     Scene scene;
-    const auto mesh = scene.addMesh(lmx::render::makeCube(), "lmx.test.identity.tracks");
+    const auto mesh = scene.addMesh(lmx::engine::makeCube(), "lmx.test.identity.tracks");
     const auto material = scene.addMaterial({});
     const auto first = scene.addObject({.mesh = mesh, .material = material});
     const auto second = scene.addObject({.mesh = mesh, .material = material});

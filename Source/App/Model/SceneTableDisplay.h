@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Scene/SceneTableStats.h"
+#include "Engine/Scene/SceneTableStats.h"
 #include <array>
 #include <string>
 #include <string_view>
@@ -16,5 +16,5 @@ struct SceneTableField {
     std::string value;      ///< Complete value for this snapshot.
 };
 /// Formats a coherent table snapshot without querying GPU state.
-std::array<SceneTableField, 9> sceneTableFields(const scene::SceneTableStats& stats);
+std::array<SceneTableField, 9> sceneTableFields(const engine::SceneTableStats& stats);
 } // namespace lmx::app

@@ -9,8 +9,8 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
-#include "Scene/Scene.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Scene/Scene.h"
 
 #include <optional>
 #include <string>
@@ -23,8 +23,8 @@ inline constexpr const char* kScenePanelWindowName = "Hierarchy###Scene";
 
 /// Borrowed state for the compact subject Hierarchy; selection and search remain shell-owned.
 struct ScenePanelContext {
-    scene::SceneId activeSceneId;    ///< Catalog identity scoping this scene's tree state.
-    const scene::Scene& activeScene; ///< Flat scene whose subjects are grouped for navigation.
+    engine::SceneId activeSceneId;    ///< Catalog identity scoping this scene's tree state.
+    const engine::Scene& activeScene; ///< Flat scene whose subjects are grouped for navigation.
     SceneSession& session; ///< Applies light edits before prepareFrame and retains reset defaults.
     TemporalEditorState& temporalState; ///< Invalidates history when light enablement changes.
     EditorSelection& selection;         ///< Selected leaf, edited in place.
@@ -37,15 +37,15 @@ struct ScenePanelContext {
 /// Borrowed scene-loading state for File > Open Scene. Loading remains a shell frame-boundary
 /// action.
 struct SceneMenuContext {
-    const scene::SceneLibrary& library; ///< Catalog entries and availability explanations.
-    scene::SceneId activeSceneId;       ///< The currently rendered scene.
-    const SceneLoadState& loading;      ///< Persistent failure retained for an explicit Retry.
+    const engine::SceneLibrary& library; ///< Catalog entries and availability explanations.
+    engine::SceneId activeSceneId;       ///< The currently rendered scene.
+    const SceneLoadState& loading;       ///< Persistent failure retained for an explicit Retry.
 };
 
 /// Draws File's Open Scene submenu and returns a newly selected or retried catalog entry. Keeps
 /// the submenu open to present Loading before the shell consumes the request on the next frame.
 /// Call inside an open File menu; failures and unavailable-entry reasons remain visible here.
-std::optional<scene::SceneId> drawSceneMenu(const SceneMenuContext& context);
+std::optional<engine::SceneId> drawSceneMenu(const SceneMenuContext& context);
 
 /// Draws an indented Workspace and active-scene tree over a flat scene, with a fixed search/count
 /// header. Groups collapse independently; keyboard Up/Down visits only drawn leaves. Filtering

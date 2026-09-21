@@ -1,12 +1,13 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
-#include "Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 
 namespace {
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 namespace render = lmx::render;
 
 //======================================================================================================================
-render::MeshData visibilityQuad() {
+engine::MeshData visibilityQuad() {
     return {.vertices = {{-0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {0.2f, 0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -15,8 +16,8 @@ render::MeshData visibilityQuad() {
 }
 
 //======================================================================================================================
-scene::Scene visibilityScene() {
-    scene::Scene result;
+engine::Scene visibilityScene() {
+    engine::Scene result;
     result.name = "lmx.test.sceneTables";
     result.boundingSphere = {0.0f, 0.0f, -3.0f, 3.0f};
     for (auto& light : result.lights) {
@@ -41,7 +42,7 @@ std::unique_ptr<render::Renderer> visibilityRenderer(rojoRHI::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene::Scene& scene,
+std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, engine::Scene& scene,
                                                   render::Renderer& renderer,
                                                   render::SubmissionMode mode, bool cull,
                                                   bool wait = true) {
@@ -54,8 +55,8 @@ std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene
     auto prepared = scene.prepareFrame(device.frameNumber());
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
-    std::vector<render::DrawItem> items;
-    auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    std::vector<engine::DrawItem> items;
+    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     view.bloomEnabled = false;
     view.submission = mode;
     view.visibilityEnabled = cull;
@@ -63,7 +64,7 @@ std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene
     view.temporal.jitterEnabled = false;
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
-    renderer.render(commands, render::Camera{}, view, false);
+    renderer.render(commands, engine::Camera{}, view, false);
     commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
@@ -107,7 +108,7 @@ TEST_CASE("production visibility and submission modes preserve raster output",
     for (const glm::vec3 p : {glm::vec3{-100, 0, -3}, glm::vec3{100, 0, -3}, glm::vec3{0, -100, -3},
                               glm::vec3{0, 100, -3}, glm::vec3{0, 0, 3}})
         scene.addObject({.position = p, .mesh = mesh, .material = material});
-    const float edge = 3.0f * std::tan(render::Camera{}.fovY * 0.5f);
+    const float edge = 3.0f * std::tan(engine::Camera{}.fovY * 0.5f);
     scene.addObject({.position = {edge, 0, -3}, .mesh = mesh, .material = material});
     REQUIRE(scene.finalize(**device));
     auto renderer = visibilityRenderer(**device);
@@ -161,7 +162,7 @@ TEST_CASE("visibility buffers retain four overlapping frame lists and images",
         const auto pixels = visibilityPixels(*snapshots[frame]);
         for (uint32_t side = 0; side < 2; ++side) {
             const float x = side == 0 ? -0.6f : 0.6f;
-            const auto clip = render::Camera{}.projectionMatrix(1.0f) * glm::vec4(x, 0, -3, 1);
+            const auto clip = engine::Camera{}.projectionMatrix(1.0f) * glm::vec4(x, 0, -3, 1);
             const uint32_t pixelX = static_cast<uint32_t>((clip.x / clip.w * 0.5f + 0.5f) * kSize);
             const auto pixel = pixelAt(pixels, pixelX, kSize / 2);
             INFO("frame " << frame << " side " << side);
@@ -200,8 +201,8 @@ TEST_CASE("draw submission slots grow and retire with paced scene capacity",
             grownFrame = (*device)->frameNumber();
         }
         REQUIRE(scene.prepareFrame((*device)->frameNumber()));
-        std::vector<render::DrawItem> items;
-        auto view = scene.view(items, render::ShadowFilter::PCF, false);
+        std::vector<engine::DrawItem> items;
+        auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
         render::VisibilityResult camera;
         camera.visibleItems = {frame % 2};
         render::VisibilityResult shadow;

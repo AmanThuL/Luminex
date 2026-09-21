@@ -5,9 +5,10 @@
 
 #pragma once
 
-#include "Render/Camera.h"
-#include "Scene/Scene.h"
-#include "Scene/SponzaLightRig.h"
+#include "Engine/Catalog/SponzaLightRig.h"
+#include "Engine/Scene/Scene.h"
+#include "Engine/Types/Camera.h"
+#include "Render/SceneView.h"
 
 #include <array>
 #include <cstdint>
@@ -33,18 +34,18 @@ class SceneSession {
 public:
     /// Selects an already-loaded scene and restores its initial camera. Editor activation resets
     /// motion; headless startup preserves the loader's existing previous transforms exactly.
-    void activate(scene::Scene& scene, SceneActivationMotion motion);
+    void activate(engine::Scene& scene, SceneActivationMotion motion);
 
     /// The borrowed scene, or null before the first activation.
-    scene::Scene* activeScene() const { return m_scene; }
+    engine::Scene* activeScene() const { return m_scene; }
 
     /// The active scene, editable by its owner; asserts if no scene has been activated.
-    scene::Scene& scene() const;
+    engine::Scene& scene() const;
 
     /// The camera edited by the owner, including fly input and lens changes.
-    render::Camera& camera() { return m_camera; }
+    engine::Camera& camera() { return m_camera; }
     /// The camera used when declaring passes for this session.
-    const render::Camera& camera() const { return m_camera; }
+    const engine::Camera& camera() const { return m_camera; }
 
     /// Advances playing tracks by one bake-rate step and follows a camera track when requested.
     /// An active fly-camera override suppresses follow without pausing animation. Paused playback
@@ -73,12 +74,12 @@ public:
     rojoRHI::Result<void> prepareFrame(uint64_t frameNumber);
 
     /// Read-only diagnostics for the active scene's most recently prepared table slot.
-    scene::SceneTableStats tableStats() const;
+    engine::SceneTableStats tableStats() const;
 
     /// Fills caller-owned items and borrows them in the returned view. The view, items, camera, and
     /// scene resources must stay alive and unmodified through pass declaration and graph execution.
     /// Render settings and one-shot exposure/temporal state remain the caller's responsibility.
-    render::SceneView view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
+    render::SceneView view(std::vector<engine::DrawItem>& items, render::ShadowFilter filter,
                            bool wireframe) const;
 
     /// Collapses object motion after an activation or explicit discontinuity. A camera cut alone
@@ -103,7 +104,7 @@ public:
     void resetObject(size_t index);
 
     /// The original scene-linear light retained on first activation, before any editor changes.
-    const render::DirectionalLight& lightDefault(size_t index) const;
+    const engine::DirectionalLight& lightDefault(size_t index) const;
 
     /// Restores only the selected light, retaining all other light and object edits.
     void resetLight(size_t index);
@@ -123,14 +124,14 @@ public:
     rojoRHI::Result<void> setLocalLightRig(bool enabled);
 
     /// Authored light fields with orbit-owned position sampled at current time; null for stale IDs.
-    std::optional<render::LocalLight> localLightDefault(scene::LightId id) const;
+    std::optional<engine::LocalLight> localLightDefault(engine::LightId id) const;
     /// Whether this live light differs from its authored/current-track default.
-    bool localLightChanged(scene::LightId id) const;
+    bool localLightChanged(engine::LightId id) const;
     /// Validates and edits one live light before prepareFrame, retaining its original reset value.
-    rojoRHI::Result<void> editLocalLight(scene::LightId id, const render::LocalLight& light);
+    rojoRHI::Result<void> editLocalLight(engine::LightId id, const engine::LocalLight& light);
     /// Restores all authored fields and current orbit position; stale/foreign IDs return
     /// InvalidDesc.
-    rojoRHI::Result<void> resetLocalLight(scene::LightId id);
+    rojoRHI::Result<void> resetLocalLight(engine::LightId id);
     /// Whether the active scene exposes an authored LightLab grid and editable overflow pile.
     bool lightLabPileAvailable() const;
     /// Number of this session's currently live pile lights; unrelated additions are excluded.
@@ -144,18 +145,18 @@ public:
 private:
     struct Defaults {
         std::vector<asset::DecomposedTransform> objects;
-        std::array<render::DirectionalLight, 3> lights;
-        std::unordered_map<uint64_t, render::LocalLight> localLights;
-        std::vector<scene::LightId> pileLights;
+        std::array<engine::DirectionalLight, 3> lights;
+        std::unordered_map<uint64_t, engine::LocalLight> localLights;
+        std::vector<engine::LightId> pileLights;
     };
 
     void followCameraTrack();
     void rememberLocalLightDefaults();
 
-    scene::Scene* m_scene = nullptr;
-    render::Camera m_camera;
-    std::unordered_map<const scene::Scene*, Defaults> m_defaults;
-    std::unordered_map<const scene::Scene*, scene::SponzaLightRig> m_lightRigs;
+    engine::Scene* m_scene = nullptr;
+    engine::Camera m_camera;
+    std::unordered_map<const engine::Scene*, Defaults> m_defaults;
+    std::unordered_map<const engine::Scene*, engine::SponzaLightRig> m_lightRigs;
 };
 
 } // namespace lmx::app

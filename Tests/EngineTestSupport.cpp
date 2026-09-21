@@ -1,5 +1,5 @@
 #include "EngineTestSupport.h"
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -52,12 +52,12 @@ std::optional<std::filesystem::path> findRepoAsset(std::string_view relativePath
 }
 
 //======================================================================================================================
-scene::ibl::IblTextures makeUniformIbl(rojoRHI::Device& device, const glm::vec3& radiance,
-                                       std::string_view label) {
+engine::ibl::IblTextures makeUniformIbl(rojoRHI::Device& device, const glm::vec3& radiance,
+                                        std::string_view label) {
     // Face size 1: a constant environment carries no detail for a larger source to hold, and the
     // generators' output extents are fixed by asset::ibl regardless of what they read from.
     auto generated =
-        scene::ibl::generate(device, asset::ibl::makeConstantCubemap(radiance, 1), label);
+        engine::ibl::generate(device, asset::ibl::makeConstantCubemap(radiance, 1), label);
     REQUIRE(generated.has_value());
     return std::move(*generated);
 }

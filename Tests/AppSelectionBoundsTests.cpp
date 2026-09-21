@@ -16,9 +16,9 @@ using namespace lmx::app;
 
 //======================================================================================================================
 TEST_CASE("selection bounds transform all corners under rotation and negative scale", "[app]") {
-    scene::SceneObject object;
-    scene::Scene scene;
-    auto mesh = render::makeCube();
+    engine::SceneObject object;
+    engine::Scene scene;
+    auto mesh = engine::makeCube();
     for (auto& vertex : mesh.vertices) {
         vertex.px *= 2.0f;
         vertex.py *= 4.0f;
@@ -42,10 +42,10 @@ TEST_CASE("selection framing contains tiny and large geometry in portrait and wi
           "[app]") {
     for (const float size : {0.00001f, 100000.0f}) {
         for (const float aspect : {0.5f, 2.0f}) {
-            render::Camera camera;
+            engine::Camera camera;
             camera.yaw = 0.7f;
             camera.pitch = 0.2f;
-            const render::Aabb bounds{.minimum = glm::vec3(-size), .maximum = glm::vec3(size)};
+            const lmx::Aabb bounds{.minimum = glm::vec3(-size), .maximum = glm::vec3(size)};
             REQUIRE(frameSelection(camera, bounds, aspect));
             const auto matrix = camera.projectionMatrix(aspect) * camera.viewMatrix();
             for (unsigned corner = 0; corner < 8; ++corner) {
@@ -69,17 +69,17 @@ TEST_CASE("selection framing contains tiny and large geometry in portrait and wi
 //======================================================================================================================
 TEST_CASE("missing and invalid selection bounds remain unavailable without moving the camera",
           "[app]") {
-    scene::Scene scene;
+    engine::Scene scene;
     scene.objects.emplace_back();
     const EditorSelection selection{
-        .sceneId = scene::SceneId{0}, .subject = EditorSubject::Object, .index = 0};
+        .sceneId = engine::SceneId{0}, .subject = EditorSubject::Object, .index = 0};
     REQUIRE_FALSE(selectedObjectBounds(scene, selection));
     scene.objects[0].mesh = scene.addMesh({}, "selection.empty");
     REQUIRE_FALSE(selectedObjectBounds(scene, selection));
-    scene.objects[0].mesh = scene.addMesh(render::makeCube(), "selection.cube");
+    scene.objects[0].mesh = scene.addMesh(engine::makeCube(), "selection.cube");
     scene.objects[0].position.x = std::numeric_limits<float>::infinity();
     REQUIRE_FALSE(selectedObjectBounds(scene, selection));
-    render::Camera camera;
+    engine::Camera camera;
     camera.position = {1, 2, 3};
     REQUIRE_FALSE(frameSelection(camera, *scene.meshBounds(scene.objects[0].mesh), 0.0f));
     REQUIRE(camera.position == glm::vec3(1, 2, 3));

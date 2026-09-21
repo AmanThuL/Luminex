@@ -7,10 +7,10 @@
 
 #include "BrdfOracle.h"
 
-#include "Asset/GeometryGenerator.h"
-#include "Asset/Ibl.h"
-#include "Render/Camera.h"
-#include "Render/Mesh.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Texture/Ibl.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/Mesh.h"
 #include "Render/Renderer.h"
 
 #include <algorithm>
@@ -66,7 +66,7 @@ ClipExtent sphereClipExtent(const glm::mat4& viewProj, const glm::vec4& sphere) 
 
 //======================================================================================================================
 TEST_CASE("default camera looks down -Z", "[render]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.yaw = 0.0f;
     camera.pitch = 0.0f;
     REQUIRE(near3(camera.forward(), {0.0f, 0.0f, -1.0f}));
@@ -75,7 +75,7 @@ TEST_CASE("default camera looks down -Z", "[render]") {
 
 //======================================================================================================================
 TEST_CASE("view matrix moves the world opposite the camera", "[render]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0.0f, 0.0f, 5.0f};
     camera.yaw = 0.0f;
     camera.pitch = 0.0f;
@@ -86,7 +86,7 @@ TEST_CASE("view matrix moves the world opposite the camera", "[render]") {
 
 //======================================================================================================================
 TEST_CASE("projection maps near to 1 and the horizon to 0 -- reversed infinite far", "[render]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.nearZ = 0.1f;
     camera.farZ = 100.0f;
     const glm::mat4 proj = camera.projectionMatrix(16.0f / 9.0f);
@@ -116,7 +116,7 @@ TEST_CASE("projection maps near to 1 and the horizon to 0 -- reversed infinite f
 
 //======================================================================================================================
 TEST_CASE("look clamps pitch short of the poles", "[render]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.look(0.0f, 10.0f); // way past +90°
     // The clamp constant mirrors Camera::look's ±(π/2 − 0.01) contract.
     REQUIRE(camera.pitch < glm::half_pi<float>());
@@ -126,7 +126,7 @@ TEST_CASE("look clamps pitch short of the poles", "[render]") {
 
 //======================================================================================================================
 TEST_CASE("move is camera-relative on the horizontal plane", "[render]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0.0f, 0.0f, 0.0f};
     camera.yaw = glm::half_pi<float>(); // facing +X
     camera.pitch = 0.0f;
@@ -245,11 +245,11 @@ TEST_CASE("fromGeo copies every Engine vertex field verbatim", "[render]") {
     };
     geo.indices = {0, 1, 0};
 
-    const MeshData data = fromGeo(geo);
+    const lmx::engine::MeshData data = lmx::engine::fromGeo(geo);
     REQUIRE(data.indices == geo.indices);
     REQUIRE(data.vertices.size() == geo.vertices.size());
     for (size_t i = 0; i < data.vertices.size(); ++i) {
-        const Vertex& out = data.vertices[i];
+        const lmx::engine::Vertex& out = data.vertices[i];
         const lmx::asset::VertexPNTU& in = geo.vertices[i];
         REQUIRE(near3({out.px, out.py, out.pz}, {in.px, in.py, in.pz}));
         REQUIRE(near3({out.nx, out.ny, out.nz}, {in.nx, in.ny, in.nz}));
@@ -262,11 +262,11 @@ TEST_CASE("fromGeo copies every Engine vertex field verbatim", "[render]") {
 
 //======================================================================================================================
 TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") {
-    const MeshData cube = makeCube();
+    const lmx::engine::MeshData cube = lmx::engine::makeCube();
     REQUIRE(cube.vertices.size() == 24);
     REQUIRE(cube.indices.size() == 36);
     glm::vec3 lo{1e9f}, hi{-1e9f};
-    for (const Vertex& v : cube.vertices) {
+    for (const lmx::engine::Vertex& v : cube.vertices) {
         lo = glm::min(lo, {v.px, v.py, v.pz});
         hi = glm::max(hi, {v.px, v.py, v.pz});
     }
@@ -275,9 +275,9 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
     // Every triangle's geometric normal must agree with its vertices' stored normal --
     // this pins both winding (CCW from outside) and per-face normals in one property.
     for (size_t i = 0; i < cube.indices.size(); i += 3) {
-        const Vertex& a = cube.vertices[cube.indices[i]];
-        const Vertex& b = cube.vertices[cube.indices[i + 1]];
-        const Vertex& c = cube.vertices[cube.indices[i + 2]];
+        const lmx::engine::Vertex& a = cube.vertices[cube.indices[i]];
+        const lmx::engine::Vertex& b = cube.vertices[cube.indices[i + 1]];
+        const lmx::engine::Vertex& c = cube.vertices[cube.indices[i + 2]];
         const glm::vec3 geometric =
             glm::normalize(glm::cross(glm::vec3{b.px - a.px, b.py - a.py, b.pz - a.pz},
                                       glm::vec3{c.px - a.px, c.py - a.py, c.pz - a.pz}));
@@ -287,7 +287,7 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
     // the scene shader's normal-map branch is off for them (MaterialRow normal-map flag clear) --
     // so the tangent is a fixed placeholder rather than a per-face frame, and the uv is 0.
     // Pinned so that a future generator change has to say so out loud.
-    for (const Vertex& v : cube.vertices) {
+    for (const lmx::engine::Vertex& v : cube.vertices) {
         REQUIRE(near3({v.tx, v.ty, v.tz}, {1.0f, 0.0f, 0.0f}));
         REQUIRE(v.tw == 1.0f);
         REQUIRE(v.u == 0.0f);
@@ -297,10 +297,10 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
 
 //======================================================================================================================
 TEST_CASE("plane mesh spans its half extent with +Y normals", "[render]") {
-    const MeshData plane = makePlane(5.0f);
+    const lmx::engine::MeshData plane = lmx::engine::makePlane(5.0f);
     REQUIRE(plane.vertices.size() == 4);
     REQUIRE(plane.indices.size() == 6);
-    for (const Vertex& v : plane.vertices) {
+    for (const lmx::engine::Vertex& v : plane.vertices) {
         REQUIRE(v.py == 0.0f);
         REQUIRE(near3({v.nx, v.ny, v.nz}, {0.0f, 1.0f, 0.0f}));
         REQUIRE(std::abs(v.px) == Catch::Approx(5.0f));
@@ -324,11 +324,11 @@ TEST_CASE("the scene shader's specular mip count matches the IBL generator's", "
 //======================================================================================================================
 // The energy statement the whole material model rests on, made without a GPU.
 //
-// In a uniform environment of radiance E, Source/Asset/Ibl.h's generators reproduce E exactly at
-// every roughness -- the irradiance convolution and the prefilter both normalize by their own
-// accumulated weight -- so both image-based samples are E and the fragment reduces to E times the
-// surface's total reflectance. A white surface must then return E itself: it absorbs nothing, so
-// every photon that arrived has to leave.
+// In a uniform environment of radiance E, Source/Engine/Asset/Texture/Ibl.h's generators reproduce
+// E exactly at every roughness -- the irradiance convolution and the prefilter both normalize by
+// their own accumulated weight -- so both image-based samples are E and the fragment reduces to E
+// times the surface's total reflectance. A white surface must then return E itself: it absorbs
+// nothing, so every photon that arrived has to leave.
 //
 // That closure is algebraic rather than approximate, which is why this runs as a unit test at
 // float precision before Tests/GpuRendererTests.cpp measures it through the pipeline. For albedo 1

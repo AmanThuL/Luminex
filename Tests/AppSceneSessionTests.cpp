@@ -15,12 +15,12 @@ using lmx::app::SceneActivationMotion;
 using lmx::app::SceneSession;
 namespace asset = lmx::asset;
 namespace render = lmx::render;
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 
 //======================================================================================================================
-scene::Scene makeSessionScene() {
-    scene::Scene result;
-    const auto mesh = result.addMesh(render::makeCube(), "lmx.test.session");
+engine::Scene makeSessionScene() {
+    engine::Scene result;
+    const auto mesh = result.addMesh(engine::makeCube(), "lmx.test.session");
     const auto material = result.addMaterial({});
     result.addObject({.name = "session object",
                       .position = {7.0f, 0.0f, 0.0f},
@@ -50,7 +50,7 @@ scene::Scene makeSessionScene() {
 //======================================================================================================================
 TEST_CASE("SceneSession activation restores camera and preserves each caller's motion policy",
           "[app][scene-session]") {
-    scene::Scene first = makeSessionScene();
+    engine::Scene first = makeSessionScene();
     SceneSession session;
     REQUIRE(session.activeScene() == nullptr);
     session.activate(first, SceneActivationMotion::PreserveLoadedMotion);
@@ -64,7 +64,7 @@ TEST_CASE("SceneSession activation restores camera and preserves each caller's m
     REQUIRE(session.camera().farZ == first.initialCamera.farZ);
     REQUIRE(first.objects[0].previousModel == glm::mat4(1.0f));
 
-    scene::Scene second = makeSessionScene();
+    engine::Scene second = makeSessionScene();
     second.animationTime = 0.75;
     second.objects[0].position.x = 12.0f;
     second.initialCamera.position.x = -3.0f;
@@ -81,7 +81,7 @@ TEST_CASE("SceneSession activation restores camera and preserves each caller's m
 //======================================================================================================================
 TEST_CASE("SceneSession editor playback preserves paused follow and fly-camera override",
           "[app][scene-session]") {
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     SceneSession session;
     session.activate(scene, SceneActivationMotion::Reset);
     session.camera().fovY = 1.2f;
@@ -116,7 +116,7 @@ TEST_CASE("SceneSession editor playback preserves paused follow and fly-camera o
 //======================================================================================================================
 TEST_CASE("SceneSession screenshot keeps authored frame zero before fixed-step playback",
           "[app][scene-session]") {
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     SceneSession session;
     session.activate(scene, SceneActivationMotion::PreserveLoadedMotion);
     session.prepareScreenshotFrame(0);
@@ -135,7 +135,7 @@ TEST_CASE("SceneSession screenshot keeps authored frame zero before fixed-step p
 //======================================================================================================================
 TEST_CASE("SceneSession sequence samples absolute frames across the looping clip boundary",
           "[app][scene-session]") {
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     scene.animation.duration = 3.0 / asset::kAnimationBakeRate;
     scene.animation.tracks[0].keys.back().time = scene.animation.duration;
     scene.animation.tracks[0].keys.back().translation.x = 3.0f;
@@ -164,7 +164,7 @@ TEST_CASE("SceneSession sequence samples absolute frames across the looping clip
 TEST_CASE("SceneSession view borrows item storage while commit and rewind preserve frame ownership",
           "[app][scene-session]") {
     FakeDevice device;
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     scene.material(scene.objects[0].material).roughness = 0.25f;
     REQUIRE(scene.finalize(device));
     SceneSession session;
@@ -172,7 +172,7 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
     session.advanceEditorFrame(true, false, false);
     device.frame = 1;
     REQUIRE(session.prepareFrame(device.frameNumber()));
-    std::vector<render::DrawItem> items;
+    std::vector<engine::DrawItem> items;
     const render::SceneView view = session.view(items, render::ShadowFilter::PCSS, true);
     REQUIRE(view.items.data() == items.data());
     REQUIRE(view.items.size() == 1);
@@ -181,12 +181,12 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
     REQUIRE(view.items[0].mesh.indexCount == scene.tryMesh(scene.objects[0].mesh)->indexCount);
     REQUIRE(view.shadowFilter == render::ShadowFilter::PCSS);
     REQUIRE(view.wireframe);
-    render::InstanceRow instance;
+    engine::InstanceRow instance;
     view.tables.instances->readback(&instance, sizeof(instance));
     REQUIRE(instance.model[3].x == Catch::Approx(1.0f));
     REQUIRE(instance.previousModel[3].x == 7.0f);
     scene.material(scene.objects[0].material).roughness = 0.75f;
-    render::MaterialRow material;
+    engine::MaterialRow material;
     view.tables.materials->readback(&material, sizeof(material));
     REQUIRE(material.roughness == 0.25f);
     session.commitFrame();
@@ -206,7 +206,7 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
 //======================================================================================================================
 TEST_CASE("SceneSession playback includes camera and emissive tracks but leaves static clocks idle",
           "[app][scene-session]") {
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     scene.animation.tracks.clear();
     SceneSession session;
     session.activate(scene, SceneActivationMotion::Reset);
@@ -242,9 +242,9 @@ TEST_CASE("SceneSession playback includes camera and emissive tracks but leaves 
 TEST_CASE("SceneSession::stepAnimation advances an orbit-tracked light by exactly one bake-rate "
           "step",
           "[app][scene-session]") {
-    scene::Scene scene = makeSessionScene();
+    engine::Scene scene = makeSessionScene();
     scene.animation.tracks.clear();
-    const auto lightId = scene.addLight({.type = render::LocalLightType::Point,
+    const auto lightId = scene.addLight({.type = engine::LocalLightType::Point,
                                          .position = {0.0f, 0.0f, 0.0f},
                                          .colour = {1.0f, 1.0f, 1.0f},
                                          .intensity = 1.0f,
@@ -269,7 +269,7 @@ TEST_CASE("SceneSession::stepAnimation advances an orbit-tracked light by exactl
     session.stepAnimation();
 
     REQUIRE(scene.animationTime == 1.0 / asset::kAnimationBakeRate);
-    const render::LocalLight* moved = scene.light(*lightId);
+    const engine::LocalLight* moved = scene.light(*lightId);
     REQUIRE(moved != nullptr);
     REQUIRE(std::abs(moved->position.x - 2.0f) < 1e-4f);
     REQUIRE(std::abs(moved->position.y) < 1e-4f);
@@ -332,8 +332,8 @@ TEST_CASE(
 //======================================================================================================================
 TEST_CASE("SceneSession local-light reset uses full identities and current orbit position",
           "[app][scene-session][local-light-editor]") {
-    scene::Scene scene;
-    render::LocalLight authored;
+    engine::Scene scene;
+    engine::LocalLight authored;
     authored.position = {1.0f, 2.0f, 3.0f};
     const auto id = scene.addLight(authored);
     REQUIRE(id);
@@ -370,11 +370,11 @@ TEST_CASE("SceneSession local-light reset uses full identities and current orbit
 //======================================================================================================================
 TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and obey capacity",
           "[app][scene-session][local-light-editor]") {
-    scene::Scene scene;
+    engine::Scene scene;
     scene.lightLabGridCount = 2;
-    const auto grid0 = scene.addLight(render::LocalLight{});
-    const auto grid1 = scene.addLight(render::LocalLight{});
-    const auto authoredPile = scene.addLight(render::LocalLight{});
+    const auto grid0 = scene.addLight(engine::LocalLight{});
+    const auto grid1 = scene.addLight(engine::LocalLight{});
+    const auto authoredPile = scene.addLight(engine::LocalLight{});
     REQUIRE(grid0);
     REQUIRE(grid1);
     REQUIRE(authoredPile);
@@ -387,10 +387,10 @@ TEST_CASE("SceneSession pile edits preserve grid and unrelated identities and ob
     REQUIRE_FALSE(session.resetLocalLight(*authoredPile));
     REQUIRE(scene.light(*grid0));
     REQUIRE(scene.light(*grid1));
-    const auto unrelated = scene.addLight(render::LocalLight{});
+    const auto unrelated = scene.addLight(engine::LocalLight{});
     REQUIRE(unrelated);
-    REQUIRE(session.lightLabPileCapacity() == render::kMaxLocalLights - 3);
-    REQUIRE_FALSE(session.setLightLabPile(render::kMaxLocalLights - 2));
+    REQUIRE(session.lightLabPileCapacity() == engine::kMaxLocalLights - 3);
+    REQUIRE_FALSE(session.setLightLabPile(engine::kMaxLocalLights - 2));
     REQUIRE(scene.localLights().size() == 3);
     REQUIRE(session.setLightLabPile(140));
     REQUIRE(session.lightLabPileCount() == 140);

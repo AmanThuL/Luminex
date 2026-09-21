@@ -26,7 +26,7 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
 
 /// Serializes one sequence frame's camera, settings, reconstruction, and history state.
 /// Frame is the zero-based simulation frame at 60 Hz; ordinal excludes unsaved warmup frames.
-std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
+std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const engine::Camera& camera,
                               const render::SceneView& view, const render::TemporalStatus& status,
                               std::string_view filename, TemporalMode requested,
                               const render::VisibilityStatus* visibility = nullptr,
@@ -36,7 +36,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
 /// requested number of saved frames (total rendered frames for a screenshot); simulationFrame
 /// is the zero-based rendered frame including warmup. Device and status describe the actual run.
 std::string captureFrameMetadataJson(
-    scene::SceneId scene, uint32_t frameCount, uint32_t simulationFrame, TemporalMode requested,
+    engine::SceneId scene, uint32_t frameCount, uint32_t simulationFrame, TemporalMode requested,
     render::TemporalDebugView debugView, float renderScale, const render::TemporalStatus& status,
     std::string_view device, bool visibilityEnabled = true,
     render::SubmissionMode submission = render::SubmissionMode::Indirect,

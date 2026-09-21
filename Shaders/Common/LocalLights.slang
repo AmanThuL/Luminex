@@ -5,7 +5,7 @@ module LocalLights;
 import Lighting;
 import SceneTables;
 
-// Mirrors lmx::render::LocalLightMode.
+// Mirrors lmx::engine::LocalLightMode.
 public static const uint kLocalLightModeOff = 0u;
 public static const uint kLocalLightModeDirect = 1u;
 public static const uint kLocalLightModeClustered = 2u;

@@ -14,8 +14,8 @@ namespace lmx::app {
 /// from becoming two parallel settings.
 struct EditorRenderSettings {
     /// Local-light path.
-    render::LocalLightMode localLightMode = render::LocalLightMode::Clustered;
-    render::LightDebugView lightDebugView = render::LightDebugView::Off; ///< Lighting diagnostic.
+    engine::LocalLightMode localLightMode = engine::LocalLightMode::Clustered;
+    engine::LightDebugView lightDebugView = engine::LightDebugView::Off; ///< Lighting diagnostic.
     bool lightCheck = false;       ///< Exact retired CPU/GPU light-list comparison, unscored.
     bool visibilityEnabled = true; ///< Conservatively culls camera-view instances.
     render::ClassifyMode classifyMode = render::ClassifyMode::Cpu; ///< Visibility classifier.

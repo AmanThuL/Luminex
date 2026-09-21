@@ -1,6 +1,7 @@
 #include "GpuRendererTestSupport.h"
 
-#include "Asset/TextureBake.h"
+#include "Engine/Asset/Texture/TextureBake.h"
+#include "Render/SceneViewBuilder.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -99,21 +100,22 @@ std::string digest(const Bytes& bytes) {
 }
 
 //======================================================================================================================
-LocalLightMode modeFor(size_t history, uint32_t frame) {
+lmx::engine::LocalLightMode modeFor(size_t history, uint32_t frame) {
     if (history < 2)
-        return LocalLightMode::Off;
+        return lmx::engine::LocalLightMode::Off;
     if (history == 2)
-        return LocalLightMode::Direct;
+        return lmx::engine::LocalLightMode::Direct;
     if (history == 3)
-        return LocalLightMode::Clustered;
-    constexpr std::array modes{LocalLightMode::Off, LocalLightMode::Direct,
-                               LocalLightMode::Clustered};
+        return lmx::engine::LocalLightMode::Clustered;
+    constexpr std::array modes{lmx::engine::LocalLightMode::Off,
+                               lmx::engine::LocalLightMode::Direct,
+                               lmx::engine::LocalLightMode::Clustered};
     return modes[(frame / 3) % modes.size()];
 }
 
 //======================================================================================================================
-void compareHistories(rojoRHI::Device& device, const char* sceneName, const Camera& camera,
-                      uint32_t width, uint32_t height,
+void compareHistories(rojoRHI::Device& device, const char* sceneName,
+                      const lmx::engine::Camera& camera, uint32_t width, uint32_t height,
                       const std::function<SceneView(uint64_t)>& prepare) {
     std::ofstream report;
     std::filesystem::path reportPath;
@@ -180,7 +182,8 @@ void compareHistories(rojoRHI::Device& device, const char* sceneName, const Came
                     device.endFrame(nullptr);
                     device.waitIdle();
                     renderer.drainLightingAfterIdle();
-                    REQUIRE(renderer.lightingStatus().effective == LocalLightMode::Off);
+                    REQUIRE(renderer.lightingStatus().effective ==
+                            lmx::engine::LocalLightMode::Off);
                     REQUIRE(renderer.lightingStatus().liveLightCount == 0);
                     const auto status = renderer.temporalStatus();
                     REQUIRE(status.vendorFallback == VendorFallback::None);
@@ -210,9 +213,10 @@ void compareHistories(rojoRHI::Device& device, const char* sceneName, const Came
                     renderer.exposureBuffer().readback(image[6].data(), image[6].size());
                     const std::array buffers{view.tables.instances, view.tables.materials,
                                              view.tables.meshes};
-                    const std::array sizes{size_t{view.tables.instanceCount} * sizeof(InstanceRow),
-                                           size_t{view.tables.materialCount} * sizeof(MaterialRow),
-                                           size_t{view.tables.meshCount} * sizeof(MeshRow)};
+                    const std::array sizes{
+                        size_t{view.tables.instanceCount} * sizeof(lmx::engine::InstanceRow),
+                        size_t{view.tables.materialCount} * sizeof(lmx::engine::MaterialRow),
+                        size_t{view.tables.meshCount} * sizeof(lmx::engine::MeshRow)};
                     for (size_t i = 0; i < buffers.size(); ++i) {
                         REQUIRE(buffers[i] != nullptr);
                         image[7 + i].resize(sizes[i]);
@@ -288,9 +292,9 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
           "[gpu][zero-light-history]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto cube = fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.zeroLight.cube");
+    auto cube = fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.zeroLight.cube");
     REQUIRE(cube);
-    auto sky = fixtureMesh(**device, fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
+    auto sky = fixtureMesh(**device, lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
                            "lmx.test.zeroLight.sky");
     REQUIRE(sky);
     const uint32_t skyTexel = 0xffff8000u;
@@ -316,9 +320,9 @@ TEST_CASE("zero-light requested modes preserve controlled GPU histories",
                                          std::span{&maskMip, 1});
     REQUIRE(mask);
     auto items = twoCubeScene(*cube);
-    items[1].material.alphaMode = AlphaMode::Mask;
+    items[1].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[1].material.diffuse = mask->get();
-    const std::array disabled{LocalLight{.range = 2.0f, .enabled = false}};
+    const std::array disabled{lmx::engine::LocalLight{.range = 2.0f, .enabled = false}};
     FixtureSceneView fixture = litSceneView(items);
     fixture.skySphere = &*sky;
     fixture.skyCubemap = cubemap->get();
@@ -337,7 +341,7 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
           "[.][gpu][zero-light-history-sponza]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::scene::loadSponzaScene(**device);
+    auto scene = lmx::engine::loadSponzaScene(**device);
     REQUIRE(scene);
     const std::vector ids((*scene)->localLights().begin(), (*scene)->localLights().end());
     for (const auto id : ids) {
@@ -345,7 +349,7 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
         light.enabled = false;
         REQUIRE((*scene)->updateLight(id, light));
     }
-    Camera camera;
+    lmx::engine::Camera camera;
     const glm::vec3 center{(*scene)->boundingSphere};
     const float radius = (*scene)->boundingSphere.w;
     camera.position = center + glm::vec3(radius * 0.6f, 0, 0);
@@ -354,9 +358,9 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
     camera.fovY = glm::radians(45.0f);
     camera.nearZ = 0.05f;
     camera.farZ = radius * 20.0f;
-    std::vector<DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     compareHistories(**device, "sponza-frozen-camera", camera, 1280, 720, [&](uint64_t frame) {
         REQUIRE((*scene)->prepareFrame(frame));
-        return (*scene)->view(items, ShadowFilter::PCF, false);
+        return buildSceneView(**scene, items, ShadowFilter::PCF, false);
     });
 }

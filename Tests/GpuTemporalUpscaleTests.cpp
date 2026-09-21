@@ -20,7 +20,7 @@ TEST_CASE("an upscaled frame fills the display target", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -99,7 +99,7 @@ TEST_CASE("the spatial upscale keeps a constant radiance constant", "[gpu][tempo
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -167,7 +167,7 @@ TEST_CASE("motion at half scale matches the render-extent oracle", "[gpu][tempor
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -234,10 +234,10 @@ TEST_CASE("upscaled accumulation settles a static jittered frame", "[gpu][tempor
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -286,10 +286,10 @@ TEST_CASE("upscaled accumulation recovers detail the render extent cannot hold",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -332,10 +332,10 @@ TEST_CASE("upscaled accumulation keeps thin geometry's brightness", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     // The M6.2 thin-geometry framing: the poles stand on the floor and entirely below the horizon,
@@ -414,10 +414,10 @@ TEST_CASE("an upscaled moving quad leaves no trail behind it", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();
@@ -507,10 +507,10 @@ TEST_CASE("a gradual render-scale change reuses the history", "[gpu][temporal]")
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -598,10 +598,10 @@ TEST_CASE("an oscillating render scale allocates nothing and does not ghost", "[
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = movingQuadCamera();

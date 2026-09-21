@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Scene/Scene.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Scene/Scene.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>
@@ -12,8 +12,8 @@
 TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[gpu][san-miguel]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    lmx::scene::SceneLibrary library(**device);
-    const auto id = lmx::scene::parseSceneId("san-miguel");
+    lmx::engine::SceneLibrary library(**device);
+    const auto id = lmx::engine::parseSceneId("san-miguel");
     REQUIRE(id.has_value());
     if (!library.entry(*id).available) {
         SKIP("Optional San Miguel absent; xmake setup --san-miguel installs it");
@@ -25,7 +25,7 @@ TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[
     REQUIRE_FALSE(scene.objects.empty());
     REQUIRE(std::ranges::any_of(scene.objects, [&scene](const auto& object) {
         const auto& material = scene.material(object.material);
-        return material.alphaMode == lmx::render::AlphaMode::Mask && material.doubleSided &&
+        return material.alphaMode == lmx::engine::AlphaMode::Mask && material.doubleSided &&
                material.diffuse.has_value();
     }));
     REQUIRE(std::ranges::any_of(scene.objects, [&scene](const auto& object) {

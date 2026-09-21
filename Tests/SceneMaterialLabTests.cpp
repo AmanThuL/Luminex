@@ -1,4 +1,5 @@
 #include "EngineSceneTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 
 //======================================================================================================================
 // Deterministic diagnostics with an internal neutral-environment fallback, so this loads with no
@@ -64,7 +65,7 @@ TEST_CASE("loadMaterialLabScene uses its neutral fallback when the studio enviro
         REQUIRE((*scene)->prefilteredEnvMap != nullptr);
         REQUIRE((*scene)->dfgLut != nullptr);
         REQUIRE(std::any_of(std::begin((*scene)->lights), std::end((*scene)->lights),
-                            [](const render::DirectionalLight& light) {
+                            [](const lmx::engine::DirectionalLight& light) {
                                 return glm::length(light.strength) > 0.0f;
                             }));
     };
@@ -88,7 +89,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
     auto scene = loadMaterialLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
-    for (const render::DirectionalLight& light : (*scene)->lights) {
+    for (const lmx::engine::DirectionalLight& light : (*scene)->lights) {
         REQUIRE(near3(light.strength, glm::vec3(0.0f)));
     }
 }
@@ -132,7 +133,7 @@ TEST_CASE("loadMaterialLabScene's depth lane is framed by a horizontal camera pa
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = (*scene)->initialCamera.position;
     camera.yaw = (*scene)->initialCamera.yaw;
     camera.pitch = (*scene)->initialCamera.pitch;
@@ -172,7 +173,7 @@ TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent"
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = (*scene)->initialCamera.position;
     camera.yaw = (*scene)->initialCamera.yaw;
     camera.pitch = (*scene)->initialCamera.pitch;
@@ -199,7 +200,7 @@ TEST_CASE("loadMaterialLabScene arranges texture diagnostics in a horizontally p
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = (*scene)->initialCamera.position;
     camera.position.x = 14.0f;
     camera.yaw = (*scene)->initialCamera.yaw;
@@ -351,7 +352,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 
     // A bespoke camera centred between the patch row and ramp in their horizontal texture lane.
     // Only those selected draw items are submitted, isolating the colour pipeline under test.
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {14.0f, 0.75f, 8.5f};
     camera.fovY = glm::radians(45.0f);
     camera.nearZ = 0.1f;
@@ -359,9 +360,9 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
-    std::vector<render::DrawItem> allItems;
-    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> allItems;
+    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
+    std::vector<lmx::engine::DrawItem> items;
     std::vector<glm::vec3> patchPositions;
     for (const Patch& patch : kPatches) {
         const SceneObject* object =
@@ -377,14 +378,14 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     view.tables = (*scene)->tables();
     // A white uniform environment and no analytic lights: every patch is lit only by the
     // image-based terms, which for a constant environment are that environment's own radiance
-    // (Asset/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
-    // about the geometry of a light rig enters the expectation.
-    const lmx::scene::ibl::IblTextures environment =
+    // (Engine/Asset/Texture/Ibl.h) -- so what reaches the target is the patch's total reflectance
+    // and nothing about the geometry of a light rig enters the expectation.
+    const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.patchFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
     view.dfgLut = environment.dfgLut.get();
-    for (render::DirectionalLight& light : view.lights) {
+    for (lmx::engine::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
     view.boundingSphere = {14.0f, 0.75f, 0.0f, 5.0f};
@@ -466,9 +467,10 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // Exit-gate check: Metal's blit generateMipmaps was measured to point-pick, not filter, so a
 // point-picked mip of MaterialLab's 1-texel checkerboard (makeCheckerboardPixels) reads solid
 // black or solid white -- stepping by a power of two always lands on the same parity. A correctly
-// box-filtered chain (Source/Asset/TextureBake.h's bakeMips, the same function the offline bake
-// tool uses) instead converges every level above 0 to an exact uniform mid-gray, because every 2x2
-// block of a 1-texel checkerboard contains exactly two black and two white texels.
+// box-filtered chain (Source/Engine/Asset/Texture/TextureBake.h's bakeMips, the same function the
+// offline bake tool uses) instead converges every level above 0 to an exact uniform mid-gray,
+// because every 2x2 block of a 1-texel checkerboard contains exactly two black and two white
+// texels.
 //
 // The bespoke camera sits 10 world units from the probe -- a 1x1 unit quad at that distance,
 // against a 64px target and 45-degree vertical FOV, covers roughly 8 screen pixels while sampling
@@ -505,7 +507,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     // 10 world units back from the probe, on the +Z side its quad normal faces (the probe's front
     // face is invisible from initialCamera on the other side by construction -- see
     // MaterialLab.cpp's file-level comment).
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = probe->position + glm::vec3(0.0f, 0.0f, 10.0f);
     camera.fovY = glm::radians(45.0f);
     camera.nearZ = 0.1f;
@@ -513,20 +515,20 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
 
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
-    std::vector<render::DrawItem> allItems;
-    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> allItems;
+    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
+    std::vector<lmx::engine::DrawItem> items;
     items.push_back(allItems[static_cast<size_t>(probe - (*scene)->objects.data())]);
 
     render::SceneView view;
     view.items = items;
     view.tables = (*scene)->tables();
-    const lmx::scene::ibl::IblTextures environment =
+    const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.mipProbeFurnace");
     view.irradiance = environment.irradiance.get();
     view.prefilteredEnv = environment.prefilteredEnv.get();
     view.dfgLut = environment.dfgLut.get();
-    for (render::DirectionalLight& light : view.lights) {
+    for (lmx::engine::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
     view.boundingSphere = {probe->position.x, probe->position.y, probe->position.z, 2.0f};

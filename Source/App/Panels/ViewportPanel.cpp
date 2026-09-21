@@ -40,7 +40,7 @@ void drawToolbar(const ViewportPanelContext& context) {
                            context.activeSceneName.data() + context.activeSceneName.size());
     nextToolbarItem(ImGui::CalcTextSize("Reset camera").x + ImGui::GetStyle().FramePadding.x * 2);
     if (ImGui::Button("Reset camera")) {
-        context.camera = scene::cameraFromScene(context.scene.initialCamera);
+        context.camera = engine::cameraFromScene(context.scene.initialCamera);
         context.settings.followCameraTrack = false;
         requestCameraCut(context.temporalState);
     }
@@ -131,13 +131,13 @@ void drawToolbar(const ViewportPanelContext& context) {
 
 //======================================================================================================================
 void drawLegend(const ViewportPanelContext& context) {
-    if (context.settings.lightDebugView != render::LightDebugView::Off) {
+    if (context.settings.lightDebugView != engine::LightDebugView::Off) {
         const auto legend = diagnosticLegend(context.settings.lightDebugView);
         ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
         nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
                         ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button("Return to Final"))
-            context.settings.lightDebugView = render::LightDebugView::Off;
+            context.settings.lightDebugView = engine::LightDebugView::Off;
         if (context.scene.enabledLightCount() == 0)
             ImGui::TextWrapped(
                 "Requested view unavailable: no enabled local lights. Showing Final.");

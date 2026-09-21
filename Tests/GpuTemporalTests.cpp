@@ -20,7 +20,7 @@ TEST_CASE("the temporal-off frame declares the pre-temporal graph", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -63,7 +63,7 @@ TEST_CASE("a temporal frame declares the motion, resolve and debug view passes",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -111,7 +111,7 @@ TEST_CASE("a raw temporal frame declares the commit copy and no resolve", "[gpu]
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -158,7 +158,7 @@ TEST_CASE("an upscaled raw temporal frame declares the spatial commit", "[gpu][t
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -218,7 +218,7 @@ TEST_CASE("an upscaled native TAA frame declares the temporal upscale", "[gpu][t
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -318,7 +318,7 @@ TEST_CASE("a scale-1 frame after a scale change declares the upscale kernel once
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.temporalCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.temporalCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 

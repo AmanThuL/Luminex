@@ -1,5 +1,6 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
-#include "Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 
 #include <algorithm>
 #include <cmath>
@@ -7,7 +8,7 @@
 
 namespace {
 namespace render = lmx::render;
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 
 constexpr uint32_t kRejectedCount = 15;
 
@@ -17,7 +18,7 @@ struct ContributionTargets {
 };
 
 //======================================================================================================================
-render::MeshData contributionQuad() {
+engine::MeshData contributionQuad() {
     return {.vertices = {{-0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {0.2f, 0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -26,8 +27,8 @@ render::MeshData contributionQuad() {
 }
 
 //======================================================================================================================
-scene::Scene contributionScene(rojoRHI::Device& device) {
-    scene::Scene result;
+engine::Scene contributionScene(rojoRHI::Device& device) {
+    engine::Scene result;
     result.name = "lmx.test.visibility.contribution";
     result.boundingSphere = {0, 0, -2, 4};
     for (auto& light : result.lights)
@@ -45,7 +46,7 @@ scene::Scene contributionScene(rojoRHI::Device& device) {
     REQUIRE(texture);
     const auto cutout = result.addTexture(std::move(*texture));
     const auto mesh = result.addMesh(contributionQuad(), "lmx.test.visibility.quad");
-    std::array<scene::MaterialId, 3> materials;
+    std::array<engine::MaterialId, 3> materials;
     for (uint32_t variant = 0; variant < materials.size(); ++variant) {
         glm::vec3 emissive{0};
         emissive[variant] = 2;
@@ -53,7 +54,7 @@ scene::Scene contributionScene(rojoRHI::Device& device) {
             {.diffuse = variant == 0 ? std::nullopt : std::optional{cutout},
              .albedo = {0, 0, 0, 1},
              .emissive = emissive,
-             .alphaMode = variant == 0 ? render::AlphaMode::Opaque : render::AlphaMode::Mask,
+             .alphaMode = variant == 0 ? engine::AlphaMode::Opaque : engine::AlphaMode::Mask,
              .alphaCutoff = 0.5f,
              .doubleSided = variant == 2});
     }
@@ -73,7 +74,7 @@ scene::Scene contributionScene(rojoRHI::Device& device) {
                       .scale = glm::vec3{2},
                       .mesh = mesh,
                       .material = materials[1],
-                      .motionClass = render::MotionClass::Invalid});
+                      .motionClass = engine::MotionClass::Invalid});
     result.addObject({.position = {0.7f, 0.7f, -2},
                       .eulerDegrees = {0, 180, 0},
                       .scale = glm::vec3{2},
@@ -95,7 +96,7 @@ std::unique_ptr<render::Renderer> contributionRenderer(rojoRHI::Device& device) 
 //======================================================================================================================
 ContributionTargets contributionTargets(render::Renderer& renderer, render::TransientPool& pool,
                                         rojoRHI::CommandList& commands,
-                                        const render::Camera& camera, const render::SceneView& view,
+                                        const engine::Camera& camera, const render::SceneView& view,
                                         uint64_t frame, rojoRHI::ComputePipeline& depthPipeline) {
     pool.beginFrame();
     render::RenderGraph graph(pool);
@@ -166,7 +167,7 @@ std::array<std::vector<uint8_t>, 4> contributionBytes(const ContributionTargets&
 }
 
 //======================================================================================================================
-void requireOutsideClip(const scene::Scene& scene, const glm::mat4& viewProjection) {
+void requireOutsideClip(const engine::Scene& scene, const glm::mat4& viewProjection) {
     // Check vertex clip inequalities directly, independently of extracted planes and AABBs.
     for (uint32_t row = 0; row < kRejectedCount; ++row) {
         for (const glm::vec2 corner :
@@ -182,7 +183,7 @@ void requireOutsideClip(const scene::Scene& scene, const glm::mat4& viewProjecti
 
 //======================================================================================================================
 void requireSentinelCoverage(const ContributionTargets& targets, uint32_t width,
-                             const scene::Scene& scene, const glm::mat4& viewProjection,
+                             const engine::Scene& scene, const glm::mat4& viewProjection,
                              bool expectRigidMotion) {
     std::vector<uint16_t> hdr(size_t{kSize} * kSize * 4);
     std::vector<float> depth(size_t{kSize} * kSize);
@@ -257,7 +258,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
     INFO(errorOf(depthPipeline));
     REQUIRE(depthPipeline);
     auto scene = contributionScene(**device);
-    render::Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const float scale : {1.0f, 0.5f}) {
         auto culled = contributionRenderer(**device);
@@ -270,8 +271,8 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
                 auto& commands = (*device)->beginFrame();
                 REQUIRE(scene.prepareFrame((*device)->frameNumber()));
-                std::vector<render::DrawItem> items;
-                auto view = scene.view(items, render::ShadowFilter::PCF, false);
+                std::vector<engine::DrawItem> items;
+                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
                 if (!sentinels)
                     view.items = view.items.first(kRejectedCount);
                 view.bloomEnabled = false;
@@ -345,7 +346,7 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                                           .label = "lmx.test.visibility.depthReadback"});
     REQUIRE(depthPipeline);
     auto scene = contributionScene(**device);
-    render::Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const auto submission :
          {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
@@ -358,8 +359,8 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 scene.objects.back().position.x = phase % 2 == 0 ? 0.7f : 0.72f;
                 auto& commands = (*device)->beginFrame();
                 REQUIRE(scene.prepareFrame((*device)->frameNumber()));
-                std::vector<render::DrawItem> items;
-                auto view = scene.view(items, render::ShadowFilter::PCF, false);
+                std::vector<engine::DrawItem> items;
+                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
                 view.bloomEnabled = false;
                 view.submission = submission;
                 view.visibilityEnabled = true;

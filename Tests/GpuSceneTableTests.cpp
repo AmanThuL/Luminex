@@ -1,5 +1,6 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
-#include "Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -8,11 +9,11 @@
 #include <cstring>
 
 namespace {
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 namespace render = lmx::render;
 
 //======================================================================================================================
-render::MeshData tableQuad() {
+engine::MeshData tableQuad() {
     return {.vertices = {{-0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {0.2f, -0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {0.2f, 0.2f, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -21,8 +22,8 @@ render::MeshData tableQuad() {
 }
 
 //======================================================================================================================
-scene::Scene tableScene() {
-    scene::Scene result;
+engine::Scene tableScene() {
+    engine::Scene result;
     result.name = "lmx.test.sceneTables";
     result.boundingSphere = {0.0f, 0.0f, -3.0f, 3.0f};
     for (auto& light : result.lights) {
@@ -47,7 +48,7 @@ std::unique_ptr<render::Renderer> tableRenderer(rojoRHI::Device& device) {
 }
 
 //======================================================================================================================
-std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, scene::Scene& scene,
+std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::Scene& scene,
                                               render::Renderer& renderer, bool wait = true) {
     auto snapshot = device.createBuffer({.size = uint64_t{kSize} * kSize * 4,
                                          .cpuReadback = true,
@@ -58,14 +59,14 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, scene::Sc
     auto prepared = scene.prepareFrame(device.frameNumber());
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
-    std::vector<render::DrawItem> items;
-    auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    std::vector<engine::DrawItem> items;
+    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     view.bloomEnabled = false;
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = false;
     view.temporal.reconstruction = render::ReconstructionMode::Raw;
     view.temporal.sceneGeneration = scene.objects.front().id.store;
-    renderer.render(commands, render::Camera{}, view, false);
+    renderer.render(commands, engine::Camera{}, view, false);
     commands.textureBarrier(renderer.colorTarget(), rojoRHI::TextureUse::RenderTarget,
                             rojoRHI::TextureUse::CopySource);
     commands.beginCopyPass("lmx.test.sceneTables.preserveFrame");
@@ -95,7 +96,7 @@ std::vector<uint8_t> tablePixels(rojoRHI::Buffer& buffer) {
 
 //======================================================================================================================
 uint32_t tablePixelX(float x) {
-    const render::Camera camera;
+    const engine::Camera camera;
     const glm::vec4 clip = camera.projectionMatrix(1.0f) * glm::vec4(x, 0, -3, 1);
     return static_cast<uint32_t>((clip.x / clip.w * 0.5f + 0.5f) * kSize);
 }
@@ -118,10 +119,10 @@ void requireBlack(const std::vector<uint8_t>& pixels, float x) {
 }
 
 //======================================================================================================================
-std::vector<render::InstanceRow> instanceRows(scene::Scene& scene) {
+std::vector<engine::InstanceRow> instanceRows(engine::Scene& scene) {
     const auto tables = scene.tables();
-    std::vector<render::InstanceRow> rows(tables.instanceCount);
-    tables.instances->readback(rows.data(), rows.size() * sizeof(render::InstanceRow));
+    std::vector<engine::InstanceRow> rows(tables.instanceCount);
+    tables.instances->readback(rows.data(), rows.size() * sizeof(engine::InstanceRow));
     return rows;
 }
 
@@ -225,7 +226,7 @@ TEST_CASE("Scene replacement rejects foreign identities while submitted scenes o
           "[gpu][scene-tables]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto first = std::make_unique<scene::Scene>(tableScene());
+    auto first = std::make_unique<engine::Scene>(tableScene());
     auto second = tableScene();
     const auto foreign = first->objects[0].id;
     REQUIRE_FALSE(second.tryObject(foreign));
@@ -292,9 +293,9 @@ TEST_CASE("Scene texture fallbacks preserve factors and stale texture handles fa
     auto explicitWhite = submitTables(**device, scene, *renderer);
     REQUIRE(tablePixels(*fallback) == tablePixels(*explicitWhite));
     requireRed(tablePixels(*fallback), -0.6f);
-    render::MaterialRow row{};
+    engine::MaterialRow row{};
     scene.tables().materials->readback(&row, sizeof(row));
-    REQUIRE((row.flags & render::kMaterialHasNormalMap) == 0);
+    REQUIRE((row.flags & engine::kMaterialHasNormalMap) == 0);
 }
 
 //======================================================================================================================
@@ -378,7 +379,7 @@ TEST_CASE("Scene table slots preserve each submitted transform across three-fram
         }
     }
     for (uint32_t slot = 0; slot < 3; ++slot) {
-        render::InstanceRow row{};
+        engine::InstanceRow row{};
         REQUIRE(slotBuffers[slot]);
         slotBuffers[slot]->readback(&row, sizeof(row));
         REQUIRE(row.model[3].x == slotPositions[slot]);
@@ -392,7 +393,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto scene = tableScene();
-    const auto light = scene.addLight({.type = render::LocalLightType::Point,
+    const auto light = scene.addLight({.type = engine::LocalLightType::Point,
                                        .position = {0.0f, 0.0f, 0.0f},
                                        .colour = {1.0f, 1.0f, 1.0f},
                                        .intensity = 1.0f,
@@ -408,7 +409,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     std::vector<std::unique_ptr<rojoRHI::Buffer>> frames;
     for (size_t i = 0; i < positions.size(); ++i) {
         REQUIRE(scene
-                    .updateLight(*light, {.type = render::LocalLightType::Point,
+                    .updateLight(*light, {.type = engine::LocalLightType::Point,
                                           .position = {positions[i], 0.0f, 0.0f},
                                           .colour = {1.0f, 1.0f, 1.0f},
                                           .intensity = 1.0f,
@@ -421,7 +422,7 @@ TEST_CASE("Local light table slots preserve each submitted row across three-fram
     }
     (*device)->waitIdle();
     for (uint32_t slot = 0; slot < 3; ++slot) {
-        render::LightRow row{};
+        engine::LightRow row{};
         REQUIRE(slotBuffers[slot]);
         slotBuffers[slot]->readback(&row, sizeof(row));
         REQUIRE(row.position.x == slotPositions[slot]);

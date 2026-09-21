@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Asset/DdsLoader.h"
-#include "Asset/TextureBake.h"
+#include "Engine/Asset/Image/DdsLoader.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include <rojoRHI/RHI.h>
 
 #include <array>
@@ -466,9 +466,9 @@ TEST_CASE("baking the same image twice produces byte-identical DDS and manifest 
 }
 
 //======================================================================================================================
-// writeDds's output must be exactly what loadDds already parses (Asset/DdsLoader.h's contract):
-// same dimensions, same mip count, and -- after loadDds's BGRA->RGBA swizzle undoes writeDds's
-// RGBA->BGRA swizzle -- the identical payload bytes bakeMips produced.
+// writeDds's output must be exactly what loadDds already parses (Engine/Asset/Image/DdsLoader.h's
+// contract): same dimensions, same mip count, and -- after loadDds's BGRA->RGBA swizzle undoes
+// writeDds's RGBA->BGRA swizzle -- the identical payload bytes bakeMips produced.
 TEST_CASE("writeDds then loadDds round-trips a baked chain's dimensions and payload", "[asset]") {
     std::vector<uint8_t> pixels(6 * 5 * 4);
     for (size_t i = 0; i < pixels.size(); ++i) {

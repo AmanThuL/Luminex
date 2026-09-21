@@ -26,8 +26,8 @@ app::MeasurementCpuSample lightingSample(uint64_t frame, uint32_t sequence) {
     app::MeasurementCpuSample sample;
     sample.frameId = frame;
     sample.sequenceFrame = sequence;
-    sample.lighting = {.requested = render::LocalLightMode::Clustered,
-                       .effective = render::LocalLightMode::Clustered,
+    sample.lighting = {.requested = engine::LocalLightMode::Clustered,
+                       .effective = engine::LocalLightMode::Clustered,
                        .frameNumber = frame,
                        .sceneGeneration = 7,
                        .liveLightCount = 64};
@@ -91,10 +91,10 @@ TEST_CASE("Contradictory lighting publications cancel and preserve partial evide
         --status.liveLightCount;
     }
     SECTION("wrong requested mode") {
-        status.requested = render::LocalLightMode::Direct;
+        status.requested = engine::LocalLightMode::Direct;
     }
     SECTION("wrong effective mode") {
-        status.effective = render::LocalLightMode::Direct;
+        status.effective = engine::LocalLightMode::Direct;
     }
     SECTION("pending GPU counters") {
         status.isRetired = false;
@@ -123,18 +123,18 @@ TEST_CASE("Contradictory lighting publications cancel and preserve partial evide
 TEST_CASE("Lighting retirement is required for zero-light frames in every requested mode",
           "[app][measurement][lighting-measurement]") {
     REQUIRE(app::MeasurementPlan{}.localLightMode == "clustered");
-    for (const auto mode : {render::LocalLightMode::Off, render::LocalLightMode::Direct,
-                            render::LocalLightMode::Clustered}) {
+    for (const auto mode : {engine::LocalLightMode::Off, engine::LocalLightMode::Direct,
+                            engine::LocalLightMode::Clustered}) {
         app::MeasurementRun run;
         auto plan = lightingPlan();
         plan.scene = "sponza";
-        plan.localLightMode = mode == render::LocalLightMode::Off      ? "off"
-                              : mode == render::LocalLightMode::Direct ? "direct"
+        plan.localLightMode = mode == engine::LocalLightMode::Off      ? "off"
+                              : mode == engine::LocalLightMode::Direct ? "direct"
                                                                        : "clustered";
         REQUIRE(run.start(plan, {}));
         auto sample = lightingSample(4, 0);
         sample.lighting.requested = mode;
-        sample.lighting.effective = render::LocalLightMode::Off;
+        sample.lighting.effective = engine::LocalLightMode::Off;
         sample.lighting.liveLightCount = 0;
         REQUIRE(run.recordCpu(sample));
         const std::array<rojoRHI::PassTiming, 1> timing = {{{"lmx.pass.scene", 1}}};
@@ -144,7 +144,7 @@ TEST_CASE("Lighting retirement is required for zero-light frames in every reques
         status.isRetired = true;
         REQUIRE(run.retireLighting(status));
         CHECK(run.finishDrain());
-        REQUIRE(run.samples()[0].lighting->effective == render::LocalLightMode::Off);
+        REQUIRE(run.samples()[0].lighting->effective == engine::LocalLightMode::Off);
     }
 }
 
@@ -275,7 +275,7 @@ TEST_CASE("Interactive LightLab measurement allows disabled authored lights",
     REQUIRE(run.start(plan, {}));
     auto sample = lightingSample(4, 0);
     sample.lighting.liveLightCount = 0;
-    sample.lighting.effective = render::LocalLightMode::Off;
+    sample.lighting.effective = engine::LocalLightMode::Off;
     REQUIRE(run.recordCpu(sample));
 }
 

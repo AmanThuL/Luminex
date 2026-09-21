@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Scene/Scene.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Scene/Scene.h"
 
 #include <cstddef>
 #include <optional>
@@ -51,10 +51,10 @@ std::string_view renderingCategoryLabel(RenderingCategory category);
 /// `Rendering`, `DirectionalLight` and `Object`; other subjects ignore it. Editor-local navigation
 /// state -- never serialized, never passed to Render or the RHI (spec section 5).
 struct EditorSelection {
-    scene::SceneId sceneId;                      ///< The scene the selection was made against.
+    engine::SceneId sceneId;                     ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
     size_t index = 0;                            ///< Category or DirectionalLight/Object row index.
-    scene::LightId lightId{}; ///< Complete local-light identity; otherwise unused.
+    engine::LightId lightId{}; ///< Complete local-light identity; otherwise unused.
 };
 
 /// Compares `current` against `activeScene`/`scene` and returns the value the caller should store:
@@ -64,12 +64,12 @@ struct EditorSelection {
 /// `Camera` and `None` never fail range validation. Call
 /// this on every use before drawing the Inspector; it never mutates `scene`, and the caller stores
 /// the returned value rather than caching the argument.
-EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
-                                 const scene::Scene& scene);
+EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
+                                 const engine::Scene& scene);
 
 /// The selection stored at startup, or immediately after activating `sceneId`: every scene provides
 /// a `Camera`, so it is always resolvable without consulting scene contents.
-EditorSelection initialSelection(scene::SceneId sceneId);
+EditorSelection initialSelection(engine::SceneId sceneId);
 
 /// Selection and Scene-panel filter to store together, since a successful scene switch changes both
 /// at once (spec section 5).
@@ -88,8 +88,8 @@ struct SceneSwitchOutcome {
 /// `Camera` and clears the filter; a failed switch returns `currentSelection` and `currentFilter`
 /// unchanged, which is the spec's "failed scene switch retains selection and filter exactly" --
 /// callers do not need a second function to express the failure path.
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activeScene,
-                                      scene::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
+                                      engine::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter);
 
@@ -111,20 +111,20 @@ struct EditorSelectionRow {
     EditorSelectionGroup group = EditorSelectionGroup::Workspace; ///< Which header it draws under.
     /// Full source-qualified name for search, hover and copy; empty when the short label suffices.
     std::string detailLabel;
-    std::string sourceGroup;  ///< Optional imported source navigation group; no parent transform.
-    scene::LightId lightId{}; ///< Complete identity for LocalLight rows.
+    std::string sourceGroup;   ///< Optional imported source navigation group; no parent transform.
+    engine::LightId lightId{}; ///< Complete identity for LocalLight rows.
 };
 
 /// Stable point/spot label carrying its row slot, or Unavailable light for stale identities.
-std::string sceneLocalLightLabel(const scene::Scene& scene, scene::LightId id);
+std::string sceneLocalLightLabel(const engine::Scene& scene, engine::LightId id);
 
 /// Authored name with a scene-local object suffix for duplicate names; unnamed objects always get
 /// a deterministic `Unnamed object [N]` label. An out-of-range index returns `Unavailable object`.
-std::string sceneObjectLabel(const scene::Scene& scene, size_t index);
+std::string sceneObjectLabel(const engine::Scene& scene, size_t index);
 
 /// Whether a resolved selected subject is hidden by the current case-insensitive name filter.
 /// Filtering never clears the selection; Inspector can keep showing it with an explicit notice.
-bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& selection,
+bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& selection,
                              std::string_view filter);
 
 /// Builds rows in fixed order: Editor Camera, Rendering categories in enum order, three lights,
@@ -133,7 +133,7 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
 /// selectable rows. An empty `filter` keeps every row; a filter matching nothing returns an empty
 /// vector rather than an error state. Duplicate object names still produce distinct rows: subject
 /// kind plus index, not label text, identifies a row. Never mutates `scene`.
-std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
+std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
                                                         std::string_view filter);
 
 /// Objects grouped for navigation in first-source encounter order. An empty source label means

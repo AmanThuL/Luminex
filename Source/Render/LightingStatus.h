@@ -5,8 +5,8 @@
 
 #pragma once
 
+#include "Engine/Types/LocalLight.h"
 #include "Render/LightClusterCheck.h"
-#include "Render/LocalLight.h"
 #include <memory>
 
 namespace lmx::render {
@@ -14,9 +14,11 @@ namespace lmx::render {
 /// One declaration's lighting context. GPU counters become valid only after retirement; the
 /// frame and scene keys remain those of the declaration, including across later mode switches.
 struct LightingStatus {
-    LocalLightMode requested = LocalLightMode::Clustered; ///< Requested path for this frame.
-    LocalLightMode effective = LocalLightMode::Off; ///< Off when the frame has no live local light.
-    uint64_t frameNumber = 0;                       ///< Device frame this context belongs to.
+    /// Requested path for this frame.
+    engine::LocalLightMode requested = engine::LocalLightMode::Clustered;
+    /// Off when the frame has no live local light.
+    engine::LocalLightMode effective = engine::LocalLightMode::Off;
+    uint64_t frameNumber = 0;      ///< Device frame this context belongs to.
     uint64_t sceneGeneration = 0;  ///< Scene activation generation from the frame's view.
     uint32_t liveLightCount = 0;   ///< Number of live lights at declaration, excluding free rows.
     bool checkEnabled = false;     ///< Exact CPU/GPU list comparison requested at declaration.

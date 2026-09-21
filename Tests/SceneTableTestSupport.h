@@ -1,20 +1,21 @@
 #pragma once
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 #include <catch2/catch_test_macros.hpp>
 #include <deque>
 #include <unordered_map>
 
 namespace lmx::test {
-using render::AlphaMode;
+using engine::AlphaMode;
 
 // Authored test inputs retain the original oracle values; Scene owns the actual GPU tables.
 struct FixtureSceneState;
 struct FixtureMesh {
-    render::MeshData data;
+    engine::MeshData data;
     mutable std::vector<std::shared_ptr<FixtureSceneState>> retained;
 };
-inline rojoRHI::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, render::MeshData data,
+inline rojoRHI::Result<FixtureMesh> fixtureMesh(rojoRHI::Device&, engine::MeshData data,
                                                 std::string_view) {
     return FixtureMesh{.data = std::move(data), .retained = {}};
 }
@@ -65,18 +66,18 @@ struct FixtureDrawItem {
     glm::mat4 previousModel{1.0f};
     /// How this item's motion is produced; `Invalid` writes the motion sentinel instead of
     /// reprojecting through `previousModel`.
-    render::MotionClass motionClass = render::MotionClass::Rigid;
+    engine::MotionClass motionClass = engine::MotionClass::Rigid;
 };
 
 struct FixtureSceneState {
-    scene::Scene scene;
-    std::vector<render::DrawItem> draws;
+    engine::Scene scene;
+    std::vector<engine::DrawItem> draws;
     std::vector<const FixtureMesh*> meshes;
     const FixtureMesh* sky = nullptr;
-    std::optional<scene::TextureId> normalPresence;
+    std::optional<engine::TextureId> normalPresence;
     /// Identities of `FixtureSceneView::localLights`, in the order they were authored, so a later
     /// frame re-authors the same rows rather than growing the table.
-    std::vector<scene::LightId> lights;
+    std::vector<engine::LightId> lights;
 };
 
 // Each view retains its production scene until the test drains the GPU. Changes use the real
@@ -87,7 +88,7 @@ struct FixtureSceneView : render::SceneView {
     /// Local point and spot lights authored into the fixture scene before finalize. Their count is
     /// part of the rebuild key, so a view handed a different number of lights builds a new scene
     /// rather than leaving stale rows behind.
-    std::span<const render::LocalLight> localLights;
+    std::span<const engine::LocalLight> localLights;
     const FixtureMesh* skySphere = nullptr;
     mutable std::shared_ptr<FixtureSceneState> state;
     mutable std::deque<std::pair<uint64_t, std::shared_ptr<FixtureSceneState>>> retired;
@@ -117,7 +118,7 @@ struct FixtureSceneView : render::SceneView {
                 items.front().mesh->retained.push_back(state);
             else if (skySphere)
                 skySphere->retained.push_back(state);
-            std::unordered_map<const FixtureMesh*, scene::MeshId> meshIds;
+            std::unordered_map<const FixtureMesh*, engine::MeshId> meshIds;
             auto meshId = [&](const FixtureMesh* mesh) {
                 REQUIRE(mesh != nullptr);
                 if (!meshIds.contains(mesh))
@@ -184,7 +185,8 @@ struct FixtureSceneView : render::SceneView {
         auto prepared = state->scene.prepareFrame(frame);
         INFO((prepared ? "" : prepared.error().message));
         REQUIRE(prepared);
-        const auto sceneView = state->scene.view(state->draws, shadowFilter, wireframe);
+        const auto sceneView =
+            render::buildSceneView(state->scene, state->draws, shadowFilter, wireframe);
         render::SceneView view = static_cast<const render::SceneView&>(*this);
         view.tables = sceneView.tables;
         view.items = state->draws;

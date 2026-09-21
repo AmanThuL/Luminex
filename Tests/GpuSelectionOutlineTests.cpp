@@ -19,7 +19,7 @@ using namespace lmx::render;
 using namespace rojoRHI;
 
 //======================================================================================================================
-MeshData outlineQuad() {
+lmx::engine::MeshData outlineQuad() {
     return {.vertices = {{-1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -60,7 +60,7 @@ FixtureDrawItem outlineItem(const FixtureMesh& mesh) {
 OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& renderer,
                           SelectionOutline* outline, const FixtureSceneView& view,
                           float backingScale = 1.0f, bool visible = true) {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0, 0, 4};
     camera.fovY = glm::half_pi<float>();
     auto& commands = device.beginFrame();
@@ -259,7 +259,7 @@ TEST_CASE("selection outline respects masked foreground cutouts without tracing 
     items[1].previousModel = items[1].model;
     items[1].material.emissive = {0.4f, 0.1f, 0.1f};
     items[1].material.diffuse = texture.get();
-    items[1].material.alphaMode = AlphaMode::Mask;
+    items[1].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[1].material.albedo.a = 0.5f;
     items[1].material.alphaCutoff = 0.3f;
     const auto view = outlineView(items);
@@ -305,7 +305,7 @@ TEST_CASE("selection outline shares MASK factor cutoff transformed UV and double
     auto texture = outlineCutout(**device);
     auto item = outlineItem(*mesh);
     item.material.diffuse = texture.get();
-    item.material.alphaMode = AlphaMode::Mask;
+    item.material.alphaMode = lmx::engine::AlphaMode::Mask;
     item.material.albedo.a = 0.5f;
     item.material.alphaCutoff = 0.3f;
     const auto view = outlineView(std::span{&item, 1});

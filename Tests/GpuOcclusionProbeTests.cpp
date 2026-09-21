@@ -15,7 +15,7 @@ struct ProbeBounds {
 static_assert(sizeof(ProbeBounds) == 32);
 //======================================================================================================================
 void compareProbe(Device& device, ComputePipeline& pipeline, const OcclusionParams& params,
-                  std::span<const Aabb> bounds, float depth) {
+                  std::span<const lmx::Aabb> bounds, float depth) {
     std::array<std::vector<float>, 2> pixels{std::vector<float>(32 * 24, depth),
                                              std::vector<float>(16 * 12, depth)};
     const std::array<TextureMip, 2> mips{
@@ -91,14 +91,14 @@ TEST_CASE("occlusion shader matches CPU outcomes rectangles levels and depth bit
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
     const float nan = std::numeric_limits<float>::quiet_NaN();
-    const std::array<Aabb, 8> bounds{{{{-0.01f, -0.01f, 0.1f}, {0.01f, 0.01f, 0.2f}},
-                                      {{-0.08f, -0.08f, 0.1f}, {0.08f, 0.08f, 0.2f}},
-                                      {{-0.8f, -0.8f, 0.1f}, {0.8f, 0.8f, 0.2f}},
-                                      {{-1.0f, -0.01f, 0.1f}, {-0.99f, 0.01f, 0.2f}},
-                                      {{0.99f, -0.01f, 0.1f}, {1.0f, 0.01f, 0.2f}},
-                                      {{-0.01f, -0.01f, 0.9f}, {0.01f, 0.01f, 1.1f}},
-                                      {{nan, -0.01f, 0.1f}, {nan, 0.01f, 0.2f}},
-                                      {{0.0625f, 0.0625f, 0.2f}, {0.0625f, 0.0625f, 0.2f}}}};
+    const std::array<lmx::Aabb, 8> bounds{{{{-0.01f, -0.01f, 0.1f}, {0.01f, 0.01f, 0.2f}},
+                                           {{-0.08f, -0.08f, 0.1f}, {0.08f, 0.08f, 0.2f}},
+                                           {{-0.8f, -0.8f, 0.1f}, {0.8f, 0.8f, 0.2f}},
+                                           {{-1.0f, -0.01f, 0.1f}, {-0.99f, 0.01f, 0.2f}},
+                                           {{0.99f, -0.01f, 0.1f}, {1.0f, 0.01f, 0.2f}},
+                                           {{-0.01f, -0.01f, 0.9f}, {0.01f, 0.01f, 1.1f}},
+                                           {{nan, -0.01f, 0.1f}, {nan, 0.01f, 0.2f}},
+                                           {{0.0625f, 0.0625f, 0.2f}, {0.0625f, 0.0625f, 0.2f}}}};
     auto params = makeOcclusionParams(glm::mat4(1), 64, 48, 2, true, true);
     REQUIRE(projectOcclusionBounds(bounds[0], params).outcome == OcclusionOutcome::Retained);
     REQUIRE(projectOcclusionBounds(bounds[0], params).level == 0);

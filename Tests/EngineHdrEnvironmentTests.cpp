@@ -1,7 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "Asset/HdrEnvironment.h"
+#include "Engine/Asset/Image/HdrEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
 

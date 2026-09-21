@@ -14,9 +14,9 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "Asset/GeometryGenerator.h"
-#include "Render/Camera.h"
-#include "Render/Mesh.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/Mesh.h"
 #include "Render/Renderer.h"
 #include <rojoRHI/RHI.h>
 
@@ -772,7 +772,7 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = fixtureMesh(**device, makeCube(), "lmx.test.exposurePairCube");
+    auto cube = fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.exposurePairCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -780,7 +780,7 @@ TEST_CASE("a manual temporal frame records the EV edit and the value before it",
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0.0f, 0.0f, 5.0f};
 
     const std::array<FixtureDrawItem, 1> items = {FixtureDrawItem{.mesh = &*cube}};

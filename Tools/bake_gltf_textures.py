@@ -3,13 +3,13 @@
 
 Usage: bake_gltf_textures.py <gltf-or-glb-path> <TextureBake-binary>
 
-Reads the file's own "materials"/"textures"/"images" arrays (no external glTF library) to find
-which image indices are bound as a baseColorTexture (--srgb) or a normalTexture (--normal-map) --
-the only two slots Scene/Scene.cpp's ensureUploaded consumes today. Every other image (occlusion,
+Reads the file's own "materials"/"textures"/"images" arrays (no external glTF library) to find which
+image indices are bound as a baseColorTexture (--srgb) or a normalTexture (--normal-map) -- the only
+two slots Engine/Scene/Scene.cpp's ensureUploaded consumes today. Every other image (occlusion,
 metallic-roughness, emissive, ...) is left unbaked; it has no reader yet. Each selected image is
 handed to the TextureBake binary, which writes "<gltfDir>/Baked/image<N>.dds" plus its manifest --
 "image<N>" rather than the source filename because a GLB's images are embedded with no filename at
-all, and Scene/Scene.cpp's bakedDdsPath looks up by the same glTF/GLB image-array index this
+all, and Engine/Scene/Scene.cpp's bakedDdsPath looks up by the same glTF/GLB image-array index this
 script uses. Re-running with unchanged inputs is a no-op: a bake is skipped whenever the existing
 manifest's source hash, role-specific filter, and tool version all match.
 """

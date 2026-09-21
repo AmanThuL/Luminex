@@ -18,7 +18,7 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void drawLocalLightSection(const InspectorPanelContext& context, scene::LightId id) {
+void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId id) {
     auto& session = context.session;
     const auto* current = session.scene().light(id);
     if (!current) {
@@ -41,7 +41,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, scene::LightId 
     bool edited = false;
     if (editor_style::beginFields("localLightFields")) {
         editor_style::readOnly("Type",
-                               light.type == render::LocalLightType::Point ? "Point" : "Spot");
+                               light.type == engine::LocalLightType::Point ? "Point" : "Spot");
         edited |=
             editor_style::vector3("Position (world metres)", "position", &light.position.x, 0.05f);
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
@@ -57,7 +57,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, scene::LightId 
         editor_style::field("Range (metres)");
         edited |= ImGui::DragFloat("##range", &light.range, 0.05f, 0.01f, 1000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
-        if (light.type == render::LocalLightType::Spot) {
+        if (light.type == engine::LocalLightType::Spot) {
             auto direction = light.direction;
             if (editor_style::vector3("Direction (world)", "direction", &direction.x, 0.01f)) {
                 if (glm::length(direction) > 1e-5f) {
@@ -123,9 +123,9 @@ void drawLightingSection(const InspectorPanelContext& context) {
         editor_style::field("Local lights");
         int mode = static_cast<int>(settings.localLightMode);
         if (ImGui::Combo("##localLightMode", &mode, "Off\0Direct\0Clustered\0")) {
-            settings.localLightMode = static_cast<render::LocalLightMode>(mode);
-            if (settings.localLightMode != render::LocalLightMode::Clustered) {
-                settings.lightDebugView = render::LightDebugView::Off;
+            settings.localLightMode = static_cast<engine::LocalLightMode>(mode);
+            if (settings.localLightMode != engine::LocalLightMode::Clustered) {
+                settings.lightDebugView = engine::LightDebugView::Off;
                 settings.lightCheck = false;
             }
         }
@@ -134,9 +134,9 @@ void drawLightingSection(const InspectorPanelContext& context) {
         editor_style::field("Lighting view");
         int view = static_cast<int>(settings.lightDebugView);
         if (ImGui::Combo("##lightView", &view, "Final\0Count\0Overflow\0Missed\0")) {
-            settings.lightDebugView = static_cast<render::LightDebugView>(view);
-            if (settings.lightDebugView != render::LightDebugView::Off) {
-                settings.localLightMode = render::LocalLightMode::Clustered;
+            settings.lightDebugView = static_cast<engine::LightDebugView>(view);
+            if (settings.lightDebugView != engine::LightDebugView::Off) {
+                settings.localLightMode = engine::LocalLightMode::Clustered;
                 settings.temporalDebugView = render::TemporalDebugView::Off;
                 settings.hzbDebugLevel = -1;
             }
@@ -144,7 +144,7 @@ void drawLightingSection(const InspectorPanelContext& context) {
         editor_style::field("CPU list check");
         if (ImGui::Checkbox("##lightCheck", &settings.lightCheck)) {
             if (settings.lightCheck)
-                settings.localLightMode = render::LocalLightMode::Clustered;
+                settings.localLightMode = engine::LocalLightMode::Clustered;
         }
         editorTooltip("Compare retired GPU lists and counters with an independent CPU mirror. "
                       "Checking adds CPU work and is excluded from scored measurements.");
@@ -180,7 +180,7 @@ void drawLightingSection(const InspectorPanelContext& context) {
     if (lightingChangeNeedsHistoryReset(previousMode, settings.localLightMode,
                                         session.scene().enabledLightCount(), contentChanged))
         requestCameraCut(context.temporalState);
-    if (settings.lightDebugView != render::LightDebugView::Off) {
+    if (settings.lightDebugView != engine::LightDebugView::Off) {
         if (session.scene().enabledLightCount() == 0) {
             editor_style::message(
                 "Lighting view unavailable: this scene has no enabled local lights. "

@@ -32,7 +32,7 @@ std::string declaredFrame(FakeDevice& device, Renderer& renderer, const SceneVie
     TransientPool pool(device);
     pool.beginFrame();
     RenderGraph graph(pool);
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0, 0, 5};
     graph.presentTexture(renderer.declarePasses(graph, commands, camera, view));
     auto record = graph.compileFrame(device.frameNumber());

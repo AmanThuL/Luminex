@@ -9,8 +9,11 @@
 
 #include <memory>
 
-namespace lmx::render {
+namespace lmx::engine {
 class Camera;
+} // namespace lmx::engine
+
+namespace lmx::render {
 
 /// Composites a selection border into a separate SDR target without modifying scene/history data.
 /// The editor opts into this utility; ordinary Renderer and offscreen paths never invoke it.
@@ -28,7 +31,7 @@ public:
     /// borrowed through execution. Thickness is 1.5 logical points at the supplied backing scale.
     /// When visible is false, refreshes the UI target with unmodified display texels.
     GraphTexture declare(RenderGraph& graph, rojoRHI::CommandList& commands, GraphTexture display,
-                         const Camera& camera, const SceneView& view, uint32_t selectedDraw,
+                         const engine::Camera& camera, const SceneView& view, uint32_t selectedDraw,
                          float backingScale, bool visible = true);
 
 private:

@@ -1,9 +1,10 @@
+#include "Engine/Catalog/SceneLibrary.h"
 #include "GpuTestSupport.h"
-#include "Scene/SceneLibrary.h"
+#include "Render/SceneViewBuilder.h"
 
 namespace {
 namespace render = lmx::render;
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 } // namespace
 
 //======================================================================================================================
@@ -11,20 +12,20 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
           "[gpu][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto loaded = scene::loadVisibilityLabScene(**device, 4096);
+    auto loaded = engine::loadVisibilityLabScene(**device, 4096);
     REQUIRE(loaded);
     auto& world = **loaded;
     auto renderer = render::Renderer::create(**device, 160, 90, true);
     REQUIRE(renderer);
-    auto camera = scene::cameraFromScene(world.initialCamera);
+    auto camera = engine::cameraFromScene(world.initialCamera);
     for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
         for (double seconds : {0.0, 3.0, 6.0}) {
             world.animationTime = seconds;
             world.followCameraTrack(camera);
             auto& commands = (*device)->beginFrame();
             REQUIRE(world.prepareFrame((*device)->frameNumber()));
-            std::vector<render::DrawItem> items;
-            auto view = world.view(items, render::ShadowFilter::PCF, false);
+            std::vector<engine::DrawItem> items;
+            auto view = render::buildSceneView(world, items, render::ShadowFilter::PCF, false);
             view.classifyMode = render::ClassifyMode::Gpu;
             view.classifyCheck = true;
             view.submission = mode;
@@ -74,7 +75,7 @@ TEST_CASE("Empty GPU view and classifier switches preserve final frame diagnosti
         view.classifyMode = classifier;
         view.classifyCheck = classifier == render::ClassifyMode::Gpu;
         view.submission = render::SubmissionMode::Batched;
-        (*renderer)->render(commands, render::Camera{}, view, false);
+        (*renderer)->render(commands, engine::Camera{}, view, false);
         if (classifier == render::ClassifyMode::Gpu)
             gpuFrames.push_back((*device)->frameNumber());
         (*device)->endFrame(nullptr);
