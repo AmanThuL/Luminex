@@ -1,6 +1,6 @@
 # ADR 0025: The Engine subsystem and the Render-on-Engine edge
 
-**Status**: Proposed
+**Status**: Accepted (2026-09-21)
 
 ## Context
 
