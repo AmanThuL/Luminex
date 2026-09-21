@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Common/GraphResources.h"
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -168,10 +169,9 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
     graph.addCopyPass(
         "lmx.pass.occlusion.reference.readback", std::move(copy),
         [&commands, source, destination, width, height](const PassResources& resources) {
-            const auto texture = resources.texture(source);
-            const auto buffer = resources.buffer(destination);
-            LMX_ASSERT(texture && buffer, "reference copy resources must be declared");
-            commands.copyTextureToBuffer(**texture, {.width = width, .height = height}, **buffer,
+            auto& texture = lmx::render::texture(resources, source);
+            auto& buffer = lmx::render::buffer(resources, destination);
+            commands.copyTextureToBuffer(texture, {.width = width, .height = height}, buffer,
                                          {.bytesPerRow = uint64_t{width} * 4});
         });
     graph.readbackBuffer(nextVersion(destination));

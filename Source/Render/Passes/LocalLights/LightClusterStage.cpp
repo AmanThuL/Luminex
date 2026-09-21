@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/LocalLights/LightClusterStage.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -208,9 +209,8 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     reset.bufferDestinations.push_back(counters);
     graph.addCopyPass("lmx.pass.light.reset", std::move(reset),
                       [&commands, counters](const PassResources& resources) {
-                          const GraphResult<rojoRHI::Buffer*> buffer = resources.buffer(counters);
-                          LMX_ASSERT(buffer.has_value(), buffer.error().message);
-                          commands.fillBuffer(**buffer, 0,
+                          auto& buffer = lmx::render::buffer(resources, counters);
+                          commands.fillBuffer(buffer, 0,
                                               kLightClusterCounterWords * sizeof(uint32_t), 0);
                       });
     const auto countersReset = nextVersion(counters);
@@ -220,19 +220,17 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     ComputePassDesc count;
     count.shaderBufferReads = {lights};
     count.bufferWrites = {counts};
-    graph.addComputePass(
-        "lmx.pass.light.count", std::move(count),
-        [=, this, &commands](const PassResources& resources) {
-            const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
-            const GraphResult<rojoRHI::Buffer*> target = resources.buffer(counts);
-            LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
-            LMX_ASSERT(target.has_value(), target.error().message);
-            commands.bindComputePipeline(*m_pipelines[0]);
-            commands.bindFrameData(kParamsSlot, params);
-            commands.bindBuffer(kLightsSlot, **lightRows);
-            commands.bindStorageBuffer(kCountsSlot, **target, rojoRHI::StorageAccess::Write);
-            commands.dispatch(groups, 1, 1);
-        });
+    graph.addComputePass("lmx.pass.light.count", std::move(count),
+                         [=, this, &commands](const PassResources& resources) {
+                             auto& lightRows = lmx::render::buffer(resources, lights);
+                             auto& target = lmx::render::buffer(resources, counts);
+                             commands.bindComputePipeline(*m_pipelines[0]);
+                             commands.bindFrameData(kParamsSlot, params);
+                             commands.bindBuffer(kLightsSlot, lightRows);
+                             commands.bindStorageBuffer(kCountsSlot, target,
+                                                        rojoRHI::StorageAccess::Write);
+                             commands.dispatch(groups, 1, 1);
+                         });
     const auto countsFilled = nextVersion(counts);
 
     ComputePassDesc scan;
@@ -241,17 +239,14 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.scan", std::move(scan),
         [=, this, &commands](const PassResources& resources) {
-            const GraphResult<rojoRHI::Buffer*> source = resources.buffer(countsFilled);
-            const GraphResult<rojoRHI::Buffer*> records = resources.buffer(grid);
-            const GraphResult<rojoRHI::Buffer*> totals = resources.buffer(countersReset);
-            LMX_ASSERT(source.has_value(), source.error().message);
-            LMX_ASSERT(records.has_value(), records.error().message);
-            LMX_ASSERT(totals.has_value(), totals.error().message);
+            auto& source = lmx::render::buffer(resources, countsFilled);
+            auto& records = lmx::render::buffer(resources, grid);
+            auto& totals = lmx::render::buffer(resources, countersReset);
             commands.bindComputePipeline(*m_pipelines[1]);
             commands.bindFrameData(kParamsSlot, params);
-            commands.bindStorageBuffer(kCountsSlot, **source, rojoRHI::StorageAccess::Read);
-            commands.bindStorageBuffer(kGridSlot, **records, rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(kCountersSlot, **totals, rojoRHI::StorageAccess::Write);
+            commands.bindStorageBuffer(kCountsSlot, source, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Write);
+            commands.bindStorageBuffer(kCountersSlot, totals, rojoRHI::StorageAccess::Write);
             commands.dispatch(1, 1, 1);
         });
     const auto gridBuilt = nextVersion(grid);
@@ -264,17 +259,14 @@ LightClusterOutputs LightClusterStage::declare(RenderGraph& graph, rojoRHI::Comm
     graph.addComputePass(
         "lmx.pass.light.fill", std::move(fill),
         [=, this, &commands](const PassResources& resources) {
-            const GraphResult<rojoRHI::Buffer*> lightRows = resources.buffer(lights);
-            const GraphResult<rojoRHI::Buffer*> records = resources.buffer(gridBuilt);
-            const GraphResult<rojoRHI::Buffer*> list = resources.buffer(indices);
-            LMX_ASSERT(lightRows.has_value(), lightRows.error().message);
-            LMX_ASSERT(records.has_value(), records.error().message);
-            LMX_ASSERT(list.has_value(), list.error().message);
+            auto& lightRows = lmx::render::buffer(resources, lights);
+            auto& records = lmx::render::buffer(resources, gridBuilt);
+            auto& list = lmx::render::buffer(resources, indices);
             commands.bindComputePipeline(*m_pipelines[2]);
             commands.bindFrameData(kParamsSlot, params);
-            commands.bindBuffer(kLightsSlot, **lightRows);
-            commands.bindStorageBuffer(kGridSlot, **records, rojoRHI::StorageAccess::Read);
-            commands.bindStorageBuffer(kIndicesSlot, **list, rojoRHI::StorageAccess::Write);
+            commands.bindBuffer(kLightsSlot, lightRows);
+            commands.bindStorageBuffer(kGridSlot, records, rojoRHI::StorageAccess::Read);
+            commands.bindStorageBuffer(kIndicesSlot, list, rojoRHI::StorageAccess::Write);
             commands.dispatch(groups, 1, 1);
         });
     const auto listFilled = nextVersion(indices);

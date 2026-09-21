@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/HzbStage.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
@@ -171,12 +172,11 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
         graph.addComputePass(
             std::format("lmx.pass.hzb.level{}", level), std::move(desc),
             [this, &commands, input, pyramid, outputRange, params](const PassResources& resources) {
-                auto sourceTexture = resources.texture(input);
-                auto outputTexture = resources.texture(pyramid);
-                LMX_ASSERT(sourceTexture && outputTexture, "HZB declared textures unavailable");
+                auto& sourceTexture = lmx::render::texture(resources, input);
+                auto& outputTexture = lmx::render::texture(resources, pyramid);
                 commands.bindComputePipeline(*m_reducePipeline);
-                commands.bindTexture(0, **sourceTexture);
-                commands.bindStorageTexture(1, **outputTexture, {.range = outputRange},
+                commands.bindTexture(0, sourceTexture);
+                commands.bindStorageTexture(1, outputTexture, {.range = outputRange},
                                             rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(0, params);
                 const auto groups =
@@ -199,12 +199,11 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
     graph.addComputePass(
         "lmx.pass.hzb.publish", std::move(publish),
         [this, &commands, pyramid, publication, levels](const PassResources& resources) {
-            auto texture = resources.texture(pyramid);
-            auto buffer = resources.buffer(publication);
-            LMX_ASSERT(texture && buffer, "HZB publication resources unavailable");
+            auto& texture = lmx::render::texture(resources, pyramid);
+            auto& buffer = lmx::render::buffer(resources, publication);
             commands.bindComputePipeline(*m_publishPipeline);
-            commands.bindTexture(0, **texture);
-            commands.bindStorageBuffer(1, **buffer, rojoRHI::StorageAccess::Write);
+            commands.bindTexture(0, texture);
+            commands.bindStorageBuffer(1, buffer, rojoRHI::StorageAccess::Write);
             commands.bindFrameData(0, levels);
             commands.dispatch(1, 1, 1);
         });

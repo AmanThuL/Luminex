@@ -5,6 +5,7 @@
 
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -178,29 +179,27 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     ComputePassDesc thresholdDesc;
     thresholdDesc.shaderTextureReads.push_back(displayInput);
     thresholdDesc.textureWrites.push_back(TextureUseDesc(bloomChain, kBloomMip0));
-    graph.addComputePass(
-        "lmx.pass.bloom.threshold", std::move(thresholdDesc),
-        [this, &commands, displayInput, bloomChain, sceneWidth, sceneHeight, bloomWidth,
-         bloomHeight, bloomThreshold](const PassResources& resources) {
-            const GraphResult<rojoRHI::Texture*> scene = resources.texture(displayInput);
-            LMX_ASSERT(scene.has_value(), scene.error().message);
-            const GraphResult<rojoRHI::Texture*> chain = resources.texture(bloomChain);
-            LMX_ASSERT(chain.has_value(), chain.error().message);
+    graph.addComputePass("lmx.pass.bloom.threshold", std::move(thresholdDesc),
+                         [this, &commands, displayInput, bloomChain, sceneWidth, sceneHeight,
+                          bloomWidth, bloomHeight, bloomThreshold](const PassResources& resources) {
+                             auto& scene = lmx::render::texture(resources, displayInput);
+                             auto& chain = lmx::render::texture(resources, bloomChain);
 
-            const BloomThresholdParams params{.threshold = bloomThreshold,
-                                              .srcWidth = sceneWidth,
-                                              .srcHeight = sceneHeight,
-                                              .dstWidth = bloomWidth,
-                                              .dstHeight = bloomHeight};
-            commands.bindComputePipeline(*m_bloomThresholdPipeline);
-            commands.bindTexture(kBloomThresholdSceneColorSlot, **scene);
-            commands.bindStorageTexture(kBloomThresholdDstSlot, **chain,
-                                        rojoRHI::TextureViewDesc{.range = kBloomMip0},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindFrameData(kBloomThresholdParamsSlot, params);
-            const auto groups = dispatchGroups2D(bloomWidth, bloomHeight);
-            commands.dispatch(groups[0], groups[1], 1);
-        });
+                             const BloomThresholdParams params{.threshold = bloomThreshold,
+                                                               .srcWidth = sceneWidth,
+                                                               .srcHeight = sceneHeight,
+                                                               .dstWidth = bloomWidth,
+                                                               .dstHeight = bloomHeight};
+                             commands.bindComputePipeline(*m_bloomThresholdPipeline);
+                             commands.bindTexture(kBloomThresholdSceneColorSlot, scene);
+                             commands.bindStorageTexture(
+                                 kBloomThresholdDstSlot, chain,
+                                 rojoRHI::TextureViewDesc{.range = kBloomMip0},
+                                 rojoRHI::StorageAccess::Write);
+                             commands.bindFrameData(kBloomThresholdParamsSlot, params);
+                             const auto groups = dispatchGroups2D(bloomWidth, bloomHeight);
+                             commands.dispatch(groups[0], groups[1], 1);
+                         });
 
     // Downsample chain: one pass per level, mip (L-1) -> mip L, each reading and writing disjoint
     // mips of the one bloomChain version that step left behind -- dispatches within a single
@@ -223,18 +222,17 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
             std::format("lmx.pass.bloom.downsample{}", level - 1), std::move(downsampleDesc),
             [this, &commands, bloomChainVersion, srcRange, dstRange, srcWidth, srcHeight, dstWidth,
              dstHeight](const PassResources& resources) {
-                const GraphResult<rojoRHI::Texture*> chain = resources.texture(bloomChainVersion);
-                LMX_ASSERT(chain.has_value(), chain.error().message);
+                auto& chain = lmx::render::texture(resources, bloomChainVersion);
 
                 const BloomDownsampleParams params{.srcWidth = srcWidth,
                                                    .srcHeight = srcHeight,
                                                    .dstWidth = dstWidth,
                                                    .dstHeight = dstHeight};
                 commands.bindComputePipeline(*m_bloomDownsamplePipeline);
-                commands.bindStorageTexture(kBloomDownsampleSrcSlot, **chain,
+                commands.bindStorageTexture(kBloomDownsampleSrcSlot, chain,
                                             rojoRHI::TextureViewDesc{.range = srcRange},
                                             rojoRHI::StorageAccess::Read);
-                commands.bindStorageTexture(kBloomDownsampleDstSlot, **chain,
+                commands.bindStorageTexture(kBloomDownsampleDstSlot, chain,
                                             rojoRHI::TextureViewDesc{.range = dstRange},
                                             rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(kBloomDownsampleParamsSlot, params);
@@ -282,24 +280,22 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                 [this, &commands, bloomChainFinal, bloomBlurVersion, smallFromChain, baseRange,
                  smallRange, baseWidth, baseHeight, smallWidth,
                  smallHeight](const PassResources& resources) {
-                    const GraphResult<rojoRHI::Texture*> chain = resources.texture(bloomChainFinal);
-                    LMX_ASSERT(chain.has_value(), chain.error().message);
-                    const GraphResult<rojoRHI::Texture*> blur = resources.texture(bloomBlurVersion);
-                    LMX_ASSERT(blur.has_value(), blur.error().message);
-                    rojoRHI::Texture& smallTexture = smallFromChain ? **chain : **blur;
+                    auto& chain = lmx::render::texture(resources, bloomChainFinal);
+                    auto& blur = lmx::render::texture(resources, bloomBlurVersion);
+                    rojoRHI::Texture& smallTexture = smallFromChain ? chain : blur;
 
                     const BloomUpsampleParams params{.smallWidth = smallWidth,
                                                      .smallHeight = smallHeight,
                                                      .dstWidth = baseWidth,
                                                      .dstHeight = baseHeight};
                     commands.bindComputePipeline(*m_bloomUpsamplePipeline);
-                    commands.bindStorageTexture(kBloomUpsampleBaseSlot, **chain,
+                    commands.bindStorageTexture(kBloomUpsampleBaseSlot, chain,
                                                 rojoRHI::TextureViewDesc{.range = baseRange},
                                                 rojoRHI::StorageAccess::Read);
                     commands.bindStorageTexture(kBloomUpsampleSmallSlot, smallTexture,
                                                 rojoRHI::TextureViewDesc{.range = smallRange},
                                                 rojoRHI::StorageAccess::Read);
-                    commands.bindStorageTexture(kBloomUpsampleDstSlot, **blur,
+                    commands.bindStorageTexture(kBloomUpsampleDstSlot, blur,
                                                 rojoRHI::TextureViewDesc{.range = baseRange},
                                                 rojoRHI::StorageAccess::Write);
                     commands.bindFrameData(kBloomUpsampleParamsSlot, params);
