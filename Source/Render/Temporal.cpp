@@ -6,6 +6,7 @@
 #include "Render/Temporal.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Sequence.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/matrix.hpp>
@@ -14,22 +15,6 @@
 #include <cmath>
 
 namespace lmx::render {
-namespace {
-
-//======================================================================================================================
-float radicalInverse(uint32_t index, uint32_t base) {
-    const float inverseBase = 1.0f / static_cast<float>(base);
-    float digitScale = inverseBase;
-    float result = 0.0f;
-    while (index > 0) {
-        result += static_cast<float>(index % base) * digitScale;
-        index /= base;
-        digitScale *= inverseBase;
-    }
-    return result;
-}
-
-} // namespace
 
 //======================================================================================================================
 FrameExtents renderExtentsForScale(uint32_t outputWidth, uint32_t outputHeight, float scale) {

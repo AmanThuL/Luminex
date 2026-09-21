@@ -6,6 +6,7 @@
 #include "Render/LightClusters.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Scalar.h"
 
 #include <algorithm>
 #include <cmath>
@@ -204,8 +205,8 @@ glm::uvec2 clusterTile(glm::uvec2 pixel, glm::uvec2 activeOrigin, glm::uvec2 act
 glm::uvec2 clusterTileEdges(uint32_t tile, uint32_t tileCount, uint32_t extent) {
     LMX_ASSERT(tileCount > 0 && tile < tileCount,
                "clusterTileEdges: the tile must lie inside the grid");
-    const uint32_t low = (tile * extent + tileCount - 1) / tileCount;
-    const uint32_t high = ((tile + 1) * extent + tileCount - 1) / tileCount;
+    const uint32_t low = divRoundUp(tile * extent, tileCount);
+    const uint32_t high = divRoundUp((tile + 1) * extent, tileCount);
     return {low, high};
 }
 
