@@ -7,7 +7,7 @@
 
 #include "Asset/GeometryGenerator.h"
 #include "Core/Color.h"
-#include "Render/Mesh.h"
+#include "Engine/Types/Mesh.h"
 
 #include <glm/glm.hpp>
 

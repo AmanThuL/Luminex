@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "Render/LocalLight.h"
+#include "Engine/Types/LocalLight.h"
 
-#include "Render/AlphaMode.h"
-#include "Render/SceneTables.h"
+#include "Engine/Scene/SceneTables.h"
+#include "Engine/Types/AlphaMode.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/Visibility.h"

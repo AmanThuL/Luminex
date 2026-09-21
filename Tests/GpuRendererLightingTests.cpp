@@ -1,9 +1,9 @@
 #include "GpuRendererTestSupport.h"
 #include "SceneTableTestSupport.h"
 
+#include "Engine/Types/LocalLight.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/GraphDump.h"
-#include "Render/LocalLight.h"
-#include "Render/LocalLightMath.h"
 
 #include <algorithm>
 #include <array>

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/AlphaMode.h"
+#include "Engine/Types/AlphaMode.h"
 #include "Scene/SceneIds.h"
 
 #include <glm/glm.hpp>

@@ -12,7 +12,7 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 #include "Render/Renderer.h"
 #include "Scene/Scene.h"
 

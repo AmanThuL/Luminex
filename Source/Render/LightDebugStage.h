@@ -3,8 +3,8 @@
 /// @brief Declares post-display froxel diagnostics over the scene's actual depth and light lists.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Engine/Types/LocalLight.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLight.h"
 #include "Render/RenderGraph.h"
 
 namespace lmx::render {

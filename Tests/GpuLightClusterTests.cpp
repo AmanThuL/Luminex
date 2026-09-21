@@ -1,9 +1,9 @@
 #include "GpuTestSupport.h"
 
+#include "Engine/Types/LocalLight.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/LightClusterStage.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLight.h"
-#include "Render/LocalLightMath.h"
 
 #include <algorithm>
 #include <format>

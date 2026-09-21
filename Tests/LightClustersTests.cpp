@@ -3,11 +3,11 @@
 /// @brief Tests the cluster grid lookups, the CPU clustering mirror and its overflow policy.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/Camera.h"
+#include "Engine/Scene/SceneTables.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/LocalLight.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLight.h"
-#include "Render/LocalLightMath.h"
-#include "Render/SceneTables.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

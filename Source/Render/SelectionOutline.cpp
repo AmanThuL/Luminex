@@ -5,7 +5,7 @@
 #include "Render/SelectionOutline.h"
 
 #include "Core/Assert.h"
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 
 #include <algorithm>
 #include <array>

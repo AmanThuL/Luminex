@@ -1,6 +1,6 @@
 #include "App/Model/SceneSession.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
-#include "Render/LocalLightMath.h"
 #include "Scene/SponzaLightRig.h"
 #include "SceneTableTestSupport.h"
 

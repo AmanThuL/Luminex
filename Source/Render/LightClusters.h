@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/SceneTables.h"
+#include "Engine/Scene/SceneTables.h"
 
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>

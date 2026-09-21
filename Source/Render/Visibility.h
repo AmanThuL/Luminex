@@ -5,10 +5,10 @@
 #pragma once
 
 #include "Core/Bounds.h"
+#include "Engine/Scene/SceneTables.h"
 #include "Render/Occlusion.h"
 #include "Render/OcclusionCheck.h"
 #include "Render/OcclusionHistory.h"
-#include "Render/SceneTables.h"
 #include <array>
 #include <span>
 #include <vector>

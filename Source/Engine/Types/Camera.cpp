@@ -3,7 +3,7 @@
 /// @brief Implements free-fly camera movement and reversed-depth transforms.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/Camera.h"
+#include "Engine/Types/Camera.h"
 
 #include "Core/Assert.h"
 

@@ -1,6 +1,6 @@
+#include "Engine/Types/LocalLightMath.h"
 #include "GpuTestSupport.h"
 #include "Render/LightDebugStage.h"
-#include "Render/LocalLightMath.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 

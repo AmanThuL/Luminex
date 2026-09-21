@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/LocalLight.h"
+#include "Engine/Types/LocalLight.h"
 #include "Render/Temporal.h"
 #include "Scene/SceneLibrary.h"
 
