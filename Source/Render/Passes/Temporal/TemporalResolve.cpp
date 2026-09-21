@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Temporal/TemporalResolve.h"
+#include "Render/Common/Dispatch.h"
 #include "Render/Common/Formats.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -16,7 +17,6 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kComputeThreadsPerGroup2D;
 using temporal_detail::viewReadsRejection;
 using temporal_detail::viewReadsReprojected;
 

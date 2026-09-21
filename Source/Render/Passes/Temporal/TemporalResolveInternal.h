@@ -61,8 +61,6 @@ constexpr uint32_t kResolveParamsSlot = 1;        // buffer
 // Shaders/Passes/Temporal/TemporalUpscale.slang's slot map is the resolve's above, kResolve* for
 // kResolve*, which is what lets one declaration serve both kernels.
 
-constexpr uint32_t kComputeThreadsPerGroup2D = 8;
-
 SpatialUpscaleParams spatialUpscaleParams(const TemporalInputs& inputs);
 TemporalUpscaleParams temporalUpscaleParams(const TemporalInputs& inputs, bool historyValid,
                                             uint32_t writeDiagnostics);

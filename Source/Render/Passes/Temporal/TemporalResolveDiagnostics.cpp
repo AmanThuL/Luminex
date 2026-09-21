@@ -3,6 +3,7 @@
 /// @brief Declares reprojection diagnostics and temporal debug display.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/Dispatch.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -15,7 +16,6 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kComputeThreadsPerGroup2D;
 using temporal_detail::SpatialUpscaleParams;
 using temporal_detail::spatialUpscaleParams;
 using temporal_detail::viewReadsRejection;
@@ -147,8 +147,8 @@ GraphTexture TemporalResolve::declareReprojection(RenderGraph& graph,
                                         rojoRHI::StorageAccess::Write);
             commands.bindSampler(kReprojectSamplerSlot, *m_sampler);
             commands.bindFrameData(kReprojectParamsSlot, params);
-            commands.dispatch(divRoundUp(params.width, kComputeThreadsPerGroup2D),
-                              divRoundUp(params.height, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(params.width, params.height);
+            commands.dispatch(groups[0], groups[1], 1);
         });
     return nextVersion(diagnostic);
 }

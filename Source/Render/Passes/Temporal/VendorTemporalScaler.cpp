@@ -3,6 +3,7 @@
 /// @brief Translates temporal inputs and declares the capability-selected vendor kernel.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
+#include "Render/Common/Dispatch.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
@@ -110,11 +111,11 @@ ReconstructionSelection VendorTemporalScaler::prepare(ReconstructionMode request
         m_historyLibrary = std::move(*library);
     }
     if (!m_historyPipeline) {
-        auto pipeline =
-            m_device.createComputePipeline({.library = m_historyLibrary.get(),
-                                            .computeEntry = "computeVendorTemporalHistory",
-                                            .threadsPerThreadgroup = {8, 8, 1},
-                                            .label = "lmx.pipeline.temporal.vendor.history"});
+        auto pipeline = m_device.createComputePipeline(
+            {.library = m_historyLibrary.get(),
+             .computeEntry = "computeVendorTemporalHistory",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.pipeline.temporal.vendor.history"});
         if (!pipeline) {
             return fail(pipeline.error());
         }
@@ -161,11 +162,11 @@ rojoRHI::Result<void> VendorTemporalScaler::preparePacking() {
         m_packLibrary = std::move(*library);
     }
     if (!m_packPipeline) {
-        auto pipeline =
-            m_device.createComputePipeline({.library = m_packLibrary.get(),
-                                            .computeEntry = "computeVendorTemporalPack",
-                                            .threadsPerThreadgroup = {8, 8, 1},
-                                            .label = "lmx.pipeline.temporal.vendor.pack"});
+        auto pipeline = m_device.createComputePipeline(
+            {.library = m_packLibrary.get(),
+             .computeEntry = "computeVendorTemporalPack",
+             .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+             .label = "lmx.pipeline.temporal.vendor.pack"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
@@ -220,7 +221,8 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
             commands.bindStorageBuffer(0, **exposure, rojoRHI::StorageAccess::Read);
             const VendorPackParams params{inputs.extents.renderWidth, inputs.extents.renderHeight};
             commands.bindFrameData(1, params);
-            commands.dispatch(divRoundUp(params.width, 8), divRoundUp(params.height, 8), 1);
+            const auto groups = dispatchGroups2D(params.width, params.height);
+            commands.dispatch(groups[0], groups[1], 1);
         });
     return {nextVersion(packed.motion), nextVersion(packed.reactive), nextVersion(packed.exposure)};
 }

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Bloom/BloomStage.h"
+#include "Render/Common/Dispatch.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -62,8 +63,6 @@ constexpr uint32_t kBloomUpsampleBaseSlot = 0;
 constexpr uint32_t kBloomUpsampleSmallSlot = 1;
 constexpr uint32_t kBloomUpsampleDstSlot = 2;
 constexpr uint32_t kBloomUpsampleParamsSlot = 0; // buffer
-
-constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 
 } // namespace
 
@@ -199,8 +198,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                         rojoRHI::TextureViewDesc{.range = kBloomMip0},
                                         rojoRHI::StorageAccess::Write);
             commands.bindFrameData(kBloomThresholdParamsSlot, params);
-            commands.dispatch(divRoundUp(bloomWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(bloomHeight, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(bloomWidth, bloomHeight);
+            commands.dispatch(groups[0], groups[1], 1);
         });
 
     // Downsample chain: one pass per level, mip (L-1) -> mip L, each reading and writing disjoint
@@ -239,8 +238,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                             rojoRHI::TextureViewDesc{.range = dstRange},
                                             rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(kBloomDownsampleParamsSlot, params);
-                commands.dispatch(divRoundUp(dstWidth, kComputeThreadsPerGroup2D),
-                                  divRoundUp(dstHeight, kComputeThreadsPerGroup2D), 1);
+                const auto groups = dispatchGroups2D(dstWidth, dstHeight);
+                commands.dispatch(groups[0], groups[1], 1);
             });
         bloomChainVersion = nextVersion(bloomChainVersion);
     }
@@ -304,8 +303,8 @@ GraphTexture BloomStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                                 rojoRHI::TextureViewDesc{.range = baseRange},
                                                 rojoRHI::StorageAccess::Write);
                     commands.bindFrameData(kBloomUpsampleParamsSlot, params);
-                    commands.dispatch(divRoundUp(baseWidth, kComputeThreadsPerGroup2D),
-                                      divRoundUp(baseHeight, kComputeThreadsPerGroup2D), 1);
+                    const auto groups = dispatchGroups2D(baseWidth, baseHeight);
+                    commands.dispatch(groups[0], groups[1], 1);
                 });
             bloomBlurVersion = nextVersion(bloomBlurVersion);
         }
