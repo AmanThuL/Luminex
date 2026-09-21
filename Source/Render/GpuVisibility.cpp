@@ -28,8 +28,8 @@ rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::D
             return std::unexpected(pipeline.error());
         self->m_pipelines[i] = std::move(*pipeline);
     }
-    const InstanceRow emptyInstance;
-    const MeshRow emptyMesh;
+    const engine::InstanceRow emptyInstance;
+    const engine::MeshRow emptyMesh;
     auto instance = device.createBuffer(
         {.size = sizeof(emptyInstance), .label = "lmx.visibility.emptyInstances"}, &emptyInstance);
     if (!instance)

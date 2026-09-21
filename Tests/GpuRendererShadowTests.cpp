@@ -173,10 +173,10 @@ TEST_CASE("renderer shadows a floating cube onto the ground", "[gpu]") {
     REQUIRE(device.has_value());
 
     auto ground =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.shadowGround");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.shadowGround");
     INFO(errorOf(ground));
     REQUIRE(ground.has_value());
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.shadowCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.shadowCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -268,7 +268,7 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     constexpr uint32_t kDepthTextureSlot = 0;
     constexpr uint32_t kSamplerSlot = 0;
 
-    const std::array<lmx::render::Vertex, 12> quads = {{
+    const std::array<lmx::engine::Vertex, 12> quads = {{
         clipVertex(-1.0f, -1.0f, 0.15f),
         clipVertex(1.0f, -1.0f, 0.15f),
         clipVertex(1.0f, -0.75f, 0.85f),
@@ -353,8 +353,8 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
     INFO(errorOf(sampler));
     REQUIRE(sampler.has_value());
 
-    lmx::scene::Scene scene;
-    lmx::render::MeshData geometry;
+    lmx::engine::Scene scene;
+    lmx::engine::MeshData geometry;
     geometry.vertices.assign(quads.begin(), quads.end());
     for (uint32_t i = 0; i < quads.size(); ++i) {
         geometry.indices.push_back(i);
@@ -378,12 +378,12 @@ TEST_CASE("depth bias offsets a sloped polygon and leaves a flat one alone", "[g
                                   .storeDepth = true,
                                   .label = "lmx.test.depthBias.write"});
         commands.bindPipeline(pipeline);
-        commands.bindFrameData(kObjectSlot, lmx::render::DrawUniforms{0});
-        commands.bindBuffer(lmx::render::kVisibleRowsSlot, **visibleRows);
+        commands.bindFrameData(kObjectSlot, lmx::engine::DrawUniforms{0});
+        commands.bindBuffer(lmx::engine::kVisibleRowsSlot, **visibleRows);
         commands.bindFrameData(2, identity);
         commands.bindBuffer(kVertexBufferSlot, *tables.vertices);
-        commands.bindBuffer(lmx::render::kSceneInstancesSlot, *tables.instances);
-        commands.bindBuffer(lmx::render::kSceneMaterialsSlot, *tables.materials);
+        commands.bindBuffer(lmx::engine::kSceneInstancesSlot, *tables.instances);
+        commands.bindBuffer(lmx::engine::kSceneMaterialsSlot, *tables.materials);
         commands.drawIndexed(*tables.indices, meshRow.indexCount, meshRow.firstIndex);
         commands.endRenderPass();
     };

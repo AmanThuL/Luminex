@@ -5,7 +5,7 @@
 
 #pragma once
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 class Scene;
 
@@ -18,4 +18,4 @@ constexpr double kSponzaCameraTourDuration = 120.0;
 /// Coordinates match the repository's pinned, metre-scale Crytek Sponza asset. Requires no device.
 void authorSponzaCameraTour(Scene& scene);
 
-} // namespace lmx::scene
+} // namespace lmx::engine

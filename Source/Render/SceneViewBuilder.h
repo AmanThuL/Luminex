@@ -10,7 +10,7 @@
 
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 class Scene;
 }
 
@@ -21,7 +21,7 @@ namespace lmx::render {
 /// lights, bounding sphere, sky pair and IBL set, with `filter` and `wireframe`. The returned view,
 /// `items` and the scene's resources must remain alive through pass declaration and graph
 /// execution.
-SceneView buildSceneView(const scene::Scene& scene, std::vector<DrawItem>& items,
+SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawItem>& items,
                          ShadowFilter filter, bool wireframe);
 
 } // namespace lmx::render

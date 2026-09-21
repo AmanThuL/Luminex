@@ -23,8 +23,8 @@ struct HzbReadParams {
 static_assert(sizeof(HzbReadParams) == 16);
 
 //======================================================================================================================
-std::vector<lmx::render::Aabb> actualHzbBounds() {
-    using lmx::render::Aabb;
+std::vector<lmx::Aabb> actualHzbBounds() {
+    using lmx::Aabb;
     std::vector<Aabb> result;
     for (const float x : {-0.75f, -0.4f, 0.0f, 0.3f, 0.7f}) {
         for (const float y : {-0.6f, -0.1f, 0.5f}) {

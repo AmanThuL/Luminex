@@ -13,7 +13,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -167,4 +167,4 @@ asset::AssetResult<Scene*> SceneLibrary::get(SceneId id) {
     return m_scenes[index].get();
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

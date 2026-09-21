@@ -58,7 +58,7 @@ public:
 
 private:
     struct ObjectSnapshot {
-        scene::InstanceId id;
+        engine::InstanceId id;
         std::optional<asset::DecomposedTransform> transform;
         std::optional<float> emissiveStrength;
     };
@@ -66,13 +66,13 @@ private:
     /// value (read fresh at Stop), so colour, intensity, range and direction edits made during the
     /// preview are preserved exactly like an object's untracked fields are.
     struct LightSnapshot {
-        scene::LightId id;
+        engine::LightId id;
         glm::vec3 position;
     };
     struct Snapshot {
-        const scene::Scene* source = nullptr;
-        std::optional<scene::MeshId> identity;
-        render::Camera camera;
+        const engine::Scene* source = nullptr;
+        std::optional<engine::MeshId> identity;
+        engine::Camera camera;
         double time = 0;
         bool followRail = false;
         std::unordered_map<uint32_t, ObjectSnapshot> objects;

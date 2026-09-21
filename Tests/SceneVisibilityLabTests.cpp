@@ -18,8 +18,8 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
           "[gpu][scene][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    scene::SceneLibrary library(**device);
-    const auto id = scene::parseSceneId("visibility-lab");
+    engine::SceneLibrary library(**device);
+    const auto id = engine::parseSceneId("visibility-lab");
     REQUIRE(id);
     REQUIRE(library.entry(*id).available);
     auto result = library.get(*id);
@@ -33,9 +33,9 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
     REQUIRE(scene.animation.cameraTrack.back().position == scene.initialCamera.position);
     (*device)->beginFrame();
     REQUIRE(scene.prepareFrame((*device)->frameNumber()));
-    std::vector<render::DrawItem> items;
+    std::vector<engine::DrawItem> items;
     const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
-    auto camera = scene::cameraFromScene(scene.initialCamera);
+    auto camera = engine::cameraFromScene(scene.initialCamera);
     const auto classify = [&] {
         const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *
                                                          camera.viewMatrix());
@@ -73,11 +73,11 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
           "[gpu][scene][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 0));
-    REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 1048577));
+    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 0));
+    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 1048577));
     for (uint32_t count : {1u, 5u, 1024u}) {
-        auto first = scene::loadVisibilityLabScene(**device, count);
-        auto second = scene::loadVisibilityLabScene(**device, count);
+        auto first = engine::loadVisibilityLabScene(**device, count);
+        auto second = engine::loadVisibilityLabScene(**device, count);
         REQUIRE(first);
         REQUIRE(second);
         REQUIRE((*first)->objects.size() == count);
@@ -95,11 +95,11 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
           "[gpu][scene][visibility][occlusion]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(scene::loadVisibilityLabScene(**device, 32, 1025));
-    auto baseline = scene::loadVisibilityLabScene(**device, 32);
-    auto explicitZero = scene::loadVisibilityLabScene(**device, 32, 0);
-    auto occluded = scene::loadVisibilityLabScene(**device, 32, 4);
-    auto repeated = scene::loadVisibilityLabScene(**device, 32, 4);
+    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 32, 1025));
+    auto baseline = engine::loadVisibilityLabScene(**device, 32);
+    auto explicitZero = engine::loadVisibilityLabScene(**device, 32, 0);
+    auto occluded = engine::loadVisibilityLabScene(**device, 32, 4);
+    auto repeated = engine::loadVisibilityLabScene(**device, 32, 4);
     REQUIRE(baseline);
     REQUIRE(explicitZero);
     REQUIRE(occluded);
@@ -137,7 +137,7 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
         REQUIRE(slab.scale.y >= 8.0f);
         const auto& material = (*occluded)->material(slab.material);
         REQUIRE(material.alphaMode ==
-                (i == 32 ? render::AlphaMode::Mask : render::AlphaMode::Opaque));
+                (i == 32 ? engine::AlphaMode::Mask : engine::AlphaMode::Opaque));
         if (i == 32) {
             REQUIRE(material.diffuse);
             REQUIRE(material.doubleSided);
@@ -155,7 +155,7 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
     const auto b = (*explicitZero)->tables();
     REQUIRE(a.instanceRows.size() == b.instanceRows.size());
     REQUIRE(std::memcmp(a.instanceRows.data(), b.instanceRows.data(),
-                        a.instanceRows.size() * sizeof(render::InstanceRow)) == 0);
+                        a.instanceRows.size() * sizeof(engine::InstanceRow)) == 0);
     (*device)->endFrame(nullptr);
     (*device)->waitIdle();
 }

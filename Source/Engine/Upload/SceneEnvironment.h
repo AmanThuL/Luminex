@@ -13,7 +13,7 @@
 #include <memory>
 #include <string_view>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Publishes `scene`'s sky geometry and radiance, the image-based lighting generated from
 /// `environment`, and the catalog's shared three-light directional rig. Every built-in scene ends
@@ -43,4 +43,4 @@ asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene
 asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene& scene,
                                                   std::string_view label);
 
-} // namespace lmx::scene
+} // namespace lmx::engine

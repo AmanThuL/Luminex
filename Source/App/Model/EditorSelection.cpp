@@ -97,8 +97,8 @@ std::string_view renderingCategoryLabel(RenderingCategory category) {
 }
 
 //======================================================================================================================
-EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId activeScene,
-                                 const scene::Scene& scene) {
+EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
+                                 const engine::Scene& scene) {
     const EditorSelection healed{
         .sceneId = activeScene, .subject = EditorSubject::None, .index = 0};
 
@@ -135,13 +135,13 @@ EditorSelection resolveSelection(const EditorSelection& current, scene::SceneId 
 }
 
 //======================================================================================================================
-EditorSelection initialSelection(scene::SceneId sceneId) {
+EditorSelection initialSelection(engine::SceneId sceneId) {
     return EditorSelection{.sceneId = sceneId, .subject = EditorSubject::Camera, .index = 0};
 }
 
 //======================================================================================================================
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activeScene,
-                                      scene::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
+                                      engine::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter) {
     if (requestedScene == activeScene || !switchSucceeded) {
@@ -152,16 +152,16 @@ SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scene::SceneId activ
 }
 
 //======================================================================================================================
-std::string sceneLocalLightLabel(const scene::Scene& scene, scene::LightId id) {
+std::string sceneLocalLightLabel(const engine::Scene& scene, engine::LightId id) {
     const auto* light = scene.light(id);
     if (!light)
         return "Unavailable light";
     return std::format("{} light {}",
-                       light->type == render::LocalLightType::Point ? "Point" : "Spot", id.slot);
+                       light->type == engine::LocalLightType::Point ? "Point" : "Spot", id.slot);
 }
 
 //======================================================================================================================
-std::string sceneObjectLabel(const scene::Scene& scene, size_t index) {
+std::string sceneObjectLabel(const engine::Scene& scene, size_t index) {
     if (index >= scene.objects.size()) {
         return "Unavailable object";
     }
@@ -175,7 +175,7 @@ std::string sceneObjectLabel(const scene::Scene& scene, size_t index) {
 }
 
 //======================================================================================================================
-bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& selection,
+bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& selection,
                              std::string_view filter) {
     if (filter.empty() || selection.subject == EditorSubject::None) {
         return false;
@@ -220,7 +220,7 @@ bool selectionHiddenByFilter(const scene::Scene& scene, const EditorSelection& s
 }
 
 //======================================================================================================================
-std::vector<EditorSelectionRow> buildSceneSelectionRows(const scene::Scene& scene,
+std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& scene,
                                                         std::string_view filter) {
     std::vector<EditorSelectionRow> rows;
     rows.reserve(1 + static_cast<size_t>(RenderingCategory::Count) + std::size(scene.lights) +

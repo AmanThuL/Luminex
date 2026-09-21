@@ -9,8 +9,8 @@
 TEST_CASE("zero-live lighting mode changes preserve usable temporal history",
           "[app][lighting-history]") {
     using namespace lmx;
-    constexpr std::array modes{render::LocalLightMode::Off, render::LocalLightMode::Direct,
-                               render::LocalLightMode::Clustered};
+    constexpr std::array modes{engine::LocalLightMode::Off, engine::LocalLightMode::Direct,
+                               engine::LocalLightMode::Clustered};
     for (const auto before : modes) {
         for (const auto after : modes) {
             CAPTURE(before, after);
@@ -28,13 +28,13 @@ TEST_CASE("lighting reset and implicit clustered selection use effective content
           "[app][lighting-history]") {
     using namespace lmx;
     app::EditorRenderSettings settings;
-    settings.localLightMode = render::LocalLightMode::Off;
+    settings.localLightMode = engine::LocalLightMode::Off;
     const auto previous = settings.localLightMode;
     app::resetRenderingGroup(settings, app::EditorRenderGroup::Lighting);
     CHECK_FALSE(app::lightingChangeNeedsHistoryReset(previous, settings.localLightMode, 0, false));
     CHECK(app::lightingChangeNeedsHistoryReset(previous, settings.localLightMode, 16, false));
-    CHECK_FALSE(app::lightingChangeNeedsHistoryReset(render::LocalLightMode::Direct,
-                                                     render::LocalLightMode::Clustered, 0, false));
-    CHECK(app::lightingChangeNeedsHistoryReset(render::LocalLightMode::Clustered,
-                                               render::LocalLightMode::Clustered, 0, true));
+    CHECK_FALSE(app::lightingChangeNeedsHistoryReset(engine::LocalLightMode::Direct,
+                                                     engine::LocalLightMode::Clustered, 0, false));
+    CHECK(app::lightingChangeNeedsHistoryReset(engine::LocalLightMode::Clustered,
+                                               engine::LocalLightMode::Clustered, 0, true));
 }

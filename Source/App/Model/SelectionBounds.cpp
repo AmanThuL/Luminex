@@ -11,15 +11,15 @@
 
 namespace lmx::app {
 //======================================================================================================================
-std::optional<render::Aabb> objectWorldBounds(const scene::Scene& scene,
-                                              const scene::SceneObject& object) {
+std::optional<Aabb> objectWorldBounds(const engine::Scene& scene,
+                                      const engine::SceneObject& object) {
     const auto local = scene.meshBounds(object.mesh);
-    return local ? render::transformAabb(object.modelMatrix(), *local) : std::nullopt;
+    return local ? transformAabb(object.modelMatrix(), *local) : std::nullopt;
 }
 
 //======================================================================================================================
-std::optional<render::Aabb> selectedObjectBounds(const scene::Scene& scene,
-                                                 const EditorSelection& selection) {
+std::optional<Aabb> selectedObjectBounds(const engine::Scene& scene,
+                                         const EditorSelection& selection) {
     if (selection.subject != EditorSubject::Object || selection.index >= scene.objects.size()) {
         return std::nullopt;
     }
@@ -27,8 +27,8 @@ std::optional<render::Aabb> selectedObjectBounds(const scene::Scene& scene,
 }
 
 //======================================================================================================================
-bool frameSelection(render::Camera& camera, const render::Aabb& bounds, float aspect) {
-    if (!render::isValidAabb(bounds) || !std::isfinite(aspect) || aspect <= 0.0f ||
+bool frameSelection(engine::Camera& camera, const Aabb& bounds, float aspect) {
+    if (!isValidAabb(bounds) || !std::isfinite(aspect) || aspect <= 0.0f ||
         !std::isfinite(camera.fovY) || camera.fovY <= 0.0f || camera.fovY >= 3.13f ||
         !std::isfinite(camera.yaw) || !std::isfinite(camera.pitch) ||
         std::abs(std::cos(camera.pitch)) < 1e-5f) {
@@ -40,7 +40,7 @@ bool frameSelection(render::Camera& camera, const render::Aabb& bounds, float as
     const double halfHorizontal = std::atan(std::tan(halfVertical) * aspect);
     const double distance = radius * 1.15 / std::sin(std::min(halfVertical, halfHorizontal));
     const glm::vec3 position(center - glm::dvec3(camera.forward()) * distance);
-    if (!render::isFinite(position) || !std::isfinite(distance) ||
+    if (!isFinite(position) || !std::isfinite(distance) ||
         distance > static_cast<double>(std::numeric_limits<float>::max()) * 0.5) {
         return false;
     }

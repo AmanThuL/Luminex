@@ -29,7 +29,7 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -114,8 +114,8 @@ asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, Scene&
 // A flat quad in the local Z=0 plane, +Z normal, corners wound CCW as seen from +Z (this
 // project's one front-facing winding -- RHI.h's CullMode::Back). UV spans the full [0,1] range
 // left to right, top to bottom, unlike Render/Mesh.cpp's makePlane whose UVs are all zero.
-render::MeshData makeMaterialQuad(float halfWidth, float halfHeight) {
-    render::MeshData mesh;
+engine::MeshData makeMaterialQuad(float halfWidth, float halfHeight) {
+    engine::MeshData mesh;
     struct Corner {
         float x, y, u, v;
     };
@@ -263,7 +263,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     };
 
     const MeshId sphereMeshIndex =
-        scene->addMesh(render::fromGeo(asset::makeSphere(0.5f, 32, 32)), "MaterialLab.sphereMesh");
+        scene->addMesh(engine::fromGeo(asset::makeSphere(0.5f, 32, 32)), "MaterialLab.sphereMesh");
 
     const MeshId unitQuadMeshIndex =
         scene->addMesh(makeMaterialQuad(0.5f, 0.5f), "MaterialLab.unitQuadMesh");
@@ -271,7 +271,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     const MeshId rampMeshIndex =
         scene->addMesh(makeMaterialQuad(3.0f, 0.5f), "MaterialLab.rampMesh");
 
-    const MeshId cubeMeshIndex = scene->addMesh(render::makeCube(), "MaterialLab.cubeMesh");
+    const MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "MaterialLab.cubeMesh");
 
     // Sphere grid: perceptual roughness sweeps columns, metallic sweeps rows.
     constexpr int kGridSize = 5;
@@ -466,4 +466,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     return scene;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

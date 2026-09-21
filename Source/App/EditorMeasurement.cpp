@@ -55,7 +55,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     plan.height = renderer.height();
     plan.labInstances = m_labInstances;
     plan.labOccluders = m_labOccluders;
-    plan.scene = scene::sceneIdString(m_activeSceneId);
+    plan.scene = engine::sceneIdString(m_activeSceneId);
     plan.temporal = temporalName(m_settings);
     plan.submission = submissionName(m_settings.submission);
     plan.classify = classifyModeName(m_settings.classifyMode);
@@ -81,7 +81,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
     }
     m_playback.play(m_session, m_settings.followCameraTrack);
     m_measurementOwnsPlayback = true;
-    m_session.camera() = scene::cameraFromScene(m_session.scene().initialCamera);
+    m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);
     m_session.rewindAnimation();
     requestCameraCut(m_temporalState);
     m_exposureResetPending = true;

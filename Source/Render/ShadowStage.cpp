@@ -175,19 +175,19 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
          lightViewProj = inputs.lightViewProj](const PassResources&) {
             if (view.tables.vertices) {
                 commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
-                commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
-                commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+                commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
+                commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rojoRHI::GraphicsPipeline* bound = nullptr;
-            commands.bindBuffer(kVisibleRowsSlot, *inputs.draws.rows);
+            commands.bindBuffer(engine::kVisibleRowsSlot, *inputs.draws.rows);
             if (inputs.draws.mode != SubmissionMode::Direct)
-                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{0});
+                commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
             for (const auto& run : inputs.draws.runs) {
-                const DrawItem& item = view.items[run.itemIndex];
+                const engine::DrawItem& item = view.items[run.itemIndex];
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                            "draw instance must name a current table row");
-                const bool masked = item.alphaMode == AlphaMode::Mask;
+                const bool masked = item.alphaMode == engine::AlphaMode::Mask;
                 auto* pipeline = masked ? m_maskShadowPipelines[item.doubleSided ? 1 : 0].get()
                                         : m_shadowPipeline.get();
                 if (pipeline != bound) {
@@ -201,7 +201,8 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
                     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
                 }
                 if (inputs.draws.mode == SubmissionMode::Direct) {
-                    commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{run.firstEntry});
+                    commands.bindFrameData(engine::kDrawUniformsSlot,
+                                           engine::DrawUniforms{run.firstEntry});
                     commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
                                          item.mesh.firstIndex);
                 } else {

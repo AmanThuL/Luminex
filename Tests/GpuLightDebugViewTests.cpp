@@ -12,11 +12,11 @@ using namespace lmx::render;
 
 struct DebugFixture {
     uint32_t width = 37, height = 23, outputWidth = 61, outputHeight = 41;
-    Camera camera;
+    lmx::engine::Camera camera;
     LightClusterParams params;
     glm::mat4 inverseViewProjection{1.0f};
     std::vector<float> depths;
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     LightClusterLists lists;
 };
 
@@ -39,18 +39,18 @@ DebugFixture makeDebugFixture() {
     // Sky, the near sliver, exact slice boundaries and the open far slice all participate.
     for (uint32_t x = 0; x < f.width; ++x)
         f.depths[x] = x % 3 == 0 ? 0.0f : f.params.sliceDepth[x % 25];
-    LocalLight point;
+    lmx::engine::LocalLight point;
     point.position = glm::vec3(glm::inverse(f.params.view) * glm::vec4(0, 0, -4, 1));
     point.range = 1.3f;
-    f.rows.push_back(*makeLightRow(point));
-    LocalLight spot = point;
-    spot.type = LocalLightType::Spot;
+    f.rows.push_back(*lmx::engine::makeLightRow(point));
+    lmx::engine::LocalLight spot = point;
+    spot.type = lmx::engine::LocalLightType::Spot;
     spot.position = glm::vec3(glm::inverse(f.params.view) * glm::vec4(0, 0, -2, 1));
     spot.direction = glm::vec3(glm::inverse(f.params.view) * glm::vec4(0, 0, -1, 0));
     spot.range = 5;
     spot.innerCone = 0.15f;
     spot.outerCone = 0.38f;
-    f.rows.push_back(*makeLightRow(spot));
+    f.rows.push_back(*lmx::engine::makeLightRow(spot));
     f.rows.push_back({}); // a tombstone must never produce a missing light.
     f.params.rowCount = uint32_t(f.rows.size());
     f.lists = buildLightClusters(f.rows, f.params);
@@ -58,7 +58,7 @@ DebugFixture makeDebugFixture() {
 }
 
 //======================================================================================================================
-std::vector<uint8_t> renderDebug(const DebugFixture& f, LightDebugView mode) {
+std::vector<uint8_t> renderDebug(const DebugFixture& f, lmx::engine::LightDebugView mode) {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
     auto stage = LightDebugStage::create(**device);
@@ -90,7 +90,7 @@ std::vector<uint8_t> renderDebug(const DebugFixture& f, LightDebugView mode) {
                                             .cpuReadback = true,
                                             .label = "lmx.test.lightDebug.output"});
     REQUIRE(output.has_value());
-    auto lights = (*device)->createBuffer({.size = f.rows.size() * sizeof(LightRow),
+    auto lights = (*device)->createBuffer({.size = f.rows.size() * sizeof(lmx::engine::LightRow),
                                            .storageRead = true,
                                            .label = "lmx.test.lightDebug.lights"},
                                           f.rows.data());
@@ -169,7 +169,7 @@ TEST_CASE("light missed view identifies only geometrically reaching missing rows
                     record.count |= kClusterTruncatedBit;
             }
             f.lists.indices = std::move(retained);
-            const auto image = renderDebug(f, LightDebugView::Missed);
+            const auto image = renderDebug(f, lmx::engine::LightDebugView::Missed);
             uint32_t marked = 0, black = 0;
             for (uint32_t y = 0; y < f.outputHeight; ++y)
                 for (uint32_t x = 0; x < f.outputWidth; ++x) {
@@ -179,8 +179,8 @@ TEST_CASE("light missed view identifies only geometrically reaching missing rows
                     const glm::vec4 h = f.inverseViewProjection *
                                         glm::vec4((float(sx) + 0.5f) * 2 / f.width - 1,
                                                   1 - (float(sy) + 0.5f) * 2 / f.height, depth, 1);
-                    const bool missing =
-                        depth > 0 && lightReaches(f.rows[missingRow], glm::vec3(h) / h.w);
+                    const bool missing = depth > 0 && lmx::engine::lightReaches(f.rows[missingRow],
+                                                                                glm::vec3(h) / h.w);
                     const size_t at = (y * f.outputWidth + x) * 4;
                     REQUIRE(image[at] == 0);
                     REQUIRE(image[at + 1] == (missing && truncated ? 255 : 0));
@@ -196,7 +196,7 @@ TEST_CASE("light missed view identifies only geometrically reaching missing rows
 
 //======================================================================================================================
 TEST_CASE("light missed clean lists stay opaque black including sky", "[gpu][light-debug]") {
-    const auto image = renderDebug(makeDebugFixture(), LightDebugView::Missed);
+    const auto image = renderDebug(makeDebugFixture(), lmx::engine::LightDebugView::Missed);
     for (size_t i = 0; i < image.size(); i += 4) {
         REQUIRE(image[i] == 0);
         REQUIRE(image[i + 1] == 0);
@@ -212,7 +212,7 @@ TEST_CASE("light count and overflow views use exact pixel-aligned froxel records
     constexpr std::array<uint32_t, 7> counts{0, 1, 4, 5, 16, 64, 128};
     for (uint32_t i = 0; i < kClusterCount; ++i)
         f.lists.grid[i].count = counts[i % counts.size()] | (i % 3 == 0 ? kClusterTruncatedBit : 0);
-    for (auto mode : {LightDebugView::Count, LightDebugView::Overflow}) {
+    for (auto mode : {lmx::engine::LightDebugView::Count, lmx::engine::LightDebugView::Overflow}) {
         const auto image = renderDebug(f, mode);
         for (uint32_t y = 0; y < f.outputHeight; ++y)
             for (uint32_t x = 0; x < f.outputWidth; ++x) {
@@ -221,7 +221,7 @@ TEST_CASE("light count and overflow views use exact pixel-aligned froxel records
                 std::array<uint8_t, 4> expected{0, 0, 0, 255};
                 if (f.depths[sy * f.width + sx] > 0) {
                     const uint32_t count = record.count & ~kClusterTruncatedBit;
-                    if (mode == LightDebugView::Overflow)
+                    if (mode == lmx::engine::LightDebugView::Overflow)
                         expected = record.count & kClusterTruncatedBit
                                        ? std::array<uint8_t, 4>{255, 0, 255, 255}
                                        : std::array<uint8_t, 4>{32, 32, 32, 255};
@@ -245,9 +245,9 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
           "[gpu][light-debug]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
+    auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene.has_value());
-    const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
+    const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (const auto reconstruction :
          {ReconstructionMode::NativeTaa, ReconstructionMode::VendorTemporal}) {
         std::vector<uint8_t> reference;
@@ -257,16 +257,16 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
             for (uint32_t frame = 0; frame < 7; ++frame) {
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
-                std::vector<DrawItem> items;
+                std::vector<lmx::engine::DrawItem> items;
                 auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
-                view.localLightMode = LocalLightMode::Clustered;
+                view.localLightMode = lmx::engine::LocalLightMode::Clustered;
                 view.temporal.enabled = true;
                 view.temporal.jitterEnabled = true;
                 view.temporal.reconstruction = reconstruction;
                 view.temporal.renderScale = 0.75f;
                 view.bloomEnabled = false;
-                view.lightDebugView =
-                    debug && frame < 6 ? LightDebugView::Missed : LightDebugView::Off;
+                view.lightDebugView = debug && frame < 6 ? lmx::engine::LightDebugView::Missed
+                                                         : lmx::engine::LightDebugView::Off;
                 (*renderer)->render(commands, camera, view, false);
                 (*device)->endFrame(nullptr);
                 (*device)->waitIdle();
@@ -296,20 +296,20 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
 TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gpu][light-debug]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scene::loadLightLabScene(**device, 64, 0);
+    auto scene = lmx::engine::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene.has_value());
     const auto ids = (*scene)->localLights();
-    const std::vector<lmx::scene::LightId> removed(ids.begin(), ids.end());
+    const std::vector<lmx::engine::LightId> removed(ids.begin(), ids.end());
     for (const auto id : removed)
         REQUIRE((*scene)->removeLight(id));
     auto renderer = Renderer::create(**device, 64, 48, true);
     REQUIRE(renderer.has_value());
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
-    std::vector<DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
-    view.localLightMode = LocalLightMode::Clustered;
-    view.lightDebugView = LightDebugView::Missed;
+    view.localLightMode = lmx::engine::LocalLightMode::Clustered;
+    view.lightDebugView = lmx::engine::LightDebugView::Missed;
     view.temporal.enabled = false;
     REQUIRE(view.tables.liveLightCount == 0);
     REQUIRE(view.tables.lightRowCount == 64);
@@ -317,7 +317,7 @@ TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gp
     pool.beginFrame();
     RenderGraph graph(pool);
     graph.exportTexture((*renderer)->declarePasses(
-        graph, commands, lmx::scene::cameraFromScene((*scene)->initialCamera), view));
+        graph, commands, lmx::engine::cameraFromScene((*scene)->initialCamera), view));
     const auto record = graph.compileFrame((*device)->frameNumber());
     REQUIRE(record.has_value());
     for (const auto& pass : record->debug.passes)

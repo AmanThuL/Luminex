@@ -101,8 +101,8 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    lmx::scene::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
-                                          options.labLights, options.labLightPile);
+    lmx::engine::SceneLibrary sceneLibrary(**device, options.labInstances, options.labOccluders,
+                                           options.labLights, options.labLightPile);
 
     // Swapchain dimensions follow the backing store, not logical window points.
     int pixelWidth = 0;

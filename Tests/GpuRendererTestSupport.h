@@ -23,8 +23,8 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using lmx::render::Camera;
-using lmx::render::DirectionalLight;
+using lmx::engine::Camera;
+using lmx::engine::DirectionalLight;
 using lmx::render::Renderer;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -195,7 +195,7 @@ inline PixelCoord projectToPixel(const Camera& camera, uint32_t size, const glm:
 }
 
 //======================================================================================================================
-inline lmx::render::Vertex clipVertex(float x, float y, float z) {
+inline lmx::engine::Vertex clipVertex(float x, float y, float z) {
     return {x, y, z, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 }
 

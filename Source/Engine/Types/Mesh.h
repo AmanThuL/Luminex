@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Packed position, normal, tangent, and UV layout consumed by scene shaders.
 struct Vertex {
@@ -42,4 +42,4 @@ MeshData makeCube();
 /// Builds an XZ plane at y=0 with the requested half extent and a +Y normal.
 MeshData makePlane(float halfExtent);
 
-} // namespace lmx::render
+} // namespace lmx::engine

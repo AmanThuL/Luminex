@@ -23,7 +23,7 @@ using namespace lmx;
 // Mirrors Shaders/Tests/PunctualLightOracle.slang's PunctualSample. Each glm::vec3 is followed by a
 // scalar so both sides see the same 16-byte-aligned structured-buffer stride.
 struct PunctualSample {
-    render::LightRow light;
+    engine::LightRow light;
     glm::vec3 position{0.0f};
     float pad0 = 0.0f;
     glm::vec3 normal{0.0f};
@@ -93,7 +93,7 @@ struct Surface {
 // scales its leak against, and is unused otherwise.
 struct Geometry {
     std::string name;
-    render::LightRow light;
+    engine::LightRow light;
     Surface surface;
     Agreement agreement = Agreement::Tolerance;
     Surface innerEdge;
@@ -116,8 +116,8 @@ glm::vec3 atCosine(glm::vec3 axis, float cosine, glm::vec3 hint) {
 }
 
 //======================================================================================================================
-render::LightRow rowOf(const render::LocalLight& light) {
-    auto row = render::makeLightRow(light);
+engine::LightRow rowOf(const engine::LocalLight& light) {
+    auto row = engine::makeLightRow(light);
     INFO(errorOf(row));
     REQUIRE(row);
     return *row;
@@ -129,7 +129,7 @@ render::LightRow rowOf(const render::LocalLight& light) {
 // deliberately different axes so the half vector never collapses onto the normal, which would put
 // D_GGX's `noh^2 (a^2 - 1) + 1` into catastrophic cancellation at the roughness floor and make the
 // comparison a measurement of that cancellation rather than of the light model.
-Surface surfaceAt(const render::LightRow& light, glm::vec3 position, float nol, float nov) {
+Surface surfaceAt(const engine::LightRow& light, glm::vec3 position, float nol, float nov) {
     const glm::vec3 lightVec = glm::normalize(light.position - position);
     const glm::vec3 normal = atCosine(lightVec, nol, glm::vec3(1.0f, 0.0f, 0.0f));
     return {.position = position,
@@ -142,7 +142,7 @@ Surface surfaceAt(const render::LightRow& light, glm::vec3 position, float nol, 
 // `SpotTerm` saturates and squares -- is exactly `term` before saturation. Naming the term rather
 // than an angle is what lets the inner edge (term 1), the outer edge (term 0) and either side of
 // both be stated without re-deriving the encoding here.
-glm::vec3 spotPoint(const render::LightRow& light, float term, float distance, glm::vec3 hint) {
+glm::vec3 spotPoint(const engine::LightRow& light, float term, float distance, glm::vec3 hint) {
     const float cosTheta = std::clamp((term - light.spotOffset) / light.spotScale, -1.0f, 1.0f);
     const float sinTheta = std::sqrt(std::max(1.0f - cosTheta * cosTheta, 0.0f));
     return light.position + distance * (cosTheta * light.direction +
@@ -154,20 +154,20 @@ glm::vec3 spotPoint(const render::LightRow& light, float term, float distance, g
 // product each: both light types, a surface inside, exactly at and beyond the range, both cone
 // edges and well outside the cone, a back-facing normal, and grazing light and view.
 std::vector<Geometry> oracleGeometry() {
-    using enum render::LocalLightType;
+    using enum engine::LocalLightType;
     const glm::vec3 down{0.0f, -1.0f, 0.0f};
 
-    const render::LightRow shortRange = rowOf({.type = Point,
+    const engine::LightRow shortRange = rowOf({.type = Point,
                                                .position = {0.0f, 4.0f, 0.0f},
                                                .colour = {1.0f, 0.85f, 0.7f},
                                                .intensity = 12.0f,
                                                .range = 4.0f});
-    const render::LightRow longRange = rowOf({.type = Point,
+    const engine::LightRow longRange = rowOf({.type = Point,
                                               .position = {0.0f, 4.0f, 0.0f},
                                               .colour = {0.6f, 0.8f, 1.0f},
                                               .intensity = 30.0f,
                                               .range = 12.0f});
-    const render::LightRow narrow = rowOf({.type = Spot,
+    const engine::LightRow narrow = rowOf({.type = Spot,
                                            .position = {0.0f, 4.0f, 0.0f},
                                            .colour = {0.9f, 0.95f, 1.0f},
                                            .intensity = 40.0f,
@@ -175,7 +175,7 @@ std::vector<Geometry> oracleGeometry() {
                                            .direction = down,
                                            .innerCone = 20.0f * kDegrees,
                                            .outerCone = 40.0f * kDegrees});
-    const render::LightRow wide = rowOf({.type = Spot,
+    const engine::LightRow wide = rowOf({.type = Spot,
                                          .position = {2.0f, 5.0f, -1.0f},
                                          .colour = {1.0f, 0.6f, 0.4f},
                                          .intensity = 60.0f,
@@ -186,7 +186,7 @@ std::vector<Geometry> oracleGeometry() {
 
     // Straight down from a light, so the distance is exactly the length the square root returns and
     // "exactly at range" means exactly that on both sides of the comparison.
-    const auto below = [&](const render::LightRow& light, float distance) {
+    const auto below = [&](const engine::LightRow& light, float distance) {
         return light.position + down * distance;
     };
     const glm::vec3 sideways{1.0f, 0.0f, 0.0f};
@@ -283,7 +283,7 @@ std::vector<Material> oracleMaterials() {
 }
 
 //======================================================================================================================
-PunctualSample sampleOf(const render::LightRow& light, const Surface& surface,
+PunctualSample sampleOf(const engine::LightRow& light, const Surface& surface,
                         const Material& material) {
     const float roughness = std::clamp(material.roughness, 0.045f, 1.0f);
     return {.light = light,
@@ -298,7 +298,7 @@ PunctualSample sampleOf(const render::LightRow& light, const Surface& surface,
 
 //======================================================================================================================
 glm::vec3 mirrorOf(const PunctualSample& sample) {
-    return render::computePunctualLight(sample.light, sample.position, sample.normal, sample.toEye,
+    return engine::computePunctualLight(sample.light, sample.position, sample.normal, sample.toEye,
                                         sample.baseColour, sample.f0, sample.metallic,
                                         sample.alpha);
 }

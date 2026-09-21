@@ -13,7 +13,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 //======================================================================================================================
 glm::vec3 Camera::forward() const {
@@ -82,4 +82,4 @@ glm::mat4 Camera::projectionMatrix(float aspect) const {
     return projection;
 }
 
-} // namespace lmx::render
+} // namespace lmx::engine

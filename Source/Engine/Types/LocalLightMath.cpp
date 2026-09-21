@@ -14,7 +14,7 @@
 #include <cmath>
 #include <numbers>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 namespace {
 
@@ -186,4 +186,4 @@ glm::vec3 computePunctualLight(const LightRow& row, glm::vec3 position, glm::vec
     return (diffuse + specular) * nol * row.strength * attenuation * cone;
 }
 
-} // namespace lmx::render
+} // namespace lmx::engine

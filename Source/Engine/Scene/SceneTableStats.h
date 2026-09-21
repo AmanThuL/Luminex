@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Scene ownership and upload counters; diagnostics do not measure GPU performance.
 struct SceneTableStats {
@@ -28,4 +28,4 @@ struct SceneTableStats {
     uint32_t pendingReleaseBuffers = 0; ///< Old table buffers awaiting paced retirement.
 };
 
-} // namespace lmx::scene
+} // namespace lmx::engine

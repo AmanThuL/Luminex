@@ -11,7 +11,7 @@
 
 #include <glm/vec3.hpp>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Builds `light`'s 64-byte GPU row: decodes strength and the cone term, and derives the world
 /// bounding sphere docs/milestones/m7/m7.5.md's light table specifies. This is the only gate before
@@ -42,4 +42,4 @@ glm::vec3 computePunctualLight(const LightRow& row, glm::vec3 position, glm::vec
                                glm::vec3 toEye, glm::vec3 baseColour, glm::vec3 f0, float metallic,
                                float alpha);
 
-} // namespace lmx::render
+} // namespace lmx::engine

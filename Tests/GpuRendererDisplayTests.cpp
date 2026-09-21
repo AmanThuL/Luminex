@@ -27,7 +27,7 @@ TEST_CASE("the display transform tone maps and encodes the scene's linear output
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.encodePlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f), "lmx.test.encodePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -85,7 +85,7 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f), "lmx.test.exposurePlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f), "lmx.test.exposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -168,7 +168,7 @@ TEST_CASE("auto exposure applies through the real scene pass with no CPU readbac
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto plane = lmx::test::fixtureMesh(**device, lmx::render::makePlane(2.0f),
+    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(2.0f),
                                         "lmx.test.autoExposurePlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());

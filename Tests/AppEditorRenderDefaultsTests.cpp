@@ -48,16 +48,16 @@ TEST_CASE("each rendering reset scope recognizes its editor defaults", "[app]") 
 //======================================================================================================================
 TEST_CASE("Lighting reset is scoped to local-light settings", "[app][render-defaults]") {
     lmx::app::EditorRenderSettings settings;
-    REQUIRE(settings.localLightMode == lmx::render::LocalLightMode::Clustered);
-    settings.localLightMode = lmx::render::LocalLightMode::Off;
-    settings.lightDebugView = lmx::render::LightDebugView::Missed;
+    REQUIRE(settings.localLightMode == lmx::engine::LocalLightMode::Clustered);
+    settings.localLightMode = lmx::engine::LocalLightMode::Off;
+    settings.lightDebugView = lmx::engine::LightDebugView::Missed;
     settings.lightCheck = true;
     settings.exposureEv = 3.0f;
     settings.renderScale = 0.5f;
     REQUIRE(lmx::app::renderingGroupChanged(settings, lmx::app::EditorRenderGroup::Lighting));
     lmx::app::resetRenderingGroup(settings, lmx::app::EditorRenderGroup::Lighting);
     REQUIRE_FALSE(lmx::app::renderingGroupChanged(settings, lmx::app::EditorRenderGroup::Lighting));
-    REQUIRE(settings.localLightMode == lmx::render::LocalLightMode::Clustered);
+    REQUIRE(settings.localLightMode == lmx::engine::LocalLightMode::Clustered);
     REQUIRE(settings.exposureEv == 3.0f);
     REQUIRE(settings.renderScale == 0.5f);
 }

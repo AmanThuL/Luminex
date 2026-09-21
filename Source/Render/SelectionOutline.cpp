@@ -144,7 +144,7 @@ rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) 
 
 //======================================================================================================================
 GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                       GraphTexture display, const Camera& camera,
+                                       GraphTexture display, const engine::Camera& camera,
                                        const SceneView& view, uint32_t selectedDraw,
                                        float backingScale, bool visible) {
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
@@ -191,14 +191,14 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                                viewProjection](bool selectedOnly) {
         commands.bindSampler(0, *m_sampler);
         commands.bindBuffer(0, *view.tables.vertices);
-        commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
-        commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+        commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
+        commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
         for (uint32_t index = 0; index < view.items.size(); ++index) {
             const auto& item = view.items[index];
             if (selectedOnly && index != selectedDraw) {
                 continue;
             }
-            const bool masked = item.alphaMode == AlphaMode::Mask;
+            const bool masked = item.alphaMode == engine::AlphaMode::Mask;
             const bool doubleSided = masked && item.doubleSided;
             commands.bindPipeline(
                 selectedOnly ? (doubleSided ? *m_doubleSidedPipeline : *m_maskPipeline)

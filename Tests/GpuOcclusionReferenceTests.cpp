@@ -11,7 +11,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 //======================================================================================================================
-MeshData referenceQuad() {
+lmx::engine::MeshData referenceQuad() {
     return {.vertices = {{-1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -26,7 +26,7 @@ VisibilityStatus referenceFrame(Device& device, TransientPool& pool, OcclusionRe
     auto view = fixture.prepare(device);
     pool.beginFrame();
     RenderGraph graph(pool);
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0, 0, 4};
     camera.fovY = glm::half_pi<float>();
     const auto result = reference.declare(
@@ -64,7 +64,7 @@ TEST_CASE("independent occlusion reference draws rejected candidates and shares 
     for (auto& item : items)
         item.mesh = &*mesh;
     items[0].model = glm::translate(glm::mat4(1), glm::vec3(0, 0, 1));
-    items[0].material.alphaMode = AlphaMode::Mask;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.albedo.a = 0;
     FixtureSceneView fixture;
     fixture.items = items;

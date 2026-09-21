@@ -71,7 +71,7 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
     std::ostringstream file;
     file << std::setprecision(17)
          << "{\n\"schemaVersion\":2,\"complete\":" << (complete ? "true" : "false")
-         << ",\"scene\":" << jsonString(scene::sceneIdString(options.initialScene))
+         << ",\"scene\":" << jsonString(engine::sceneIdString(options.initialScene))
          << ",\"failure\":" << jsonString(failure) << ",\"device\":" << jsonString(device)
          << ",\"requestedMode\":" << jsonString(captureModeName(options.temporal))
          << ",\"width\":" << width << ",\"height\":" << height
@@ -107,7 +107,7 @@ std::string captureManifestJson(const AppOptions& options, std::string_view devi
 }
 
 //======================================================================================================================
-std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Camera& camera,
+std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const engine::Camera& camera,
                               const render::SceneView& view, const render::TemporalStatus& status,
                               std::string_view filename, TemporalMode requested,
                               const render::VisibilityStatus* visibility,
@@ -158,7 +158,7 @@ std::string captureRecordJson(uint32_t ordinal, uint32_t frame, const render::Ca
 }
 
 //======================================================================================================================
-std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
+std::string captureFrameMetadataJson(engine::SceneId scene, uint32_t frameCount,
                                      uint32_t simulationFrame, TemporalMode requested,
                                      render::TemporalDebugView debugView, float renderScale,
                                      const render::TemporalStatus& status, std::string_view device,
@@ -168,7 +168,7 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
                                      const AppOptions* options,
                                      const render::LightingStatus* lighting) {
     std::ostringstream out;
-    out << std::setprecision(17) << "{\"scene\":" << jsonString(scene::sceneIdString(scene))
+    out << std::setprecision(17) << "{\"scene\":" << jsonString(engine::sceneIdString(scene))
         << ",\"frameCount\":" << frameCount << ",\"simulationFrame\":" << simulationFrame
         << ",\"requestedMode\":" << jsonString(captureModeName(requested)) << ",\"effectiveMode\":"
         << jsonString(requested == TemporalMode::Off ? "off"
@@ -185,14 +185,14 @@ std::string captureFrameMetadataJson(scene::SceneId scene, uint32_t frameCount,
         << ",\"visibility\":" << (visibility ? visibilityDiagnosticsJson(*visibility) : "null")
         << ",\"localLightMode\":"
         << jsonString(localLightModeName(options ? options->localLightMode
-                                                 : render::LocalLightMode::Clustered))
+                                                 : engine::LocalLightMode::Clustered))
         << ",\"lightDebugView\":"
         << jsonString(
-               lightDebugViewName(options ? options->lightDebugView : render::LightDebugView::Off))
+               lightDebugViewName(options ? options->lightDebugView : engine::LightDebugView::Off))
         << ",\"lightCheck\":" << (options && options->lightCheck ? "true" : "false")
         << ",\"localLightRig\":"
-        << ((options ? options->localLightRig : scene == scene::defaultSceneId()) ? "true"
-                                                                                  : "false")
+        << ((options ? options->localLightRig : scene == engine::defaultSceneId()) ? "true"
+                                                                                   : "false")
         << ",\"labLights\":" << (options ? options->labLights : 256)
         << ",\"labLightPile\":" << (options ? options->labLightPile : 0)
         << ",\"lighting\":" << (lighting ? lightingDiagnosticsJson(*lighting) : "null")

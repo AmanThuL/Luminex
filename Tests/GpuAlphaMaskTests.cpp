@@ -17,7 +17,7 @@ using namespace lmx::render;
 using namespace rojoRHI;
 
 //======================================================================================================================
-MeshData cutoutQuad() {
+lmx::engine::MeshData cutoutQuad() {
     return {.vertices = {{-1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -43,7 +43,7 @@ std::unique_ptr<Texture> cutoutTexture(Device& device) {
 
 //======================================================================================================================
 std::vector<uint16_t> cutoutFrame(Device& device, Renderer& renderer, FixtureSceneView view) {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0, 0, 5};
     auto& commands = device.beginFrame();
     renderer.render(commands, camera, lmx::test::prepareSceneView(view, device), false);
@@ -89,11 +89,11 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
-    items[0].material.alphaMode = AlphaMode::Mask;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.alphaCutoff = 0.3f;
     items[0].material.albedo = {0, 0, 0, 0.5f};
     items[0].material.emissive = {2, 0, 0};
-    items[0].motionClass = MotionClass::Invalid;
+    items[0].motionClass = lmx::engine::MotionClass::Invalid;
     items[1].mesh = &*mesh;
     items[1].model = glm::translate(glm::mat4{1}, glm::vec3{0, 0, -1}) *
                      glm::scale(glm::mat4{1}, glm::vec3{4, 4, 1});
@@ -135,7 +135,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         const size_t solid = (kSize / 2 * kSize + 39) * 2;
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
         REQUIRE(std::isinf(glm::unpackHalf1x16(motion[solid])));
-        items[0].motionClass = MotionClass::Rigid;
+        items[0].motionClass = lmx::engine::MotionClass::Rigid;
         items[0].previousModel =
             glm::translate(glm::mat4{1}, glm::vec3{-0.1f, 0, 0}) * items[0].model;
         cutoutFrame(**device, **renderer, view);
@@ -143,7 +143,7 @@ TEST_CASE("alpha mask shares color depth and motion coverage", "[gpu][alpha-mask
         REQUIRE(glm::unpackHalf1x16(motion[hole]) == 0.0f);
         REQUIRE(glm::unpackHalf1x16(motion[solid]) > 0.005f);
     }
-    items[0].material.alphaMode = AlphaMode::Opaque;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
     items[0].model = glm::mat4{1};
     pixels = cutoutFrame(**device, **renderer, view);
     REQUIRE(cutoutChannel(pixels, 25, 0) > 1.0f);
@@ -165,7 +165,7 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     std::array<FixtureDrawItem, 2> items;
     items[0].mesh = &*mesh;
     items[0].material.diffuse = texture.get();
-    items[0].material.alphaMode = AlphaMode::Mask;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.alphaCutoff = 0.3f;
     items[0].material.albedo.a = 0.5f;
     items[0].material.doubleSided = true;
@@ -177,11 +177,11 @@ TEST_CASE("alpha mask shadows preserve holes and transformed UV coverage", "[gpu
     view.temporal.enabled = false;
     view.lights[0].direction = glm::normalize(glm::vec3{-1, 0, -1});
     const auto masked = cutoutFrame(**device, **renderer, view);
-    items[0].material.alphaMode = AlphaMode::Opaque;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Opaque;
     const auto opaque = cutoutFrame(**device, **renderer, view);
     INFO("masked=" << cutoutChannel(masked, 18, 0) << " opaque=" << cutoutChannel(opaque, 18, 0));
     REQUIRE(cutoutChannel(masked, 18, 0) > cutoutChannel(opaque, 18, 0) + 0.05f);
-    items[0].material.alphaMode = AlphaMode::Mask;
+    items[0].material.alphaMode = lmx::engine::AlphaMode::Mask;
     items[0].material.uvTransform[0][0] = -1;
     items[0].material.uvTransform[3][0] = 1;
     const auto flipped = cutoutFrame(**device, **renderer, view);
@@ -201,7 +201,7 @@ TEST_CASE("double sided alpha masks reverse back-face lighting normals", "[gpu][
     REQUIRE(mesh);
     FixtureDrawItem item;
     item.mesh = &*mesh;
-    item.material.alphaMode = AlphaMode::Mask;
+    item.material.alphaMode = lmx::engine::AlphaMode::Mask;
     item.material.alphaCutoff = 0.5f;
     item.material.albedo.a = 0.5f;
     item.material.doubleSided = true;

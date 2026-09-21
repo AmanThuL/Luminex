@@ -17,7 +17,7 @@ namespace rojoRHI {
 class Buffer;
 }
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Motion cannot be derived from the instance's previous transform.
 constexpr uint32_t kInstanceMotionInvalid = 1u;
@@ -172,4 +172,4 @@ struct SceneTables {
     uint32_t liveLightCount = 0; ///< Enabled local lights this frame; zero disables local passes.
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine

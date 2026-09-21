@@ -165,8 +165,8 @@ int runOffscreen(AppOptions options) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    scene::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
-    const scene::SceneEntry& entry = library.entry(sceneId);
+    engine::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
+    const engine::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
         return 1;
@@ -177,7 +177,7 @@ int runOffscreen(AppOptions options) {
         LMX_LOG_ERROR("scene '{}' failed to load: {}", entry.stableId, scene.error().message);
         return 1;
     }
-    scene::Scene* activeScene = *scene;
+    engine::Scene* activeScene = *scene;
     LMX_LOG_INFO("scene: {} ({} objects)", activeScene->name, activeScene->objects.size());
 
     // The renderer dies before its frame transients and their pool, while the device is alive.
@@ -203,7 +203,7 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
     }
-    const render::Camera& camera = session.camera();
+    const engine::Camera& camera = session.camera();
     const bool hasCameraTrack = !activeScene->animation.cameraTrack.empty();
     FrameRecordRing frameRecords;
     DynamicResolutionState resolutionState;
@@ -240,7 +240,7 @@ int runOffscreen(AppOptions options) {
             (*device)->waitIdle();
             return 1;
         }
-        std::vector<render::DrawItem> items;
+        std::vector<engine::DrawItem> items;
         render::SceneView view =
             session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
         // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
@@ -353,7 +353,7 @@ int runOffscreen(AppOptions options) {
                                    hasCameraTrack, records, false)) {
                     return 1;
                 }
-                if (options.lightDebugView != render::LightDebugView::Missed &&
+                if (options.lightDebugView != engine::LightDebugView::Missed &&
                     isFlatImage(pixels)) {
                     LMX_LOG_ERROR("capture frame {} is flat; manifest remains incomplete", ordinal);
                     return 1;
@@ -396,7 +396,7 @@ int runOffscreen(AppOptions options) {
     LMX_LOG_INFO("screenshot written: {} ({}x{}, {} bytes of pixels)", outPath.string(),
                  kScreenshotWidth, kScreenshotHeight, pixels.size());
 
-    if (options.lightDebugView != render::LightDebugView::Missed && isFlatImage(pixels)) {
+    if (options.lightDebugView != engine::LightDebugView::Missed && isFlatImage(pixels)) {
         LMX_LOG_ERROR(
             "screenshot: {} is a single flat colour across the whole image -- nothing appears "
             "to have rendered (the file was still written, open it)",

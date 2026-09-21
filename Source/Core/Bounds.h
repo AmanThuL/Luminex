@@ -11,7 +11,7 @@
 #include <limits>
 #include <optional>
 
-namespace lmx::render {
+namespace lmx {
 
 /// Inclusive axis-aligned bounds in the coordinate space of their owner.
 struct Aabb {
@@ -63,4 +63,4 @@ inline std::optional<Aabb> transformAabb(const glm::mat4& transform, const Aabb&
     return world;
 }
 
-} // namespace lmx::render
+} // namespace lmx

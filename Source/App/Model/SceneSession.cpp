@@ -17,14 +17,14 @@ namespace lmx::app {
 namespace {
 
 //======================================================================================================================
-uint64_t lightKey(scene::LightId id) {
+uint64_t lightKey(engine::LightId id) {
     return (uint64_t{id.store} << 48) | (uint64_t{id.generation} << 32) | id.slot;
 }
 
 } // namespace
 
 //======================================================================================================================
-void SceneSession::activate(scene::Scene& scene, SceneActivationMotion motion) {
+void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) {
     auto [entry, inserted] = m_defaults.try_emplace(&scene);
     if (inserted) {
         for (const auto& object : scene.objects) {
@@ -40,14 +40,14 @@ void SceneSession::activate(scene::Scene& scene, SceneActivationMotion motion) {
     }
     m_scene = &scene;
     rememberLocalLightDefaults();
-    m_camera = scene::cameraFromScene(scene.initialCamera);
+    m_camera = engine::cameraFromScene(scene.initialCamera);
     if (motion == SceneActivationMotion::Reset) {
         resetMotion();
     }
 }
 
 //======================================================================================================================
-scene::Scene& SceneSession::scene() const {
+engine::Scene& SceneSession::scene() const {
     LMX_ASSERT(m_scene != nullptr, "SceneSession requires an active scene");
     return *m_scene;
 }
@@ -96,12 +96,12 @@ rojoRHI::Result<void> SceneSession::prepareFrame(uint64_t frameNumber) {
 }
 
 //======================================================================================================================
-scene::SceneTableStats SceneSession::tableStats() const {
+engine::SceneTableStats SceneSession::tableStats() const {
     return scene().tableStats();
 }
 
 //======================================================================================================================
-render::SceneView SceneSession::view(std::vector<render::DrawItem>& items,
+render::SceneView SceneSession::view(std::vector<engine::DrawItem>& items,
                                      render::ShadowFilter filter, bool wireframe) const {
     return render::buildSceneView(scene(), items, filter, wireframe);
 }
@@ -161,7 +161,7 @@ void SceneSession::resetObject(size_t index) {
 }
 
 //======================================================================================================================
-const render::DirectionalLight& SceneSession::lightDefault(size_t index) const {
+const engine::DirectionalLight& SceneSession::lightDefault(size_t index) const {
     LMX_ASSERT(index < 3, "Light index out of range");
     return m_defaults.at(m_scene).lights[index];
 }
@@ -220,7 +220,7 @@ void SceneSession::rememberLocalLightDefaults() {
 }
 
 //======================================================================================================================
-std::optional<render::LocalLight> SceneSession::localLightDefault(scene::LightId id) const {
+std::optional<engine::LocalLight> SceneSession::localLightDefault(engine::LightId id) const {
     const auto* current = scene().light(id);
     if (!current)
         return std::nullopt;
@@ -237,7 +237,7 @@ std::optional<render::LocalLight> SceneSession::localLightDefault(scene::LightId
 }
 
 //======================================================================================================================
-bool SceneSession::localLightChanged(scene::LightId id) const {
+bool SceneSession::localLightChanged(engine::LightId id) const {
     const auto original = localLightDefault(id);
     const auto* current = scene().light(id);
     return original && current &&
@@ -249,15 +249,15 @@ bool SceneSession::localLightChanged(scene::LightId id) const {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::editLocalLight(scene::LightId id,
-                                                   const render::LocalLight& light) {
+rojoRHI::Result<void> SceneSession::editLocalLight(engine::LightId id,
+                                                   const engine::LocalLight& light) {
     if (const auto* current = scene().light(id))
         m_defaults.at(m_scene).localLights.try_emplace(lightKey(id), *current);
     return scene().updateLight(id, light);
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> SceneSession::resetLocalLight(scene::LightId id) {
+rojoRHI::Result<void> SceneSession::resetLocalLight(engine::LightId id) {
     const auto original = localLightDefault(id);
     if (!original)
         return std::unexpected(
@@ -283,8 +283,8 @@ uint32_t SceneSession::lightLabPileCount() const {
 uint32_t SceneSession::lightLabPileCapacity() const {
     if (!lightLabPileAvailable())
         return 0;
-    return std::min(render::kMaxLocalLights - scene().lightLabGridCount,
-                    render::kMaxLocalLights - (static_cast<uint32_t>(scene().localLights().size()) -
+    return std::min(engine::kMaxLocalLights - scene().lightLabGridCount,
+                    engine::kMaxLocalLights - (static_cast<uint32_t>(scene().localLights().size()) -
                                                lightLabPileCount()));
 }
 
@@ -295,11 +295,11 @@ rojoRHI::Result<void> SceneSession::setLightLabPile(uint32_t count) {
                                               "Pile exceeds available LightLab light capacity"});
     auto& pile = m_defaults.at(m_scene).pileLights;
     std::erase_if(pile, [&](auto id) { return scene().light(id) == nullptr; });
-    std::vector<scene::LightId> added;
+    std::vector<engine::LightId> added;
     if (count > pile.size()) {
         // The immutable authored grid count reserves at least one slot, so count <= 4095 and this
         // helper's one unused grid light plus the requested pile obey the generator's 4096 limit.
-        const auto authored = scene::lightLabLights(1, count);
+        const auto authored = engine::lightLabLights(1, count);
         for (size_t i = pile.size(); i < count; ++i) {
             const auto id = scene().addLight(authored[i + 1]);
             if (!id) {

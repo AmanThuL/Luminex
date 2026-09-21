@@ -40,7 +40,7 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
 class VisibilityDisplay {
 public:
     /// Records current identities after declaration; no scene pointer is retained.
-    void observe(const scene::Scene& scene, const render::VisibilityStatus& status);
+    void observe(const engine::Scene& scene, const render::VisibilityStatus& status);
     /// Publishes retired classifications using identities saved at declaration, never current rows.
     void retire(const render::VisibilityStatus& status);
     /// Retains exact-frame timings for the displayed visibility publication.
@@ -58,17 +58,18 @@ public:
     /// Owned timings matching readingsStatus(); empty when no exact-frame join was available.
     std::span<const rojoRHI::PassTiming> readingsTimings() const { return m_readingsTimings; }
     /// Formats the selected object's matching result and frame; missing identities stay pending.
-    std::vector<VisibilityField> objectFields(scene::InstanceId id, uint64_t sceneGeneration) const;
+    std::vector<VisibilityField> objectFields(engine::InstanceId id,
+                                              uint64_t sceneGeneration) const;
     /// Clears identity mapping on a scene switch.
     void clear();
     /// Returns a candidate only when scene generation, frame and full object identity match.
-    const render::InstanceVisibility* find(scene::InstanceId id,
+    const render::InstanceVisibility* find(engine::InstanceId id,
                                            const render::VisibilityStatus& status,
                                            uint64_t sceneGeneration) const;
 
 private:
     struct Entry {
-        scene::InstanceId id;
+        engine::InstanceId id;
         size_t candidate = 0;
     };
     struct Snapshot {

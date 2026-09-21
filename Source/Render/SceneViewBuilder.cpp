@@ -13,7 +13,7 @@
 namespace lmx::render {
 
 //======================================================================================================================
-SceneView buildSceneView(const scene::Scene& scene, std::vector<DrawItem>& items,
+SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawItem>& items,
                          ShadowFilter filter, bool wireframe) {
     scene.fillDrawItems(items);
 

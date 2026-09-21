@@ -96,17 +96,17 @@ MeasurementProvenance collectMeasurementProvenance(const rojoRHI::Device& device
 }
 
 //======================================================================================================================
-uint64_t measurementTableBytes(const scene::SceneTableStats& stats) {
-    return 3 * (uint64_t{stats.instanceCapacity} * sizeof(render::InstanceRow) +
-                uint64_t{stats.meshCapacity} * sizeof(render::MeshRow) +
-                uint64_t{stats.materialCapacity} * sizeof(render::MaterialRow) +
-                uint64_t{stats.lightCapacity} * sizeof(render::LightRow));
+uint64_t measurementTableBytes(const engine::SceneTableStats& stats) {
+    return 3 * (uint64_t{stats.instanceCapacity} * sizeof(engine::InstanceRow) +
+                uint64_t{stats.meshCapacity} * sizeof(engine::MeshRow) +
+                uint64_t{stats.materialCapacity} * sizeof(engine::MaterialRow) +
+                uint64_t{stats.lightCapacity} * sizeof(engine::LightRow));
 }
 
 //======================================================================================================================
 MeasurementCpuSample measurementCpuSample(uint32_t sequenceFrame, double waitMs, double encodeMs,
                                           const render::VisibilityStatus& visibility,
-                                          const scene::SceneTableStats& tables,
+                                          const engine::SceneTableStats& tables,
                                           const render::CompiledFrameRecord& record, bool hasSky,
                                           const render::TemporalStatus& temporal,
                                           const render::LightingStatus& lighting) {
@@ -164,7 +164,7 @@ int runMeasurement(const AppOptions& options) {
     MeasurementPlan plan;
     plan.warmupFrames = options.warmup;
     plan.measuredFrames = options.frames;
-    plan.scene = scene::sceneIdString(options.initialScene);
+    plan.scene = engine::sceneIdString(options.initialScene);
     const auto scaleStep =
         readOcclusionScaleStep(options.unscored, options.temporal != TemporalMode::Off);
     if (!scaleStep) {
@@ -201,8 +201,8 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    scene::SceneLibrary library(**device, options.labInstances, options.labOccluders,
-                                options.labLights, options.labLightPile);
+    engine::SceneLibrary library(**device, options.labInstances, options.labOccluders,
+                                 options.labLights, options.labLightPile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {
         run.cancel(loaded.error().message);
@@ -231,7 +231,7 @@ int runMeasurement(const AppOptions& options) {
         const auto frame = *run.nextFrame();
         session.prepareSequenceFrame(frame.sequenceFrame);
         if (!plan.cameraTrack)
-            session.camera() = scene::cameraFromScene((*loaded)->initialCamera);
+            session.camera() = engine::cameraFromScene((*loaded)->initialCamera);
         const auto waitStart = Clock::now();
         auto& commands = (*device)->beginFrame();
         const auto encodeStart = Clock::now();
@@ -244,7 +244,7 @@ int runMeasurement(const AppOptions& options) {
             (*device)->endFrame(nullptr);
             break;
         }
-        std::vector<render::DrawItem> items;
+        std::vector<engine::DrawItem> items;
         auto view = session.view(items, render::ShadowFilter::PCF, false);
         view.localLightMode = options.localLightMode;
         view.lightCheck = options.lightCheck;

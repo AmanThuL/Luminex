@@ -82,6 +82,7 @@ bool consumeCameraCut(TemporalEditorState& state);
 /// Called for every scene selection, including the first: bumps `state.sceneGeneration`
 /// unconditionally. Selecting any scene leaves `settings` untouched -- TemporalLab now opens with
 /// the same defaults as every other scene.
-void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& settings, scene::SceneId id);
+void onSceneSelected(TemporalEditorState& state, EditorRenderSettings& settings,
+                     engine::SceneId id);
 
 } // namespace lmx::app

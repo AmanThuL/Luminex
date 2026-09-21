@@ -16,7 +16,7 @@ TEST_CASE("renderer draws per-object uniforms in one pass", "[gpu]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.cube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.cube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -47,7 +47,7 @@ TEST_CASE("renderer depth test beats draw order", "[gpu]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto plane = lmx::test::fixtureMesh(**device, lmx::render::makePlane(1.0f), "lmx.test.plane");
+    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(1.0f), "lmx.test.plane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -103,7 +103,7 @@ TEST_CASE("renderer scene survives a barrier into a sampling pass", "[gpu]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.barrierCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.barrierCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -167,7 +167,7 @@ TEST_CASE("a wireframe SceneView leaves the interior of a face unfilled", "[gpu]
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.wireCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.wireCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -233,12 +233,12 @@ TEST_CASE("the sky pass fills the background behind the scene", "[gpu]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.skySceneCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.skySceneCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
     auto skySphere = lmx::test::fixtureMesh(
-        **device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)), "lmx.test.skySphere");
+        **device, lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)), "lmx.test.skySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());
 
@@ -303,7 +303,7 @@ TEST_CASE("pass timings name every pass the graph ran", "[gpu]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.timedCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.timedCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -361,7 +361,7 @@ TEST_CASE("a joined pass samples the scene colour the graph rendered", "[gpu]") 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.joinedCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.joinedCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 

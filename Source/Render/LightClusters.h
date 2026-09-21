@@ -142,7 +142,7 @@ glm::uvec2 clusterTileEdges(uint32_t tile, uint32_t tileCount, uint32_t extent);
 /// scan grants ranges in flat froxel order, the first froxel that does not fit takes the remaining
 /// entries and every later froxel with intersections gets count 0; each such record is truncated.
 /// `rows` beyond `rowCount` are ignored.
-LightClusterLists buildLightClusters(std::span<const LightRow> rows,
+LightClusterLists buildLightClusters(std::span<const engine::LightRow> rows,
                                      const LightClusterParams& params);
 
 } // namespace lmx::render

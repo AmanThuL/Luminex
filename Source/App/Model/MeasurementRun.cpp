@@ -91,7 +91,7 @@ bool MeasurementRun::start(MeasurementPlan plan, MeasurementProvenance provenanc
         (m_plan.localLightRig && m_plan.scene != "sponza") ||
         (m_plan.scene == "light-lab" &&
          (m_plan.labLights == 0 ||
-          uint64_t{m_plan.labLights} + m_plan.labLightPile > render::kMaxLocalLights))) {
+          uint64_t{m_plan.labLights} + m_plan.labLightPile > engine::kMaxLocalLights))) {
         cancel("Invalid local-light plan or scored lighting diagnostics");
         return false;
     }
@@ -144,11 +144,11 @@ bool MeasurementRun::recordCpu(MeasurementCpuSample sample) {
     }
     const auto& lighting = sample.lighting;
     const auto effective =
-        lighting.liveLightCount ? lighting.requested : render::LocalLightMode::Off;
+        lighting.liveLightCount ? lighting.requested : engine::LocalLightMode::Off;
     if (lighting.frameNumber != sample.frameId || lighting.isRetired ||
         localLightModeName(lighting.requested) != m_plan.localLightMode ||
         lighting.effective != effective || lighting.checkEnabled != m_plan.lightCheck ||
-        lighting.liveLightCount > render::kMaxLocalLights ||
+        lighting.liveLightCount > engine::kMaxLocalLights ||
         (!m_lightingDeclarations.empty() &&
          (m_lightingDeclarations.front().sceneGeneration != lighting.sceneGeneration ||
           m_lightingDeclarations.front().liveLightCount != lighting.liveLightCount)) ||
@@ -311,7 +311,7 @@ bool MeasurementRun::retireLighting(const render::LightingStatus& status) {
         found->lighting->checkFrame.reset();
     }
     const auto& c = status.counters;
-    const bool clusterWork = status.effective == render::LocalLightMode::Clustered;
+    const bool clusterWork = status.effective == engine::LocalLightMode::Clustered;
     if (!status.isRetired || status.sceneGeneration != declared->sceneGeneration ||
         status.requested != declared->requested || status.effective != declared->effective ||
         status.liveLightCount != declared->liveLightCount ||

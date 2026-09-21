@@ -13,12 +13,12 @@ using lmx::app::SceneActivationMotion;
 using lmx::app::SceneSession;
 namespace asset = lmx::asset;
 namespace render = lmx::render;
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 
 //======================================================================================================================
-scene::Scene playbackScene() {
-    scene::Scene result;
-    const auto mesh = result.addMesh(render::makeCube(), "lmx.test.playback.cube");
+engine::Scene playbackScene() {
+    engine::Scene result;
+    const auto mesh = result.addMesh(engine::makeCube(), "lmx.test.playback.cube");
     const auto material = result.addMaterial({.emissive = {1, 2, 3}});
     for (uint32_t i = 0; i < 3; ++i)
         result.addObject({.position = {7.0f + i, 2, 3},
@@ -36,7 +36,7 @@ scene::Scene playbackScene() {
         {.objectIndex = 1, .keys = {{.time = 0, .strength = 8}, {.time = 1, .strength = 16}}});
     result.animation.cameraTrack = {{.time = 0, .position = {0, 1, 2}},
                                     {.time = 1, .position = {60, 1, 2}, .yaw = 0.6f}};
-    const auto light = result.addLight({.type = render::LocalLightType::Point,
+    const auto light = result.addLight({.type = engine::LocalLightType::Point,
                                         .position = {0, 0, 0},
                                         .colour = {1, 1, 1},
                                         .intensity = 1,
@@ -61,7 +61,7 @@ bool near3(const glm::vec3& a, const glm::vec3& b) {
 }
 
 //======================================================================================================================
-void requireCamera(const render::Camera& actual, const render::Camera& expected) {
+void requireCamera(const engine::Camera& actual, const engine::Camera& expected) {
     REQUIRE(actual.position == expected.position);
     REQUIRE(actual.yaw == expected.yaw);
     REQUIRE(actual.pitch == expected.pitch);
@@ -152,7 +152,7 @@ TEST_CASE("editor playback restores only a tracked light's position on Stop, lea
     session.activate(scene, SceneActivationMotion::Reset);
     const auto trackedId = scene.localLights().front();
     const auto authoredPosition = scene.light(trackedId)->position;
-    const auto untrackedId = scene.addLight({.type = render::LocalLightType::Point,
+    const auto untrackedId = scene.addLight({.type = engine::LocalLightType::Point,
                                              .position = {5, 6, 7},
                                              .colour = {0.1f, 0.2f, 0.3f},
                                              .intensity = 2.0f,
@@ -172,11 +172,11 @@ TEST_CASE("editor playback restores only a tracked light's position on Stop, lea
     // Edits made during the preview: intensity on the tracked light, everything on the untracked
     // one. Stop owns only the animation-owned field -- the tracked light's position -- so both
     // sets of edits survive exactly like an object's untracked fields do.
-    render::LocalLight trackedEdit = *scene.light(trackedId);
+    engine::LocalLight trackedEdit = *scene.light(trackedId);
     trackedEdit.intensity = 42.0f;
     trackedEdit.enabled = false;
     REQUIRE(scene.updateLight(trackedId, trackedEdit));
-    const render::LocalLight untrackedEdit{.type = render::LocalLightType::Spot,
+    const engine::LocalLight untrackedEdit{.type = engine::LocalLightType::Spot,
                                            .position = {50, 60, 70},
                                            .colour = {0.9f, 0.8f, 0.7f},
                                            .intensity = 99.0f,
@@ -191,13 +191,13 @@ TEST_CASE("editor playback restores only a tracked light's position on Stop, lea
     REQUIRE_FALSE(near3(scene.light(trackedId)->position, trackedEdit.position));
     REQUIRE(playback.stop(session, followRail));
 
-    const render::LocalLight* tracked = scene.light(trackedId);
+    const engine::LocalLight* tracked = scene.light(trackedId);
     REQUIRE(tracked != nullptr);
     REQUIRE_FALSE(tracked->enabled);
     REQUIRE(near3(tracked->position, authoredPosition)); // only the animation-owned field reverts
     REQUIRE(tracked->intensity == 42.0f);                // the unrelated edit survives Stop
 
-    const render::LocalLight* untracked = scene.light(*untrackedId);
+    const engine::LocalLight* untracked = scene.light(*untrackedId);
     REQUIRE(untracked != nullptr);
     REQUIRE(near3(untracked->position, untrackedEdit.position));
     REQUIRE(untracked->colour == untrackedEdit.colour);
@@ -327,7 +327,7 @@ TEST_CASE("editor playback handles absent and empty scenes without implicit rewi
     REQUIRE_FALSE(playback.step(session, followRail));
     REQUIRE_FALSE(playback.stop(session, followRail));
     REQUIRE(playback.state() == PlaybackState::Stopped);
-    scene::Scene scene;
+    engine::Scene scene;
     scene.animationTime = 3.5;
     session.activate(scene, SceneActivationMotion::Reset);
     REQUIRE(playback.play(session, followRail));

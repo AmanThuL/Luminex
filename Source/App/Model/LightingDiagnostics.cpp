@@ -6,27 +6,27 @@
 #include <format>
 namespace lmx::app {
 //======================================================================================================================
-std::string_view localLightModeName(render::LocalLightMode mode) {
+std::string_view localLightModeName(engine::LocalLightMode mode) {
     switch (mode) {
-    case render::LocalLightMode::Off:
+    case engine::LocalLightMode::Off:
         return "off";
-    case render::LocalLightMode::Direct:
+    case engine::LocalLightMode::Direct:
         return "direct";
-    case render::LocalLightMode::Clustered:
+    case engine::LocalLightMode::Clustered:
         return "clustered";
     }
     return "unknown";
 }
 //======================================================================================================================
-std::string_view lightDebugViewName(render::LightDebugView view) {
+std::string_view lightDebugViewName(engine::LightDebugView view) {
     switch (view) {
-    case render::LightDebugView::Off:
+    case engine::LightDebugView::Off:
         return "off";
-    case render::LightDebugView::Count:
+    case engine::LightDebugView::Count:
         return "count";
-    case render::LightDebugView::Overflow:
+    case engine::LightDebugView::Overflow:
         return "overflow";
-    case render::LightDebugView::Missed:
+    case engine::LightDebugView::Missed:
         return "missed";
     }
     return "unknown";

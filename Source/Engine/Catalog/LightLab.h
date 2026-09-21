@@ -11,7 +11,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Lights-per-froxel reference count: `lightLabRange` returns `kLightLabReferenceRange` at exactly
 /// this population, and scales as `1/sqrt(n)` away from it so density (lights per unit footprint
@@ -62,7 +62,7 @@ float lightLabRange(uint32_t n);
 /// are points. Two calls at the same `(n, pile)` produce identical fields and byte-identical packed
 /// LightRows: the seed, palette and derived values are fixed functions of the light's index.
 /// `n` must be at least 1 and `n + pile` must not exceed `render::kMaxLocalLights`.
-std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
+std::vector<engine::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
 
 /// Builds the closed-form orbit tracks for `lightLabLights(n, pile)`'s orbiting grid lights (index
 /// % 4 == 2): `LightOrbitTrack::light` is that light's position in the vector `lightLabLights`
@@ -70,4 +70,4 @@ std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile);
 /// returned track's `period` is `kLightLabOrbitPeriod`, which divides `kLightLabRailDuration`.
 std::vector<asset::LightOrbitTrack> lightLabTracks(uint32_t n, uint32_t pile);
 
-} // namespace lmx::scene
+} // namespace lmx::engine

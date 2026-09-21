@@ -12,8 +12,8 @@ using namespace lmx;
 TEST_CASE("LightingDisplay keeps counters and timings coherent while warnings stay immediate",
           "[app][lighting-display]") {
     app::LightingDisplay display;
-    render::LightingStatus status{.requested = render::LocalLightMode::Clustered,
-                                  .effective = render::LocalLightMode::Clustered,
+    render::LightingStatus status{.requested = engine::LocalLightMode::Clustered,
+                                  .effective = engine::LocalLightMode::Clustered,
                                   .frameNumber = 7,
                                   .sceneGeneration = 2,
                                   .liveLightCount = 256};
@@ -59,8 +59,8 @@ TEST_CASE("LightingDisplay keeps counters and timings coherent while warnings st
 TEST_CASE("LightingDisplay mode and check changes cannot expose stale warnings",
           "[app][lighting-display]") {
     app::LightingDisplay display;
-    render::LightingStatus status{.requested = render::LocalLightMode::Clustered,
-                                  .effective = render::LocalLightMode::Clustered,
+    render::LightingStatus status{.requested = engine::LocalLightMode::Clustered,
+                                  .effective = engine::LocalLightMode::Clustered,
                                   .frameNumber = 1,
                                   .sceneGeneration = 1,
                                   .checkEnabled = true};
@@ -78,10 +78,10 @@ TEST_CASE("LightingDisplay mode and check changes cannot expose stale warnings",
     display.publishReadings(0.001);
     REQUIRE_FALSE(display.readingsStatus().checkEnabled);
     REQUIRE_FALSE(display.readingsStatus().isRetired);
-    status.requested = status.effective = render::LocalLightMode::Off;
+    status.requested = status.effective = engine::LocalLightMode::Off;
     display.observe(status);
     display.publishReadings(0.002);
-    REQUIRE(display.readingsStatus().effective == render::LocalLightMode::Off);
+    REQUIRE(display.readingsStatus().effective == engine::LocalLightMode::Off);
     display.clear();
     REQUIRE(display.readingsTimings().empty());
 }

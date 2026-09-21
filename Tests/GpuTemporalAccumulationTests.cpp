@@ -19,11 +19,11 @@ TEST_CASE("accumulation settles a static jittered frame", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -78,11 +78,11 @@ TEST_CASE("accumulation keeps thin geometry's brightness", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -161,10 +161,10 @@ TEST_CASE("a moving quad leaves no trail behind it", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
@@ -289,10 +289,10 @@ TEST_CASE("a reactive emissive step lands without a fade", "[gpu][temporal]") {
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.scenarioWall");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.scenarioWall");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 0.0f, 4.0f}, 0.0f);
@@ -379,10 +379,10 @@ TEST_CASE("an exposure step is corrected in the history it blends", "[gpu][tempo
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -428,10 +428,10 @@ TEST_CASE("a camera cut restarts the accumulation and its warmup", "[gpu][tempor
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -488,10 +488,10 @@ TEST_CASE("switching from raw to native TAA needs no reset", "[gpu][temporal]") 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
@@ -544,10 +544,10 @@ TEST_CASE("the raw bypass matches the temporal-off picture", "[gpu][temporal]") 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.scenarioCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.scenarioCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.scenarioFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.scenarioFloor");
     REQUIRE(plane.has_value());
 
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);

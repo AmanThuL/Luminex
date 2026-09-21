@@ -80,10 +80,10 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
                                                       .label = "lmx.test.sceneTableAbi.pipeline"});
     INFO(errorOf(pipeline));
     REQUIRE(pipeline);
-    std::array<render::InstanceRow, 2> instances{};
-    std::array<render::MaterialRow, 2> materials{};
-    std::array<render::MeshRow, 2> meshes{};
-    std::array<render::LightRow, 2> lights{};
+    std::array<engine::InstanceRow, 2> instances{};
+    std::array<engine::MaterialRow, 2> materials{};
+    std::array<engine::MeshRow, 2> meshes{};
+    std::array<engine::LightRow, 2> lights{};
     for (uint32_t row = 0; row < 2; ++row) {
         auto& instance = instances[row];
         auto& material = materials[row];
@@ -142,18 +142,18 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
     REQUIRE(lightBuffer);
     // The kernel packs one row of every table into this many words, so a wrong structured-buffer
     // stride shifts the second row's words and fails on a specific field rather than in bulk.
-    constexpr size_t kRowBytes = sizeof(render::InstanceRow) + sizeof(render::MaterialRow) +
-                                 sizeof(render::MeshRow) + sizeof(render::LightRow);
+    constexpr size_t kRowBytes = sizeof(engine::InstanceRow) + sizeof(engine::MaterialRow) +
+                                 sizeof(engine::MeshRow) + sizeof(engine::LightRow);
     std::array<uint32_t, 2 * kRowBytes / sizeof(uint32_t)> expected{};
     for (size_t row = 0; row < 2; ++row) {
         auto* bytes = reinterpret_cast<std::byte*>(expected.data()) + row * kRowBytes;
-        std::memcpy(bytes, &instances[row], sizeof(render::InstanceRow));
-        bytes += sizeof(render::InstanceRow);
-        std::memcpy(bytes, &materials[row], sizeof(render::MaterialRow));
-        bytes += sizeof(render::MaterialRow);
-        std::memcpy(bytes, &meshes[row], sizeof(render::MeshRow));
-        bytes += sizeof(render::MeshRow);
-        std::memcpy(bytes, &lights[row], sizeof(render::LightRow));
+        std::memcpy(bytes, &instances[row], sizeof(engine::InstanceRow));
+        bytes += sizeof(engine::InstanceRow);
+        std::memcpy(bytes, &materials[row], sizeof(engine::MaterialRow));
+        bytes += sizeof(engine::MaterialRow);
+        std::memcpy(bytes, &meshes[row], sizeof(engine::MeshRow));
+        bytes += sizeof(engine::MeshRow);
+        std::memcpy(bytes, &lights[row], sizeof(engine::LightRow));
     }
     auto output = (*device)->createBuffer({.size = sizeof(expected),
                                            .storageWrite = true,
@@ -165,10 +165,10 @@ TEST_CASE("scene table structured-buffer ABI preserves every field and row strid
     commands.beginComputePass("lmx.test.sceneTableAbi.read");
     commands.bindComputePipeline(**pipeline);
     commands.bindStorageBuffer(0, **output, rojoRHI::StorageAccess::Write);
-    commands.bindBuffer(render::kSceneInstancesSlot, **instanceBuffer);
-    commands.bindBuffer(render::kSceneMaterialsSlot, **materialBuffer);
-    commands.bindBuffer(render::kSceneMeshesSlot, **meshBuffer);
-    commands.bindBuffer(render::kSceneLightsSlot, **lightBuffer);
+    commands.bindBuffer(engine::kSceneInstancesSlot, **instanceBuffer);
+    commands.bindBuffer(engine::kSceneMaterialsSlot, **materialBuffer);
+    commands.bindBuffer(engine::kSceneMeshesSlot, **meshBuffer);
+    commands.bindBuffer(engine::kSceneLightsSlot, **lightBuffer);
     commands.dispatch(2, 1, 1);
     commands.endComputePass();
     (*device)->endFrame(nullptr);

@@ -102,7 +102,7 @@ public:
     /// `commands` -- so the graph must be executed on that same command list, and `camera`, `view`,
     /// and everything `view` borrows must outlive that call.
     GraphTexture declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
-                               const Camera& camera, const SceneView& view);
+                               const engine::Camera& camera, const SceneView& view);
 
     /// Renders one frame into this renderer's own targets: declarePasses into a graph of nothing
     /// else, compiled and executed on the spot. It is what a caller with no passes of its own wants
@@ -112,7 +112,7 @@ public:
     /// barrierForSampling covers the one case the graph cannot see: a caller that samples
     /// colorTarget() from a pass it encodes by hand afterwards has declared nothing, so the
     /// transition to a shader read is emitted on its behalf.
-    void render(rojoRHI::CommandList& commands, const Camera& camera, const SceneView& view,
+    void render(rojoRHI::CommandList& commands, const engine::Camera& camera, const SceneView& view,
                 bool barrierForSampling = true);
 
     /// The finished, display-encoded image: what the viewport shows and what a screenshot reads.
@@ -209,8 +209,9 @@ private:
                                         const CameraFrameState& cameraState);
     void retireLightingThrough(uint64_t frame);
 
-    GraphTexture prepareOcclusion(RenderGraph& graph, const Camera& camera, const SceneView& view,
-                                  const FrameExtents& extents, const CameraFrameState& cameraState);
+    GraphTexture prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
+                                  const SceneView& view, const FrameExtents& extents,
+                                  const CameraFrameState& cameraState);
     void declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
                           GraphTexture depth, GraphTexture& display);
     // Creates the motion and reactive attachments at the current extent, replacing any pair

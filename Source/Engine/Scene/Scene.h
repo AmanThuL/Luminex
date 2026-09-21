@@ -30,7 +30,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Editable scene instance referencing one mesh and material.
 struct SceneObject {
@@ -46,7 +46,7 @@ struct SceneObject {
     glm::mat4 previousModel{1.0f};
     /// How this object's motion is produced. `Invalid` marks a draw whose history must not be
     /// reprojected.
-    render::MotionClass motionClass = render::MotionClass::Rigid;
+    engine::MotionClass motionClass = engine::MotionClass::Rigid;
     /// Multiplier the scene shader applies to the material's authored emissive colour, written by
     /// `Scene::animate()` from an `EmissiveTrack`. Objects with no track keep the default of 1, so
     /// the authored colour passes through unchanged.
@@ -65,7 +65,7 @@ struct SceneCamera {
 };
 
 /// Copies the authored scene camera pose into a renderer camera.
-render::Camera cameraFromScene(const SceneCamera& sceneCamera);
+engine::Camera cameraFromScene(const SceneCamera& sceneCamera);
 
 /// Owns renderable scene resources, instances, lighting, and initial view state.
 class Scene {
@@ -79,7 +79,7 @@ public:
     /// Transfers ownership after the destination's GPU work has retired.
     Scene& operator=(Scene&&) noexcept;
     /// Adds immutable CPU geometry before finalize; invalid indices are misuse.
-    MeshId addMesh(render::MeshData data, std::string_view label);
+    MeshId addMesh(engine::MeshData data, std::string_view label);
     /// Takes ownership of a non-null texture and assigns a fresh identity.
     TextureId addTexture(std::unique_ptr<rojoRHI::Texture> texture);
     /// Adds shared scene-linear factors, asserting every supplied texture identity resolves.
@@ -94,15 +94,15 @@ public:
     /// Adds a local point or spot light, validating it the way `render::makeLightRow` does and
     /// failing with `InvalidDesc` for invalid parameters or once `render::kMaxLocalLights` live
     /// lights already exist. May be called before or after finalize.
-    rojoRHI::Result<LightId> addLight(const render::LocalLight& light);
+    rojoRHI::Result<LightId> addLight(const engine::LocalLight& light);
     /// Removes a live local light and returns whether the identity resolved; a stale or foreign
     /// identity is reported rather than asserted. Preserves later row slots.
     bool removeLight(LightId id);
     /// Replaces a live local light's parameters, validating them the way `addLight` does; an
     /// invalid identity or invalid light fails with `InvalidDesc` and leaves the light unchanged.
-    rojoRHI::Result<void> updateLight(LightId id, const render::LocalLight& light);
+    rojoRHI::Result<void> updateLight(LightId id, const engine::LocalLight& light);
     /// Returns the live local light's authored parameters, or null for an unresolvable identity.
-    const render::LocalLight* light(LightId id) const;
+    const engine::LocalLight* light(LightId id) const;
     /// Returns every existing local light identity, including disabled lights, by row slot.
     std::span<const LightId> localLights() const;
     /// Number of enabled lights contributing to rendering; disabled lights still occupy capacity.
@@ -122,9 +122,9 @@ public:
     /// Returns the live object or null; the pointer is invalidated by object-list mutations.
     const SceneObject* tryObject(InstanceId id) const;
     /// Returns immutable geometry metadata or null for an unresolvable identity.
-    const render::MeshRow* tryMesh(MeshId id) const;
+    const engine::MeshRow* tryMesh(MeshId id) const;
     /// Returns reliable mesh-local bounds, or none for invalid identities or degenerate geometry.
-    std::optional<render::Aabb> meshBounds(MeshId id) const;
+    std::optional<Aabb> meshBounds(MeshId id) const;
     /// Returns editable material data or null for an unresolvable identity.
     MaterialRecord* tryMaterial(MaterialId id);
     /// Returns material data or null for an unresolvable identity.
@@ -147,10 +147,10 @@ public:
     uint64_t coverageEpoch() const;
     /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
     /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.
-    render::SceneTables tables() const;
+    engine::SceneTables tables() const;
     std::string name;                   ///< User-facing scene name.
     std::vector<SceneObject> objects;   ///< Editable draw instances.
-    render::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
+    engine::DirectionalLight lights[3]; ///< Fixed-size analytic light set.
     glm::vec4 boundingSphere{0.f};      ///< World-space center in xyz and radius in w.
     std::optional<MeshId> skySphere;    ///< Geometry used by the sky pass without an instance.
     std::unique_ptr<rojoRHI::Texture> skyCubemap; ///< Authored linear-radiance environment.
@@ -190,13 +190,13 @@ public:
 
     /// Samples the nonempty camera track at `animationTime` and assigns position, yaw, and pitch.
     /// Lens state remains owned by the caller and is unchanged.
-    void followCameraTrack(render::Camera& camera) const;
+    void followCameraTrack(engine::Camera& camera) const;
 
     /// Fills `items` (cleared first, one DrawItem per object, in object order) after validating
     /// every object. `items` is caller-owned rather than a Scene member so it can live on the App's
     /// per-frame stack; render::buildSceneView borrows it into the frame's SceneView, so it and the
     /// scene resources must remain alive through pass declaration and graph execution.
-    void fillDrawItems(std::vector<render::DrawItem>& items) const;
+    void fillDrawItems(std::vector<engine::DrawItem>& items) const;
 
 private:
     friend class SponzaLightRig;
@@ -257,4 +257,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rojoRHI::Devic
 asset::AssetResult<std::unique_ptr<Scene>>
 loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);
 
-} // namespace lmx::scene
+} // namespace lmx::engine

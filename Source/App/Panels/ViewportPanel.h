@@ -51,8 +51,8 @@ struct ViewportPanelContext {
     rojoRHI::Texture& outlineTarget; ///< Separate display target for the enabled object cue.
     bool& showOutline; ///< Editor-local cue toggle; leaves framing and capture unchanged.
     std::string_view activeSceneName; ///< Shown in the toolbar.
-    render::Camera& camera;           ///< Reset Camera writes the active scene's initial pose here.
-    const scene::Scene& scene;        ///< Source of Reset Camera's initial pose.
+    engine::Camera& camera;           ///< Reset Camera writes the active scene's initial pose here.
+    const engine::Scene& scene;       ///< Source of Reset Camera's initial pose.
     EditorRenderSettings& settings;   ///< Editor-owned render knobs the quick toggles edit.
     ExposureResetContext& exposureContext; ///< What `shouldResetExposure` last compared against.
     /// Raised when a toolbar edit is one of the exposure reset triggers, and consumed by the frame
@@ -62,7 +62,7 @@ struct ViewportPanelContext {
     TemporalEditorState& temporalState; ///< Camera discontinuity and status provenance.
     EditorSelection selection; ///< Resolved selected subject for editor-only framing and bounds.
     EditorActions& actions;    ///< Shared capture status and action intent.
-    scene::SceneId sceneId;    ///< Catalog identity for concise lab context.
+    engine::SceneId sceneId;   ///< Catalog identity for concise lab context.
     const VisibilityDisplay* visibilityDisplay =
         nullptr; ///< Matched retired bounds and source view.
 };

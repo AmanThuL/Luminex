@@ -26,7 +26,7 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -157,18 +157,18 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     // makeGrid rather than render::makePlane: the checker needs the 0..1 UVs only the grid
     // generator authors.
     const MeshId planeMeshIndex = scene->addMesh(
-        render::fromGeo(asset::makeGrid(kFloorHalfExtent * 2.0f, kFloorHalfExtent * 2.0f, 2, 2)),
+        engine::fromGeo(asset::makeGrid(kFloorHalfExtent * 2.0f, kFloorHalfExtent * 2.0f, 2, 2)),
         "TemporalLab.floorMesh");
 
-    const MeshId cubeMeshIndex = scene->addMesh(render::makeCube(), "TemporalLab.cubeMesh");
+    const MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "TemporalLab.cubeMesh");
 
     const MeshId sphereMeshIndex = scene->addMesh(
-        render::fromGeo(asset::makeSphere(kOrbitSphereRadius, 32, 32)), "TemporalLab.sphereMesh");
+        engine::fromGeo(asset::makeSphere(kOrbitSphereRadius, 32, 32)), "TemporalLab.sphereMesh");
 
     // A flat quad in the mesh's own XZ plane; the sign object rotates it 90 degrees about X so its
     // +Y face normal becomes +Z, standing it upright to face the camera.
     const MeshId signMeshIndex = scene->addMesh(
-        render::fromGeo(asset::makeGrid(kSignSize.x, kSignSize.y, 2, 2)), "TemporalLab.signMesh");
+        engine::fromGeo(asset::makeGrid(kSignSize.x, kSignSize.y, 2, 2)), "TemporalLab.signMesh");
 
     const std::vector<uint8_t> checkerPixels = makeCheckerPixels();
     const asset::BakedMipChain checkerChain =
@@ -217,7 +217,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
 
     const auto addObject = [&](std::string name, const glm::vec3& position, const glm::vec3& scale,
                                MeshId meshIndex, MaterialId materialIndex,
-                               render::MotionClass motionClass) -> uint32_t {
+                               engine::MotionClass motionClass) -> uint32_t {
         const auto index = static_cast<uint32_t>(scene->objects.size());
         scene->addObject({.name = std::move(name),
                           .position = position,
@@ -229,22 +229,22 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     };
 
     addObject("temporal-lab floor", glm::vec3(0.0f), glm::vec3(1.0f), planeMeshIndex, floorMaterial,
-              render::MotionClass::Rigid);
+              engine::MotionClass::Rigid);
     expandAabb(glm::vec3(0.0f), glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
 
     const uint32_t rotatingCube =
         addObject("temporal-lab rotating cube", kRotatingCubePosition, glm::vec3(1.0f),
-                  cubeMeshIndex, rotatingMaterial, render::MotionClass::Rigid);
+                  cubeMeshIndex, rotatingMaterial, engine::MotionClass::Rigid);
     expandAabb(kRotatingCubePosition, glm::vec3(0.87f)); // a unit cube's half diagonal when spun
 
     addObject("temporal-lab reference cube", kReferenceCubePosition, glm::vec3(1.0f), cubeMeshIndex,
-              referenceMaterial, render::MotionClass::Rigid);
+              referenceMaterial, engine::MotionClass::Rigid);
     expandAabb(kReferenceCubePosition, glm::vec3(0.5f));
 
     const glm::vec3 orbitStart = kReferenceCubePosition + glm::vec3(kOrbitRadius, 0.0f, 0.0f);
     const uint32_t orbitSphere =
         addObject("temporal-lab orbit sphere", orbitStart, glm::vec3(1.0f), sphereMeshIndex,
-                  orbitMaterial, render::MotionClass::Rigid);
+                  orbitMaterial, engine::MotionClass::Rigid);
     expandAabb(kReferenceCubePosition, glm::vec3(kOrbitRadius + kOrbitSphereRadius));
 
     std::array<uint32_t, std::size(kPoleX)> poles{};
@@ -252,7 +252,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     for (size_t i = 0; i < std::size(kPoleX); ++i) {
         const glm::vec3 rest{kPoleX[i], kPoleHeight * 0.5f, kPoleZ};
         poles[i] = addObject("temporal-lab pole " + std::to_string(i), rest, poleScale,
-                             cubeMeshIndex, poleMaterial, render::MotionClass::Rigid);
+                             cubeMeshIndex, poleMaterial, engine::MotionClass::Rigid);
         expandAabb(
             rest, glm::vec3(kPoleWidth * 0.5f + kPoleSwing, kPoleHeight * 0.5f, kPoleWidth * 0.5f));
     }
@@ -260,7 +260,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     // The one draw whose history must not be reprojected, so the sentinel path has a subject even
     // in a frame where nothing else is invalid.
     addObject("temporal-lab invalid cube", kInvalidCubePosition, glm::vec3(1.0f), cubeMeshIndex,
-              invalidMaterial, render::MotionClass::Invalid);
+              invalidMaterial, engine::MotionClass::Invalid);
     expandAabb(kInvalidCubePosition, glm::vec3(0.5f));
 
     // The flashing sign: static geometry (no rigid track), driven only by an EmissiveTrack.
@@ -271,7 +271,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
                       .scale = glm::vec3(1.0f),
                       .mesh = signMeshIndex,
                       .material = signMaterial,
-                      .motionClass = render::MotionClass::Rigid});
+                      .motionClass = engine::MotionClass::Rigid});
     expandAabb(kSignPosition, glm::vec3(kSignSize.x * 0.5f, kSignSize.y * 0.5f, 0.0f));
 
     scene->animation.tracks.push_back(makeTrack(rotatingCube, [](double time) {
@@ -346,4 +346,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     return scene;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

@@ -14,28 +14,28 @@
 TEST_CASE("LightLab populations remain overflow-free across the actual rail and orbits",
           "[scene][light-lab][light-cluster]") {
     using namespace lmx;
-    const auto rail = scene::lightLabCameraTrack();
+    const auto rail = engine::lightLabCameraTrack();
     for (uint32_t count : {64u, 256u, 1024u, 4096u}) {
-        const auto authored = scene::lightLabLights(count, 0);
-        const auto tracks = scene::lightLabTracks(count, 0);
+        const auto authored = engine::lightLabLights(count, 0);
+        const auto tracks = engine::lightLabTracks(count, 0);
         for (double seconds : {0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 719.0 / 60.0}) {
             auto lights = authored;
             for (const auto& track : tracks)
                 lights[track.light].position =
                     asset::sampleOrbit(track, static_cast<float>(seconds));
-            std::vector<render::LightRow> rows;
+            std::vector<engine::LightRow> rows;
             for (const auto& light : lights) {
-                auto row = render::makeLightRow(light);
+                auto row = engine::makeLightRow(light);
                 REQUIRE(row);
                 rows.push_back(*row);
             }
             const auto pose = asset::sampleCameraTrack(rail, seconds);
-            render::Camera camera;
+            engine::Camera camera;
             camera.position = pose.position;
             camera.yaw = pose.yaw;
             camera.pitch = pose.pitch;
-            camera.fovY = scene::kLightLabCameraFovY;
-            camera.nearZ = scene::kLightLabCameraNearZ;
+            camera.fovY = engine::kLightLabCameraFovY;
+            camera.nearZ = engine::kLightLabCameraNearZ;
             for (glm::uvec2 extent : {glm::uvec2{1280, 720}, glm::uvec2{641, 359}}) {
                 CAPTURE(count, seconds, extent.x, extent.y);
                 const auto projection = camera.projectionMatrix(float(extent.x) / float(extent.y));

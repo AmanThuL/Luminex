@@ -14,7 +14,7 @@
 #include <cmath>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -123,4 +123,4 @@ void authorSponzaCameraTour(Scene& scene) {
     scene.initialCamera.pitch = keys.front().pitch;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

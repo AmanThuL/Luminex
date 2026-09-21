@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// How a draw's motion is produced.
 enum class MotionClass : uint8_t {
@@ -15,4 +15,4 @@ enum class MotionClass : uint8_t {
     Invalid ///< Writes the kMotionInvalid sentinel; history must not be reprojected.
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine
