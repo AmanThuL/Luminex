@@ -2,7 +2,7 @@
 // sample, evaluating the shipped function on a host-supplied light row and surface and writing the
 // scene-linear result straight back. Nothing here reimplements the light model -- the point is to
 // run the production function and let Tests/GpuLocalLightTests.cpp hold it against
-// Source/Render/LocalLightMath.cpp's CPU mirror.
+// Source/Engine/Types/LocalLightMath.cpp's CPU mirror.
 //
 // The math mode is the file default, which is the mode the scene pass compiles under, so the
 // agreement this measures is the agreement the renderer will actually have.

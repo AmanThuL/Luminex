@@ -8,8 +8,8 @@
 namespace lmx::app {
 
 //======================================================================================================================
-bool lightingChangeNeedsHistoryReset(render::LocalLightMode previous,
-                                     render::LocalLightMode current, uint32_t liveLightCount,
+bool lightingChangeNeedsHistoryReset(engine::LocalLightMode previous,
+                                     engine::LocalLightMode current, uint32_t liveLightCount,
                                      bool contentChanged) {
     return contentChanged || (liveLightCount > 0 && previous != current);
 }

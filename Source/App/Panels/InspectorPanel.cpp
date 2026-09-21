@@ -56,7 +56,7 @@ void valueRow(const char* label, const std::string& value) {
 //======================================================================================================================
 void drawCameraSection(const InspectorPanelContext& context) {
     auto& camera = context.session.camera();
-    const auto initial = scene::cameraFromScene(context.session.scene().initialCamera);
+    const auto initial = engine::cameraFromScene(context.session.scene().initialCamera);
     const bool changed = camera.position != initial.position || camera.yaw != initial.yaw ||
                          camera.pitch != initial.pitch || camera.fovY != initial.fovY ||
                          camera.nearZ != initial.nearZ || camera.farZ != initial.farZ ||
@@ -221,7 +221,7 @@ void drawTemporalSection(const InspectorPanelContext& context) {
                                               settings.temporalDebugView == view)) {
                             settings.temporalDebugView = view;
                             if (view != render::TemporalDebugView::Off) {
-                                settings.lightDebugView = render::LightDebugView::Off;
+                                settings.lightDebugView = engine::LightDebugView::Off;
                                 settings.hzbDebugLevel = -1;
                             }
                         }
@@ -492,7 +492,7 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                                               settings.hzbDebugLevel ==
                                                   static_cast<int32_t>(level))) {
                             settings.hzbDebugLevel = static_cast<int32_t>(level);
-                            settings.lightDebugView = render::LightDebugView::Off;
+                            settings.lightDebugView = engine::LightDebugView::Off;
                             settings.temporalDebugView = render::TemporalDebugView::Off;
                         }
                     }

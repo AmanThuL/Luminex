@@ -7,7 +7,7 @@
 
 namespace lmx::app {
 //======================================================================================================================
-std::array<SceneTableField, 9> sceneTableFields(const scene::SceneTableStats& stats) {
+std::array<SceneTableField, 9> sceneTableFields(const engine::SceneTableStats& stats) {
     return {
         {{"Instances", std::format("{} / {} rows", stats.instanceCount, stats.instanceCapacity)},
          {"Materials", std::format("{} / {} rows", stats.materialCount, stats.materialCapacity)},

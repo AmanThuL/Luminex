@@ -5,7 +5,7 @@ target("Tests")
     -- Use singular "test" because the default macOS filesystem aliases it with the Tests binary.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
     add_files("*.cpp")
-    add_deps("Core", "RojoRHI", "Render", "Asset", "Scene", "AppModel")
+    add_deps("Core", "RojoRHI", "Render", "Asset", "AppModel", "Engine")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.
     add_defines('LMX_REPO_ROOT="$(projectdir)"')

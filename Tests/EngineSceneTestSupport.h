@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scene/IblUpload.h"
+#include "Engine/Upload/IblUpload.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
@@ -9,19 +9,19 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#include "Asset/SceneAnimation.h"
-#include "Asset/TextureBake.h"
-#include "Asset/Transform.h"
 #include "BrdfOracle.h"
 #include "Core/Color.h"
 #include "DisplayTransformOracle.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
+#include "Engine/Asset/Model/Transform.h"
+#include "Engine/Asset/Texture/TextureBake.h"
+#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Scene/Scene.h"
+#include "Engine/Types/Camera.h"
+#include "Engine/Types/Mesh.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
-#include "Render/Camera.h"
-#include "Render/Mesh.h"
 #include "Render/Renderer.h"
-#include "Scene/Scene.h"
-#include "Scene/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>
@@ -38,7 +38,7 @@
 
 using namespace lmx::asset;
 using lmx::srgbToLinear;
-using namespace lmx::scene;
+using namespace lmx::engine;
 using lmx::test::findRepoAsset;
 using lmx::test::near3;
 namespace render = lmx::render;
@@ -154,7 +154,7 @@ struct ScreenBox {
 // screen-space box, in the same pixel convention as projectScenePixel above (row 0 = top) but
 // without truncating to an integer pixel -- a partly off-screen box must stay readable as such
 // rather than wrapping through uint32_t.
-inline ScreenBox projectAabbToScreen(const render::Camera& camera, uint32_t size,
+inline ScreenBox projectAabbToScreen(const lmx::engine::Camera& camera, uint32_t size,
                                      const glm::vec3& center, const glm::vec3& halfExtent) {
     ScreenBox box{std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest(),
                   std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()};
@@ -193,8 +193,8 @@ inline bool insideFrame(const ScreenBox& box, float size) {
 namespace {
 
 //======================================================================================================================
-inline render::MeshData makeUvQuad(float halfExtent) {
-    render::MeshData mesh;
+inline lmx::engine::MeshData makeUvQuad(float halfExtent) {
+    lmx::engine::MeshData mesh;
     struct Corner {
         float x, y, u, v;
     };
@@ -221,7 +221,7 @@ struct ProjectedPixel {
 //======================================================================================================================
 // Same clip -> pixel convention Tests/GpuSmokeTests.cpp's own projectToPixel uses: row 0 is the
 // top of a readback, so a clip-space +y maps to a small row index.
-inline ProjectedPixel projectScenePixel(const render::Camera& camera, uint32_t size,
+inline ProjectedPixel projectScenePixel(const lmx::engine::Camera& camera, uint32_t size,
                                         const glm::vec3& world) {
     const glm::vec4 clip =
         camera.projectionMatrix(1.0f) * camera.viewMatrix() * glm::vec4(world, 1.0f);
@@ -240,7 +240,7 @@ namespace {
 // CPU-owned identities support playback before any GPU allocation.
 inline Scene makeMotionTestScene() {
     Scene scene;
-    const MeshId mesh = scene.addMesh(render::makeCube(), "lmx.test.motionCube");
+    const MeshId mesh = scene.addMesh(lmx::engine::makeCube(), "lmx.test.motionCube");
     const MaterialId material = scene.addMaterial({});
     scene.addObject({.name = "object",
                      .position = glm::vec3(1.0f, 0.0f, 0.0f),
@@ -258,8 +258,9 @@ namespace {
 // Projects a world-space AABB's 8 corners into a `width` by `height` frame, using that frame's own
 // aspect ratio rather than the square one projectAabbToScreen assumes -- TemporalLab is authored
 // for the editor's wide viewport.
-inline ScreenBox projectAabbToFrame(const render::Camera& camera, uint32_t width, uint32_t height,
-                                    const glm::vec3& center, const glm::vec3& halfExtent) {
+inline ScreenBox projectAabbToFrame(const lmx::engine::Camera& camera, uint32_t width,
+                                    uint32_t height, const glm::vec3& center,
+                                    const glm::vec3& halfExtent) {
     ScreenBox box{std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest(),
                   std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest()};
     const float aspect = static_cast<float>(width) / static_cast<float>(height);
@@ -283,8 +284,8 @@ inline ScreenBox projectAabbToFrame(const render::Camera& camera, uint32_t width
 }
 
 //======================================================================================================================
-inline render::Camera cameraFrom(const SceneCamera& authored) {
-    render::Camera camera;
+inline lmx::engine::Camera cameraFrom(const SceneCamera& authored) {
+    lmx::engine::Camera camera;
     camera.position = authored.position;
     camera.yaw = authored.yaw;
     camera.pitch = authored.pitch;

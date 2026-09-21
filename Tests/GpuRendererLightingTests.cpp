@@ -1,9 +1,10 @@
 #include "GpuRendererTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 
+#include "Engine/Types/LocalLight.h"
+#include "Engine/Types/LocalLightMath.h"
 #include "Render/GraphDump.h"
-#include "Render/LocalLight.h"
-#include "Render/LocalLightMath.h"
 
 #include <algorithm>
 #include <array>
@@ -54,7 +55,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scene::loadMaterialLabScene(**device);
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
 
     auto renderer = Renderer::create(**device, kDepthReconstructSize, kDepthReconstructSize);
@@ -98,8 +99,9 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-    std::vector<lmx::render::DrawItem> items;
-    const auto view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
+    std::vector<lmx::engine::DrawItem> items;
+    const auto view =
+        lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF, false);
     (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
                         /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
@@ -161,9 +163,10 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 // The environment is built through the production generators on a constant white cube, so this
 // exercises the same irradiance convolution, prefiltered chain and RG16Float DFG table a real scene
 // carries; both generators reproduce a constant environment exactly at every roughness
-// (Source/Asset/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading is 1.0 with no
-// integration error folded into it. Lights are off and exposure is 0, which leaves the image-based
-// terms as the entire signal, and the HDR target is read directly so no tone map stands in the way.
+// (Source/Engine/Asset/Texture/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading
+// is 1.0 with no integration error folded into it. Lights are off and exposure is 0, which leaves
+// the image-based terms as the entire signal, and the HDR target is read directly so no tone map
+// stands in the way.
 //
 // The bound is derived from the quantization chain rather than chosen. E = 1.0 is exact in binary16
 // and survives the cube upload unchanged; the DFG table's own half-precision error cancels
@@ -184,7 +187,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scene::loadMaterialLabScene(**device);
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -193,19 +196,20 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     INFO(errorOf(renderer));
     REQUIRE(renderer.has_value());
 
-    const lmx::scene::ibl::IblTextures environment =
+    const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.whiteFurnace");
 
     // Only the sphere grid: the patches, ramp and depth probes sit outside this frustum anyway, and
     // leaving them out keeps every drawn pixel one of the 25 materials under test.
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-    std::vector<lmx::render::DrawItem> allItems;
-    const auto sceneView = (*scene)->view(allItems, lmx::render::ShadowFilter::PCF, false);
-    std::vector<lmx::render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> allItems;
+    const auto sceneView =
+        lmx::render::buildSceneView(**scene, allItems, lmx::render::ShadowFilter::PCF, false);
+    std::vector<lmx::engine::DrawItem> items;
     std::vector<glm::vec3> centers;
-    std::vector<const lmx::scene::SceneObject*> spheres;
-    for (const lmx::scene::SceneObject& object : (*scene)->objects) {
+    std::vector<const lmx::engine::SceneObject*> spheres;
+    for (const lmx::engine::SceneObject& object : (*scene)->objects) {
         if (!object.name.starts_with("material-lab sphere ")) {
             continue;
         }
@@ -287,7 +291,7 @@ TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned 
     REQUIRE(device.has_value());
 
     auto quad =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.brdfProbeQuad");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.brdfProbeQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
@@ -389,7 +393,7 @@ TEST_CASE("a zero-light frame is byte-identical across the three local-light mod
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.modeCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.modeCube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
@@ -401,7 +405,7 @@ TEST_CASE("a zero-light frame is byte-identical across the three local-light mod
     const auto items = twoCubeScene(*cube);
     FixtureSceneView view = litSceneView(items);
 
-    const auto renderWith = [&](lmx::render::LocalLightMode mode, bool removeLast = false,
+    const auto renderWith = [&](lmx::engine::LocalLightMode mode, bool removeLast = false,
                                 uint32_t expectedLights = 0) {
         view.localLightMode = mode;
         if (removeLast) {
@@ -434,32 +438,32 @@ TEST_CASE("a zero-light frame is byte-identical across the three local-light mod
         return texels;
     };
 
-    const std::vector<uint16_t> off = renderWith(lmx::render::LocalLightMode::Off);
-    const std::vector<uint16_t> direct = renderWith(lmx::render::LocalLightMode::Direct);
-    const std::vector<uint16_t> clustered = renderWith(lmx::render::LocalLightMode::Clustered);
+    const std::vector<uint16_t> off = renderWith(lmx::engine::LocalLightMode::Off);
+    const std::vector<uint16_t> direct = renderWith(lmx::engine::LocalLightMode::Direct);
+    const std::vector<uint16_t> clustered = renderWith(lmx::engine::LocalLightMode::Clustered);
 
     // A frame that drew nothing would pass trivially, so pin that the image has content first.
     REQUIRE(std::ranges::any_of(off, [](uint16_t bits) { return bits != 0; }));
     REQUIRE(direct == off);
     REQUIRE(clustered == off);
-    REQUIRE(renderWith(lmx::render::LocalLightMode::Direct, true) == off);
+    REQUIRE(renderWith(lmx::engine::LocalLightMode::Direct, true) == off);
 
     // Populate every paced slot with real cluster work, then disable the final identity. Stale
     // list resources must not become visible when any zero-enabled mode reuses those slots.
     auto& scene = view.state->scene;
-    lmx::render::LocalLight local{
+    lmx::engine::LocalLight local{
         .position = {0.0f, 0.0f, 3.0f}, .intensity = 20.0f, .range = 8.0f};
     const auto id = scene.addLight(local);
     REQUIRE(id);
     for (uint32_t slot = 0; slot < 3; ++slot)
-        REQUIRE(renderWith(lmx::render::LocalLightMode::Clustered, false, 1) != off);
+        REQUIRE(renderWith(lmx::engine::LocalLightMode::Clustered, false, 1) != off);
     local.enabled = false;
     REQUIRE(scene.updateLight(*id, local));
     REQUIRE(scene.localLights().size() == 1);
     REQUIRE(scene.enabledLightCount() == 0);
-    constexpr std::array modes{lmx::render::LocalLightMode::Off,
-                               lmx::render::LocalLightMode::Direct,
-                               lmx::render::LocalLightMode::Clustered};
+    constexpr std::array modes{lmx::engine::LocalLightMode::Off,
+                               lmx::engine::LocalLightMode::Direct,
+                               lmx::engine::LocalLightMode::Clustered};
     for (uint32_t round = 0; round < 3; ++round)
         for (uint32_t slot = 0; slot < 3; ++slot)
             REQUIRE(renderWith(modes[(round + slot) % modes.size()]) == off);
@@ -515,7 +519,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
     REQUIRE(device.has_value());
 
     auto quad =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.litProbeQuad");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.litProbeQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
@@ -537,8 +541,8 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
 
     // Off the view axis on both axes, so neither N.L nor the distance falls out of the geometry by
     // symmetry, and well inside its range so the window term is neither 0 nor 1.
-    const std::array<lmx::render::LocalLight, 1> lights = {{
-        {.type = lmx::render::LocalLightType::Point,
+    const std::array<lmx::engine::LocalLight, 1> lights = {{
+        {.type = lmx::engine::LocalLightType::Point,
          .position = {1.0f, 1.5f, 3.0f},
          .colour = {1.0f, 1.0f, 1.0f},
          .intensity = 8.0f,
@@ -553,7 +557,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
     }
     view.boundingSphere = {0.0f, 0.0f, 0.0f, 12.0f};
     view.exposureEv = kLitProbeExposureEv;
-    view.localLightMode = lmx::render::LocalLightMode::Direct;
+    view.localLightMode = lmx::engine::LocalLightMode::Direct;
 
     const Camera camera = pinnedAngleCamera();
 
@@ -586,7 +590,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
         probeSurfacePoint(camera, kBrdfProbeSize, kProbeX, kProbeY, planeNormal);
     const glm::vec3 toEye = glm::normalize(camera.position - surface);
 
-    auto row = lmx::render::makeLightRow(lights[0]);
+    auto row = lmx::engine::makeLightRow(lights[0]);
     INFO(errorOf(row));
     REQUIRE(row.has_value());
 
@@ -597,7 +601,7 @@ TEST_CASE("a point light shades the scene pass to its CPU mirror times pre-expos
     constexpr float kAlpha = kLitProbeRoughness * kLitProbeRoughness;
     const float preExposure = std::exp2(kLitProbeExposureEv);
     const glm::vec3 expected =
-        lmx::render::computePunctualLight(*row, surface, shadingNormal, toEye, baseColour, f0,
+        lmx::engine::computePunctualLight(*row, surface, shadingNormal, toEye, baseColour, f0,
                                           kLitProbeMetallic, kAlpha) *
         preExposure;
 
@@ -623,7 +627,7 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
     REQUIRE(device.has_value());
 
     auto quad =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(8.0f), "lmx.test.litVariantQuad");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(8.0f), "lmx.test.litVariantQuad");
     INFO(errorOf(quad));
     REQUIRE(quad.has_value());
 
@@ -634,8 +638,8 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
 
     const glm::mat4 model =
         glm::rotate(glm::mat4{1.0f}, glm::radians(90.0f), glm::vec3{1.0f, 0.0f, 0.0f});
-    const std::array<lmx::render::LocalLight, 1> lights = {{
-        {.type = lmx::render::LocalLightType::Point,
+    const std::array<lmx::engine::LocalLight, 1> lights = {{
+        {.type = lmx::engine::LocalLightType::Point,
          .position = {1.0f, 1.5f, 3.0f},
          .colour = {1.0f, 1.0f, 1.0f},
          .intensity = 8.0f,
@@ -653,8 +657,8 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
              .material = {.albedo = kLitProbeAlbedo,
                           .roughness = kLitProbeRoughness,
                           .metallic = kLitProbeMetallic,
-                          .alphaMode = masked ? lmx::render::AlphaMode::Mask
-                                              : lmx::render::AlphaMode::Opaque,
+                          .alphaMode = masked ? lmx::engine::AlphaMode::Mask
+                                              : lmx::engine::AlphaMode::Opaque,
                           .alphaCutoff = 0.5f}},
         }};
 
@@ -668,7 +672,7 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
         view.exposureEv = kLitProbeExposureEv;
         view.autoExposureEnabled = automatic;
         view.exposureReset = automatic;
-        view.localLightMode = lmx::render::LocalLightMode::Direct;
+        view.localLightMode = lmx::engine::LocalLightMode::Direct;
 
         CommandList& commands = (*device)->beginFrame();
         (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
@@ -697,29 +701,30 @@ TEST_CASE("the masked and auto-exposure scene variants light a local light ident
 TEST_CASE("LightLab graph declares the selected light consumers",
           "[gpu][light][clustered-consumer]") {
     using namespace lmx::render;
-    for (const auto mode : {LocalLightMode::Clustered, LocalLightMode::Direct}) {
+    for (const auto mode :
+         {lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct}) {
         auto device = rojoRHI::createDevice();
         REQUIRE(device);
-        auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
+        auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
         REQUIRE(scene);
         auto renderer = Renderer::create(**device, 64, 64, true);
         REQUIRE(renderer);
         TransientPool pool(**device);
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        std::vector<lmx::engine::DrawItem> items;
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.localLightMode = mode;
         view.temporal.enabled = false;
         view.bloomEnabled = false;
-        const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
+        const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
         pool.beginFrame();
         RenderGraph graph(pool);
         graph.exportTexture((*renderer)->declarePasses(graph, commands, camera, view));
         const auto record = graph.compileFrame((*device)->frameNumber());
         REQUIRE(record);
         const auto& debug = record->debug;
-        const bool clustered = mode == LocalLightMode::Clustered;
+        const bool clustered = mode == lmx::engine::LocalLightMode::Clustered;
         for (const auto label : {"lmx.pass.light.reset", "lmx.pass.light.count",
                                  "lmx.pass.light.scan", "lmx.pass.light.fill"}) {
             const auto pass = std::ranges::find(debug.passes, label, &DebugPass::label);
@@ -803,22 +808,23 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::scene::loadLightLabScene(**device, 256, 0);
+    auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene);
-    const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
+    const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     // Temporal off writes HDR/depth only. Raw, unjittered temporal frames also initialize the
     // motion/reactive attachments, so their equality cannot pass on uninitialized allocation bytes.
     for (const bool motionEnabled : {false, true}) {
         std::array<std::vector<uint8_t>, 4> reference;
-        for (const auto mode : {LocalLightMode::Direct, LocalLightMode::Clustered}) {
+        for (const auto mode :
+             {lmx::engine::LocalLightMode::Direct, lmx::engine::LocalLightMode::Clustered}) {
             auto renderer = Renderer::create(**device, 160, 90, true);
             REQUIRE(renderer);
             LightingDepthReadback depthReadback;
             for (uint32_t step = 0; step < 2; ++step) {
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-                std::vector<DrawItem> items;
-                auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+                std::vector<lmx::engine::DrawItem> items;
+                auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
                 view.localLightMode = mode;
                 view.temporal.enabled = motionEnabled;
                 view.temporal.jitterEnabled = false;
@@ -834,7 +840,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
             REQUIRE(status.isRetired);
             REQUIRE(status.effective == mode);
             REQUIRE(status.liveLightCount == 256);
-            if (mode == LocalLightMode::Clustered) {
+            if (mode == lmx::engine::LocalLightMode::Clustered) {
                 REQUIRE(status.counters.assigned > 0);
                 REQUIRE(status.counters.truncatedFroxels == 0);
             }
@@ -848,7 +854,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
                 REQUIRE_FALSE(image[2].empty());
                 REQUIRE_FALSE(image[3].empty());
             }
-            if (mode == LocalLightMode::Direct)
+            if (mode == lmx::engine::LocalLightMode::Direct)
                 reference = std::move(image);
             else {
                 INFO("motion attachments enabled: " << motionEnabled);
@@ -867,14 +873,15 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::scene::loadLightLabScene(**device, 64, 0);
+    auto scene = lmx::engine::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);
-    const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
-    const std::array modes{LocalLightMode::Clustered, LocalLightMode::Direct,
-                           LocalLightMode::Off,       LocalLightMode::Clustered,
-                           LocalLightMode::Off,       LocalLightMode::Direct};
+    const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
+    const std::array modes{
+        lmx::engine::LocalLightMode::Clustered, lmx::engine::LocalLightMode::Direct,
+        lmx::engine::LocalLightMode::Off,       lmx::engine::LocalLightMode::Clustered,
+        lmx::engine::LocalLightMode::Off,       lmx::engine::LocalLightMode::Direct};
     uint32_t retiredCount = 0;
     uint64_t firstFrame = 0;
     const auto check = [&] {
@@ -884,7 +891,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
             REQUIRE(status.isRetired);
             REQUIRE(status.checkEnabled);
             REQUIRE(status.checkPassed());
-            if (status.effective == LocalLightMode::Clustered) {
+            if (status.effective == lmx::engine::LocalLightMode::Clustered) {
                 REQUIRE(status.checkFrame);
                 REQUIRE(status.checkFrame->frameNumber == status.frameNumber);
                 REQUIRE(status.checkFrame->params.rowCount == 64);
@@ -896,7 +903,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
             REQUIRE(status.effective == modes[retiredCount]);
             REQUIRE(status.liveLightCount == 64);
             REQUIRE((status.counters.assigned > 0) ==
-                    (status.effective == LocalLightMode::Clustered));
+                    (status.effective == lmx::engine::LocalLightMode::Clustered));
             REQUIRE(status.listBytes == status.counters.assigned * sizeof(uint32_t));
             ++retiredCount;
         }
@@ -908,8 +915,8 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
             firstFrame = (*device)->frameNumber();
         (*scene)->advanceAnimation(0.4);
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        std::vector<lmx::engine::DrawItem> items;
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.localLightMode = mode;
         view.lightCheck = true;
         view.temporal.enabled = false;
@@ -933,13 +940,14 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto plane = lmx::test::fixtureMesh(**device, makePlane(20.0f), "lmx.test.overflowPlane");
+    auto plane =
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(20.0f), "lmx.test.overflowPlane");
     REQUIRE(plane);
     const glm::mat4 model = glm::rotate(glm::mat4{1}, glm::radians(90.0f), glm::vec3{1, 0, 0});
     const std::array<FixtureDrawItem, 1> items{
         {{.mesh = &*plane, .model = model, .material = {.albedo = {0.5f, 0.5f, 0.5f, 1}}}}};
-    std::vector<LocalLight> lights(129,
-                                   {.position = {-1.5f, 0, 1}, .intensity = 0.025f, .range = 1.5f});
+    std::vector<lmx::engine::LocalLight> lights(
+        129, {.position = {-1.5f, 0, 1}, .intensity = 0.025f, .range = 1.5f});
     lights.push_back({.position = {1.5f, 0, 1}, .intensity = 2.0f, .range = 1.5f});
     FixtureSceneView view;
     view.items = items;
@@ -957,7 +965,8 @@ TEST_CASE("cluster overflow darkens only pixels in truncated froxels",
     LightClusterLists mirror;
     const auto slices = clusterSliceDepths(camera.nearZ);
     uint32_t path = 0;
-    for (const auto mode : {LocalLightMode::Direct, LocalLightMode::Clustered}) {
+    for (const auto mode :
+         {lmx::engine::LocalLightMode::Direct, lmx::engine::LocalLightMode::Clustered}) {
         auto& commands = (*device)->beginFrame();
         view.localLightMode = mode;
         const auto prepared = lmx::test::prepareSceneView(view, device);

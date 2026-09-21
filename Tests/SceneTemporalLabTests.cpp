@@ -25,7 +25,7 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
     const SceneObject* invalid = findObject(**scene, "temporal-lab invalid cube");
     REQUIRE(invalid != nullptr);
     REQUIRE(near3(invalid->position, glm::vec3(0.0f, 1.0f, 4.0f)));
-    REQUIRE(invalid->motionClass == render::MotionClass::Invalid);
+    REQUIRE(invalid->motionClass == lmx::engine::MotionClass::Invalid);
 
     for (int i = 0; i < 5; ++i) {
         const SceneObject* pole = findObject(**scene, "temporal-lab pole " + std::to_string(i));
@@ -45,7 +45,8 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
     REQUIRE((*scene)->animation.duration == Catch::Approx(24.0));
     REQUIRE((*scene)->animation.loop);
     for (const RigidTrack& track : (*scene)->animation.tracks) {
-        REQUIRE((*scene)->objects[track.objectIndex].motionClass == render::MotionClass::Rigid);
+        REQUIRE((*scene)->objects[track.objectIndex].motionClass ==
+                lmx::engine::MotionClass::Rigid);
         REQUIRE(track.keys.size() == 24 * 60 + 1);
     }
 }
@@ -134,7 +135,7 @@ TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated"
 
     constexpr uint32_t kWidth = 1280;
     constexpr uint32_t kHeight = 720;
-    const render::Camera camera = cameraFrom((*scene)->initialCamera);
+    const lmx::engine::Camera camera = cameraFrom((*scene)->initialCamera);
     const auto boxAt = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
         return projectAabbToFrame(camera, kWidth, kHeight, center, halfExtent);
     };

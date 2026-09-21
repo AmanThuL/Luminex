@@ -40,7 +40,7 @@ TEST_CASE("diagnostic availability follows effective mode and temporal input sta
 TEST_CASE("lighting legends distinguish list occupancy from missing contribution",
           "[app][lighting-display]") {
     using namespace lmx::app;
-    using enum lmx::render::LightDebugView;
+    using enum lmx::engine::LightDebugView;
     REQUIRE(diagnosticLegend(Count).description.find("65-128 red") != std::string_view::npos);
     REQUIRE(diagnosticLegend(Overflow).description.find("25%") != std::string_view::npos);
     REQUIRE(diagnosticLegend(Missed).description.find("list error") != std::string_view::npos);

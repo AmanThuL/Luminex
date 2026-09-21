@@ -5,10 +5,12 @@
 
 #pragma once
 
-#include "Render/LocalLight.h"
+#include "Engine/Types/LocalLight.h"
 
-#include "Render/AlphaMode.h"
-#include "Render/SceneTables.h"
+#include "Engine/Scene/SceneTables.h"
+#include "Engine/Types/AlphaMode.h"
+#include "Engine/Types/DirectionalLight.h"
+#include "Engine/Types/DrawItem.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/Visibility.h"
@@ -27,29 +29,6 @@ class Texture;
 }
 
 namespace lmx::render {
-
-/// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive
-/// execution.
-struct DrawItem {
-    /// Opaque full generational identity; zero for hand-built views.
-    uint64_t instanceIdentity = 0;
-    uint32_t instanceRow = 0; ///< Stable instance slot; independent of draw-list position.
-    MeshRow mesh;             ///< Range in the scene geometry pool.
-    rojoRHI::Texture* diffuse = nullptr;           ///< Null selects the white fallback.
-    rojoRHI::Texture* normalMap = nullptr;         ///< Null selects the flat-normal fallback.
-    rojoRHI::Texture* metallicRoughness = nullptr; ///< Null selects the white fallback.
-    rojoRHI::Texture* occlusion = nullptr;         ///< Null selects the white fallback.
-    rojoRHI::Texture* emissiveMap = nullptr;       ///< Null selects the white fallback.
-    AlphaMode alphaMode = AlphaMode::Opaque;       ///< Coverage pipeline selection.
-    bool doubleSided = false;                      ///< Masked culling pipeline selection.
-};
-
-/// Mirrors Lighting.slang's DirLight. `strength` is linear radiance, `direction` is the way the
-/// rays travel (so a light overhead points down).
-struct DirectionalLight {
-    glm::vec3 strength{0.5f};               ///< Scene-linear RGB radiance.
-    glm::vec3 direction{0.0f, -1.0f, 0.0f}; ///< Direction rays travel in world space.
-};
 
 /// Runtime-selectable, not a pipeline permutation: it is a uniform the shader branches on, so the
 /// editor's combo box costs one integer rather than a second set of pipelines.
@@ -139,21 +118,21 @@ struct SceneView {
     bool classifyCheck = false;    ///< Compare retired GPU output against the CPU oracle.
     bool visibilityEnabled = true; ///< Conservatively cull camera candidates.
     SubmissionMode submission = SubmissionMode::Indirect; ///< CPU command preparation mode.
-    SceneTables tables;              ///< Borrowed geometry and paced row buffers for this frame.
-    std::span<const DrawItem> items; ///< Borrowed draw list for the current render call.
+    engine::SceneTables tables; ///< Borrowed geometry and paced row buffers for this frame.
+    std::span<const engine::DrawItem> items; ///< Borrowed draw list for the current render call.
     /// Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
     /// multiplies. Lights 1 and 2 contribute without shadowing.
-    DirectionalLight lights[3];
+    engine::DirectionalLight lights[3];
     /// Both absent or both set. A sky needs geometry to rasterise and a cubemap to sample; either
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.
-    std::optional<MeshRow> skySphere;
+    std::optional<engine::MeshRow> skySphere;
     rojoRHI::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
-    /// (Source/Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,
-    /// and the split-sum DFG table. This is what replaced the flat ambient term -- an environment
-    /// the surface actually samples per normal and per reflection vector, rather than one constant
-    /// added to every pixel.
+    /// (Source/Engine/Asset/Texture/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered
+    /// radiance chain, and the split-sum DFG table. This is what replaced the flat ambient term --
+    /// an environment the surface actually samples per normal and per reflection vector, rather
+    /// than one constant added to every pixel.
     ///
     /// Independently nullable, and null is a supported state rather than an incomplete one: the
     /// renderer substitutes its black-cube and zero-DFG fallbacks, which make both image-based
@@ -167,10 +146,11 @@ struct SceneView {
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Runtime shadow sampling mode.
     /// Requested local-light path; Clustered is the default and Direct remains the reference.
-    LocalLightMode localLightMode = LocalLightMode::Clustered;
+    engine::LocalLightMode localLightMode = engine::LocalLightMode::Clustered;
     bool lightCheck = false; ///< Compare retired clustered lists with the declaration CPU mirror.
-    LightDebugView lightDebugView = LightDebugView::Off; ///< Post-display light-list diagnostic.
-    bool wireframe = false;                              ///< Selects the wireframe scene pipeline.
+    /// Post-display light-list diagnostic.
+    engine::LightDebugView lightDebugView = engine::LightDebugView::Off;
+    bool wireframe = false; ///< Selects the wireframe scene pipeline.
     /// Manual exposure, in stops. Every fragment multiplies its linear output by exp2(exposureEv)
     /// before the target sees it -- so the scene target holds pre-exposed radiance and the display
     /// transform reads one already-exposed image. Zero is unit exposure, which is what leaves a

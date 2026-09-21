@@ -10,19 +10,19 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void SceneLoadState::request(scene::SceneId sceneId) {
+void SceneLoadState::request(engine::SceneId sceneId) {
     m_requestedScene = sceneId;
     m_failedScene.reset();
     m_failureMessage.clear();
 }
 
 //======================================================================================================================
-std::optional<scene::SceneId> SceneLoadState::consumeRequest() {
+std::optional<engine::SceneId> SceneLoadState::consumeRequest() {
     return std::exchange(m_requestedScene, std::nullopt);
 }
 
 //======================================================================================================================
-void SceneLoadState::fail(scene::SceneId sceneId, std::string message) {
+void SceneLoadState::fail(engine::SceneId sceneId, std::string message) {
     m_failedScene = sceneId;
     m_failureMessage = std::move(message);
 }

@@ -39,7 +39,8 @@ rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRH
 //======================================================================================================================
 GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
                                       const LightDebugInputs& inputs) {
-    LMX_ASSERT(inputs.mode != LightDebugView::Off, "a light debug pass needs an active view");
+    LMX_ASSERT(inputs.mode != engine::LightDebugView::Off,
+               "a light debug pass needs an active view");
     LMX_ASSERT(inputs.clusters.activeWidth && inputs.clusters.activeHeight && inputs.outputWidth &&
                    inputs.outputHeight,
                "light debug extents must be nonzero");

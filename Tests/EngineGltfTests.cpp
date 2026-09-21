@@ -5,8 +5,8 @@
 #include <glm/gtc/epsilon.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#include "Asset/GltfLoader.h"
-#include "Asset/SceneAnimation.h"
+#include "Engine/Asset/Model/GltfLoader.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 #include "EngineTestSupport.h"
 
 #include <cmath>

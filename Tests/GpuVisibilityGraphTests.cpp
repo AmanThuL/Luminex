@@ -1,5 +1,6 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTemporalTestSupport.h"
-#include "Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 
 #include <algorithm>
 
@@ -11,21 +12,21 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
     for (const auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
         auto device = createDevice();
         REQUIRE(device);
-        auto scene = lmx::scene::loadVisibilityLabScene(**device, 1024);
+        auto scene = lmx::engine::loadVisibilityLabScene(**device, 1024);
         REQUIRE(scene);
         auto renderer = Renderer::create(**device, kSize, kSize, true);
         REQUIRE(renderer);
         TransientPool pool(**device);
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        std::vector<lmx::engine::DrawItem> items;
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.classifyMode = ClassifyMode::Gpu;
         view.submission = mode;
         view.bloomEnabled = false;
         pool.beginFrame();
         RenderGraph graph(pool);
-        const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
+        const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
         graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
         const auto record = graph.compileFrame((*device)->frameNumber());
         INFO((record ? "" : record.error().message));
@@ -66,14 +67,14 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     using namespace lmx::render;
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto scene = lmx::scene::loadVisibilityLabScene(**device, 5);
+    auto scene = lmx::engine::loadVisibilityLabScene(**device, 5);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, kSize, kSize, true);
     REQUIRE(renderer);
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-    std::vector<DrawItem> items;
-    auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+    std::vector<lmx::engine::DrawItem> items;
+    auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
     view.items = {};
     view.classifyMode = ClassifyMode::Gpu;
     view.submission = SubmissionMode::Batched;
@@ -81,7 +82,7 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     TransientPool pool(**device);
     pool.beginFrame();
     RenderGraph graph(pool);
-    graph.exportTexture((*renderer)->declarePasses(graph, commands, Camera{}, view));
+    graph.exportTexture((*renderer)->declarePasses(graph, commands, lmx::engine::Camera{}, view));
     const auto record = graph.compileFrame((*device)->frameNumber());
     INFO((record ? "" : record.error().message));
     REQUIRE(record);

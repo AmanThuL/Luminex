@@ -181,6 +181,13 @@ no undefined RHI references and `TextureBake` links neither Engine nor a Metal f
 Engine archive has no undefined `lmx::render` references; every test case is present under its
 name.
 
+**Implemented 2026-09-21.** `Source/Engine/` holds `Types/`, `Scene/`, `Upload/`, `Catalog/` and
+the unchanged Asset unit under `Asset/{Image,Model,Texture}/`; `Bounds.h` is in Core, target
+`Scene` has dissolved into `Engine`, and Render builds `SceneView` with `render::buildSceneView`.
+The contract rejects any Engine include of Render and any undefined `lmx::render::` reference in
+the Engine archive. See the [validation record](../milestones/r/r3.3-validation.md) for evidence,
+deviations and limits.
+
 ### R3.4 — Render
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,

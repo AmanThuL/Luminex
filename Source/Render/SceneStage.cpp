@@ -121,17 +121,17 @@ constexpr uint32_t kIblSamplerSlot = 2;
 
 //======================================================================================================================
 // A zero-light frame must not index even a fallback grid.
-LocalLightMode resolveLocalLightMode(LocalLightMode requested, uint32_t liveLightCount,
-                                     bool hasClusters) {
-    if (requested == LocalLightMode::Off || liveLightCount == 0)
-        return LocalLightMode::Off;
-    LMX_ASSERT(requested != LocalLightMode::Clustered || hasClusters,
+engine::LocalLightMode resolveLocalLightMode(engine::LocalLightMode requested,
+                                             uint32_t liveLightCount, bool hasClusters) {
+    if (requested == engine::LocalLightMode::Off || liveLightCount == 0)
+        return engine::LocalLightMode::Off;
+    LMX_ASSERT(requested != engine::LocalLightMode::Clustered || hasClusters,
                "clustered shading requires this frame's grid and list");
     return requested;
 }
 
 //======================================================================================================================
-DirLightUniform toUniform(const DirectionalLight& light) {
+DirLightUniform toUniform(const engine::DirectionalLight& light) {
     return {.strength = light.strength,
             .strengthPadding = 0.0f,
             .direction = light.direction,
@@ -147,59 +147,60 @@ void SceneStage::registerSceneTableLayoutsForCapture() {
 
     schema.registerUniformStruct(
         {.name = "DrawUniforms",
-         .slot = kDrawUniformsSlot,
-         .sizeBytes = sizeof(DrawUniforms),
-         .fields = {{"firstEntry", offsetof(DrawUniforms, firstEntry), "uint"}}});
+         .slot = engine::kDrawUniformsSlot,
+         .sizeBytes = sizeof(engine::DrawUniforms),
+         .fields = {{"firstEntry", offsetof(engine::DrawUniforms, firstEntry), "uint"}}});
     schema.registerUniformStruct(
         {.name = "InstanceRow",
-         .slot = kSceneInstancesSlot,
-         .sizeBytes = sizeof(InstanceRow),
-         .fields = {{"model", offsetof(InstanceRow, model), "float4x4"},
-                    {"previousModel", offsetof(InstanceRow, previousModel), "float4x4"},
-                    {"normalMatrix", offsetof(InstanceRow, normalMatrix), "float4x4"},
-                    {"meshRow", offsetof(InstanceRow, meshRow), "uint"},
-                    {"materialRow", offsetof(InstanceRow, materialRow), "uint"},
-                    {"flags", offsetof(InstanceRow, flags), "uint"},
-                    {"emissiveScale", offsetof(InstanceRow, emissiveScale), "float"},
-                    {"worldBoundsMin", offsetof(InstanceRow, worldBoundsMin), "float3"},
-                    {"worldBoundsMax", offsetof(InstanceRow, worldBoundsMax), "float3"}}});
+         .slot = engine::kSceneInstancesSlot,
+         .sizeBytes = sizeof(engine::InstanceRow),
+         .fields = {{"model", offsetof(engine::InstanceRow, model), "float4x4"},
+                    {"previousModel", offsetof(engine::InstanceRow, previousModel), "float4x4"},
+                    {"normalMatrix", offsetof(engine::InstanceRow, normalMatrix), "float4x4"},
+                    {"meshRow", offsetof(engine::InstanceRow, meshRow), "uint"},
+                    {"materialRow", offsetof(engine::InstanceRow, materialRow), "uint"},
+                    {"flags", offsetof(engine::InstanceRow, flags), "uint"},
+                    {"emissiveScale", offsetof(engine::InstanceRow, emissiveScale), "float"},
+                    {"worldBoundsMin", offsetof(engine::InstanceRow, worldBoundsMin), "float3"},
+                    {"worldBoundsMax", offsetof(engine::InstanceRow, worldBoundsMax), "float3"}}});
     schema.registerUniformStruct(
         {.name = "MaterialRow",
-         .slot = kSceneMaterialsSlot,
-         .sizeBytes = sizeof(MaterialRow),
-         .fields = {{"uvTransform", offsetof(MaterialRow, uvTransform), "float4x4"},
-                    {"albedo", offsetof(MaterialRow, albedo), "float4"},
-                    {"emissive", offsetof(MaterialRow, emissive), "float3"},
-                    {"roughness", offsetof(MaterialRow, roughness), "float"},
-                    {"metallic", offsetof(MaterialRow, metallic), "float"},
-                    {"occlusionStrength", offsetof(MaterialRow, occlusionStrength), "float"},
-                    {"alphaCutoff", offsetof(MaterialRow, alphaCutoff), "float"},
-                    {"flags", offsetof(MaterialRow, flags), "uint"}}});
+         .slot = engine::kSceneMaterialsSlot,
+         .sizeBytes = sizeof(engine::MaterialRow),
+         .fields = {
+             {"uvTransform", offsetof(engine::MaterialRow, uvTransform), "float4x4"},
+             {"albedo", offsetof(engine::MaterialRow, albedo), "float4"},
+             {"emissive", offsetof(engine::MaterialRow, emissive), "float3"},
+             {"roughness", offsetof(engine::MaterialRow, roughness), "float"},
+             {"metallic", offsetof(engine::MaterialRow, metallic), "float"},
+             {"occlusionStrength", offsetof(engine::MaterialRow, occlusionStrength), "float"},
+             {"alphaCutoff", offsetof(engine::MaterialRow, alphaCutoff), "float"},
+             {"flags", offsetof(engine::MaterialRow, flags), "uint"}}});
     schema.registerUniformStruct(
         {.name = "MeshRow",
-         .slot = kSceneMeshesSlot,
-         .sizeBytes = sizeof(MeshRow),
-         .fields = {{"firstIndex", offsetof(MeshRow, firstIndex), "uint"},
-                    {"indexCount", offsetof(MeshRow, indexCount), "uint"},
-                    {"firstVertex", offsetof(MeshRow, firstVertex), "uint"},
-                    {"vertexCount", offsetof(MeshRow, vertexCount), "uint"},
-                    {"boundsMin", offsetof(MeshRow, boundsMin), "float3"},
-                    {"boundsMax", offsetof(MeshRow, boundsMax), "float3"}}});
+         .slot = engine::kSceneMeshesSlot,
+         .sizeBytes = sizeof(engine::MeshRow),
+         .fields = {{"firstIndex", offsetof(engine::MeshRow, firstIndex), "uint"},
+                    {"indexCount", offsetof(engine::MeshRow, indexCount), "uint"},
+                    {"firstVertex", offsetof(engine::MeshRow, firstVertex), "uint"},
+                    {"vertexCount", offsetof(engine::MeshRow, vertexCount), "uint"},
+                    {"boundsMin", offsetof(engine::MeshRow, boundsMin), "float3"},
+                    {"boundsMax", offsetof(engine::MeshRow, boundsMax), "float3"}}});
     schema.registerUniformStruct(
         {.name = "LightRow",
-         .slot = kSceneLightsSlot,
-         .sizeBytes = sizeof(LightRow),
-         .fields = {{"position", offsetof(LightRow, position), "float3"},
-                    {"range", offsetof(LightRow, range), "float"},
-                    {"strength", offsetof(LightRow, strength), "float3"},
-                    {"spotScale", offsetof(LightRow, spotScale), "float"},
-                    {"direction", offsetof(LightRow, direction), "float3"},
-                    {"spotOffset", offsetof(LightRow, spotOffset), "float"},
-                    {"boundCentre", offsetof(LightRow, boundCentre), "float3"},
-                    {"boundRadius", offsetof(LightRow, boundRadius), "float"}}});
+         .slot = engine::kSceneLightsSlot,
+         .sizeBytes = sizeof(engine::LightRow),
+         .fields = {{"position", offsetof(engine::LightRow, position), "float3"},
+                    {"range", offsetof(engine::LightRow, range), "float"},
+                    {"strength", offsetof(engine::LightRow, strength), "float3"},
+                    {"spotScale", offsetof(engine::LightRow, spotScale), "float"},
+                    {"direction", offsetof(engine::LightRow, direction), "float3"},
+                    {"spotOffset", offsetof(engine::LightRow, spotOffset), "float"},
+                    {"boundCentre", offsetof(engine::LightRow, boundCentre), "float3"},
+                    {"boundRadius", offsetof(engine::LightRow, boundRadius), "float"}}});
     schema.registerUniformStruct(
         {.name = "LocalLightParams",
-         .slot = kLocalLightParamsSlot,
+         .slot = engine::kLocalLightParamsSlot,
          .sizeBytes = sizeof(LocalLightParams),
          .fields = {{"mode", offsetof(LocalLightParams, mode), "uint"},
                     {"rowCount", offsetof(LocalLightParams, rowCount), "uint"},
@@ -268,7 +269,7 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
 
     // Minimal immutable storage keeps every declared slot valid when its selection path is unused.
     {
-        const LightRow freeRow;
+        const engine::LightRow freeRow;
         auto rows = device.createBuffer(
             {.size = sizeof(freeRow), .label = "lmx.render.localLightFallbackRows"}, &freeRow);
         if (!rows) {
@@ -567,12 +568,12 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
     LMX_ASSERT(inputs.lightGrid.has_value() == inputs.lightIndices.has_value(),
                "cluster grid and index list must be supplied together");
     // The render area is origin-anchored; lookup uses its active extent and reversed-Z boundaries.
-    const LocalLightMode localLightMode =
+    const engine::LocalLightMode localLightMode =
         resolveLocalLightMode(view.localLightMode, view.tables.liveLightCount,
                               inputs.lightGrid.has_value() && inputs.lightIndices.has_value());
     LocalLightParams localLightParams{
         .mode = static_cast<uint32_t>(localLightMode),
-        .rowCount = localLightMode == LocalLightMode::Off ? 0u : view.tables.lightRowCount,
+        .rowCount = localLightMode == engine::LocalLightMode::Off ? 0u : view.tables.lightRowCount,
         .gridX = kClusterTilesX,
         .gridY = kClusterTilesY,
         .gridZ = kClusterSliceCount,
@@ -714,7 +715,7 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                 LMX_ASSERT(imported.has_value(), imported.error().message);
                 lightRows = *imported;
             }
-            commands.bindBuffer(kSceneLightsSlot, *lightRows);
+            commands.bindBuffer(engine::kSceneLightsSlot, *lightRows);
             rojoRHI::Buffer* grid = m_fallbackClusterGrid.get();
             rojoRHI::Buffer* indices = m_fallbackClusterIndices.get();
             if (inputs.lightGrid) {
@@ -725,21 +726,21 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                 grid = *gridResult;
                 indices = *indexResult;
             }
-            commands.bindBuffer(kLightClusterGridSlot, *grid);
-            commands.bindBuffer(kLightClusterIndexSlot, *indices);
-            commands.bindFrameData(kLocalLightParamsSlot, localLightParams);
+            commands.bindBuffer(engine::kLightClusterGridSlot, *grid);
+            commands.bindBuffer(engine::kLightClusterIndexSlot, *indices);
+            commands.bindFrameData(engine::kLocalLightParamsSlot, localLightParams);
             if (view.tables.vertices) {
                 commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
-                commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
-                commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+                commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
+                commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
             }
 
-            commands.bindBuffer(kVisibleRowsSlot, *inputs.draws.rows);
+            commands.bindBuffer(engine::kVisibleRowsSlot, *inputs.draws.rows);
             if (inputs.draws.mode != SubmissionMode::Direct)
-                commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{0});
+                commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
             for (const auto& run : inputs.draws.runs) {
-                const DrawItem& item = view.items[run.itemIndex];
-                const bool masked = item.alphaMode == AlphaMode::Mask;
+                const engine::DrawItem& item = view.items[run.itemIndex];
+                const bool masked = item.alphaMode == engine::AlphaMode::Mask;
                 const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
                                            (view.autoExposureEnabled ? 4u : 0u) +
                                            (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
@@ -769,7 +770,8 @@ GraphTexture SceneStage::declare(RenderGraph& graph, rojoRHI::CommandList& comma
                                                                : *inputs.whiteTexture);
 
                 if (inputs.draws.mode == SubmissionMode::Direct) {
-                    commands.bindFrameData(kDrawUniformsSlot, DrawUniforms{run.firstEntry});
+                    commands.bindFrameData(engine::kDrawUniformsSlot,
+                                           engine::DrawUniforms{run.firstEntry});
                     commands.drawIndexed(*view.tables.indices, item.mesh.indexCount,
                                          item.mesh.firstIndex);
                 } else {

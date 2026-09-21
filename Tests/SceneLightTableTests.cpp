@@ -3,7 +3,7 @@
 /// @brief Tests the paced local light table's identities, dirty tracking, growth and capacity.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 #include <rojoRHI/RHI.h>
 
 #include <catch2/catch_test_macros.hpp>
@@ -16,8 +16,8 @@ using namespace lmx;
 
 namespace {
 //======================================================================================================================
-render::LocalLight testLight(float x = 0.0f) {
-    return {.type = render::LocalLightType::Point,
+engine::LocalLight testLight(float x = 0.0f) {
+    return {.type = engine::LocalLightType::Point,
             .position = {x, 0.0f, 0.0f},
             .colour = {1.0f, 1.0f, 1.0f},
             .intensity = 1.0f,
@@ -25,14 +25,14 @@ render::LocalLight testLight(float x = 0.0f) {
 }
 
 //======================================================================================================================
-render::LightRow readLightRow(rojoRHI::Buffer& buffer, uint32_t slot) {
-    std::vector<render::LightRow> rows(slot + 1);
-    buffer.readback(rows.data(), rows.size() * sizeof(render::LightRow));
+engine::LightRow readLightRow(rojoRHI::Buffer& buffer, uint32_t slot) {
+    std::vector<engine::LightRow> rows(slot + 1);
+    buffer.readback(rows.data(), rows.size() * sizeof(engine::LightRow));
     return rows[slot];
 }
 
 //======================================================================================================================
-void prepareLights(rojoRHI::Device& device, scene::Scene& scene) {
+void prepareLights(rojoRHI::Device& device, engine::Scene& scene) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()).has_value());
     device.endFrame(nullptr);
@@ -42,8 +42,8 @@ void prepareLights(rojoRHI::Device& device, scene::Scene& scene) {
 
 //======================================================================================================================
 TEST_CASE("Local light handles reject foreign stores and stale generations", "[scene][light]") {
-    scene::Scene first;
-    scene::Scene second;
+    engine::Scene first;
+    engine::Scene second;
     const auto a = first.addLight(testLight());
     REQUIRE(a.has_value());
     const auto b = first.addLight(testLight(1.0f));
@@ -62,7 +62,7 @@ TEST_CASE("Local light handles reject foreign stores and stale generations", "[s
 //======================================================================================================================
 TEST_CASE("Removing a local light reuses its slot with a new generation and stable neighbours",
           "[scene][light]") {
-    scene::Scene scene;
+    engine::Scene scene;
     const auto a = scene.addLight(testLight());
     REQUIRE(a.has_value());
     const auto b = scene.addLight(testLight(1.0f));
@@ -83,15 +83,15 @@ TEST_CASE("Removing a local light reuses its slot with a new generation and stab
 
 //======================================================================================================================
 TEST_CASE("Adding a local light beyond the frozen capacity fails", "[scene][light]") {
-    scene::Scene scene;
-    for (uint32_t i = 0; i < render::kMaxLocalLights; ++i) {
+    engine::Scene scene;
+    for (uint32_t i = 0; i < engine::kMaxLocalLights; ++i) {
         auto light = testLight(static_cast<float>(i));
         light.enabled = false;
         const auto id = scene.addLight(light);
         INFO(i);
         REQUIRE(id.has_value());
     }
-    REQUIRE(scene.localLights().size() == render::kMaxLocalLights);
+    REQUIRE(scene.localLights().size() == engine::kMaxLocalLights);
     const auto overflow = scene.addLight(testLight());
     REQUIRE_FALSE(overflow.has_value());
     REQUIRE(overflow.error().code == rojoRHI::ErrorCode::InvalidDesc);
@@ -99,7 +99,7 @@ TEST_CASE("Adding a local light beyond the frozen capacity fails", "[scene][ligh
 
 //======================================================================================================================
 TEST_CASE("Adding or updating an invalid local light fails without asserting", "[scene][light]") {
-    scene::Scene scene;
+    engine::Scene scene;
     const auto invalid = scene.addLight({.range = -1.0f});
     REQUIRE_FALSE(invalid.has_value());
     REQUIRE(invalid.error().code == rojoRHI::ErrorCode::InvalidDesc);
@@ -115,8 +115,8 @@ TEST_CASE("Adding or updating an invalid local light fails without asserting", "
 
 //======================================================================================================================
 TEST_CASE("Local light edits and removals leave scene coverage unchanged", "[scene][light]") {
-    scene::Scene scene;
-    const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.light.coverage.mesh");
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.light.coverage.mesh");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
     const auto before = scene.coverageEpoch();
@@ -134,8 +134,8 @@ TEST_CASE("Prepared local light edits and removals leave scene coverage unchange
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
-    const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.light.preparedCoverage.mesh");
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.light.preparedCoverage.mesh");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
     REQUIRE(scene.finalize(**device).has_value());
@@ -159,7 +159,7 @@ TEST_CASE("A light orbit track's animation index freezes at finalize and never r
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
+    engine::Scene scene;
     const auto a = scene.addLight(testLight(0.0f));
     REQUIRE(a.has_value());
     const auto b = scene.addLight(testLight(1.0f));
@@ -194,8 +194,8 @@ TEST_CASE("A light orbit track's animation index freezes at finalize and never r
 TEST_CASE("A zero-light scene reports no light buffer or rows", "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
-    const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.light.empty.mesh");
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.light.empty.mesh");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
     REQUIRE(scene.finalize(**device).has_value());
@@ -216,7 +216,7 @@ TEST_CASE("A removed local light's row zeroes range and reports a live row count
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
+    engine::Scene scene;
     const auto a = scene.addLight(testLight(1.0f));
     REQUIRE(a.has_value());
     const auto b = scene.addLight(testLight(2.0f));
@@ -241,7 +241,7 @@ TEST_CASE("A removed local light's row zeroes range and reports a live row count
     REQUIRE(tables.lightRows[a->slot].range == 0.0f);
     REQUIRE(tables.lightRows[b->slot].range > 0.0f);
     REQUIRE(tables.liveLightCount == 1);
-    render::LightRow row = readLightRow(*tables.lights, a->slot);
+    engine::LightRow row = readLightRow(*tables.lights, a->slot);
     REQUIRE(row.range == 0.0f);
     REQUIRE(scene.removeLight(*b));
     (*device)->beginFrame();
@@ -259,7 +259,7 @@ TEST_CASE("Updating a local light marks its row dirty in every paced frame slot"
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
+    engine::Scene scene;
     const auto id = scene.addLight(testLight(1.0f));
     REQUIRE(id.has_value());
     REQUIRE(scene.finalize(**device).has_value());
@@ -287,7 +287,7 @@ TEST_CASE("Updating a local light marks its row dirty in every paced frame slot"
     }
     for (auto* buffer : buffers) {
         REQUIRE(buffer != nullptr);
-        render::LightRow row{};
+        engine::LightRow row{};
         buffer->readback(&row, sizeof(row));
         REQUIRE(row.position.x == 7.0f);
     }
@@ -303,7 +303,7 @@ TEST_CASE("Local light table growth from 4 to 8 keeps stable rows and retires ol
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    scene::Scene scene;
+    engine::Scene scene;
     const auto first = scene.addLight(testLight(1.0f));
     REQUIRE(first.has_value());
     REQUIRE(scene.finalize(**device).has_value());
@@ -340,7 +340,7 @@ TEST_CASE("Local light table growth from 4 to 8 keeps stable rows and retires ol
 //======================================================================================================================
 TEST_CASE("Disabling a local light preserves its identity, edits and animation binding",
           "[scene][light]") {
-    scene::Scene scene;
+    engine::Scene scene;
     auto authored = testLight(2.0f);
     const auto id = scene.addLight(authored);
     REQUIRE(id);
@@ -368,7 +368,7 @@ TEST_CASE("Light enablement updates every paced slot without identity or allocat
           "[gpu][scene][light]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    scene::Scene scene;
+    engine::Scene scene;
     auto authored = testLight(3.0f);
     const auto id = scene.addLight(authored);
     REQUIRE(id);

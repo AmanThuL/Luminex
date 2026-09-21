@@ -75,6 +75,29 @@ class ContractLoadingTests(unittest.TestCase):
             with self.assertRaisesRegex(modules.ModuleContractError, "Source/App/Options.cpp"):
                 modules.load_contract(write_contract(root, CONTRACT), root)
 
+    def test_a_pending_unit_path_may_be_absent_or_present_during_a_move(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            contract = json.loads(json.dumps(CONTRACT))
+            contract["units"]["core"]["paths"].append("Source/Next/Core")
+            contract["pendingPaths"] = ["Source/Next/Core"]
+            loaded = modules.load_contract(write_contract(root, contract), root)
+            self.assertEqual(modules.owner_of(Path("Source/Next/Core/Log.h"), loaded), "core")
+            write_tree(root, ["Source/Next/Core/Log.h"])
+            modules.load_contract(write_contract(root, contract), root)
+
+    def test_a_pending_path_must_be_a_unit_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for pending in (["Source/Next/Core"], ["Source/Core/Log.h"], "Source/Next/Core", [1]):
+                with self.subTest(pending=pending):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["pendingPaths"] = pending
+                    with self.assertRaisesRegex(modules.ModuleContractError, "pendingPaths"):
+                        modules.load_contract(write_contract(root, contract), root)
+
     def test_forbidden_header_must_exist_so_a_stale_boundary_fails(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1456,6 +1479,61 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(entry["paths"], ["RojoRHI"])
         self.assertEqual(sorted(entry["targets"]), ["RojoRHI", "RojoRHIMetal4ImGui", "RojoRHITests"])
         self.assertNotIn("rhi-public", self.contract["units"])
+
+    def test_engine_owns_its_folder_and_depends_only_on_core_and_asset(self) -> None:
+        engine = self.contract["units"]["engine"]
+        self.assertIn("Source/Engine", engine["paths"])
+        self.assertEqual(sorted(engine["units"]), ["asset", "core"])
+
+    def test_the_asset_folder_inside_engine_belongs_to_asset(self) -> None:
+        self.assertEqual(modules.owner_of(Path("Source/Engine/Asset/Image/PngImage.h"), self.contract), "asset")
+
+    def test_the_rest_of_engine_belongs_to_engine(self) -> None:
+        self.assertEqual(modules.owner_of(Path("Source/Engine/Types/Camera.h"), self.contract), "engine")
+
+    def test_render_depends_on_engine_and_asset(self) -> None:
+        units = self.contract["units"]["render"]["units"]
+        self.assertTrue({"engine", "asset"} <= set(units), units)
+
+    def test_nothing_engine_reaches_depends_on_render(self) -> None:
+        units = self.contract["units"]
+        seen: set[str] = set()
+        pending = list(units["engine"]["units"])
+        while pending:
+            name = pending.pop()
+            if name not in seen:
+                seen.add(name)
+                pending.extend(units[name]["units"])
+        self.assertEqual(sorted(name for name in seen | {"engine"} if "render" in units[name]["units"]), [])
+
+    def test_engine_consumes_every_public_rhi_header(self) -> None:
+        self.assertEqual(self.contract["externals"]["rhi"]["consumers"]["engine"], ["*"])
+
+    def test_asset_still_consumes_only_the_two_descriptor_headers(self) -> None:
+        self.assertEqual(
+            self.contract["externals"]["rhi"]["consumers"]["asset"],
+            ["rojoRHI/Format.h", "rojoRHI/TextureDesc.h"],
+        )
+
+    def test_the_old_asset_and_scene_folders_belong_to_no_unit(self) -> None:
+        for path in ("Source/Scene/Scene.h", "Source/Asset/Asset.h"):
+            with self.subTest(path=path):
+                self.assertIsNone(modules.owner_of(Path(path), self.contract))
+
+    def test_the_engine_archive_may_not_reference_render(self) -> None:
+        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
+
+    def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
+        self.assertNotIn("pendingPaths", self.contract)
+        for unit in self.contract["units"].values():
+            for path in unit["paths"]:
+                self.assertTrue((self.root / path).exists(), path)
+
+    def test_no_target_or_unit_names_the_dissolved_scene_target(self) -> None:
+        self.assertNotIn("Scene", self.contract["targets"])
+        named = {dep for target in self.contract["targets"].values() for dep in target.get("deps", [])}
+        named |= {target for unit in self.contract["units"].values() for target in unit["targets"]}
+        self.assertNotIn("Scene", named)
 
 
 if __name__ == "__main__":

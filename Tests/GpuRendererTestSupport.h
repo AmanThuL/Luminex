@@ -2,12 +2,12 @@
 
 #include "BrdfOracle.h"
 #include "DisplayTransformOracle.h"
+#include "Engine/Upload/IblUpload.h"
 #include "GpuTestSupport.h"
-#include "Scene/IblUpload.h"
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
+#include "Engine/Scene/Scene.h"
 #include "EngineTestSupport.h"
-#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -23,8 +23,8 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using lmx::render::Camera;
-using lmx::render::DirectionalLight;
+using lmx::engine::Camera;
+using lmx::engine::DirectionalLight;
 using lmx::render::Renderer;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -195,7 +195,7 @@ inline PixelCoord projectToPixel(const Camera& camera, uint32_t size, const glm:
 }
 
 //======================================================================================================================
-inline lmx::render::Vertex clipVertex(float x, float y, float z) {
+inline lmx::engine::Vertex clipVertex(float x, float y, float z) {
     return {x, y, z, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f};
 }
 
@@ -238,10 +238,10 @@ inline HalfPixel halfPixelAt(const std::vector<uint16_t>& rgba, uint32_t x, uint
 
 namespace {
 
-// MaterialLab's three depth probes, mirrored from Source/Scene/MaterialLab.cpp: 0.5-unit cubes in
-// the X=28 depth lane at these distances, offset laterally so each occupies its own tangent-space
-// band. `distance` is to the cube's *centre*; the surface the camera sees is its front face, one
-// half-extent nearer.
+// MaterialLab's three depth probes, mirrored from Source/Engine/Catalog/MaterialLab.cpp: 0.5-unit
+// cubes in the X=28 depth lane at these distances, offset laterally so each occupies its own
+// tangent-space band. `distance` is to the cube's *centre*; the surface the camera sees is its
+// front face, one half-extent nearer.
 struct DepthProbe {
     const char* name;
     float distance;

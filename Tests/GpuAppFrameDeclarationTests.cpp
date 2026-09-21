@@ -30,11 +30,11 @@ TEST_CASE("FrameDeclaration preserves headless rendering and retains its caller-
     auto shared = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
     INFO(errorOf(shared));
     REQUIRE(shared.has_value());
-    auto cube = fixtureMesh(**device, makeCube(), "lmx.test.frameDeclaration.cube");
+    auto cube = fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.frameDeclaration.cube");
     INFO(errorOf(cube));
     REQUIRE(cube.has_value());
 
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0.0f, 0.0f, 5.0f};
     const std::array<FixtureDrawItem, 1> items = {{
         {.mesh = &*cube, .material = {.albedo = {0.4f, 0.6f, 0.8f, 1.0f}}},

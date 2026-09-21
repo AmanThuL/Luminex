@@ -31,7 +31,7 @@ FrustumPlanes extractFrustumPlanes(const glm::mat4& matrix) {
 }
 
 //======================================================================================================================
-InstanceVisibility classifyInstance(const FrustumPlanes& planes, const InstanceRow& row,
+InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::InstanceRow& row,
                                     uint32_t instanceRow, bool enabled, bool viewUnculled) {
     InstanceVisibility result{.instanceRow = instanceRow,
                               .worldBounds = {row.worldBoundsMin, row.worldBoundsMax}};
@@ -46,7 +46,7 @@ InstanceVisibility classifyInstance(const FrustumPlanes& planes, const InstanceR
         return bypass(VisibilityReason::ViewUnculled);
     if (!isFinite(row.model))
         return bypass(VisibilityReason::NonFiniteTransform);
-    if (!planes.valid || (row.flags & kInstanceBoundsUnreliable) ||
+    if (!planes.valid || (row.flags & engine::kInstanceBoundsUnreliable) ||
         !isValidAabb(result.worldBounds))
         return bypass(VisibilityReason::UnreliableBounds);
     for (const auto& plane : planes.planes) {
@@ -67,8 +67,8 @@ InstanceVisibility classifyInstance(const FrustumPlanes& planes, const InstanceR
 }
 
 //======================================================================================================================
-VisibilityResult classifyView(const FrustumPlanes& planes, std::span<const DrawItem> items,
-                              const SceneTables& tables, bool enabled, bool viewUnculled) {
+VisibilityResult classifyView(const FrustumPlanes& planes, std::span<const engine::DrawItem> items,
+                              const engine::SceneTables& tables, bool enabled, bool viewUnculled) {
     VisibilityResult result;
     result.candidates.reserve(items.size());
     result.visibleItems.reserve(items.size());

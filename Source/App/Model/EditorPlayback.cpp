@@ -107,7 +107,7 @@ bool EditorPlayback::stop(SceneSession& session, bool& followRail) {
             const auto saved = m_snapshot->lights.find(id.slot);
             if (saved == m_snapshot->lights.end() || saved->second.id != id)
                 continue;
-            render::LocalLight current = *scene.light(id);
+            engine::LocalLight current = *scene.light(id);
             current.position = saved->second.position;
             const auto restored = scene.updateLight(id, current);
             LMX_ASSERT(restored.has_value(),

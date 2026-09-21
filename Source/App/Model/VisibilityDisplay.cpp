@@ -195,7 +195,8 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
     return fields;
 }
 //======================================================================================================================
-void VisibilityDisplay::observe(const scene::Scene& scene, const render::VisibilityStatus& status) {
+void VisibilityDisplay::observe(const engine::Scene& scene,
+                                const render::VisibilityStatus& status) {
     if (m_generation != status.sceneGeneration)
         clear();
     m_generation = status.sceneGeneration;
@@ -273,7 +274,7 @@ void VisibilityDisplay::publishReadings(double nowSeconds) {
     m_nextReadingsSeconds = nowSeconds + kDiagnosticRefreshIntervalSeconds;
 }
 //======================================================================================================================
-std::vector<VisibilityField> VisibilityDisplay::objectFields(scene::InstanceId id,
+std::vector<VisibilityField> VisibilityDisplay::objectFields(engine::InstanceId id,
                                                              uint64_t sceneGeneration) const {
     const auto* candidate = find(id, m_status, sceneGeneration);
     auto fields = objectVisibilityFields(candidate);
@@ -297,7 +298,7 @@ void VisibilityDisplay::clear() {
     m_frame = m_generation = 0;
 }
 //======================================================================================================================
-const render::InstanceVisibility* VisibilityDisplay::find(scene::InstanceId id,
+const render::InstanceVisibility* VisibilityDisplay::find(engine::InstanceId id,
                                                           const render::VisibilityStatus& status,
                                                           uint64_t sceneGeneration) const {
     if ((status.classifyMode == render::ClassifyMode::Gpu && !status.isRetired) || id.store == 0 ||

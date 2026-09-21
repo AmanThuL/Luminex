@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 
@@ -19,7 +19,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using lmx::render::Camera;
+using lmx::engine::Camera;
 using lmx::render::HistoryResetReason;
 using lmx::render::ReconstructionMode;
 using lmx::render::Renderer;
@@ -409,10 +409,10 @@ TEST_CASE("vendor reconstruction settles a static jittered frame", "[gpu][tempor
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
     const std::vector<FixtureDrawItem> items = checkerAndPoleItems(camera, *cube, *plane);
@@ -448,7 +448,7 @@ TEST_CASE("vendor reconstruction fills the display extent", "[gpu][temporal][ven
         SKIP("The device reports no vendor temporal scaler capability");
     }
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorCoverage");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorCoverage");
     REQUIRE(plane.has_value());
     const Camera camera;
     auto empty = Renderer::create(**device, kScenarioWidth, kScenarioHeight, true);
@@ -489,10 +489,10 @@ TEST_CASE("a vendor reconstructed moving quad leaves no trail", "[gpu][temporal]
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorWall");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorWall");
     REQUIRE(plane.has_value());
     const Camera camera = movingQuadCamera();
     std::vector<FixtureDrawItem> items = movingQuadItems(camera, *cube, *plane);
@@ -532,7 +532,7 @@ TEST_CASE("native and vendor reconstruction retain separate valid histories",
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto plane = lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f),
+    auto plane = lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f),
                                         "lmx.test.vendorSwitchPlane");
     REQUIRE(plane.has_value());
     const Camera camera;
@@ -574,10 +574,10 @@ TEST_CASE("vendor reconstruction follows an exposure step", "[gpu][temporal][ven
     if (!(*device)->capabilities().temporalScaler.available) {
         SKIP("The device reports no vendor temporal scaler capability");
     }
-    auto cube = lmx::test::fixtureMesh(**device, lmx::render::makeCube(), "lmx.test.vendorCube");
+    auto cube = lmx::test::fixtureMesh(**device, lmx::engine::makeCube(), "lmx.test.vendorCube");
     REQUIRE(cube.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(64.0f), "lmx.test.vendorFloor");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(64.0f), "lmx.test.vendorFloor");
     REQUIRE(plane.has_value());
     const Camera camera = scenarioCamera({0.0f, 1.5f, 4.0f}, -0.20f);
     std::vector<FixtureDrawItem> items;
@@ -678,7 +678,7 @@ TEST_CASE("vendor frames overlap while scale and diagnostics change", "[gpu][tem
         SKIP("The device reports no vendor temporal scaler capability");
     }
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(32.0f), "lmx.test.vendorOverlap");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(32.0f), "lmx.test.vendorOverlap");
     REQUIRE(plane.has_value());
     const std::array<FixtureDrawItem, 1> items = {
         staticItem(*plane, facingPlaneModel(-2.0f), {0.6f, 0.6f, 0.6f, 1.0f})};

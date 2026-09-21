@@ -5,7 +5,7 @@
 
 #pragma once
 #include "App/Model/EditorRenderSettings.h"
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
 
 #include <cstdint>
 #include <optional>
@@ -21,10 +21,10 @@ namespace lmx::app {
 /// shouldResetExposure tell "no scene yet" apart from "the same scene as last time" without a
 /// separate first-frame flag to keep in sync with this struct.
 struct ExposureResetContext {
-    std::optional<scene::SceneId> sceneId; ///< The active scene, or unset before one has loaded.
-    bool autoExposureEnabled = false;      ///< Whether auto-exposure is the current mode.
-    uint32_t width = 0;                    ///< Scene target extent the metering last covered.
-    uint32_t height = 0;                   ///< Scene target extent the metering last covered.
+    std::optional<engine::SceneId> sceneId; ///< The active scene, or unset before one has loaded.
+    bool autoExposureEnabled = false;       ///< Whether auto-exposure is the current mode.
+    uint32_t width = 0;                     ///< Scene target extent the metering last covered.
+    uint32_t height = 0;                    ///< Scene target extent the metering last covered.
 };
 
 /// Whether the exposure feedback loop must restart from the manual EV rather than continue

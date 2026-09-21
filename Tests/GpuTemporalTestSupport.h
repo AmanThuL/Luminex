@@ -2,13 +2,13 @@
 
 #include "GpuTestSupport.h"
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Scene/Scene.h"
 #include "Render/GraphDump.h"
 #include "Render/RenderGraph.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/TransientPool.h"
-#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 
@@ -26,7 +26,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using lmx::render::Camera;
+using lmx::engine::Camera;
 using lmx::render::Renderer;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMesh;

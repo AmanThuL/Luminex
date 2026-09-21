@@ -34,7 +34,7 @@
     },
     "asset": {
       "paths": [
-        "Source/Asset"
+        "Source/Engine/Asset"
       ],
       "targets": [
         "Asset"
@@ -49,6 +49,24 @@
       ],
       "privateHeaders": []
     },
+    "engine": {
+      "paths": [
+        "Source/Engine"
+      ],
+      "targets": [
+        "Engine"
+      ],
+      "units": [
+        "core",
+        "asset"
+      ],
+      "thirdParty": [
+        "glm"
+      ],
+      "privateHeaders": [
+        "Source/Engine/Upload/SceneEnvironment.h"
+      ]
+    },
     "render": {
       "paths": [
         "Source/Render"
@@ -57,7 +75,9 @@
         "Render"
       ],
       "units": [
-        "core"
+        "core",
+        "engine",
+        "asset"
       ],
       "thirdParty": [
         "glm"
@@ -70,25 +90,6 @@
         "Source/Render/TemporalResolveInternal.h"
       ]
     },
-    "scene": {
-      "paths": [
-        "Source/Scene"
-      ],
-      "targets": [
-        "Scene"
-      ],
-      "units": [
-        "core",
-        "asset",
-        "render"
-      ],
-      "thirdParty": [
-        "glm"
-      ],
-      "privateHeaders": [
-        "Source/Scene/SceneEnvironment.h"
-      ]
-    },
     "app-model": {
       "paths": [
         "Source/App/Model"
@@ -99,8 +100,8 @@
       "units": [
         "core",
         "asset",
-        "scene",
-        "render"
+        "render",
+        "engine"
       ],
       "thirdParty": [
         "glm"
@@ -121,8 +122,8 @@
         "core",
         "asset",
         "render",
-        "scene",
-        "app-model"
+        "app-model",
+        "engine"
       ],
       "thirdParty": [
         "glm",
@@ -157,8 +158,8 @@
         "core",
         "render",
         "asset",
-        "scene",
-        "app-model"
+        "app-model",
+        "engine"
       ],
       "thirdParty": [
         "glm",
@@ -233,10 +234,10 @@
           "rojoRHI/Format.h",
           "rojoRHI/TextureDesc.h"
         ],
-        "render": [
+        "engine": [
           "*"
         ],
-        "scene": [
+        "render": [
           "*"
         ],
         "app-model": [
@@ -275,7 +276,9 @@
     "Render": {
       "deps": [
         "Core",
-        "RojoRHI"
+        "RojoRHI",
+        "Engine",
+        "Asset"
       ]
     },
     "App": {
@@ -287,8 +290,8 @@
         "ImGui",
         "ImGuiNodeEditor",
         "Asset",
-        "Scene",
-        "AppModel"
+        "AppModel",
+        "Engine"
       ]
     },
     "Tests": {
@@ -297,8 +300,8 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Scene",
-        "AppModel"
+        "AppModel",
+        "Engine"
       ]
     },
     "RojoRHITests": {
@@ -325,13 +328,13 @@
       ],
       "forbidUndefined": "rojoRHI::"
     },
-    "Scene": {
+    "Engine": {
       "deps": [
         "Core",
         "RojoRHI",
-        "Asset",
-        "Render"
-      ]
+        "Asset"
+      ],
+      "forbidUndefined": "lmx::render::"
     },
     "AppModel": {
       "deps": [
@@ -339,7 +342,7 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Scene"
+        "Engine"
       ]
     }
   }

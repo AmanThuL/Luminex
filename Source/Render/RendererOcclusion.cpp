@@ -8,7 +8,7 @@
 #include <algorithm>
 namespace lmx::render {
 //======================================================================================================================
-GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const Camera& camera,
+GraphTexture Renderer::prepareOcclusion(RenderGraph& graph, const engine::Camera& camera,
                                         const SceneView& view, const FrameExtents& extents,
                                         const CameraFrameState& cameraState) {
     LMX_ASSERT(!view.occlusionEnabled ||

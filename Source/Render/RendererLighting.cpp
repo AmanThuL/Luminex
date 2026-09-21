@@ -23,14 +23,14 @@ LightClusterOutputs Renderer::prepareLighting(RenderGraph& graph, rojoRHI::Comma
     if (frame >= 3)
         retireLightingThrough(frame - 3);
     m_lightingStatus = {.requested = view.localLightMode,
-                        .effective = view.tables.liveLightCount == 0 ? LocalLightMode::Off
+                        .effective = view.tables.liveLightCount == 0 ? engine::LocalLightMode::Off
                                                                      : view.localLightMode,
                         .frameNumber = frame,
                         .sceneGeneration = view.temporal.sceneGeneration,
                         .liveLightCount = view.tables.liveLightCount,
                         .checkEnabled = view.lightCheck};
     LightClusterOutputs output;
-    if (m_lightingStatus.effective == LocalLightMode::Clustered) {
+    if (m_lightingStatus.effective == engine::LocalLightMode::Clustered) {
         LMX_ASSERT(lights.has_value(), "clustered lighting requires the imported scene light rows");
         if (!m_lightClusters) {
             auto stage = LightClusterStage::create(m_device);
@@ -82,7 +82,7 @@ void Renderer::retireLightingThrough(uint64_t frame) {
     for (auto status : m_pendingLighting) {
         if (status.frameNumber > frame)
             continue;
-        if (status.effective == LocalLightMode::Clustered) {
+        if (status.effective == engine::LocalLightMode::Clustered) {
             const auto result =
                 std::ranges::find(clusters, status.frameNumber, &RetiredLightClusters::frameNumber);
             LMX_ASSERT(result != clusters.end(), "retired clusters must join their declared frame");

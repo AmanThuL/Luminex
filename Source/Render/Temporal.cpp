@@ -80,7 +80,7 @@ glm::vec2 haltonJitterPixels(uint32_t index) {
 }
 
 //======================================================================================================================
-CameraFrameState buildCameraFrameState(const Camera& camera, const FrameExtents& extents,
+CameraFrameState buildCameraFrameState(const engine::Camera& camera, const FrameExtents& extents,
                                        glm::vec2 jitterPixels) {
     LMX_ASSERT(extents.renderWidth > 0 && extents.renderHeight > 0,
                "buildCameraFrameState: the render extent must be non-empty");

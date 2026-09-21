@@ -3,14 +3,14 @@
 /// @brief Declares post-display froxel diagnostics over the scene's actual depth and light lists.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
+#include "Engine/Types/LocalLight.h"
 #include "Render/LightClusters.h"
-#include "Render/LocalLight.h"
 #include "Render/RenderGraph.h"
 
 namespace lmx::render {
 /// Borrowed graph inputs; injectable list handles let fixtures test missing and truncated entries.
 struct LightDebugInputs {
-    LightDebugView mode = LightDebugView::Off; ///< Non-Off diagnostic to draw.
+    engine::LightDebugView mode = engine::LightDebugView::Off; ///< Non-Off diagnostic to draw.
     GraphTexture depth;   ///< Actual source-space reversed-Z scene depth; zero denotes sky.
     GraphTexture display; ///< Display-transformed source, used to dim the overflow background.
     GraphTexture output;  ///< Separate opaque BGRA8 display target to write.

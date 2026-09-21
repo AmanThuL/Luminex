@@ -22,7 +22,7 @@ struct LightingField {
 };
 
 /// Stable display name for the local-light execution path.
-std::string_view localLightModeLabel(render::LocalLightMode mode);
+std::string_view localLightModeLabel(engine::LocalLightMode mode);
 
 /// Formats a single coherent publication and only the timings already joined to that frame.
 std::vector<LightingField> lightingFields(const render::LightingStatus& status,

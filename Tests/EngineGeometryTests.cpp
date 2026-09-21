@@ -4,7 +4,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "EngineTestSupport.h"
 
 using namespace lmx::asset;

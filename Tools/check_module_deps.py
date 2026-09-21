@@ -169,6 +169,24 @@ def load_externals(contract: dict, root: Path, claimed: dict[str, str]) -> None:
                 )
 
 
+def load_pending_paths(contract: dict, units: dict) -> set[str]:
+    """Read `pendingPaths`: unit paths a staged move has not created yet or has already emptied.
+
+    Such a path may be absent without being stale. Each entry must name a path some unit lists
+    verbatim, and it may exist, so a move commit needs no contract edit; the contract drops the
+    field once every move has landed.
+    """
+    pending = contract.get("pendingPaths", [])
+    if not isinstance(pending, list) or not all(isinstance(item, str) for item in pending):
+        raise ModuleContractError("pendingPaths must hold a list of strings")
+    unit_paths = {entry for unit in units.values() if isinstance(unit, dict)
+                  for entry in as_list(unit.get("paths")) if isinstance(entry, str)}
+    for entry in pending:
+        if entry not in unit_paths:
+            raise ModuleContractError(f"pendingPaths lists {entry}, which no unit owns as a path")
+    return set(pending)
+
+
 def load_contract(path: Path, root: Path | None = None) -> dict:
     """Load and validate the contract: schema, units, external components, targets, existing paths."""
     root = root or path.resolve().parents[1]
@@ -183,6 +201,7 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
     units = contract.get("units")
     if not isinstance(units, dict) or not units:
         raise ModuleContractError(f"{path} must list at least one unit")
+    pending = load_pending_paths(contract, units)
     claimed: dict[str, str] = {}
     for name, unit in units.items():
         if not isinstance(unit, dict):
@@ -205,7 +224,7 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
                     "using a canonical relative path"
                 )
         for entry in unit["paths"]:
-            if not (root / entry).exists():
+            if entry not in pending and not (root / entry).exists():
                 raise ModuleContractError(f"unit {name} owns {entry}, which does not exist")
             owner = claimed.setdefault(entry, name)
             if owner != name:

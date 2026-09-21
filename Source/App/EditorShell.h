@@ -24,11 +24,11 @@
 #include "App/Model/WorkspaceModel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "Render/Camera.h"
+#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Types/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
 #include "Render/SelectionOutline.h"
-#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <memory>
@@ -63,7 +63,7 @@ struct WorkspaceSettings {
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
-/// Performance and Render Graph windows, the fly camera, and the active scene::Scene the Inspector
+/// Performance and Render Graph windows, the fly camera, and the active engine::Scene the Inspector
 /// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.
@@ -83,8 +83,8 @@ public:
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
     static std::unique_ptr<EditorShell> create(SDL_Window* window, rojoRHI::Device& device,
-                                               scene::SceneLibrary& library,
-                                               scene::SceneId initialScene,
+                                               engine::SceneLibrary& library,
+                                               engine::SceneId initialScene,
                                                std::shared_ptr<ConsoleLog> consoleLog);
     /// Releases the ImGui context and renderer integration while the device remains alive.
     ~EditorShell();
@@ -196,7 +196,7 @@ public:
     bool measurementNeedsRetirementWait() const;
 
     /// Returns the camera currently controlled by the editor viewport.
-    const render::Camera& camera() const { return m_session.camera(); }
+    const engine::Camera& camera() const { return m_session.camera(); }
 
     /// Whether the frame's render graph may let transients whose lifetimes do not overlap share
     /// memory. Edited by the Render Settings checkbox; the picture is the same either way, so what
@@ -227,7 +227,7 @@ public:
     }
 
 private:
-    EditorShell(SDL_Window* window, scene::SceneLibrary& library,
+    EditorShell(SDL_Window* window, engine::SceneLibrary& library,
                 std::shared_ptr<ConsoleLog> consoleLog);
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
@@ -257,15 +257,15 @@ private:
     void applyPendingScene(rojoRHI::Device& device);
     // Drains in-flight scene references and loads one requested catalog entry, retaining an
     // actionable failure for ScenePanel while the current scene remains renderable.
-    bool selectScene(rojoRHI::Device& device, scene::SceneId id);
+    bool selectScene(rojoRHI::Device& device, engine::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
-    scene::SceneLibrary& m_library;
-    scene::SceneId m_activeSceneId = scene::defaultSceneId();
+    engine::SceneLibrary& m_library;
+    engine::SceneId m_activeSceneId = engine::defaultSceneId();
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
     SceneSession m_session;
     EditorPlayback m_playback;
@@ -283,13 +283,13 @@ private:
     SceneLoadState m_sceneLoading;
     MetricsContextRevision m_metricsContextRevision;
 
-    std::vector<render::DrawItem> m_drawItems;
+    std::vector<engine::DrawItem> m_drawItems;
     std::unique_ptr<render::SelectionOutline> m_selectionOutline;
     bool m_showSelectionOutline = true;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
-    // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
-    // switching scenes does not reset any of them.
+    // Render knobs the Inspector writes and render::buildSceneView() reads. Shell state, not scene
+    // state -- switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
     LightingDisplay m_lightingDisplay;

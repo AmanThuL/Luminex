@@ -1,15 +1,16 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
-#include "Scene/Scene.h"
+#include "Render/SceneViewBuilder.h"
 #include <algorithm>
 #include <functional>
 
 using namespace lmx::render;
 using namespace rojoRHI;
-namespace scene = lmx::scene;
+namespace engine = lmx::engine;
 
 namespace {
 //======================================================================================================================
-MeshData occlusionQuad() {
+engine::MeshData occlusionQuad() {
     return {.vertices = {{-1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1},
                          {1, -1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1},
                          {1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0},
@@ -17,8 +18,8 @@ MeshData occlusionQuad() {
             .indices = {0, 1, 2, 0, 2, 3}};
 }
 //======================================================================================================================
-scene::Scene occludedScene(float targetX = 0) {
-    scene::Scene result;
+engine::Scene occludedScene(float targetX = 0) {
+    engine::Scene result;
     result.name = "lmx.test.occlusion.scene";
     result.boundingSphere = {0, 0, -3, 4};
     const auto mesh = result.addMesh(occlusionQuad(), "lmx.test.occlusion.quad");
@@ -33,14 +34,14 @@ scene::Scene occludedScene(float targetX = 0) {
     return result;
 }
 //======================================================================================================================
-VisibilityStatus checkedFrame(Device& device, scene::Scene& scene, Renderer& renderer,
-                              const Camera& camera, float scale = 1, bool jitter = false,
+VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& renderer,
+                              const engine::Camera& camera, float scale = 1, bool jitter = false,
                               std::function<void(SceneView&)> configure = {},
                               std::vector<uint32_t>* depthReadback = nullptr) {
     auto& commands = device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
-    std::vector<DrawItem> items;
-    auto view = scene.view(items, ShadowFilter::PCF, false);
+    std::vector<engine::DrawItem> items;
+    auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
     view.classifyMode = ClassifyMode::Gpu;
     view.classifyCheck = true;
     view.occlusionEnabled = true;
@@ -123,7 +124,7 @@ TEST_CASE("production occlusion preserves exact static geometry attachments and 
     REQUIRE(scene.finalize(**device));
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);
-    Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     std::vector<uint32_t> depth, occludedDepth;
     auto baseline = checkedFrame(
@@ -169,7 +170,7 @@ TEST_CASE("newly visible geometry is recovered on its second visible frame",
     REQUIRE(scene.finalize(**device));
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);
-    Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     checkedFrame(**device, scene, **renderer, camera);
     auto hidden = checkedFrame(**device, scene, **renderer, camera);
@@ -196,7 +197,7 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
     REQUIRE(scene.finalize(**device));
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);
-    Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     checkedFrame(**device, scene, **renderer, camera);
     REQUIRE(checkedFrame(**device, scene, **renderer, camera).sceneCounters.occluded == 1);
@@ -212,7 +213,7 @@ TEST_CASE("global occlusion invalidation retains all candidates before reusing d
         scene.objects[0].scale.x *= 0.9f;
     }
     SECTION("switch occluder to masked") {
-        scene.material(scene.objects[0].material).alphaMode = AlphaMode::Mask;
+        scene.material(scene.objects[0].material).alphaMode = engine::AlphaMode::Mask;
     }
     SECTION("remove") {
         scene.removeObject(scene.objects[0].id);
@@ -276,7 +277,7 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
     REQUIRE(device);
     auto scene = occludedScene();
     REQUIRE(scene.finalize(**device));
-    Camera camera;
+    engine::Camera camera;
     camera.fovY = glm::half_pi<float>();
     for (const auto mode : {SubmissionMode::Indirect, SubmissionMode::Batched}) {
         auto renderer = Renderer::create(**device, 64, 64, true);
@@ -286,8 +287,8 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
         for (uint32_t frame = 0; frame < 8; ++frame) {
             auto& commands = (*device)->beginFrame();
             REQUIRE(scene.prepareFrame((*device)->frameNumber()));
-            std::vector<DrawItem> items;
-            auto view = scene.view(items, ShadowFilter::PCF, false);
+            std::vector<engine::DrawItem> items;
+            auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
             view.classifyMode = ClassifyMode::Gpu;
             view.submission = mode;
             view.classifyCheck = true;

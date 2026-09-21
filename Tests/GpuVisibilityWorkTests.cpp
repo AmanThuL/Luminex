@@ -15,8 +15,8 @@ struct WorkFixture {
     std::unique_ptr<render::TransientPool> pool;
     std::unique_ptr<rojoRHI::Buffer> meshes;
     std::vector<std::unique_ptr<rojoRHI::Buffer>> instances;
-    std::vector<render::InstanceRow> rows;
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::InstanceRow> rows;
+    std::vector<lmx::engine::DrawItem> items;
     render::FrustumPlanes planes;
     rojoRHI::Buffer* lastRows = nullptr;
     rojoRHI::Buffer* lastArgs = nullptr;
@@ -33,7 +33,7 @@ struct WorkFixture {
         visibility = std::move(*stage);
         submission = std::make_unique<render::DrawSubmission>(*device);
         pool = std::make_unique<render::TransientPool>(*device);
-        render::MeshRow mesh{.firstIndex = 17, .indexCount = 9};
+        lmx::engine::MeshRow mesh{.firstIndex = 17, .indexCount = 9};
         auto buffer = device->createBuffer(
             {.size = sizeof(mesh), .label = "lmx.test.visibility.mesh"}, &mesh);
         REQUIRE(buffer);
@@ -63,7 +63,7 @@ struct WorkFixture {
     uint64_t submit(render::SubmissionMode mode, bool enabled = true,
                     std::optional<std::array<uint32_t, 3>> capacities = std::nullopt) {
         auto input = device->createBuffer(
-            {.size = std::max<size_t>(1, rows.size()) * sizeof(render::InstanceRow),
+            {.size = std::max<size_t>(1, rows.size()) * sizeof(lmx::engine::InstanceRow),
              .label = "lmx.test.visibility.instances"},
             rows.empty() ? nullptr : rows.data());
         REQUIRE(input);
@@ -163,7 +163,7 @@ void requireExact(const render::VisibilityStatus& status) {
 TEST_CASE("GPU work generation exactly matches ordered fp32 oracle and bypass precedence",
           "[gpu][visibility]") {
     WorkFixture fixture(513);
-    fixture.rows[2].flags = render::kInstanceBoundsUnreliable;
+    fixture.rows[2].flags = lmx::engine::kInstanceBoundsUnreliable;
     fixture.rows[3].model[0][0] = std::numeric_limits<float>::quiet_NaN();
     fixture.rows[4].worldBoundsMin.x = std::numeric_limits<float>::infinity();
     for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched})
