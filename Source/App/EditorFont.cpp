@@ -5,7 +5,7 @@
 
 #include "App/EditorFont.h"
 
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>

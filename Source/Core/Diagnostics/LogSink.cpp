@@ -3,9 +3,9 @@
 /// @brief Adapts project log records to scoped neutral observer callbacks.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Core/LogSink.h"
+#include "Core/Diagnostics/LogSink.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>

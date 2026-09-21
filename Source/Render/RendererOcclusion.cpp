@@ -2,7 +2,7 @@
 /// @file RendererOcclusion.cpp
 /// @brief Coordinates source-space depth evidence and independent retired visibility checks.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/OcclusionReference.h"
 #include "Render/Renderer.h"
 #include <algorithm>

@@ -5,7 +5,7 @@
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>

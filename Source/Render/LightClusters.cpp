@@ -5,7 +5,7 @@
 
 #include "Render/LightClusters.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <algorithm>
 #include <cmath>

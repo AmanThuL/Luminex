@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <cstdlib>
 

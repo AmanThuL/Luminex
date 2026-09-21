@@ -5,7 +5,7 @@
 
 #include "Engine/Asset/Texture/Ibl.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>

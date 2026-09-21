@@ -8,7 +8,7 @@
 #include "Engine/Asset/RepositoryAsset.h"
 
 #include "Core/Color.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 #include "Engine/Asset/Image/HdrEnvironment.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Texture/TextureBake.h"

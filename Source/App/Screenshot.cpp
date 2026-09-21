@@ -14,7 +14,7 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/OcclusionValidation.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 #include "Core/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"

@@ -1,6 +1,6 @@
 #include "App/Model/ConsoleModel.h"
-#include "Core/Log.h"
-#include "Core/LogSink.h"
+#include "Core/Diagnostics/Log.h"
+#include "Core/Diagnostics/LogSink.h"
 
 #include <catch2/catch_test_macros.hpp>
 

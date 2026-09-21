@@ -5,7 +5,7 @@
 
 #include "App/Panels/RenderGraphPanelInternal.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <imgui.h>
 #include <imgui_node_editor.h>
