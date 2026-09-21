@@ -100,8 +100,9 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
                                                       .colorFormat = kDisplayFormat,
                                                       .cullMode = rojoRHI::CullMode::None,
                                                       .label = "lmx.selection.passthrough"});
-    if (!passthrough)
+    if (!passthrough) {
         return std::unexpected(passthrough.error());
+    }
     self->m_passthroughPipeline = std::move(*passthrough);
     auto sampler =
         device.createSampler({.maxAnisotropy = 16, .label = "lmx.selection.materialSampler"});
@@ -121,8 +122,11 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
         return std::unexpected(texture.error());
     }
     self->m_white = std::move(*texture);
-    if (auto result = self->resize(width, height); !result) {
-        return std::unexpected(result.error());
+    {
+        auto result = self->resize(width, height);
+        if (!result) {
+            return std::unexpected(result.error());
+        }
     }
     return self;
 }

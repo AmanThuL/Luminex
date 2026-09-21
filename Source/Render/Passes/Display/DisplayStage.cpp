@@ -30,10 +30,12 @@ constexpr uint32_t kDisplayParamsSlot = 0;
 
 //======================================================================================================================
 rojoRHI::Result<void> DisplayStage::loadLibraries(rojoRHI::Device& device) {
-    if (auto library = device.loadShaderLibrary("Shaders/DisplayTransform"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/DisplayTransform");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_displayLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
     return {};
 }
@@ -42,17 +44,18 @@ rojoRHI::Result<void> DisplayStage::loadLibraries(rojoRHI::Device& device) {
 rojoRHI::Result<void> DisplayStage::createPipelines(rojoRHI::Device& device) {
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
-    if (auto pipeline = device.createGraphicsPipeline({.library = m_displayLibrary.get(),
+    {
+        auto pipeline = device.createGraphicsPipeline({.library = m_displayLibrary.get(),
                                                        .vertexEntry = "vertexMain",
                                                        .fragmentEntry = "fragmentMain",
                                                        .colorFormat = kDisplayFormat,
                                                        .depthFormat = rojoRHI::Format::Unknown,
                                                        .cullMode = rojoRHI::CullMode::None,
                                                        .label = "lmx.render.displayPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_displayPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     return {};
@@ -65,16 +68,17 @@ rojoRHI::Result<void> DisplayStage::createResources(rojoRHI::Device& device) {
     {
         const std::array<uint16_t, 4> kZeroHalf4 = {0, 0, 0, 0};
         const rojoRHI::TextureMip mip{.data = kZeroHalf4.data(), .bytesPerRow = sizeof(kZeroHalf4)};
-        if (auto texture = device.createTexture({.width = 1,
+        {
+            auto texture = device.createTexture({.width = 1,
                                                  .height = 1,
                                                  .format = kSceneColorFormat,
                                                  .sampled = true,
                                                  .label = "lmx.render.blackBloomFallback"},
                                                 std::span{&mip, 1});
-            texture) {
+            if (!texture) {
+                return std::unexpected(texture.error());
+            }
             m_blackBloomFallback = std::move(*texture);
-        } else {
-            return std::unexpected(texture.error());
         }
     }
 

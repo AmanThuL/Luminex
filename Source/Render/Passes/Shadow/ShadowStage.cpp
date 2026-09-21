@@ -79,13 +79,16 @@ ShadowMatrices fitShadowOrtho(const glm::vec4& boundingSphere, const glm::vec3& 
 rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Device& device) {
     std::unique_ptr<ShadowStage> self(new ShadowStage);
 
-    if (auto library = device.loadShaderLibrary("Shaders/ShadowPass"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/ShadowPass");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_shadowLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
     // Unknown color format matches the depth-only pass and its void fragment output.
-    if (auto pipeline =
+    {
+        auto pipeline =
             device.createGraphicsPipeline({.library = self->m_shadowLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
@@ -101,10 +104,10 @@ rojoRHI::Result<std::unique_ptr<ShadowStage>> ShadowStage::create(rojoRHI::Devic
                                            .depthCompare = rojoRHI::DepthCompare::Greater,
                                            .depthBias = kShadowDepthBias,
                                            .label = "lmx.render.shadowPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_shadowPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     auto shadowMaskLibrary = device.loadShaderLibrary("Shaders/ShadowPassMask");

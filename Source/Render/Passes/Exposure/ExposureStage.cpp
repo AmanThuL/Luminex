@@ -88,69 +88,79 @@ constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 
 //======================================================================================================================
 rojoRHI::Result<void> ExposureStage::loadLibraries(rojoRHI::Device& device) {
-    if (auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_histogramLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/ExposureResolve"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/ExposureResolve");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_exposureResolveLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/ExposureSeed"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/ExposureSeed");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         m_exposureSeedLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
     return {};
 }
 
 //======================================================================================================================
 rojoRHI::Result<void> ExposureStage::createPipelines(rojoRHI::Device& device) {
-    if (auto pipeline = device.createComputePipeline(
+    {
+        auto pipeline = device.createComputePipeline(
             {.library = m_histogramLibrary.get(),
              .computeEntry = "computeHistogramAccumulate",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.histogramPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_histogramPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             device.createComputePipeline({.library = m_exposureResolveLibrary.get(),
                                           .computeEntry = "computeExposureResolve",
                                           .threadsPerThreadgroup = {1, 1, 1},
                                           .label = "lmx.render.exposureResolvePipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_exposureResolvePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline = device.createComputePipeline({.library = m_exposureSeedLibrary.get(),
+    {
+        auto pipeline = device.createComputePipeline({.library = m_exposureSeedLibrary.get(),
                                                       .computeEntry = "computeExposureSeed",
                                                       .threadsPerThreadgroup = {1, 1, 1},
                                                       .label = "lmx.render.exposureSeedPipeline"});
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         m_exposureSeedPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
     return {};
 }
 
 //======================================================================================================================
 rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bool cpuReadback) {
-    if (auto buffer = device.createBuffer({.size = kHistogramBufferSize,
+    {
+        auto buffer = device.createBuffer({.size = kHistogramBufferSize,
                                            .storageRead = true,
                                            .storageWrite = true,
                                            .label = "lmx.render.histogramBuffer"},
                                           nullptr);
-        buffer) {
+        if (!buffer) {
+            return std::unexpected(buffer.error());
+        }
         m_histogramBuffer = std::move(*buffer);
-    } else {
-        return std::unexpected(buffer.error());
     }
     // The persistent {applied, previous} pair (spec 9's feedback buffer, widened by M6.2 spec 7):
     // the seed and resolve passes write it, and -- when auto-exposure is on -- the *next* frame's
@@ -161,16 +171,17 @@ rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bo
     // is the whole point of keeping the feedback GPU-resident -- and the tests do.
     {
         constexpr std::array<float, kExposureBufferFloats> kInitialExposure{1.0f, 1.0f};
-        if (auto buffer = device.createBuffer({.size = sizeof(kInitialExposure),
+        {
+            auto buffer = device.createBuffer({.size = sizeof(kInitialExposure),
                                                .storageRead = true,
                                                .storageWrite = true,
                                                .cpuReadback = cpuReadback,
                                                .label = "lmx.render.exposureBuffer"},
                                               kInitialExposure.data());
-            buffer) {
+            if (!buffer) {
+                return std::unexpected(buffer.error());
+            }
             m_exposureBuffer = std::move(*buffer);
-        } else {
-            return std::unexpected(buffer.error());
         }
     }
 

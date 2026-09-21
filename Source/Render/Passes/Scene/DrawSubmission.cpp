@@ -94,8 +94,9 @@ rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneV
                                                .cpuWrite = true,
                                                .label = "lmx.draw.rows." + suffix},
                                               nullptr);
-            if (!rows)
+            if (!rows) {
                 return std::unexpected(rows.error());
+            }
             auto args = m_device.createBuffer(
                 {.size = uint64_t{capacity} * sizeof(rojoRHI::DrawIndexedIndirectArgs),
                  .storageWrite = true,
@@ -103,8 +104,9 @@ rojoRHI::Result<void> DrawSubmission::prepare(uint64_t frameNumber, const SceneV
                  .cpuWrite = true,
                  .label = "lmx.draw.args." + suffix},
                 nullptr);
-            if (!args)
+            if (!args) {
                 return std::unexpected(args.error());
+            }
             replacements[i] = {.rows = std::move(*rows),
                                .arguments = std::move(*args),
                                .rowUse = std::nullopt,

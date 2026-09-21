@@ -47,25 +47,33 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
         self->m_fallbackClusterIndices = std::move(*indices);
     }
 
-    if (auto library = device.loadShaderLibrary("Shaders/ScenePass"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/ScenePass");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_sceneLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/ScenePassAuto"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/ScenePassAuto");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_sceneAutoLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/Sky"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/Sky");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_skyLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
-    if (auto library = device.loadShaderLibrary("Shaders/SkyAuto"); library) {
+    {
+        auto library = device.loadShaderLibrary("Shaders/SkyAuto");
+        if (!library) {
+            return std::unexpected(library.error());
+        }
         self->m_skyAutoLibrary = std::move(*library);
-    } else {
-        return std::unexpected(library.error());
     }
     const auto makeScenePipeline = [&](rojoRHI::ShaderLibrary* library, rojoRHI::FillMode fill,
                                        const char* label) {
@@ -104,70 +112,78 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
              .depthCompare = rojoRHI::DepthCompare::Greater,
              .label = label});
     };
-    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
+    {
+        auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipeline");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_scenePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
     // Fill mode is baked into Metal pipeline state; compile both variants once.
-    if (auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
+    {
+        auto pipeline = makeScenePipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                           "lmx.render.sceneWireframePipeline");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_sceneWireframePipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
     // ScenePassAuto.slang's compiled twin, bound instead of the pipelines above whenever
     // auto-exposure is on (spec 9) -- see ScenePassAuto.slang's header for why this is a separate
     // pipeline rather than a branch inside the ones above.
-    if (auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
+    {
+        auto pipeline = makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                           "lmx.render.scenePipelineAuto");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_scenePipelineAuto = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeScenePipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                               "lmx.render.sceneWireframePipelineAuto");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_sceneWireframePipelineAuto = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
-    if (auto pipeline = makeSceneMotionPipeline(
+    {
+        auto pipeline = makeSceneMotionPipeline(
             self->m_sceneLibrary.get(), rojoRHI::FillMode::Solid, "lmx.render.scenePipelineMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_scenePipelineMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeSceneMotionPipeline(self->m_sceneLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_sceneWireframePipelineMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Solid,
                                     "lmx.render.scenePipelineAutoMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_scenePipelineAutoMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeSceneMotionPipeline(self->m_sceneAutoLibrary.get(), rojoRHI::FillMode::Wireframe,
                                     "lmx.render.sceneWireframePipelineAutoMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_sceneWireframePipelineAutoMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     // Sky vertices force z == 0, the reversed far plane: use GreaterEqual so they survive the
@@ -184,19 +200,21 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
                                               .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
                                               .label = label});
     };
-    if (auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
-        pipeline) {
+    {
+        auto pipeline = makeSkyPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipeline");
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_skyPipeline = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
     // SkyAuto.slang's compiled twin, bound instead of the pipeline above whenever auto-exposure is
     // on (spec 9) -- see ScenePassAuto.slang's header for why this is a separate pipeline.
-    if (auto pipeline = makeSkyPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAuto");
-        pipeline) {
+    {
+        auto pipeline = makeSkyPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAuto");
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_skyPipelineAuto = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     const auto makeSkyMotionPipeline = [&](rojoRHI::ShaderLibrary* library, const char* label) {
@@ -214,19 +232,21 @@ rojoRHI::Result<std::unique_ptr<SceneStage>> SceneStage::create(rojoRHI::Device&
              .depthCompare = rojoRHI::DepthCompare::GreaterEqual,
              .label = label});
     };
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeSkyMotionPipeline(self->m_skyLibrary.get(), "lmx.render.skyPipelineMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_skyPipelineMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
-    if (auto pipeline =
+    {
+        auto pipeline =
             makeSkyMotionPipeline(self->m_skyAutoLibrary.get(), "lmx.render.skyPipelineAutoMotion");
-        pipeline) {
+        if (!pipeline) {
+            return std::unexpected(pipeline.error());
+        }
         self->m_skyPipelineAutoMotion = std::move(*pipeline);
-    } else {
-        return std::unexpected(pipeline.error());
     }
 
     for (uint32_t automatic = 0; automatic < 2; ++automatic) {
