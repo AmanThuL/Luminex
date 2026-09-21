@@ -4,13 +4,13 @@
 
 Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI is a repository-root component; the other runtime layers remain under `Source/`:
 
-`Core → Asset`, `Core → Render` and, independently, `RHI → Render`, joined by `Scene → AppModel → App`.
+`Core → Asset`, `Core → Engine`, `Asset → Engine`, `Engine → Render`, `Core → Render` and, independently, `RHI → Engine` and `RHI → Render`, joined by `Render → AppModel → App`.
 The RHI has no Core dependency; Asset uses only its format/descriptor headers and links no GPU
 target. Core owns shared colour transfer and contract-preserving primitives; `Render/SceneView.h`
 holds the borrowed frame input independently of the renderer.
 
 - **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
-  JSON escaping, complete numeric parsing and dispatch division; spdlog and glm are public packages.
+  JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with the eight-corner transform (`Bounds.h`); spdlog and glm are public packages.
 - **RHI** builds and tests from its own root (`xmake -P RojoRHI`): `RojoRHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
   dependency — a private `RojoRHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
   is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
@@ -48,8 +48,8 @@ holds the borrowed frame input independently of the renderer.
   explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time private scratch and a copy inside the same timed call. The optional `RojoRHIMetal4ImGui` target
   owns the adapter (sources under `RojoRHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
-- **Render** owns camera, CPU geometry vocabulary (`Vertex`/`MeshData`), shared scene-table rows,
-  the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes. The graph is
+- **Render** depends on Engine for camera, CPU geometry vocabulary (`Vertex`/`MeshData`) and shared
+  scene-table rows, and owns the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes, which `render::buildSceneView` (`SceneViewBuilder.h`) produces from a scene. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It declares raster, compute, copy and external passes with per-subresource uses over resources it either
   imports from a caller or creates as one-frame transients, culls every pass no declared sink
   reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
@@ -57,7 +57,7 @@ holds the borrowed frame input independently of the renderer.
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
   record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract, independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
   validation have separate implementation units with private shared range helpers. `Renderer`
-  composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. `Bounds.h` owns finite AABBs and the eight-corner transform. `SceneTables.h` and its Slang module mirror the
+  composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. Engine's `SceneTables.h` and its Slang module mirror the
   240-byte instance, 112-byte material, 48-byte mesh and 64-byte local-light rows, including bounds.
   `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
   jittered raster view-projection, with a 1e-3 world-unit guard and no far plane. Rejected rows keep
@@ -123,7 +123,7 @@ holds the borrowed frame input independently of the renderer.
   callback, and retains the usual dependency, culling and transient rules. Output resize recreates
   the scaler; scale changes only move the content rectangle. Vendor entry or engine resets discard
   the vendor's private history without resetting engine history on a mode switch. Unsupported or
-  failed creation falls back to Native TAA with an explicit status reason. Engine reprojection
+  failed creation falls back to Native TAA with an explicit status reason. Native reprojection
   diagnostics stay available; `VendorTemporalHistory.slang` supplies corrected reprojected history
   only for that selected view, while rejection, blend-weight and per-pixel age remain native-only.
   Vendor colour imports retain conservative `ExternalWrite`; current depth and scene colour record
@@ -140,7 +140,7 @@ holds the borrowed frame input independently of the renderer.
   MaterialLab studio reflection source with a separate bounded diffuse source, and deterministic
   offline texture mip baking (`TextureBake.h`), clip data and sampling, shared transform
   decomposition, repository discovery and the asset error domain. The glTF loader carries its own MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
-- **Scene** owns distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` handles,
+- **Engine** owns the scene vocabulary — camera, CPU geometry vocabulary (`Vertex`/`MeshData`), `LocalLightMath`, `AlphaMode.h`, `LocalLight.h`, `DrawItem.h`, `DirectionalLight.h`, `MotionClass.h` and `SceneTables.h` — plus distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` handles,
   the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL uploads, the scene catalog, initial camera mapping,
   source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,

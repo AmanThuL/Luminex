@@ -5,8 +5,10 @@
 The repository is a set of named units with an explicit dependency set each. A unit may depend on
 the units and third-party packages listed for it and on nothing else; anything absent from its row
 is forbidden, and the policy checker rejects it. The layering, the unit names and the namespace
-renames are decided in [ADR 0020](../decisions/0020-module-layering-and-units.md); the migration
-order lives in the [refactoring roadmap](../roadmap/codebase-module-boundaries.md).
+renames are decided in [ADR 0020](../decisions/0020-module-layering-and-units.md), narrowed by
+[ADR 0025](../decisions/0025-engine-subsystem-and-render-on-engine.md) for the Engine subsystem and
+the render-on-engine edge; the migration order lives in the
+[refactoring roadmap](../roadmap/codebase-module-boundaries.md).
 
 ## Units
 
@@ -15,17 +17,22 @@ and AppModel static target.
 
 | Unit | Paths (target) | Namespace | Owns | May depend on | Third-party |
 |---|---|---|---|---|---|
-| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing and dispatch division | — | spdlog, glm |
-| `asset` | `Source/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
-| `render` | `Source/Render` (`Render`) | `lmx::render` | Camera, CPU geometry vocabulary and shared scene-table rows/bindings, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core` | glm |
-| `scene` | `Source/Scene` (`Scene`) | `lmx::scene` | GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, `SceneView` production, initial camera | `core`, `asset`, `render` | glm |
-| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `scene`, `render` | glm |
-| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `scene`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
-| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `scene`, `app-model` | glm, catch2 |
+| `core` | `Source/Core` (`Core`) | `lmx` | Logging, assertions, alignment, colour transfer, whole-file reading, JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with their corner transform (`Bounds.h`) | — | spdlog, glm |
+| `asset` | `Source/Engine/Asset` (`Asset`) | `lmx::asset` | CPU decoding, texture baking, IBL generation, procedural geometry, animation clip data and sampling, the asset error domain, repository asset discovery, SHA-256 | `core` | glm, cgltf, stb |
+| `engine` | `Source/Engine` outside `Asset` (`Engine`) | `lmx::engine` | Scene vocabulary — `Camera`, mesh geometry, `LocalLightMath`, `AlphaMode`, `LocalLight`, `DrawItem`, `DirectionalLight`, `MotionClass` and the shared scene-table row ABI/bindings — plus GPU-owning scenes: generational identities, immutable geometry pool, paced scene tables, uploads, catalog and `SceneId`, environment rig, labs, San Miguel, playback, initial camera | `core`, `asset` | glm |
+| `render` | `Source/Render` (`Render`) | `lmx::render` | `SceneView` production via the builder, render graph, renderer and draw stages, shared frame declaration, leaf frame input and compiled-record contracts, and the RHI-to-project-log forwarding sink | `core`, `engine`, `asset` | glm |
+| `app-model` | `Source/App/Model` (`AppModel`) | `lmx::app` | ImGui/SDL/Metal-free editor logic: options, selection, workspace schema, actions, performance and graph models, dynamic-resolution policy, capture metadata and scene session | `core`, `asset`, `engine`, `render` | glm |
+| `app-shell` | `Source/App` outside `Model` (`App`) | `lmx::app` | SDL3, Dear ImGui, panels, the editor shell, the frame loops, `main` | `core`, `asset`, `render`, `engine`, `app-model` | glm, imgui, imgui-node-editor, libsdl3 |
+| `tests` | `Tests` (`Tests`) | — | Unit and GPU cases for the units it may depend on | `core`, `render`, `asset`, `engine`, `app-model` | glm, catch2 |
 | `texture-bake` | `Tools/TextureBake` (`TextureBake`) | — | The offline mip-bake entry point | `core`, `asset` | glm, stb |
 | `benchmarks` | `Benchmarks` (`FrameDataBench`) | — | Paired CPU-encoding measurement harnesses | `core` | glm |
 
 Every unit's access to the RHI is the external entry below, not a row in this table.
+
+A top-level `pendingPaths` list names unit paths a staged move has not created yet, or has already
+emptied; each entry must still be a path some unit lists verbatim, so a move commit needs no
+contract edit for the gap. The contract carries none at rest: the field exists only while a
+restructuring is mid-flight, and is removed once every move it covers has landed.
 
 ## External components
 
@@ -46,7 +53,7 @@ include root `RojoRHI/Include`.
 
 | Consumer | May include |
 |---|---|
-| `render`, `scene`, `app-model`, `benchmarks` | `"*"` |
+| `render`, `engine`, `app-model`, `benchmarks` | `"*"` |
 | `app-shell` | `"*"`, and `rojoRHI/Metal4/Metal4ImGui.h` |
 | `tests` | `"*"` |
 | `asset`, `texture-bake` | `rojoRHI/Format.h` and `rojoRHI/TextureDesc.h`, and nothing else |
@@ -75,13 +82,13 @@ Rules the entry carries:
   standalone. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
 `tests` takes no header out of the component's own suite: the repository suite keeps its own copy
-of the GPU bootstrap, merged into `Tests/GpuTestSupport.h` alongside its Asset, Render and Scene
+of the GPU bootstrap, merged into `Tests/GpuTestSupport.h` alongside its Asset, Render and Engine
 helpers, so no edge reaches `RojoRHI/Tests`. The two test binaries partition the suite: a case lives
 in exactly one of them, and `RojoRHITests` links the `RojoRHI` target and no other project library.
 
 ### Directory ownership
 
-Asset, Scene and AppModel own their directories and static targets; Engine is retired.
+Asset, Engine and AppModel own their directories and static targets.
 `Source/App/Model` owns the shared editor models and scene session; everything
 else under `Source/App`, including Panels, EditorShell, Screenshot and main.cpp, belongs to App.
 App and Tests link AppModel. Tests compiles only its own C++ sources, alongside test shaders.
@@ -113,7 +120,7 @@ Ownership comes from one explicit map from unit to paths, never from inference:
 - Extraction preserves each caller's contract. Two helpers with different contracts keep different
   names and a test that pins the difference. A behaviour change is its own commit with its own
   test, never part of a move.
-- CPU decode and validation finish in `asset`. GPU creation and upload happen in `scene` or
+- CPU decode and validation finish in `asset`. GPU creation and upload happen in `engine` or
   `render` on the render-owning thread, as the
   [engineering conventions](engineering.md) require.
 - Vocabulary shared by a producer and a consumer lives in the lower of the two units, in its own
@@ -170,8 +177,8 @@ The rules above are checked as include edges:
 
 The exact inventory is `Tools/module_contract.json`. Render's exposure/bloom/display owners,
 range/temporal implementation declarations are private. Shared `SceneTables.h` row layouts are
-public Render vocabulary; scene identity stores and table ownership stay in Scene. Scene's
-environment assembly is private; uploads used by tests remain public. Every shell/panel header
+public Engine vocabulary that Render consumes; scene identity stores and table ownership stay in
+Engine. Engine's environment assembly is private; uploads used by tests remain public. Every shell/panel header
 is private to App, while AppModel's shared model headers remain public. Test and benchmark
 fixtures are private to their units. Core and Asset have no private entries; the RHI component
 keeps its own private inventory, which Luminex neither reads nor needs: a file outside the entry's
@@ -208,6 +215,17 @@ weakest one is deliberately last:
    so a caller reaches it through a vtable without leaving an undefined symbol behind. It would see
    non-virtual RHI symbols only and be a backstop under the include and framework layers, never a
    substitute for them.
+
+## Render depends on engine, not the reverse
+
+Two checks hold the render-on-engine edge [ADR 0025](../decisions/0025-engine-subsystem-and-render-on-engine.md)
+states: the unit table rejects any `engine` file that includes a Render header, and a
+`forbidUndefined: lmx::render::` entry on the `Engine` archive fails `--link` if it names an
+undefined `lmx::render::` symbol — the same archive-layer technique `Asset`'s `rojoRHI::` check
+above uses, aimed at Render instead of the RHI component. Render's reach into the scene itself
+(`Engine/Scene/Scene.h`), beyond the `Engine/Types/` vocabulary and `SceneTables.h` it includes
+widely, is confined to one translation unit, `Render/SceneViewBuilder.cpp`; review holds that,
+not the checker.
 
 ## Review budgets
 
