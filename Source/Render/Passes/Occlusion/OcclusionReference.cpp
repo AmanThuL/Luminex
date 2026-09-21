@@ -79,8 +79,11 @@ OcclusionReference::create(rojoRHI::Device& device) {
 rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
                                                   rojoRHI::CommandList& commands,
                                                   const SceneView& view,
-                                                  const glm::mat4& viewProjection, uint32_t width,
-                                                  uint32_t height, bool strictView) {
+                                                  const OcclusionReferenceInputs& inputs) {
+    const auto& viewProjection = inputs.viewProjection;
+    const auto width = inputs.width;
+    const auto height = inputs.height;
+    const auto strictView = inputs.strictView;
     LMX_ASSERT(width != 0 && height != 0, "reference requires a nonempty active extent");
     const uint64_t frame = m_device.frameNumber();
     LMX_ASSERT(frame > 0, "reference requires an open paced frame");
