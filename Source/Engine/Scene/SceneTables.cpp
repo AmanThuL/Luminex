@@ -5,8 +5,11 @@
 
 #include "Engine/Scene/Scene.h"
 
+#include "Core/Containers/DirtySet.h"
+#include "Core/Containers/SlotAllocator.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Math/Aabb.h"
 #include "Engine/Types/LocalLightMath.h"
 
 #include <algorithm>
@@ -21,13 +24,7 @@
 namespace lmx::engine {
 namespace {
 constexpr uint32_t kSlots = 3;
-constexpr uint8_t kAllSlots = 7;
 constexpr uint32_t kMinimumCapacity = 4;
-
-struct IdentitySlot {
-    uint16_t generation = 1;
-    bool live = true;
-};
 
 //======================================================================================================================
 uint16_t nextStore() {
@@ -41,26 +38,9 @@ uint16_t nextStore() {
 }
 
 //======================================================================================================================
-uint32_t allocateIdentity(std::vector<IdentitySlot>& slots, uint32_t& searchStart) {
-    for (uint32_t i = searchStart; i < slots.size(); ++i) {
-        if (!slots[i].live && slots[i].generation != std::numeric_limits<uint16_t>::max()) {
-            slots[i].live = true;
-            searchStart = i + 1;
-            return i;
-        }
-    }
-    LMX_ASSERT(slots.size() < std::numeric_limits<uint32_t>::max(),
-               "scene row identities exhausted");
-    slots.push_back({});
-    searchStart = static_cast<uint32_t>(slots.size());
-    return searchStart - 1;
-}
-
-//======================================================================================================================
 template <typename Id>
-bool resolves(Id id, uint16_t store, const std::vector<IdentitySlot>& slots) {
-    return id.store == store && id.slot < slots.size() && slots[id.slot].live &&
-           slots[id.slot].generation == id.generation;
+bool resolves(Id id, uint16_t store, const SlotAllocator& slots) {
+    return id.store == store && slots.resolves(id.slot, id.generation);
 }
 
 struct MaterialCoverage {
@@ -84,7 +64,7 @@ template <typename Row>
 struct PacedTable {
     std::array<std::unique_ptr<rojoRHI::Buffer>, kSlots> buffers;
     std::vector<Row> shadow;
-    std::vector<uint8_t> dirty;
+    DirtySet dirty{kSlots};
     uint32_t capacity = 0;
 };
 
@@ -128,7 +108,7 @@ rojoRHI::Result<void> reserveTable(rojoRHI::Device& device, PacedTable<Row>& tab
     table.buffers = std::move(buffers);
     table.capacity = capacity;
     table.shadow.resize(count);
-    table.dirty.assign(count, kAllSlots);
+    table.dirty.assign(count);
     return {};
 }
 
@@ -137,22 +117,21 @@ template <typename Row>
 void updateRow(PacedTable<Row>& table, uint32_t index, const Row& row) {
     if (index >= table.shadow.size()) {
         table.shadow.resize(index + 1);
-        table.dirty.resize(index + 1, kAllSlots);
+        table.dirty.resize(index + 1);
     }
     if (std::memcmp(&table.shadow[index], &row, sizeof(Row)) != 0) {
         table.shadow[index] = row;
-        table.dirty[index] = kAllSlots;
+        table.dirty.markAll(index);
     }
 }
 
 //======================================================================================================================
 template <typename Row>
 void writeRows(PacedTable<Row>& table, uint32_t slot, SceneTableStats& stats) {
-    const auto bit = static_cast<uint8_t>(1U << slot);
     for (uint32_t i = 0; i < table.shadow.size(); ++i) {
-        if ((table.dirty[i] & bit) != 0) {
+        if (table.dirty.test(i, slot)) {
             table.buffers[slot]->write(uint64_t{i} * sizeof(Row), &table.shadow[i], sizeof(Row));
-            table.dirty[i] &= static_cast<uint8_t>(~bit);
+            table.dirty.clear(i, slot);
             ++stats.rowsWritten;
             stats.bytesWritten += sizeof(Row);
         }
@@ -163,12 +142,9 @@ void writeRows(PacedTable<Row>& table, uint32_t slot, SceneTableStats& stats) {
 
 struct Scene::Storage {
     uint16_t store = nextStore();
-    std::vector<IdentitySlot> instances;
-    std::vector<IdentitySlot> textureIds;
-    std::vector<IdentitySlot> localLightIds;
-    uint32_t instanceSearchStart = 0;
-    uint32_t textureSearchStart = 0;
-    uint32_t localLightSearchStart = 0;
+    SlotAllocator instances;
+    SlotAllocator textureIds;
+    SlotAllocator localLightIds;
     std::vector<engine::MeshData> meshData;
     std::vector<engine::MeshRow> meshRows;
     std::vector<MaterialRecord> materials;
@@ -236,14 +212,12 @@ MeshId Scene::addMesh(engine::MeshData data, std::string_view label) {
     }
     row.vertexCount = static_cast<uint32_t>(data.vertices.size());
     row.indexCount = static_cast<uint32_t>(data.indices.size());
-    Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
-                glm::vec3(std::numeric_limits<float>::lowest())};
+    Aabb bounds = emptyAabb();
     bool finite = true;
     for (const auto& vertex : data.vertices) {
         const glm::vec3 point(vertex.px, vertex.py, vertex.pz);
         finite = finite && isFinite(point);
-        bounds.minimum = glm::min(bounds.minimum, point);
-        bounds.maximum = glm::max(bounds.maximum, point);
+        expand(bounds, point);
     }
     bool hasSurface = false;
     for (size_t i = 0; i + 2 < data.indices.size(); i += 3) {
@@ -268,10 +242,10 @@ MeshId Scene::addMesh(engine::MeshData data, std::string_view label) {
 //======================================================================================================================
 TextureId Scene::addTexture(std::unique_ptr<rojoRHI::Texture> texture) {
     LMX_ASSERT(texture != nullptr, "scene texture must not be null");
-    const uint32_t slot = allocateIdentity(m_storage->textureIds, m_storage->textureSearchStart);
+    const uint32_t slot = m_storage->textureIds.allocate();
     m_storage->textures.resize(m_storage->textureIds.size());
     m_storage->textures[slot] = std::move(texture);
-    return {slot, m_storage->textureIds[slot].generation, m_storage->store};
+    return {slot, m_storage->textureIds.generation(slot), m_storage->store};
 }
 
 //======================================================================================================================
@@ -291,8 +265,8 @@ MaterialId Scene::addMaterial(MaterialRecord material) {
 InstanceId Scene::addObject(SceneObject object) {
     LMX_ASSERT(tryMesh(object.mesh), "instance mesh identity is invalid");
     LMX_ASSERT(tryMaterial(object.material), "instance material identity is invalid");
-    const uint32_t slot = allocateIdentity(m_storage->instances, m_storage->instanceSearchStart);
-    object.id = {slot, m_storage->instances[slot].generation, m_storage->store};
+    const uint32_t slot = m_storage->instances.allocate();
+    object.id = {slot, m_storage->instances.generation(slot), m_storage->store};
     object.previousModel = object.modelMatrix();
     objects.push_back(std::move(object));
     LMX_ASSERT(m_storage->coverageEpoch < std::numeric_limits<uint64_t>::max(),
@@ -310,12 +284,7 @@ void Scene::removeObject(InstanceId id) {
     LMX_ASSERT(m_storage->coverageEpoch < std::numeric_limits<uint64_t>::max(),
                "scene coverage epoch exhausted");
     ++m_storage->coverageEpoch;
-    auto& slot = m_storage->instances[id.slot];
-    m_storage->instanceSearchStart = std::min(m_storage->instanceSearchStart, id.slot);
-    slot.live = false;
-    if (slot.generation != std::numeric_limits<uint16_t>::max()) {
-        ++slot.generation;
-    }
+    m_storage->instances.release(id.slot);
     std::erase_if(animation.tracks,
                   [index](const auto& track) { return track.objectIndex == index; });
     std::erase_if(animation.emissiveTracks,
@@ -342,12 +311,7 @@ void Scene::removeTexture(TextureId id) {
                "frame counter exhausted");
     m_storage->retiringTextures.emplace_back(m_storage->lastFrame + kSlots,
                                              std::move(m_storage->textures[id.slot]));
-    auto& slot = m_storage->textureIds[id.slot];
-    m_storage->textureSearchStart = std::min(m_storage->textureSearchStart, id.slot);
-    slot.live = false;
-    if (slot.generation != std::numeric_limits<uint16_t>::max()) {
-        ++slot.generation;
-    }
+    m_storage->textureIds.release(id.slot);
 }
 
 //======================================================================================================================
@@ -361,13 +325,13 @@ rojoRHI::Result<LightId> Scene::addLight(const engine::LocalLight& light) {
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "local light capacity exceeded"});
     }
-    const uint32_t slot = allocateIdentity(storage.localLightIds, storage.localLightSearchStart);
+    const uint32_t slot = storage.localLightIds.allocate();
     if (slot >= storage.localLightData.size()) {
         storage.localLightData.resize(slot + 1);
     }
     storage.localLightData[slot] = light;
     storage.enabledLightCount += light.enabled ? 1u : 0u;
-    const LightId id{slot, storage.localLightIds[slot].generation, storage.store};
+    const LightId id{slot, storage.localLightIds.generation(slot), storage.store};
     storage.liveLightIds.insert(
         std::ranges::upper_bound(storage.liveLightIds, slot, {}, &LightId::slot), id);
     // The animation index list freezes at finalize (storage.device becomes non-null there): a
@@ -386,12 +350,7 @@ bool Scene::removeLight(LightId id) {
     if (!resolves(id, storage.store, storage.localLightIds)) {
         return false;
     }
-    auto& slot = storage.localLightIds[id.slot];
-    storage.localLightSearchStart = std::min(storage.localLightSearchStart, id.slot);
-    slot.live = false;
-    if (slot.generation != std::numeric_limits<uint16_t>::max()) {
-        ++slot.generation;
-    }
+    storage.localLightIds.release(id.slot);
     storage.enabledLightCount -= storage.localLightData[id.slot].enabled ? 1u : 0u;
     std::erase(storage.liveLightIds, id);
     return true;
@@ -580,7 +539,8 @@ void Scene::validateObjects() const {
         seen[object.id.slot] = true;
     }
     for (uint32_t slot = 0; slot < m_storage->instances.size(); ++slot) {
-        LMX_ASSERT(seen[slot] == m_storage->instances[slot].live,
+        LMX_ASSERT(seen[slot] ==
+                       m_storage->instances.resolves(slot, m_storage->instances.generation(slot)),
                    "object list lost a live instance identity; use removeObject");
     }
 }
@@ -610,7 +570,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     if (!materials) {
         return materials;
     }
-    if (!storage.localLightIds.empty()) {
+    if (storage.localLightIds.size() != 0) {
         auto lights =
             reserveTable(*storage.device, storage.lightTable,
                          static_cast<uint32_t>(storage.localLightIds.size()), "lmx.scene.lights",
@@ -660,7 +620,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         updateRow(storage.instanceTable, object.id.slot, row);
     }
     for (uint32_t i = 0; i < storage.instances.size(); ++i) {
-        if (!storage.instances[i].live) {
+        if (!storage.instances.resolves(i, storage.instances.generation(i))) {
             updateRow(storage.instanceTable, i, engine::InstanceRow{});
         }
     }
@@ -700,7 +660,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         updateRow(storage.materialTable, i, row);
     }
     for (uint32_t i = 0; i < storage.localLightIds.size(); ++i) {
-        if (storage.localLightIds[i].live) {
+        if (storage.localLightIds.resolves(i, storage.localLightIds.generation(i))) {
             auto row = engine::makeLightRow(storage.localLightData[i]);
             LMX_ASSERT(row, "stored local light failed re-validation");
             updateRow(storage.lightTable, i, *row);
