@@ -5,6 +5,7 @@
 #include "Render/Passes/Occlusion/HzbStage.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Align.h"
 #include "Core/Math/Scalar.h"
 
 #include <algorithm>
@@ -41,8 +42,8 @@ HzbLayout hzbLayout(uint32_t outputWidth, uint32_t outputHeight) {
         ++layout.levelCount;
     }
     const uint32_t alignment = uint32_t{1} << (layout.levelCount - 1);
-    layout.width = divRoundUp(hzbLevelExtent(outputWidth, 0), alignment) * alignment;
-    layout.height = divRoundUp(hzbLevelExtent(outputHeight, 0), alignment) * alignment;
+    layout.width = static_cast<uint32_t>(alignUp(hzbLevelExtent(outputWidth, 0), alignment));
+    layout.height = static_cast<uint32_t>(alignUp(hzbLevelExtent(outputHeight, 0), alignment));
     for (uint32_t level = 0; level < layout.levelCount; ++level) {
         layout.bytes +=
             uint64_t{layout.width >> level} * (layout.height >> level) * sizeof(float) * 2;
