@@ -2,7 +2,7 @@
 -- App/Tests only need "Render" in their own add_deps to inherit its include path.
 target("Render")
     set_kind("static")
-    add_files("*.cpp", "*/*.cpp")
+    add_files("*.cpp", "*/*.cpp", "Passes/*/*.cpp")
     add_files("Visibility.cpp", "Occlusion.cpp", "LightClusters.cpp",
               {cxflags = "-ffp-contract=off"})
     add_deps("Core", "RojoRHI", "Engine")

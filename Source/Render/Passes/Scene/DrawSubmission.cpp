@@ -2,7 +2,7 @@
 /// @file DrawSubmission.cpp
 /// @brief Builds deterministic command runs and uploads only retired submission slots.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/DrawSubmission.h"
+#include "Render/Passes/Scene/DrawSubmission.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>

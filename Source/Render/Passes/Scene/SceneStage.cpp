@@ -3,7 +3,7 @@
 /// @brief Implements scene and sky variants, uniforms and draw declaration.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/SceneStage.h"
+#include "Render/Passes/Scene/SceneStage.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Color.h"
