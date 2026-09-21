@@ -68,15 +68,19 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
 
     std::unique_ptr<Renderer> self(new Renderer(device, cpuReadback));
 
-    if (auto stage = ShadowStage::create(device); stage) {
+    {
+        auto stage = ShadowStage::create(device);
+        if (!stage) {
+            return std::unexpected(stage.error());
+        }
         self->m_shadowStage = std::move(*stage);
-    } else {
-        return std::unexpected(stage.error());
     }
-    if (auto stage = SceneStage::create(device, kSceneColorFormat); stage) {
+    {
+        auto stage = SceneStage::create(device, kSceneColorFormat);
+        if (!stage) {
+            return std::unexpected(stage.error());
+        }
         self->m_sceneStage = std::move(*stage);
-    } else {
-        return std::unexpected(stage.error());
     }
 
     auto displayStage = DisplayStage::create(device);
@@ -98,72 +102,79 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
     self->m_bloomStage = std::move(*bloomStage);
 
     // The shadow map transitions from depth attachment to sampled texture each frame.
-    if (auto shadowMap = device.createTexture({.width = kShadowMapSize,
+    {
+        auto shadowMap = device.createTexture({.width = kShadowMapSize,
                                                .height = kShadowMapSize,
                                                .format = rojoRHI::Format::D32Float,
                                                .renderTarget = true,
                                                .sampled = true,
                                                .label = "lmx.render.shadowMap"});
-        shadowMap) {
+        if (!shadowMap) {
+            return std::unexpected(shadowMap.error());
+        }
         self->m_shadowMap = std::move(*shadowMap);
-    } else {
-        return std::unexpected(shadowMap.error());
     }
 
-    if (auto texture =
+    {
+        auto texture =
             createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
                         std::as_bytes(std::span{kWhiteTexel}), "lmx.render.whiteFallback");
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_whiteTexture = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
-    if (auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+    {
+        auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
                                    std::as_bytes(std::span{kFlatNormalTexel}),
                                    "lmx.render.flatNormalFallback");
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_flatNormalTexture = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
-    if (auto texture =
+    {
+        auto texture =
             createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Cube,
                         std::as_bytes(std::span{kBlackTexel}), "lmx.render.blackCubeFallback");
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_blackCubeTexture = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
-    if (auto texture =
+    {
+        auto texture =
             createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureKind::Tex2D,
                         std::as_bytes(std::span{kZeroDfgTexel}), "lmx.render.zeroDfgFallback");
-        texture) {
+        if (!texture) {
+            return std::unexpected(texture.error());
+        }
         self->m_zeroDfgTexture = std::move(*texture);
-    } else {
-        return std::unexpected(texture.error());
     }
-    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+    {
+        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
                                              .addressMode = rojoRHI::AddressMode::Wrap,
                                              .maxAnisotropy = 16,
                                              .label = "lmx.render.linearSampler"});
-        sampler) {
+        if (!sampler) {
+            return std::unexpected(sampler.error());
+        }
         self->m_linearSampler = std::move(*sampler);
-    } else {
-        return std::unexpected(sampler.error());
     }
     // GreaterEqual is the reversed-Z compare: the sampler answers "lit" where the receiver's own
     // depth is at least the stored one, because nearer to the light is now the larger number.
     // Clamp extends the 0.0 clear outside the fitted shadow footprint, and every receiver depth
     // clears that bar, so that region stays lit exactly as it did under the 1.0 clear before.
-    if (auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+    {
+        auto sampler = device.createSampler({.filter = rojoRHI::FilterMode::Linear,
                                              .addressMode = rojoRHI::AddressMode::Clamp,
                                              .maxAnisotropy = 16,
                                              .compare = rojoRHI::CompareFunc::GreaterEqual,
                                              .label = "lmx.render.shadowSampler"});
-        sampler) {
+        if (!sampler) {
+            return std::unexpected(sampler.error());
+        }
         self->m_shadowSampler = std::move(*sampler);
-    } else {
-        return std::unexpected(sampler.error());
     }
 
     // Clamped, not wrapped: the IBL set is read at the very edge of its domain -- the DFG table at
@@ -171,25 +182,31 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
     // into the result. Linear filtering carries the mip filter the prefiltered chain is sampled
     // across; no anisotropy, because neither lookup has a screen-space footprint to be anisotropic
     // about.
-    if (auto sampler = self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
+    {
+        auto sampler = self->m_device.createSampler({.filter = rojoRHI::FilterMode::Linear,
                                                      .addressMode = rojoRHI::AddressMode::Clamp,
                                                      .label = "lmx.render.iblSampler"});
-        sampler) {
+        if (!sampler) {
+            return std::unexpected(sampler.error());
+        }
         self->m_iblSampler = std::move(*sampler);
-    } else {
-        return std::unexpected(sampler.error());
     }
 
     // The reconstruction stage owns both history pairs and the passes over them, so it is built
     // before the first resize(), which is what allocates its slots at this renderer's extent.
-    if (auto stage = TemporalResolve::create(device, self->m_cpuReadback); stage) {
+    {
+        auto stage = TemporalResolve::create(device, self->m_cpuReadback);
+        if (!stage) {
+            return std::unexpected(stage.error());
+        }
         self->m_temporalResolve = std::move(*stage);
-    } else {
-        return std::unexpected(stage.error());
     }
 
-    if (auto targets = self->resize(width, height); !targets) {
-        return std::unexpected(targets.error());
+    {
+        auto targets = self->resize(width, height);
+        if (!targets) {
+            return std::unexpected(targets.error());
+        }
     }
     return self;
 }
@@ -232,15 +249,25 @@ rojoRHI::Result<void> Renderer::resize(uint32_t width, uint32_t height) {
     // this function already requires. The histories' contents are dropped with the old textures,
     // which the extent change makes a reset anyway (HistoryResetReason::ExtentChanged). Depth is
     // among them: it ping-pongs by temporal frame parity, so the stage owns both slots of it.
-    if (auto targets = createTemporalTargets(); !targets) {
-        return std::unexpected(targets.error());
+    {
+        auto targets = createTemporalTargets();
+        if (!targets) {
+            return std::unexpected(targets.error());
+        }
     }
-    if (auto slots = m_temporalResolve->resize(width, height); !slots) {
-        return std::unexpected(slots.error());
+    {
+        auto slots = m_temporalResolve->resize(width, height);
+        if (!slots) {
+            return std::unexpected(slots.error());
+        }
     }
     if (m_hzbStage) {
-        if (auto result = m_hzbStage->resize(width, height); !result)
-            return std::unexpected(result.error());
+        {
+            auto result = m_hzbStage->resize(width, height);
+            if (!result) {
+                return std::unexpected(result.error());
+            }
+        }
     }
     return {};
 }
