@@ -101,7 +101,7 @@
         "glm"
       ],
       "privateHeaders": [
-        "Source/Render/ExposureStage.h",
+        "Source/Render/Passes/Exposure/ExposureStage.h",
         "Source/Render/BloomStage.h",
         "Source/Render/DisplayStage.h",
         "Source/Render/Graph/RenderGraphInternal.h",
