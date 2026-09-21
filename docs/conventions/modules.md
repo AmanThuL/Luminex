@@ -242,7 +242,7 @@ above uses, aimed at Render and the catalog unit instead of the RHI component. R
 the scene itself (`Engine/Scene/Scene.h`), beyond the `Engine/View/`, `Engine/Lights/`,
 `Engine/Geometry/` and `Engine/Material/` vocabulary and the `Engine/Scene/` `SceneTables.h`,
 `DrawItem.h` and `MotionClass.h` it includes, is confined to one translation unit,
-`Render/SceneViewBuilder.cpp`; review holds that, not the checker.
+`Render/Renderer/SceneViewBuilder.cpp`; review holds that, not the checker.
 
 ## Review budgets
 

@@ -21,7 +21,7 @@ carry a second colour attachment without disturbing existing callers.
 (+y down, texture space). A consumer fetches history at `uv - motion`. The sentinel
 `kMotionInvalid = (+inf, +inf)` marks a draw whose deformation is unsupported; consumers test
 `isinf`, never compare against zero, so a genuinely stationary object is distinguishable from one
-whose motion could not be computed. `Source/Render/Temporal.h` and `Shaders/Motion.slang` are the
+whose motion could not be computed. `Source/Render/Passes/Temporal/Temporal.h` and `Shaders/Motion.slang` are the
 single source for this arithmetic; nothing else restates it.
 
 **History ownership.** Engine owns identity and previous transforms — `Scene` keeps each object's

@@ -75,7 +75,7 @@ upscaled `Raw` frame sets that record to `ShaderRead` rather than `CopyDestinati
 `lmx.pass.temporal.commitUpscaled` samples scene colour (the spatial-upscale fetch) instead of
 blitting it, and nothing else copies out of scene colour that frame.
 
-**The controller is a pure, App-driven contract.** `Source/Render/ResolutionController` observes a
+**The controller is a pure, App-driven contract.** `Source/Render/Passes/Temporal/ResolutionController` observes a
 retired frame's summed GPU pass time against a budget and headroom, and proposes the next
 `renderScale` with hysteresis (a settle window of frames declared after any change, counted from the declaration the
 change was made at rather than from the retired sample that caused it, and a run of consecutive
