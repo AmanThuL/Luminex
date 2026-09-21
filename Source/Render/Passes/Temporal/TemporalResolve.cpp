@@ -6,6 +6,7 @@
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Common/Dispatch.h"
 #include "Render/Common/Formats.h"
+#include "Render/Common/StageSetup.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
@@ -138,14 +139,9 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
         self->m_temporalUpscalePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline =
-            device.createGraphicsPipeline({.library = self->m_debugViewLibrary.get(),
-                                           .vertexEntry = "vertexMain",
-                                           .fragmentEntry = "fragmentMain",
-                                           .colorFormat = kDisplayFormat,
-                                           .depthFormat = rojoRHI::Format::Unknown,
-                                           .cullMode = rojoRHI::CullMode::None,
-                                           .label = "lmx.render.temporalDebugViewPipeline"});
+        auto pipeline = device.createGraphicsPipeline(
+            fullscreenPipelineDesc(self->m_debugViewLibrary.get(), "fragmentMain", kDisplayFormat,
+                                   "lmx.render.temporalDebugViewPipeline"));
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }

@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
@@ -98,13 +99,9 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
         auto library = m_device.loadShaderLibrary("Shaders/HzbDebugView");
         LMX_ASSERT(library.has_value(), library.error().message);
         m_hzbDebugLibrary = std::move(*library);
-        auto pipeline = m_device.createGraphicsPipeline({.library = m_hzbDebugLibrary.get(),
-                                                         .vertexEntry = "vertexMain",
-                                                         .fragmentEntry = "fragmentMain",
-                                                         .colorFormat = kDisplayFormat,
-                                                         .depthFormat = rojoRHI::Format::Unknown,
-                                                         .cullMode = rojoRHI::CullMode::None,
-                                                         .label = "lmx.render.hzbDebugPipeline"});
+        auto pipeline = m_device.createGraphicsPipeline(
+            fullscreenPipelineDesc(m_hzbDebugLibrary.get(), "fragmentMain", kDisplayFormat,
+                                   "lmx.render.hzbDebugPipeline"));
         LMX_ASSERT(pipeline.has_value(), pipeline.error().message);
         m_hzbDebugPipeline = std::move(*pipeline);
     }

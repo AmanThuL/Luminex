@@ -3,6 +3,7 @@
 /// @brief Creates renderer-owned GPU resources and resizes persistent targets.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/StageSetup.h"
 #include "Render/Passes/Bloom/BloomStage.h"
 #include "Render/Passes/Display/DisplayStage.h"
 #include "Render/Passes/Exposure/ExposureStage.h"
@@ -37,38 +38,6 @@ constexpr std::array<uint8_t, 4> kBlackTexel = {0, 0, 0, 255};
 // The DFG fallback's (scale, bias), as RG16Float bits. Zero makes the specular reconstruction
 // F0 * 0 + 0 vanish -- the matching answer for an environment that is itself black.
 constexpr std::array<uint16_t, 2> kZeroDfgTexel = {0, 0};
-
-//======================================================================================================================
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>>
-createFallbackTexture(rojoRHI::Device& device, const std::array<uint8_t, 4>& rgba,
-                      rojoRHI::TextureKind kind, std::string_view label) {
-    const rojoRHI::TextureMip mip{.data = rgba.data(), .bytesPerRow = 4};
-    const uint32_t faceCount = kind == rojoRHI::TextureKind::Cube ? 6u : 1u;
-    // Cube fallbacks must cover every face with the same neutral texel.
-    const std::array<rojoRHI::TextureMip, 6> mips = {mip, mip, mip, mip, mip, mip};
-    return device.createTexture({.width = 1,
-                                 .height = 1,
-                                 .format = rojoRHI::Format::RGBA8Unorm,
-                                 .kind = kind,
-                                 .sampled = true,
-                                 .label = label},
-                                std::span{mips.data(), faceCount});
-}
-
-//======================================================================================================================
-// The DFG fallback needs its own creator: it is the one fallback that is neither RGBA8 nor a cube,
-// because the split-sum table it stands in for is RG16Float and a shader reading it as anything
-// else would find its two channels in the wrong place.
-rojoRHI::Result<std::unique_ptr<rojoRHI::Texture>> createZeroDfgTexture(rojoRHI::Device& device) {
-    const rojoRHI::TextureMip mip{.data = kZeroDfgTexel.data(),
-                                  .bytesPerRow = sizeof(kZeroDfgTexel)};
-    return device.createTexture({.width = 1,
-                                 .height = 1,
-                                 .format = rojoRHI::Format::RG16Float,
-                                 .sampled = true,
-                                 .label = "lmx.render.zeroDfgFallback"},
-                                std::span{&mip, 1});
-}
 
 } // namespace
 
@@ -141,28 +110,34 @@ rojoRHI::Result<std::unique_ptr<Renderer>> Renderer::create(rojoRHI::Device& dev
         return std::unexpected(shadowMap.error());
     }
 
-    if (auto texture = createFallbackTexture(device, kWhiteTexel, rojoRHI::TextureKind::Tex2D,
-                                             "lmx.render.whiteFallback");
+    if (auto texture =
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+                        std::as_bytes(std::span{kWhiteTexel}), "lmx.render.whiteFallback");
         texture) {
         self->m_whiteTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto texture = createFallbackTexture(device, kFlatNormalTexel, rojoRHI::TextureKind::Tex2D,
-                                             "lmx.render.flatNormalFallback");
+    if (auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+                                   std::as_bytes(std::span{kFlatNormalTexel}),
+                                   "lmx.render.flatNormalFallback");
         texture) {
         self->m_flatNormalTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto texture = createFallbackTexture(device, kBlackTexel, rojoRHI::TextureKind::Cube,
-                                             "lmx.render.blackCubeFallback");
+    if (auto texture =
+            createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Cube,
+                        std::as_bytes(std::span{kBlackTexel}), "lmx.render.blackCubeFallback");
         texture) {
         self->m_blackCubeTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());
     }
-    if (auto texture = createZeroDfgTexture(device); texture) {
+    if (auto texture =
+            createTexel(device, rojoRHI::Format::RG16Float, rojoRHI::TextureKind::Tex2D,
+                        std::as_bytes(std::span{kZeroDfgTexel}), "lmx.render.zeroDfgFallback");
+        texture) {
         self->m_zeroDfgTexture = std::move(*texture);
     } else {
         return std::unexpected(texture.error());

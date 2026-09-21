@@ -5,6 +5,7 @@
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <cstring>
@@ -15,21 +16,14 @@ rojoRHI::Result<std::unique_ptr<GpuVisibility>> GpuVisibility::create(rojoRHI::D
     std::unique_ptr<GpuVisibility> self(new GpuVisibility(device));
     constexpr std::array names{"VisibilityClassify", "VisibilityScan", "VisibilityEmit",
                                "VisibilityEmitSparse", "VisibilityClassifyOcclusion"};
-    for (uint32_t i = 0; i < names.size(); ++i) {
-        auto library = device.loadShaderLibrary("Shaders/" + std::string(names[i]));
-        if (!library) {
-            return std::unexpected(library.error());
-        }
-        self->m_libraries[i] = std::move(*library);
-        auto pipeline =
-            device.createComputePipeline({.library = self->m_libraries[i].get(),
-                                          .computeEntry = "computeMain",
-                                          .threadsPerThreadgroup = {256, 1, 1},
-                                          .label = "lmx.visibility." + std::string(names[i])});
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_pipelines[i] = std::move(*pipeline);
+    auto pipelines =
+        createComputePipelines(device, names, "lmx.visibility.", [](uint32_t) { return 256u; });
+    if (!pipelines) {
+        return std::unexpected(pipelines.error());
+    }
+    for (uint32_t index = 0; index < names.size(); ++index) {
+        self->m_libraries[index] = std::move(pipelines->libraries[index]);
+        self->m_pipelines[index] = std::move(pipelines->pipelines[index]);
     }
     const engine::InstanceRow emptyInstance;
     const engine::MeshRow emptyMesh;

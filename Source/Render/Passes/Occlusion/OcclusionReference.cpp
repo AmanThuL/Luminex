@@ -5,6 +5,7 @@
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -62,13 +63,8 @@ OcclusionReference::create(rojoRHI::Device& device) {
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
-    const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
-    auto texture = device.createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = rojoRHI::Format::RGBA8Unorm,
-                                         .sampled = true,
-                                         .label = "lmx.occlusion.reference.white"},
-                                        std::span{&mip, 1});
+    auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+                               std::as_bytes(std::span{white}), "lmx.occlusion.reference.white");
     if (!texture) {
         return std::unexpected(texture.error());
     }

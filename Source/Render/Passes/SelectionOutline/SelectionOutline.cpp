@@ -3,11 +3,12 @@
 /// @brief Implements visible selection coverage and a separate SDR outline composite.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
+#include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/View/Camera.h"
-#include "Render/Common/Formats.h"
 
 #include <algorithm>
 #include <array>
@@ -85,22 +86,14 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
         (doubleSided ? self->m_doubleSidedDepthPipeline : self->m_depthPipeline) =
             std::move(*depthPipeline);
     }
-    auto outline = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
-                                                  .vertexEntry = "vertexMain",
-                                                  .fragmentEntry = "fragmentMain",
-                                                  .colorFormat = kDisplayFormat,
-                                                  .cullMode = rojoRHI::CullMode::None,
-                                                  .label = "lmx.selection.outline"});
+    auto outline = device.createGraphicsPipeline(fullscreenPipelineDesc(
+        self->m_outlineLibrary.get(), "fragmentMain", kDisplayFormat, "lmx.selection.outline"));
     if (!outline) {
         return std::unexpected(outline.error());
     }
     self->m_outlinePipeline = std::move(*outline);
-    auto passthrough = device.createGraphicsPipeline({.library = self->m_outlineLibrary.get(),
-                                                      .vertexEntry = "vertexMain",
-                                                      .fragmentEntry = "fragmentCopy",
-                                                      .colorFormat = kDisplayFormat,
-                                                      .cullMode = rojoRHI::CullMode::None,
-                                                      .label = "lmx.selection.passthrough"});
+    auto passthrough = device.createGraphicsPipeline(fullscreenPipelineDesc(
+        self->m_outlineLibrary.get(), "fragmentCopy", kDisplayFormat, "lmx.selection.passthrough"));
     if (!passthrough) {
         return std::unexpected(passthrough.error());
     }
@@ -112,13 +105,8 @@ SelectionOutline::create(rojoRHI::Device& device, uint32_t width, uint32_t heigh
     }
     self->m_sampler = std::move(*sampler);
     const std::array<uint8_t, 4> white{255, 255, 255, 255};
-    const rojoRHI::TextureMip mip{.data = white.data(), .bytesPerRow = 4};
-    auto texture = device.createTexture({.width = 1,
-                                         .height = 1,
-                                         .format = rojoRHI::Format::RGBA8Unorm,
-                                         .sampled = true,
-                                         .label = "lmx.selection.white"},
-                                        std::span{&mip, 1});
+    auto texture = createTexel(device, rojoRHI::Format::RGBA8Unorm, rojoRHI::TextureKind::Tex2D,
+                               std::as_bytes(std::span{white}), "lmx.selection.white");
     if (!texture) {
         return std::unexpected(texture.error());
     }

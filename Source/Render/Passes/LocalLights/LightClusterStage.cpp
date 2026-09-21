@@ -5,6 +5,7 @@
 
 #include "Render/Passes/LocalLights/LightClusterStage.h"
 #include "Render/Common/GraphResources.h"
+#include "Render/Common/StageSetup.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -97,24 +98,17 @@ rojoRHI::Result<std::unique_ptr<LightClusterStage>>
 LightClusterStage::create(rojoRHI::Device& device) {
     std::unique_ptr<LightClusterStage> self(new LightClusterStage(device));
     constexpr std::array names{"LightClusterCount", "LightClusterScan", "LightClusterFill"};
-    for (uint32_t i = 0; i < names.size(); ++i) {
-        auto library = device.loadShaderLibrary("Shaders/" + std::string(names[i]));
-        if (!library) {
-            return std::unexpected(library.error());
-        }
-        self->m_libraries[i] = std::move(*library);
-        // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
-        // makes every range and every counter a function of the declarations alone.
-        const uint32_t threads = i == 1 ? 1 : kThreadsPerGroup;
-        auto pipeline =
-            device.createComputePipeline({.library = self->m_libraries[i].get(),
-                                          .computeEntry = "computeMain",
-                                          .threadsPerThreadgroup = {threads, 1, 1},
-                                          .label = "lmx.light." + std::string(names[i])});
-        if (!pipeline) {
-            return std::unexpected(pipeline.error());
-        }
-        self->m_pipelines[i] = std::move(*pipeline);
+    // The scan is a single thread on purpose: 3,456 counts summed in froxel order is what
+    // makes every range and every counter a function of the declarations alone.
+    auto pipelines = createComputePipelines(device, names, "lmx.light.", [](uint32_t index) {
+        return index == 1 ? 1u : kThreadsPerGroup;
+    });
+    if (!pipelines) {
+        return std::unexpected(pipelines.error());
+    }
+    for (uint32_t index = 0; index < names.size(); ++index) {
+        self->m_libraries[index] = std::move(pipelines->libraries[index]);
+        self->m_pipelines[index] = std::move(pipelines->pipelines[index]);
     }
     for (uint32_t slot = 0; slot < self->m_slots.size(); ++slot) {
         const std::string suffix = "." + std::to_string(slot);
