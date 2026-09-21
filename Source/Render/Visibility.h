@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/Bounds.h"
+#include "Core/Bounds.h"
 #include "Render/Occlusion.h"
 #include "Render/OcclusionCheck.h"
 #include "Render/OcclusionHistory.h"
