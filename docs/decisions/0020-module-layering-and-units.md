@@ -5,7 +5,7 @@
 ## Context
 
 The runtime grew as five targets in a chain, `Core → RHI → Render → Engine → App`. Engine sits
-above Render because `Scene.h` includes `Render/Renderer.h`, so one target holds two layers: glTF,
+above Render because `Scene.h` includes `Render/Renderer/Renderer.h`, so one target holds two layers: glTF,
 DDS, Radiance HDR and PNG decoding, texture baking, IBL generation and animation clip data, which
 need no GPU, and scenes, catalog and labs, which own GPU meshes and textures. `TextureBake`, a CPU
 tool, links Render, the RHI and the Metal backend to reach the decoders.

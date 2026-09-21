@@ -171,7 +171,7 @@ contract states, and Render's frame input contract is a leaf header.
   range, view and copy descriptors from `Texture.h`, which then includes it; the umbrella and
   every caller are unchanged. The ADR records why Asset-owned duplicate descriptors and an
   unchecked include restriction were rejected.
-- A leaf header such as `Render/SceneView.h`: `Material`, `AlphaMode`, `DrawItem`,
+- A leaf header such as `Render/Renderer/SceneView.h`: `Material`, `AlphaMode`, `DrawItem`,
   `DirectionalLight`, `ShadowFilter`, `TemporalSettings`, `TemporalStatus` and `SceneView` move out
   of `Renderer.h` unchanged; `Renderer.h` keeps the orchestrator and the pass constants.
 - `Source/Asset`: the asset error domain, `GltfLoader` with its own glTF alpha-mode enumeration

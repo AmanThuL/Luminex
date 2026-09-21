@@ -6,14 +6,14 @@ Luminex is a Metal 4-first rendering playground organized as a one-way dependenc
 
 `Core → Asset`, `Core → Engine`, `Asset → Engine`, `Engine → Render`, `Engine → Scenes`, `Core → Render` and, independently, `RHI → Engine` and `RHI → Render`, joined by `Render → AppModel → App`; `Scenes → AppModel`, `Scenes → App` and `Scenes → Tests` join above Engine, and Render never depends on Scenes.
 The RHI has no Core dependency; Asset uses only its format/descriptor headers and links no GPU
-target. Core owns shared colour transfer and contract-preserving primitives; `Render/SceneView.h`
+target. Core owns shared colour transfer and contract-preserving primitives; `Render/Renderer/SceneView.h`
 holds the borrowed frame input independently of the renderer.
 
 - **Core** (`lmx`) has five folders: `Diagnostics/` logging, log sinks and assertions; `IO/` whole-file reads and JSON escaping; `Math/` alignment, dispatch division, colour transfer, finite AABBs with the eight-corner transform (`Aabb.h`), spheres, frusta,
   reversed-infinite-Z/orthographic-fit projections, low-discrepancy sequences, cubemap/GGX sampling measures and TRS transforms; `Containers/` a generational handle with its slot allocator, a dirty set, an interval and a ring buffer; `Util/` numeric parsing, SHA-256, a stopwatch and ASCII lowercasing. spdlog and glm are public packages.
 - **RHI** builds and tests from its own root (`xmake -P RojoRHI`): `RojoRHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
   dependency — a private `RojoRHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
-  is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
+  is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/Common/RhiLog`
   forwards into spdlog/Console for App and Luminex's `Tests`. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its
   own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui
   patch and buffer probe. Its self-contained core public headers live under
@@ -92,7 +92,7 @@ holds the borrowed frame input independently of the renderer.
   [ADR 0023](../decisions/0023-local-light-and-cluster-contract.md) owns the accepted contract; milestone records retain historical image failures and follow-up evidence limits.
   SceneStage draws sky last from the shared geometry pool. Private `ExposureStage`, `BloomStage`
   and `DisplayStage` own their pipelines/resources; Renderer retains frame ordering and targets.
-  `Render/FrameDeclaration` shares graph construction/execution across application loops and returns the accepted record for App-side retention. Render also owns
+  `Render/Graph/FrameDeclaration` shares graph construction/execution across application loops and returns the accepted record for App-side retention. Render also owns
   camera temporal history and the GPU-resident motion/history contract (`Temporal.h`, `TemporalHistory.h`, `Shaders/Common/Motion.slang`): the previous
   `CameraFrameState`, the Halton jitter sequence, the derived `HistoryResetReason`, and the
   `Renderer`-created `lmx.render.motion`/`lmx.render.reactive` textures the temporal passes declare
@@ -113,7 +113,7 @@ holds the borrowed frame input independently of the renderer.
   native `NativeTaa` kernel (`Shaders/Passes/Temporal/TemporalResolve.slang`, unchanged since M6.2) and the upscale
   kernel (`Shaders/Passes/Temporal/TemporalUpscale.slang`) by whether render equals output extent and history was not just accumulated at another one; `Raw` gets the matching split against
   `Shaders/Passes/Temporal/SpatialUpscale.slang`. Shared reason codes, constants and colour-space helpers live in
-  `Shaders/Passes/Temporal/TemporalCommon.slang`, imported by both. `Source/Render/ResolutionController` is a pure
+  `Shaders/Passes/Temporal/TemporalCommon.slang`, imported by both. `Source/Render/Passes/Temporal/ResolutionController` is a pure
   class with no device, graph or App dependency that proposes the next render scale from a retired
   frame's summed GPU pass time against a budget, with hysteresis. `VendorTemporal` selects a composed `VendorTemporalScaler` inside the existing resolve stage
   ([ADR 0017](../decisions/0017-vendor-reconstruction-capability.md)). It lazily creates the device
@@ -253,7 +253,7 @@ holds the borrowed frame input independently of the renderer.
   colour once into linear storage. Source names use scene-local disambiguation. A filtered-out
   selection remains explicit and can clear its filter in Inspector. Viewport owns camera help and Frame selected.
   The top Scene/Measure toolbar owns one state-switching Play/Pause button, separate Stop/Step and camera-rail follow options. `SelectionBounds`
-  frames shared reliable world bounds; a rejected selection produces no outline. `Render/SelectionOutline` supplies an editor-only utility that
+  frames shared reliable world bounds; a rejected selection produces no outline. `Render/Passes/SelectionOutline/SelectionOutline` supplies an editor-only utility that
   App opts into after scene display: full-resolution unjittered selected-only coverage/depth and scene visibility
   preserve the true silhouette, reading the same instance/material tables and masked alpha. A soft 1.5-logical-point border is
   depth-tested at source and destination before compositing into its own SDR target, so foreground
@@ -269,7 +269,7 @@ holds the borrowed frame input independently of the renderer.
   counters while preserving filters/freeze, and Copy visible exports exactly matching displayed messages. It is read-only; follow-newest applies only when already at the end.
   `--capture-sequence <directory> --frames N --warmup W` writes N numbered PNGs (or `--capture-format bmp`) after W unsaved
   frames at 60 Hz into a new or empty directory, with actual camera, settings and temporal status.
-  Vendor fallback fails a sequence. `Render/DisplayDomain.h` owns the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
+  Vendor fallback fails a sequence. `Render/Renderer/DisplayDomain.h` owns the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output contract; Renderer exposes it to the Inspector and capture
   metadata. Asset `PngImage` writes deterministic colour-tagged PNGs; manifest v2 records the
   display domain, container and UI absence. The offline [comparison workflow](../guides/temporal-comparison.md)
   synchronizes Raw/Native/MetalFX reports and optional CPU LDR-FLIP on final sRGB images; Native TAA

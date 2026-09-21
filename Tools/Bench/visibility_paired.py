@@ -166,7 +166,7 @@ def validate_report(report, expected, scored):
         if sample["renderWidth"] != expected["width"] or sample["renderHeight"] != expected["height"]:
             raise ValueError("actual raster extent differs from frozen Native TAA scale 1")
         nonnegative_number(sample.get("effectiveScale"), "effectiveScale")
-        # Render/Temporal.h orders Raw=0, NativeTaa=1, VendorTemporal=2.
+        # Render/Passes/Temporal/Temporal.h orders Raw=0, NativeTaa=1, VendorTemporal=2.
         if sample["effectiveScale"] != 1 or sample["vendorFallback"] != 0 or sample["effectiveReconstruction"] != 1:
             raise ValueError("effective reconstruction differs from frozen Native TAA plan")
         if legacy:
