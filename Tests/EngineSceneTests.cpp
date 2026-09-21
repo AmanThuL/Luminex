@@ -38,7 +38,7 @@ TEST_CASE("loadSponzaScene loads the fetched Sponza asset", "[gpu]") {
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadSponzaScene(**device);
+    auto scene = lmx::scenes::loadSponzaScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -85,7 +85,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadHelmetScene(**device);
+    auto scene = lmx::scenes::loadHelmetScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -142,7 +142,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
 
-    auto bakedScene = loadHelmetScene(**device);
+    auto bakedScene = lmx::scenes::loadHelmetScene(**device);
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     rojoRHI::Texture* bakedDiffuse =
@@ -154,7 +154,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     std::vector<uint8_t> fallbackMip1;
     {
         const TemporarilyHiddenDirectory hidden(bakedDir);
-        auto fallbackScene = loadHelmetScene(**device);
+        auto fallbackScene = lmx::scenes::loadHelmetScene(**device);
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         rojoRHI::Texture* fallbackDiffuse =
@@ -185,7 +185,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadSponzaScene(**device);
+    auto scene = lmx::scenes::loadSponzaScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -245,7 +245,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadSponzaScene(**device);
+    auto scene = lmx::scenes::loadSponzaScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -357,33 +357,33 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
 TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    SceneLibrary library(**device);
+    lmx::scenes::SceneLibrary library(**device);
 
     REQUIRE(library.entries().size() == 8);
-    REQUIRE(sceneIdString(library.entries()[0].id) == "sponza");
+    REQUIRE(lmx::scenes::sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
-    REQUIRE(sceneIdString(library.entries()[1].id) == "damaged-helmet");
+    REQUIRE(lmx::scenes::sceneIdString(library.entries()[1].id) == "damaged-helmet");
     REQUIRE(library.entries()[1].stableId == "damaged-helmet");
-    REQUIRE(sceneIdString(library.entries()[2].id) == "milk-truck");
+    REQUIRE(lmx::scenes::sceneIdString(library.entries()[2].id) == "milk-truck");
     REQUIRE(library.entries()[2].stableId == "milk-truck");
     REQUIRE(library.entries()[2].displayName == "Milk Truck");
-    REQUIRE(library.entries()[2].role == SceneRole::Sample);
-    REQUIRE(sceneIdString(library.entries()[3].id) == "material-lab");
+    REQUIRE(library.entries()[2].role == lmx::scenes::SceneRole::Sample);
+    REQUIRE(lmx::scenes::sceneIdString(library.entries()[3].id) == "material-lab");
     REQUIRE(library.entries()[3].stableId == "material-lab");
     REQUIRE(library.entries()[3].displayName == "MaterialLab");
-    REQUIRE(library.entries()[3].role == SceneRole::Diagnostic);
-    REQUIRE(sceneIdString(library.entries()[4].id) == "temporal-lab");
+    REQUIRE(library.entries()[3].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(lmx::scenes::sceneIdString(library.entries()[4].id) == "temporal-lab");
     REQUIRE(library.entries()[4].stableId == "temporal-lab");
     REQUIRE(library.entries()[4].displayName == "TemporalLab");
-    REQUIRE(library.entries()[4].role == SceneRole::Diagnostic);
+    REQUIRE(library.entries()[4].role == lmx::scenes::SceneRole::Diagnostic);
     REQUIRE(library.entries()[5].stableId == "san-miguel");
-    REQUIRE(library.entries()[5].role == SceneRole::Showcase);
+    REQUIRE(library.entries()[5].role == lmx::scenes::SceneRole::Showcase);
     REQUIRE(library.entries()[6].stableId == "visibility-lab");
-    REQUIRE(library.entries()[6].role == SceneRole::Diagnostic);
+    REQUIRE(library.entries()[6].role == lmx::scenes::SceneRole::Diagnostic);
     REQUIRE(library.entries()[7].stableId == "light-lab");
     REQUIRE(library.entries()[7].displayName == "LightLab");
-    REQUIRE(library.entries()[7].role == SceneRole::Diagnostic);
+    REQUIRE(library.entries()[7].role == lmx::scenes::SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -394,7 +394,7 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
     // skipped when the fetched assets are missing.
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    SceneLibrary library(**device);
+    lmx::scenes::SceneLibrary library(**device);
 
     const bool sponzaPresent = findRepoAsset("Assets/Fetched/Sponza/Sponza.gltf").has_value();
     REQUIRE(library.entries()[0].available == sponzaPresent);
@@ -427,12 +427,12 @@ TEST_CASE("SceneLibrary::get lazily loads a scene once and caches the instance",
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    SceneLibrary library(**device);
+    lmx::scenes::SceneLibrary library(**device);
 
-    auto first = library.get(defaultSceneId());
+    auto first = library.get(lmx::scenes::defaultSceneId());
     INFO(describeSceneError(first));
     REQUIRE(first.has_value());
-    auto second = library.get(defaultSceneId());
+    auto second = library.get(lmx::scenes::defaultSceneId());
     REQUIRE(second.has_value());
     REQUIRE(*first == *second); // the same cached Scene*, not rebuilt
 }
@@ -449,7 +449,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadMilkTruckScene(**device);
+    auto scene = lmx::scenes::loadMilkTruckScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     REQUIRE_FALSE((*scene)->objects.empty());
@@ -577,7 +577,7 @@ TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
     scene.name = "Sponza";
     Scene foreign;
     foreign.name = "Sponza";
-    SponzaLightRig rig;
+    lmx::scenes::SponzaLightRig rig;
     REQUIRE(rig.setEnabled(scene, false));
     REQUIRE(scene.localLights().empty());
     REQUIRE(rig.setEnabled(scene, true));
@@ -614,12 +614,12 @@ TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
     REQUIRE(rig.setEnabled(scene, true));
     REQUIRE(scene.light(ids.front())->intensity == 137.0f);
     REQUIRE(scene.light(ids.front())->colour == edited.colour);
-    SponzaLightRig rebound;
+    lmx::scenes::SponzaLightRig rebound;
     REQUIRE(rebound.setEnabled(scene, true));
     REQUIRE(std::ranges::equal(rebound.lightIds(), ids));
     REQUIRE(scene.localLights().size() == ids.size());
     REQUIRE(scene.updateLight(ids.front(), original));
-    SponzaLightRig otherRig;
+    lmx::scenes::SponzaLightRig otherRig;
     REQUIRE(otherRig.setEnabled(foreign, true));
     REQUIRE(otherRig.lightIds().size() == rig.lightIds().size());
     for (size_t i = 0; i < rig.lightIds().size(); ++i) {
@@ -665,7 +665,7 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     }
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    auto loaded = loadSponzaScene(**device);
+    auto loaded = lmx::scenes::loadSponzaScene(**device);
     REQUIRE(loaded);
     auto& scene = **loaded;
     lmx::app::SceneSession session;
@@ -705,7 +705,7 @@ TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without 
     scene.name = "Sponza";
     const auto authored = scene.addLight(lmx::engine::LocalLight{});
     REQUIRE(authored);
-    SponzaLightRig rig;
+    lmx::scenes::SponzaLightRig rig;
     REQUIRE(rig.setEnabled(scene, true));
     REQUIRE(scene.removeLight(rig.lightIds().front()));
     REQUIRE(rig.setEnabled(scene, false));
@@ -716,7 +716,7 @@ TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without 
     REQUIRE(scene.localLights().size() == 16);
     Scene crowded;
     crowded.name = "Sponza";
-    SponzaLightRig crowdedRig;
+    lmx::scenes::SponzaLightRig crowdedRig;
     while (crowded.localLights().size() < lmx::engine::kMaxLocalLights - 8) {
         REQUIRE(crowded.addLight(lmx::engine::LocalLight{}));
     }

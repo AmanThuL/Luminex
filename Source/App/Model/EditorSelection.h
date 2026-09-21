@@ -51,7 +51,7 @@ std::string_view renderingCategoryLabel(RenderingCategory category);
 /// `Rendering`, `DirectionalLight` and `Object`; other subjects ignore it. Editor-local navigation
 /// state -- never serialized, never passed to Render or the RHI (spec section 5).
 struct EditorSelection {
-    engine::SceneId sceneId;                     ///< The scene the selection was made against.
+    scenes::SceneId sceneId;                     ///< The scene the selection was made against.
     EditorSubject subject = EditorSubject::None; ///< What is selected.
     size_t index = 0;                            ///< Category or DirectionalLight/Object row index.
     engine::LightId lightId{}; ///< Complete local-light identity; otherwise unused.
@@ -64,12 +64,12 @@ struct EditorSelection {
 /// `Camera` and `None` never fail range validation. Call
 /// this on every use before drawing the Inspector; it never mutates `scene`, and the caller stores
 /// the returned value rather than caching the argument.
-EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
+EditorSelection resolveSelection(const EditorSelection& current, scenes::SceneId activeScene,
                                  const engine::Scene& scene);
 
 /// The selection stored at startup, or immediately after activating `sceneId`: every scene provides
 /// a `Camera`, so it is always resolvable without consulting scene contents.
-EditorSelection initialSelection(engine::SceneId sceneId);
+EditorSelection initialSelection(scenes::SceneId sceneId);
 
 /// Selection and Scene-panel filter to store together, since a successful scene switch changes both
 /// at once (spec section 5).
@@ -88,8 +88,8 @@ struct SceneSwitchOutcome {
 /// `Camera` and clears the filter; a failed switch returns `currentSelection` and `currentFilter`
 /// unchanged, which is the spec's "failed scene switch retains selection and filter exactly" --
 /// callers do not need a second function to express the failure path.
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
-                                      engine::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scenes::SceneId activeScene,
+                                      scenes::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter);
 

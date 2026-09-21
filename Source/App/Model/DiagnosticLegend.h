@@ -35,6 +35,6 @@ std::string_view diagnosticModeNote(render::TemporalDebugView view,
 
 /// Returns concise purpose and authored axes for diagnostic labs; empty for other catalog scenes.
 /// The identifier must belong to the current scene catalog. Returned text has static lifetime.
-std::string_view labDescription(engine::SceneId sceneId);
+std::string_view labDescription(scenes::SceneId sceneId);
 
 } // namespace lmx::app

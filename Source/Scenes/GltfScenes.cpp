@@ -18,7 +18,7 @@
 #include <string_view>
 #include <utility>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -32,19 +32,20 @@ asset::AssetError missingAsset(std::string_view sceneName, std::string_view rela
 //======================================================================================================================
 // Resolves a catalog scene's repo-relative asset before handing it to the public loader, so a
 // missing fetch reports the `xmake setup` hint instead of a bare file-not-found.
-asset::AssetResult<std::unique_ptr<Scene>>
+asset::AssetResult<std::unique_ptr<engine::Scene>>
 loadCatalogGltfScene(rojoRHI::Device& device, std::string_view relativeAssetPath,
-                     std::string_view sceneName, const SceneAuthoring& beforeFinalize = {}) {
+                     std::string_view sceneName,
+                     const engine::SceneAuthoring& beforeFinalize = {}) {
     const auto path = asset::findRepositoryAsset(relativeAssetPath);
     if (!path) {
         return std::unexpected(missingAsset(sceneName, relativeAssetPath));
     }
-    return loadGltfScene(device, path->string(), sceneName, beforeFinalize);
+    return engine::loadGltfScene(device, path->string(), sceneName, beforeFinalize);
 }
 
 //======================================================================================================================
 // Authors Sponza's static local-light rig, enabled, before the scene is finalized.
-rojoRHI::Result<void> authorSponzaLightRig(Scene& scene) {
+rojoRHI::Result<void> authorSponzaLightRig(engine::Scene& scene) {
     SponzaLightRig rig;
     return rig.setEnabled(scene, true);
 }
@@ -52,7 +53,7 @@ rojoRHI::Result<void> authorSponzaLightRig(Scene& scene) {
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rojoRHI::Device& device) {
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadSponzaScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/Sponza/Sponza.gltf", "Sponza",
                                       authorSponzaLightRig);
     if (!scene) {
@@ -68,7 +69,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSponzaScene(rojoRHI::Device& devi
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rojoRHI::Device& device) {
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadHelmetScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/DamagedHelmet/DamagedHelmet.glb",
                                       "DamagedHelmet");
     if (!scene) {
@@ -89,7 +90,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadHelmetScene(rojoRHI::Device& devi
 }
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& device) {
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadMilkTruckScene(rojoRHI::Device& device) {
     auto scene = loadCatalogGltfScene(device, "Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb",
                                       "CesiumMilkTruck");
     if (!scene) {
@@ -109,4 +110,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& d
     return std::move(*scene);
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

@@ -401,7 +401,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::engine::loadTemporalLabScene(**device);
+    auto scene = lmx::scenes::loadTemporalLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 

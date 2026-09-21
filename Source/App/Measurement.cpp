@@ -164,7 +164,7 @@ int runMeasurement(const AppOptions& options) {
     MeasurementPlan plan;
     plan.warmupFrames = options.warmup;
     plan.measuredFrames = options.frames;
-    plan.scene = engine::sceneIdString(options.initialScene);
+    plan.scene = scenes::sceneIdString(options.initialScene);
     const auto scaleStep =
         readOcclusionScaleStep(options.unscored, options.temporal != TemporalMode::Off);
     if (!scaleStep) {
@@ -201,7 +201,7 @@ int runMeasurement(const AppOptions& options) {
         LMX_LOG_ERROR("{}", run.failure());
         return 1;
     }
-    engine::SceneLibrary library(**device, options.labInstances, options.labOccluders,
+    scenes::SceneLibrary library(**device, options.labInstances, options.labOccluders,
                                  options.labLights, options.labLightPile);
     auto loaded = library.get(options.initialScene);
     if (!loaded) {

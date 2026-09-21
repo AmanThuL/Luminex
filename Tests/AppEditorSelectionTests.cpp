@@ -27,8 +27,8 @@ engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
     return scene;
 }
 
-const engine::SceneId kSceneA{0};
-const engine::SceneId kSceneB{1};
+const scenes::SceneId kSceneA{0};
+const scenes::SceneId kSceneB{1};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
 constexpr size_t kFirstLightRow = 1 + kRenderingCategoryCount;
 constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
@@ -492,7 +492,7 @@ TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses
 //======================================================================================================================
 TEST_CASE("Local light selections retain full identity through slot reuse", "[app][selection]") {
     lmx::engine::Scene scene;
-    const auto sceneId = *lmx::engine::parseSceneId("light-lab");
+    const auto sceneId = *lmx::scenes::parseSceneId("light-lab");
     const auto light = scene.addLight(lmx::engine::LocalLight{});
     REQUIRE(light);
     const lmx::app::EditorSelection selected{

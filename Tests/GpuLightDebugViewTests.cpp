@@ -246,7 +246,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
           "[gpu][light-debug]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::engine::loadLightLabScene(**device, 256, 0);
+    auto scene = lmx::scenes::loadLightLabScene(**device, 256, 0);
     REQUIRE(scene.has_value());
     const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (const auto reconstruction :
@@ -297,7 +297,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
 TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gpu][light-debug]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::engine::loadLightLabScene(**device, 64, 0);
+    auto scene = lmx::scenes::loadLightLabScene(**device, 64, 0);
     REQUIRE(scene.has_value());
     const auto ids = (*scene)->localLights();
     const std::vector<lmx::engine::LightId> removed(ids.begin(), ids.end());

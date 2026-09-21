@@ -30,7 +30,7 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -53,7 +53,7 @@ asset::AssetError uploadFailure(rojoRHI::Error error) {
 }
 
 //======================================================================================================================
-asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, Scene& scene,
+asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, engine::Scene& scene,
                                                  std::string_view label) {
     // The fetched studio is deliberately optional: a fresh checkout and hosted CI still get a
     // deterministic scene, while `xmake setup` upgrades both the visible sky and its IBL from the
@@ -95,20 +95,20 @@ asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, Scene&
                      kStudioEnvironmentPath);
     }
 
-    auto cubemap = ibl::uploadCubemap(device, environment, std::string(label) + ".sky");
+    auto cubemap = engine::ibl::uploadCubemap(device, environment, std::string(label) + ".sky");
     if (!cubemap) {
         return std::unexpected(uploadFailure(std::move(cubemap.error())));
     }
 
     // Studio Small 09 already contains its softboxes. The analytic rig exists only to keep the
     // asset-free fallback useful instead of double-lighting the fetched environment.
-    ibl::GenerationOptions options;
+    engine::ibl::GenerationOptions options;
     if (usingStudioEnvironment) {
         options.specularBaseFaceSize = kStudioEnvironmentFaceSize;
         options.irradianceSource = &*diffuseEnvironment;
     }
-    return attachEnvironment(device, scene, std::move(*cubemap), environment,
-                             !usingStudioEnvironment, label, options);
+    return engine::attachEnvironment(device, scene, std::move(*cubemap), environment,
+                                     !usingStudioEnvironment, label, options);
 }
 
 //======================================================================================================================
@@ -252,8 +252,8 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. The complete
 //   sphere matrix occupies roughly 70% of a square viewport's height while retaining comfortable
 //   edge clearance. The texture and depth lanes use the identical pose translated to their lane X.
-asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device& device) {
-    auto scene = std::make_unique<Scene>();
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI::Device& device) {
+    auto scene = std::make_unique<engine::Scene>();
     scene->name = "MaterialLab";
 
     Aabb aabb = emptyAabb();
@@ -262,16 +262,16 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
         expand(aabb, center + halfExtent);
     };
 
-    const MeshId sphereMeshIndex =
+    const engine::MeshId sphereMeshIndex =
         scene->addMesh(engine::fromGeo(asset::makeSphere(0.5f, 32, 32)), "MaterialLab.sphereMesh");
 
-    const MeshId unitQuadMeshIndex =
+    const engine::MeshId unitQuadMeshIndex =
         scene->addMesh(makeMaterialQuad(0.5f, 0.5f), "MaterialLab.unitQuadMesh");
 
-    const MeshId rampMeshIndex =
+    const engine::MeshId rampMeshIndex =
         scene->addMesh(makeMaterialQuad(3.0f, 0.5f), "MaterialLab.rampMesh");
 
-    const MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "MaterialLab.cubeMesh");
+    const engine::MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "MaterialLab.cubeMesh");
 
     // Sphere grid: perceptual roughness sweeps columns, metallic sweeps rows.
     constexpr int kGridSize = 5;
@@ -279,11 +279,11 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     constexpr float kSphereRadius = 0.5f;
     for (int row = 0; row < kGridSize; ++row) {
         for (int col = 0; col < kGridSize; ++col) {
-            MaterialRecord material;
+            engine::MaterialRecord material;
             material.albedo = srgbToLinear(glm::vec4(1.0f));
             material.roughness = 0.05f + static_cast<float>(col) * (1.0f - 0.05f) / (kGridSize - 1);
             material.metallic = static_cast<float>(row) / (kGridSize - 1);
-            const MaterialId materialIndex = scene->addMaterial(material);
+            const engine::MaterialId materialIndex = scene->addMaterial(material);
 
             const glm::vec3 position{kMaterialLaneX + static_cast<float>(col - 2) * kGridSpacing,
                                      static_cast<float>(row - 2) * kGridSpacing, 0.0f};
@@ -312,9 +312,9 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     constexpr float kPatchY = 1.5f;
     constexpr float kPatchSpacing = 1.2f;
     for (size_t i = 0; i < kPatchColors.size(); ++i) {
-        MaterialRecord material;
+        engine::MaterialRecord material;
         material.albedo = srgbToLinear(glm::vec4(kPatchColors[i].srgb, 1.0f));
-        const MaterialId materialIndex = scene->addMaterial(material);
+        const engine::MaterialId materialIndex = scene->addMaterial(material);
 
         const glm::vec3 position{kTextureLaneX + (static_cast<float>(i) - 2.5f) * kPatchSpacing,
                                  kPatchY, 0.0f};
@@ -338,12 +338,12 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     if (!rampTexture) {
         return std::unexpected(uploadFailure(std::move(rampTexture.error())));
     }
-    const TextureId rampTexturePtr = scene->addTexture(std::move(*rampTexture));
+    const engine::TextureId rampTexturePtr = scene->addTexture(std::move(*rampTexture));
 
-    MaterialRecord rampMaterial;
+    engine::MaterialRecord rampMaterial;
     rampMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     rampMaterial.diffuse = rampTexturePtr;
-    const MaterialId rampMaterialIndex = scene->addMaterial(rampMaterial);
+    const engine::MaterialId rampMaterialIndex = scene->addMaterial(rampMaterial);
 
     constexpr float kRampY = 0.0f;
     const glm::vec3 rampPosition{kTextureLaneX, kRampY, 0.0f};
@@ -367,12 +367,12 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     if (!normalTexture) {
         return std::unexpected(uploadFailure(std::move(normalTexture.error())));
     }
-    const TextureId normalTexturePtr = scene->addTexture(std::move(*normalTexture));
+    const engine::TextureId normalTexturePtr = scene->addTexture(std::move(*normalTexture));
 
-    MaterialRecord normalMaterial;
+    engine::MaterialRecord normalMaterial;
     normalMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     normalMaterial.normalMap = normalTexturePtr;
-    const MaterialId normalMaterialIndex = scene->addMaterial(normalMaterial);
+    const engine::MaterialId normalMaterialIndex = scene->addMaterial(normalMaterial);
 
     constexpr float kNormalProbeY = -1.5f;
     const glm::vec3 normalProbePosition{kTextureLaneX, kNormalProbeY, 0.0f};
@@ -387,8 +387,8 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     // amplification) so each lands in its own tangent-space band alongside the grid's -- see the
     // file-level comment above for the derivation and the corresponding test in
     // Tests/EngineSceneTests.cpp that verifies it in screen space.
-    MaterialRecord depthProbeMaterial; // default albedo/roughness/fresnel
-    const MaterialId depthProbeMaterialIndex = scene->addMaterial(depthProbeMaterial);
+    engine::MaterialRecord depthProbeMaterial; // default albedo/roughness/fresnel
+    const engine::MaterialId depthProbeMaterialIndex = scene->addMaterial(depthProbeMaterial);
 
     struct DepthProbe {
         const char* name;
@@ -432,12 +432,12 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     if (!checkerTexture) {
         return std::unexpected(uploadFailure(std::move(checkerTexture.error())));
     }
-    const TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
+    const engine::TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
 
-    MaterialRecord checkerMaterial;
+    engine::MaterialRecord checkerMaterial;
     checkerMaterial.albedo = srgbToLinear(glm::vec4(1.0f));
     checkerMaterial.diffuse = checkerTexturePtr;
-    const MaterialId checkerMaterialIndex = scene->addMaterial(checkerMaterial);
+    const engine::MaterialId checkerMaterialIndex = scene->addMaterial(checkerMaterial);
 
     constexpr float kMipProbeZ = kCameraDistance + 15.0f;
     const glm::vec3 mipProbePosition{0.0f, 0.0f, kMipProbeZ};
@@ -466,4 +466,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     return scene;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes

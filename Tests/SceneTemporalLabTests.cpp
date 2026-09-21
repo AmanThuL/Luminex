@@ -6,7 +6,7 @@ TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world p
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadTemporalLabScene(**device);
+    auto scene = lmx::scenes::loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -57,7 +57,7 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
           "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadTemporalLabScene(**device);
+    auto scene = lmx::scenes::loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -130,7 +130,7 @@ TEST_CASE("loadTemporalLabScene's tracks close their loop and hit their document
 TEST_CASE("loadTemporalLabScene frames its probes and keeps its poles separated", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = loadTemporalLabScene(**device);
+    auto scene = lmx::scenes::loadTemporalLabScene(**device);
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 

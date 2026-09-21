@@ -27,7 +27,7 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::engine {
+namespace lmx::scenes {
 
 namespace {
 
@@ -151,24 +151,24 @@ float phase(double time, double seconds) {
 //   radians and pitch holds at -0.15 radians, which frames the floor and every probe.
 //   initialCamera is the track's first key: (0, 3, 10), yaw 0, pitch -0.15, 45 degree vertical
 //   FOV.
-asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device& device) {
-    auto scene = std::make_unique<Scene>();
+asset::AssetResult<std::unique_ptr<engine::Scene>> loadTemporalLabScene(rojoRHI::Device& device) {
+    auto scene = std::make_unique<engine::Scene>();
     scene->name = "TemporalLab";
 
     // makeGrid rather than engine::makePlane: the checker needs the 0..1 UVs only the grid
     // generator authors.
-    const MeshId planeMeshIndex = scene->addMesh(
+    const engine::MeshId planeMeshIndex = scene->addMesh(
         engine::fromGeo(asset::makeGrid(kFloorHalfExtent * 2.0f, kFloorHalfExtent * 2.0f, 2, 2)),
         "TemporalLab.floorMesh");
 
-    const MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "TemporalLab.cubeMesh");
+    const engine::MeshId cubeMeshIndex = scene->addMesh(engine::makeCube(), "TemporalLab.cubeMesh");
 
-    const MeshId sphereMeshIndex = scene->addMesh(
+    const engine::MeshId sphereMeshIndex = scene->addMesh(
         engine::fromGeo(asset::makeSphere(kOrbitSphereRadius, 32, 32)), "TemporalLab.sphereMesh");
 
     // A flat quad in the mesh's own XZ plane; the sign object rotates it 90 degrees about X so its
     // +Y face normal becomes +Z, standing it upright to face the camera.
-    const MeshId signMeshIndex = scene->addMesh(
+    const engine::MeshId signMeshIndex = scene->addMesh(
         engine::fromGeo(asset::makeGrid(kSignSize.x, kSignSize.y, 2, 2)), "TemporalLab.signMesh");
 
     const std::vector<uint8_t> checkerPixels = makeCheckerPixels();
@@ -184,30 +184,32 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     if (!checkerTexture) {
         return std::unexpected(uploadFailure(std::move(checkerTexture.error())));
     }
-    const TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
+    const engine::TextureId checkerTexturePtr = scene->addTexture(std::move(*checkerTexture));
 
-    const auto addMaterial = [&](const glm::vec3& srgb, float roughness,
-                                 std::optional<TextureId> diffuse,
-                                 const glm::vec3& emissive = glm::vec3(0.0f)) -> MaterialId {
-        MaterialRecord material;
+    const auto addMaterial =
+        [&](const glm::vec3& srgb, float roughness, std::optional<engine::TextureId> diffuse,
+            const glm::vec3& emissive = glm::vec3(0.0f)) -> engine::MaterialId {
+        engine::MaterialRecord material;
         material.albedo = glm::vec4(srgbToLinear(srgb), 1.0f);
         material.roughness = roughness;
         material.metallic = 0.0f;
         material.diffuse = diffuse;
         material.emissive = emissive;
-        const MaterialId index = scene->addMaterial(material);
+        const engine::MaterialId index = scene->addMaterial(material);
         return index;
     };
-    const MaterialId floorMaterial = addMaterial(glm::vec3(1.0f), 0.8f, checkerTexturePtr);
-    const MaterialId rotatingMaterial =
+    const engine::MaterialId floorMaterial = addMaterial(glm::vec3(1.0f), 0.8f, checkerTexturePtr);
+    const engine::MaterialId rotatingMaterial =
         addMaterial(glm::vec3(0.85f, 0.25f, 0.2f), 0.5f, std::nullopt);
-    const MaterialId referenceMaterial =
+    const engine::MaterialId referenceMaterial =
         addMaterial(glm::vec3(0.25f, 0.5f, 0.85f), 0.5f, std::nullopt);
-    const MaterialId orbitMaterial = addMaterial(glm::vec3(0.95f, 0.8f, 0.2f), 0.3f, std::nullopt);
-    const MaterialId poleMaterial = addMaterial(glm::vec3(0.9f), 0.6f, std::nullopt);
-    const MaterialId invalidMaterial =
+    const engine::MaterialId orbitMaterial =
+        addMaterial(glm::vec3(0.95f, 0.8f, 0.2f), 0.3f, std::nullopt);
+    const engine::MaterialId poleMaterial = addMaterial(glm::vec3(0.9f), 0.6f, std::nullopt);
+    const engine::MaterialId invalidMaterial =
         addMaterial(glm::vec3(0.5f, 0.15f, 0.6f), 0.5f, std::nullopt);
-    const MaterialId signMaterial = addMaterial(glm::vec3(0.2f), 0.9f, std::nullopt, kSignEmissive);
+    const engine::MaterialId signMaterial =
+        addMaterial(glm::vec3(0.2f), 0.9f, std::nullopt, kSignEmissive);
 
     Aabb aabb = emptyAabb();
     const auto expandAabb = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
@@ -216,7 +218,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     };
 
     const auto addObject = [&](std::string name, const glm::vec3& position, const glm::vec3& scale,
-                               MeshId meshIndex, MaterialId materialIndex,
+                               engine::MeshId meshIndex, engine::MaterialId materialIndex,
                                engine::MotionClass motionClass) -> uint32_t {
         const auto index = static_cast<uint32_t>(scene->objects.size());
         scene->addObject({.name = std::move(name),
@@ -327,7 +329,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
 
     scene->boundingSphere = toVec4(boundingSphere(aabb));
 
-    if (auto sky = attachNeutralEnvironment(device, *scene, "TemporalLab"); !sky) {
+    if (auto sky = engine::attachNeutralEnvironment(device, *scene, "TemporalLab"); !sky) {
         return std::unexpected(sky.error());
     }
 
@@ -345,4 +347,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     return scene;
 }
 
-} // namespace lmx::engine
+} // namespace lmx::scenes
