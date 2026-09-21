@@ -8,7 +8,7 @@
 #include "App/Model/MeasurementRun.h"
 #include "Engine/Scene/SceneTableStats.h"
 #include "Render/Graph/CompiledFrameRecord.h"
-#include "Render/Visibility.h"
+#include "Render/Passes/Visibility/Visibility.h"
 
 namespace lmx::app {
 /// Collects actual runtime file hashes, device, OS and instrumentation environment before timing.

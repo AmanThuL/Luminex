@@ -2,7 +2,7 @@
 /// @file Visibility.cpp
 /// @brief Implements five-plane conservative classification from canonical shared rows.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/Visibility.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer/SceneView.h"
 

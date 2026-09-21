@@ -3,7 +3,7 @@
 /// @brief Declares CPU draw preparation and three paced GPU submission slots.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "Render/Visibility.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include <array>
 #include <memory>
 #include <optional>

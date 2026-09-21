@@ -2,7 +2,7 @@
 /// @file VisibilityTables.cpp
 /// @brief Builds absolute canonical ranges for deterministic GPU visibility.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/VisibilityTables.h"
+#include "Render/Passes/Visibility/VisibilityTables.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 

@@ -7,8 +7,8 @@
 #include "Render/BloomStage.h"
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"
-#include "Render/GpuVisibility.h"
 #include "Render/OcclusionReference.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/VendorTemporalScaler.h"
 #include <chrono>
 

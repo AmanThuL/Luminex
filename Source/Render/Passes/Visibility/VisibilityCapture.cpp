@@ -2,7 +2,7 @@
 /// @file VisibilityCapture.cpp
 /// @brief Registers GPU visibility record layouts for labelled capture inspection.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/VisibilityTables.h"
+#include "Render/Passes/Visibility/VisibilityTables.h"
 #include <rojoRHI/CaptureSchema.h>
 
 namespace lmx::render {
