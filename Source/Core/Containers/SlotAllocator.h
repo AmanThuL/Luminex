@@ -56,6 +56,11 @@ public:
                m_slots[slot].generation == generation;
     }
 
+    /// Returns whether `slot` exists and is live, whatever its generation.
+    [[nodiscard]] bool live(uint32_t slot) const {
+        return slot < m_slots.size() && m_slots[slot].live;
+    }
+
     /// Returns the current generation of an existing slot, live or dead.
     uint16_t generation(uint32_t slot) const {
         LMX_ASSERT(slot < m_slots.size(), "slot is out of range");

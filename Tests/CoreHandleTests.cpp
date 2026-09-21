@@ -129,3 +129,15 @@ TEST_CASE("slot allocator never resolves stale or out-of-range slots", "[core]")
     CHECK_FALSE(slots.resolves(0, 1));
     CHECK(slots.resolves(0, 2));
 }
+
+//======================================================================================================================
+TEST_CASE("slot allocator reports a slot live until it is released", "[core]") {
+    lmx::SlotAllocator slots;
+    CHECK_FALSE(slots.live(0));
+    const auto slot = slots.allocate();
+    CHECK(slots.live(slot));
+    slots.release(slot);
+    CHECK_FALSE(slots.live(slot));
+    CHECK_FALSE(slots.live(slot + 1));
+    CHECK_FALSE(slots.live(0xFFFFFFFFu));
+}
