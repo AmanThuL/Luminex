@@ -141,7 +141,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   absolute. Interactive Dump exports the displayed frame. Procedures, recovery and exposure/bloom
   parity checks: `docs/guides/gpu-debugging.md`.
 ## Architecture
-`Source/Core` (lmx:: log/assert, alignment, colour transfer, file/JSON/numeric helpers, finite AABBs and their corner transform (`Bounds.h`), and dispatch division; public spdlog/glm) and, independently, the root `RojoRHI/` component, with no Core dependency, its own private `RojoRHI/Source/Base` (assert/log/align/JSON) and one public `RojoRHI/Include/rojoRHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RojoRHI/xmake.lua` plus `RojoRHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RojoRHI`); the repository root includes `RojoRHI/xmake/targets.lua` and nothing else from the component. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui patch and buffer probe (`RojoRHI/Include/rojoRHI`: public `rojoRHI`
+`Source/Core` (lmx:: `Diagnostics/` log/assert; `IO/` file/JSON; `Math/` alignment, dispatch division, colour transfer, finite AABBs with their corner transform (`Aabb.h`), spheres, frusta, reversed-infinite-Z/orthographic-fit projections, low-discrepancy sequences, IBL sampling measures and TRS transforms; `Containers/` a generational handle with its slot allocator, a dirty set, an interval and a ring buffer; `Util/` numeric parsing, SHA-256, a stopwatch and ASCII lowercasing; public spdlog/glm) and, independently, the root `RojoRHI/` component, with no Core dependency, its own private `RojoRHI/Source/Base` (assert/log/align/JSON) and one public `RojoRHI/Include/rojoRHI/Message.h` callback (severity, text; unset writes stderr) that `Render/RhiLog` forwards into spdlog/Console for App and the Luminex `Tests` binary. Standalone `RojoRHI/xmake.lua` plus `RojoRHI/xmake/targets.lua`, `setup.lua` and `shaders.lua` configure/build/test it alone (`xmake -P RojoRHI`); the repository root includes `RojoRHI/xmake/targets.lua` and nothing else from the component. `RojoRHI/Tests`/`RojoRHI/Shaders/Tests` hold its own contract/GPU suite (`RojoRHITests`, linking only `RojoRHI`); `RojoRHI/Tools` holds its header check, ImGui patch and buffer probe (`RojoRHI/Include/rojoRHI`: public `rojoRHI`
 interfaces with **no Metal or ImGui types**; `RojoRHI/Source`: shared implementation;
 `RojoRHI/Backends/Metal4/Source`: the only backend, with metal-cpp, 3 frames in flight, argument tables (16 buffer / 16 texture / 8 sampler slots; texture slots cleared at each render/compute pass)
 + a per-frame-slot growable frame-data page arena with a checked recycle invariant, residency set,
@@ -157,14 +157,15 @@ capability, `TemporalScaler` owns vendor history, and the timed `CommandList::te
 between passes with `ExternalRead`/`ExternalWrite` barriers. MetalFX uses a fence handoff and a private
 output copied to CPU-readable outputs; `R16Float` supports sampled/storage exposure texels; `R32Float` supports sampled/storage/CPU-readable HZB texels; `BufferDesc::cpuWrite` enables checked nonempty `Buffer::write(offset, data, size)` host uploads only after all GPU use of the range retires (paced slot or waitIdle); placed private buffers reject it;
 `RojoRHIMetal4ImGui`: optional ImGui glue target; maintained backend patch quarantines each slot's used vertex/index buffers until its next paced visit, preventing native-window uploads from overwriting main-window GPU reads) → `Source/Engine/Asset` (lmx::asset: CPU DDS/glTF/Radiance HDR/PNG/BMP loaders and writers,
-GeometryGenerator, deterministic environment/IBL generation, texture baking and SHA-256,
-repository asset discovery, transform decomposition, clip data and sampling; depends on Core and
-RHI format/descriptor headers only) + `Source/Engine` outside `Asset` (lmx::engine: `Camera`,
-CPU `MeshData`/`Vertex`, `SceneTables.h` shared row ABI, `LocalLightMath`, `AlphaMode.h`,
-`LocalLight.h`, `DrawItem.h`, `DirectionalLight.h`, `MotionClass.h`, `Scene`/`SceneLibrary`, GPU
-DDS/cubemap/IBL uploads, environment rig, labs, source names, shared mesh bounds/world-row updates, initial camera,
+GeometryGenerator, deterministic environment/IBL generation, texture baking,
+repository asset discovery, clip data and sampling; depends on Core and
+RHI format/descriptor headers only) + `Source/Engine` outside `Asset` (lmx::engine: `View/Camera`,
+`Geometry/` CPU `MeshData`/`Vertex`, `Lights/LocalLightMath`, `Material/AlphaMode.h`,
+`Lights/LocalLight.h`, `Scene/DrawItem.h`, `Lights/DirectionalLight.h`, `Scene/MotionClass.h`,
+`Scene/SceneTables.h` shared row ABI, `Scene`, GPU
+DDS/cubemap/IBL uploads, environment rig, source names, shared mesh bounds/world-row updates, initial camera,
 playback and previous transforms; generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` reject stale/foreign handles; add/finalize builds one immutable rebased vertex/index pool including sky. Stable row slots survive removal/reorder; three paced table buffers per kind update only dirty rows. Growth doubles capacity and retires old buffers at lastFrame+3; new instances seed their previous pose;
-eight catalog scenes include VisibilityLab, LightLab and optional San Miguel with deterministic 12-second rails, plus Sponza's 120-second two-level tour; localLights() includes disabled identities, enabledLightCount()/render liveLightCount count enabled lights, and only pre-finalize authored lights receive orbit indices; depends on Core, Asset and the public RojoRHI headers) → `Source/Render` (lmx::render, depending on Engine's `Camera`/`SceneTables.h` vocabulary: the
+localLights() includes disabled identities, enabledLightCount()/render liveLightCount count enabled lights, and only pre-finalize authored lights receive orbit indices; depends on Core, Asset and the public RojoRHI headers) → `Source/Render` (lmx::render, depending on Engine's `Camera`/`SceneTables.h` vocabulary: the
 validating `RenderGraph` — raster/compute/copy/external passes with per-subresource uses (including
 extra colour attachments) over imported resources and over one-frame transients the graph creates,
 dead-pass culling from declared sinks only, conservative aliasing of lifetime-disjoint transients
@@ -190,11 +191,12 @@ motion/jitter/content extents. The scaler resets on engine reset, vendor re-entr
 engine history stays valid across native/vendor switches. `lmx.pass.temporal.vendor.pack` feeds
 `lmx.pass.temporal.vendor`, with native fallback/status and extent-scoped creation retry (ADR 0017).
 `ResolutionController` is a pure, App-driven policy that proposes a render scale from a retired frame's summed GPU pass time (ADR 0016)) →
+`Source/Scenes` (lmx::scenes: the catalog moved out of Engine — `SceneLibrary`, VisibilityLab, LightLab and optional San Miguel with deterministic 12-second rails, plus Sponza's 16 static lights and 120-second two-level tour; depends on Core, Asset, Engine and the public RojoRHI headers; linked by AppModel, App and Tests) →
 `Source/App/Model` (AppModel static library linked by App and Tests; pure editor/capture models,
 shared SceneSession and record observers; Tests compiles its own C++ only; no SDL/ImGui/Metal/
 RenderGraph dependency. `SceneSession` retains per-scene authored transform/light defaults on
 first activation and performs targeted current-time edits/resets; editor/capture call `prepareFrame` after `beginFrame` before declaration. `SceneTableDisplay` formats the Scene tables topic counts/capacities, writes, slot, growth and retirement. `EditorRenderDefaults` defines
-independent rendering reset scopes; `SelectionBounds` uses Core's shared AABB transform (`Bounds.h`) on mesh bounds
+independent rendering reset scopes; `SelectionBounds` uses Core's shared AABB transform (`Math/Aabb.h`) on mesh bounds
 for framing. `TemporalEditorState` owns scene generation, camera cuts, persistent reset events
 paired with declared-frame counts, and compatible live retired timing. Renderer's
 per-frame reset field retains its original meaning. `DynamicResolutionState::lastObservedFrame`
@@ -235,7 +237,7 @@ SelectionMask and SelectionOutline (editor-only).
   and develop a new experiment on a short-lived `exp/<topic>` branch; only conclusions, ADRs, and
   adopted production code return to `main`.
 - Lighting math runs in scene-linear space and is pre-exposed before the scene target sees it;
-  authored color constants, including the editor's clear color, decode via `lmx::srgbToLinear` in `Core/Color.h` once at scene build or
+  authored color constants, including the editor's clear color, decode via `lmx::srgbToLinear` in `Core/Math/Color.h` once at scene build or
   pass declaration. Nothing upstream of `Shaders/Passes/Display/DisplayTransform.slang` encodes sRGB.
 - Public-facing copy (README, GitHub About, release text, gallery captions) leads with shipped
   rendering behavior and uses plain feature themes for future work. It never exposes milestone
