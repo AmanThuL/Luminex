@@ -63,4 +63,40 @@ inline std::optional<Aabb> transformAabb(const glm::mat4& transform, const Aabb&
     return world;
 }
 
+/// Returns bounds with no extent, ready to accumulate points with expand().
+inline Aabb emptyAabb() {
+    return Aabb{glm::vec3(std::numeric_limits<float>::max()),
+                glm::vec3(std::numeric_limits<float>::lowest())};
+}
+
+/// Grows bounds to include a point, component-wise.
+inline void expand(Aabb& bounds, const glm::vec3& point) {
+    bounds.minimum = glm::min(bounds.minimum, point);
+    bounds.maximum = glm::max(bounds.maximum, point);
+}
+
+/// Returns the midpoint of minimum and maximum.
+inline glm::vec3 center(const Aabb& bounds) {
+    return (bounds.minimum + bounds.maximum) * 0.5f;
+}
+
+/// Returns the squared distance from a point to the nearest point on bounds; zero when inside.
+inline float distanceSquared(const Aabb& bounds, const glm::vec3& point) {
+    float delta[3];
+    for (unsigned axis = 0; axis < 3; ++axis) {
+        const int a = int(axis);
+        delta[axis] = 0.0f;
+        if (point[a] < bounds.minimum[a]) {
+            delta[axis] = bounds.minimum[a] - point[a];
+        } else if (point[a] > bounds.maximum[a]) {
+            delta[axis] = point[a] - bounds.maximum[a];
+        }
+    }
+    const float x = delta[0] * delta[0];
+    const float y = delta[1] * delta[1];
+    const float z = delta[2] * delta[2];
+    const float xy = x + y;
+    return xy + z;
+}
+
 } // namespace lmx
