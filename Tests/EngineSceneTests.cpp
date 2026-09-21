@@ -1,8 +1,8 @@
 #include "App/Model/SceneSession.h"
+#include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Types/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/SponzaLightRig.h"
 #include "SceneTableTestSupport.h"
 
 #include <cstring>

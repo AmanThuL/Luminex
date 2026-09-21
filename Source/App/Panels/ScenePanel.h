@@ -9,8 +9,8 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
+#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
-#include "Scene/SceneLibrary.h"
 
 #include <optional>
 #include <string>

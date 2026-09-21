@@ -3,7 +3,7 @@
 /// @brief Implements the scene catalog and lazy scene construction.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/SceneLibrary.h"
+#include "Engine/Catalog/SceneLibrary.h"
 
 #include "Asset/RepositoryAsset.h"
 

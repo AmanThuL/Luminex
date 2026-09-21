@@ -3,7 +3,7 @@
 /// @brief Bakes an arc-length-paced Sponza flythrough with rounded corridor turns.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/SponzaCameraTour.h"
+#include "Engine/Catalog/SponzaCameraTour.h"
 
 #include "Engine/Scene/Scene.h"
 

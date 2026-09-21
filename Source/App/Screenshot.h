@@ -5,8 +5,8 @@
 
 #pragma once
 #include "App/Model/AppOptions.h"
+#include "Engine/Catalog/SceneLibrary.h"
 #include "Render/SceneView.h"
-#include "Scene/SceneLibrary.h"
 
 #include <cstdint>
 #include <filesystem>

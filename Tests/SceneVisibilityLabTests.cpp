@@ -3,9 +3,9 @@
 /// @brief Tests visibility-lab population, boundary coverage, and deterministic camera sweeps.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Catalog/SceneLibrary.h"
 #include "Render/SceneViewBuilder.h"
 #include "Render/Visibility.h"
-#include "Scene/SceneLibrary.h"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -7,8 +7,8 @@
 
 #include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
+#include "Engine/Catalog/LightLab.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/LightLab.h"
 
 #include <algorithm>
 #include <iterator>
