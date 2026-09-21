@@ -9,7 +9,7 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
 #include <optional>

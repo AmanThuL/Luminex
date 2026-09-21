@@ -5,8 +5,8 @@
 
 #pragma once
 
+#include "Engine/Scene/SceneIds.h"
 #include "Engine/Types/AlphaMode.h"
-#include "Scene/SceneIds.h"
 
 #include <glm/glm.hpp>
 

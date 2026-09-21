@@ -3,8 +3,8 @@
 /// @brief Tests coverage revisions and scene-independent identity tokens used by occlusion history.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Engine/Scene/Scene.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -5,7 +5,7 @@
 
 #include "Scene/LightLab.h"
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include "Asset/GeometryGenerator.h"
 #include "Core/Assert.h"

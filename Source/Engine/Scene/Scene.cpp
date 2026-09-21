@@ -3,7 +3,7 @@
 /// @brief Implements scene transforms, views, and fetched-scene construction.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 #include "Scene/SponzaLightRig.h"
 
 #include "Scene/SponzaCameraTour.h"

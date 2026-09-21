@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include <span>
 #include <vector>

@@ -6,8 +6,8 @@
 #pragma once
 
 #include "Asset/Asset.h"
+#include "Engine/Scene/Scene.h"
 #include "Scene/IblUpload.h"
-#include "Scene/Scene.h"
 #include <rojoRHI/RHI.h>
 
 #include <memory>

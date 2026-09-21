@@ -5,7 +5,7 @@
 
 #include "Scene/SponzaCameraTour.h"
 
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 
 #include <glm/gtc/constants.hpp>
 

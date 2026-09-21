@@ -1,6 +1,6 @@
+#include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
 #include "Render/SceneViewBuilder.h"
-#include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
 

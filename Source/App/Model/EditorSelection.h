@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Scene/Scene.h"
+#include "Engine/Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
 #include <cstddef>
