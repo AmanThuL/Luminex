@@ -2,7 +2,7 @@
 /// @file GpuVisibility.cpp
 /// @brief Allocates paced visibility tables and declares deterministic GPU work generation.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/GpuVisibility.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>

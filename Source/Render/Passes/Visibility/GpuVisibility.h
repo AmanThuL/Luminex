@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 #include "Render/Graph/RenderGraph.h"
-#include "Render/VisibilityTables.h"
+#include "Render/Passes/Visibility/VisibilityTables.h"
 
 namespace lmx::render {
 /// Versioned GPU-produced draw inputs.

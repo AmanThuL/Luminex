@@ -2,7 +2,7 @@
 /// @file GpuVisibilityReadback.cpp
 /// @brief Decodes retired GPU states and independently verifies rows, arguments and counters.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/GpuVisibility.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include <algorithm>
 #include <numeric>
 #include <unordered_map>

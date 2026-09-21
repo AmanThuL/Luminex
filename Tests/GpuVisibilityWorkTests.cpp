@@ -1,5 +1,5 @@
 #include "GpuTestSupport.h"
-#include "Render/GpuVisibility.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
