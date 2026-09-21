@@ -2,7 +2,7 @@
 /// @file SelectionOutline.cpp
 /// @brief Implements visible selection coverage and a separate SDR outline composite.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/SelectionOutline.h"
+#include "Render/Passes/SelectionOutline/SelectionOutline.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/View/Camera.h"
