@@ -15,7 +15,7 @@
 #include <string_view>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Stable catalog handle whose index is meaningful only for the built-in scene catalog.
 struct SceneId {
@@ -83,4 +83,4 @@ private:
     std::vector<std::unique_ptr<Scene>> m_scenes;
 };
 
-} // namespace lmx::scene
+} // namespace lmx::engine

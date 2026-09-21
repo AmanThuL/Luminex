@@ -17,18 +17,18 @@ namespace {
 //======================================================================================================================
 // A scene needs no device to exist as data: meshes/textures/materials stay empty, only the fields
 // selection cares about (object names, light count) are filled.
-scene::Scene sceneWithObjects(std::vector<std::string> objectNames) {
-    scene::Scene scene;
+engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
+    engine::Scene scene;
     for (std::string& name : objectNames) {
-        scene::SceneObject object;
+        engine::SceneObject object;
         object.name = std::move(name);
         scene.objects.push_back(std::move(object));
     }
     return scene;
 }
 
-const scene::SceneId kSceneA{0};
-const scene::SceneId kSceneB{1};
+const engine::SceneId kSceneA{0};
+const engine::SceneId kSceneB{1};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
 constexpr size_t kFirstLightRow = 1 + kRenderingCategoryCount;
 constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
@@ -37,7 +37,7 @@ constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
 
 //======================================================================================================================
 TEST_CASE("resolveSelection keeps a selection whose scene and index are still valid", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate", "Barrel"});
+    const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
 
     const EditorSelection none{.sceneId = kSceneA, .subject = EditorSubject::None, .index = 0};
     const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
@@ -57,7 +57,7 @@ TEST_CASE("resolveSelection keeps a selection whose scene and index are still va
 
 //======================================================================================================================
 TEST_CASE("resolveSelection heals a stale scene id to None on the active scene", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate"});
     const EditorSelection stale{.sceneId = kSceneB, .subject = EditorSubject::Object, .index = 0};
 
     const EditorSelection resolved = resolveSelection(stale, kSceneA, scene);
@@ -69,7 +69,7 @@ TEST_CASE("resolveSelection heals a stale scene id to None on the active scene",
 
 //======================================================================================================================
 TEST_CASE("resolveSelection heals an out-of-range light index to None", "[app]") {
-    const scene::Scene scene = sceneWithObjects({});
+    const engine::Scene scene = sceneWithObjects({});
     const EditorSelection outOfRange{
         .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 3};
 
@@ -81,7 +81,7 @@ TEST_CASE("resolveSelection heals an out-of-range light index to None", "[app]")
 
 //======================================================================================================================
 TEST_CASE("resolveSelection heals an out-of-range object index to None", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate"});
     const EditorSelection outOfRange{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 1};
 
@@ -166,7 +166,7 @@ TEST_CASE("repeated switching never restores a stale prior-scene selection", "[a
 
 //======================================================================================================================
 TEST_CASE("scene selection rows follow the spec's fixed group and item order", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate", "Barrel"});
+    const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
 
@@ -285,7 +285,7 @@ TEST_CASE("rendering category validation and scene switches preserve selection p
 //======================================================================================================================
 // Two objects sharing a display name still occupy distinct rows: index, not text, is identity.
 TEST_CASE("duplicate object display names keep distinct row identity", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate", "Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate", "Crate"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "crate");
 
@@ -298,7 +298,7 @@ TEST_CASE("duplicate object display names keep distinct row identity", "[app]") 
 
 //======================================================================================================================
 TEST_CASE("the scene filter matches display names case-insensitively", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate"});
 
     REQUIRE(buildSceneSelectionRows(scene, "CAM").size() == 1);
     REQUIRE(buildSceneSelectionRows(scene, "cam").size() == 1);
@@ -307,7 +307,7 @@ TEST_CASE("the scene filter matches display names case-insensitively", "[app]") 
 
 //======================================================================================================================
 TEST_CASE("a filter matching nothing returns an empty row list", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "nonexistent");
 
@@ -318,7 +318,7 @@ TEST_CASE("a filter matching nothing returns an empty row list", "[app]") {
 // The filter only changes visibility: a filtered-out selection is still resolvable, and clearing
 // the filter reveals its row again at the same identity.
 TEST_CASE("a filtered-out selection is retained and revealed when the filter clears", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate", "Barrel"});
+    const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
     const EditorSelection selection{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
 
@@ -346,7 +346,7 @@ TEST_CASE("a filtered-out selection is retained and revealed when the filter cle
 
 //======================================================================================================================
 TEST_CASE("nextVisibleRow and previousVisibleRow walk visible rows in order", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate"});
+    const engine::Scene scene = sceneWithObjects({"Crate"});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
     const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
 
@@ -361,7 +361,7 @@ TEST_CASE("nextVisibleRow and previousVisibleRow walk visible rows in order", "[
 
 //======================================================================================================================
 TEST_CASE("visible-row navigation clamps at the first and last row", "[app]") {
-    const scene::Scene scene = sceneWithObjects({});
+    const engine::Scene scene = sceneWithObjects({});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
     const EditorSelection first{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
     const EditorSelection last{
@@ -376,7 +376,7 @@ TEST_CASE("visible-row navigation clamps at the first and last row", "[app]") {
 // A retained selection that the filter hid is not "found": both directions restart at the first
 // visible row, matching the panel's documented policy rather than guessing a lost position.
 TEST_CASE("navigation from a filtered-out selection starts at the first visible row", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"Crate", "Barrel"});
+    const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "barrel");
     const EditorSelection filteredOut{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
@@ -403,7 +403,7 @@ TEST_CASE("navigation over an empty row list finds nothing", "[app]") {
 
 //======================================================================================================================
 TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local identity", "[app]") {
-    const scene::Scene scene = sceneWithObjects({"", "Arch", "Arch"});
+    const engine::Scene scene = sceneWithObjects({"", "Arch", "Arch"});
     const auto rows = buildSceneSelectionRows(scene, "");
     REQUIRE(rows[kFirstObjectRow].displayLabel == "Unnamed object [0]");
     REQUIRE(sceneObjectLabel(scene, 1) == "Arch [object 1]");
@@ -419,7 +419,7 @@ TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local ide
 
 //======================================================================================================================
 TEST_CASE("primitive qualifiers are compact but full source names remain searchable", "[app]") {
-    scene::Scene scene = sceneWithObjects({"Sponza / arch", "Sponza / leaf", "Courtyard / arch"});
+    engine::Scene scene = sceneWithObjects({"Sponza / arch", "Sponza / leaf", "Courtyard / arch"});
     scene.objects[0].sourceName = "Sponza";
     scene.objects[0].materialQualifier = "arch";
     scene.objects[1].sourceName = "Sponza";
@@ -444,7 +444,7 @@ TEST_CASE("primitive qualifiers are compact but full source names remain searcha
 //======================================================================================================================
 TEST_CASE("source hierarchy preserves distinct primitive identities and filtered parent groups",
           "[app]") {
-    scene::Scene scene =
+    engine::Scene scene =
         sceneWithObjects({"Hall / arch", "Courtyard / stone", "Hall / leaf", "Lamp"});
     scene.objects[0].sourceName = "Hall";
     scene.objects[0].materialQualifier = "arch";
@@ -491,9 +491,9 @@ TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses
 
 //======================================================================================================================
 TEST_CASE("Local light selections retain full identity through slot reuse", "[app][selection]") {
-    lmx::scene::Scene scene;
-    const auto sceneId = *lmx::scene::parseSceneId("light-lab");
-    const auto light = scene.addLight(lmx::render::LocalLight{});
+    lmx::engine::Scene scene;
+    const auto sceneId = *lmx::engine::parseSceneId("light-lab");
+    const auto light = scene.addLight(lmx::engine::LocalLight{});
     REQUIRE(light);
     const lmx::app::EditorSelection selected{
         .sceneId = sceneId, .subject = lmx::app::EditorSubject::LocalLight, .lightId = *light};
@@ -504,7 +504,7 @@ TEST_CASE("Local light selections retain full identity through slot reuse", "[ap
     REQUIRE(rows.front().lightId == *light);
     REQUIRE_FALSE(lmx::app::selectionHiddenByFilter(scene, selected, "point"));
     REQUIRE(scene.removeLight(*light));
-    REQUIRE(scene.addLight(lmx::render::LocalLight{}));
+    REQUIRE(scene.addLight(lmx::engine::LocalLight{}));
     REQUIRE(lmx::app::resolveSelection(selected, sceneId, scene).subject ==
             lmx::app::EditorSubject::None);
 }

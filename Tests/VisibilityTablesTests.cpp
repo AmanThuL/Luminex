@@ -9,8 +9,8 @@ using namespace lmx::render;
 //======================================================================================================================
 TEST_CASE("GPU candidate tables preserve sparse identities and canonical run order",
           "[render][visibility][submission]") {
-    std::vector<InstanceRow> rows(9);
-    std::vector<DrawItem> items(4);
+    std::vector<lmx::engine::InstanceRow> rows(9);
+    std::vector<lmx::engine::DrawItem> items(4);
     const std::array<uint32_t, 4> slots{8, 2, 6, 1};
     for (uint32_t i = 0; i < items.size(); ++i) {
         items[i].instanceRow = slots[i];
@@ -51,8 +51,8 @@ TEST_CASE("GPU candidate tables preserve sparse identities and canonical run ord
 TEST_CASE("GPU dense chunks include a carry beyond 256 chunks and empty views",
           "[render][visibility][submission]") {
     constexpr uint32_t count = 256 * 256 + 1;
-    std::vector<InstanceRow> rows(count);
-    std::vector<DrawItem> items(count);
+    std::vector<lmx::engine::InstanceRow> rows(count);
+    std::vector<lmx::engine::DrawItem> items(count);
     VisibilityResult all;
     all.visibleItems.resize(count);
     std::iota(all.visibleItems.begin(), all.visibleItems.end(), 0);
@@ -81,7 +81,7 @@ TEST_CASE("ordered fp32 visibility distinguishes one ulp around a plane", "[rend
     FrustumPlanes planes;
     planes.valid = true;
     planes.planes.fill({1, 0, 0, -1});
-    InstanceRow row;
+    lmx::engine::InstanceRow row;
     row.worldBoundsMin = row.worldBoundsMax = {std::nextafter(1.0f, 0.0f), 0, 0};
     REQUIRE(classifyInstance(planes, row, 0).state == VisibilityState::Rejected);
     row.worldBoundsMin.x = row.worldBoundsMax.x = std::nextafter(1.0f, 2.0f);
@@ -94,7 +94,7 @@ TEST_CASE("ordered visibility cancellation cannot contract into an FMA", "[rende
     planes.valid = true;
     planes.planes.fill({-0.1f, 1.0f, 0, 0});
     REQUIRE(std::fma(-0.1f, 10.0f, 1.0f) < 0.0f);
-    InstanceRow row;
+    lmx::engine::InstanceRow row;
     row.worldBoundsMin = row.worldBoundsMax = {10, 1, 0};
     REQUIRE(classifyInstance(planes, row, 0).state == VisibilityState::Visible);
     row.worldBoundsMin.x = row.worldBoundsMax.x = std::nextafter(10.0f, 11.0f);

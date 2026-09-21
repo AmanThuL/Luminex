@@ -11,7 +11,7 @@ namespace {
 //======================================================================================================================
 // A context naming a loaded scene, otherwise at EditorShell's own defaults -- the state every case
 // below starts from unless the point of the case is that field itself.
-ExposureResetContext loaded(scene::SceneId scene, bool autoExposureEnabled = false,
+ExposureResetContext loaded(engine::SceneId scene, bool autoExposureEnabled = false,
                             uint32_t width = 1920, uint32_t height = 1080) {
     return {.sceneId = scene,
             .autoExposureEnabled = autoExposureEnabled,
@@ -24,15 +24,15 @@ ExposureResetContext loaded(scene::SceneId scene, bool autoExposureEnabled = fal
 //======================================================================================================================
 TEST_CASE("the first frame resets: no scene has loaded yet", "[app]") {
     const ExposureResetContext previous; // sceneId unset -- construction default.
-    const ExposureResetContext current = loaded(scene::defaultSceneId());
+    const ExposureResetContext current = loaded(engine::defaultSceneId());
 
     REQUIRE(shouldResetExposure(previous, current));
 }
 
 //======================================================================================================================
 TEST_CASE("a scene switch resets", "[app]") {
-    const scene::SceneId first = scene::defaultSceneId();
-    const scene::SceneId second{.catalogIndex = first.catalogIndex + 1};
+    const engine::SceneId first = engine::defaultSceneId();
+    const engine::SceneId second{.catalogIndex = first.catalogIndex + 1};
 
     const ExposureResetContext previous = loaded(first);
     const ExposureResetContext current = loaded(second);
@@ -43,7 +43,7 @@ TEST_CASE("a scene switch resets", "[app]") {
 //======================================================================================================================
 TEST_CASE("enabling auto exposure resets", "[app]") {
     const ExposureResetContext previous =
-        loaded(scene::defaultSceneId(), /*autoExposureEnabled=*/false);
+        loaded(engine::defaultSceneId(), /*autoExposureEnabled=*/false);
     ExposureResetContext current = previous;
     current.autoExposureEnabled = true;
 
@@ -52,7 +52,7 @@ TEST_CASE("enabling auto exposure resets", "[app]") {
 
 //======================================================================================================================
 TEST_CASE("a successful resize resets", "[app]") {
-    const ExposureResetContext previous = loaded(scene::defaultSceneId());
+    const ExposureResetContext previous = loaded(engine::defaultSceneId());
     ExposureResetContext current = previous;
     current.width = previous.width + 1;
 
@@ -63,7 +63,7 @@ TEST_CASE("a successful resize resets", "[app]") {
 // Height alone is enough, symmetrically with width above -- the two are independent fields and a
 // change in either must be caught.
 TEST_CASE("a resize that only changes height resets", "[app]") {
-    const ExposureResetContext previous = loaded(scene::defaultSceneId());
+    const ExposureResetContext previous = loaded(engine::defaultSceneId());
     ExposureResetContext current = previous;
     current.height = previous.height + 1;
 
@@ -75,7 +75,7 @@ TEST_CASE("a resize that only changes height resets", "[app]") {
 // unlike enabling it, this is not one of spec 9's four triggers.
 TEST_CASE("disabling auto exposure does not reset", "[app]") {
     const ExposureResetContext previous =
-        loaded(scene::defaultSceneId(), /*autoExposureEnabled=*/true);
+        loaded(engine::defaultSceneId(), /*autoExposureEnabled=*/true);
     ExposureResetContext current = previous;
     current.autoExposureEnabled = false;
 
@@ -88,7 +88,7 @@ TEST_CASE("disabling auto exposure does not reset", "[app]") {
 // modelled here as comparing a context against an identical copy of itself, which is what every
 // call site that decides nothing changed effectively does.
 TEST_CASE("an unchanged context does not reset (a failed resize, or any other no-op)", "[app]") {
-    const ExposureResetContext previous = loaded(scene::defaultSceneId());
+    const ExposureResetContext previous = loaded(engine::defaultSceneId());
     const ExposureResetContext current = previous;
 
     REQUIRE_FALSE(shouldResetExposure(previous, current));
@@ -101,7 +101,7 @@ TEST_CASE("setAutoExposureEnabled writes settings and resets on the disabled->en
           "[app]") {
     EditorRenderSettings settings;
     settings.autoExposureEnabled = false;
-    ExposureResetContext exposureContext = loaded(scene::defaultSceneId(), false);
+    ExposureResetContext exposureContext = loaded(engine::defaultSceneId(), false);
     bool exposureResetPending = false;
 
     setAutoExposureEnabled(settings, exposureContext, exposureResetPending, true);
@@ -116,7 +116,7 @@ TEST_CASE("setAutoExposureEnabled writes settings without resetting on the enabl
           "[app]") {
     EditorRenderSettings settings;
     settings.autoExposureEnabled = true;
-    ExposureResetContext exposureContext = loaded(scene::defaultSceneId(), true);
+    ExposureResetContext exposureContext = loaded(engine::defaultSceneId(), true);
     bool exposureResetPending = false;
 
     setAutoExposureEnabled(settings, exposureContext, exposureResetPending, false);

@@ -16,13 +16,13 @@
 #include <limits>
 #include <string>
 
-namespace lmx::scene {
+namespace lmx::engine {
 namespace {
 constexpr double kDuration = 12.0;
 constexpr float kSpacing = 3.0f;
 
 //======================================================================================================================
-render::MeshData makeIcosphere() {
+engine::MeshData makeIcosphere() {
     const float golden = (1.0f + std::sqrt(5.0f)) * 0.5f;
     const std::array<glm::vec3, 12> positions{{{-1, golden, 0},
                                                {1, golden, 0},
@@ -40,7 +40,7 @@ render::MeshData makeIcosphere() {
                                           1, 5,  9, 5, 11, 4,  11, 10, 2,  10, 7, 6,  7, 1,  8,
                                           3, 9,  4, 3, 4,  2,  3,  2,  6,  3,  6, 8,  3, 8,  9,
                                           4, 9,  5, 2, 4,  11, 6,  2,  10, 8,  6, 7,  9, 8,  1}};
-    render::MeshData mesh;
+    engine::MeshData mesh;
     const auto vertex = [&](glm::vec3 normal) {
         normal = glm::normalize(normal);
         const glm::vec3 point = normal * 0.5f;
@@ -90,7 +90,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
     }
     auto scene = std::make_unique<Scene>();
     scene->name = "VisibilityLab";
-    auto cube = render::makeCube();
+    auto cube = engine::makeCube();
     for (size_t i = 0; i < cube.vertices.size(); ++i) {
         cube.vertices[i].u = (i % 4 == 1 || i % 4 == 2) ? 1.0f : 0.0f;
         cube.vertices[i].v = i % 4 >= 2 ? 1.0f : 0.0f;
@@ -121,15 +121,15 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         material.albedo = srgbToLinear(colors[i]);
         material.roughness = 0.35f + static_cast<float>(i) * 0.15f;
         if (i >= 2) {
-            material.alphaMode = render::AlphaMode::Mask;
+            material.alphaMode = engine::AlphaMode::Mask;
             material.diffuse = maskId;
             material.doubleSided = i == 3;
         }
         materials[i] = scene->addMaterial(material);
     }
     scene->objects.reserve(instanceCount);
-    render::Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
-                        glm::vec3(std::numeric_limits<float>::lowest())};
+    Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
+                glm::vec3(std::numeric_limits<float>::lowest())};
     const auto add = [&](std::string name, glm::vec3 position, float scale, uint32_t index) {
         scene->addObject({.name = std::move(name),
                           .position = position,
@@ -167,7 +167,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         opaque.roughness = 0.9f;
         const auto opaqueId = scene->addMaterial(opaque);
         auto masked = opaque;
-        masked.alphaMode = render::AlphaMode::Mask;
+        masked.alphaMode = engine::AlphaMode::Mask;
         masked.diffuse = maskId;
         masked.doubleSided = true;
         const auto maskedId = scene->addMaterial(masked);
@@ -225,4 +225,4 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
     return scene;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

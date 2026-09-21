@@ -13,7 +13,7 @@
 #include <filesystem>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& device) {
@@ -61,4 +61,4 @@ asset::AssetResult<std::unique_ptr<Scene>> loadSanMiguelScene(rojoRHI::Device& d
     return result;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

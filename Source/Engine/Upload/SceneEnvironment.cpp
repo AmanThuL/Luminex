@@ -18,7 +18,7 @@
 #include <string>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -41,7 +41,7 @@ asset::AssetResult<void> attachEnvironment(rojoRHI::Device& device, Scene& scene
                                            bool analyticLights, std::string_view label,
                                            ibl::GenerationOptions options) {
     // The sky pass recentres the sphere and forces it to the far plane; only enclosure matters.
-    scene.skySphere = scene.addMesh(render::fromGeo(asset::makeSphere(0.5f, 20, 20)),
+    scene.skySphere = scene.addMesh(engine::fromGeo(asset::makeSphere(0.5f, 20, 20)),
                                     std::string(label) + ".skySphere");
     scene.skyCubemap = std::move(skyCubemap);
 
@@ -94,4 +94,4 @@ asset::AssetResult<void> attachNeutralEnvironment(rojoRHI::Device& device, Scene
                              asset::ibl::makeConstantCubemap(skyRadiance, 1), true, label);
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

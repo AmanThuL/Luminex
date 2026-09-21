@@ -90,7 +90,7 @@ TEST_CASE("the jitter sequence repeats after its declared length", "[render][tem
 
 //======================================================================================================================
 TEST_CASE("jitter shifts clip x and y by two pixels of NDC per pixel", "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {1.0f, 2.0f, 3.0f};
     camera.yaw = 0.4f;
     camera.pitch = -0.2f;
@@ -114,7 +114,7 @@ TEST_CASE("jitter shifts clip x and y by two pixels of NDC per pixel", "[render]
 
 //======================================================================================================================
 TEST_CASE("zero jitter leaves the projection bit-identical", "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {-3.0f, 1.5f, 2.0f};
     camera.yaw = -0.9f;
     camera.pitch = 0.3f;
@@ -168,7 +168,7 @@ TEST_CASE("jitterTexelOffset flips y into texture space", "[render][temporal]") 
 //======================================================================================================================
 TEST_CASE("the jitter texel offset is the shift the jittered matrix applies",
           "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {2.0f, 1.0f, -4.0f};
     camera.yaw = 0.7f;
     camera.pitch = -0.15f;
@@ -209,7 +209,7 @@ TEST_CASE("renderSamplePosition maps an output pixel into the render image", "[r
 //======================================================================================================================
 TEST_CASE("the projection follows the output extent and the jitter the render extent",
           "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0.5f, 2.5f, -1.0f};
     camera.yaw = 1.1f;
     camera.pitch = 0.2f;
@@ -241,7 +241,7 @@ TEST_CASE("the projection follows the output extent and the jitter the render ex
 
 //======================================================================================================================
 TEST_CASE("the frame state carries the camera's own parameters", "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {4.0f, -1.0f, 0.5f};
     camera.fovY = glm::radians(75.0f);
     camera.nearZ = 0.25f;
@@ -258,7 +258,7 @@ TEST_CASE("the frame state carries the camera's own parameters", "[render][tempo
 
 //======================================================================================================================
 TEST_CASE("inverseViewProjection round-trips a world point", "[render][temporal]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {2.0f, 3.0f, 4.0f};
     camera.yaw = 1.1f;
     camera.pitch = -0.35f;
@@ -288,10 +288,10 @@ TEST_CASE("motion of a static point under a known camera translation", "[render]
     const FrameExtents extents = squareExtents(side);
     const float fovY = glm::radians(60.0f);
 
-    Camera previousCamera;
+    lmx::engine::Camera previousCamera;
     previousCamera.fovY = fovY;
     previousCamera.position = {0.0f, 0.0f, 0.0f};
-    Camera currentCamera = previousCamera;
+    lmx::engine::Camera currentCamera = previousCamera;
     const float shiftX = 0.4f;
     currentCamera.position = {shiftX, 0.0f, 0.0f};
 
@@ -316,7 +316,7 @@ TEST_CASE("motion of an object translated in front of a static camera", "[render
     const FrameExtents extents = squareExtents(side);
     const float fovY = glm::radians(60.0f);
 
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.fovY = fovY;
     const CameraFrameState state = buildCameraFrameState(camera, extents, {-0.4f, 0.1f});
 
@@ -336,7 +336,7 @@ TEST_CASE("motion of an object translated in front of a static camera", "[render
 //======================================================================================================================
 TEST_CASE("the jittered matrices do not leak into motion", "[render][temporal]") {
     const FrameExtents extents = squareExtents(256);
-    Camera camera;
+    lmx::engine::Camera camera;
     const CameraFrameState unjittered = buildCameraFrameState(camera, extents, {0.0f, 0.0f});
     const CameraFrameState jittered = buildCameraFrameState(camera, extents, {0.45f, -0.45f});
 

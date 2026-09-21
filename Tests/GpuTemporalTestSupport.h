@@ -26,7 +26,7 @@ using lmx::test::FixtureSceneView;
 
 namespace {
 
-using lmx::render::Camera;
+using lmx::engine::Camera;
 using lmx::render::Renderer;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMesh;

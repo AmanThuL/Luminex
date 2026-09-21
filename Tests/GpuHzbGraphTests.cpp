@@ -12,16 +12,16 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
     using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
-    auto scene = lmx::scene::loadVisibilityLabScene(**device, 1024);
+    auto scene = lmx::engine::loadVisibilityLabScene(**device, 1024);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);
     TransientPool pool(**device);
-    const auto camera = lmx::scene::cameraFromScene((*scene)->initialCamera);
+    const auto camera = lmx::engine::cameraFromScene((*scene)->initialCamera);
     for (uint32_t frame = 0; frame < 2; ++frame) {
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        std::vector<DrawItem> items;
+        std::vector<lmx::engine::DrawItem> items;
         auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.classifyMode = ClassifyMode::Gpu;
         view.submission = SubmissionMode::Indirect;

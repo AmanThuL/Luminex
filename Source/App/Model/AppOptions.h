@@ -48,8 +48,8 @@ render::ReconstructionMode temporalReconstructionMode(TemporalMode mode);
 /// Fully parsed, owned application startup configuration.
 struct AppOptions {
     RunMode mode = RunMode::Windowed; ///< Execution path selected by command-line options.
-    scene::SceneId initialScene = scene::defaultSceneId(); ///< Scene selected at startup.
-    std::filesystem::path screenshotPath;                  ///< Destination used in screenshot mode.
+    engine::SceneId initialScene = engine::defaultSceneId(); ///< Scene selected at startup.
+    std::filesystem::path screenshotPath;      ///< Destination used in screenshot mode.
     std::filesystem::path captureSequencePath; ///< New or empty directory for a frame sequence.
     /// Unsaved frames before the sequence; valid only with captureSequencePath.
     uint32_t warmup = 0;
@@ -79,9 +79,9 @@ struct AppOptions {
     uint32_t labOccluders = 0;     ///< Optional VisibilityLab slabs, 0..1,024.
     uint32_t labInstances = 4096;  ///< Total VisibilityLab instances, including its boundary lane.
     /// Local-light path.
-    render::LocalLightMode localLightMode = render::LocalLightMode::Clustered;
+    engine::LocalLightMode localLightMode = engine::LocalLightMode::Clustered;
     bool lightCheck = false; ///< Exact retired CPU/GPU clustered-list comparison.
-    render::LightDebugView lightDebugView = render::LightDebugView::Off; ///< Lighting diagnostic.
+    engine::LightDebugView lightDebugView = engine::LightDebugView::Off; ///< Lighting diagnostic.
     /// Capture metadata for the opt-in controller environment hook.
     bool dynamicResolution = false;
     bool localLightRig = true; ///< Authored Sponza rig; explicit off retains zero-light controls.

@@ -9,7 +9,7 @@
 
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoRHI::Device& device,
@@ -45,4 +45,4 @@ asset::AssetResult<std::unique_ptr<rojoRHI::Texture>> createTextureFromDds(rojoR
     return std::move(*texture);
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

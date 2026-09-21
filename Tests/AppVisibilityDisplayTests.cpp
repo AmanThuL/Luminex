@@ -11,8 +11,8 @@
 using namespace lmx;
 //======================================================================================================================
 TEST_CASE("Visibility display rejects stale identities and frame mismatches", "[app][visibility]") {
-    scene::Scene scene;
-    scene::SceneObject object;
+    engine::Scene scene;
+    engine::SceneObject object;
     object.id = {7, 2, 3};
     scene.objects.push_back(object);
     render::VisibilityStatus status;
@@ -61,8 +61,8 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
 //======================================================================================================================
 TEST_CASE("Selected object labels the matching declared or retired frame only",
           "[app][visibility]") {
-    scene::Scene scene;
-    scene::SceneObject object;
+    engine::Scene scene;
+    engine::SceneObject object;
     object.id = {7, 2, 3};
     scene.objects.push_back(object);
     render::VisibilityStatus status;
@@ -145,7 +145,7 @@ TEST_CASE("Visibility categories preserve failure diagnostics and separate pyram
 //======================================================================================================================
 TEST_CASE("Inspector visibility readings publish coherent owned frames at four Hz",
           "[app][visibility]") {
-    scene::Scene scene;
+    engine::Scene scene;
     app::VisibilityDisplay display;
     render::VisibilityStatus status;
     status.frameNumber = 1;

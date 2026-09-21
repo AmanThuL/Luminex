@@ -114,7 +114,7 @@ struct CameraFrameState {
 /// NDC scale from the render extent, so lowering the render scale reframes nothing; both extents
 /// must be non-empty and the render extent must not exceed the output on either axis. A jitter of
 /// (0, 0) leaves the jittered matrices identical to the plain ones.
-CameraFrameState buildCameraFrameState(const Camera& camera, const FrameExtents& extents,
+CameraFrameState buildCameraFrameState(const engine::Camera& camera, const FrameExtents& extents,
                                        glm::vec2 jitterPixels);
 
 /// Storage format of the `lmx.render.motion` target: a signed two-channel UV delta.

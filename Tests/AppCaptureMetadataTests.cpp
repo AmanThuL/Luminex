@@ -45,7 +45,7 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
     status.reconstruction = render::ReconstructionMode::NativeTaa;
     status.vendorFallback = render::VendorFallback::Unsupported;
     REQUIRE(
-        captureFrameMetadataJson(scene::defaultSceneId(), 32, 31, TemporalMode::Vendor,
+        captureFrameMetadataJson(engine::defaultSceneId(), 32, 31, TemporalMode::Vendor,
                                  render::TemporalDebugView::MotionVectors, 0.5f, status,
                                  "test GPU") ==
         R"({"scene":"sponza","frameCount":32,"simulationFrame":31,)"
@@ -55,12 +55,12 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
         R"("localLightMode":"clustered","lightDebugView":"off","lightCheck":false,)"
         R"("localLightRig":true,"labLights":256,"labLightPile":0,"lighting":null,"liveLightCount":0,)"
         R"("labInstances":4096,"device":"test GPU"})");
-    const auto off = captureFrameMetadataJson(scene::defaultSceneId(), 1, 0, TemporalMode::Off,
+    const auto off = captureFrameMetadataJson(engine::defaultSceneId(), 1, 0, TemporalMode::Off,
                                               render::TemporalDebugView::Off, 1, status, "GPU");
     REQUIRE(off.contains(R"("effectiveMode":"off")"));
     const auto configured = captureFrameMetadataJson(
-        scene::defaultSceneId(), 1, 0, TemporalMode::Off, render::TemporalDebugView::Off, 1, status,
-        "GPU", false, render::SubmissionMode::Batched, 1024);
+        engine::defaultSceneId(), 1, 0, TemporalMode::Off, render::TemporalDebugView::Off, 1,
+        status, "GPU", false, render::SubmissionMode::Batched, 1024);
     REQUIRE(configured.contains(
         R"("visibilityEnabled":false,"submission":"batched","classify":"cpu","classifyCheck":false,"visibility":null,"localLightMode":"clustered","lightDebugView":"off","lightCheck":false,"localLightRig":true,"labLights":256,"labLightPile":0,"lighting":null,"liveLightCount":0,"labInstances":1024)"));
 }
@@ -68,10 +68,10 @@ TEST_CASE("PNG frame facts identify actual reconstruction and fallback", "[app][
 //======================================================================================================================
 TEST_CASE("sequence frame records retain camera and temporal state with container filenames",
           "[app][capture]") {
-    render::Camera camera;
+    engine::Camera camera;
     camera.position = {1, 2, 3};
     render::SceneView view;
-    REQUIRE(view.localLightMode == render::LocalLightMode::Clustered);
+    REQUIRE(view.localLightMode == engine::LocalLightMode::Clustered);
     render::TemporalStatus status;
     status.reconstruction = render::ReconstructionMode::VendorTemporal;
     status.vendorName = "MetalFX";
@@ -95,9 +95,9 @@ TEST_CASE("sequence frame records retain camera and temporal state with containe
 TEST_CASE("capture metadata retains lighting requests and exact retired context",
           "[app][capture][light-check]") {
     lmx::app::AppOptions options;
-    options.localLightMode = lmx::render::LocalLightMode::Clustered;
+    options.localLightMode = lmx::engine::LocalLightMode::Clustered;
     options.lightCheck = true;
-    options.lightDebugView = lmx::render::LightDebugView::Missed;
+    options.lightDebugView = lmx::engine::LightDebugView::Missed;
     options.labLights = 1024;
     options.dynamicResolution = true;
     const auto manifest =

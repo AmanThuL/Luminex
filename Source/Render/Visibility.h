@@ -13,9 +13,12 @@
 #include <span>
 #include <vector>
 
-namespace lmx::render {
+namespace lmx::engine {
 /// Candidate geometry and texture bindings supplied by SceneView.
 struct DrawItem;
+} // namespace lmx::engine
+
+namespace lmx::render {
 /// Outward distance added to each normalized clipping half-space, in world units.
 constexpr float kVisibilityGuardWorldUnits = 1e-3f;
 /// Device that classifies candidate bounds.
@@ -136,11 +139,11 @@ struct VisibilityStatus {
 /// Extracts the five planes rasterization clips against, with the fixed outward guard.
 FrustumPlanes extractFrustumPlanes(const glm::mat4& viewProjection);
 /// Classifies one shared row; nonfinite inputs are always retained conservatively.
-InstanceVisibility classifyInstance(const FrustumPlanes& planes, const InstanceRow& row,
+InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::InstanceRow& row,
                                     uint32_t instanceRow, bool enabled = true,
                                     bool viewUnculled = false);
 /// Classifies candidate order against canonical uploaded CPU rows.
-VisibilityResult classifyView(const FrustumPlanes& planes, std::span<const DrawItem> items,
-                              const SceneTables& tables, bool enabled = true,
+VisibilityResult classifyView(const FrustumPlanes& planes, std::span<const engine::DrawItem> items,
+                              const engine::SceneTables& tables, bool enabled = true,
                               bool viewUnculled = false);
 } // namespace lmx::render

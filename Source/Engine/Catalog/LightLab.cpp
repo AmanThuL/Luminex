@@ -22,7 +22,7 @@
 #include <string>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -126,14 +126,14 @@ void addMaterialField(Scene& scene, glm::vec3& boundsMin, glm::vec3& boundsMax) 
     floorMaterial.roughness = 0.85f;
     floorMaterial.metallic = 0.0f;
     const MaterialId floorMaterialId = scene.addMaterial(floorMaterial);
-    const MeshId floorMesh = scene.addMesh(render::makePlane(kFloorHalfExtent), "LightLab.floor");
+    const MeshId floorMesh = scene.addMesh(engine::makePlane(kFloorHalfExtent), "LightLab.floor");
     scene.addObject({.name = "Floor", .mesh = floorMesh, .material = floorMaterialId});
     boundsMin = glm::min(boundsMin, glm::vec3(-kFloorHalfExtent, 0.0f, -kFloorHalfExtent));
     boundsMax = glm::max(boundsMax, glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
 
-    const MeshId pillarMesh = scene.addMesh(render::makeCube(), "LightLab.pillar");
+    const MeshId pillarMesh = scene.addMesh(engine::makeCube(), "LightLab.pillar");
     const MeshId sphereMesh =
-        scene.addMesh(render::fromGeo(asset::makeSphere(kSphereRadius, 24, 16)), "LightLab.sphere");
+        scene.addMesh(engine::fromGeo(asset::makeSphere(kSphereRadius, 24, 16)), "LightLab.sphere");
     const std::array<glm::vec3, 4> palette = lightPalette();
 
     std::array<MaterialId, kFieldColumnCount> materials;
@@ -189,10 +189,10 @@ float lightLabRange(uint32_t n) {
 }
 
 //======================================================================================================================
-std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile) {
-    LMX_ASSERT(n >= 1 && static_cast<uint64_t>(n) + pile <= render::kMaxLocalLights,
+std::vector<engine::LocalLight> lightLabLights(uint32_t n, uint32_t pile) {
+    LMX_ASSERT(n >= 1 && static_cast<uint64_t>(n) + pile <= engine::kMaxLocalLights,
                "LightLab requires 1..kMaxLocalLights total lights");
-    std::vector<render::LocalLight> lights;
+    std::vector<engine::LocalLight> lights;
     lights.reserve(static_cast<size_t>(n) + pile);
 
     const float range = lightLabRange(n);
@@ -213,7 +213,7 @@ std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile) {
             range * (kMinLightHeightFraction +
                      unitJitter(seed) * (kMaxLightHeightFraction - kMinLightHeightFraction));
 
-        render::LocalLight light;
+        engine::LocalLight light;
         const float orbitRadius = i % 4 == 2 ? spacing * kOrbitRadiusFraction : 0.0f;
         light.position = clearMaterialField(glm::vec3(x, y, z), orbitRadius);
         light.colour = palette[i % palette.size()];
@@ -222,21 +222,21 @@ std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile) {
                                              static_cast<float>(n));
         light.range = range;
         if (i % 4 == 1) {
-            light.type = render::LocalLightType::Spot;
+            light.type = engine::LocalLightType::Spot;
             const float tiltX = jitter(seed) * kSpotTilt;
             const float tiltZ = jitter(seed) * kSpotTilt;
             light.direction = glm::normalize(glm::vec3(tiltX, -1.0f, tiltZ));
             light.innerCone = kSpotInnerCone;
             light.outerCone = kSpotOuterCone;
         } else {
-            light.type = render::LocalLightType::Point;
+            light.type = engine::LocalLightType::Point;
         }
         lights.push_back(light);
     }
 
     for (uint32_t p = 0; p < pile; ++p) {
-        render::LocalLight light;
-        light.type = render::LocalLightType::Point;
+        engine::LocalLight light;
+        light.type = engine::LocalLightType::Point;
         light.position = lightLabPilePosition();
         light.colour = palette[p % palette.size()];
         light.intensity = kLightIntensity;
@@ -248,7 +248,7 @@ std::vector<render::LocalLight> lightLabLights(uint32_t n, uint32_t pile) {
 
 //======================================================================================================================
 std::vector<asset::LightOrbitTrack> lightLabTracks(uint32_t n, uint32_t pile) {
-    const std::vector<render::LocalLight> lights = lightLabLights(n, pile);
+    const std::vector<engine::LocalLight> lights = lightLabLights(n, pile);
     const uint32_t side = gridSide(n);
     const float spacing = (2.0f * kLightLabGridHalfExtent) / static_cast<float>(side);
 
@@ -300,15 +300,15 @@ std::vector<asset::CameraKey> lightLabCameraTrack() {
 //======================================================================================================================
 asset::AssetResult<std::unique_ptr<Scene>>
 loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCount) {
-    if (lightCount == 0 || lightCount > render::kMaxLocalLights) {
+    if (lightCount == 0 || lightCount > engine::kMaxLocalLights) {
         return std::unexpected(asset::AssetError{asset::AssetErrorCode::Malformed,
                                                  "LightLab lights must be 1.." +
-                                                     std::to_string(render::kMaxLocalLights)});
+                                                     std::to_string(engine::kMaxLocalLights)});
     }
-    if (static_cast<uint64_t>(lightCount) + pileCount > render::kMaxLocalLights) {
+    if (static_cast<uint64_t>(lightCount) + pileCount > engine::kMaxLocalLights) {
         return std::unexpected(asset::AssetError{
             asset::AssetErrorCode::Malformed, "LightLab lights plus light pile must not exceed " +
-                                                  std::to_string(render::kMaxLocalLights)});
+                                                  std::to_string(engine::kMaxLocalLights)});
     }
 
     auto scene = std::make_unique<Scene>();
@@ -319,7 +319,7 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
     glm::vec3 boundsMax(std::numeric_limits<float>::lowest());
     addMaterialField(*scene, boundsMin, boundsMax);
 
-    for (const render::LocalLight& light : lightLabLights(lightCount, pileCount)) {
+    for (const engine::LocalLight& light : lightLabLights(lightCount, pileCount)) {
         const auto added = scene->addLight(light);
         LMX_ASSERT(added.has_value(), "LightLab authored an invalid light");
     }
@@ -351,4 +351,4 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
     return scene;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

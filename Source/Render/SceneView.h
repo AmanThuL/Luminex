@@ -118,15 +118,15 @@ struct SceneView {
     bool classifyCheck = false;    ///< Compare retired GPU output against the CPU oracle.
     bool visibilityEnabled = true; ///< Conservatively cull camera candidates.
     SubmissionMode submission = SubmissionMode::Indirect; ///< CPU command preparation mode.
-    SceneTables tables;              ///< Borrowed geometry and paced row buffers for this frame.
-    std::span<const DrawItem> items; ///< Borrowed draw list for the current render call.
+    engine::SceneTables tables; ///< Borrowed geometry and paced row buffers for this frame.
+    std::span<const engine::DrawItem> items; ///< Borrowed draw list for the current render call.
     /// Light 0 is the only caster: it drives the shadow map, and it is the light the shadow factor
     /// multiplies. Lights 1 and 2 contribute without shadowing.
-    DirectionalLight lights[3];
+    engine::DirectionalLight lights[3];
     /// Both absent or both set. A sky needs geometry to rasterise and a cubemap to sample; either
     /// one alone would draw nothing or draw black, so the renderer skips the pass unless it has
     /// the pair.
-    std::optional<MeshRow> skySphere;
+    std::optional<engine::MeshRow> skySphere;
     rojoRHI::Texture* skyCubemap = nullptr; ///< Borrowed sky radiance cubemap.
     /// The scene's image-based lighting, generated from the same environment `skyCubemap` shows
     /// (Source/Asset/Ibl.h): a cosine-convolved irradiance cube, a GGX-prefiltered radiance chain,
@@ -146,10 +146,11 @@ struct SceneView {
     glm::vec4 boundingSphere{0.0f, 0.0f, 0.0f, 1.0f};
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Runtime shadow sampling mode.
     /// Requested local-light path; Clustered is the default and Direct remains the reference.
-    LocalLightMode localLightMode = LocalLightMode::Clustered;
+    engine::LocalLightMode localLightMode = engine::LocalLightMode::Clustered;
     bool lightCheck = false; ///< Compare retired clustered lists with the declaration CPU mirror.
-    LightDebugView lightDebugView = LightDebugView::Off; ///< Post-display light-list diagnostic.
-    bool wireframe = false;                              ///< Selects the wireframe scene pipeline.
+    /// Post-display light-list diagnostic.
+    engine::LightDebugView lightDebugView = engine::LightDebugView::Off;
+    bool wireframe = false; ///< Selects the wireframe scene pipeline.
     /// Manual exposure, in stops. Every fragment multiplies its linear output by exp2(exposureEv)
     /// before the target sees it -- so the scene target holds pre-exposed radiance and the display
     /// transform reads one already-exposed image. Zero is unit exposure, which is what leaves a

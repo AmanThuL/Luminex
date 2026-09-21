@@ -35,7 +35,7 @@ bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selecti
 }
 
 //======================================================================================================================
-void selectRow(EditorSelection& selection, scene::SceneId sceneId, const EditorSelectionRow& row) {
+void selectRow(EditorSelection& selection, engine::SceneId sceneId, const EditorSelectionRow& row) {
     selection = {
         .sceneId = sceneId, .subject = row.subject, .index = row.index, .lightId = row.lightId};
 }
@@ -283,8 +283,8 @@ void handleKeyboardNav(std::span<const EditorSelectionRow> rows, const ScenePane
 } // namespace
 
 //======================================================================================================================
-std::optional<scene::SceneId> drawSceneMenu(const SceneMenuContext& context) {
-    std::optional<scene::SceneId> chosen;
+std::optional<engine::SceneId> drawSceneMenu(const SceneMenuContext& context) {
+    std::optional<engine::SceneId> chosen;
     if (!ImGui::BeginMenu("Open Scene")) {
         return chosen;
     }

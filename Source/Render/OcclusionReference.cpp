@@ -134,13 +134,13 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
             if (view.items.empty())
                 return;
             commands.bindBuffer(0, *view.tables.vertices);
-            commands.bindBuffer(kSceneInstancesSlot, *view.tables.instances);
-            commands.bindBuffer(kSceneMaterialsSlot, *view.tables.materials);
+            commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
+            commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
             commands.bindSampler(0, *m_sampler);
             for (const auto& item : view.items) {
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
                            "reference draw must name a current instance row");
-                const bool masked = item.alphaMode == AlphaMode::Mask;
+                const bool masked = item.alphaMode == engine::AlphaMode::Mask;
                 const bool doubleSided = masked && item.doubleSided;
                 commands.bindPipeline(*m_pipelines[(view.wireframe ? 4 : 0) + (masked ? 2 : 0) +
                                                    (doubleSided ? 1 : 0)]);

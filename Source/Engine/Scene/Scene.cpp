@@ -36,7 +36,7 @@
 #include <string>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
@@ -177,8 +177,8 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
         // glTF factors are linear; texture color-space conversion happens in the texture view.
         material.albedo = src.baseColorFactor;
         material.alphaMode = src.alphaMode == asset::GltfAlphaMode::Mask
-                                 ? render::AlphaMode::Mask
-                                 : render::AlphaMode::Opaque;
+                                 ? engine::AlphaMode::Mask
+                                 : engine::AlphaMode::Opaque;
         material.alphaCutoff = src.alphaCutoff;
         material.doubleSided = src.doubleSided;
         material.roughness = src.roughness;
@@ -235,7 +235,7 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
     std::vector<MeshId> meshIds;
     meshIds.reserve(gltfScene.meshes.size());
     for (size_t i = 0; i < gltfScene.meshes.size(); ++i) {
-        meshIds.push_back(scene->addMesh(render::fromGeo(gltfScene.meshes[i]),
+        meshIds.push_back(scene->addMesh(engine::fromGeo(gltfScene.meshes[i]),
                                          std::string(sceneName) + ".mesh" + std::to_string(i)));
     }
 
@@ -371,11 +371,11 @@ void Scene::animate(double seconds) {
     for (const asset::LightOrbitTrack& track : animation.lightTracks) {
         const auto id = animationLightId(track.light);
         LMX_ASSERT(id.has_value(), "LightOrbitTrack.light out of range");
-        const render::LocalLight* current = light(*id);
+        const engine::LocalLight* current = light(*id);
         if (!current) {
             continue; // The authored light was removed; its track keeps its reserved index.
         }
-        render::LocalLight moved = *current;
+        engine::LocalLight moved = *current;
         moved.position = asset::sampleOrbit(track, static_cast<float>(seconds));
         const auto updated = updateLight(*id, moved);
         LMX_ASSERT(updated.has_value(), "an orbit-sampled light must remain valid");
@@ -383,7 +383,7 @@ void Scene::animate(double seconds) {
 }
 
 //======================================================================================================================
-void Scene::followCameraTrack(render::Camera& camera) const {
+void Scene::followCameraTrack(engine::Camera& camera) const {
     LMX_ASSERT(!animation.cameraTrack.empty(),
                "following a camera track requires at least one key");
     const asset::CameraKey pose = asset::sampleCameraTrack(animation.cameraTrack, animationTime);
@@ -393,7 +393,7 @@ void Scene::followCameraTrack(render::Camera& camera) const {
 }
 
 //======================================================================================================================
-void Scene::fillDrawItems(std::vector<render::DrawItem>& items) const {
+void Scene::fillDrawItems(std::vector<engine::DrawItem>& items) const {
     validateObjects();
     items.clear();
     items.reserve(objects.size());
@@ -481,8 +481,8 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& d
 }
 
 //======================================================================================================================
-render::Camera cameraFromScene(const SceneCamera& sceneCamera) {
-    render::Camera camera;
+engine::Camera cameraFromScene(const SceneCamera& sceneCamera) {
+    engine::Camera camera;
     camera.position = sceneCamera.position;
     camera.yaw = sceneCamera.yaw;
     camera.pitch = sceneCamera.pitch;
@@ -492,4 +492,4 @@ render::Camera cameraFromScene(const SceneCamera& sceneCamera) {
     return camera;
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

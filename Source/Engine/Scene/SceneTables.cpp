@@ -18,7 +18,7 @@
 #include <limits>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 namespace {
 constexpr uint32_t kSlots = 3;
 constexpr uint8_t kAllSlots = 7;
@@ -68,7 +68,7 @@ struct MaterialCoverage {
     glm::mat4 uvTransform{1.0f};
     float alpha = 1.0f;
     float cutoff = 0.5f;
-    render::AlphaMode mode = render::AlphaMode::Opaque;
+    engine::AlphaMode mode = engine::AlphaMode::Opaque;
     bool doubleSided = false;
 
     //==================================================================================================================
@@ -169,10 +169,10 @@ struct Scene::Storage {
     uint32_t instanceSearchStart = 0;
     uint32_t textureSearchStart = 0;
     uint32_t localLightSearchStart = 0;
-    std::vector<render::MeshData> meshData;
-    std::vector<render::MeshRow> meshRows;
+    std::vector<engine::MeshData> meshData;
+    std::vector<engine::MeshRow> meshRows;
     std::vector<MaterialRecord> materials;
-    std::vector<render::LocalLight> localLightData;
+    std::vector<engine::LocalLight> localLightData;
     std::vector<LightId> liveLightIds;
     uint32_t enabledLightCount = 0;
     /// Every `addLight` result from before `finalize`, in call order; `LightOrbitTrack::light`
@@ -184,10 +184,10 @@ struct Scene::Storage {
     std::vector<std::unique_ptr<rojoRHI::Texture>> textures;
     std::unique_ptr<rojoRHI::Buffer> vertices;
     std::unique_ptr<rojoRHI::Buffer> indices;
-    PacedTable<render::InstanceRow> instanceTable;
-    PacedTable<render::MaterialRow> materialTable;
-    PacedTable<render::MeshRow> meshTable;
-    PacedTable<render::LightRow> lightTable;
+    PacedTable<engine::InstanceRow> instanceTable;
+    PacedTable<engine::MaterialRow> materialTable;
+    PacedTable<engine::MeshRow> meshTable;
+    PacedTable<engine::LightRow> lightTable;
     std::vector<RetiringBuffer> retiring;
     std::vector<std::pair<uint64_t, std::unique_ptr<rojoRHI::Texture>>> retiringTextures;
     rojoRHI::Device* device = nullptr;
@@ -211,7 +211,7 @@ Scene::Scene(Scene&&) noexcept = default;
 Scene& Scene::operator=(Scene&&) noexcept = default;
 
 //======================================================================================================================
-MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
+MeshId Scene::addMesh(engine::MeshData data, std::string_view label) {
     LMX_ASSERT(m_storage->device == nullptr, "geometry is immutable after finalize");
     LMX_ASSERT(!label.empty(), "mesh requires a label");
     LMX_ASSERT(data.vertices.size() <= std::numeric_limits<uint32_t>::max() &&
@@ -223,7 +223,7 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
     LMX_ASSERT(m_storage->meshRows.size() < std::numeric_limits<uint32_t>::max(),
                "mesh rows exhausted");
     const auto count = static_cast<uint32_t>(m_storage->meshRows.size());
-    render::MeshRow row{};
+    engine::MeshRow row{};
     if (count != 0) {
         const auto& previous = m_storage->meshRows.back();
         LMX_ASSERT(uint64_t{previous.firstVertex} + previous.vertexCount + data.vertices.size() <=
@@ -236,12 +236,12 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
     }
     row.vertexCount = static_cast<uint32_t>(data.vertices.size());
     row.indexCount = static_cast<uint32_t>(data.indices.size());
-    render::Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
-                        glm::vec3(std::numeric_limits<float>::lowest())};
+    Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
+                glm::vec3(std::numeric_limits<float>::lowest())};
     bool finite = true;
     for (const auto& vertex : data.vertices) {
         const glm::vec3 point(vertex.px, vertex.py, vertex.pz);
-        finite = finite && render::isFinite(point);
+        finite = finite && isFinite(point);
         bounds.minimum = glm::min(bounds.minimum, point);
         bounds.maximum = glm::max(bounds.maximum, point);
     }
@@ -256,7 +256,7 @@ MeshId Scene::addMesh(render::MeshData data, std::string_view label) {
                        position(data.indices[i + 2]) - position(data.indices[i]));
         hasSurface = hasSurface || glm::dot(area, area) > 0.0;
     }
-    if (finite && hasSurface && render::isValidAabb(bounds)) {
+    if (finite && hasSurface && isValidAabb(bounds)) {
         row.boundsMin = bounds.minimum;
         row.boundsMax = bounds.maximum;
     }
@@ -351,13 +351,13 @@ void Scene::removeTexture(TextureId id) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<LightId> Scene::addLight(const render::LocalLight& light) {
-    auto row = render::makeLightRow(light);
+rojoRHI::Result<LightId> Scene::addLight(const engine::LocalLight& light) {
+    auto row = engine::makeLightRow(light);
     if (!row) {
         return std::unexpected(row.error());
     }
     auto& storage = *m_storage;
-    if (storage.liveLightIds.size() >= render::kMaxLocalLights) {
+    if (storage.liveLightIds.size() >= engine::kMaxLocalLights) {
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "local light capacity exceeded"});
     }
@@ -398,13 +398,13 @@ bool Scene::removeLight(LightId id) {
 }
 
 //======================================================================================================================
-rojoRHI::Result<void> Scene::updateLight(LightId id, const render::LocalLight& light) {
+rojoRHI::Result<void> Scene::updateLight(LightId id, const engine::LocalLight& light) {
     auto& storage = *m_storage;
     if (!resolves(id, storage.store, storage.localLightIds)) {
         return std::unexpected(
             rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc, "light identity is invalid"});
     }
-    auto row = render::makeLightRow(light);
+    auto row = engine::makeLightRow(light);
     if (!row) {
         return std::unexpected(row.error());
     }
@@ -415,7 +415,7 @@ rojoRHI::Result<void> Scene::updateLight(LightId id, const render::LocalLight& l
 }
 
 //======================================================================================================================
-const render::LocalLight* Scene::light(LightId id) const {
+const engine::LocalLight* Scene::light(LightId id) const {
     const auto& storage = *m_storage;
     return resolves(id, storage.store, storage.localLightIds) ? &storage.localLightData[id.slot]
                                                               : nullptr;
@@ -455,7 +455,7 @@ const SceneObject* Scene::tryObject(InstanceId id) const {
 }
 
 //======================================================================================================================
-const render::MeshRow* Scene::tryMesh(MeshId id) const {
+const engine::MeshRow* Scene::tryMesh(MeshId id) const {
     return id.store == m_storage->store && id.generation == 1 &&
                    id.slot < m_storage->meshRows.size()
                ? &m_storage->meshRows[id.slot]
@@ -463,12 +463,12 @@ const render::MeshRow* Scene::tryMesh(MeshId id) const {
 }
 
 //======================================================================================================================
-std::optional<render::Aabb> Scene::meshBounds(MeshId id) const {
+std::optional<Aabb> Scene::meshBounds(MeshId id) const {
     const auto* row = tryMesh(id);
-    if (!row || !render::isValidAabb({row->boundsMin, row->boundsMax})) {
+    if (!row || !isValidAabb({row->boundsMin, row->boundsMax})) {
         return std::nullopt;
     }
-    return render::Aabb{row->boundsMin, row->boundsMax};
+    return Aabb{row->boundsMin, row->boundsMax};
 }
 
 //======================================================================================================================
@@ -509,7 +509,7 @@ const MaterialRecord& Scene::material(MaterialId id) const {
 rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
     auto& storage = *m_storage;
     LMX_ASSERT(storage.device == nullptr, "scene is already finalized");
-    std::vector<render::Vertex> vertices;
+    std::vector<engine::Vertex> vertices;
     std::vector<uint32_t> indices;
     for (size_t i = 0; i < storage.meshData.size(); ++i) {
         const auto& mesh = storage.meshData[i];
@@ -518,7 +518,7 @@ rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
             indices.push_back(index + storage.meshRows[i].firstVertex);
         }
     }
-    storage.stats.vertexBytes = vertices.size() * sizeof(render::Vertex);
+    storage.stats.vertexBytes = vertices.size() * sizeof(engine::Vertex);
     storage.stats.indexBytes = indices.size() * sizeof(uint32_t);
     if (vertices.empty()) {
         vertices.resize(1);
@@ -526,7 +526,7 @@ rojoRHI::Result<void> Scene::finalize(rojoRHI::Device& device) {
     if (indices.empty()) {
         indices.resize(1);
     }
-    auto vertexBuffer = device.createBuffer({.size = vertices.size() * sizeof(render::Vertex),
+    auto vertexBuffer = device.createBuffer({.size = vertices.size() * sizeof(engine::Vertex),
                                              .storageRead = true,
                                              .cpuReadback = true,
                                              .label = "lmx.scene.vertices"},
@@ -632,23 +632,23 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     for (const auto& object : objects) {
         LMX_ASSERT(tryMesh(object.mesh) && tryMaterial(object.material),
                    "object contains an invalid resource identity");
-        render::InstanceRow row{};
+        engine::InstanceRow row{};
         row.model = object.modelMatrix();
         row.previousModel = object.previousModel;
         row.normalMatrix = glm::mat4(glm::transpose(glm::inverse(glm::mat3(row.model))));
         row.meshRow = object.mesh.slot;
         row.materialRow = object.material.slot;
         row.flags =
-            object.motionClass == render::MotionClass::Invalid ? render::kInstanceMotionInvalid : 0;
+            object.motionClass == engine::MotionClass::Invalid ? engine::kInstanceMotionInvalid : 0;
         row.emissiveScale = object.emissiveStrength;
         const auto localBounds = meshBounds(object.mesh);
         const auto worldBounds =
-            localBounds ? render::transformAabb(row.model, *localBounds) : std::nullopt;
+            localBounds ? transformAabb(row.model, *localBounds) : std::nullopt;
         if (worldBounds) {
             row.worldBoundsMin = worldBounds->minimum;
             row.worldBoundsMax = worldBounds->maximum;
         } else {
-            row.flags |= render::kInstanceBoundsUnreliable;
+            row.flags |= engine::kInstanceBoundsUnreliable;
         }
         if (object.id.slot >= storage.instanceTable.shadow.size()) {
             coverageChanged = true;
@@ -661,7 +661,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     }
     for (uint32_t i = 0; i < storage.instances.size(); ++i) {
         if (!storage.instances[i].live) {
-            updateRow(storage.instanceTable, i, render::InstanceRow{});
+            updateRow(storage.instanceTable, i, engine::InstanceRow{});
         }
     }
     for (uint32_t i = 0; i < storage.materials.size(); ++i) {
@@ -670,7 +670,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
                               material.occlusion, material.emissiveMap}) {
             LMX_ASSERT(!id || tryTexture(*id), "material contains an invalid texture identity");
         }
-        LMX_ASSERT(material.alphaMode != render::AlphaMode::Mask ||
+        LMX_ASSERT(material.alphaMode != engine::AlphaMode::Mask ||
                        (std::isfinite(material.alphaCutoff) && material.alphaCutoff >= 0.0f),
                    "masked material alpha cutoff must be finite and nonnegative");
         const MaterialCoverage coverage{.diffuse = material.diffuse,
@@ -686,7 +686,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
             storage.materialCoverage[i] = coverage;
             coverageChanged = true;
         }
-        render::MaterialRow row{};
+        engine::MaterialRow row{};
         row.uvTransform = material.uvTransform;
         row.albedo = material.albedo;
         row.emissive = material.emissive;
@@ -694,18 +694,18 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         row.metallic = material.metallic;
         row.occlusionStrength = material.occlusionStrength;
         row.alphaCutoff = material.alphaCutoff;
-        row.flags = (material.normalMap ? render::kMaterialHasNormalMap : 0) |
-                    (material.alphaMode == render::AlphaMode::Mask ? render::kMaterialMasked : 0) |
-                    (material.doubleSided ? render::kMaterialDoubleSided : 0);
+        row.flags = (material.normalMap ? engine::kMaterialHasNormalMap : 0) |
+                    (material.alphaMode == engine::AlphaMode::Mask ? engine::kMaterialMasked : 0) |
+                    (material.doubleSided ? engine::kMaterialDoubleSided : 0);
         updateRow(storage.materialTable, i, row);
     }
     for (uint32_t i = 0; i < storage.localLightIds.size(); ++i) {
         if (storage.localLightIds[i].live) {
-            auto row = render::makeLightRow(storage.localLightData[i]);
+            auto row = engine::makeLightRow(storage.localLightData[i]);
             LMX_ASSERT(row, "stored local light failed re-validation");
             updateRow(storage.lightTable, i, *row);
         } else {
-            updateRow(storage.lightTable, i, render::LightRow{});
+            updateRow(storage.lightTable, i, engine::LightRow{});
         }
     }
     if (coverageChanged) {
@@ -748,7 +748,7 @@ SceneTableStats Scene::tableStats() const {
 }
 
 //======================================================================================================================
-render::SceneTables Scene::tables() const {
+engine::SceneTables Scene::tables() const {
     const auto& storage = *m_storage;
     if (!storage.device) {
         return {};
@@ -773,4 +773,4 @@ render::SceneTables Scene::tables() const {
             .liveLightCount = storage.enabledLightCount};
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

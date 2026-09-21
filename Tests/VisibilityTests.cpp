@@ -10,7 +10,7 @@ using namespace lmx::render;
 //======================================================================================================================
 TEST_CASE("visibility extracts five inward guarded reversed infinite planes",
           "[render][visibility]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.position = {0, 0, 0};
     camera.yaw = 0;
     camera.pitch = 0;
@@ -22,7 +22,7 @@ TEST_CASE("visibility extracts five inward guarded reversed infinite planes",
         REQUIRE(glm::length(glm::vec3(plane)) == Catch::Approx(1.0f));
     REQUIRE(planes.planes[4].z == Catch::Approx(-1.0f));
     REQUIRE(planes.planes[4].w == Catch::Approx(-1.0f + kVisibilityGuardWorldUnits));
-    InstanceRow row;
+    lmx::engine::InstanceRow row;
     auto state = [&](glm::vec3 minimum, glm::vec3 maximum) {
         row.worldBoundsMin = minimum;
         row.worldBoundsMax = maximum;
@@ -41,7 +41,7 @@ TEST_CASE("visibility extracts five inward guarded reversed infinite planes",
         REQUIRE(state(center - glm::vec3(0.1f), center + glm::vec3(0.1f)) ==
                 VisibilityState::Visible);
     REQUIRE(state({0, 0, -0.9995f}, {0, 0, -0.9995f}) == VisibilityState::Visible);
-    row.flags = kInstanceBoundsUnreliable;
+    row.flags = lmx::engine::kInstanceBoundsUnreliable;
     REQUIRE(classifyInstance(planes, row, 7).reason == VisibilityReason::UnreliableBounds);
     row.model[0][0] = std::numeric_limits<float>::quiet_NaN();
     REQUIRE(classifyInstance(planes, row, 7).reason == VisibilityReason::NonFiniteTransform);
@@ -52,8 +52,8 @@ TEST_CASE("visibility extracts five inward guarded reversed infinite planes",
 //======================================================================================================================
 TEST_CASE("draw submission preserves sparse rows and separates batched argument offsets",
           "[render][submission]") {
-    std::vector<InstanceRow> rows(8);
-    std::vector<DrawItem> items(4);
+    std::vector<lmx::engine::InstanceRow> rows(8);
+    std::vector<lmx::engine::DrawItem> items(4);
     const std::array<uint32_t, 4> slots{7, 2, 5, 1};
     for (uint32_t i = 0; i < 4; ++i) {
         items[i].instanceRow = slots[i];

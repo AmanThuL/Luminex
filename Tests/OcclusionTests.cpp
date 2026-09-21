@@ -74,11 +74,11 @@ TEST_CASE("occlusion history requires adjacent complete unchanged evidence",
 //======================================================================================================================
 TEST_CASE("occlusion projection and strict depth guards retain uncertain coverage",
           "[render][occlusion]") {
-    Camera camera;
+    lmx::engine::Camera camera;
     camera.fovY = glm::radians(90.0f);
     camera.nearZ = 1.0f;
     auto params = makeOcclusionParams(camera.projectionMatrix(1), 64, 64, 3, true, true);
-    Aabb box{{-0.1f, -0.1f, -4.1f}, {0.1f, 0.1f, -4.0f}};
+    lmx::Aabb box{{-0.1f, -0.1f, -4.1f}, {0.1f, 0.1f, -4.0f}};
     auto projection = projectOcclusionBounds(box, params);
     REQUIRE(projection.outcome == OcclusionOutcome::Retained);
     REQUIRE(projection.rectangle == std::array<int32_t, 4>{30, 30, 34, 34});

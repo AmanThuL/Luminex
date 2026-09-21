@@ -134,16 +134,16 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
         .available = true, .minInputScale = 0.5f, .maxInputScale = 1.0f, .name = "Fake Temporal"};
     auto renderer = render::Renderer::create(device, 80, 48, false);
     REQUIRE(renderer);
-    std::array<render::InstanceRow, 2> instances{};
+    std::array<engine::InstanceRow, 2> instances{};
     instances[1].materialRow = 1;
-    const render::MeshRow mesh{.indexCount = 3, .vertexCount = 3};
-    std::array<render::DrawItem, 2> items{{{.instanceRow = 0, .mesh = mesh},
+    const engine::MeshRow mesh{.indexCount = 3, .vertexCount = 3};
+    std::array<engine::DrawItem, 2> items{{{.instanceRow = 0, .mesh = mesh},
                                            {.instanceRow = 1,
                                             .mesh = mesh,
-                                            .alphaMode = render::AlphaMode::Mask,
+                                            .alphaMode = engine::AlphaMode::Mask,
                                             .doubleSided = true}}};
-    std::array<render::MaterialRow, 2> materials{};
-    materials[1].flags = render::kMaterialMasked | render::kMaterialDoubleSided;
+    std::array<engine::MaterialRow, 2> materials{};
+    materials[1].flags = engine::kMaterialMasked | engine::kMaterialDoubleSided;
     FakeDevice::BufferObject vertices(3 * 64);
     FakeDevice::BufferObject indices(3 * sizeof(uint32_t));
     FakeDevice::BufferObject meshBuffer(sizeof(mesh), &mesh);
@@ -174,26 +174,26 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
     view.temporal.jitterEnabled = temporalEnabled;
     view.temporal.reconstruction = reconstruction;
     view.temporal.renderScale = scale;
-    std::array<render::LightRow, 4> emptyRows{};
+    std::array<engine::LightRow, 4> emptyRows{};
     FakeDevice::BufferObject oldLightTable(sizeof(emptyRows), emptyRows.data());
     if (highWater) {
         view.tables.lightRowCount = emptyRows.size();
         view.tables.lightRows = emptyRows;
         view.tables.lights = &oldLightTable;
     }
-    constexpr std::array modes{render::LocalLightMode::Off,       render::LocalLightMode::Direct,
-                               render::LocalLightMode::Clustered, render::LocalLightMode::Off,
-                               render::LocalLightMode::Clustered, render::LocalLightMode::Direct,
-                               render::LocalLightMode::Clustered, render::LocalLightMode::Direct,
-                               render::LocalLightMode::Off};
+    constexpr std::array modes{engine::LocalLightMode::Off,       engine::LocalLightMode::Direct,
+                               engine::LocalLightMode::Clustered, engine::LocalLightMode::Off,
+                               engine::LocalLightMode::Clustered, engine::LocalLightMode::Direct,
+                               engine::LocalLightMode::Clustered, engine::LocalLightMode::Direct,
+                               engine::LocalLightMode::Off};
     std::vector<DeclaredSnapshot> result;
     for (const auto requested : modes) {
-        view.localLightMode = switches ? requested : render::LocalLightMode::Off;
+        view.localLightMode = switches ? requested : engine::LocalLightMode::Off;
         LightingCommands commands;
         render::TransientPool pool(device);
         pool.beginFrame();
         render::RenderGraph graph(pool);
-        render::Camera camera;
+        engine::Camera camera;
         camera.position = {0.0f, 0.0f, 5.0f};
         graph.presentTexture((*renderer)->declarePasses(graph, commands, camera, view));
         const auto record = graph.compileFrame(device.frameNumber());
@@ -209,7 +209,7 @@ std::vector<DeclaredSnapshot> zeroLightReplay(bool switches, bool highWater,
         CHECK(modeAndRows[0] == 0);
         CHECK(modeAndRows[1] == 0);
         CHECK((*renderer)->lightingStatus().requested == view.localLightMode);
-        CHECK((*renderer)->lightingStatus().effective == render::LocalLightMode::Off);
+        CHECK((*renderer)->lightingStatus().effective == engine::LocalLightMode::Off);
         CHECK((*renderer)->lightingStatus().listBytes == 0);
         CHECK((*renderer)->lightingStatus().allocatedListBytes == 0);
         result.push_back({dump, std::move(commands.snapshot), (*renderer)->temporalStatus()});

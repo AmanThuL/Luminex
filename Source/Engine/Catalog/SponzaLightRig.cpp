@@ -10,15 +10,15 @@
 #include <array>
 #include <utility>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 namespace {
 
 constexpr size_t kRigLightCount = 16;
 
 //======================================================================================================================
-std::array<render::LocalLight, kRigLightCount> rigLights() {
-    std::array<render::LocalLight, kRigLightCount> lights;
+std::array<engine::LocalLight, kRigLightCount> rigLights() {
+    std::array<engine::LocalLight, kRigLightCount> lights;
     constexpr std::array<float, 4> kColumnX = {-12.0f, -4.0f, 4.0f, 12.0f};
     const glm::vec3 warm = srgbToLinear(glm::vec3(1.0f, 0.72f, 0.45f));
     const glm::vec3 cool = srgbToLinear(glm::vec3(0.45f, 0.7f, 1.0f));
@@ -30,7 +30,7 @@ std::array<render::LocalLight, kRigLightCount> rigLights() {
         light.intensity = 45.0f;
         light.range = 6.0f;
         if (i >= lights.size() / 2) {
-            light.type = render::LocalLightType::Spot;
+            light.type = engine::LocalLightType::Spot;
             light.position.y = 6.0f;
             light.position.z = side * 6.5f;
             light.direction = glm::normalize(glm::vec3(0.0f, -1.0f, -side * 0.6f));
@@ -58,7 +58,7 @@ rojoRHI::Result<void> SponzaLightRig::setEnabled(Scene& scene, bool enabled) {
     if (scene.m_sponzaLightIds.empty()) {
         if (!enabled)
             return {};
-        if (scene.localLights().size() + kRigLightCount > render::kMaxLocalLights) {
+        if (scene.localLights().size() + kRigLightCount > engine::kMaxLocalLights) {
             return std::unexpected(rojoRHI::Error{rojoRHI::ErrorCode::InvalidDesc,
                                                   "Sponza rig requires 16 free local-light slots"});
         }
@@ -100,4 +100,4 @@ std::span<const LightId> SponzaLightRig::lightIds() const {
     return m_scene ? m_scene->sponzaLightIds() : std::span<const LightId>{};
 }
 
-} // namespace lmx::scene
+} // namespace lmx::engine

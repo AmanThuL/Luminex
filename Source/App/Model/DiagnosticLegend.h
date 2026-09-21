@@ -22,7 +22,7 @@ struct DiagnosticLegend {
 DiagnosticLegend diagnosticLegend(render::TemporalDebugView view);
 
 /// Returns the clustered lighting overlay encoding, independent of exposure and temporal history.
-DiagnosticLegend diagnosticLegend(render::LightDebugView view);
+DiagnosticLegend diagnosticLegend(engine::LightDebugView view);
 
 /// Returns an actionable explanation when this view cannot execute, otherwise empty. Uses the
 /// effective reconstruction, so a vendor request running Native TAA fallback retains native views.
@@ -35,6 +35,6 @@ std::string_view diagnosticModeNote(render::TemporalDebugView view,
 
 /// Returns concise purpose and authored axes for diagnostic labs; empty for other catalog scenes.
 /// The identifier must belong to the current scene catalog. Returned text has static lifetime.
-std::string_view labDescription(scene::SceneId sceneId);
+std::string_view labDescription(engine::SceneId sceneId);
 
 } // namespace lmx::app

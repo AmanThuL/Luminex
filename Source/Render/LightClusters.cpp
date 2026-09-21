@@ -210,7 +210,7 @@ glm::uvec2 clusterTileEdges(uint32_t tile, uint32_t tileCount, uint32_t extent) 
 }
 
 //======================================================================================================================
-LightClusterLists buildLightClusters(std::span<const LightRow> rows,
+LightClusterLists buildLightClusters(std::span<const engine::LightRow> rows,
                                      const LightClusterParams& params) {
     LMX_ASSERT(params.perClusterCap > 0, "buildLightClusters: the per-cluster cap must be nonzero");
     LMX_ASSERT(params.activeWidth > 0 && params.activeHeight > 0,

@@ -7,7 +7,7 @@
 
 #include <cstdint>
 
-namespace lmx::scene {
+namespace lmx::engine {
 /// Distinct scene-local instance identity; store zero is invalid.
 struct InstanceId {
     uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
@@ -58,4 +58,4 @@ struct LightId {
 };
 static_assert(sizeof(LightId) == 8);
 
-} // namespace lmx::scene
+} // namespace lmx::engine

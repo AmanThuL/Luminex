@@ -50,8 +50,8 @@ DiagnosticLegend diagnosticLegend(render::TemporalDebugView view) {
 }
 
 //======================================================================================================================
-DiagnosticLegend diagnosticLegend(render::LightDebugView view) {
-    using enum render::LightDebugView;
+DiagnosticLegend diagnosticLegend(engine::LightDebugView view) {
+    using enum engine::LightDebugView;
     switch (view) {
     case Off:
         return {"Final", "Scene image after exposure, bloom and the SDR display transform."};
@@ -112,8 +112,8 @@ std::string_view diagnosticModeNote(render::TemporalDebugView view,
 }
 
 //======================================================================================================================
-std::string_view labDescription(scene::SceneId sceneId) {
-    const auto id = scene::sceneIdString(sceneId);
+std::string_view labDescription(engine::SceneId sceneId) {
+    const auto id = engine::sceneIdString(sceneId);
     if (id == "material-lab") {
         return "MaterialLab: 5 x 5 spheres. Roughness 0.05 -> 1 left to right; metallic 0 -> 1 "
                "bottom to top "

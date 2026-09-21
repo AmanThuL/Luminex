@@ -8,7 +8,7 @@
 TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricating one", "[scene]") {
     Scene scene;
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     const render::SceneView view =
         render::buildSceneView(scene, items, render::ShadowFilter::PCF, /*wireframe=*/false);
 
@@ -37,7 +37,7 @@ TEST_CASE("Scene::followCameraTrack samples the scene clock while preserving cam
         CameraKey{.time = 0.0, .position = {0.0f, 2.0f, 4.0f}, .yaw = -0.4f, .pitch = 0.2f},
         CameraKey{.time = 4.0, .position = {8.0f, 6.0f, 0.0f}, .yaw = 0.4f, .pitch = -0.2f}};
     scene.animationTime = 1.0;
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.fovY = 0.9f;
     camera.nearZ = 0.3f;
     camera.farZ = 700.0f;
@@ -64,7 +64,7 @@ TEST_CASE("cameraFromScene copies authored pose and lens while keeping the defau
                                .fovY = 1.1f,
                                .nearZ = 0.4f,
                                .farZ = 900.0f};
-    const render::Camera camera = cameraFromScene(authored);
+    const lmx::engine::Camera camera = cameraFromScene(authored);
 
     REQUIRE(near3(camera.position, authored.position));
     REQUIRE(camera.yaw == authored.yaw);
@@ -72,14 +72,14 @@ TEST_CASE("cameraFromScene copies authored pose and lens while keeping the defau
     REQUIRE(camera.fovY == authored.fovY);
     REQUIRE(camera.nearZ == authored.nearZ);
     REQUIRE(camera.farZ == authored.farZ);
-    REQUIRE(camera.moveSpeed == render::Camera{}.moveSpeed);
+    REQUIRE(camera.moveSpeed == lmx::engine::Camera{}.moveSpeed);
 }
 
 //======================================================================================================================
 TEST_CASE("Scene::commitFrame promotes the current model while preserving the stable draw row",
           "[scene]") {
     Scene scene = makeMotionTestScene();
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
 
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
@@ -93,7 +93,7 @@ TEST_CASE("Scene::commitFrame promotes the current model while preserving the st
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(matricesNear(scene.objects[0].previousModel, first, 1e-6f));
     REQUIRE(near3(glm::vec3(scene.objects[0].modelMatrix()[3]), glm::vec3(4.0f, 0.0f, 0.0f)));
-    REQUIRE(scene.objects[0].motionClass == render::MotionClass::Rigid);
+    REQUIRE(scene.objects[0].motionClass == lmx::engine::MotionClass::Rigid);
 }
 
 //======================================================================================================================
@@ -102,7 +102,7 @@ TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose",
     scene.objects[0].position = glm::vec3(9.0f, 0.0f, 0.0f);
     scene.resetMotion();
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(matricesNear(scene.objects[0].modelMatrix(), scene.objects[0].previousModel, 1e-6f));
     REQUIRE(near3(glm::vec3(scene.objects[0].previousModel[3]), glm::vec3(9.0f, 0.0f, 0.0f)));
@@ -111,11 +111,11 @@ TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose",
 //======================================================================================================================
 TEST_CASE("Scene keeps an object's declared motion class beside its stable identity", "[scene]") {
     Scene scene = makeMotionTestScene();
-    scene.objects[0].motionClass = render::MotionClass::Invalid;
+    scene.objects[0].motionClass = lmx::engine::MotionClass::Invalid;
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
-    REQUIRE(scene.objects[0].motionClass == render::MotionClass::Invalid);
+    REQUIRE(scene.objects[0].motionClass == lmx::engine::MotionClass::Invalid);
 }
 
 //======================================================================================================================
@@ -176,7 +176,7 @@ TEST_CASE("Scene::animate writes an object's sampled emissive strength independe
     scene.animate(3.0);
     REQUIRE(scene.objects[0].emissiveStrength == Catch::Approx(4.0f));
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
                       scene.objects[0].emissiveStrength,
@@ -210,7 +210,7 @@ TEST_CASE("Scene leaves emissive untouched when an object has no emissive track"
     Scene scene = makeMotionTestScene();
     scene.material(scene.objects[0].material).emissive = glm::vec3(0.5f, 0.5f, 0.5f);
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
                       scene.objects[0].emissiveStrength,
@@ -277,7 +277,7 @@ TEST_CASE("Scene::animate moves an orbit-tracked light's position without distur
           "authored fields or coverageEpoch",
           "[scene]") {
     Scene scene = makeMotionTestScene();
-    const auto lightId = scene.addLight({.type = render::LocalLightType::Point,
+    const auto lightId = scene.addLight({.type = lmx::engine::LocalLightType::Point,
                                          .position = glm::vec3(99.0f, 99.0f, 99.0f),
                                          .colour = glm::vec3(0.2f, 0.4f, 0.6f),
                                          .intensity = 3.0f,
@@ -293,7 +293,7 @@ TEST_CASE("Scene::animate moves an orbit-tracked light's position without distur
 
     scene.animate(1.0); // period / 4
 
-    const render::LocalLight* moved = scene.light(*lightId);
+    const lmx::engine::LocalLight* moved = scene.light(*lightId);
     REQUIRE(moved != nullptr);
     // axis is +Y here, which is nearly parallel to the fallback reference: the basis falls back to
     // world +X, so u is world +Z and v is world +X; a quarter turn lands on +radius * v.
@@ -309,13 +309,13 @@ TEST_CASE("Scene::animate skips a light orbit track whose light was removed with
           "another live orbit-tracked light",
           "[scene]") {
     Scene scene = makeMotionTestScene();
-    const auto removedId = scene.addLight({.type = render::LocalLightType::Point,
+    const auto removedId = scene.addLight({.type = lmx::engine::LocalLightType::Point,
                                            .position = glm::vec3(0.0f),
                                            .colour = glm::vec3(1.0f),
                                            .intensity = 1.0f,
                                            .range = 5.0f});
     REQUIRE(removedId.has_value());
-    const auto liveId = scene.addLight({.type = render::LocalLightType::Point,
+    const auto liveId = scene.addLight({.type = lmx::engine::LocalLightType::Point,
                                         .position = glm::vec3(0.0f),
                                         .colour = glm::vec3(1.0f),
                                         .intensity = 1.0f,

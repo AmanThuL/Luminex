@@ -15,10 +15,10 @@ using namespace lmx;
 
 namespace {
 //======================================================================================================================
-uint64_t prepareCoverage(rojoRHI::Device& device, scene::Scene& scene) {
+uint64_t prepareCoverage(rojoRHI::Device& device, engine::Scene& scene) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
-    std::vector<render::DrawItem> items;
+    std::vector<engine::DrawItem> items;
     const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(view.coverageEpoch == scene.coverageEpoch());
     const auto epoch = view.coverageEpoch;
@@ -32,9 +32,9 @@ uint64_t prepareCoverage(rojoRHI::Device& device, scene::Scene& scene) {
 TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scene][occlusion]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    scene::Scene scene;
-    const auto firstMesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.first");
-    const auto secondMesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.second");
+    engine::Scene scene;
+    const auto firstMesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.first");
+    const auto secondMesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.second");
     const auto firstMaterial = scene.addMaterial({});
     const auto secondMaterial = scene.addMaterial({});
     const auto id = scene.addObject({.mesh = firstMesh, .material = firstMaterial});
@@ -67,7 +67,7 @@ TEST_CASE("Scene coverage invalidates every geometry and mask edit", "[gpu][scen
         scene.tryObject(id)->material = secondMaterial;
     }
     SECTION("alpha mode") {
-        scene.material(firstMaterial).alphaMode = render::AlphaMode::Mask;
+        scene.material(firstMaterial).alphaMode = engine::AlphaMode::Mask;
     }
     SECTION("alpha cutoff") {
         scene.material(firstMaterial).alphaCutoff = 0.75f;
@@ -106,8 +106,8 @@ TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
           "[gpu][scene][occlusion]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    scene::Scene scene;
-    const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.exclusions");
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.exclusions");
     const auto material = scene.addMaterial({});
     scene.addObject({.mesh = mesh, .material = material});
     scene.addObject({.position = {2, 0, 0}, .mesh = mesh, .material = material});
@@ -115,7 +115,7 @@ TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
     const auto before = prepareCoverage(**device, scene);
     scene.objects[0].previousModel[3].x = 4.0f;
     scene.objects[0].emissiveStrength = 3.0f;
-    scene.objects[0].motionClass = render::MotionClass::Invalid;
+    scene.objects[0].motionClass = engine::MotionClass::Invalid;
     scene.material(material).emissive = {3, 2, 1};
     scene.material(material).albedo.r = 0.3f;
     scene.material(material).roughness = 0.8f;
@@ -130,19 +130,19 @@ TEST_CASE("Scene coverage ignores motion history, lighting and object ordering",
 
 //======================================================================================================================
 TEST_CASE("Scene view tokens distinguish stores and recycled instance rows", "[scene][occlusion]") {
-    const auto add = [](scene::Scene& scene) {
-        const auto mesh = scene.addMesh(render::makeCube(), "lmx.test.coverage.identity");
+    const auto add = [](engine::Scene& scene) {
+        const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.coverage.identity");
         const auto material = scene.addMaterial({});
         return scene.addObject({.mesh = mesh, .material = material});
     };
-    const auto token = [](scene::Scene& scene) {
-        std::vector<render::DrawItem> items;
+    const auto token = [](engine::Scene& scene) {
+        std::vector<engine::DrawItem> items;
         render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
         REQUIRE(items.size() == 1);
         return items.front().instanceIdentity;
     };
-    scene::Scene first;
-    scene::Scene second;
+    engine::Scene first;
+    engine::Scene second;
     const auto oldId = add(first);
     add(second);
     const auto oldToken = token(first);

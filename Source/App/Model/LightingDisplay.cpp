@@ -20,13 +20,13 @@ bool sameContext(const render::LightingStatus& a, const render::LightingStatus& 
 } // namespace
 
 //======================================================================================================================
-std::string_view localLightModeLabel(render::LocalLightMode mode) {
+std::string_view localLightModeLabel(engine::LocalLightMode mode) {
     switch (mode) {
-    case render::LocalLightMode::Off:
+    case engine::LocalLightMode::Off:
         return "Off";
-    case render::LocalLightMode::Direct:
+    case engine::LocalLightMode::Direct:
         return "Direct";
-    case render::LocalLightMode::Clustered:
+    case engine::LocalLightMode::Clustered:
         return "Clustered";
     }
     return "Unavailable";
@@ -69,7 +69,7 @@ std::vector<LightingField> lightingFields(const render::LightingStatus& status,
         }
     }
     if (!hasTiming)
-        fields.push_back({"Lighting GPU time", status.effective == render::LocalLightMode::Clustered
+        fields.push_back({"Lighting GPU time", status.effective == engine::LocalLightMode::Clustered
                                                    ? "Awaiting matching frame"
                                                    : "No light-list passes"});
     return fields;

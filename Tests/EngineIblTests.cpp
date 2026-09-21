@@ -444,7 +444,7 @@ TEST_CASE("the generators are byte-identical across runs", "[asset][ibl]") {
 TEST_CASE("a built scene carries its uploaded IBL textures", "[gpu]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::scene::loadMaterialLabScene(**device);
+    auto scene = lmx::engine::loadMaterialLabScene(**device);
     REQUIRE(scene.has_value());
 
     REQUIRE((*scene)->irradianceMap != nullptr);

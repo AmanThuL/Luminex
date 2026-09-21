@@ -74,8 +74,8 @@ TEST_CASE("GPU classifier CLI defaults and incompatible frontends are explicit",
 //======================================================================================================================
 TEST_CASE("Delayed GPU display never attributes old rows to replacement identities",
           "[app][visibility]") {
-    scene::Scene scene;
-    scene::SceneObject object;
+    engine::Scene scene;
+    engine::SceneObject object;
     object.id = {3, 2, 8};
     scene.objects.push_back(object);
     auto pending = retiredStatus();

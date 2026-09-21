@@ -7,7 +7,7 @@
 
 #include <glm/glm.hpp>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 namespace {
 
@@ -73,4 +73,4 @@ MeshData makePlane(float halfExtent) {
     return mesh;
 }
 
-} // namespace lmx::render
+} // namespace lmx::engine

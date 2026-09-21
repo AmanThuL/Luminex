@@ -12,14 +12,14 @@
 namespace {
 
 //======================================================================================================================
-std::vector<render::InstanceRow> readSceneInstances(Scene& scene, rojoRHI::Device& device) {
+std::vector<lmx::engine::InstanceRow> readSceneInstances(Scene& scene, rojoRHI::Device& device) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     const auto tables = scene.tables();
     device.endFrame(nullptr);
     device.waitIdle();
-    std::vector<render::InstanceRow> rows(tables.instanceCount);
-    tables.instances->readback(rows.data(), rows.size() * sizeof(render::InstanceRow));
+    std::vector<lmx::engine::InstanceRow> rows(tables.instanceCount);
+    tables.instances->readback(rows.data(), rows.size() * sizeof(lmx::engine::InstanceRow));
     return rows;
 }
 
@@ -192,7 +192,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     INFO(describeSceneError(renderer));
     REQUIRE(renderer.has_value());
 
-    render::Camera camera;
+    lmx::engine::Camera camera;
     camera.position = (*scene)->initialCamera.position;
     camera.yaw = (*scene)->initialCamera.yaw;
     camera.pitch = (*scene)->initialCamera.pitch;
@@ -202,7 +202,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
 
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     const render::SceneView view =
         render::buildSceneView(**scene, items, render::ShadowFilter::PCF, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
@@ -279,7 +279,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     const float spacing = 1.2f;
     const float startX = -spacing * static_cast<float>(distinctDiffuse.size() - 1) * 0.5f;
     // The 20% distance margin keeps the outer probes away from frustum-edge rounding.
-    render::Camera camera;
+    lmx::engine::Camera camera;
     const float halfWidth = -startX + 0.45f;
     camera.position = {0.0f, 0.0f, 1.2f * halfWidth / glm::tan(camera.fovY * 0.5f)};
     std::vector<glm::vec3> centers;
@@ -302,7 +302,7 @@ TEST_CASE("Sponza materials with distinct diffuse textures render distinct colou
     // the same N.L, the same N.V and the same BRDF -- which isolates texture differences from
     // shading exactly as the flat ambient term used to, without needing a term that no longer
     // exists.
-    for (render::DirectionalLight& light : view.lights) {
+    for (lmx::engine::DirectionalLight& light : view.lights) {
         light.strength = {0.0f, 0.0f, 0.0f};
     }
     view.lights[0] = {.strength = {1.0f, 1.0f, 1.0f}, .direction = {0.0f, 0.0f, -1.0f}};
@@ -471,14 +471,14 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     }
 
     // Nothing has moved yet, so every draw reprojects onto itself.
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
     render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == (*scene)->objects.size());
-    for (const render::DrawItem& item : items) {
+    for (const lmx::engine::DrawItem& item : items) {
         const auto& row = rows[item.instanceRow];
         REQUIRE(matricesNear(row.model, row.previousModel, 1e-6f));
-        REQUIRE((row.flags & render::kInstanceMotionInvalid) == 0);
+        REQUIRE((row.flags & lmx::engine::kInstanceMotionInvalid) == 0);
     }
 
     // Playing the clip moves the wheels and leaves the rest of the truck exactly where it was.
@@ -489,7 +489,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     const auto movedRows = readSceneInstances(**scene, **device);
     render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     bool anyMoved = false;
-    for (const render::DrawItem& item : items) {
+    for (const lmx::engine::DrawItem& item : items) {
         const auto& row = movedRows[item.instanceRow];
         anyMoved = anyMoved || !matricesNear(row.model, row.previousModel, 1e-6f);
     }
@@ -520,7 +520,7 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
     const glm::mat4 clipAtZero = sampleRigidTrack((*scene)->animation.tracks[0], 0.0);
     REQUIRE(near3(glm::vec3(clipAtZero[3]), glm::vec3(0.0f)));
 
-    std::vector<render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
     render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
@@ -554,7 +554,7 @@ TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
     REQUIRE(std::ranges::equal(rig.lightIds(), ids));
     for (const auto id : ids) {
         REQUIRE(scene.light(id));
-        REQUIRE(render::makeLightRow(*scene.light(id)));
+        REQUIRE(lmx::engine::makeLightRow(*scene.light(id)));
         REQUIRE_FALSE(foreign.light(id));
         REQUIRE_FALSE(foreign.removeLight(id));
     }
@@ -588,11 +588,11 @@ TEST_CASE("Sponza rig is deterministic, idempotent and rejects foreign scenes",
     REQUIRE(otherRig.setEnabled(foreign, true));
     REQUIRE(otherRig.lightIds().size() == rig.lightIds().size());
     for (size_t i = 0; i < rig.lightIds().size(); ++i) {
-        const auto first = render::makeLightRow(*scene.light(rig.lightIds()[i]));
-        const auto second = render::makeLightRow(*foreign.light(otherRig.lightIds()[i]));
+        const auto first = lmx::engine::makeLightRow(*scene.light(rig.lightIds()[i]));
+        const auto second = lmx::engine::makeLightRow(*foreign.light(otherRig.lightIds()[i]));
         REQUIRE(first);
         REQUIRE(second);
-        REQUIRE(std::memcmp(&*first, &*second, sizeof(render::LightRow)) == 0);
+        REQUIRE(std::memcmp(&*first, &*second, sizeof(lmx::engine::LightRow)) == 0);
     }
 }
 
@@ -646,7 +646,7 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     REQUIRE(scene.animationLightId(0));
     REQUIRE(before.size() == during.size());
     REQUIRE(std::memcmp(before.data(), during.data(),
-                        before.size() * sizeof(render::InstanceRow)) == 0);
+                        before.size() * sizeof(lmx::engine::InstanceRow)) == 0);
     const std::vector<LightId> ids(scene.localLights().begin(), scene.localLights().end());
     const auto firstPosition = scene.light(ids.front())->position;
     session.stepAnimation();
@@ -655,8 +655,8 @@ TEST_CASE("Sponza authored rig preserves geometry rows and has no animation trac
     const auto after = readSceneInstances(scene, **device);
     REQUIRE(scene.tables().liveLightCount == 0);
     REQUIRE(before.size() == after.size());
-    REQUIRE(std::memcmp(before.data(), after.data(), before.size() * sizeof(render::InstanceRow)) ==
-            0);
+    REQUIRE(std::memcmp(before.data(), after.data(),
+                        before.size() * sizeof(lmx::engine::InstanceRow)) == 0);
     for (const auto id : ids) {
         REQUIRE(scene.light(id));
         REQUIRE_FALSE(scene.light(id)->enabled);
@@ -668,7 +668,7 @@ TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without 
           "[scene][light-rig]") {
     Scene scene;
     scene.name = "Sponza";
-    const auto authored = scene.addLight(render::LocalLight{});
+    const auto authored = scene.addLight(lmx::engine::LocalLight{});
     REQUIRE(authored);
     SponzaLightRig rig;
     REQUIRE(rig.setEnabled(scene, true));
@@ -682,8 +682,8 @@ TEST_CASE("Sponza rig leaves unrelated lights intact and fails capacity without 
     Scene crowded;
     crowded.name = "Sponza";
     SponzaLightRig crowdedRig;
-    while (crowded.localLights().size() < render::kMaxLocalLights - 8) {
-        REQUIRE(crowded.addLight(render::LocalLight{}));
+    while (crowded.localLights().size() < lmx::engine::kMaxLocalLights - 8) {
+        REQUIRE(crowded.addLight(lmx::engine::LocalLight{}));
     }
     const size_t count = crowded.localLights().size();
     REQUIRE_FALSE(crowdedRig.setEnabled(crowded, true));

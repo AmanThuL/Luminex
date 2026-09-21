@@ -326,7 +326,7 @@ rojoRHI::Result<void> Renderer::createTemporalTargets() {
 
 //======================================================================================================================
 GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                     const Camera& camera, const SceneView& view) {
+                                     const engine::Camera& camera, const SceneView& view) {
     LMX_ASSERT(m_hdrColor && m_color && m_shadowMap && m_motion && m_reactive && m_temporalResolve,
                "Renderer::declarePasses: targets are missing -- create() failed");
     LMX_ASSERT(view.boundingSphere.w > 0.0f,
@@ -599,9 +599,9 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
         graph, commands, displayInput, sceneWidth, sceneHeight, view.bloomThreshold);
 
     const bool lightDebugEnabled =
-        view.lightDebugView != LightDebugView::Off && lightClusters.declared;
-    LMX_ASSERT(view.lightDebugView == LightDebugView::Off ||
-                   (view.localLightMode == LocalLightMode::Clustered &&
+        view.lightDebugView != engine::LightDebugView::Off && lightClusters.declared;
+    LMX_ASSERT(view.lightDebugView == engine::LightDebugView::Off ||
+                   (view.localLightMode == engine::LocalLightMode::Clustered &&
                     debugView == TemporalDebugView::Off && view.hzbDebugLevel < 0),
                "light debug views require clustered lighting and no other diagnostic view");
     // Diagnostics sample the display result without feeding back into HDR or temporal history.
@@ -725,8 +725,8 @@ GraphTexture Renderer::declarePasses(RenderGraph& graph, rojoRHI::CommandList& c
 }
 
 //======================================================================================================================
-void Renderer::render(rojoRHI::CommandList& commands, const Camera& camera, const SceneView& view,
-                      bool barrierForSampling) {
+void Renderer::render(rojoRHI::CommandList& commands, const engine::Camera& camera,
+                      const SceneView& view, bool barrierForSampling) {
     // declarePasses() always declares bloom's transients (spec 10: it is an ordinary graph pass
     // whether or not a caller's own graph has a pool), so this convenience path needs one of its
     // own -- the caller already opened this frame with Device::beginFrame() before calling here,

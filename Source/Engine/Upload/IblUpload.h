@@ -11,7 +11,7 @@
 #include <memory>
 #include <string_view>
 
-namespace lmx::scene::ibl {
+namespace lmx::engine::ibl {
 
 /// The uploaded set a Scene holds. Cube textures are RGBA16Float (linear radiance above 1.0 must
 /// survive), the DFG table is RG16Float.
@@ -42,4 +42,4 @@ struct GenerationOptions {
 rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl::CpuCubemap& env,
                                       std::string_view label, GenerationOptions options = {});
 
-} // namespace lmx::scene::ibl
+} // namespace lmx::engine::ibl

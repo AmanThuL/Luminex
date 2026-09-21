@@ -19,7 +19,7 @@ TEST_CASE("motion vectors reproject a moved camera", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -75,7 +75,7 @@ TEST_CASE("motion vectors reproject a moved object", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -133,7 +133,7 @@ TEST_CASE("jitter leaves a static scene's motion at zero", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -175,7 +175,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -188,7 +188,7 @@ TEST_CASE("an invalid motion class writes the sentinel", "[gpu][temporal]") {
         FixtureDrawItem{.mesh = &*plane,
                         .model = model,
                         .previousModel = model,
-                        .motionClass = lmx::render::MotionClass::Invalid}};
+                        .motionClass = lmx::engine::MotionClass::Invalid}};
     FixtureSceneView view = temporalSceneView(items);
     view.temporal.enabled = true;
 
@@ -214,7 +214,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -273,7 +273,7 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -308,7 +308,7 @@ TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu
         FixtureDrawItem{.mesh = &*plane,
                         .model = invalid,
                         .previousModel = invalid,
-                        .motionClass = lmx::render::MotionClass::Invalid},
+                        .motionClass = lmx::engine::MotionClass::Invalid},
         FixtureDrawItem{.mesh = &*plane, .model = stat, .previousModel = stat},
     };
     FixtureSceneView view = temporalSceneView(items);
@@ -400,7 +400,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     INFO(errorOf(device));
     REQUIRE(device.has_value());
 
-    auto scene = lmx::scene::loadTemporalLabScene(**device);
+    auto scene = lmx::engine::loadTemporalLabScene(**device);
     INFO(errorOf(scene));
     REQUIRE(scene.has_value());
 
@@ -416,7 +416,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     camera.nearZ = (*scene)->initialCamera.nearZ;
 
     (*scene)->resetMotion();
-    std::vector<lmx::render::DrawItem> items;
+    std::vector<lmx::engine::DrawItem> items;
     for (int frame = 0; frame < 2; ++frame) {
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
@@ -481,7 +481,7 @@ TEST_CASE("a history fetch at the border does not read the opposite edge", "[gpu
     REQUIRE(device.has_value());
 
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.temporalPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.temporalPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
 
@@ -555,7 +555,7 @@ TEST_CASE("subpixel diagonal motion preserves constant reprojected radiance",
     INFO(errorOf(device));
     REQUIRE(device.has_value());
     auto plane =
-        lmx::test::fixtureMesh(**device, lmx::render::makePlane(10.0f), "lmx.test.constantPlane");
+        lmx::test::fixtureMesh(**device, lmx::engine::makePlane(10.0f), "lmx.test.constantPlane");
     INFO(errorOf(plane));
     REQUIRE(plane.has_value());
     auto renderer = Renderer::create(**device, kSize, kSize, /*cpuReadback=*/true);
@@ -622,7 +622,7 @@ TEST_CASE("sky motion follows the camera's rotation alone", "[gpu][temporal]") {
     REQUIRE(device.has_value());
 
     auto skySphere =
-        lmx::test::fixtureMesh(**device, lmx::render::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
+        lmx::test::fixtureMesh(**device, lmx::engine::fromGeo(lmx::asset::makeSphere(0.5f, 20, 20)),
                                "lmx.test.temporalSkySphere");
     INFO(errorOf(skySphere));
     REQUIRE(skySphere.has_value());

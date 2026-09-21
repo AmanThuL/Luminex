@@ -6,7 +6,7 @@
 #pragma once
 #include <glm/glm.hpp>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Free-fly camera: yaw/pitch orientation, no roll. yaw 0 faces -Z, positive yaw turns toward
 /// +X; pitch 0 is level, positive pitch looks up; both in radians.
@@ -40,4 +40,4 @@ public:
     glm::mat4 projectionMatrix(float aspect) const;
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine

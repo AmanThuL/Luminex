@@ -9,7 +9,7 @@
 
 #include <cstdint>
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Runtime local-light selection; all modes share the scene pipelines and one accumulation loop.
 enum class LocalLightMode : uint32_t {
@@ -49,4 +49,4 @@ struct LocalLight {
     bool enabled = true;
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine

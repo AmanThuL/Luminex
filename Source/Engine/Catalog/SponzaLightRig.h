@@ -10,7 +10,7 @@
 #include <span>
 #include <vector>
 
-namespace lmx::scene {
+namespace lmx::engine {
 
 /// Binds the scene-owned rig; toggles preserve identities and all other authored/editor values.
 /// The scene owns light storage and must outlive this controller.
@@ -29,4 +29,4 @@ private:
     const Scene* m_scene = nullptr;
 };
 
-} // namespace lmx::scene
+} // namespace lmx::engine

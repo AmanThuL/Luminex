@@ -14,7 +14,7 @@ namespace rojoRHI {
 class Texture;
 }
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Frame-local draw order and texture bindings; all borrowed buffers and textures outlive
 /// execution.
@@ -32,4 +32,4 @@ struct DrawItem {
     bool doubleSided = false;                      ///< Masked culling pipeline selection.
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine

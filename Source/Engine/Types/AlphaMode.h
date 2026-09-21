@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-namespace lmx::render {
+namespace lmx::engine {
 
 /// Coverage policy, independent of lighting and temporal reconstruction.
 enum class AlphaMode {
@@ -12,4 +12,4 @@ enum class AlphaMode {
     Mask    ///< Discard when sampled base-color alpha times factor alpha is below the cutoff.
 };
 
-} // namespace lmx::render
+} // namespace lmx::engine

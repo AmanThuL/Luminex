@@ -196,14 +196,14 @@ void buildDefaultLayout(ImGuiID dockspaceId) {
 } // namespace
 
 //======================================================================================================================
-EditorShell::EditorShell(SDL_Window* window, scene::SceneLibrary& library,
+EditorShell::EditorShell(SDL_Window* window, engine::SceneLibrary& library,
                          std::shared_ptr<ConsoleLog> consoleLog)
     : m_window(window), m_library(library), m_consoleModel(std::move(consoleLog)) {}
 
 //======================================================================================================================
 std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::Device& device,
-                                                 scene::SceneLibrary& library,
-                                                 scene::SceneId initialScene,
+                                                 engine::SceneLibrary& library,
+                                                 engine::SceneId initialScene,
                                                  std::shared_ptr<ConsoleLog> consoleLog) {
     LMX_ASSERT(window != nullptr, "EditorShell::create: window must not be null");
 
@@ -916,7 +916,7 @@ void EditorShell::applyPendingScene(rojoRHI::Device& device) {
     if (!requested) {
         return;
     }
-    const scene::SceneId requestedFrom = m_activeSceneId;
+    const engine::SceneId requestedFrom = m_activeSceneId;
     const bool switched = selectScene(device, *requested);
     const SceneSwitchOutcome outcome =
         sceneSwitchOutcome(switched, requestedFrom, *requested, m_selection, m_sceneFilter);
@@ -925,7 +925,7 @@ void EditorShell::applyPendingScene(rojoRHI::Device& device) {
 }
 
 //======================================================================================================================
-bool EditorShell::selectScene(rojoRHI::Device& device, scene::SceneId id) {
+bool EditorShell::selectScene(rojoRHI::Device& device, engine::SceneId id) {
     if (id == m_activeSceneId) {
         return false;
     }

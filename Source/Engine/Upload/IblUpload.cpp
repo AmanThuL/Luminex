@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-namespace lmx::scene::ibl {
+namespace lmx::engine::ibl {
 
 namespace {
 
@@ -149,4 +149,4 @@ rojoRHI::Result<IblTextures> generate(rojoRHI::Device& device, const asset::ibl:
     return textures;
 }
 
-} // namespace lmx::scene::ibl
+} // namespace lmx::engine::ibl

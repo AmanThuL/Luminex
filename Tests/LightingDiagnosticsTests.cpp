@@ -4,8 +4,8 @@
 //======================================================================================================================
 TEST_CASE("lighting reports preserve retirement identity and fail closed", "[light-check]") {
     lmx::render::LightingStatus status;
-    REQUIRE(status.requested == lmx::render::LocalLightMode::Clustered);
-    REQUIRE(status.effective == lmx::render::LocalLightMode::Off);
+    REQUIRE(status.requested == lmx::engine::LocalLightMode::Clustered);
+    REQUIRE(status.effective == lmx::engine::LocalLightMode::Off);
     REQUIRE(status.liveLightCount == 0);
     status.frameNumber = 42;
     status.sceneGeneration = 9;

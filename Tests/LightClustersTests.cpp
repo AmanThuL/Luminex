@@ -28,7 +28,7 @@ constexpr uint32_t kBoundaries = kClusterSliceBoundaryCount;
 
 // A camera plus the jittered projection the scene pass would rasterize with.
 struct TestView {
-    Camera camera;
+    lmx::engine::Camera camera;
     glm::mat4 projection{1.0f};
     uint32_t width = 0;
     uint32_t height = 0;
@@ -78,11 +78,11 @@ glm::vec3 pixelCentreViewPoint(const TestView& view, glm::uvec2 pixel, float dis
 }
 
 //======================================================================================================================
-LightRow makePoint(glm::vec3 position, float range) {
-    LocalLight light;
+lmx::engine::LightRow makePoint(glm::vec3 position, float range) {
+    lmx::engine::LocalLight light;
     light.position = position;
     light.range = range;
-    const auto row = makeLightRow(light);
+    const auto row = lmx::engine::makeLightRow(light);
     REQUIRE(row.has_value());
     return *row;
 }
@@ -234,7 +234,7 @@ TEST_CASE("froxel pixel edges are exactly the pixels the tile lookup assigns",
 TEST_CASE("a tile holding no pixel lists nothing", "[render][light-cluster]") {
     // Ten columns over sixteen tiles: six tiles own no pixel at all.
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 10, 8, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 1000.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 1000.0f)};
     const auto params = makeParams(view, 1);
     const auto lists = buildLightClusters(rows, params);
 
@@ -285,7 +285,7 @@ TEST_CASE("a light reaching only a straddling pixel's centre stays listed",
     const glm::vec3 viewPoint = pixelCentreViewPoint(view, pixel, distance);
     const glm::vec3 world{glm::inverse(view.camera.viewMatrix()) * glm::vec4(viewPoint, 1.0f)};
     // A 1 cm light is far narrower than the quarter pixel separating the two rectangles.
-    const std::vector<LightRow> rows{makePoint(world, 0.01f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint(world, 0.01f)};
     const auto lists = buildLightClusters(rows, params);
 
     const auto& record = lists.grid[froxelIndex({0, 0}, slice)];
@@ -297,14 +297,14 @@ TEST_CASE("a light reaching only a straddling pixel's centre stays listed",
 TEST_CASE("built cluster lists are ascending, contiguous and reconcile",
           "[render][light-cluster]") {
     const auto view = makeView({0.0f, 1.5f, 4.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 12; ++i) {
         const float offset = float(i) - 6.0f;
         rows.push_back(
             makePoint({offset * 0.7f, 1.0f, -2.0f - offset * 0.5f}, 3.0f + offset * 0.1f));
     }
     // A free slot must never be listed.
-    rows.push_back(LightRow{});
+    rows.push_back(lmx::engine::LightRow{});
     const auto params = makeParams(view, uint32_t(rows.size()));
     const auto lists = buildLightClusters(rows, params);
 
@@ -339,7 +339,7 @@ TEST_CASE("built cluster lists are ascending, contiguous and reconcile",
 //======================================================================================================================
 TEST_CASE("the open last slice lists a light at 500 m", "[render][light-cluster]") {
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, -500.0f}, 20.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -500.0f}, 20.0f)};
     const auto params = makeParams(view, 1);
     const auto lists = buildLightClusters(rows, params);
 
@@ -376,8 +376,8 @@ TEST_CASE("the open slice lists off-axis lights on both sides of the view axis",
     // Right of the axis and above it, then left of the axis and below it.
     const glm::uvec2 rightPixel{1150, 40};
     const glm::uvec2 leftPixel{130, 680};
-    const std::vector<LightRow> rows{place(rightPixel, 400.0f, 1.0f),
-                                     place(leftPixel, 400.0f, 1.0f)};
+    const std::vector<lmx::engine::LightRow> rows{place(rightPixel, 400.0f, 1.0f),
+                                                  place(leftPixel, 400.0f, 1.0f)};
     const auto params = makeParams(view, 2);
     const auto lists = buildLightClusters(rows, params);
 
@@ -427,7 +427,7 @@ TEST_CASE("the open slice rejects a sphere that ends before its near boundary",
     const uint32_t firstOpenFroxel = open * kClusterTilesX * kClusterTilesY;
 
     SECTION("a sphere ending at 60 m reaches no open froxel") {
-        const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, -50.0f}, 10.0f)};
+        const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -50.0f}, 10.0f)};
         const auto lists = buildLightClusters(rows, params);
         REQUIRE(lists.counters.assigned > 0);
         for (uint32_t froxel = 0; froxel < kClusterTilesX * kClusterTilesY; ++froxel) {
@@ -435,7 +435,7 @@ TEST_CASE("the open slice rejects a sphere that ends before its near boundary",
         }
     }
     SECTION("a sphere just reaching past 100 m enters the open slice") {
-        const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, -90.0f}, 10.5f)};
+        const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -90.0f}, 10.5f)};
         const auto lists = buildLightClusters(rows, params);
         const auto& record = lists.grid[froxelIndex({8, 4}, open)];
         REQUIRE((record.count & ~kClusterTruncatedBit) == 1);
@@ -447,7 +447,7 @@ TEST_CASE("the open slice rejects a sphere that ends before its near boundary",
 TEST_CASE("a degenerate depth slice lists nothing", "[render][light-cluster]") {
     // A near plane past the first boundaries collapses the slices they close.
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.5f, 1280, 720, {0.0f, 0.0f});
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 1000.0f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, 0.0f}, 1000.0f)};
     const auto params = makeParams(view, 1);
     const auto lists = buildLightClusters(rows, params);
 
@@ -470,7 +470,7 @@ TEST_CASE("a degenerate depth slice lists nothing", "[render][light-cluster]") {
 //======================================================================================================================
 TEST_CASE("per-cluster overflow keeps the lowest rows", "[render][light-cluster]") {
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 10; ++i) {
         rows.push_back(makePoint({0.0f, 0.0f, 0.0f}, 1000.0f));
     }
@@ -497,7 +497,7 @@ TEST_CASE("per-cluster overflow keeps the lowest rows", "[render][light-cluster]
 TEST_CASE("global overflow truncates the first non-fitting froxel and zeroes the rest",
           "[render][light-cluster]") {
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 10; ++i) {
         rows.push_back(makePoint({0.0f, 0.0f, 0.0f}, 1000.0f));
     }
@@ -536,7 +536,7 @@ TEST_CASE("a froxel with no candidates is never truncated by global overflow",
           "[render][light-cluster]") {
     const auto view = makeView({0.0f, 0.0f, 0.0f}, 0.0f, 0.0f, 0.1f, 1280, 720, {0.0f, 0.0f});
     // One small light near the camera reaches a few froxels and leaves the rest empty.
-    const std::vector<LightRow> rows{makePoint({0.0f, 0.0f, -1.0f}, 0.5f)};
+    const std::vector<lmx::engine::LightRow> rows{makePoint({0.0f, 0.0f, -1.0f}, 0.5f)};
     auto params = makeParams(view, 1);
     params.globalCapacity = 3;
     const auto lists = buildLightClusters(rows, params);
@@ -576,14 +576,14 @@ TEST_CASE("every reaching light appears in its sampled point's froxel", "[render
     const FarAnchor anchors[4] = {
         {{200, 100}, 150.0f}, {{700, 300}, 210.0f}, {{1000, 500}, 270.0f}, {{400, 650}, 330.0f}};
 
-    std::vector<LightRow> rows;
+    std::vector<lmx::engine::LightRow> rows;
     for (uint32_t i = 0; i < 200; ++i) {
-        LocalLight light;
+        lmx::engine::LocalLight light;
         light.position = {float(nextRange(rng, -20.0, 20.0)), float(nextRange(rng, -6.0, 10.0)),
                           float(nextRange(rng, -40.0, 8.0))};
         light.range = float(nextRange(rng, 0.5, 30.0));
         if (i % 4 == 0) {
-            light.type = LocalLightType::Spot;
+            light.type = lmx::engine::LocalLightType::Spot;
             const glm::vec3 direction{float(nextRange(rng, -1.0, 1.0)),
                                       float(nextRange(rng, -1.0, 1.0)),
                                       float(nextRange(rng, -1.0, 1.0))};
@@ -592,7 +592,7 @@ TEST_CASE("every reaching light appears in its sampled point's froxel", "[render
             light.innerCone = float(nextRange(rng, 0.05, 0.3));
             light.outerCone = light.innerCone + float(nextRange(rng, 0.05, 0.9));
         }
-        const auto row = makeLightRow(light);
+        const auto row = lmx::engine::makeLightRow(light);
         REQUIRE(row.has_value());
         rows.push_back(*row);
     }
@@ -604,20 +604,20 @@ TEST_CASE("every reaching light appears in its sampled point's froxel", "[render
         const glm::vec3 viewPoint =
             pixelCentreViewPoint(views[0], anchors[k].pixel, anchors[k].distance);
         const glm::vec3 world{viewToWorldFar * glm::vec4(viewPoint, 1.0f)};
-        LocalLight light;
+        lmx::engine::LocalLight light;
         if (k % 2 == 0) {
             light.position = world;
             light.range = 0.5f;
         } else {
             const glm::vec3 forward = glm::normalize(world - views[0].camera.position);
-            light.type = LocalLightType::Spot;
+            light.type = lmx::engine::LocalLightType::Spot;
             light.position = world - forward * 3.0f;
             light.direction = forward;
             light.range = 5.0f;
             light.innerCone = 0.1f;
             light.outerCone = 0.3f;
         }
-        const auto row = makeLightRow(light);
+        const auto row = lmx::engine::makeLightRow(light);
         REQUIRE(row.has_value());
         rows.push_back(*row);
     }

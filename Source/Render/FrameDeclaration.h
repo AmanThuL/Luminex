@@ -9,10 +9,13 @@
 
 #include <cstdint>
 
-namespace lmx::render {
-
+namespace lmx::engine {
 /// Camera borrowed by frame declaration.
 class Camera;
+} // namespace lmx::engine
+
+namespace lmx::render {
+
 /// Renderer composing the frame's draw and processing stages.
 class Renderer;
 /// Frame inputs borrowed until graph execution finishes.
@@ -34,7 +37,7 @@ public:
     /// Rotates the retired transient slot, applies pooling policy, and declares renderer passes.
     /// The renderer, commands, camera, and view are borrowed until execute finishes.
     FrameDeclaration(TransientPool& pool, Renderer& renderer, rojoRHI::CommandList& commands,
-                     const Camera& camera, const SceneView& view, bool poolingEnabled);
+                     const engine::Camera& camera, const SceneView& view, bool poolingEnabled);
 
     /// Frames cannot duplicate graph declarations or their single execution boundary.
     FrameDeclaration(const FrameDeclaration&) = delete;
