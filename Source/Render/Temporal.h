@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Engine/Types/Camera.h"
+#include "Engine/Types/MotionClass.h"
 #include <rojoRHI/Format.h>
 
 #include <glm/mat4x4.hpp>
@@ -115,12 +116,6 @@ struct CameraFrameState {
 /// (0, 0) leaves the jittered matrices identical to the plain ones.
 CameraFrameState buildCameraFrameState(const Camera& camera, const FrameExtents& extents,
                                        glm::vec2 jitterPixels);
-
-/// How a draw's motion is produced.
-enum class MotionClass : uint8_t {
-    Rigid,  ///< Reprojected through the item's previous model matrix.
-    Invalid ///< Writes the kMotionInvalid sentinel; history must not be reprojected.
-};
 
 /// Storage format of the `lmx.render.motion` target: a signed two-channel UV delta.
 constexpr rojoRHI::Format kMotionFormat = rojoRHI::Format::RG16Float;
