@@ -6,7 +6,7 @@
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/RenderGraphInternal.h"
 
-#include <limits>
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -38,30 +38,22 @@ bool isWriteRole(UseRole role) {
 // until the frame is executed, and every rule below has to answer the same way for both kinds.
 ResolvedRange resolveRange(const rojoRHI::TextureSubresourceRange& range, uint32_t mipLevels,
                            uint32_t arrayLayers) {
-    const auto lastOf = [](uint32_t base, uint32_t count, uint32_t available) {
+    const auto resolve = [](uint32_t base, uint32_t count, uint32_t available) {
         if (count == rojoRHI::kAllMipLevels) {
-            return available > base ? available - 1 : base;
+            count = available > base ? available - base : 1;
         }
-        if (count == 0) {
-            return base;
-        }
-        const uint64_t last = static_cast<uint64_t>(base) + count - 1;
-        return last > std::numeric_limits<uint32_t>::max() ? std::numeric_limits<uint32_t>::max()
-                                                           : static_cast<uint32_t>(last);
+        // Validation diagnoses zero counts; preserve their singleton resolved bounds.
+        return Interval{base, std::max(count, uint32_t{1})};
     };
-    return {.firstMip = range.baseMipLevel,
-            .lastMip = lastOf(range.baseMipLevel, range.mipLevelCount, mipLevels),
-            .firstLayer = range.baseArrayLayer,
-            .lastLayer = lastOf(range.baseArrayLayer, range.arrayLayerCount, arrayLayers)};
+    return {.mips = resolve(range.baseMipLevel, range.mipLevelCount, mipLevels),
+            .layers = resolve(range.baseArrayLayer, range.arrayLayerCount, arrayLayers)};
 }
 
 //======================================================================================================================
 // Two ranges overlap only when they share a subresource, which takes both axes intersecting: mip 1
 // of layer 0 and mip 1 of layer 1 are different subresources.
 bool rangesOverlap(const ResolvedRange& a, const ResolvedRange& b) {
-    const bool mips = a.firstMip <= b.lastMip && b.firstMip <= a.lastMip;
-    const bool layers = a.firstLayer <= b.lastLayer && b.firstLayer <= a.lastLayer;
-    return mips && layers;
+    return intersects(a.mips, b.mips) && intersects(a.layers, b.layers);
 }
 
 //======================================================================================================================

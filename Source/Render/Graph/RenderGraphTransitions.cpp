@@ -80,17 +80,14 @@ rojoRHI::BufferUse bufferUseOf(PassKind kind, UseRole role) {
 // together cover a reader do not each order it, and treating them as if they did is the mistake
 // this check exists to avoid.
 bool enclosesRange(const ResolvedRange& outer, const ResolvedRange& inner) {
-    return outer.firstMip <= inner.firstMip && inner.lastMip <= outer.lastMip &&
-           outer.firstLayer <= inner.firstLayer && inner.lastLayer <= outer.lastLayer;
+    return outer.mips.first <= inner.mips.first && last(inner.mips) <= last(outer.mips) &&
+           outer.layers.first <= inner.layers.first && last(inner.layers) <= last(outer.layers);
 }
 
 //======================================================================================================================
 ResolvedRange intersectRange(const ResolvedRange& a, const ResolvedRange& b) {
     LMX_ASSERT(rangesOverlap(a, b), "only overlapping subresource ranges have an intersection");
-    return {.firstMip = std::max(a.firstMip, b.firstMip),
-            .lastMip = std::min(a.lastMip, b.lastMip),
-            .firstLayer = std::max(a.firstLayer, b.firstLayer),
-            .lastLayer = std::min(a.lastLayer, b.lastLayer)};
+    return {.mips = intersection(a.mips, b.mips), .layers = intersection(a.layers, b.layers)};
 }
 
 //======================================================================================================================
@@ -106,35 +103,31 @@ std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const Resol
     if (!rangesOverlap(range, cut)) {
         return {range};
     }
-    const uint32_t cutFirstMip = std::max(range.firstMip, cut.firstMip);
-    const uint32_t cutLastMip = std::min(range.lastMip, cut.lastMip);
-    const uint32_t cutFirstLayer = std::max(range.firstLayer, cut.firstLayer);
-    const uint32_t cutLastLayer = std::min(range.lastLayer, cut.lastLayer);
+    const uint32_t cutFirstMip = std::max(range.mips.first, cut.mips.first);
+    const uint32_t cutLastMip = std::min(last(range.mips), last(cut.mips));
+    const uint32_t cutFirstLayer = std::max(range.layers.first, cut.layers.first);
+    const uint32_t cutLastLayer = std::min(last(range.layers), last(cut.layers));
 
     std::vector<ResolvedRange> remainder;
-    if (range.firstMip < cutFirstMip) {
-        remainder.push_back({.firstMip = range.firstMip,
-                             .lastMip = cutFirstMip - 1,
-                             .firstLayer = range.firstLayer,
-                             .lastLayer = range.lastLayer});
+    if (range.mips.first < cutFirstMip) {
+        remainder.push_back(
+            {.mips = {range.mips.first, (cutFirstMip - 1) - (range.mips.first) + 1},
+             .layers = {range.layers.first, (last(range.layers)) - (range.layers.first) + 1}});
     }
-    if (cutLastMip < range.lastMip) {
-        remainder.push_back({.firstMip = cutLastMip + 1,
-                             .lastMip = range.lastMip,
-                             .firstLayer = range.firstLayer,
-                             .lastLayer = range.lastLayer});
+    if (cutLastMip < last(range.mips)) {
+        remainder.push_back(
+            {.mips = {cutLastMip + 1, (last(range.mips)) - (cutLastMip + 1) + 1},
+             .layers = {range.layers.first, (last(range.layers)) - (range.layers.first) + 1}});
     }
-    if (range.firstLayer < cutFirstLayer) {
-        remainder.push_back({.firstMip = cutFirstMip,
-                             .lastMip = cutLastMip,
-                             .firstLayer = range.firstLayer,
-                             .lastLayer = cutFirstLayer - 1});
+    if (range.layers.first < cutFirstLayer) {
+        remainder.push_back(
+            {.mips = {cutFirstMip, (cutLastMip) - (cutFirstMip) + 1},
+             .layers = {range.layers.first, (cutFirstLayer - 1) - (range.layers.first) + 1}});
     }
-    if (cutLastLayer < range.lastLayer) {
-        remainder.push_back({.firstMip = cutFirstMip,
-                             .lastMip = cutLastMip,
-                             .firstLayer = cutLastLayer + 1,
-                             .lastLayer = range.lastLayer});
+    if (cutLastLayer < last(range.layers)) {
+        remainder.push_back(
+            {.mips = {cutFirstMip, (cutLastMip) - (cutFirstMip) + 1},
+             .layers = {cutLastLayer + 1, (last(range.layers)) - (cutLastLayer + 1) + 1}});
     }
     return remainder;
 }
@@ -145,10 +138,10 @@ std::vector<ResolvedRange> subtractRange(const ResolvedRange& range, const Resol
 // derived from whole-resource reads is indistinguishable from the declaration it came from.
 rojoRHI::TextureSubresourceRange unionRange(const ResolvedRange& a, const ResolvedRange& b,
                                             uint32_t mipLevels, uint32_t arrayLayers) {
-    const uint32_t firstMip = std::min(a.firstMip, b.firstMip);
-    const uint32_t lastMip = std::max(a.lastMip, b.lastMip);
-    const uint32_t firstLayer = std::min(a.firstLayer, b.firstLayer);
-    const uint32_t lastLayer = std::max(a.lastLayer, b.lastLayer);
+    const uint32_t firstMip = std::min(a.mips.first, b.mips.first);
+    const uint32_t lastMip = std::max(last(a.mips), last(b.mips));
+    const uint32_t firstLayer = std::min(a.layers.first, b.layers.first);
+    const uint32_t lastLayer = std::max(last(a.layers), last(b.layers));
     return {.baseMipLevel = firstMip,
             .mipLevelCount =
                 lastMip + 1 >= mipLevels ? rojoRHI::kAllMipLevels : lastMip - firstMip + 1,
@@ -214,10 +207,8 @@ std::vector<DebugTransition> RenderGraph::deriveTransitions(const Schedule& sche
                 m_resources[index].priorTextureAccess) {
             const Resource& resource = m_resources[index];
             pending[index].textureWriters.push_back(
-                {.range = {.firstMip = 0,
-                           .lastMip = resource.mipLevels - 1,
-                           .firstLayer = 0,
-                           .lastLayer = resource.arrayLayers - 1},
+                {.range = {.mips = {0, (resource.mipLevels - 1) - (0) + 1},
+                           .layers = {0, (resource.arrayLayers - 1) - (0) + 1}},
                  .use = *access,
                  .writes = textureUseWrites(*access)});
         }

@@ -4,16 +4,15 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Containers/Interval.h"
 #include "Render/Graph/RenderGraph.h"
 
 namespace lmx::render::graph_detail {
 
 // Inclusive, resolved mip/layer bounds shared by validation and transition derivation.
 struct ResolvedRange {
-    uint32_t firstMip = 0;
-    uint32_t lastMip = 0;
-    uint32_t firstLayer = 0;
-    uint32_t lastLayer = 0;
+    Interval mips{0, 1};
+    Interval layers{0, 1};
 };
 
 bool isWriteRole(UseRole role);
