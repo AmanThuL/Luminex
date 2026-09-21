@@ -3,6 +3,7 @@
 /// @brief Tests coverage revisions and scene-independent identity tokens used by occlusion history.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -18,7 +19,7 @@ uint64_t prepareCoverage(rojoRHI::Device& device, scene::Scene& scene) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<render::DrawItem> items;
-    const auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(view.coverageEpoch == scene.coverageEpoch());
     const auto epoch = view.coverageEpoch;
     device.endFrame(nullptr);
@@ -136,7 +137,7 @@ TEST_CASE("Scene view tokens distinguish stores and recycled instance rows", "[s
     };
     const auto token = [](scene::Scene& scene) {
         std::vector<render::DrawItem> items;
-        scene.view(items, render::ShadowFilter::PCF, false);
+        render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
         REQUIRE(items.size() == 1);
         return items.front().instanceIdentity;
     };

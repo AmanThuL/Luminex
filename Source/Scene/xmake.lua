@@ -2,4 +2,4 @@
 target("Scene")
     set_kind("static")
     add_files("*.cpp")
-    add_deps("Core", "RojoRHI", "Asset", "Render", "Engine")
+    add_deps("Core", "RojoRHI", "Asset", "Engine")

@@ -1,4 +1,5 @@
 #include "GpuTemporalTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 
 #include <algorithm>
@@ -19,7 +20,7 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.classifyMode = ClassifyMode::Gpu;
         view.submission = mode;
         view.bloomEnabled = false;
@@ -73,7 +74,7 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<DrawItem> items;
-    auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
     view.items = {};
     view.classifyMode = ClassifyMode::Gpu;
     view.submission = SubmissionMode::Batched;

@@ -1,4 +1,5 @@
 #include "GpuTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 #include <algorithm>
 #include <functional>
@@ -40,7 +41,7 @@ VisibilityStatus checkedFrame(Device& device, scene::Scene& scene, Renderer& ren
     auto& commands = device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<DrawItem> items;
-    auto view = scene.view(items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
     view.classifyMode = ClassifyMode::Gpu;
     view.classifyCheck = true;
     view.occlusionEnabled = true;
@@ -287,7 +288,7 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             auto& commands = (*device)->beginFrame();
             REQUIRE(scene.prepareFrame((*device)->frameNumber()));
             std::vector<DrawItem> items;
-            auto view = scene.view(items, ShadowFilter::PCF, false);
+            auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
             view.classifyMode = ClassifyMode::Gpu;
             view.submission = mode;
             view.classifyCheck = true;

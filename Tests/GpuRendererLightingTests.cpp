@@ -1,4 +1,5 @@
 #include "GpuRendererTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 
 #include "Engine/Types/LocalLight.h"
@@ -99,7 +100,8 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::render::DrawItem> items;
-    const auto view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, false);
+    const auto view =
+        lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF, false);
     (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
                         /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
@@ -201,7 +203,8 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::render::DrawItem> allItems;
-    const auto sceneView = (*scene)->view(allItems, lmx::render::ShadowFilter::PCF, false);
+    const auto sceneView =
+        lmx::render::buildSceneView(**scene, allItems, lmx::render::ShadowFilter::PCF, false);
     std::vector<lmx::render::DrawItem> items;
     std::vector<glm::vec3> centers;
     std::vector<const lmx::scene::SceneObject*> spheres;
@@ -708,7 +711,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.localLightMode = mode;
         view.temporal.enabled = false;
         view.bloomEnabled = false;
@@ -818,7 +821,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
                 std::vector<DrawItem> items;
-                auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+                auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
                 view.localLightMode = mode;
                 view.temporal.enabled = motionEnabled;
                 view.temporal.jitterEnabled = false;
@@ -909,7 +912,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
         (*scene)->advanceAnimation(0.4);
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<DrawItem> items;
-        auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
         view.localLightMode = mode;
         view.lightCheck = true;
         view.temporal.enabled = false;

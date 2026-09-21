@@ -1,6 +1,7 @@
 #include "GpuRendererTestSupport.h"
 
 #include "Asset/TextureBake.h"
+#include "Render/SceneViewBuilder.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -357,6 +358,6 @@ TEST_CASE("Sponza zero-light histories repeat at the frozen baseline camera",
     std::vector<DrawItem> items;
     compareHistories(**device, "sponza-frozen-camera", camera, 1280, 720, [&](uint64_t frame) {
         REQUIRE((*scene)->prepareFrame(frame));
-        return (*scene)->view(items, ShadowFilter::PCF, false);
+        return buildSceneView(**scene, items, ShadowFilter::PCF, false);
     });
 }

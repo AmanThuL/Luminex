@@ -18,8 +18,9 @@
     "tests": 1500
   },
   "pendingPaths": [
-    "Source/Engine",
-    "Source/Engine/Asset"
+    "Source/Engine/Asset",
+    "Source/Scene",
+    "Source/Asset"
   ],
   "units": {
     "core": {
@@ -56,10 +57,12 @@
     },
     "engine": {
       "paths": [
-        "Source/Engine"
+        "Source/Engine",
+        "Source/Scene"
       ],
       "targets": [
-        "Engine"
+        "Engine",
+        "Scene"
       ],
       "units": [
         "core",
@@ -68,7 +71,9 @@
       "thirdParty": [
         "glm"
       ],
-      "privateHeaders": []
+      "privateHeaders": [
+        "Source/Scene/SceneEnvironment.h"
+      ]
     },
     "render": {
       "paths": [
@@ -93,26 +98,6 @@
         "Source/Render/TemporalResolveInternal.h"
       ]
     },
-    "scene": {
-      "paths": [
-        "Source/Scene"
-      ],
-      "targets": [
-        "Scene"
-      ],
-      "units": [
-        "core",
-        "asset",
-        "render",
-        "engine"
-      ],
-      "thirdParty": [
-        "glm"
-      ],
-      "privateHeaders": [
-        "Source/Scene/SceneEnvironment.h"
-      ]
-    },
     "app-model": {
       "paths": [
         "Source/App/Model"
@@ -123,7 +108,6 @@
       "units": [
         "core",
         "asset",
-        "scene",
         "render",
         "engine"
       ],
@@ -146,7 +130,6 @@
         "core",
         "asset",
         "render",
-        "scene",
         "app-model",
         "engine"
       ],
@@ -183,7 +166,6 @@
         "core",
         "render",
         "asset",
-        "scene",
         "app-model",
         "engine"
       ],
@@ -266,9 +248,6 @@
         "render": [
           "*"
         ],
-        "scene": [
-          "*"
-        ],
         "app-model": [
           "*"
         ],
@@ -307,7 +286,8 @@
         "Core",
         "RojoRHI",
         "Engine",
-        "Asset"
+        "Asset",
+        "Scene"
       ]
     },
     "App": {
@@ -371,7 +351,6 @@
         "Core",
         "RojoRHI",
         "Asset",
-        "Render",
         "Engine"
       ]
     },
