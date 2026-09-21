@@ -1,5 +1,5 @@
-#include "Asset/BmpImage.h"
 #include "Asset/RepositoryAsset.h"
+#include "Engine/Asset/Image/BmpImage.h"
 
 #include <catch2/catch_test_macros.hpp>
 

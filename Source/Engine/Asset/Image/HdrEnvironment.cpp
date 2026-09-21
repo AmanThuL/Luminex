@@ -3,7 +3,7 @@
 /// @brief Implements Radiance HDR decoding and deterministic environment-map conversion.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/HdrEnvironment.h"
+#include "Engine/Asset/Image/HdrEnvironment.h"
 
 #include <stb/stb_image.h>
 

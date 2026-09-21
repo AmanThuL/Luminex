@@ -3,7 +3,7 @@
 /// @brief Implements deterministic DDS parsing and texture upload preparation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/DdsLoader.h"
+#include "Engine/Asset/Image/DdsLoader.h"
 
 #include "Core/File.h"
 #include "Core/Math.h"
