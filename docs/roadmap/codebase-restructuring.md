@@ -202,7 +202,7 @@ Engine in the same slice, as the first consumer: `Engine/Types/` divides into `V
 `Geometry/` and `Material/`; the five identifier structs become `Handle<Tag>` aliases of the same
 layout; `SceneTables.cpp` and `Scene.cpp` are decomposed by responsibility; `Catalog/` becomes its
 own unit `Source/Scenes` (target `Scenes`), so Engine holds no authored content. Render and App
-call sites change an include and a name only.
+adopt Core only where a whole function or helper leaves them.
 
 **Exit gate:** the protocol and the format check hold at every commit, image and bake hashes
 exact; Core reaches no Engine, Render, App or RojoRHI header or symbol; every Core type has direct

@@ -1,6 +1,6 @@
 # ADR 0026: Core's charter and the placement of domain-free code
 
-**Status**: Proposed (2026-09-21) · **Roadmap**: ../roadmap/codebase-restructuring.md
+**Status**: Accepted (2026-09-21) · **Roadmap**: ../roadmap/codebase-restructuring.md
 
 ## Context
 
