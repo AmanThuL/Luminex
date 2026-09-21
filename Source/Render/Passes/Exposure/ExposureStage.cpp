@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Exposure/ExposureStage.h"
+#include "Render/Common/Dispatch.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -81,8 +82,6 @@ constexpr float kExposureLogLuminanceMax = 4.0f;
 // renderer that stepped by wall time would resolve a different exposure for the same frame on a
 // different machine, which is not something a frozen stability tolerance can survive.
 constexpr float kExposureFrameSeconds = 1.0f / 60.0f;
-
-constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 
 } // namespace
 
@@ -283,8 +282,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
                                        rojoRHI::StorageAccess::ReadWrite);
             commands.bindBuffer(kHistogramExposureSlot, **exposure);
             commands.bindFrameData(kHistogramParamsSlot, params);
-            commands.dispatch(divRoundUp(meterWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(meterHeight, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(meterWidth, meterHeight);
+            commands.dispatch(groups[0], groups[1], 1);
         });
     const GraphBuffer histogramFinal = nextVersion(histogramCleared);
 

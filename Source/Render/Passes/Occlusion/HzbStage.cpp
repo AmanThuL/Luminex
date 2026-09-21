@@ -3,6 +3,7 @@
 /// @brief Implements padded depth-pyramid allocation and per-mip graph reduction.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/HzbStage.h"
+#include "Render/Common/Dispatch.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Align.h"
@@ -23,7 +24,6 @@ struct HzbReduceParams {
     uint32_t sourceLevel;
 };
 static_assert(sizeof(HzbReduceParams) == 20);
-constexpr uint32_t kThreads = 8;
 
 } // namespace
 
@@ -62,10 +62,11 @@ rojoRHI::Result<std::unique_ptr<HzbStage>> HzbStage::create(rojoRHI::Device& dev
         return std::unexpected(reduceLibrary.error());
     }
     stage->m_reduceLibrary = std::move(*reduceLibrary);
-    auto reduce = device.createComputePipeline({.library = stage->m_reduceLibrary.get(),
-                                                .computeEntry = "computeMain",
-                                                .threadsPerThreadgroup = {kThreads, kThreads, 1},
-                                                .label = "lmx.render.hzbReducePipeline"});
+    auto reduce = device.createComputePipeline(
+        {.library = stage->m_reduceLibrary.get(),
+         .computeEntry = "computeMain",
+         .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
+         .label = "lmx.render.hzbReducePipeline"});
     if (!reduce) {
         return std::unexpected(reduce.error());
     }
@@ -178,8 +179,9 @@ GraphTexture HzbStage::declare(RenderGraph& graph, rojoRHI::CommandList& command
                 commands.bindStorageTexture(1, **outputTexture, {.range = outputRange},
                                             rojoRHI::StorageAccess::Write);
                 commands.bindFrameData(0, params);
-                commands.dispatch(divRoundUp(params.destinationWidth, kThreads),
-                                  divRoundUp(params.destinationHeight, kThreads), 1);
+                const auto groups =
+                    dispatchGroups2D(params.destinationWidth, params.destinationHeight);
+                commands.dispatch(groups[0], groups[1], 1);
             });
         pyramid = nextVersion(pyramid);
     }

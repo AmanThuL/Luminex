@@ -3,6 +3,7 @@
 /// @brief Declares native temporal accumulation and raw history commits.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/Dispatch.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -15,7 +16,6 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kComputeThreadsPerGroup2D;
 using temporal_detail::kResolveDepthSlot;
 using temporal_detail::kResolveExposureSlot;
 using temporal_detail::kResolveHistorySlot;
@@ -152,8 +152,8 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
                                        rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
-            commands.dispatch(divRoundUp(width, kComputeThreadsPerGroup2D),
-                              divRoundUp(height, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(width, height);
+            commands.dispatch(groups[0], groups[1], 1);
         });
 
     if (rejectionWanted) {

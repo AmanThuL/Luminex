@@ -3,6 +3,7 @@
 /// @brief Adapts vendor selection and declares vendor history diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/Dispatch.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -16,7 +17,6 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kComputeThreadsPerGroup2D;
 using temporal_detail::kResolveDepthSlot;
 using temporal_detail::kResolveExposureSlot;
 using temporal_detail::kResolveHistorySlot;
@@ -86,8 +86,8 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
                                        rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
-            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(params.outputWidth, params.outputHeight);
+            commands.dispatch(groups[0], groups[1], 1);
         });
     return nextVersion(target);
 }

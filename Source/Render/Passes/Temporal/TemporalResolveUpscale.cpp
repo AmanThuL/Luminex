@@ -3,6 +3,7 @@
 /// @brief Declares spatial commits and temporal upscaling at output extent.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/Dispatch.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -15,7 +16,6 @@
 #include <utility>
 
 namespace lmx::render {
-using temporal_detail::kComputeThreadsPerGroup2D;
 using temporal_detail::kResolveDepthSlot;
 using temporal_detail::kResolveExposureSlot;
 using temporal_detail::kResolveHistorySlot;
@@ -113,8 +113,8 @@ GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph,
             // active rectangle must answer with that edge rather than with the opposite one.
             commands.bindSampler(kUpscaleSamplerSlot, *m_sampler);
             commands.bindFrameData(kUpscaleParamsSlot, params);
-            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(params.outputWidth, params.outputHeight);
+            commands.dispatch(groups[0], groups[1], 1);
         });
     // On declareHistoryCommit()'s terms: the consumer is the next frame, so the export is what
     // keeps the pass alive through culling.
@@ -226,8 +226,8 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
             // active rectangle must answer with that edge rather than with the opposite one.
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);
-            commands.dispatch(divRoundUp(params.outputWidth, kComputeThreadsPerGroup2D),
-                              divRoundUp(params.outputHeight, kComputeThreadsPerGroup2D), 1);
+            const auto groups = dispatchGroups2D(params.outputWidth, params.outputHeight);
+            commands.dispatch(groups[0], groups[1], 1);
         });
 
     if (rejectionWanted) {
