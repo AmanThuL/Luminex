@@ -10,7 +10,7 @@
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/OcclusionValidation.h"
 #include "Core/Diagnostics/Log.h"
-#include "Core/File.h"
+#include "Core/IO/File.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"

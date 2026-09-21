@@ -31,7 +31,7 @@
 #include "Runner.h"
 #include "Workload.h"
 
-#include "Core/Json.h"
+#include "Core/IO/Json.h"
 #include <rojoRHI/Metal4/Metal4FrameData.h>
 
 #include <cstdio>

@@ -11,7 +11,7 @@
 //                 for an embedded glTF image baked from a temp extraction file, the caller passes
 //                 a human-meaningful identifier instead of the throwaway temp path.
 #include "Engine/Asset/Texture/TextureBake.h"
-#include "Core/File.h"
+#include "Core/IO/File.h"
 
 #include <stb/stb_image.h>
 
