@@ -1,4 +1,4 @@
-#include "Render/RhiLog.h"
+#include "Render/Common/RhiLog.h"
 
 #include <catch2/reporters/catch_reporter_event_listener.hpp>
 #include <catch2/reporters/catch_reporter_registrars.hpp>
