@@ -3,6 +3,7 @@
 /// @brief Implements visible selection coverage and a separate SDR outline composite.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
+#include "Render/Common/DrawEncoding.h"
 #include "Render/Common/Formats.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
@@ -185,9 +186,8 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const auto drawCoverage = [this, &commands, view, selectedDraw,
                                viewProjection](bool selectedOnly) {
         commands.bindSampler(0, *m_sampler);
-        commands.bindBuffer(0, *view.tables.vertices);
-        commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
-        commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
+        bindSceneTables(commands, view.tables,
+                        {0, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
         for (uint32_t index = 0; index < view.items.size(); ++index) {
             const auto& item = view.items[index];
             if (selectedOnly && index != selectedDraw) {

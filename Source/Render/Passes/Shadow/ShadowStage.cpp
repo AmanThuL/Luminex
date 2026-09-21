@@ -7,6 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Projection.h"
+#include "Render/Common/DrawEncoding.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <glm/gtc/matrix_transform.hpp>
@@ -155,9 +156,9 @@ GraphTexture ShadowStage::declare(RenderGraph& graph, rojoRHI::CommandList& comm
         [this, &commands, view, inputs,
          lightViewProj = inputs.lightViewProj](const PassResources&) {
             if (view.tables.vertices) {
-                commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
-                commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
-                commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
+                bindSceneTables(
+                    commands, view.tables,
+                    {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
             }
             commands.bindFrameData(kPassUniformsSlot, ShadowPassUniforms{lightViewProj});
             rojoRHI::GraphicsPipeline* bound = nullptr;
