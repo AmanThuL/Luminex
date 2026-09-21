@@ -44,6 +44,7 @@ public:
         auto& entry = m_slots[slot];
         m_searchStart = std::min(m_searchStart, slot);
         entry.live = false;
+        // Defensive: a live slot never carries 0xFFFF, since retired slots are never handed out.
         if (entry.generation != std::numeric_limits<uint16_t>::max()) {
             ++entry.generation;
         }

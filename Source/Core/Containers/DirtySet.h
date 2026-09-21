@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file DirtySet.h
-/// @brief Declares a per-row, per-consumer dirty mask for paced table updates.
+/// @brief Declares per-index, per-consumer dirty flags.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -12,8 +12,8 @@
 
 namespace lmx {
 
-/// Tracks, for each row index, which of up to eight independent consumers still owes that row a
-/// write. One mask byte per index; bit `consumer` set means `consumer` has not yet cleared it.
+/// Tracks, for each index, which of up to eight independent consumers still has it marked dirty.
+/// One mask byte per index; bit `consumer` set means `consumer` has not yet cleared it.
 class DirtySet {
 public:
     /// Constructs a set for `consumers` independent readers. `consumers` is one to eight, since

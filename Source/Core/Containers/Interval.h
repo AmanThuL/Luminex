@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Interval.h
-/// @brief Declares a half-defined contiguous index range with saturating bounds.
+/// @brief Declares a contiguous index range with a saturating last index.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once

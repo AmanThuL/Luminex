@@ -14,9 +14,9 @@ namespace lmx {
 /// `Tag` only distinguishes types: handles with different tags neither compare nor convert.
 template <class Tag>
 struct Handle {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
+    uint32_t slot = 0;       ///< Stable slot index in its owning store.
     uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
+    uint16_t store = 0;      ///< Identity of the owning store; zero is invalid.
     /// Compares the complete identity, including owner and generation.
     bool operator==(const Handle&) const = default;
 };

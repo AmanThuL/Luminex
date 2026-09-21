@@ -19,6 +19,7 @@ namespace lmx {
 class Sha256 {
 public:
     //==================================================================================================================
+    /// Appends `data` to the message, hashing each complete 64-byte chunk as it fills.
     void update(std::span<const std::byte> data) {
         for (const std::byte b : data) {
             m_buffer[m_bufferLen++] = static_cast<uint8_t>(b);
@@ -31,6 +32,8 @@ public:
     }
 
     //==================================================================================================================
+    /// Pads the message, hashes its final chunks and returns the 32-byte big-endian digest. Call
+    /// once; the hasher is not reusable afterwards.
     std::array<uint8_t, 32> finish() {
         uint64_t bitLength = m_bitLength;
         m_buffer[m_bufferLen++] = 0x80;
@@ -121,10 +124,8 @@ private:
     uint64_t m_bitLength = 0;
 };
 
-/// Lowercase hex SHA-256 of `bytes`. Self-contained (no external crypto dependency) so the
-/// manifest's source hash needs nothing beyond what Asset already links; used identically by the
-/// bake tool (hashing the source file) and by Tools/bake_gltf_textures.py's own hashlib-based
-/// staleness check -- both compute the same standard digest, just in different languages.
+/// Lowercase hex SHA-256 of `bytes`: the standard digest any conforming implementation computes,
+/// with no external crypto dependency.
 std::string sha256Hex(std::span<const std::byte> bytes);
 
 } // namespace lmx
