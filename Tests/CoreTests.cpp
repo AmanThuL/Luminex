@@ -1,8 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Core/Align.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Math/Align.h"
 
 //======================================================================================================================
 TEST_CASE("log init is idempotent", "[core]") {

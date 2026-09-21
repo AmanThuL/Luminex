@@ -5,7 +5,7 @@
 
 #include "Engine/Scene/Scene.h"
 
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Texture/TextureBake.h"

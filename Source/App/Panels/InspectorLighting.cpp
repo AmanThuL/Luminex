@@ -11,7 +11,7 @@
 #include "App/Model/LightingHistory.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorPanel.h"
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
 
 #include <algorithm>
 

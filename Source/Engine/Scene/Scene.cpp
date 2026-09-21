@@ -10,9 +10,9 @@
 
 #include "Engine/Asset/RepositoryAsset.h"
 
-#include "Core/Color.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Core/Math/Color.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Texture/Ibl.h"

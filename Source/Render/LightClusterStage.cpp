@@ -6,7 +6,7 @@
 #include "Render/LightClusterStage.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 #include <rojoRHI/CaptureSchema.h>
 
 #include <algorithm>

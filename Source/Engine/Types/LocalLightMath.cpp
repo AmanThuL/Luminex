@@ -5,7 +5,7 @@
 
 #include "Engine/Types/LocalLightMath.h"
 
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
 
 #include <glm/geometric.hpp>
 #include <glm/trigonometric.hpp>

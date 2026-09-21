@@ -6,7 +6,7 @@
 #include "Engine/Asset/Image/DdsLoader.h"
 
 #include "Core/IO/File.h"
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 
 #include <cstring>
 #include <string>

@@ -5,9 +5,9 @@
 
 #include "Engine/Asset/Texture/TextureBake.h"
 
-#include "Core/Color.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/IO/Json.h"
+#include "Core/Math/Color.h"
 
 #include <glm/glm.hpp>
 

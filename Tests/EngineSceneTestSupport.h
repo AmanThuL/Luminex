@@ -10,7 +10,7 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "BrdfOracle.h"
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
 #include "DisplayTransformOracle.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Model/Transform.h"

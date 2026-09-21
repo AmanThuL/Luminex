@@ -3,7 +3,7 @@
 /// @brief Declares ordered previous-view box projection and the CPU depth oracle.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
 #include <array>
 #include <cstddef>
 #include <glm/mat4x4.hpp>

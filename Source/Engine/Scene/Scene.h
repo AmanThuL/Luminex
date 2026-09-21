@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Model/Transform.h"

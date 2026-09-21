@@ -3,7 +3,7 @@
 /// @brief Tests shared mesh bounds, canonical uploaded world rows, and static dirty convergence.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Core/Bounds.h"
+#include "Core/Math/Aabb.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
 

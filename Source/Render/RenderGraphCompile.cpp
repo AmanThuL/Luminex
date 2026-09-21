@@ -6,8 +6,8 @@
 #include "Render/RenderGraph.h"
 #include "Render/RenderGraphInternal.h"
 
-#include "Core/Align.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Align.h"
 
 #include <algorithm>
 #include <format>
