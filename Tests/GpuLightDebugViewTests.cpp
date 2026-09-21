@@ -1,6 +1,7 @@
 #include "Engine/Types/LocalLightMath.h"
 #include "GpuTestSupport.h"
 #include "Render/LightDebugStage.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 #include "Scene/SceneLibrary.h"
 
@@ -257,7 +258,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
                 std::vector<DrawItem> items;
-                auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+                auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
                 view.localLightMode = LocalLightMode::Clustered;
                 view.temporal.enabled = true;
                 view.temporal.jitterEnabled = true;
@@ -306,7 +307,7 @@ TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gp
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<DrawItem> items;
-    auto view = (*scene)->view(items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
     view.localLightMode = LocalLightMode::Clustered;
     view.lightDebugView = LightDebugView::Missed;
     view.temporal.enabled = false;

@@ -1,4 +1,5 @@
 #include "GpuTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 
 namespace {
@@ -55,7 +56,7 @@ std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, scene
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<render::DrawItem> items;
-    auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     view.bloomEnabled = false;
     view.submission = mode;
     view.visibilityEnabled = cull;
@@ -201,7 +202,7 @@ TEST_CASE("draw submission slots grow and retire with paced scene capacity",
         }
         REQUIRE(scene.prepareFrame((*device)->frameNumber()));
         std::vector<render::DrawItem> items;
-        auto view = scene.view(items, render::ShadowFilter::PCF, false);
+        auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
         render::VisibilityResult camera;
         camera.visibleItems = {frame % 2};
         render::VisibilityResult shadow;

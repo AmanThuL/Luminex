@@ -1,4 +1,5 @@
 #include "GpuTemporalTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 
 using lmx::test::FixtureDrawItem;
@@ -419,7 +420,8 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     for (int frame = 0; frame < 2; ++frame) {
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        auto view = (*scene)->view(items, lmx::render::ShadowFilter::PCF, /*wireframe=*/false);
+        auto view = lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF,
+                                                /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;
         (*renderer)->render(commands, camera, view, false);

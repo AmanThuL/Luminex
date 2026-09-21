@@ -288,8 +288,8 @@ private:
     bool m_showSelectionOutline = true;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
-    // Render knobs the Inspector writes and Scene::view() reads. Shell state, not scene state --
-    // switching scenes does not reset any of them.
+    // Render knobs the Inspector writes and render::buildSceneView() reads. Shell state, not scene
+    // state -- switching scenes does not reset any of them.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
     LightingDisplay m_lightingDisplay;

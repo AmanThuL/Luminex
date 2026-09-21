@@ -393,8 +393,7 @@ void Scene::followCameraTrack(render::Camera& camera) const {
 }
 
 //======================================================================================================================
-render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
-                              bool wireframe) const {
+void Scene::fillDrawItems(std::vector<render::DrawItem>& items) const {
     validateObjects();
     items.clear();
     items.reserve(objects.size());
@@ -422,30 +421,6 @@ render::SceneView Scene::view(std::vector<render::DrawItem>& items, render::Shad
         items.back().instanceIdentity =
             uint64_t{object.id.store} << 48 | uint64_t{object.id.generation} << 32 | object.id.slot;
     }
-
-    render::SceneView sceneView;
-    sceneView.items = items;
-    sceneView.tables = tables();
-    sceneView.coverageEpoch = coverageEpoch();
-    for (size_t i = 0; i < std::size(sceneView.lights); ++i) {
-        sceneView.lights[i] = lights[i];
-    }
-    sceneView.boundingSphere = boundingSphere;
-    // A cubemap marks a fully constructed sky; the sphere and cubemap are published together.
-    if (skyCubemap != nullptr) {
-        LMX_ASSERT(skySphere && tryMesh(*skySphere), "sky mesh identity is invalid");
-        sceneView.skySphere = *tryMesh(*skySphere);
-        sceneView.skyCubemap = skyCubemap.get();
-    }
-    // The IBL set is generated from that same sky and published with it, so a scene that shows a
-    // sky also lights from it. Forwarded unconditionally: unique_ptr::get() on an empty pointer is
-    // the null the renderer's fallbacks already handle.
-    sceneView.irradiance = irradianceMap.get();
-    sceneView.prefilteredEnv = prefilteredEnvMap.get();
-    sceneView.dfgLut = dfgLut.get();
-    sceneView.shadowFilter = filter;
-    sceneView.wireframe = wireframe;
-    return sceneView;
 }
 
 //======================================================================================================================

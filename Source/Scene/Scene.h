@@ -10,9 +10,11 @@
 #include "Asset/Transform.h"
 #include "Core/Bounds.h"
 #include "Engine/Types/Camera.h"
+#include "Engine/Types/DirectionalLight.h"
+#include "Engine/Types/DrawItem.h"
 #include "Engine/Types/LocalLight.h"
 #include "Engine/Types/Mesh.h"
-#include "Render/SceneView.h"
+#include "Engine/Types/MotionClass.h"
 #include "Scene/MaterialRecord.h"
 #include "Scene/SceneIds.h"
 #include "Scene/SceneTableStats.h"
@@ -190,12 +192,11 @@ public:
     /// Lens state remains owned by the caller and is unchanged.
     void followCameraTrack(render::Camera& camera) const;
 
-    /// Fills `items` (cleared first, one DrawItem per object, in object order) and returns the
-    /// SceneView Render consumes this frame. `items` is caller-owned rather than a Scene member so
-    /// it can live on the App's per-frame stack. The returned view, items and scene resources must
-    /// remain alive through pass declaration and graph execution.
-    render::SceneView view(std::vector<render::DrawItem>& items, render::ShadowFilter filter,
-                           bool wireframe) const;
+    /// Fills `items` (cleared first, one DrawItem per object, in object order) after validating
+    /// every object. `items` is caller-owned rather than a Scene member so it can live on the App's
+    /// per-frame stack; render::buildSceneView borrows it into the frame's SceneView, so it and the
+    /// scene resources must remain alive through pass declaration and graph execution.
+    void fillDrawItems(std::vector<render::DrawItem>& items) const;
 
 private:
     friend class SponzaLightRig;

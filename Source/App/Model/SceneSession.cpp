@@ -7,6 +7,7 @@
 
 #include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/LightLab.h"
 
 #include <algorithm>
@@ -102,7 +103,7 @@ scene::SceneTableStats SceneSession::tableStats() const {
 //======================================================================================================================
 render::SceneView SceneSession::view(std::vector<render::DrawItem>& items,
                                      render::ShadowFilter filter, bool wireframe) const {
-    return scene().view(items, filter, wireframe);
+    return render::buildSceneView(scene(), items, filter, wireframe);
 }
 
 //======================================================================================================================

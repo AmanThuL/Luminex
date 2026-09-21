@@ -1,6 +1,7 @@
 #include "App/Model/SceneSession.h"
 #include "Engine/Types/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/SponzaLightRig.h"
 #include "SceneTableTestSupport.h"
 
@@ -203,7 +204,7 @@ TEST_CASE("loadSponzaScene's full SceneView renders through Renderer without exh
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<render::DrawItem> items;
     const render::SceneView view =
-        (*scene)->view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+        render::buildSceneView(**scene, items, render::ShadowFilter::PCF, /*wireframe=*/false);
     REQUIRE(items.size() == 25);
 
     (*renderer)->render(commands, camera, view, /*barrierForSampling=*/false);
@@ -472,7 +473,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     // Nothing has moved yet, so every draw reprojects onto itself.
     std::vector<render::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
-    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == (*scene)->objects.size());
     for (const render::DrawItem& item : items) {
         const auto& row = rows[item.instanceRow];
@@ -486,7 +487,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
     (*scene)->advanceAnimation(1.0 / 60.0);
     (*scene)->animate((*scene)->animationTime);
     const auto movedRows = readSceneInstances(**scene, **device);
-    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     bool anyMoved = false;
     for (const render::DrawItem& item : items) {
         const auto& row = movedRows[item.instanceRow];
@@ -521,7 +522,7 @@ TEST_CASE("loadGltfScene opens an animated file at the clip's t = 0, not its aut
 
     std::vector<render::DrawItem> items;
     const auto rows = readSceneInstances(**scene, **device);
-    (*scene)->view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
     const auto& row = rows[items[0].instanceRow];
     REQUIRE(matricesNear(row.model, clipAtZero, 1e-4f));

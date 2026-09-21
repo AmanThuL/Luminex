@@ -3,6 +3,7 @@
 /// @brief Tests visibility-lab population, boundary coverage, and deterministic camera sweeps.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/SceneViewBuilder.h"
 #include "Render/Visibility.h"
 #include "Scene/SceneLibrary.h"
 
@@ -33,7 +34,7 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
     (*device)->beginFrame();
     REQUIRE(scene.prepareFrame((*device)->frameNumber()));
     std::vector<render::DrawItem> items;
-    const auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     auto camera = scene::cameraFromScene(scene.initialCamera);
     const auto classify = [&] {
         const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *

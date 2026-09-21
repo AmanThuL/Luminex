@@ -1,4 +1,5 @@
 #include "EngineSceneTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 
 //======================================================================================================================
 // A Scene with no IBL attached must still publish a renderable view. Empty objects make the
@@ -9,7 +10,7 @@ TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricatin
 
     std::vector<render::DrawItem> items;
     const render::SceneView view =
-        scene.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
+        render::buildSceneView(scene, items, render::ShadowFilter::PCF, /*wireframe=*/false);
 
     REQUIRE(view.irradiance == nullptr);
     REQUIRE(view.prefilteredEnv == nullptr);
@@ -80,7 +81,7 @@ TEST_CASE("Scene::commitFrame promotes the current model while preserving the st
     Scene scene = makeMotionTestScene();
     std::vector<render::DrawItem> items;
 
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(items.size() == 1);
     REQUIRE(items[0].instanceRow == scene.objects[0].id.slot);
     REQUIRE(matricesNear(scene.objects[0].modelMatrix(), scene.objects[0].previousModel, 1e-6f));
@@ -89,7 +90,7 @@ TEST_CASE("Scene::commitFrame promotes the current model while preserving the st
     scene.commitFrame();
     scene.objects[0].position = glm::vec3(4.0f, 0.0f, 0.0f);
 
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(matricesNear(scene.objects[0].previousModel, first, 1e-6f));
     REQUIRE(near3(glm::vec3(scene.objects[0].modelMatrix()[3]), glm::vec3(4.0f, 0.0f, 0.0f)));
     REQUIRE(scene.objects[0].motionClass == render::MotionClass::Rigid);
@@ -102,7 +103,7 @@ TEST_CASE("Scene::resetMotion collapses an object's motion to its current pose",
     scene.resetMotion();
 
     std::vector<render::DrawItem> items;
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(matricesNear(scene.objects[0].modelMatrix(), scene.objects[0].previousModel, 1e-6f));
     REQUIRE(near3(glm::vec3(scene.objects[0].previousModel[3]), glm::vec3(9.0f, 0.0f, 0.0f)));
 }
@@ -113,7 +114,7 @@ TEST_CASE("Scene keeps an object's declared motion class beside its stable ident
     scene.objects[0].motionClass = render::MotionClass::Invalid;
 
     std::vector<render::DrawItem> items;
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(scene.objects[0].motionClass == render::MotionClass::Invalid);
 }
 
@@ -176,7 +177,7 @@ TEST_CASE("Scene::animate writes an object's sampled emissive strength independe
     REQUIRE(scene.objects[0].emissiveStrength == Catch::Approx(4.0f));
 
     std::vector<render::DrawItem> items;
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
                       scene.objects[0].emissiveStrength,
                   glm::vec3(4.0f, 3.2f, 1.2f)));
@@ -210,7 +211,7 @@ TEST_CASE("Scene leaves emissive untouched when an object has no emissive track"
     scene.material(scene.objects[0].material).emissive = glm::vec3(0.5f, 0.5f, 0.5f);
 
     std::vector<render::DrawItem> items;
-    scene.view(items, render::ShadowFilter::PCF, false);
+    render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     REQUIRE(near3(scene.material(scene.objects[0].material).emissive *
                       scene.objects[0].emissiveStrength,
                   glm::vec3(0.5f, 0.5f, 0.5f)));

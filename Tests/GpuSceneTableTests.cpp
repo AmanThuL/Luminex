@@ -1,4 +1,5 @@
 #include "GpuTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
@@ -59,7 +60,7 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, scene::Sc
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<render::DrawItem> items;
-    auto view = scene.view(items, render::ShadowFilter::PCF, false);
+    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
     view.bloomEnabled = false;
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = false;

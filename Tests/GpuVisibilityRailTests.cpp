@@ -1,4 +1,5 @@
 #include "GpuTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/SceneLibrary.h"
 
 namespace {
@@ -24,7 +25,7 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
             auto& commands = (*device)->beginFrame();
             REQUIRE(world.prepareFrame((*device)->frameNumber()));
             std::vector<render::DrawItem> items;
-            auto view = world.view(items, render::ShadowFilter::PCF, false);
+            auto view = render::buildSceneView(world, items, render::ShadowFilter::PCF, false);
             view.classifyMode = render::ClassifyMode::Gpu;
             view.classifyCheck = true;
             view.submission = mode;

@@ -1,4 +1,5 @@
 #include "EngineSceneTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 
 //======================================================================================================================
 // Deterministic diagnostics with an internal neutral-environment fallback, so this loads with no
@@ -360,7 +361,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<render::DrawItem> allItems;
-    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
     std::vector<render::DrawItem> items;
     std::vector<glm::vec3> patchPositions;
     for (const Patch& patch : kPatches) {
@@ -514,7 +515,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<render::DrawItem> allItems;
-    (*scene)->view(allItems, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
     std::vector<render::DrawItem> items;
     items.push_back(allItems[static_cast<size_t>(probe - (*scene)->objects.data())]);
 

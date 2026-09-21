@@ -1,4 +1,5 @@
 #include "GpuTestSupport.h"
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 
 #include <algorithm>
@@ -271,7 +272,7 @@ TEST_CASE("rejected geometry contributes no camera attachments through the jitte
                 auto& commands = (*device)->beginFrame();
                 REQUIRE(scene.prepareFrame((*device)->frameNumber()));
                 std::vector<render::DrawItem> items;
-                auto view = scene.view(items, render::ShadowFilter::PCF, false);
+                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
                 if (!sentinels)
                     view.items = view.items.first(kRejectedCount);
                 view.bloomEnabled = false;
@@ -359,7 +360,7 @@ TEST_CASE("GPU classification preserves every camera attachment through the jitt
                 auto& commands = (*device)->beginFrame();
                 REQUIRE(scene.prepareFrame((*device)->frameNumber()));
                 std::vector<render::DrawItem> items;
-                auto view = scene.view(items, render::ShadowFilter::PCF, false);
+                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
                 view.bloomEnabled = false;
                 view.submission = submission;
                 view.visibilityEnabled = true;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Render/SceneViewBuilder.h"
 #include "Scene/Scene.h"
 #include <catch2/catch_test_macros.hpp>
 #include <deque>
@@ -184,7 +185,8 @@ struct FixtureSceneView : render::SceneView {
         auto prepared = state->scene.prepareFrame(frame);
         INFO((prepared ? "" : prepared.error().message));
         REQUIRE(prepared);
-        const auto sceneView = state->scene.view(state->draws, shadowFilter, wireframe);
+        const auto sceneView =
+            render::buildSceneView(state->scene, state->draws, shadowFilter, wireframe);
         render::SceneView view = static_cast<const render::SceneView&>(*this);
         view.tables = sceneView.tables;
         view.items = state->draws;
