@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -69,12 +70,10 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
         "lmx.pass.temporal.reprojectedHistory", std::move(desc),
         [this, &commands, inputs, target, params](const PassResources& resources) {
             const auto texture = [&](GraphTexture handle) {
-                auto result = resources.texture(handle);
-                LMX_ASSERT(result.has_value(), result.error().message);
-                return *result;
+                auto& result = lmx::render::texture(resources, handle);
+                return &result;
             };
-            auto exposure = resources.buffer(inputs.exposure);
-            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+            auto& exposure = lmx::render::buffer(resources, inputs.exposure);
             commands.bindComputePipeline(m_vendor->historyPipeline());
             commands.bindTexture(kResolveDepthSlot, *texture(inputs.depth));
             commands.bindTexture(kResolvePreviousDepthSlot, *texture(inputs.previousDepth));
@@ -82,7 +81,7 @@ GraphTexture TemporalResolve::declareVendorHistory(RenderGraph& graph,
             commands.bindTexture(kResolveHistorySlot, *texture(inputs.history));
             commands.bindStorageTexture(kResolveReprojectedSlot, *texture(target), {},
                                         rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
                                        rojoRHI::StorageAccess::Read);
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
             commands.bindFrameData(kResolveParamsSlot, params);

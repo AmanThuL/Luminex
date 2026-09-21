@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 #include "Render/Passes/Temporal/TemporalResolve.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
@@ -100,14 +101,12 @@ GraphTexture TemporalResolve::declareSpatialCommit(RenderGraph& graph,
     graph.addComputePass(
         "lmx.pass.temporal.commitUpscaled", std::move(commitDesc),
         [this, &commands, sceneColor, history, params](const PassResources& resources) {
-            const GraphResult<rojoRHI::Texture*> sceneTexture = resources.texture(sceneColor);
-            LMX_ASSERT(sceneTexture.has_value(), sceneTexture.error().message);
-            const GraphResult<rojoRHI::Texture*> historyTexture = resources.texture(history);
-            LMX_ASSERT(historyTexture.has_value(), historyTexture.error().message);
+            auto& sceneTexture = lmx::render::texture(resources, sceneColor);
+            auto& historyTexture = lmx::render::texture(resources, history);
 
             commands.bindComputePipeline(*m_spatialUpscalePipeline);
-            commands.bindTexture(kUpscaleSceneColorSlot, **sceneTexture);
-            commands.bindStorageTexture(kUpscaleOutputSlot, **historyTexture, {},
+            commands.bindTexture(kUpscaleSceneColorSlot, sceneTexture);
+            commands.bindStorageTexture(kUpscaleOutputSlot, historyTexture, {},
                                         rojoRHI::StorageAccess::Write);
             // The clamped sampler: a tap of the Catmull-Rom fetch that reaches the edge of the
             // active rectangle must answer with that edge rather than with the opposite one.
@@ -181,9 +180,8 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
         [this, &commands, inputs, output, rejection, reprojected, rejectionWanted,
          reprojectedWanted, params](const PassResources& resources) {
             const auto bindRead = [&](uint32_t slot, GraphTexture handle) {
-                const GraphResult<rojoRHI::Texture*> texture = resources.texture(handle);
-                LMX_ASSERT(texture.has_value(), texture.error().message);
-                commands.bindTexture(slot, **texture);
+                auto& texture = lmx::render::texture(resources, handle);
+                commands.bindTexture(slot, texture);
             };
             bindRead(kResolveSceneColorSlot, inputs.sceneColor);
             bindRead(kResolveDepthSlot, inputs.depth);
@@ -192,35 +190,31 @@ void TemporalResolve::declareUpscale(RenderGraph& graph, rojoRHI::CommandList& c
             bindRead(kResolveReactiveSlot, inputs.reactive);
             bindRead(kResolveHistorySlot, inputs.history);
 
-            const GraphResult<rojoRHI::Texture*> target = resources.texture(output);
-            LMX_ASSERT(target.has_value(), target.error().message);
-            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(inputs.exposure);
-            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+            auto& target = lmx::render::texture(resources, output);
+            auto& exposure = lmx::render::buffer(resources, inputs.exposure);
 
             commands.bindComputePipeline(*m_temporalUpscalePipeline);
-            commands.bindStorageTexture(kResolveOutputSlot, **target, {},
+            commands.bindStorageTexture(kResolveOutputSlot, target, {},
                                         rojoRHI::StorageAccess::Write);
             // declareResolve()'s rule: the argument table entry has to hold a writable texture even
             // where the kernel's corresponding writeDiagnostics bit makes it write nothing.
             if (rejectionWanted) {
-                const GraphResult<rojoRHI::Texture*> texture = resources.texture(rejection);
-                LMX_ASSERT(texture.has_value(), texture.error().message);
-                commands.bindStorageTexture(kResolveRejectionSlot, **texture, {},
+                auto& texture = lmx::render::texture(resources, rejection);
+                commands.bindStorageTexture(kResolveRejectionSlot, texture, {},
                                             rojoRHI::StorageAccess::Write);
             } else {
                 commands.bindStorageTexture(kResolveRejectionSlot, *m_diagnosticFallback, {},
                                             rojoRHI::StorageAccess::Write);
             }
             if (reprojectedWanted) {
-                const GraphResult<rojoRHI::Texture*> texture = resources.texture(reprojected);
-                LMX_ASSERT(texture.has_value(), texture.error().message);
-                commands.bindStorageTexture(kResolveReprojectedSlot, **texture, {},
+                auto& texture = lmx::render::texture(resources, reprojected);
+                commands.bindStorageTexture(kResolveReprojectedSlot, texture, {},
                                             rojoRHI::StorageAccess::Write);
             } else {
                 commands.bindStorageTexture(kResolveReprojectedSlot, *m_diagnosticFallback, {},
                                             rojoRHI::StorageAccess::Write);
             }
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
                                        rojoRHI::StorageAccess::Read);
             // The clamped sampler: a tap of either Catmull-Rom fetch that reaches the edge of the
             // active rectangle must answer with that edge rather than with the opposite one.

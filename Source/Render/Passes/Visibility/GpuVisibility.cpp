@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Common/GraphResources.h"
 #include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <cstring>
@@ -181,15 +182,15 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     reset.bufferDestinations.push_back(counters);
     graph.addCopyPass("lmx.pass.visibility.reset", std::move(reset),
                       [&commands, counters](const PassResources& resources) {
-                          commands.fillBuffer(**resources.buffer(counters), 0, 160, 0);
+                          commands.fillBuffer(lmx::render::buffer(resources, counters), 0, 160, 0);
                       });
     auto bindRead = [&commands](const PassResources& resources, uint32_t index,
                                 GraphBuffer handle) {
-        commands.bindBuffer(index, **resources.buffer(handle));
+        commands.bindBuffer(index, lmx::render::buffer(resources, handle));
     };
     auto bindStorage = [&commands](const PassResources& resources, uint32_t index,
                                    GraphBuffer handle, rojoRHI::StorageAccess access) {
-        commands.bindStorageBuffer(index, **resources.buffer(handle), access);
+        commands.bindStorageBuffer(index, lmx::render::buffer(resources, handle), access);
     };
     if (!view.tables.instances) {
         instances = graph.importBuffer(*m_emptyInstances, "lmx.visibility.emptyInstances");
@@ -207,7 +208,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
             commands.bindComputePipeline(*m_pipelines[view.occlusionEnabled ? 4 : 0]);
             if (view.occlusionEnabled) {
                 commands.bindFrameData(13, occlusion);
-                commands.bindTexture(0, **resources.texture(pyramid));
+                commands.bindTexture(0, lmx::render::texture(resources, pyramid));
             }
             bindRead(resources, 0, candidates);
             bindRead(resources, 2, chunks);

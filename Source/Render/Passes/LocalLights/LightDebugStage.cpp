@@ -5,6 +5,7 @@
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Render/Common/Formats.h"
+#include "Render/Common/GraphResources.h"
 
 namespace lmx::render {
 namespace {
@@ -59,11 +60,11 @@ GraphTexture LightDebugStage::declare(RenderGraph& graph, rojoRHI::CommandList& 
                   [this, &commands, inputs, params](const PassResources& resources) {
                       commands.bindPipeline(*m_pipeline);
                       commands.bindFrameData(0, params);
-                      commands.bindBuffer(1, **resources.buffer(inputs.lights));
-                      commands.bindBuffer(2, **resources.buffer(inputs.grid));
-                      commands.bindBuffer(3, **resources.buffer(inputs.indices));
-                      commands.bindTexture(0, **resources.texture(inputs.depth));
-                      commands.bindTexture(1, **resources.texture(inputs.display));
+                      commands.bindBuffer(1, lmx::render::buffer(resources, inputs.lights));
+                      commands.bindBuffer(2, lmx::render::buffer(resources, inputs.grid));
+                      commands.bindBuffer(3, lmx::render::buffer(resources, inputs.indices));
+                      commands.bindTexture(0, lmx::render::texture(resources, inputs.depth));
+                      commands.bindTexture(1, lmx::render::texture(resources, inputs.display));
                       commands.draw(3);
                   });
     return nextVersion(inputs.output);

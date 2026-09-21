@@ -3,6 +3,7 @@
 /// @brief Implements visible selection coverage and a separate SDR outline composite.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/View/Camera.h"
@@ -167,11 +168,9 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
         // shader-read state consistent with both ordinary outline frames and the next import.
         graph.addPass("lmx.pass.selection.passthrough", std::move(passthrough),
                       [this, &commands, display](const PassResources& resources) {
-                          const auto source = resources.texture(display);
-                          LMX_ASSERT(source.has_value(),
-                                     "selection display source must be declared");
+                          auto& source = lmx::render::texture(resources, display);
                           commands.bindPipeline(*m_passthroughPipeline);
-                          commands.bindTexture(0, **source);
+                          commands.bindTexture(0, source);
                           commands.draw(3);
                       });
         return nextVersion(output);
@@ -247,18 +246,16 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     graph.addPass("lmx.pass.selection.outline", std::move(composite),
                   [this, &commands, display, coverageRead, selectedDepthRead, sceneDepthRead,
                    radius](const PassResources& resources) {
-                      const auto source = resources.texture(display);
-                      const auto coverageTexture = resources.texture(coverageRead);
-                      const auto selectedDepthTexture = resources.texture(selectedDepthRead);
-                      const auto sceneDepthTexture = resources.texture(sceneDepthRead);
-                      LMX_ASSERT(source && coverageTexture && selectedDepthTexture &&
-                                     sceneDepthTexture,
-                                 "outline input must be declared");
+                      auto& source = lmx::render::texture(resources, display);
+                      auto& coverageTexture = lmx::render::texture(resources, coverageRead);
+                      auto& selectedDepthTexture =
+                          lmx::render::texture(resources, selectedDepthRead);
+                      auto& sceneDepthTexture = lmx::render::texture(resources, sceneDepthRead);
                       commands.bindPipeline(*m_outlinePipeline);
-                      commands.bindTexture(0, **source);
-                      commands.bindTexture(1, **coverageTexture);
-                      commands.bindTexture(2, **selectedDepthTexture);
-                      commands.bindTexture(3, **sceneDepthTexture);
+                      commands.bindTexture(0, source);
+                      commands.bindTexture(1, coverageTexture);
+                      commands.bindTexture(2, selectedDepthTexture);
+                      commands.bindTexture(3, sceneDepthTexture);
                       commands.bindFrameData(0, OutlineParams{radius});
                       commands.draw(3);
                   });

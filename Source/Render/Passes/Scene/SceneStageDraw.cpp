@@ -3,6 +3,7 @@
 /// @brief Encodes scene geometry and sky commands for a declared scene pass.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/GraphResources.h"
 #include "Render/Passes/Scene/SceneStage.h"
 
 #include "Core/Diagnostics/Assert.h"
@@ -21,8 +22,7 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                       glm::vec2 jitterNdc, const PassResources& resources) {
     // Resolved rather than captured: the graph hands over the shadow map only because this
     // pass declared reading it, which is what ordered it after the pass that wrote it.
-    const GraphResult<rojoRHI::Texture*> shadowMapTexture = resources.texture(shadowRead);
-    LMX_ASSERT(shadowMapTexture.has_value(), shadowMapTexture.error().message);
+    auto& shadowMapTexture = lmx::render::texture(resources, shadowRead);
 
     // Auto-exposure selects ScenePassAuto.slang's compiled pipeline instead of
     // ScenePass.slang's (spec 9): a separate shader file and pipeline, not a runtime
@@ -46,7 +46,7 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
     commands.bindSampler(kShadowSamplerSlot, *inputs.shadowSampler);
     commands.bindSampler(kIblSamplerSlot, *inputs.iblSampler);
-    commands.bindTexture(kShadowTextureSlot, **shadowMapTexture);
+    commands.bindTexture(kShadowTextureSlot, shadowMapTexture);
     // The pass-wide IBL set. Each slot falls back independently, so a SceneView that
     // carries no environment still renders -- with both image-based terms at zero.
     commands.bindTexture(kIrradianceTextureSlot,
@@ -59,28 +59,24 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
     // Only ScenePassAuto.slang/SkyAuto.slang declare this resource at all, so it is bound
     // only when their pipelines are the ones in use.
     if (view.autoExposureEnabled) {
-        const GraphResult<rojoRHI::Buffer*> exposureOverride = resources.buffer(exposureCurrent);
-        LMX_ASSERT(exposureOverride.has_value(), exposureOverride.error().message);
-        commands.bindBuffer(kExposureOverrideSlot, **exposureOverride);
+        auto& exposureOverride = lmx::render::buffer(resources, exposureCurrent);
+        commands.bindBuffer(kExposureOverrideSlot, exposureOverride);
     }
     commands.bindFrameData(kPassUniformsSlot, passUniforms);
     // Declared slots stay bound even when the selected loop never reads their data.
     rojoRHI::Buffer* lightRows = m_fallbackLightRows.get();
     if (inputs.lights.has_value()) {
-        const GraphResult<rojoRHI::Buffer*> imported = resources.buffer(*inputs.lights);
-        LMX_ASSERT(imported.has_value(), imported.error().message);
-        lightRows = *imported;
+        auto& imported = lmx::render::buffer(resources, *inputs.lights);
+        lightRows = &imported;
     }
     commands.bindBuffer(engine::kSceneLightsSlot, *lightRows);
     rojoRHI::Buffer* grid = m_fallbackClusterGrid.get();
     rojoRHI::Buffer* indices = m_fallbackClusterIndices.get();
     if (inputs.lightGrid) {
-        const auto gridResult = resources.buffer(*inputs.lightGrid);
-        const auto indexResult = resources.buffer(*inputs.lightIndices);
-        LMX_ASSERT(gridResult.has_value(), gridResult.error().message);
-        LMX_ASSERT(indexResult.has_value(), indexResult.error().message);
-        grid = *gridResult;
-        indices = *indexResult;
+        auto& gridResult = lmx::render::buffer(resources, *inputs.lightGrid);
+        auto& indexResult = lmx::render::buffer(resources, *inputs.lightIndices);
+        grid = &gridResult;
+        indices = &indexResult;
     }
     commands.bindBuffer(engine::kLightClusterGridSlot, *grid);
     commands.bindBuffer(engine::kLightClusterIndexSlot, *indices);

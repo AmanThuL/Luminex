@@ -5,6 +5,7 @@
 
 #include "Render/Passes/Exposure/ExposureStage.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"
@@ -200,12 +201,11 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rojoRHI::CommandList&
         graph.addComputePass(
             "lmx.pass.exposure.seed", std::move(seedDesc),
             [this, &commands, exposureImport, manualExposure](const PassResources& resources) {
-                const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureImport);
-                LMX_ASSERT(exposure.has_value(), exposure.error().message);
+                auto& exposure = lmx::render::buffer(resources, exposureImport);
                 const ExposureSeedParams params{.exposure = manualExposure};
                 commands.bindComputePipeline(*m_exposureSeedPipeline);
                 // Read-write, not write: the kernel shifts index 0 into index 1 before it sets it.
-                commands.bindStorageBuffer(kSeedExposureSlot, **exposure,
+                commands.bindStorageBuffer(kSeedExposureSlot, exposure,
                                            rojoRHI::StorageAccess::ReadWrite);
                 commands.bindFrameData(kSeedParamsSlot, params);
                 commands.dispatch(1, 1, 1);
@@ -245,10 +245,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     histogramClearDesc.bufferDestinations.push_back(histogramImport);
     graph.addCopyPass("lmx.pass.exposure.clearHistogram", std::move(histogramClearDesc),
                       [&commands, histogramImport](const PassResources& resources) {
-                          const GraphResult<rojoRHI::Buffer*> histogram =
-                              resources.buffer(histogramImport);
-                          LMX_ASSERT(histogram.has_value(), histogram.error().message);
-                          commands.fillBuffer(**histogram, 0, kHistogramBufferSize, 0);
+                          auto& histogram = lmx::render::buffer(resources, histogramImport);
+                          commands.fillBuffer(histogram, 0, kHistogramBufferSize, 0);
                       });
     const GraphBuffer histogramCleared = nextVersion(histogramImport);
 
@@ -261,30 +259,27 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     histogramDesc.shaderTextureReads.push_back(sceneColorRead);
     histogramDesc.shaderBufferReads.push_back(exposureCurrent);
     histogramDesc.bufferWrites.push_back(histogramCleared);
-    graph.addComputePass(
-        "lmx.pass.exposure.histogram", std::move(histogramDesc),
-        [this, &commands, sceneColorRead, histogramCleared, exposureCurrent, meterWidth,
-         meterHeight](const PassResources& resources) {
-            const GraphResult<rojoRHI::Texture*> scene = resources.texture(sceneColorRead);
-            LMX_ASSERT(scene.has_value(), scene.error().message);
-            const GraphResult<rojoRHI::Buffer*> histogram = resources.buffer(histogramCleared);
-            LMX_ASSERT(histogram.has_value(), histogram.error().message);
-            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureCurrent);
-            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+    graph.addComputePass("lmx.pass.exposure.histogram", std::move(histogramDesc),
+                         [this, &commands, sceneColorRead, histogramCleared, exposureCurrent,
+                          meterWidth, meterHeight](const PassResources& resources) {
+                             auto& scene = lmx::render::texture(resources, sceneColorRead);
+                             auto& histogram = lmx::render::buffer(resources, histogramCleared);
+                             auto& exposure = lmx::render::buffer(resources, exposureCurrent);
 
-            const HistogramParams params{.logLuminanceMin = kExposureLogLuminanceMin,
-                                         .logLuminanceMax = kExposureLogLuminanceMax,
-                                         .width = meterWidth,
-                                         .height = meterHeight};
-            commands.bindComputePipeline(*m_histogramPipeline);
-            commands.bindTexture(kHistogramSceneColorSlot, **scene);
-            commands.bindStorageBuffer(kHistogramBufferSlot, **histogram,
-                                       rojoRHI::StorageAccess::ReadWrite);
-            commands.bindBuffer(kHistogramExposureSlot, **exposure);
-            commands.bindFrameData(kHistogramParamsSlot, params);
-            const auto groups = dispatchGroups2D(meterWidth, meterHeight);
-            commands.dispatch(groups[0], groups[1], 1);
-        });
+                             const HistogramParams params{
+                                 .logLuminanceMin = kExposureLogLuminanceMin,
+                                 .logLuminanceMax = kExposureLogLuminanceMax,
+                                 .width = meterWidth,
+                                 .height = meterHeight};
+                             commands.bindComputePipeline(*m_histogramPipeline);
+                             commands.bindTexture(kHistogramSceneColorSlot, scene);
+                             commands.bindStorageBuffer(kHistogramBufferSlot, histogram,
+                                                        rojoRHI::StorageAccess::ReadWrite);
+                             commands.bindBuffer(kHistogramExposureSlot, exposure);
+                             commands.bindFrameData(kHistogramParamsSlot, params);
+                             const auto groups = dispatchGroups2D(meterWidth, meterHeight);
+                             commands.dispatch(groups[0], groups[1], 1);
+                         });
     const GraphBuffer histogramFinal = nextVersion(histogramCleared);
 
     ComputePassDesc resolveDesc;
@@ -297,10 +292,8 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
     graph.addComputePass(
         "lmx.pass.exposure.resolve", std::move(resolveDesc),
         [this, &commands, histogramFinal, exposureCurrent, view](const PassResources& resources) {
-            const GraphResult<rojoRHI::Buffer*> histogram = resources.buffer(histogramFinal);
-            LMX_ASSERT(histogram.has_value(), histogram.error().message);
-            const GraphResult<rojoRHI::Buffer*> exposure = resources.buffer(exposureCurrent);
-            LMX_ASSERT(exposure.has_value(), exposure.error().message);
+            auto& histogram = lmx::render::buffer(resources, histogramFinal);
+            auto& exposure = lmx::render::buffer(resources, exposureCurrent);
 
             const ExposureResolveParams params{.lowPercentile = view.exposureLowPercentile,
                                                .highPercentile = view.exposureHighPercentile,
@@ -315,11 +308,11 @@ void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& co
                                                .deltaSeconds = kExposureFrameSeconds,
                                                .pad = 0.0f};
             commands.bindComputePipeline(*m_exposureResolvePipeline);
-            commands.bindStorageBuffer(kResolveHistogramSlot, **histogram,
+            commands.bindStorageBuffer(kResolveHistogramSlot, histogram,
                                        rojoRHI::StorageAccess::Read);
             // Read-write, not write: the kernel steps from the exposure this frame applied, which
             // it reads out of index 0 before overwriting it.
-            commands.bindStorageBuffer(kResolveExposureSlot, **exposure,
+            commands.bindStorageBuffer(kResolveExposureSlot, exposure,
                                        rojoRHI::StorageAccess::ReadWrite);
             commands.bindFrameData(kResolveParamsSlot, params);
             commands.dispatch(1, 1, 1);

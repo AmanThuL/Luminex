@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"
 #include "Render/Common/Dispatch.h"
+#include "Render/Common/GraphResources.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
@@ -199,31 +200,29 @@ VendorTemporalPacked VendorTemporalScaler::declarePack(RenderGraph& graph,
     desc.shaderTextureReads = {inputs.motion, inputs.reactive};
     desc.bufferReads = {inputs.exposure};
     desc.textureWrites = {packed.motion, packed.reactive, packed.exposure};
-    graph.addComputePass(
-        "lmx.pass.temporal.vendor.pack", std::move(desc),
-        [this, &commands, inputs, packed](const PassResources& resources) {
-            const auto texture = [&](GraphTexture handle) {
-                auto result = resources.texture(handle);
-                LMX_ASSERT(result.has_value(), result.error().message);
-                return *result;
-            };
-            auto exposure = resources.buffer(inputs.exposure);
-            LMX_ASSERT(exposure.has_value(), exposure.error().message);
-            commands.bindComputePipeline(*m_packPipeline);
-            commands.bindTexture(0, *texture(inputs.motion));
-            commands.bindTexture(1, *texture(inputs.reactive));
-            commands.bindStorageTexture(2, *texture(packed.motion), {},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindStorageTexture(3, *texture(packed.reactive), {},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindStorageTexture(4, *texture(packed.exposure), {},
-                                        rojoRHI::StorageAccess::Write);
-            commands.bindStorageBuffer(0, **exposure, rojoRHI::StorageAccess::Read);
-            const VendorPackParams params{inputs.extents.renderWidth, inputs.extents.renderHeight};
-            commands.bindFrameData(1, params);
-            const auto groups = dispatchGroups2D(params.width, params.height);
-            commands.dispatch(groups[0], groups[1], 1);
-        });
+    graph.addComputePass("lmx.pass.temporal.vendor.pack", std::move(desc),
+                         [this, &commands, inputs, packed](const PassResources& resources) {
+                             const auto texture = [&](GraphTexture handle) {
+                                 auto& result = lmx::render::texture(resources, handle);
+                                 return &result;
+                             };
+                             auto& exposure = lmx::render::buffer(resources, inputs.exposure);
+                             commands.bindComputePipeline(*m_packPipeline);
+                             commands.bindTexture(0, *texture(inputs.motion));
+                             commands.bindTexture(1, *texture(inputs.reactive));
+                             commands.bindStorageTexture(2, *texture(packed.motion), {},
+                                                         rojoRHI::StorageAccess::Write);
+                             commands.bindStorageTexture(3, *texture(packed.reactive), {},
+                                                         rojoRHI::StorageAccess::Write);
+                             commands.bindStorageTexture(4, *texture(packed.exposure), {},
+                                                         rojoRHI::StorageAccess::Write);
+                             commands.bindStorageBuffer(0, exposure, rojoRHI::StorageAccess::Read);
+                             const VendorPackParams params{inputs.extents.renderWidth,
+                                                           inputs.extents.renderHeight};
+                             commands.bindFrameData(1, params);
+                             const auto groups = dispatchGroups2D(params.width, params.height);
+                             commands.dispatch(groups[0], groups[1], 1);
+                         });
     return {nextVersion(packed.motion), nextVersion(packed.reactive), nextVersion(packed.exposure)};
 }
 
@@ -244,9 +243,8 @@ GraphTexture VendorTemporalScaler::declare(RenderGraph& graph, rojoRHI::CommandL
         "lmx.pass.temporal.vendor", std::move(desc),
         [this, &commands, inputs, packed, params](const PassResources& resources) mutable {
             const auto texture = [&](GraphTexture handle) {
-                auto result = resources.texture(handle);
-                LMX_ASSERT(result.has_value(), result.error().message);
-                return *result;
+                auto& result = lmx::render::texture(resources, handle);
+                return &result;
             };
             params.color = texture(inputs.sceneColor);
             params.depth = texture(inputs.depth);

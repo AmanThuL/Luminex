@@ -3,6 +3,7 @@
 /// @brief Coordinates source-space depth evidence and independent retired visibility checks.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Common/GraphResources.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Renderer/Renderer.h"
 #include <algorithm>
@@ -122,7 +123,7 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
     graph.addPass("lmx.pass.hzb.debug", std::move(pass),
                   [this, &commands, pyramid, params](const PassResources& resources) {
                       commands.bindPipeline(*m_hzbDebugPipeline);
-                      commands.bindTexture(0, **resources.texture(pyramid));
+                      commands.bindTexture(0, lmx::render::texture(resources, pyramid));
                       commands.bindFrameData(0, params);
                       commands.draw(3);
                   });
