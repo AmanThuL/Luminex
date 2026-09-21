@@ -3,7 +3,7 @@
 /// @brief Forwards RHI diagnostic messages into the project log.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/RhiLog.h"
+#include "Render/Common/RhiLog.h"
 
 #include "Core/Diagnostics/Log.h"
 #include <rojoRHI/Message.h>
