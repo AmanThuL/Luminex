@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
+#include "Engine/View/Camera.h"
 #include "Render/DisplayDomain.h"
 #include "Render/DrawSubmission.h"
 #include "Render/HzbStage.h"

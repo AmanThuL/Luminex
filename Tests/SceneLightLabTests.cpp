@@ -8,7 +8,7 @@
 #include "Engine/Catalog/LightLab.h"
 #include "Engine/Catalog/SceneLibrary.h"
 
-#include "Engine/Types/LocalLightMath.h"
+#include "Engine/Lights/LocalLightMath.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

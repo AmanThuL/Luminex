@@ -7,9 +7,9 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/DrawItem.h"
-#include "Engine/Types/LocalLight.h"
+#include "Engine/Lights/LocalLight.h"
+#include "Engine/Scene/DrawItem.h"
+#include "Engine/View/Camera.h"
 
 #include <cmath>
 #include <cstdint>

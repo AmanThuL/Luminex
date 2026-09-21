@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/MotionClass.h"
+#include "Engine/Scene/MotionClass.h"
+#include "Engine/View/Camera.h"
 #include <rojoRHI/Format.h>
 
 #include <glm/mat4x4.hpp>

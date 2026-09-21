@@ -8,9 +8,9 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Aabb.h"
+#include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/PacedTable.h"
 #include "Engine/Scene/SceneStorage.h"
-#include "Engine/Types/LocalLightMath.h"
 
 #include <algorithm>
 #include <cmath>

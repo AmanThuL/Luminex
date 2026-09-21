@@ -5,7 +5,7 @@
 
 #pragma once
 #include "Engine/Catalog/SceneLibrary.h"
-#include "Engine/Types/LocalLight.h"
+#include "Engine/Lights/LocalLight.h"
 #include "Render/Temporal.h"
 
 #include <string_view>
