@@ -9,7 +9,7 @@
 
 #include <optional>
 
-namespace lmx::asset {
+namespace lmx {
 
 /// What decomposeTransform below extracts from a general 4x4.
 struct DecomposedTransform {
@@ -29,4 +29,4 @@ std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world);
 /// Composes a pose in the Y-X-Z order shared by decoded clips and scene objects.
 glm::mat4 composeTransform(const DecomposedTransform& transform);
 
-} // namespace lmx::asset
+} // namespace lmx

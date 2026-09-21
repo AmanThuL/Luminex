@@ -124,12 +124,12 @@ void SceneSession::followCameraTrack() {
 }
 
 //======================================================================================================================
-asset::DecomposedTransform SceneSession::objectDefault(size_t index) const {
+DecomposedTransform SceneSession::objectDefault(size_t index) const {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
     for (const auto& track : scene().animation.tracks) {
         if (track.objectIndex == index) {
             const auto pose =
-                asset::decomposeTransform(asset::sampleRigidTrack(track, scene().animationTime));
+                decomposeTransform(asset::sampleRigidTrack(track, scene().animationTime));
             LMX_ASSERT(pose.has_value(), "Authored track pose must decompose");
             return *pose;
         }
@@ -146,7 +146,7 @@ bool SceneSession::objectChanged(size_t index) const {
 }
 
 //======================================================================================================================
-void SceneSession::editObject(size_t index, const asset::DecomposedTransform& transform) {
+void SceneSession::editObject(size_t index, const DecomposedTransform& transform) {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
     auto& object = scene().objects[index];
     object.position = transform.position;

@@ -6,9 +6,9 @@
 #pragma once
 
 #include "Core/Math/Aabb.h"
+#include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Asset/Model/Transform.h"
 #include "Engine/Scene/MaterialRecord.h"
 #include "Engine/Scene/SceneIds.h"
 #include "Engine/Scene/SceneTableStats.h"

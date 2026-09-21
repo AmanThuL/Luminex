@@ -3,7 +3,7 @@
 /// @brief Implements shared translate-rotate-scale composition and validation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Asset/Model/Transform.h"
+#include "Core/Math/Transform.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <cmath>
 
-namespace lmx::asset {
+namespace lmx {
 
 //======================================================================================================================
 // The one translate-rotate-scale composition SceneObject::modelMatrix and decomposeTransform's
@@ -89,4 +89,4 @@ std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world) {
     return decomposed;
 }
 
-} // namespace lmx::asset
+} // namespace lmx

@@ -11,9 +11,9 @@
 
 #include "BrdfOracle.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Transform.h"
 #include "DisplayTransformOracle.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Asset/Model/Transform.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"

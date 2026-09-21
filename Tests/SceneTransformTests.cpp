@@ -10,7 +10,7 @@ TEST_CASE("decomposeTransform's rotation extraction matches modelMatrix's Y*X*Z 
     original.scale = {2.0f, 0.5f, 1.5f};           // non-uniform, exercising decompose's scale too
     const glm::mat4 world = original.modelMatrix();
 
-    const std::optional<DecomposedTransform> decomposed = decomposeTransform(world);
+    const std::optional<lmx::DecomposedTransform> decomposed = lmx::decomposeTransform(world);
     REQUIRE(decomposed.has_value());
     REQUIRE(near3(decomposed->position, original.position));
     REQUIRE(near3(decomposed->scale, original.scale));
@@ -37,7 +37,7 @@ TEST_CASE("decomposeTransform still round-trips both fetched assets' single-axis
     // Sponza: a uniform scale, no rotation.
     {
         const glm::mat4 world = glm::scale(glm::mat4(1.0f), glm::vec3(0.008f));
-        const std::optional<DecomposedTransform> decomposed = decomposeTransform(world);
+        const std::optional<lmx::DecomposedTransform> decomposed = lmx::decomposeTransform(world);
         REQUIRE(decomposed.has_value());
         SceneObject reconstructed;
         reconstructed.position = decomposed->position;
@@ -50,7 +50,7 @@ TEST_CASE("decomposeTransform still round-trips both fetched assets' single-axis
         SceneObject source;
         source.eulerDegrees = {90.0f, 0.0f, 0.0f};
         const glm::mat4 world = source.modelMatrix();
-        const std::optional<DecomposedTransform> decomposed = decomposeTransform(world);
+        const std::optional<lmx::DecomposedTransform> decomposed = lmx::decomposeTransform(world);
         REQUIRE(decomposed.has_value());
         SceneObject reconstructed;
         reconstructed.position = decomposed->position;
@@ -182,7 +182,7 @@ TEST_CASE("decomposeTransform round-trips a zero-scale pose", "[asset]") {
                           .scale = glm::vec3(0.0f)});
 
     const glm::mat4 collapsed = sampleRigidTrack(track, 1.0);
-    const auto decomposed = decomposeTransform(collapsed);
+    const auto decomposed = lmx::decomposeTransform(collapsed);
     REQUIRE(decomposed.has_value());
     REQUIRE(near3(decomposed->scale, glm::vec3(0.0f)));
     SceneObject object;
@@ -197,5 +197,5 @@ TEST_CASE("decomposeTransform rejects a sheared transform instead of orthogonali
           "[asset]") {
     glm::mat4 sheared{1.0f};
     sheared[1][0] = 0.5f; // Y basis leans into X: no translate-rotate-scale chain produces this
-    REQUIRE_FALSE(decomposeTransform(sheared).has_value());
+    REQUIRE_FALSE(lmx::decomposeTransform(sheared).has_value());
 }
