@@ -10,7 +10,7 @@
 //   --source-name overrides the manifest's recorded "source" string (default: <in> verbatim) --
 //                 for an embedded glTF image baked from a temp extraction file, the caller passes
 //                 a human-meaningful identifier instead of the throwaway temp path.
-#include "Asset/TextureBake.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include "Core/File.h"
 
 #include <stb/stb_image.h>

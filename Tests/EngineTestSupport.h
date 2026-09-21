@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 #include "Engine/Upload/IblUpload.h"
 #include <rojoRHI/RHI.h>
 

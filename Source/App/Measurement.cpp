@@ -9,9 +9,9 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/OcclusionValidation.h"
-#include "Asset/TextureBake.h"
 #include "Core/File.h"
 #include "Core/Log.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
 

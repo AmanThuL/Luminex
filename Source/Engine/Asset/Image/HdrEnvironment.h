@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 
 #include <glm/vec3.hpp>
 

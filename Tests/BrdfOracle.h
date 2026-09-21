@@ -15,7 +15,7 @@
 // is to check the shader's use of that data, not to re-implement the integrator. The integrator has
 // its own independent oracle in Tests/EngineIblTests.cpp.
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 
 #include <glm/common.hpp>
 #include <glm/geometric.hpp>

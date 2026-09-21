@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 #include <rojoRHI/RHI.h>
 
 #include <memory>

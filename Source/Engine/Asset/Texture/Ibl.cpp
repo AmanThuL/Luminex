@@ -3,7 +3,7 @@
 /// @brief Implements deterministic CPU image-based-lighting generation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/Ibl.h"
+#include "Engine/Asset/Texture/Ibl.h"
 
 #include "Core/Assert.h"
 

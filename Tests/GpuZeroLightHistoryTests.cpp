@@ -1,6 +1,6 @@
 #include "GpuRendererTestSupport.h"
 
-#include "Asset/TextureBake.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 #include "Render/SceneViewBuilder.h"
 
 #include <cstdlib>

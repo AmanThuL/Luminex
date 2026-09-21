@@ -3,7 +3,7 @@
 /// @brief Implements deterministic texture mip baking and DDS output.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/TextureBake.h"
+#include "Engine/Asset/Texture/TextureBake.h"
 
 #include "Core/Assert.h"
 #include "Core/Color.h"
