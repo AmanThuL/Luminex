@@ -2,6 +2,7 @@
 /// @file GpuVisibilityReadback.cpp
 /// @brief Decodes retired GPU states and independently verifies rows, arguments and counters.
 //----------------------------------------------------------------------------------------------------------------------
+#include "Render/Common/PacedSlots.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include <algorithm>
 #include <numeric>
@@ -199,18 +200,13 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
 
 //======================================================================================================================
 void GpuVisibility::retireThrough(uint64_t completedFrame) {
-    for (auto& pending : m_pending)
-        if (pending.status.frameNumber <= completedFrame)
-            m_retired.push_back(readback(pending));
-    std::erase_if(m_pending, [completedFrame](const auto& pending) {
-        return pending.status.frameNumber <= completedFrame;
-    });
+    lmx::render::retireThrough(
+        m_pending, completedFrame, [](const auto& pending) { return pending.status.frameNumber; },
+        [this](auto& pending) { m_retired.push_back(readback(pending)); });
 }
 
 //======================================================================================================================
 std::vector<VisibilityStatus> GpuVisibility::takeRetired() {
-    auto result = std::move(m_retired);
-    m_retired.clear();
-    return result;
+    return lmx::render::takeRetired(m_retired);
 }
 } // namespace lmx::render
