@@ -94,8 +94,7 @@ void Scene::validateObjects() const {
         seen[object.id.slot] = true;
     }
     for (uint32_t slot = 0; slot < m_storage->instances.size(); ++slot) {
-        LMX_ASSERT(seen[slot] ==
-                       m_storage->instances.resolves(slot, m_storage->instances.generation(slot)),
+        LMX_ASSERT(seen[slot] == m_storage->instances.live(slot),
                    "object list lost a live instance identity; use removeObject");
     }
 }
@@ -175,7 +174,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         updateRow(storage.instanceTable, object.id.slot, row);
     }
     for (uint32_t i = 0; i < storage.instances.size(); ++i) {
-        if (!storage.instances.resolves(i, storage.instances.generation(i))) {
+        if (!storage.instances.live(i)) {
             updateRow(storage.instanceTable, i, engine::InstanceRow{});
         }
     }
@@ -215,7 +214,7 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         updateRow(storage.materialTable, i, row);
     }
     for (uint32_t i = 0; i < storage.localLightIds.size(); ++i) {
-        if (storage.localLightIds.resolves(i, storage.localLightIds.generation(i))) {
+        if (storage.localLightIds.live(i)) {
             auto row = engine::makeLightRow(storage.localLightData[i]);
             LMX_ASSERT(row, "stored local light failed re-validation");
             updateRow(storage.lightTable, i, *row);
