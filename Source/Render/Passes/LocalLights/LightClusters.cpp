@@ -6,7 +6,9 @@
 #include "Render/Passes/LocalLights/LightClusters.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Aabb.h"
 #include "Core/Math/Scalar.h"
+#include "Core/Math/Sphere.h"
 
 #include <algorithm>
 #include <cmath>
@@ -70,26 +72,6 @@ glm::vec3 unprojectCorner(const glm::mat4& m, float ndcX, float ndcY, float dept
 }
 
 //======================================================================================================================
-// Squared distance from `centre` to the closed box, in the same order a kernel would write it.
-float boxDistanceSquared(glm::vec3 minimum, glm::vec3 maximum, glm::vec3 centre) {
-    float delta[3];
-    for (uint32_t axis = 0; axis < 3; ++axis) {
-        const int a = int(axis);
-        delta[axis] = 0.0f;
-        if (centre[a] < minimum[a]) {
-            delta[axis] = minimum[a] - centre[a];
-        } else if (centre[a] > maximum[a]) {
-            delta[axis] = centre[a] - maximum[a];
-        }
-    }
-    const float x = delta[0] * delta[0];
-    const float y = delta[1] * delta[1];
-    const float z = delta[2] * delta[2];
-    const float xy = x + y;
-    return xy + z;
-}
-
-//======================================================================================================================
 FroxelBounds froxelBounds(const LightClusterParams& params, uint32_t tileX, uint32_t tileY,
                           uint32_t slice) {
     const glm::uvec2 edgesX = clusterTileEdges(tileX, kClusterTilesX, params.activeWidth);
@@ -134,7 +116,7 @@ FroxelBounds froxelBounds(const LightClusterParams& params, uint32_t tileX, uint
 bool froxelIntersectsSphere(const FroxelBounds& bounds, glm::vec3 centre, float radius) {
     const float radiusSquared = radius * radius;
     if (!bounds.open) {
-        return boxDistanceSquared(bounds.minimum, bounds.maximum, centre) <= radiusSquared;
+        return intersects(Aabb{bounds.minimum, bounds.maximum}, Sphere{centre, radius});
     }
     // The open slice widens linearly with view distance, so scaling its near face by the sphere's
     // far extent covers every part of the froxel the sphere can touch; nothing past that extent
@@ -153,7 +135,7 @@ bool froxelIntersectsSphere(const FroxelBounds& bounds, glm::vec3 centre, float 
                             -farDistance};
     const glm::vec3 maximum{greater(bounds.maximum.x, maxX), greater(bounds.maximum.y, maxY),
                             bounds.maximum.z};
-    return boxDistanceSquared(minimum, maximum, centre) <= radiusSquared;
+    return distanceSquared(Aabb{minimum, maximum}, centre) <= radiusSquared;
 }
 
 } // namespace
