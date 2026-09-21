@@ -5,7 +5,7 @@
 
 #include "Engine/Scene/Scene.h"
 
-#include "Asset/RepositoryAsset.h"
+#include "Engine/Asset/RepositoryAsset.h"
 
 #include "Core/Color.h"
 #include "Core/Log.h"

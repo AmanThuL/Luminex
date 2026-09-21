@@ -5,7 +5,7 @@
 
 #include "Engine/Catalog/SceneLibrary.h"
 
-#include "Asset/RepositoryAsset.h"
+#include "Engine/Asset/RepositoryAsset.h"
 
 #include "Core/Assert.h"
 

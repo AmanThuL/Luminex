@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Asset/Asset.h"
+#include "Engine/Asset/Asset.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/Upload/IblUpload.h"
 #include <rojoRHI/RHI.h>

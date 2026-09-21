@@ -3,7 +3,7 @@
 /// @brief Implements bounded, nearest-first repository asset discovery.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/RepositoryAsset.h"
+#include "Engine/Asset/RepositoryAsset.h"
 
 namespace lmx::asset {
 
