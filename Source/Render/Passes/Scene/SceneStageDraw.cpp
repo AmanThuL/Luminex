@@ -3,6 +3,7 @@
 /// @brief Encodes scene geometry and sky commands for a declared scene pass.
 //----------------------------------------------------------------------------------------------------------------------
 
+#include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Passes/Scene/SceneStage.h"
 
@@ -42,7 +43,6 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
                 : (view.wireframe ? m_sceneWireframePipeline.get() : m_scenePipeline.get());
     }
     commands.bindPipeline(*opaquePipeline);
-    rojoRHI::GraphicsPipeline* boundScenePipeline = opaquePipeline;
     commands.bindSampler(kLinearSamplerSlot, *inputs.linearSampler);
     commands.bindSampler(kShadowSamplerSlot, *inputs.shadowSampler);
     commands.bindSampler(kIblSamplerSlot, *inputs.iblSampler);
@@ -82,52 +82,42 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
     commands.bindBuffer(engine::kLightClusterIndexSlot, *indices);
     commands.bindFrameData(engine::kLocalLightParamsSlot, localLightParams);
     if (view.tables.vertices) {
-        commands.bindBuffer(kVertexBufferSlot, *view.tables.vertices);
-        commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
-        commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
+        bindSceneTables(
+            commands, view.tables,
+            {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
     }
 
-    commands.bindBuffer(engine::kVisibleRowsSlot, *inputs.draws.rows);
-    if (inputs.draws.mode != SubmissionMode::Direct)
-        commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{0});
-    for (const auto& run : inputs.draws.runs) {
-        const engine::DrawItem& item = view.items[run.itemIndex];
-        const bool masked = item.alphaMode == engine::AlphaMode::Mask;
-        const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
-                                   (view.autoExposureEnabled ? 4u : 0u) +
-                                   (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
-        auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
-        if (pipeline != boundScenePipeline) {
-            commands.bindPipeline(*pipeline);
-            boundScenePipeline = pipeline;
-        }
-        LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
-                   "draw instance must name a current table row");
-        commands.bindTexture(kDiffuseTextureSlot,
-                             item.diffuse != nullptr ? *item.diffuse : *inputs.whiteTexture);
-        commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
-                                                     ? *item.normalMap
-                                                     : *inputs.flatNormalTexture);
-        // The shared white fallback lets each factor pass through unchanged when a
-        // material carries no map -- white is the identity for all three.
-        commands.bindTexture(kMetallicRoughnessTextureSlot, item.metallicRoughness != nullptr
-                                                                ? *item.metallicRoughness
-                                                                : *inputs.whiteTexture);
-        commands.bindTexture(kOcclusionTextureSlot,
-                             item.occlusion != nullptr ? *item.occlusion : *inputs.whiteTexture);
-        commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
-                                                       ? *item.emissiveMap
-                                                       : *inputs.whiteTexture);
+    encodeDrawRuns(
+        commands, {inputs.draws, view.tables.indices, opaquePipeline},
+        [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
+            const engine::DrawItem& item = view.items[run.itemIndex];
+            const bool masked = item.alphaMode == engine::AlphaMode::Mask;
+            const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
+                                       (view.autoExposureEnabled ? 4u : 0u) +
+                                       (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
+            auto* pipeline = masked ? m_maskScenePipelines[maskIndex].get() : opaquePipeline;
+            bindPipeline(*pipeline);
+            LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
+                       "draw instance must name a current table row");
+            commands.bindTexture(kDiffuseTextureSlot,
+                                 item.diffuse != nullptr ? *item.diffuse : *inputs.whiteTexture);
+            commands.bindTexture(kNormalTextureSlot, item.normalMap != nullptr
+                                                         ? *item.normalMap
+                                                         : *inputs.flatNormalTexture);
+            // The shared white fallback lets each factor pass through unchanged when a
+            // material carries no map -- white is the identity for all three.
+            commands.bindTexture(kMetallicRoughnessTextureSlot, item.metallicRoughness != nullptr
+                                                                    ? *item.metallicRoughness
+                                                                    : *inputs.whiteTexture);
+            commands.bindTexture(kOcclusionTextureSlot, item.occlusion != nullptr
+                                                            ? *item.occlusion
+                                                            : *inputs.whiteTexture);
+            commands.bindTexture(kEmissiveTextureSlot, item.emissiveMap != nullptr
+                                                           ? *item.emissiveMap
+                                                           : *inputs.whiteTexture);
 
-        if (inputs.draws.mode == SubmissionMode::Direct) {
-            commands.bindFrameData(engine::kDrawUniformsSlot, engine::DrawUniforms{run.firstEntry});
-            commands.drawIndexed(*view.tables.indices, item.mesh.indexCount, item.mesh.firstIndex);
-        } else {
-            commands.drawIndexedIndirect(*view.tables.indices, *inputs.draws.arguments,
-                                         uint64_t{run.argumentIndex} *
-                                             sizeof(rojoRHI::DrawIndexedIndirectArgs));
-        }
-    }
+            return item;
+        });
 
     // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
     // clear.

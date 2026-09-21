@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Common/DrawEncoding.h"
 #include "Render/Common/GraphResources.h"
 #include "Render/Common/StageSetup.h"
 #include <algorithm>
@@ -138,9 +139,8 @@ rojoRHI::Result<void> OcclusionReference::declare(RenderGraph& graph,
         [this, &commands, view, viewProjection](const PassResources&) {
             if (view.items.empty())
                 return;
-            commands.bindBuffer(0, *view.tables.vertices);
-            commands.bindBuffer(engine::kSceneInstancesSlot, *view.tables.instances);
-            commands.bindBuffer(engine::kSceneMaterialsSlot, *view.tables.materials);
+            bindSceneTables(commands, view.tables,
+                            {0, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
             commands.bindSampler(0, *m_sampler);
             for (const auto& item : view.items) {
                 LMX_ASSERT(item.instanceRow < view.tables.instanceCount,
