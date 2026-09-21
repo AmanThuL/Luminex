@@ -17,11 +17,6 @@
     "production": 1000,
     "tests": 1500
   },
-  "pendingPaths": [
-    "Source/Engine/Asset",
-    "Source/Scene",
-    "Source/Asset"
-  ],
   "units": {
     "core": {
       "paths": [
@@ -39,7 +34,6 @@
     },
     "asset": {
       "paths": [
-        "Source/Asset",
         "Source/Engine/Asset"
       ],
       "targets": [
@@ -57,12 +51,10 @@
     },
     "engine": {
       "paths": [
-        "Source/Engine",
-        "Source/Scene"
+        "Source/Engine"
       ],
       "targets": [
-        "Engine",
-        "Scene"
+        "Engine"
       ],
       "units": [
         "core",
@@ -286,8 +278,7 @@
         "Core",
         "RojoRHI",
         "Engine",
-        "Asset",
-        "Scene"
+        "Asset"
       ]
     },
     "App": {
@@ -299,7 +290,6 @@
         "ImGui",
         "ImGuiNodeEditor",
         "Asset",
-        "Scene",
         "AppModel",
         "Engine"
       ]
@@ -310,7 +300,6 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Scene",
         "AppModel",
         "Engine"
       ]
@@ -344,15 +333,8 @@
         "Core",
         "RojoRHI",
         "Asset"
-      ]
-    },
-    "Scene": {
-      "deps": [
-        "Core",
-        "RojoRHI",
-        "Asset",
-        "Engine"
-      ]
+      ],
+      "forbidUndefined": "lmx::render::"
     },
     "AppModel": {
       "deps": [
@@ -360,7 +342,6 @@
         "RojoRHI",
         "Render",
         "Asset",
-        "Scene",
         "Engine"
       ]
     }
