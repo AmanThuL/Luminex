@@ -5,14 +5,18 @@
 
 #pragma once
 
+#include "Core/Diagnostics/Assert.h"
+
 #include <glm/glm.hpp>
 
 #include <cstdint>
 
 namespace lmx {
 
-/// Van der Corput radical inverse of `index` in `base`, by repeated digit extraction.
+/// Van der Corput radical inverse of `index` in `base`, by repeated digit extraction. `base` must
+/// be at least 2.
 inline float radicalInverse(uint32_t index, uint32_t base) {
+    LMX_ASSERT(base >= 2, "radicalInverse base must be at least 2");
     const float inverseBase = 1.0f / static_cast<float>(base);
     float digitScale = inverseBase;
     float result = 0.0f;
@@ -37,8 +41,9 @@ inline float radicalInverseBase2(uint32_t index) {
 }
 
 /// The `index`-th of `count` Hammersley points: a uniform first coordinate paired with the base-2
-/// radical inverse.
+/// radical inverse. `count` must be positive.
 inline glm::vec2 hammersley(uint32_t index, uint32_t count) {
+    LMX_ASSERT(count > 0, "hammersley count must be positive");
     return {static_cast<float>(index) / static_cast<float>(count), radicalInverseBase2(index)};
 }
 
