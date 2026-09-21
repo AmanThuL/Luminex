@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Lights/LocalLight.h"
 #include "Render/Temporal.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <string_view>
 

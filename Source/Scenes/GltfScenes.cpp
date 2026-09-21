@@ -3,12 +3,12 @@
 /// @brief Implements the catalog scenes loaded from fetched glTF assets.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/CatalogScenes.h"
+#include "Scenes/CatalogScenes.h"
 
 #include "Engine/Asset/RepositoryAsset.h"
-#include "Engine/Catalog/SponzaCameraTour.h"
-#include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Scene/Scene.h"
+#include "Scenes/SponzaCameraTour.h"
+#include "Scenes/SponzaLightRig.h"
 
 #include <glm/glm.hpp>
 

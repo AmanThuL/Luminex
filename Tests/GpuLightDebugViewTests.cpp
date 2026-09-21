@@ -1,10 +1,10 @@
-#include "Engine/Catalog/CatalogScenes.h"
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/Scene.h"
 #include "GpuTestSupport.h"
 #include "Render/LightDebugStage.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/CatalogScenes.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <algorithm>
 

@@ -1,6 +1,6 @@
-#include "Engine/Catalog/CatalogScenes.h"
 #include "EngineSceneTestSupport.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/CatalogScenes.h"
 
 //======================================================================================================================
 // Deterministic diagnostics with an internal neutral-environment fallback, so this loads with no

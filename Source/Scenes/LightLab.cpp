@@ -3,10 +3,10 @@
 /// @brief Builds LightLab's material field, scalable light population, and looping camera rail.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/LightLab.h"
+#include "Scenes/LightLab.h"
 
-#include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Scene/Scene.h"
+#include "Scenes/CatalogScenes.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Aabb.h"

@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/TemporalEditorState.h"
-#include "Engine/Catalog/SceneLibrary.h"
+#include "Scenes/SceneLibrary.h"
 
 using namespace lmx;
 using namespace lmx::app;

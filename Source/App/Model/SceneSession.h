@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
 #include "Render/SceneView.h"
+#include "Scenes/SponzaLightRig.h"
 
 #include <array>
 #include <cstdint>

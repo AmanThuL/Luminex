@@ -3,7 +3,7 @@
 /// @brief Authors and toggles deterministic static point and spot lights in Sponza.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/SponzaLightRig.h"
+#include "Scenes/SponzaLightRig.h"
 
 #include "Core/Math/Color.h"
 

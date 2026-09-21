@@ -3,7 +3,7 @@
 /// @brief Builds the deterministic temporal-diagnostic scene.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/CatalogScenes.h"
+#include "Scenes/CatalogScenes.h"
 
 #include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"

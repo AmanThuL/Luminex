@@ -24,11 +24,11 @@
 #include "App/Model/WorkspaceModel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/View/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
 #include "Render/SelectionOutline.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
 #include <memory>

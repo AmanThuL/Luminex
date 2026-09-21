@@ -1582,12 +1582,10 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
 
     def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
-        pending = set(self.contract.get("pendingPaths", []))
-        self.assertLessEqual(pending, {"Source/Scenes"})
+        self.assertNotIn("pendingPaths", self.contract)
         for unit in self.contract["units"].values():
             for path in unit["paths"]:
-                if path not in pending:
-                    self.assertTrue((self.root / path).exists(), path)
+                self.assertTrue((self.root / path).exists(), path)
 
     def unit_closure(self, name: str) -> set[str]:
         """Every unit `name` lists, directly or transitively, `name` itself included."""
@@ -1621,6 +1619,11 @@ class RepositoryContractTests(unittest.TestCase):
         for name in ("app-model", "app-shell", "tests"):
             with self.subTest(unit=name):
                 self.assertIn("scenes", self.contract["units"][name]["units"])
+
+    def test_the_app_model_app_and_test_targets_link_scenes(self) -> None:
+        for name in ("AppModel", "App", "Tests"):
+            with self.subTest(target=name):
+                self.assertIn("Scenes", self.contract["targets"][name]["deps"])
 
     def test_the_scenes_target_builds_on_core_rhi_asset_and_engine(self) -> None:
         self.assertEqual(self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "Asset", "Engine"])
