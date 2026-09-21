@@ -3,7 +3,7 @@
 /// @brief Implements the cluster lookups and the mirror without floating-point contraction.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Math/Scalar.h"

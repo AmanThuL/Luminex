@@ -7,7 +7,7 @@
 #include "Engine/Lights/LocalLightMath.h"
 #include "Engine/Scene/SceneTables.h"
 #include "Engine/View/Camera.h"
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

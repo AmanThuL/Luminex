@@ -5,7 +5,7 @@
 #pragma once
 #include "Engine/Lights/LocalLight.h"
 #include "Render/Graph/RenderGraph.h"
-#include "Render/LightClusters.h"
+#include "Render/Passes/LocalLights/LightClusters.h"
 
 namespace lmx::render {
 /// Borrowed graph inputs; injectable list handles let fixtures test missing and truncated entries.

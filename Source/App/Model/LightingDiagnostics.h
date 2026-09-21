@@ -3,7 +3,7 @@
 /// @brief Declares frame-keyed lighting report and failure formatting.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "Render/LightingStatus.h"
+#include "Render/Passes/LocalLights/LightingStatus.h"
 #include <string>
 #include <string_view>
 namespace lmx::app {

@@ -6,7 +6,7 @@
 #pragma once
 
 #include "Engine/Lights/LocalLight.h"
-#include "Render/LightClusterCheck.h"
+#include "Render/Passes/LocalLights/LightClusterCheck.h"
 #include <memory>
 
 namespace lmx::render {

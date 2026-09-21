@@ -3,7 +3,7 @@
 /// @brief Decodes retired froxel-grid counters and, when asked, the grid and index list.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/LightClusterStage.h"
+#include "Render/Passes/LocalLights/LightClusterStage.h"
 
 #include <algorithm>
 

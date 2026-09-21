@@ -3,7 +3,7 @@
 target("Render")
     set_kind("static")
     add_files("*.cpp", "*/*.cpp", "Passes/*/*.cpp")
-    add_files("Passes/Visibility/Visibility.cpp", "Passes/Occlusion/Occlusion.cpp", "LightClusters.cpp",
+    add_files("Passes/Visibility/Visibility.cpp", "Passes/Occlusion/Occlusion.cpp", "Passes/LocalLights/LightClusters.cpp",
               {cxflags = "-ffp-contract=off"})
     add_deps("Core", "RojoRHI", "Engine")
     add_packages("glm", {public = true})
