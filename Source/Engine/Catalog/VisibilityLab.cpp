@@ -5,7 +5,9 @@
 
 #include "Engine/Scene/Scene.h"
 
+#include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Sphere.h"
 #include "Engine/Upload/SceneEnvironment.h"
 
 #include <glm/gtc/constants.hpp>
@@ -13,7 +15,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <limits>
 #include <string>
 
 namespace lmx::engine {
@@ -128,16 +129,15 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         materials[i] = scene->addMaterial(material);
     }
     scene->objects.reserve(instanceCount);
-    Aabb bounds{glm::vec3(std::numeric_limits<float>::max()),
-                glm::vec3(std::numeric_limits<float>::lowest())};
+    Aabb bounds = emptyAabb();
     const auto add = [&](std::string name, glm::vec3 position, float scale, uint32_t index) {
         scene->addObject({.name = std::move(name),
                           .position = position,
                           .scale = glm::vec3(scale),
                           .mesh = meshes[index % 2],
                           .material = materials[index % 4]});
-        bounds.minimum = glm::min(bounds.minimum, position - glm::vec3(scale * 0.5f));
-        bounds.maximum = glm::max(bounds.maximum, position + glm::vec3(scale * 0.5f));
+        expand(bounds, position - glm::vec3(scale * 0.5f));
+        expand(bounds, position + glm::vec3(scale * 0.5f));
     };
     constexpr float fov = glm::pi<float>() / 3.0f;
     const float edgeY = 4.0f * std::tan(fov * 0.5f);
@@ -187,16 +187,16 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
                               .scale = scale,
                               .mesh = meshes[0],
                               .material = i == 0 ? maskedId : opaqueId});
-            bounds.minimum = glm::min(bounds.minimum, position - scale * 0.5f);
-            bounds.maximum = glm::max(bounds.maximum, position + scale * 0.5f);
+            expand(bounds, position - scale * 0.5f);
+            expand(bounds, position + scale * 0.5f);
         }
     }
-    const glm::vec3 center = (bounds.minimum + bounds.maximum) * 0.5f;
-    const float radius = glm::length(bounds.maximum - center);
-    scene->boundingSphere = glm::vec4(center, radius);
-    scene->initialCamera = {{0, 0, 0}, 0, 0, fov, 0.1f, radius * 8.0f};
+    const Sphere sphere = boundingSphere(bounds);
+    scene->boundingSphere = toVec4(sphere);
+    scene->initialCamera = {{0, 0, 0}, 0, 0, fov, 0.1f, sphere.radius * 8.0f};
     const glm::vec3 endpoint =
-        center + glm::vec3(radius * 0.5f, radius * 0.2f, radius / std::sin(fov * 0.5f) * 1.2f);
+        sphere.center + glm::vec3(sphere.radius * 0.5f, sphere.radius * 0.2f,
+                                  sphere.radius / std::sin(fov * 0.5f) * 1.2f);
     const size_t keyCount = static_cast<size_t>(kDuration * asset::kAnimationBakeRate) + 1;
     scene->animation.cameraTrack.reserve(keyCount);
     for (size_t i = 0; i < keyCount; ++i) {
@@ -204,7 +204,7 @@ loadVisibilityLabScene(rojoRHI::Device& device, uint32_t instanceCount, uint32_t
         const float phase = static_cast<float>(time / kDuration) * glm::two_pi<float>();
         const float fraction = (1.0f - std::cos(phase)) * 0.5f;
         const glm::vec3 position = endpoint * fraction;
-        const glm::vec3 target = glm::mix(glm::vec3(0, 0, -radius), center, fraction);
+        const glm::vec3 target = glm::mix(glm::vec3(0, 0, -sphere.radius), sphere.center, fraction);
         const glm::vec3 direction = glm::normalize(target - position);
         scene->animation.cameraTrack.push_back({.time = time,
                                                 .position = position,

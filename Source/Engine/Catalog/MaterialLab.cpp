@@ -8,7 +8,9 @@
 #include "Engine/Asset/RepositoryAsset.h"
 
 #include "Core/Diagnostics/Log.h"
+#include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Sphere.h"
 #include "Engine/Asset/Image/HdrEnvironment.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Texture/TextureBake.h"
@@ -22,7 +24,6 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
-#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -255,11 +256,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     auto scene = std::make_unique<Scene>();
     scene->name = "MaterialLab";
 
-    glm::vec3 aabbMin{std::numeric_limits<float>::max()};
-    glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
+    Aabb aabb = emptyAabb();
     const auto expandAabb = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
-        aabbMin = glm::min(aabbMin, center - halfExtent);
-        aabbMax = glm::max(aabbMax, center + halfExtent);
+        expand(aabb, center - halfExtent);
+        expand(aabb, center + halfExtent);
     };
 
     const MeshId sphereMeshIndex =
@@ -447,8 +447,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
                       .material = checkerMaterialIndex});
     expandAabb(mipProbePosition, glm::vec3(0.5f, 0.5f, 0.0f));
 
-    const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
-    scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
+    scene->boundingSphere = toVec4(boundingSphere(aabb));
 
     if (auto sky = attachStudioEnvironment(device, *scene, "MaterialLab"); !sky) {
         return std::unexpected(sky.error());

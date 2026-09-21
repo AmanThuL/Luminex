@@ -5,7 +5,9 @@
 
 #include "Engine/Scene/Scene.h"
 
+#include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Sphere.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Texture/TextureBake.h"
@@ -20,7 +22,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <span>
 #include <string>
 #include <utility>
@@ -208,11 +209,10 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
         addMaterial(glm::vec3(0.5f, 0.15f, 0.6f), 0.5f, std::nullopt);
     const MaterialId signMaterial = addMaterial(glm::vec3(0.2f), 0.9f, std::nullopt, kSignEmissive);
 
-    glm::vec3 aabbMin{std::numeric_limits<float>::max()};
-    glm::vec3 aabbMax{std::numeric_limits<float>::lowest()};
+    Aabb aabb = emptyAabb();
     const auto expandAabb = [&](const glm::vec3& center, const glm::vec3& halfExtent) {
-        aabbMin = glm::min(aabbMin, center - halfExtent);
-        aabbMax = glm::max(aabbMax, center + halfExtent);
+        expand(aabb, center - halfExtent);
+        expand(aabb, center + halfExtent);
     };
 
     const auto addObject = [&](std::string name, const glm::vec3& position, const glm::vec3& scale,
@@ -325,8 +325,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     scene->animate(0.0);
     scene->resetMotion();
 
-    const glm::vec3 center = (aabbMin + aabbMax) * 0.5f;
-    scene->boundingSphere = glm::vec4(center, glm::length(aabbMax - center));
+    scene->boundingSphere = toVec4(boundingSphere(aabb));
 
     if (auto sky = attachNeutralEnvironment(device, *scene, "TemporalLab"); !sky) {
         return std::unexpected(sky.error());

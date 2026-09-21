@@ -8,7 +8,9 @@
 #include "Engine/Scene/Scene.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Aabb.h"
 #include "Core/Math/Color.h"
+#include "Core/Math/Sphere.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Types/Mesh.h"
 #include "Engine/Upload/SceneEnvironment.h"
@@ -18,7 +20,6 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <string>
 #include <utility>
 
@@ -120,7 +121,7 @@ asset::AssetError uploadFailure(rojoRHI::Error error) {
 //======================================================================================================================
 // Adds the fixed pillar/sphere/floor field spanning the material range; returns the scene's field
 // bounding box so the caller can fit a bounding sphere around the renderable geometry.
-void addMaterialField(Scene& scene, glm::vec3& boundsMin, glm::vec3& boundsMax) {
+void addMaterialField(Scene& scene, Aabb& bounds) {
     MaterialRecord floorMaterial;
     floorMaterial.albedo = srgbToLinear(glm::vec4(0.5f, 0.5f, 0.52f, 1.0f));
     floorMaterial.roughness = 0.85f;
@@ -128,8 +129,8 @@ void addMaterialField(Scene& scene, glm::vec3& boundsMin, glm::vec3& boundsMax) 
     const MaterialId floorMaterialId = scene.addMaterial(floorMaterial);
     const MeshId floorMesh = scene.addMesh(engine::makePlane(kFloorHalfExtent), "LightLab.floor");
     scene.addObject({.name = "Floor", .mesh = floorMesh, .material = floorMaterialId});
-    boundsMin = glm::min(boundsMin, glm::vec3(-kFloorHalfExtent, 0.0f, -kFloorHalfExtent));
-    boundsMax = glm::max(boundsMax, glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
+    expand(bounds, glm::vec3(-kFloorHalfExtent, 0.0f, -kFloorHalfExtent));
+    expand(bounds, glm::vec3(kFloorHalfExtent, 0.0f, kFloorHalfExtent));
 
     const MeshId pillarMesh = scene.addMesh(engine::makeCube(), "LightLab.pillar");
     const MeshId sphereMesh =
@@ -157,20 +158,18 @@ void addMaterialField(Scene& scene, glm::vec3& boundsMin, glm::vec3& boundsMax) 
                                             kPillarHalfWidth * 2.0f),
                          .mesh = pillarMesh,
                          .material = materials[c]});
-        boundsMin =
-            glm::min(boundsMin, pillarPosition - glm::vec3(kPillarHalfWidth, kPillarHalfHeight,
-                                                           kPillarHalfWidth));
-        boundsMax =
-            glm::max(boundsMax, pillarPosition + glm::vec3(kPillarHalfWidth, kPillarHalfHeight,
-                                                           kPillarHalfWidth));
+        expand(bounds,
+               pillarPosition - glm::vec3(kPillarHalfWidth, kPillarHalfHeight, kPillarHalfWidth));
+        expand(bounds,
+               pillarPosition + glm::vec3(kPillarHalfWidth, kPillarHalfHeight, kPillarHalfWidth));
 
         const glm::vec3 spherePosition(x, kSphereRadius, kSphereRowZ);
         scene.addObject({.name = "Sphere " + std::to_string(c),
                          .position = spherePosition,
                          .mesh = sphereMesh,
                          .material = materials[kFieldColumnCount - 1 - c]});
-        boundsMin = glm::min(boundsMin, spherePosition - glm::vec3(kSphereRadius));
-        boundsMax = glm::max(boundsMax, spherePosition + glm::vec3(kSphereRadius));
+        expand(bounds, spherePosition - glm::vec3(kSphereRadius));
+        expand(bounds, spherePosition + glm::vec3(kSphereRadius));
     }
 }
 
@@ -315,9 +314,8 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
     scene->name = "LightLab";
     scene->lightLabGridCount = lightCount;
 
-    glm::vec3 boundsMin(std::numeric_limits<float>::max());
-    glm::vec3 boundsMax(std::numeric_limits<float>::lowest());
-    addMaterialField(*scene, boundsMin, boundsMax);
+    Aabb bounds = emptyAabb();
+    addMaterialField(*scene, bounds);
 
     for (const engine::LocalLight& light : lightLabLights(lightCount, pileCount)) {
         const auto added = scene->addLight(light);
@@ -332,8 +330,7 @@ loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount, uint32_t pileCou
     scene->animate(0.0);
     scene->resetMotion();
 
-    const glm::vec3 centre = (boundsMin + boundsMax) * 0.5f;
-    scene->boundingSphere = glm::vec4(centre, glm::length(boundsMax - centre));
+    scene->boundingSphere = toVec4(boundingSphere(bounds));
     const asset::CameraKey first = scene->animation.cameraTrack.front();
     scene->initialCamera = {.position = first.position,
                             .yaw = first.yaw,
