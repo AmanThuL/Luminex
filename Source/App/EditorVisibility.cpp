@@ -5,7 +5,7 @@
 #include "App/EditorShell.h"
 
 #include "App/Model/VisibilityDiagnostics.h"
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 namespace lmx::app {
 

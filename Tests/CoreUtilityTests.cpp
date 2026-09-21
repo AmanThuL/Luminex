@@ -1,8 +1,8 @@
-#include "Core/Align.h"
-#include "Core/File.h"
-#include "Core/Json.h"
-#include "Core/Math.h"
-#include "Core/Parse.h"
+#include "Core/IO/File.h"
+#include "Core/IO/Json.h"
+#include "Core/Math/Align.h"
+#include "Core/Math/Scalar.h"
+#include "Core/Util/Parse.h"
 
 #include <catch2/catch_test_macros.hpp>
 

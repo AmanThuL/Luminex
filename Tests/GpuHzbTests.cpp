@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "Core/Math.h"
+#include "Core/Math/Scalar.h"
 #include "Render/HzbStage.h"
 
 #include <algorithm>

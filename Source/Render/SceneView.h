@@ -5,12 +5,12 @@
 
 #pragma once
 
-#include "Engine/Types/LocalLight.h"
+#include "Engine/Lights/LocalLight.h"
 
+#include "Engine/Lights/DirectionalLight.h"
+#include "Engine/Material/AlphaMode.h"
+#include "Engine/Scene/DrawItem.h"
 #include "Engine/Scene/SceneTables.h"
-#include "Engine/Types/AlphaMode.h"
-#include "Engine/Types/DirectionalLight.h"
-#include "Engine/Types/DrawItem.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 #include "Render/Visibility.h"

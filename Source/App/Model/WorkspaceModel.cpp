@@ -5,8 +5,8 @@
 
 #include "App/Model/WorkspaceModel.h"
 
-#include "Core/Assert.h"
-#include "Core/Parse.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Util/Parse.h"
 
 namespace lmx::app {
 

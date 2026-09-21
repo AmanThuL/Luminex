@@ -5,7 +5,7 @@
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/VisibilityDiagnostics.h"
-#include "Core/Json.h"
+#include "Core/IO/Json.h"
 
 #include <format>
 

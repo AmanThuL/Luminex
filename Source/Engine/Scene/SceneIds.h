@@ -5,57 +5,27 @@
 
 #pragma once
 
-#include <cstdint>
+#include "Core/Containers/Handle.h"
 
 namespace lmx::engine {
 /// Distinct scene-local instance identity; store zero is invalid.
-struct InstanceId {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
-    uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
-    /// Compares the complete identity, including owner and generation.
-    bool operator==(const InstanceId&) const = default;
-};
+using InstanceId = Handle<struct InstanceTag>;
 static_assert(sizeof(InstanceId) == 8);
 
 /// Distinct scene-local mesh identity; store zero is invalid.
-struct MeshId {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
-    uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
-    /// Compares the complete identity, including owner and generation.
-    bool operator==(const MeshId&) const = default;
-};
+using MeshId = Handle<struct MeshTag>;
 static_assert(sizeof(MeshId) == 8);
 
 /// Distinct scene-local material identity; store zero is invalid.
-struct MaterialId {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
-    uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
-    /// Compares the complete identity, including owner and generation.
-    bool operator==(const MaterialId&) const = default;
-};
+using MaterialId = Handle<struct MaterialTag>;
 static_assert(sizeof(MaterialId) == 8);
 
 /// Distinct scene-local texture identity; store zero is invalid.
-struct TextureId {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
-    uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
-    /// Compares the complete identity, including owner and generation.
-    bool operator==(const TextureId&) const = default;
-};
+using TextureId = Handle<struct TextureTag>;
 static_assert(sizeof(TextureId) == 8);
 
 /// Distinct scene-local local-light identity; store zero is invalid.
-struct LightId {
-    uint32_t slot = 0;       ///< Stable table slot, never a draw-list position.
-    uint16_t generation = 0; ///< Reuse generation; exhausted slots are permanently retired.
-    uint16_t store = 0;      ///< Per-process store identity, never reused.
-    /// Compares the complete identity, including owner and generation.
-    bool operator==(const LightId&) const = default;
-};
+using LightId = Handle<struct LightTag>;
 static_assert(sizeof(LightId) == 8);
 
 } // namespace lmx::engine

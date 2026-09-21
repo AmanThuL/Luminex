@@ -1,4 +1,4 @@
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/Occlusion.h"
 #include "Render/OcclusionHistory.h"
 #include <catch2/catch_test_macros.hpp>

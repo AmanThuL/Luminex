@@ -2,10 +2,10 @@
 /// @file LightLabClusterTests.cpp
 /// @brief Pins overflow-free light assignment along the authored lab camera and orbit tracks.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Engine/Catalog/LightLab.h"
+#include "Scenes/LightLab.h"
 
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/LocalLightMath.h"
+#include "Engine/Lights/LocalLightMath.h"
+#include "Engine/View/Camera.h"
 #include "Render/LightClusters.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -14,10 +14,10 @@
 TEST_CASE("LightLab populations remain overflow-free across the actual rail and orbits",
           "[scene][light-lab][light-cluster]") {
     using namespace lmx;
-    const auto rail = engine::lightLabCameraTrack();
+    const auto rail = scenes::lightLabCameraTrack();
     for (uint32_t count : {64u, 256u, 1024u, 4096u}) {
-        const auto authored = engine::lightLabLights(count, 0);
-        const auto tracks = engine::lightLabTracks(count, 0);
+        const auto authored = scenes::lightLabLights(count, 0);
+        const auto tracks = scenes::lightLabTracks(count, 0);
         for (double seconds : {0.0, 1.5, 3.0, 4.5, 6.0, 7.5, 9.0, 10.5, 719.0 / 60.0}) {
             auto lights = authored;
             for (const auto& track : tracks)
@@ -34,8 +34,8 @@ TEST_CASE("LightLab populations remain overflow-free across the actual rail and 
             camera.position = pose.position;
             camera.yaw = pose.yaw;
             camera.pitch = pose.pitch;
-            camera.fovY = engine::kLightLabCameraFovY;
-            camera.nearZ = engine::kLightLabCameraNearZ;
+            camera.fovY = scenes::kLightLabCameraFovY;
+            camera.nearZ = scenes::kLightLabCameraNearZ;
             for (glm::uvec2 extent : {glm::uvec2{1280, 720}, glm::uvec2{641, 359}}) {
                 CAPTURE(count, seconds, extent.x, extent.y);
                 const auto projection = camera.projectionMatrix(float(extent.x) / float(extent.y));

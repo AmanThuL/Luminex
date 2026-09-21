@@ -2,7 +2,7 @@
 /// @file RendererVisibility.cpp
 /// @brief Coordinates CPU declarations and separately retired GPU visibility diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/GpuVisibility.h"
 #include "Render/OcclusionReference.h"
 #include "Render/Renderer.h"

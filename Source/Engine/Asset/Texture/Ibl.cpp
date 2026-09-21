@@ -5,7 +5,9 @@
 
 #include "Engine/Asset/Texture/Ibl.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Sampling.h"
+#include "Core/Math/Sequence.h"
 
 #include <glm/geometric.hpp>
 #include <glm/gtc/constants.hpp>
@@ -23,48 +25,6 @@ namespace lmx::asset::ibl {
 namespace {
 
 //======================================================================================================================
-// Van der Corput radical inverse in base 2: the low-discrepancy second coordinate of the
-// Hammersley sequence, produced by reversing the bits of `index`. A sequence rather than an RNG is
-// what makes every generator here reproducible without carrying a seed.
-float radicalInverse(uint32_t index) {
-    index = (index << 16u) | (index >> 16u);
-    index = ((index & 0x55555555u) << 1u) | ((index & 0xAAAAAAAAu) >> 1u);
-    index = ((index & 0x33333333u) << 2u) | ((index & 0xCCCCCCCCu) >> 2u);
-    index = ((index & 0x0F0F0F0Fu) << 4u) | ((index & 0xF0F0F0F0u) >> 4u);
-    index = ((index & 0x00FF00FFu) << 8u) | ((index & 0xFF00FF00u) >> 8u);
-    return static_cast<float>(index) * 2.3283064365386963e-10f; // 1 / 2^32
-}
-
-//======================================================================================================================
-glm::vec2 hammersley(uint32_t index, uint32_t count) {
-    return {static_cast<float>(index) / static_cast<float>(count), radicalInverse(index)};
-}
-
-//======================================================================================================================
-// A GGX half vector drawn from the NDF, in a tangent frame whose normal is +Z.
-glm::vec3 importanceSampleGgxLocal(const glm::vec2& xi, float alpha) {
-    const float alpha2 = alpha * alpha;
-    const float phi = 2.0f * glm::pi<float>() * xi.x;
-    const float cosTheta =
-        std::sqrt(std::max(0.0f, (1.0f - xi.y) / (1.0f + (alpha2 - 1.0f) * xi.y)));
-    const float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
-    return {sinTheta * std::cos(phi), sinTheta * std::sin(phi), cosTheta};
-}
-
-//======================================================================================================================
-// The same half vector rotated into the frame of `normal`. Which orthonormal basis the frame uses
-// only rotates the sample pattern about the normal, so the arbitrary `up` choice below is free --
-// it just has to stay away from being parallel to the normal.
-glm::vec3 importanceSampleGgx(const glm::vec2& xi, float alpha, const glm::vec3& normal) {
-    const glm::vec3 local = importanceSampleGgxLocal(xi, alpha);
-    const glm::vec3 up =
-        std::abs(normal.z) < 0.999f ? glm::vec3(0.0f, 0.0f, 1.0f) : glm::vec3(1.0f, 0.0f, 0.0f);
-    const glm::vec3 tangentX = glm::normalize(glm::cross(up, normal));
-    const glm::vec3 tangentY = glm::cross(normal, tangentX);
-    return glm::normalize(tangentX * local.x + tangentY * local.y + normal * local.z);
-}
-
-//======================================================================================================================
 // Height-correlated Smith visibility (Heitz 2014): G / (4 N.L N.V), with alpha the squared
 // perceptual roughness. The same visibility the direct-lighting BRDF uses, so the DFG table and
 // the analytic lights agree on how much energy a rough surface loses.
@@ -73,42 +33,6 @@ float smithVisibility(float nov, float nol, float alpha) {
     const float view = nol * std::sqrt(nov * nov * (1.0f - alpha2) + alpha2);
     const float light = nov * std::sqrt(nol * nol * (1.0f - alpha2) + alpha2);
     return 0.5f / (view + light);
-}
-
-//======================================================================================================================
-// Signed solid angle of the [-1, x] x [-1, y] corner region of a cube face, in the face's own
-// [-1, 1] parameterization. Differencing four of these gives one texel's solid angle.
-float areaElement(float x, float y) {
-    return std::atan2(x * y, std::sqrt(x * x + y * y + 1.0f));
-}
-
-//======================================================================================================================
-float texelSolidAngle(uint32_t x, uint32_t y, uint32_t faceSize) {
-    const float inverse = 1.0f / static_cast<float>(faceSize);
-    const float u = 2.0f * (static_cast<float>(x) + 0.5f) * inverse - 1.0f;
-    const float v = 2.0f * (static_cast<float>(y) + 0.5f) * inverse - 1.0f;
-    return areaElement(u - inverse, v - inverse) - areaElement(u - inverse, v + inverse) -
-           areaElement(u + inverse, v - inverse) + areaElement(u + inverse, v + inverse);
-}
-
-//======================================================================================================================
-// Cube-face coordinates are also used for taps just outside a face. Reprojecting those taps
-// onto their neighboring face avoids clamping a strip of edge texels into the prefiltered image.
-glm::vec3 cubeFaceVector(uint32_t face, float u, float v) {
-    switch (face) {
-    case 0:
-        return {1.0f, -v, -u};
-    case 1:
-        return {-1.0f, -v, u};
-    case 2:
-        return {u, 1.0f, v};
-    case 3:
-        return {u, -1.0f, -v};
-    case 4:
-        return {u, -v, 1.0f};
-    default:
-        return {-u, -v, -1.0f};
-    }
 }
 
 struct CubeLocation {
@@ -148,9 +72,9 @@ glm::vec3 cubeTap(const CpuCubemap& map, uint32_t face, int32_t x, int32_t y) {
     const auto size = static_cast<int32_t>(map.faceSize);
     if (x < 0 || x >= size || y < 0 || y >= size) {
         const float inverse = 1.0f / static_cast<float>(map.faceSize);
-        const CubeLocation neighbor =
-            projectCube(cubeFaceVector(face, 2.0f * (static_cast<float>(x) + 0.5f) * inverse - 1.0f,
-                                       2.0f * (static_cast<float>(y) + 0.5f) * inverse - 1.0f));
+        const CubeLocation neighbor = projectCube(
+            cubeFaceDirection(face, 2.0f * (static_cast<float>(x) + 0.5f) * inverse - 1.0f,
+                              2.0f * (static_cast<float>(y) + 0.5f) * inverse - 1.0f));
         face = neighbor.face;
         x = std::clamp(static_cast<int32_t>(neighbor.u * size), 0, size - 1);
         y = std::clamp(static_cast<int32_t>(neighbor.v * size), 0, size - 1);
@@ -218,8 +142,8 @@ std::vector<CpuCubemap> makeRadianceMips(const CpuCubemap& env) {
                             const float v0 = std::max(top, static_cast<float>(sy)) * inverse - 1.0f;
                             const float v1 =
                                 std::min(bottom, static_cast<float>(sy + 1)) * inverse - 1.0f;
-                            const float weight = areaElement(u1, v1) - areaElement(u0, v1) -
-                                                 areaElement(u1, v0) + areaElement(u0, v0);
+                            const float weight = cubeAreaElement(u1, v1) - cubeAreaElement(u0, v1) -
+                                                 cubeAreaElement(u1, v0) + cubeAreaElement(u0, v0);
                             const glm::vec3 radiance(
                                 source.faces[face][size_t{sy} * source.faceSize + sx]);
                             difference += (radiance - reference) * weight;
@@ -259,7 +183,7 @@ glm::vec2 integrateDfg(float nov, float alpha) {
     float scale = 0.0f;
     float bias = 0.0f;
     for (uint32_t sample = 0; sample < kDfgSampleCount; ++sample) {
-        const glm::vec3 half = importanceSampleGgxLocal(hammersley(sample, kDfgSampleCount), alpha);
+        const glm::vec3 half = sampleGgxHalfVector(hammersley(sample, kDfgSampleCount), alpha);
         const glm::vec3 light = 2.0f * glm::dot(view, half) * half - view;
         const float nol = light.z;
         const float noh = half.z;
@@ -286,7 +210,7 @@ glm::vec3 faceDirection(uint32_t face, uint32_t x, uint32_t y, uint32_t faceSize
     const float inverse = 1.0f / static_cast<float>(faceSize);
     const float u = 2.0f * (static_cast<float>(x) + 0.5f) * inverse - 1.0f;
     const float v = 2.0f * (static_cast<float>(y) + 0.5f) * inverse - 1.0f;
-    return glm::normalize(cubeFaceVector(face, u, v));
+    return glm::normalize(cubeFaceDirection(face, u, v));
 }
 
 //======================================================================================================================
@@ -321,7 +245,7 @@ CpuCubemap computeIrradiance(const CpuCubemap& env, uint32_t outFaceSize) {
             for (uint32_t x = 0; x < env.faceSize; ++x) {
                 source.push_back({faceDirection(face, x, y, env.faceSize),
                                   glm::vec3(env.faces[face][size_t{y} * env.faceSize + x]),
-                                  texelSolidAngle(x, y, env.faceSize)});
+                                  cubeTexelSolidAngle(x, y, env.faceSize)});
             }
         }
     }
@@ -397,7 +321,7 @@ std::vector<CpuCubemap> prefilterSpecular(const CpuCubemap& env, uint32_t baseFa
                 // The half-vector's local Z is independent of the output texel's normal, so
                 // every texel at this roughness shares these sample footprints.
                 const float noh =
-                    importanceSampleGgxLocal(hammersley(sample, kSpecularSampleCount), alpha).z;
+                    sampleGgxHalfVector(hammersley(sample, kSpecularSampleCount), alpha).z;
                 const float denominator = noh * noh * (alpha2 - 1.0f) + 1.0f;
                 const float pdf = alpha2 / (4.0f * glm::pi<float>() * denominator * denominator);
                 const float sampleSolidAngle = 1.0f / (kSpecularSampleCount * pdf);
@@ -421,7 +345,7 @@ std::vector<CpuCubemap> prefilterSpecular(const CpuCubemap& env, uint32_t baseFa
                         glm::vec3 sum(0.0f);
                         float weightSum = 0.0f;
                         for (uint32_t s = 0; s < kSpecularSampleCount; ++s) {
-                            const glm::vec3 half = importanceSampleGgx(
+                            const glm::vec3 half = sampleGgxHalfVector(
                                 hammersley(s, kSpecularSampleCount), alpha, normal);
                             const glm::vec3 light = 2.0f * glm::dot(normal, half) * half - normal;
                             const float nol = glm::dot(normal, light);

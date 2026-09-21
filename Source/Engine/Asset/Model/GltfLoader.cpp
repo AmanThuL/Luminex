@@ -5,7 +5,7 @@
 
 #include "Engine/Asset/Model/GltfLoader.h"
 
-#include "Engine/Asset/Model/Transform.h"
+#include "Core/Math/Transform.h"
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>

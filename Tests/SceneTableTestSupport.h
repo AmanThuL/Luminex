@@ -155,7 +155,7 @@ struct FixtureSceneView : render::SceneView {
         }
         for (size_t i = 0; i < items.size(); ++i) {
             const auto& input = items[i];
-            auto pose = asset::decomposeTransform(input.model);
+            auto pose = decomposeTransform(input.model);
             REQUIRE(pose);
             auto& object = state->scene.objects[i];
             object.position = pose->position;

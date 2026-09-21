@@ -3,7 +3,7 @@
 /// @brief Binds post-display light diagnostics to the actual depth, light grid and index list.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/LightDebugStage.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 namespace lmx::render {
 namespace {

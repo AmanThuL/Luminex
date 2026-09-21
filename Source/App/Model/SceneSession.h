@@ -5,10 +5,10 @@
 
 #pragma once
 
-#include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Scene/Scene.h"
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/SceneView.h"
+#include "Scenes/SponzaLightRig.h"
 
 #include <array>
 #include <cstdint>
@@ -91,14 +91,14 @@ public:
     void commitFrame();
 
     /// Authored object transform, sampled at current playback time when the object has a track.
-    asset::DecomposedTransform objectDefault(size_t index) const;
+    DecomposedTransform objectDefault(size_t index) const;
 
     /// True when the editable transform differs from its authored/current-track default.
     bool objectChanged(size_t index) const;
 
     /// Applies an editor transform at the current playback time and collapses this object's motion.
     /// Playing tracks replace the edit at the next sample; no other object is modified.
-    void editObject(size_t index, const asset::DecomposedTransform& transform);
+    void editObject(size_t index, const DecomposedTransform& transform);
 
     /// Restores one object's authored/current-track transform, preserving other objects and time.
     void resetObject(size_t index);
@@ -144,7 +144,7 @@ public:
 
 private:
     struct Defaults {
-        std::vector<asset::DecomposedTransform> objects;
+        std::vector<DecomposedTransform> objects;
         std::array<engine::DirectionalLight, 3> lights;
         std::unordered_map<uint64_t, engine::LocalLight> localLights;
         std::vector<engine::LightId> pileLights;
@@ -156,7 +156,7 @@ private:
     engine::Scene* m_scene = nullptr;
     engine::Camera m_camera;
     std::unordered_map<const engine::Scene*, Defaults> m_defaults;
-    std::unordered_map<const engine::Scene*, engine::SponzaLightRig> m_lightRigs;
+    std::unordered_map<const engine::Scene*, scenes::SponzaLightRig> m_lightRigs;
 };
 
 } // namespace lmx::app

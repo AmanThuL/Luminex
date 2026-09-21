@@ -14,14 +14,14 @@
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/OcclusionValidation.h"
-#include "Core/Log.h"
-#include "Core/Parse.h"
+#include "Core/Diagnostics/Log.h"
+#include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
 #include "Engine/Asset/Image/PngImage.h"
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
+#include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>
@@ -165,8 +165,8 @@ int runOffscreen(AppOptions options) {
     }
     LMX_LOG_INFO("Metal 4 device: {}", (*device)->deviceName());
 
-    engine::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
-    const engine::SceneEntry& entry = library.entry(sceneId);
+    scenes::SceneLibrary library(**device, labInstances, labOccluders, labLights, labLightPile);
+    const scenes::SceneEntry& entry = library.entry(sceneId);
     if (!entry.available) {
         std::cerr << "Error: " << entry.stableId << " assets missing; " << entry.hint << '\n';
         return 1;

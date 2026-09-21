@@ -112,8 +112,8 @@ std::string_view diagnosticModeNote(render::TemporalDebugView view,
 }
 
 //======================================================================================================================
-std::string_view labDescription(engine::SceneId sceneId) {
-    const auto id = engine::sceneIdString(sceneId);
+std::string_view labDescription(scenes::SceneId sceneId) {
+    const auto id = scenes::sceneIdString(sceneId);
     if (id == "material-lab") {
         return "MaterialLab: 5 x 5 spheres. Roughness 0.05 -> 1 left to right; metallic 0 -> 1 "
                "bottom to top "

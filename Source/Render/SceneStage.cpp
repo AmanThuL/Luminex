@@ -5,8 +5,8 @@
 
 #include "Render/SceneStage.h"
 
-#include "Core/Assert.h"
-#include "Core/Color.h"
+#include "Core/Diagnostics/Assert.h"
+#include "Core/Math/Color.h"
 #include "Render/LightClusters.h"
 #include "Render/TemporalResolve.h"
 #include <rojoRHI/CaptureSchema.h>

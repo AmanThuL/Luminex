@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Engine/Types/LocalLight.h"
+#include "Engine/Lights/LocalLight.h"
 #include "Render/LightClusterCheck.h"
 #include <memory>
 

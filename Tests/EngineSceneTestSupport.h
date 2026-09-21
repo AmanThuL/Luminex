@@ -10,18 +10,18 @@
 #include <glm/gtc/quaternion.hpp>
 
 #include "BrdfOracle.h"
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
+#include "Core/Math/Transform.h"
 #include "DisplayTransformOracle.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Engine/Asset/Model/Transform.h"
 #include "Engine/Asset/Texture/TextureBake.h"
-#include "Engine/Catalog/SceneLibrary.h"
+#include "Engine/Geometry/Mesh.h"
 #include "Engine/Scene/Scene.h"
-#include "Engine/Types/Camera.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/View/Camera.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
 #include "Render/Renderer.h"
+#include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>

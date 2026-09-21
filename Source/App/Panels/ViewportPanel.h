@@ -12,7 +12,7 @@
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/Renderer.h"
 
 #include <cstdint>
@@ -62,7 +62,7 @@ struct ViewportPanelContext {
     TemporalEditorState& temporalState; ///< Camera discontinuity and status provenance.
     EditorSelection selection; ///< Resolved selected subject for editor-only framing and bounds.
     EditorActions& actions;    ///< Shared capture status and action intent.
-    engine::SceneId sceneId;   ///< Catalog identity for concise lab context.
+    scenes::SceneId sceneId;   ///< Catalog identity for concise lab context.
     const VisibilityDisplay* visibilityDisplay =
         nullptr; ///< Matched retired bounds and source view.
 };

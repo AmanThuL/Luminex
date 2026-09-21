@@ -24,11 +24,11 @@
 #include "App/Model/WorkspaceModel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "Engine/Catalog/SceneLibrary.h"
-#include "Engine/Types/Camera.h"
+#include "Engine/View/Camera.h"
 #include "Render/Renderer.h"
 #include "Render/ResolutionController.h"
 #include "Render/SelectionOutline.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
 #include <memory>
@@ -83,8 +83,8 @@ public:
     /// both are startup-fatal, unlike a later scene switch (the Scene panel -> selectScene), which
     /// logs and keeps the previous scene active instead.
     static std::unique_ptr<EditorShell> create(SDL_Window* window, rojoRHI::Device& device,
-                                               engine::SceneLibrary& library,
-                                               engine::SceneId initialScene,
+                                               scenes::SceneLibrary& library,
+                                               scenes::SceneId initialScene,
                                                std::shared_ptr<ConsoleLog> consoleLog);
     /// Releases the ImGui context and renderer integration while the device remains alive.
     ~EditorShell();
@@ -227,7 +227,7 @@ public:
     }
 
 private:
-    EditorShell(SDL_Window* window, engine::SceneLibrary& library,
+    EditorShell(SDL_Window* window, scenes::SceneLibrary& library,
                 std::shared_ptr<ConsoleLog> consoleLog);
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
@@ -257,15 +257,15 @@ private:
     void applyPendingScene(rojoRHI::Device& device);
     // Drains in-flight scene references and loads one requested catalog entry, retaining an
     // actionable failure for ScenePanel while the current scene remains renderable.
-    bool selectScene(rojoRHI::Device& device, engine::SceneId id);
+    bool selectScene(rojoRHI::Device& device, scenes::SceneId id);
     void updateCameraInput(float deltaSeconds);
     uint64_t metricsContextEpoch();
     void startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer);
     void exportMeasurement();
 
     SDL_Window* m_window = nullptr;
-    engine::SceneLibrary& m_library;
-    engine::SceneId m_activeSceneId = engine::defaultSceneId();
+    scenes::SceneLibrary& m_library;
+    scenes::SceneId m_activeSceneId = scenes::defaultSceneId();
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
     SceneSession m_session;
     EditorPlayback m_playback;

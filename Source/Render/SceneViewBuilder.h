@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Engine/Types/DrawItem.h"
+#include "Engine/Scene/DrawItem.h"
 #include "Render/SceneView.h"
 
 #include <vector>

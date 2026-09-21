@@ -5,7 +5,7 @@
 
 #include "App/Model/ConsoleModel.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <algorithm>
 #include <format>

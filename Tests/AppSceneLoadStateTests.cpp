@@ -15,8 +15,8 @@ using namespace lmx::app;
 TEST_CASE("scene load failure preserves the current selection and requires explicit retry",
           "[app]") {
     SceneLoadState loading;
-    const engine::SceneId active{0};
-    const engine::SceneId requested{4};
+    const scenes::SceneId active{0};
+    const scenes::SceneId requested{4};
     const EditorSelection selected{.sceneId = active, .subject = EditorSubject::Object, .index = 2};
     loading.request(requested);
     REQUIRE(loading.consumeRequest() == requested);
@@ -44,9 +44,9 @@ TEST_CASE("scene load failure preserves the current selection and requires expli
 //======================================================================================================================
 TEST_CASE("choosing another scene replaces a failed attempt without retrying it", "[app]") {
     SceneLoadState loading;
-    loading.fail(engine::SceneId{3}, "Decode failed");
-    loading.request(engine::SceneId{5});
+    loading.fail(scenes::SceneId{3}, "Decode failed");
+    loading.request(scenes::SceneId{5});
     REQUIRE_FALSE(loading.failedScene());
-    REQUIRE(loading.consumeRequest() == engine::SceneId{5});
+    REQUIRE(loading.consumeRequest() == scenes::SceneId{5});
     REQUIRE_FALSE(loading.consumeRequest());
 }

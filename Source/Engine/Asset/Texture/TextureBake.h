@@ -75,9 +75,9 @@ struct BakedMipChain {
 /// row left-to-right (scanline order) -- fully deterministic, no parallel reduction, no ordering
 /// that depends on hardware thread count.
 ///
-/// Alpha is never colour-space transformed in any mode (Core/Color.h's rule: alpha is coverage,
-/// not colour) -- it box-filters as a raw normalized value in every mode, round-to-nearest on
-/// write-back like every other channel.
+/// Alpha is never colour-space transformed in any mode (Core/Math/Color.h's rule: alpha is
+/// coverage, not colour) -- it box-filters as a raw normalized value in every mode,
+/// round-to-nearest on write-back like every other channel.
 BakedMipChain bakeMips(std::span<const uint8_t> rgba8, uint32_t width, uint32_t height,
                        BakeMode mode);
 
@@ -94,11 +94,5 @@ AssetResult<void> writeDds(std::string_view path, const BakedMipChain& image);
 AssetResult<void> writeManifest(std::string_view path, std::string_view source,
                                 std::string_view sourceSha256, BakeMode mode,
                                 std::string_view toolVersion);
-
-/// Lowercase hex SHA-256 of `bytes`. Self-contained (no external crypto dependency) so the
-/// manifest's source hash needs nothing beyond what Asset already links; used identically by the
-/// bake tool (hashing the source file) and by Tools/bake_gltf_textures.py's own hashlib-based
-/// staleness check -- both compute the same standard digest, just in different languages.
-std::string sha256Hex(std::span<const std::byte> bytes);
 
 } // namespace lmx::asset

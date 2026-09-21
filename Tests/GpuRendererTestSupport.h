@@ -238,7 +238,7 @@ inline HalfPixel halfPixelAt(const std::vector<uint16_t>& rgba, uint32_t x, uint
 
 namespace {
 
-// MaterialLab's three depth probes, mirrored from Source/Engine/Catalog/MaterialLab.cpp: 0.5-unit
+// MaterialLab's three depth probes, mirrored from Source/Scenes/MaterialLab.cpp: 0.5-unit
 // cubes in the X=28 depth lane at these distances, offset laterally so each occupies its own
 // tangent-space band. `distance` is to the cube's *centre*; the surface the camera sees is its
 // front face, one half-extent nearer.

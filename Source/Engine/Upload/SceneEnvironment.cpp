@@ -5,9 +5,9 @@
 
 #include "Engine/Upload/SceneEnvironment.h"
 
-#include "Core/Color.h"
+#include "Core/Math/Color.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
-#include "Engine/Types/Mesh.h"
+#include "Engine/Geometry/Mesh.h"
 
 #include <glm/glm.hpp>
 

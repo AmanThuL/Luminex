@@ -5,7 +5,7 @@
 
 #include "Render/GraphDump.h"
 
-#include "Core/Log.h"
+#include "Core/Diagnostics/Log.h"
 
 #include <cstdlib>
 #include <format>

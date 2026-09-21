@@ -5,7 +5,7 @@
 
 #include "App/ConsoleLogSink.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 
 #include <utility>
 

@@ -5,7 +5,7 @@
 
 #include "Render/FrameDeclaration.h"
 
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/Renderer.h"
 
 namespace lmx::render {

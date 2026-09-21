@@ -3,7 +3,7 @@
 /// @brief Allocates paced visibility tables and declares deterministic GPU work generation.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/GpuVisibility.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/SceneView.h"
 #include <algorithm>
 #include <cstring>

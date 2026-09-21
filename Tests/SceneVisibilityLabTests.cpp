@@ -3,9 +3,10 @@
 /// @brief Tests visibility-lab population, boundary coverage, and deterministic camera sweeps.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Render/SceneViewBuilder.h"
 #include "Render/Visibility.h"
+#include "Scenes/CatalogScenes.h"
+#include "Scenes/SceneLibrary.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -18,8 +19,8 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
           "[gpu][scene][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    engine::SceneLibrary library(**device);
-    const auto id = engine::parseSceneId("visibility-lab");
+    scenes::SceneLibrary library(**device);
+    const auto id = scenes::parseSceneId("visibility-lab");
     REQUIRE(id);
     REQUIRE(library.entry(*id).available);
     auto result = library.get(*id);
@@ -73,11 +74,11 @@ TEST_CASE("visibility lab count includes boundary probes and seeded layout repea
           "[gpu][scene][visibility]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 0));
-    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 1048577));
+    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 0));
+    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 1048577));
     for (uint32_t count : {1u, 5u, 1024u}) {
-        auto first = engine::loadVisibilityLabScene(**device, count);
-        auto second = engine::loadVisibilityLabScene(**device, count);
+        auto first = scenes::loadVisibilityLabScene(**device, count);
+        auto second = scenes::loadVisibilityLabScene(**device, count);
         REQUIRE(first);
         REQUIRE(second);
         REQUIRE((*first)->objects.size() == count);
@@ -95,11 +96,11 @@ TEST_CASE("visibility lab occluders append deterministic slabs without altering 
           "[gpu][scene][visibility][occlusion]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(engine::loadVisibilityLabScene(**device, 32, 1025));
-    auto baseline = engine::loadVisibilityLabScene(**device, 32);
-    auto explicitZero = engine::loadVisibilityLabScene(**device, 32, 0);
-    auto occluded = engine::loadVisibilityLabScene(**device, 32, 4);
-    auto repeated = engine::loadVisibilityLabScene(**device, 32, 4);
+    REQUIRE_FALSE(scenes::loadVisibilityLabScene(**device, 32, 1025));
+    auto baseline = scenes::loadVisibilityLabScene(**device, 32);
+    auto explicitZero = scenes::loadVisibilityLabScene(**device, 32, 0);
+    auto occluded = scenes::loadVisibilityLabScene(**device, 32, 4);
+    auto repeated = scenes::loadVisibilityLabScene(**device, 32, 4);
     REQUIRE(baseline);
     REQUIRE(explicitZero);
     REQUIRE(occluded);

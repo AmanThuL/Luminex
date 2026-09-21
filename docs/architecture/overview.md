@@ -4,13 +4,13 @@
 
 Luminex is a Metal 4-first rendering playground organized as a one-way dependency stack. The RHI is a repository-root component; the other runtime layers remain under `Source/`:
 
-`Core → Asset`, `Core → Engine`, `Asset → Engine`, `Engine → Render`, `Core → Render` and, independently, `RHI → Engine` and `RHI → Render`, joined by `Render → AppModel → App`.
+`Core → Asset`, `Core → Engine`, `Asset → Engine`, `Engine → Render`, `Engine → Scenes`, `Core → Render` and, independently, `RHI → Engine` and `RHI → Render`, joined by `Render → AppModel → App`; `Scenes → AppModel`, `Scenes → App` and `Scenes → Tests` join above Engine, and Render never depends on Scenes.
 The RHI has no Core dependency; Asset uses only its format/descriptor headers and links no GPU
 target. Core owns shared colour transfer and contract-preserving primitives; `Render/SceneView.h`
 holds the borrowed frame input independently of the renderer.
 
-- **Core** owns logging, assertions, two alignment contracts, shared colour transfer, whole-file reads,
-  JSON escaping, complete numeric parsing, dispatch division, and finite AABBs with the eight-corner transform (`Bounds.h`); spdlog and glm are public packages.
+- **Core** (`lmx`) has five folders: `Diagnostics/` logging, log sinks and assertions; `IO/` whole-file reads and JSON escaping; `Math/` alignment, dispatch division, colour transfer, finite AABBs with the eight-corner transform (`Aabb.h`), spheres, frusta,
+  reversed-infinite-Z/orthographic-fit projections, low-discrepancy sequences, cubemap/GGX sampling measures and TRS transforms; `Containers/` a generational handle with its slot allocator, a dirty set, an interval and a ring buffer; `Util/` numeric parsing, SHA-256, a stopwatch and ASCII lowercasing. spdlog and glm are public packages.
 - **RHI** builds and tests from its own root (`xmake -P RojoRHI`): `RojoRHI/xmake.lua` includes `xmake/setup.lua` and `xmake/targets.lua`, which itself includes `shaders.lua`; Luminex's root includes `targets.lua` alone. It has no Core
   dependency — a private `RojoRHI/Source/Base` supplies assert/log/align/JSON, and the one public addition
   is `RojoRHI/Include/rojoRHI/Message.h`'s severity/text callback (unset: stderr), which `Render/RhiLog`
@@ -138,19 +138,14 @@ holds the borrowed frame input independently of the renderer.
   deterministic equirectangular environment conversion and image-based-lighting generation
   (`HdrEnvironment.h`, `Ibl.h`), including filtered cubemap sampling and a higher-resolution
   MaterialLab studio reflection source with a separate bounded diffuse source, and deterministic
-  offline texture mip baking (`TextureBake.h`), clip data and sampling, shared transform
-  decomposition, repository discovery and the asset error domain. The glTF loader carries its own MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
+  offline texture mip baking (`TextureBake.h`), clip data and sampling,
+  repository discovery and the asset error domain. The glTF loader carries its own MASK cutoff/double-sided vocabulary and rejects referenced BLEND materials.
 - **Engine** owns the scene vocabulary — camera, CPU geometry vocabulary (`Vertex`/`MeshData`), `LocalLightMath`, `AlphaMode.h`, `LocalLight.h`, `DrawItem.h`, `DirectionalLight.h`, `MotionClass.h` and `SceneTables.h` — plus distinct generational `InstanceId`/`MeshId`/`MaterialId`/`TextureId`/`LightId` handles,
-  the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL uploads, the scene catalog, initial camera mapping,
+  the immutable shared vertex/index pool, paced instance/material/mesh buffers, texture and IBL uploads, initial camera mapping,
   source-derived object names, mesh-local bounds computed by `addMesh`, and previous transforms (`SceneObject::previousModel`/`motionClass`,
   `Scene::resetMotion`/`commitFrame`), playback of Asset's rigid tracks, camera-track following,
-  the shared `SceneEnvironment.h` sky/light rig and `temporal-lab`/`milk-truck` catalog entries. The eight-scene catalog also includes optional `san-miguel`, imported at authored
-  metre scale with a deterministic 12-second camera rail. `xmake setup --san-miguel` fetches its pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
-  preserves both upstream metadata and bundled license in provenance, and bakes referenced images.
-  Always-available VisibilityLab adds a seeded cube/icosphere grid, four materials, five initial
-  camera boundary probes and a 12-second rail. Its configurable total N includes the probes.
-  LightLab adds a deterministic point/spot grid, a 12-second rail, position-only orbit tracks and
-  an optional overflow pile; authored orbits clear material rows by 0.25 m. Sponza authors 16 static lights and a 120-second two-level corridor/atrium tour. Disabled lights retain IDs/rows/edits/orbits; localLights() includes them, while enabledLightCount() feeds rendering liveLightCount. Explicit CLI rig off disables the group without removing allocation.
+  the shared `SceneEnvironment.h` sky/light rig and the glTF loader `loadGltfScene`, whose optional `SceneAuthoring` callback adds content, such as lights, before `finalize`.
+  Disabled lights retain IDs/rows/edits/orbits; localLights() includes them, while enabledLightCount() feeds rendering liveLightCount. `rigLightIds()` reports an authored rig's identities.
   `addLight`/`updateLight`/`removeLight` use the sixth paced table; `localLights()` lists live IDs.
   Authored pre-finalize light indices bind orbit tracks; runtime lights remain static and edits do not advance occlusion coverage. All mutations precede `prepareFrame`.
   `addMesh`/`addTexture`/`addMaterial`/`addObject` build a scene, and `finalize` merges geometry
@@ -163,6 +158,11 @@ holds the borrowed frame input independently of the renderer.
   the handle immediately and defers allocation release the same way. Scene destruction requires retired GPU reads. New instances seed their own previous
   pose; `commitFrame` promotes transforms only when the caller accepts the rendered frame.
   `MaterialRecord` owns texture handles; views resolve per-draw pointers for existing fallbacks.
+- **Scenes** (`Source/Scenes`, target `Scenes`, `lmx::scenes`) owns the eight-scene catalog (`SceneLibrary`) above Engine; Engine reaches it only through the `SceneAuthoring` callback
+  a catalog entry passes to `loadGltfScene`. Entries include `temporal-lab`, `milk-truck` and optional `san-miguel`, imported at authored metre scale with a deterministic 12-second camera rail; `xmake setup --san-miguel` fetches its pinned official archive, converts the realtime OBJ with diffuse alpha and `N_` tangent normals,
+  preserves both upstream metadata and bundled license in provenance, and bakes referenced images. Always-available VisibilityLab adds a seeded cube/icosphere grid, four materials, five initial camera boundary probes and a 12-second rail; its configurable total N includes the probes.
+  LightLab adds a deterministic point/spot grid, a 12-second rail, position-only orbit tracks and an optional overflow pile; authored orbits clear material rows by 0.25 m.
+  Sponza authors 16 static lights through `SponzaLightRig` and a 120-second two-level corridor/atrium tour; explicit CLI rig off disables the group without removing allocation.
 - **AppModel** is the static library under `Source/App/Model`, linked by App and Tests. It owns
   options, capture metadata, selection, workspace schema, actions, performance/graph models,
   timing history, frame-record retention, dynamic-resolution policy, temporal/exposure state and

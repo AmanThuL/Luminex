@@ -160,6 +160,27 @@ class ContractLoadingTests(unittest.TestCase):
             with self.assertRaisesRegex(modules.ModuleContractError, "ghost"):
                 modules.load_contract(write_contract(root, contract), root)
 
+    def test_forbidden_undefined_prefixes_load_as_a_string_or_a_nonempty_list(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for prefixes in ("lmx::app::", ["lmx::app::", "rojoRHI::"]):
+                with self.subTest(prefixes=prefixes):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["targets"]["Core"]["forbidUndefined"] = prefixes
+                    modules.load_contract(write_contract(root, contract), root)
+
+    def test_an_empty_or_malformed_forbidden_undefined_list_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_tree(root, ["Source/Core/Log.h", "Source/App/Options.h", "Source/App/Options.cpp"])
+            for prefixes in ([], "", ["lmx::app::", ""], ["lmx::app::", 1], 1, {"lmx::app::": True}):
+                with self.subTest(prefixes=prefixes):
+                    contract = json.loads(json.dumps(CONTRACT))
+                    contract["targets"]["Core"]["forbidUndefined"] = prefixes
+                    with self.assertRaisesRegex(modules.ModuleContractError, "target Core field forbidUndefined"):
+                        modules.load_contract(write_contract(root, contract), root)
+
     def test_unsupported_schema_version_is_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1156,6 +1177,43 @@ class CheckLinkTests(unittest.TestCase):
                 errors, ["Asset: undefined symbol rojoRHI::Device::~Device() references rojoRHI::"]
             )
 
+    def test_forbidden_undefined_list_rejects_a_symbol_under_any_listed_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+            contract = {"targets": {"Asset": {"deps": ["Core"], "forbidUndefined": ["rojoRHI::", "lmx::render::"]}}}
+
+            def run(args, **kwargs):
+                if args[0] == "nm":
+                    return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__a\n__b\n__c\n")
+                self.assertEqual(args[0], "c++filt")
+                return FakeCompleted(
+                    stdout="lmx::render::Renderer::~Renderer()\nlmx::core::log()\nrojoRHI::Device::~Device()\n"
+                )
+
+            errors: list[str] = []
+            modules.check_link(targets, contract, [], errors, run=run)
+            self.assertEqual(
+                errors,
+                [
+                    "Asset: undefined symbol lmx::render::Renderer::~Renderer() references lmx::render::",
+                    "Asset: undefined symbol rojoRHI::Device::~Device() references rojoRHI::",
+                ],
+            )
+
+    def test_forbidden_undefined_list_passes_an_archive_outside_every_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            targets = self.make_targets(Path(directory))
+            contract = {"targets": {"Asset": {"deps": ["Core"], "forbidUndefined": ["rojoRHI::", "lmx::render::"]}}}
+
+            def run(args, **kwargs):
+                if args[0] == "nm":
+                    return FakeCompleted(stdout="libAsset.a(Foo.cpp.o):\n__a\n")
+                return FakeCompleted(stdout="lmx::core::log()\n")
+
+            errors: list[str] = []
+            modules.check_link(targets, contract, [], errors, run=run)
+            self.assertEqual(errors, [])
+
     def test_missing_target_file_is_a_could_not_run_error(self) -> None:
         targets = {"TextureBake": {"deps": [], "packages": [], "frameworks": [], "targetfile": ""}}
         contract = {"targets": {"TextureBake": {"deps": [], "frameworks": []}}}
@@ -1521,13 +1579,68 @@ class RepositoryContractTests(unittest.TestCase):
                 self.assertIsNone(modules.owner_of(Path(path), self.contract))
 
     def test_the_engine_archive_may_not_reference_render(self) -> None:
-        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
+        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], ["lmx::render::", "lmx::scenes::"])
+
+    def test_the_catalog_folder_is_gone_from_engine(self) -> None:
+        self.assertFalse((self.root / "Source/Engine/Catalog").exists())
 
     def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
         self.assertNotIn("pendingPaths", self.contract)
         for unit in self.contract["units"].values():
             for path in unit["paths"]:
                 self.assertTrue((self.root / path).exists(), path)
+
+    def unit_closure(self, name: str) -> set[str]:
+        """Every unit `name` lists, directly or transitively, `name` itself included."""
+        units = self.contract["units"]
+        seen: set[str] = set()
+        pending = [name]
+        while pending:
+            current = pending.pop()
+            if current not in seen:
+                seen.add(current)
+                pending.extend(units[current]["units"])
+        return seen
+
+    def test_the_scenes_unit_owns_its_folder_and_depends_on_core_asset_and_engine(self) -> None:
+        scenes = self.contract["units"]["scenes"]
+        self.assertEqual(scenes["paths"], ["Source/Scenes"])
+        self.assertEqual(scenes["targets"], ["Scenes"])
+        self.assertEqual(sorted(scenes["units"]), ["asset", "core", "engine"])
+
+    def test_scenes_consumes_every_public_rhi_header(self) -> None:
+        self.assertEqual(self.contract["externals"]["rhi"]["consumers"]["scenes"], ["*"])
+
+    def test_nothing_scenes_reaches_depends_on_render(self) -> None:
+        units = self.contract["units"]
+        self.assertEqual(sorted(name for name in self.unit_closure("scenes") if "render" in units[name]["units"]), [])
+
+    def test_engine_does_not_depend_on_scenes(self) -> None:
+        self.assertNotIn("scenes", self.unit_closure("engine"))
+
+    def test_the_app_and_test_units_depend_on_scenes(self) -> None:
+        for name in ("app-model", "app-shell", "tests"):
+            with self.subTest(unit=name):
+                self.assertIn("scenes", self.contract["units"][name]["units"])
+
+    def test_the_app_model_app_and_test_targets_link_scenes(self) -> None:
+        for name in ("AppModel", "App", "Tests"):
+            with self.subTest(target=name):
+                self.assertIn("Scenes", self.contract["targets"][name]["deps"])
+
+    def test_the_scenes_target_builds_on_core_rhi_asset_and_engine(self) -> None:
+        self.assertEqual(self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "Asset", "Engine"])
+
+    def test_core_depends_on_no_unit_and_every_other_unit_depends_on_core(self) -> None:
+        units = self.contract["units"]
+        self.assertEqual(units["core"]["units"], [])
+        self.assertEqual(sorted(name for name, unit in units.items() if name != "core" and "core" not in unit["units"]), [])
+
+    def test_the_core_archive_may_reference_no_other_unit_or_the_rhi(self) -> None:
+        self.assertEqual(
+            self.contract["targets"]["Core"]["forbidUndefined"],
+            ["lmx::asset::", "lmx::engine::", "lmx::scenes::", "lmx::render::", "lmx::app::", "rojoRHI::"],
+        )
 
     def test_no_target_or_unit_names_the_dissolved_scene_target(self) -> None:
         self.assertNotIn("Scene", self.contract["targets"])

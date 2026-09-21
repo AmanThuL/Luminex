@@ -19,14 +19,17 @@ TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricatin
 
 //======================================================================================================================
 TEST_CASE("scene IDs are stable and reject unknown input", "[scene]") {
-    REQUIRE(sceneIdString(*parseSceneId("sponza")) == "sponza");
-    REQUIRE(sceneIdString(*parseSceneId("damaged-helmet")) == "damaged-helmet");
-    REQUIRE(sceneIdString(*parseSceneId("material-lab")) == "material-lab");
-    REQUIRE(sceneIdString(*parseSceneId("milk-truck")) == "milk-truck");
-    REQUIRE(sceneIdString(*parseSceneId("temporal-lab")) == "temporal-lab");
-    REQUIRE_FALSE(parseSceneId("3"));
-    REQUIRE_FALSE(parseSceneId("Sponza"));
-    REQUIRE(sceneIdString(defaultSceneId()) == "sponza");
+    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("sponza")) == "sponza");
+    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("damaged-helmet")) ==
+            "damaged-helmet");
+    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("material-lab")) ==
+            "material-lab");
+    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("milk-truck")) == "milk-truck");
+    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("temporal-lab")) ==
+            "temporal-lab");
+    REQUIRE_FALSE(lmx::scenes::parseSceneId("3"));
+    REQUIRE_FALSE(lmx::scenes::parseSceneId("Sponza"));
+    REQUIRE(lmx::scenes::sceneIdString(lmx::scenes::defaultSceneId()) == "sponza");
 }
 
 //======================================================================================================================

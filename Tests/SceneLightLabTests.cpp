@@ -4,10 +4,11 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Model/SceneSession.h"
-#include "Engine/Catalog/LightLab.h"
-#include "Engine/Catalog/SceneLibrary.h"
+#include "Scenes/CatalogScenes.h"
+#include "Scenes/LightLab.h"
+#include "Scenes/SceneLibrary.h"
 
-#include "Engine/Types/LocalLightMath.h"
+#include "Engine/Lights/LocalLightMath.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -24,8 +25,8 @@ using Catch::Approx;
 TEST_CASE("LightLab emitter orbits keep clearance from every material-field solid",
           "[scene][light-lab]") {
     for (uint32_t count : {64u, 66u, 187u, 256u, 1024u, 1090u, 4096u}) {
-        const auto lights = engine::lightLabLights(count, 0);
-        const auto tracks = engine::lightLabTracks(count, 0);
+        const auto lights = scenes::lightLabLights(count, 0);
+        const auto tracks = scenes::lightLabTracks(count, 0);
         for (size_t i = 0; i < lights.size(); ++i) {
             const float radius = i % 4 == 2 ? tracks[i / 4].radius : 0.0f;
             const glm::vec3 centre = lights[i].position;
@@ -52,8 +53,8 @@ TEST_CASE("LightLab emitter orbits keep clearance from every material-field soli
 //======================================================================================================================
 TEST_CASE("lightLabLights and lightLabTracks are identical across two builds",
           "[scene][light-lab]") {
-    const auto firstLights = engine::lightLabLights(256, 0);
-    const auto secondLights = engine::lightLabLights(256, 0);
+    const auto firstLights = scenes::lightLabLights(256, 0);
+    const auto secondLights = scenes::lightLabLights(256, 0);
     REQUIRE(firstLights.size() == secondLights.size());
     for (size_t i = 0; i < firstLights.size(); ++i) {
         const engine::LocalLight& a = firstLights[i];
@@ -75,8 +76,8 @@ TEST_CASE("lightLabLights and lightLabTracks are identical across two builds",
 
     // LightOrbitTrack has no padding between its 4-byte-aligned members, so a direct byte
     // comparison is safe and exercises the whole struct, including fields not listed above.
-    const auto firstTracks = engine::lightLabTracks(256, 0);
-    const auto secondTracks = engine::lightLabTracks(256, 0);
+    const auto firstTracks = scenes::lightLabTracks(256, 0);
+    const auto secondTracks = scenes::lightLabTracks(256, 0);
     REQUIRE(firstTracks.size() == secondTracks.size());
     REQUIRE(std::memcmp(firstTracks.data(), secondTracks.data(),
                         firstTracks.size() * sizeof(asset::LightOrbitTrack)) == 0);
@@ -86,7 +87,7 @@ TEST_CASE("lightLabLights and lightLabTracks are identical across two builds",
 TEST_CASE("lightLabLights returns exactly n plus pile lights with one in four spot",
           "[scene][light-lab]") {
     for (const uint32_t n : {64u, 256u, 1000u, 4096u}) {
-        const auto lights = engine::lightLabLights(n, 0);
+        const auto lights = scenes::lightLabLights(n, 0);
         REQUIRE(lights.size() == n);
         uint32_t spots = 0;
         for (const engine::LocalLight& light : lights) {
@@ -95,7 +96,7 @@ TEST_CASE("lightLabLights returns exactly n plus pile lights with one in four sp
         REQUIRE(spots == n / 4);
     }
 
-    const auto withPile = engine::lightLabLights(64, 10);
+    const auto withPile = scenes::lightLabLights(64, 10);
     REQUIRE(withPile.size() == 74);
 }
 
@@ -103,8 +104,8 @@ TEST_CASE("lightLabLights returns exactly n plus pile lights with one in four sp
 TEST_CASE("lightLabTracks orbits exactly one in four grid lights, each pointing at a live light",
           "[scene][light-lab]") {
     for (const uint32_t n : {64u, 256u, 1000u, 4096u}) {
-        const auto lights = engine::lightLabLights(n, 0);
-        const auto tracks = engine::lightLabTracks(n, 0);
+        const auto lights = scenes::lightLabLights(n, 0);
+        const auto tracks = scenes::lightLabTracks(n, 0);
         REQUIRE(tracks.size() == n / 4);
         for (const asset::LightOrbitTrack& track : tracks) {
             REQUIRE(track.light < lights.size());
@@ -115,40 +116,40 @@ TEST_CASE("lightLabTracks orbits exactly one in four grid lights, each pointing 
 
 //======================================================================================================================
 TEST_CASE("lightLabTracks periods divide the 12 s camera rail loop", "[scene][light-lab]") {
-    const auto tracks = engine::lightLabTracks(256, 0);
+    const auto tracks = scenes::lightLabTracks(256, 0);
     REQUIRE_FALSE(tracks.empty());
     for (const asset::LightOrbitTrack& track : tracks) {
         REQUIRE(track.period > 0.0f);
-        const double periods = engine::kLightLabRailDuration / static_cast<double>(track.period);
+        const double periods = scenes::kLightLabRailDuration / static_cast<double>(track.period);
         REQUIRE(Approx(periods - std::round(periods)).margin(1e-6) == 0.0);
     }
 }
 
 //======================================================================================================================
 TEST_CASE("LightLab rail loops from an overview through a close pass", "[scene][light-lab]") {
-    const auto rail = engine::lightLabCameraTrack();
+    const auto rail = scenes::lightLabCameraTrack();
     REQUIRE(rail.size() ==
-            static_cast<size_t>(engine::kLightLabRailDuration * asset::kAnimationBakeRate) + 1);
+            static_cast<size_t>(scenes::kLightLabRailDuration * asset::kAnimationBakeRate) + 1);
     REQUIRE(rail.front().time == 0.0);
-    REQUIRE(rail.back().time == engine::kLightLabRailDuration);
+    REQUIRE(rail.back().time == scenes::kLightLabRailDuration);
     REQUIRE(rail.front().position == rail.back().position);
     REQUIRE(rail.front().yaw == rail.back().yaw);
     REQUIRE(rail.front().pitch == rail.back().pitch);
-    const auto midpoint = asset::sampleCameraTrack(rail, engine::kLightLabRailDuration * 0.5);
-    REQUIRE(glm::distance(midpoint.position, engine::lightLabPilePosition()) <
-            glm::distance(rail.front().position, engine::lightLabPilePosition()));
+    const auto midpoint = asset::sampleCameraTrack(rail, scenes::kLightLabRailDuration * 0.5);
+    REQUIRE(glm::distance(midpoint.position, scenes::lightLabPilePosition()) <
+            glm::distance(rail.front().position, scenes::lightLabPilePosition()));
 }
 
 //======================================================================================================================
 TEST_CASE("lightLabRange scales by 1/sqrt(n) between two populations", "[scene][light-lab]") {
-    const float rangeSmall = engine::lightLabRange(64);
-    const float rangeLarge = engine::lightLabRange(1024);
+    const float rangeSmall = scenes::lightLabRange(64);
+    const float rangeLarge = scenes::lightLabRange(1024);
     const float ratio = rangeSmall / rangeLarge;
     const float expected = std::sqrt(1024.0f / 64.0f);
     REQUIRE(Approx(ratio).epsilon(1e-6) == expected);
     // The reference population reproduces the named reference range exactly.
-    REQUIRE(engine::lightLabRange(engine::kLightLabReferenceLightCount) ==
-            Approx(engine::kLightLabReferenceRange));
+    REQUIRE(scenes::lightLabRange(scenes::kLightLabReferenceLightCount) ==
+            Approx(scenes::kLightLabReferenceRange));
 }
 
 //======================================================================================================================
@@ -156,7 +157,7 @@ TEST_CASE("LightLab point and spot lights reach the floor at every benchmark pop
           "[scene][light-lab]") {
     for (const uint32_t n : {64u, 256u, 1024u, 4096u}) {
         CAPTURE(n);
-        const auto lights = engine::lightLabLights(n, 0);
+        const auto lights = scenes::lightLabLights(n, 0);
         for (const auto& light : lights) {
             glm::vec3 floorPoint(light.position.x, 0.0f, light.position.z);
             if (light.type == engine::LocalLightType::Spot) {
@@ -164,8 +165,8 @@ TEST_CASE("LightLab point and spot lights reach the floor at every benchmark pop
                 floorPoint =
                     light.position - light.direction * (light.position.y / light.direction.y);
             }
-            REQUIRE(std::abs(floorPoint.x) < engine::kLightLabGridHalfExtent);
-            REQUIRE(std::abs(floorPoint.z) < engine::kLightLabGridHalfExtent);
+            REQUIRE(std::abs(floorPoint.x) < scenes::kLightLabGridHalfExtent);
+            REQUIRE(std::abs(floorPoint.z) < scenes::kLightLabGridHalfExtent);
             REQUIRE(glm::distance(floorPoint, light.position) < light.range);
             const auto row = engine::makeLightRow(light);
             REQUIRE(row);
@@ -182,7 +183,7 @@ TEST_CASE("LightLab point and spot lights reach the floor at every benchmark pop
 TEST_CASE("every lightLabLights light passes makeLightRow", "[scene][light-lab]") {
     for (const uint32_t n : {1u, 64u, 256u, 4096u}) {
         for (const engine::LocalLight& light :
-             engine::lightLabLights(n, std::min(32u, engine::kMaxLocalLights - n))) {
+             scenes::lightLabLights(n, std::min(32u, engine::kMaxLocalLights - n))) {
             const auto row = engine::makeLightRow(light);
             REQUIRE(row.has_value());
         }
@@ -191,9 +192,9 @@ TEST_CASE("every lightLabLights light passes makeLightRow", "[scene][light-lab]"
 
 //======================================================================================================================
 TEST_CASE("lightLabLights stacks every pile light at one shared position", "[scene][light-lab]") {
-    const auto lights = engine::lightLabLights(64, 40);
+    const auto lights = scenes::lightLabLights(64, 40);
     REQUIRE(lights.size() == 104);
-    const glm::vec3 pile = engine::lightLabPilePosition();
+    const glm::vec3 pile = scenes::lightLabPilePosition();
     for (uint32_t i = 64; i < 104; ++i) {
         REQUIRE(lights[i].position == pile);
         REQUIRE(lights[i].type == engine::LocalLightType::Point);
@@ -205,8 +206,8 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
           "[gpu][scene][light-lab]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    engine::SceneLibrary library(**device, 4096, 0, 128, 16);
-    const auto id = engine::parseSceneId("light-lab");
+    scenes::SceneLibrary library(**device, 4096, 0, 128, 16);
+    const auto id = scenes::parseSceneId("light-lab");
     REQUIRE(id);
     REQUIRE(library.entry(*id).available);
     auto result = library.get(*id);
@@ -229,7 +230,7 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
     loaded.animate(3.0);
     REQUIRE(loaded.light(runtimePileId)->position == runtimePosition);
     REQUIRE(loaded.animationLightId(0) == gridId);
-    REQUIRE(loaded.animation.duration == engine::kLightLabRailDuration);
+    REQUIRE(loaded.animation.duration == scenes::kLightLabRailDuration);
     REQUIRE(loaded.animation.loop);
     REQUIRE_FALSE(loaded.animation.cameraTrack.empty());
     (*device)->beginFrame();
@@ -242,14 +243,14 @@ TEST_CASE("LightLab loads from the catalog with its requested population",
 TEST_CASE("loadLightLabScene rejects out-of-range populations", "[gpu][scene][light-lab]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device);
-    REQUIRE_FALSE(engine::loadLightLabScene(**device, 0, 0));
-    REQUIRE_FALSE(engine::loadLightLabScene(**device, engine::kMaxLocalLights + 1, 0));
-    REQUIRE_FALSE(engine::loadLightLabScene(**device, engine::kMaxLocalLights, 1));
+    REQUIRE_FALSE(scenes::loadLightLabScene(**device, 0, 0));
+    REQUIRE_FALSE(scenes::loadLightLabScene(**device, engine::kMaxLocalLights + 1, 0));
+    REQUIRE_FALSE(scenes::loadLightLabScene(**device, engine::kMaxLocalLights, 1));
 }
 
 //======================================================================================================================
 TEST_CASE("LightLab grid brightness stays comparable as ranges shrink", "[scene][light-lab]") {
-    const auto reference = engine::lightLabLights(256, 0)[0];
+    const auto reference = scenes::lightLabLights(256, 0)[0];
     const auto response = [](const engine::LocalLight& light) {
         const auto row = engine::makeLightRow(light);
         REQUIRE(row);
@@ -261,7 +262,7 @@ TEST_CASE("LightLab grid brightness stays comparable as ranges shrink", "[scene]
     };
     const auto expected = response(reference);
     for (uint32_t n : {64u, 1024u, 4096u}) {
-        const auto actual = response(engine::lightLabLights(n, 0)[0]);
+        const auto actual = response(scenes::lightLabLights(n, 0)[0]);
         CAPTURE(n);
         for (uint32_t channel = 0; channel < 3; ++channel)
             REQUIRE(actual[channel] == Approx(expected[channel]).epsilon(1e-4));

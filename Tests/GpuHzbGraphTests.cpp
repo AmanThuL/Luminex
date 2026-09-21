@@ -2,6 +2,7 @@
 
 #include "Engine/Scene/Scene.h"
 #include "Render/SceneViewBuilder.h"
+#include "Scenes/CatalogScenes.h"
 
 #include <algorithm>
 
@@ -12,7 +13,7 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
     using namespace rojoRHI;
     auto device = createDevice();
     REQUIRE(device);
-    auto scene = lmx::engine::loadVisibilityLabScene(**device, 1024);
+    auto scene = lmx::scenes::loadVisibilityLabScene(**device, 1024);
     REQUIRE(scene);
     auto renderer = Renderer::create(**device, 64, 64, true);
     REQUIRE(renderer);

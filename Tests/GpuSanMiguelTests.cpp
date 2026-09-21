@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "Engine/Catalog/SceneLibrary.h"
 #include "Engine/Scene/Scene.h"
+#include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>
@@ -12,8 +12,8 @@
 TEST_CASE("San Miguel keeps masked content and a continuous comparison rail", "[gpu][san-miguel]") {
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    lmx::engine::SceneLibrary library(**device);
-    const auto id = lmx::engine::parseSceneId("san-miguel");
+    lmx::scenes::SceneLibrary library(**device);
+    const auto id = lmx::scenes::parseSceneId("san-miguel");
     REQUIRE(id.has_value());
     if (!library.entry(*id).available) {
         SKIP("Optional San Miguel absent; xmake setup --san-miguel installs it");

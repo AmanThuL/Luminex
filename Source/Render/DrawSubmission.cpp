@@ -3,7 +3,7 @@
 /// @brief Builds deterministic command runs and uploads only retired submission slots.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/DrawSubmission.h"
-#include "Core/Assert.h"
+#include "Core/Diagnostics/Assert.h"
 #include "Render/SceneView.h"
 #include <algorithm>
 #include <limits>

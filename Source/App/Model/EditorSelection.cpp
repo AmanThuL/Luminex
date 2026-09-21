@@ -97,7 +97,7 @@ std::string_view renderingCategoryLabel(RenderingCategory category) {
 }
 
 //======================================================================================================================
-EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId activeScene,
+EditorSelection resolveSelection(const EditorSelection& current, scenes::SceneId activeScene,
                                  const engine::Scene& scene) {
     const EditorSelection healed{
         .sceneId = activeScene, .subject = EditorSubject::None, .index = 0};
@@ -135,13 +135,13 @@ EditorSelection resolveSelection(const EditorSelection& current, engine::SceneId
 }
 
 //======================================================================================================================
-EditorSelection initialSelection(engine::SceneId sceneId) {
+EditorSelection initialSelection(scenes::SceneId sceneId) {
     return EditorSelection{.sceneId = sceneId, .subject = EditorSubject::Camera, .index = 0};
 }
 
 //======================================================================================================================
-SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, engine::SceneId activeScene,
-                                      engine::SceneId requestedScene,
+SceneSwitchOutcome sceneSwitchOutcome(bool switchSucceeded, scenes::SceneId activeScene,
+                                      scenes::SceneId requestedScene,
                                       const EditorSelection& currentSelection,
                                       const std::string& currentFilter) {
     if (requestedScene == activeScene || !switchSucceeded) {
