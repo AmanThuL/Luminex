@@ -1,7 +1,7 @@
 #include "GraphTestSupport.h"
 
 #include "Render/Graph/GraphDump.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include "Render/VendorTemporalScaler.h"
 
 #include <catch2/catch_approx.hpp>

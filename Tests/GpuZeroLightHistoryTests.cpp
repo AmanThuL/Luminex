@@ -1,7 +1,7 @@
 #include "GpuRendererTestSupport.h"
 
 #include "Core/Util/Sha256.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 
 #include <cstdlib>

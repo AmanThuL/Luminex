@@ -3,7 +3,7 @@
 /// @brief Implements frame pass declaration and renderer-owned GPU resources.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include "Render/BloomStage.h"
 #include "Render/DisplayStage.h"
 #include "Render/ExposureStage.h"

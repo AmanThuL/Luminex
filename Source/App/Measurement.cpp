@@ -13,7 +13,7 @@
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
 #include "Render/Graph/FrameDeclaration.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 
 #include <algorithm>
 #include <chrono>

@@ -1,5 +1,5 @@
 #include "GpuRendererTestSupport.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 #include "Scenes/CatalogScenes.h"
 

@@ -3,7 +3,7 @@
 /// @brief Builds absolute canonical ranges for deterministic GPU visibility.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/VisibilityTables.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include <algorithm>
 
 namespace lmx::render {

@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/DrawSubmission.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include <algorithm>
 #include <limits>
 #include <tuple>

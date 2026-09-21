@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
 #include "Render/OcclusionReference.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include <algorithm>
 namespace lmx::render {
 //======================================================================================================================

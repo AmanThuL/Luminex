@@ -6,7 +6,7 @@
 #include "Render/DisplayStage.h"
 
 #include "Core/Diagnostics/Assert.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 
 #include <array>
 #include <span>

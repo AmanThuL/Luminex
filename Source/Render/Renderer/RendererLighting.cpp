@@ -3,7 +3,7 @@
 /// @brief Coordinates light-list declaration, paced retirement and frame-keyed diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 
 #include "Core/Diagnostics/Assert.h"
 

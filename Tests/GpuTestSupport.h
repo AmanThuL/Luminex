@@ -4,7 +4,7 @@
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/View/Camera.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include <rojoRHI/RHI.h>
 
 #include <catch2/catch_test_macros.hpp>

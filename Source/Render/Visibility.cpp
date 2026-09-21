@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Visibility.h"
 #include "Core/Diagnostics/Assert.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 
 namespace lmx::render {
 

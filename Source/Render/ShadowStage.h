@@ -7,7 +7,7 @@
 
 #include "Render/DrawSubmission.h"
 #include "Render/Graph/RenderGraph.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include <rojoRHI/RHI.h>
 
 #include <glm/glm.hpp>

@@ -3,7 +3,7 @@
 /// @brief Tests visibility-lab population, boundary coverage, and deterministic camera sweeps.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "Render/Visibility.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SceneLibrary.h"

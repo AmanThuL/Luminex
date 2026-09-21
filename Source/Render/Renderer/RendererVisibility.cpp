@@ -5,7 +5,7 @@
 #include "Core/Diagnostics/Assert.h"
 #include "Render/GpuVisibility.h"
 #include "Render/OcclusionReference.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include <chrono>
 #include <limits>
 

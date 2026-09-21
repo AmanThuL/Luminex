@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
