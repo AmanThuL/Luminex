@@ -84,36 +84,39 @@ scoped to stop at the mount, since the component now carries and enforces its ow
 pre-extraction tag under the protocol; `rojo-rhi` builds and passes with no Luminex checkout;
 policy is green in both.
 
-**Implemented 2026-09-20.** `RojoRHI/` is a submodule pinned to `rojo-rhi` `8da2a79`; CI checks it
-out anonymously (no credential needed, the repository is public); `Tools/check_submodule_pin.py`
-enforces the pin is reachable from `origin/main`. See the
-[validation record](../milestones/r/r2.4-validation.md) for evidence and limits.
+**Implemented 2026-09-20.** `RojoRHI/` is a submodule pinned to `rojo-rhi` `8da2a79`, checked out
+anonymously in CI; `Tools/check_submodule_pin.py` enforces the pin is reachable from
+`origin/main`. Evidence and limits: [validation record](../milestones/r/r2.4-validation.md).
 
 ## R3 — Subsystems and tree restructure
 
 **Outcome:** Luminex has Donut's four subsystems (`Source/Core`, `Source/Engine`,
-`Source/Render`, `Source/App`) over the `RojoRHI/` submodule, with Donut's dependency direction:
-Render depends on Engine, and Engine never on Render. Every tree has a second level matching its
+`Source/Render`, `Source/App`) over the `RojoRHI/` submodule, with Donut's dependency direction
+(Render depends on Engine, never the reverse) and its division of responsibility: Core owns the
+math and data structures that carry no domain meaning. Every tree has a second level matching its
 responsibilities, and no leaf folder holds one file or more than about sixteen. Rendered output
 and shipped behaviour do not change.
 
-**Scope:** this is refactoring, not only moving. Header extractions, one function relocation, a
-dependency reversal, target and namespace renames and decompositions by responsibility are in
-scope where the structure needs them, each as its own commit under the comparison protocol. No
-pass label, shader basename, CLI option, schema, file format or test case name changes. Moves are
-one commit per destination folder, reproducible from a recorded path and include substitution.
-`xmake format --check` passes at every commit, not only in CI: a recorded substitution lengthens
-the paths, string literals and comments that name what moved, and a line crossing the 100-column
-budget is invisible to the policy checker and the tests.
-A new ADR supersedes the parts of [ADR 0020](../decisions/0020-module-layering-and-units.md) that
-retired the Engine name and let Scene depend on Render; it keeps Asset a separately linked,
-CPU-only library inside `Engine/`, so `TextureBake` and GPU-free builds still link no Metal.
+**Scope:** this is refactoring, not only moving. Header extractions, function relocations, a
+dependency reversal, target and namespace renames, extraction into Core, removal of duplicated
+implementations and decompositions by responsibility are in scope, each as its own commit under the
+comparison protocol; from R3.4 on, a unit that reaches its folder still mixing responsibilities has
+not met its slice. No pass label, shader basename, CLI option, schema, file format or existing test
+case name changes. Moves are one commit per destination folder, reproducible from a recorded path
+and include substitution. `xmake format --check` passes at every commit, not only in CI: a recorded
+substitution lengthens the paths, string literals and comments that name what moved, and a line
+crossing the 100-column budget is invisible to the policy checker and the tests. A new ADR
+supersedes the parts of [ADR 0020](../decisions/0020-module-layering-and-units.md) that retired the
+Engine name and let Scene depend on Render; it keeps Asset a separately linked, CPU-only library
+inside `Engine/`, so `TextureBake` and GPU-free builds still link no Metal. R3.4 opens with a second.
 
-**Sequence:** R3.1 → R3.2 → R3.3 → R3.4 → R3.5 → R3.6, after R2.
+**Sequence:** R3.1 → R3.2 → R3.3 → R3.4 → R3.5 → R3.6 → R3.7, after R2. Core precedes Render,
+App and Tests so each pushes generic code into a Core that already has a charter.
 
 **Defer:** a repository-wide include directory or Donut's `include/`–`src/` split; headers shared
-between C++ and Slang; an engine-level shader factory or binding cache; moving the render graph
-out of Render; renaming Stage classes or test tags; everything UX2 owns.
+between C++ and Slang; an engine-level shader factory or binding cache; a pass base class; moving
+the render graph out of Render; renaming Stage classes or test tags; Core vector types of its own,
+container wrappers, a VFS, a thread pool, platform or profiling layers; everything UX2 owns.
 
 ### R3.1 — Documentation records
 
@@ -126,15 +129,11 @@ transient folder. The convention, the policy checker's tables and `AGENTS.md` fo
 states that a brainstormed design is written as the `Proposed` milestone record and a plan goes
 to `docs/plans/`.
 
-Then the living documents (README, `AGENTS.md`, `docs/conventions/`, `docs/guides/`,
-`docs/architecture/`, `docs/frame-pipeline.md`, `docs/roadmap.md` with its parts, and milestone
-records that are not frozen) are copyedited into plain technical prose, one commit per folder,
-with every claim, number, identifier, date, status value, gate result and evidence limit preserved
-and no heading moved; accepted ADRs, the founding design, every `-design.md`, research notes and
-postmortems are not copyedited. Four tracked mentions of the owner's personal development notes
-kept outside the repository (in `AGENTS.md` and one clause each in the frozen R2.3 design, the
-frozen R2.4 design and the UX2 record) are removed, an owner-approved exception to the links-only
-rule scoped to those two frozen designs' single clauses.
+Then the living documents are copyedited into plain technical prose, one commit per folder, with
+every claim, number, identifier, date, status value, gate result and evidence limit preserved and
+no heading moved; accepted ADRs, the founding design, every `-design.md`, research notes and
+postmortems are not. Four tracked mentions of the owner's personal notes are removed under the
+owner-approved exception the [record](../milestones/r/r3.1.md) scopes.
 
 **Exit gate:** policy green, every local link resolving, no document type losing its status field
 or precedence. Documents only; the comparison protocol does not apply.
@@ -154,10 +153,9 @@ fallback loading, basename collisions still rejected. The format check holds at 
 because renaming a shader folder lengthens every path that names it in C++ source.
 
 **Implemented 2026-09-20.** `Shaders/` holds `Common/`, ten `Passes/<family>/` folders and
-`Tests/`; `xmake/shaders.lua` resolves modules from `Common/` and, for oracles, from the family
-folders, `Tools/check_shader_imports.py` enforces placement and import locality, and the runtime
-still loads `Shaders/<basename>`. See the
-[validation record](../milestones/r/r3.2-validation.md) for evidence and limits.
+`Tests/`; `Tools/check_shader_imports.py` enforces placement and import locality, and the runtime
+still loads `Shaders/<basename>`. Evidence and limits:
+[validation record](../milestones/r/r3.2-validation.md).
 
 ### R3.3 — Engine
 
@@ -181,24 +179,52 @@ no undefined RHI references and `TextureBake` links neither Engine nor a Metal f
 Engine archive has no undefined `lmx::render` references; every test case is present under its
 name.
 
-**Implemented 2026-09-21.** `Source/Engine/` holds `Types/`, `Scene/`, `Upload/`, `Catalog/` and
-the unchanged Asset unit under `Asset/{Image,Model,Texture}/`; `Bounds.h` is in Core, target
-`Scene` has dissolved into `Engine`, and Render builds `SceneView` with `render::buildSceneView`.
-The contract rejects any Engine include of Render and any undefined `lmx::render::` reference in
-the Engine archive. See the [validation record](../milestones/r/r3.3-validation.md) for evidence,
-deviations and limits.
+**Implemented 2026-09-21.** `Source/Engine/` holds `Types/`, `Scene/`, `Upload/`, `Catalog/` and the
+unchanged Asset unit under `Asset/{Image,Model,Texture}/`; `Bounds.h` is in Core, target `Scene` has
+dissolved into `Engine`, and Render builds `SceneView` with `render::buildSceneView`. The contract
+rejects any Engine include of Render and any undefined `lmx::render::` reference in its archive.
+Evidence, deviations and limits: [validation record](../milestones/r/r3.3-validation.md).
 
-### R3.4 — Render
+### R3.4 — Core
+
+**Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning.
+
+**Deliver:** [ADR 0026](../decisions/0026-core-charter-and-placement.md), accepted first: Core's
+charter, glm as the one vector vocabulary, and the rule that domain-free math and data structures go to Core whatever their consumer count while a
+domain meaning keeps code in its owning unit. `Source/Core/{Math,Containers,Util,IO,Diagnostics}/`
+from code that exists today: geometry, projection, sequences and sampling out of Render, Engine
+and Asset; a ring buffer, generational handles and slots, a dirty set and intervals; a stopwatch,
+SHA-256 and string helpers ([sources and cuts](../milestones/r/r3.md#what-moves-from-where)). Each
+extraction is two commits, the Core type with its tests and then the call sites; a duplicate is
+unified only where pinned output proves the contracts identical.
+
+Engine in the same slice, as the first consumer: `Engine/Types/` divides into `View/`, `Lights/`,
+`Geometry/` and `Material/`; the five identifier structs become `Handle<Tag>` aliases of the same
+layout; `SceneTables.cpp` and `Scene.cpp` are decomposed by responsibility; `Catalog/` becomes its
+own unit `Source/Scenes` (target `Scenes`), so Engine holds no authored content. Render and App
+call sites change an include and a name only.
+
+**Exit gate:** the protocol and the format check hold at every commit, image and bake hashes
+exact; Core reaches no Engine, Render, App or RojoRHI header or symbol; every Core type has direct
+unit tests; the duplicates the record lists are gone; the Engine archive defines no catalog
+symbol; R3.3's archive checks and every pre-existing test case name still pass.
+
+### R3.5 — Render
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
 compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
 builder, `DisplayDomain.h`) and `Render/Passes/<the same ten names as the shaders>/`, one folder
 per pass family holding its stages, CPU mirrors, checks and readbacks.
 
-**Exit gate:** the protocol and the format check hold; graph dumps and capture semantics match the
-parent.
+Then the code: stage math (frustum, shadow fit, jitter, froxel-sphere test) and range algebra come
+from Core; `Renderer.cpp` and `SceneStage.cpp` are decomposed by responsibility; the shape the
+stages share is written into the engineering convention and followed; repeated pipeline and resource
+setup moves into shared helpers. No class name, label, `SceneView` field or interface changes.
 
-### R3.5 — App
+**Exit gate:** the protocol and the format check hold; graph dumps and capture semantics match the
+parent; no Render source implements math that Core's charter claims.
+
+### R3.6 — App
 
 **Deliver:** `App/{Shell,Headless}`; `Model/` and `Panels/` kept as checked layers, because the
 checker proves by directory that AppModel reaches no ImGui, SDL or Metal; feature folders repeated
@@ -207,21 +233,26 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
+Then `FrameRecordRing`, `PassTimingHistory` and `ConsoleLog` hold their history in Core's
+`RingBuffer` behind unchanged interfaces, and timing and fit-to-bounds code comes from Core.
+
 **Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
 workspace schema 3 files load unchanged; AppModel still links no ImGui, SDL or Metal.
 
-### R3.6 — Tests and architecture pages
+### R3.7 — Tests and architecture pages
 
-**Deliver:** `Tests/{Core,Engine/{Asset,Scene},Render/<family>,App/<feature>,Tools,Support,Golden}`
-with CPU and GPU cases of one family side by side, since tags and not folders select GPU runs;
-tags, case names, run filters and Luminex's checkpoint A filter unchanged.
+**Deliver:**
+`Tests/{Core,Engine/{Asset,Scene},Scenes,Render/<family>,App/<feature>,Tools,Support,Golden}` with
+CPU and GPU cases of one family side by side, since tags and not folders select GPU runs; tags, case
+names, run filters and Luminex's checkpoint A filter unchanged. Test helpers defined more than once
+become one in `Support/`; the shader oracles stay independent of Core.
 `docs/architecture/overview.md` reduced to the subsystem diagram and an index over `core.md`,
 `engine.md`, `render-graph.md`, `render-passes.md`, `app.md`, `shaders.md`, a pointer page for
-RojoRHI, and the frame walkthrough beside them. README's directory table, the module convention
-and `AGENTS.md` describe the tree as built.
+RojoRHI, and the frame walkthrough beside them. README's directory table, the module convention and
+`AGENTS.md` describe the tree as built.
 
-**Exit gate:** the test inventory equals the parent's by case name; each page is within budget;
-policy and the format check green.
+**Exit gate:** the test inventory equals R3.3's by case name plus the Core cases R3.4 declared;
+each page is within budget; policy and the format check green.
 
 ## R4 — Shader source deduplication
 
