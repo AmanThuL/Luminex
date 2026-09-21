@@ -3,7 +3,7 @@
 /// @brief Declares the fixed GPU visibility ABI and canonical candidate tables.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "Render/DrawSubmission.h"
+#include "Render/Passes/Scene/DrawSubmission.h"
 #include <cstddef>
 
 namespace lmx::render {
