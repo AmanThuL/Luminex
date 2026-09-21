@@ -66,8 +66,12 @@ OutlineFrame outlineFrame(Device& device, TransientPool& pool, Renderer& rendere
     auto& commands = device.beginFrame();
     const auto prepared = view.prepare(device);
     FrameDeclaration frame(pool, renderer, commands, camera, prepared, true);
-    const auto output = outline ? outline->declare(frame.graph(), commands, frame.displayColor(),
-                                                   camera, prepared, 0, backingScale, visible)
+    const auto output = outline ? outline->declare(frame.graph(), commands, prepared,
+                                                   {.display = frame.displayColor(),
+                                                    .camera = camera,
+                                                    .selectedDraw = 0,
+                                                    .backingScale = backingScale,
+                                                    .visible = visible})
                                 : frame.displayColor();
     frame.graph().exportTexture(output);
     OutlineFrame result;

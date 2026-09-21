@@ -149,9 +149,13 @@ rojoRHI::Result<void> SelectionOutline::resize(uint32_t width, uint32_t height) 
 
 //======================================================================================================================
 GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                       GraphTexture display, const engine::Camera& camera,
-                                       const SceneView& view, uint32_t selectedDraw,
-                                       float backingScale, bool visible) {
+                                       const SceneView& view,
+                                       const SelectionOutlineInputs& inputs) {
+    const auto display = inputs.display;
+    const auto& camera = inputs.camera;
+    const auto selectedDraw = inputs.selectedDraw;
+    const auto backingScale = inputs.backingScale;
+    const auto visible = inputs.visible;
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
     if (!visible) {
         const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
