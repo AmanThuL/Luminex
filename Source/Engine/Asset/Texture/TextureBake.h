@@ -95,10 +95,4 @@ AssetResult<void> writeManifest(std::string_view path, std::string_view source,
                                 std::string_view sourceSha256, BakeMode mode,
                                 std::string_view toolVersion);
 
-/// Lowercase hex SHA-256 of `bytes`. Self-contained (no external crypto dependency) so the
-/// manifest's source hash needs nothing beyond what Asset already links; used identically by the
-/// bake tool (hashing the source file) and by Tools/bake_gltf_textures.py's own hashlib-based
-/// staleness check -- both compute the same standard digest, just in different languages.
-std::string sha256Hex(std::span<const std::byte> bytes);
-
 } // namespace lmx::asset

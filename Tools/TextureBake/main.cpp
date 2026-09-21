@@ -12,6 +12,7 @@
 //                 a human-meaningful identifier instead of the throwaway temp path.
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Core/IO/File.h"
+#include "Core/Util/Sha256.h"
 
 #include <stb/stb_image.h>
 
@@ -86,7 +87,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const std::string sourceHash = lmx::asset::sha256Hex(*sourceBytes);
+    const std::string sourceHash = lmx::sha256Hex(*sourceBytes);
     const std::string manifestPath = outPath + ".json";
     if (auto written =
             lmx::asset::writeManifest(manifestPath, sourceName, sourceHash, *mode, kToolVersion);

@@ -11,7 +11,7 @@
 #include "App/OcclusionValidation.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/IO/File.h"
-#include "Engine/Asset/Texture/TextureBake.h"
+#include "Core/Util/Sha256.h"
 #include "Render/FrameDeclaration.h"
 #include "Render/Renderer.h"
 
@@ -36,7 +36,7 @@ double elapsedMs(Clock::time_point start, Clock::time_point end) {
 //======================================================================================================================
 std::string hashFile(const std::filesystem::path& path) {
     const auto bytes = readWholeFile(path);
-    return bytes ? asset::sha256Hex(*bytes) : "unavailable";
+    return bytes ? lmx::sha256Hex(*bytes) : "unavailable";
 }
 
 //======================================================================================================================
