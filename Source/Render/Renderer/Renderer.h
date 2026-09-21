@@ -41,6 +41,11 @@ class BloomStage;
 /// Owns the renderer's display transform and disabled-bloom fallback.
 class DisplayStage;
 
+// Derived frame values shared only by the renderer implementation units.
+struct RendererFrameState;
+// Graph-local imports shared only by the renderer implementation units.
+struct RendererFrameImports;
+
 /// Capture tooling, not part of rendering: publishes the draw stages' uniform-block layouts
 /// (including masked variants) (name, slot, size, every field's offset and type) to
 /// rojoRHI::debug::CaptureSchema, so the capture sidecar can name the bytes a .gputrace holds
@@ -199,6 +204,11 @@ public:
 
 private:
     Renderer(rojoRHI::Device& device, bool cpuReadback);
+    RendererFrameState deriveFrameState(const engine::Camera& camera, const SceneView& view);
+    RendererFrameImports importFrameResources(RenderGraph& graph, rojoRHI::CommandList& commands,
+                                              const SceneView& view,
+                                              const RendererFrameState& state);
+    void recordFrameStatus(const RendererFrameState& state, bool lightDebugEnabled);
     std::array<GraphBuffer, 2> prepareVisibility(RenderGraph& graph, rojoRHI::CommandList& commands,
                                                  const SceneView& view, const FrustumPlanes& planes,
                                                  std::span<const GraphBuffer> sceneBuffers);

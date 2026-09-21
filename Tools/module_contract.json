@@ -105,7 +105,8 @@
         "Source/Render/Passes/Bloom/BloomStage.h",
         "Source/Render/Passes/Display/DisplayStage.h",
         "Source/Render/Graph/RenderGraphInternal.h",
-        "Source/Render/Passes/Temporal/TemporalResolveInternal.h"
+        "Source/Render/Passes/Temporal/TemporalResolveInternal.h",
+        "Source/Render/Renderer/RendererInternal.h"
       ]
     },
     "app-model": {
