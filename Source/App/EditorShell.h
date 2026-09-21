@@ -63,7 +63,7 @@ struct WorkspaceSettings {
 };
 
 /// The editor shell: the Dear ImGui context, the dockspace and its four docked panels, the detached
-/// Performance and Render Graph windows, the fly camera, and the active scene::Scene the Inspector
+/// Performance and Render Graph windows, the fly camera, and the active engine::Scene the Inspector
 /// edits. One per process -- ImGui's context, and the Metal 4 renderer glue behind it, are both
 /// process-global -- which is why this is created through a factory and is neither copyable nor
 /// movable.

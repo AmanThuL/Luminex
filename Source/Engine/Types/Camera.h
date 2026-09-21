@@ -19,7 +19,7 @@ public:
     float fovY = glm::radians(60.0f); ///< Vertical field of view in radians.
     float nearZ = 0.1f;               ///< Positive near-plane distance in world units.
     /// Scene data, not a projection parameter: projectionMatrix is reversed with an *infinite*
-    /// far plane and never reads this. It stays because a scene authors it (scene::SceneCamera
+    /// far plane and never reads this. It stays because a scene authors it (engine::SceneCamera
     /// carries it, the editor round-trips it) and because a caller that wants a distance to cull
     /// or fit against has nowhere else to read one from.
     float farZ = 100.0f;

@@ -61,7 +61,7 @@ public:
     /// labInstances sets the total VisibilityLab population; its builder validates 1..1,048,576.
     /// labOccluders adds 0..1,024 optional slabs without changing the default lab.
     /// labLights sets LightLab's grid local-light population; its builder validates
-    /// 1..render::kMaxLocalLights. labLightPile adds that many extra lights stacked at one point.
+    /// 1..engine::kMaxLocalLights. labLightPile adds that many extra lights stacked at one point.
     explicit SceneLibrary(rojoRHI::Device& device, uint32_t labInstances = 4096,
                           uint32_t labOccluders = 0, uint32_t labLights = 256,
                           uint32_t labLightPile = 0);

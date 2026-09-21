@@ -91,8 +91,8 @@ public:
     /// Removes an unreferenced texture; stale or still-referenced identities are misuse.
     /// Submitted references retain the resource until three paced frames after its last use.
     void removeTexture(TextureId id);
-    /// Adds a local point or spot light, validating it the way `render::makeLightRow` does and
-    /// failing with `InvalidDesc` for invalid parameters or once `render::kMaxLocalLights` live
+    /// Adds a local point or spot light, validating it the way `engine::makeLightRow` does and
+    /// failing with `InvalidDesc` for invalid parameters or once `engine::kMaxLocalLights` live
     /// lights already exist. May be called before or after finalize.
     rojoRHI::Result<LightId> addLight(const engine::LocalLight& light);
     /// Removes a live local light and returns whether the identity resolved; a stale or foreign
@@ -235,7 +235,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMilkTruckScene(rojoRHI::Device& d
 
 /// Deterministic code-generated temporal diagnostics: a checkerboard floor under a rotating cube,
 /// a sphere orbiting a static reference cube, a row of oscillating poles, and one cube flagged
-/// `render::MotionClass::Invalid`, all driven by looping tracks alongside a looping camera track.
+/// `engine::MotionClass::Invalid`, all driven by looping tracks alongside a looping camera track.
 asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device& device);
 
 /// San Miguel's pinned realtime variant with masked foliage and a looping camera rail. Optional
@@ -250,9 +250,9 @@ asset::AssetResult<std::unique_ptr<Scene>> loadVisibilityLabScene(rojoRHI::Devic
                                                                   uint32_t occluderCount = 0);
 
 /// Builds a deterministic material field (matte floor, pillar/sphere sweep) under lightCount local
-/// lights (1..render::kMaxLocalLights) on a jittered grid whose range scales with
+/// lights (1..engine::kMaxLocalLights) on a jittered grid whose range scales with
 /// 1/sqrt(lightCount), plus pileCount extra lights (default 0) stacked at one point; lightCount +
-/// pileCount must not exceed render::kMaxLocalLights. See Source/Engine/Catalog/LightLab.h for the
+/// pileCount must not exceed engine::kMaxLocalLights. See Source/Engine/Catalog/LightLab.h for the
 /// device-free generation this wraps.
 asset::AssetResult<std::unique_ptr<Scene>>
 loadLightLabScene(rojoRHI::Device& device, uint32_t lightCount = 256, uint32_t pileCount = 0);

@@ -135,7 +135,7 @@ float phase(double time, double seconds) {
 //   pixel in one frame is what disocclusion and thin-feature failures show up on; the 0.5 spacing
 //   keeps neighbours from ever meeting.
 //
-//   Invalid cube: a unit cube at (0, 1, 4), static, flagged render::MotionClass::Invalid. It is
+//   Invalid cube: a unit cube at (0, 1, 4), static, flagged engine::MotionClass::Invalid. It is
 //   the scene's control for the motion sentinel -- geometry that must never be reprojected even
 //   though it holds perfectly still.
 //
@@ -154,7 +154,7 @@ asset::AssetResult<std::unique_ptr<Scene>> loadTemporalLabScene(rojoRHI::Device&
     auto scene = std::make_unique<Scene>();
     scene->name = "TemporalLab";
 
-    // makeGrid rather than render::makePlane: the checker needs the 0..1 UVs only the grid
+    // makeGrid rather than engine::makePlane: the checker needs the 0..1 UVs only the grid
     // generator authors.
     const MeshId planeMeshIndex = scene->addMesh(
         engine::fromGeo(asset::makeGrid(kFloorHalfExtent * 2.0f, kFloorHalfExtent * 2.0f, 2, 2)),

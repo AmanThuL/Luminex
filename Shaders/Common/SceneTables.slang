@@ -53,7 +53,7 @@ struct MeshRow
     uint boundsPadding1;
 };
 
-// Mirrors lmx::render::LightRow. `range == 0` marks a free slot, `strength` is the light's colour
+// Mirrors lmx::engine::LightRow. `range == 0` marks a free slot, `strength` is the light's colour
 // already multiplied by its intensity, and `spotScale`/`spotOffset` encode the cone term for both
 // light types, so nothing downstream branches on the type. The bounding sphere is CPU-derived.
 struct LightRow
