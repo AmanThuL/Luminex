@@ -152,7 +152,7 @@ public float SpotTerm(float cosTheta, float spotScale, float spotOffset)
 
 //======================================================================================================================
 // One analytic point or spot light, sharing SurfaceResponse's BRDF core with the directional light
-// above. Source/Render/LocalLightMath.cpp mirrors this function statement for statement and
+// above. Source/Engine/Types/LocalLightMath.cpp mirrors this function statement for statement and
 // Tests/GpuLocalLightTests.cpp holds the two to a 64-sample agreement.
 //
 // The three tests below are one ordered early-out, each returning exact zero: outside the range,

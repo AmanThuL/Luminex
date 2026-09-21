@@ -165,8 +165,8 @@ std::vector<uint8_t> downsampleNormal(std::span<const uint8_t> src, uint32_t src
 }
 
 //======================================================================================================================
-// Right-shift with a floor of 1 -- Asset/DdsLoader.h's mip-extent contract, repeated here so the
-// baked chain's dimensions match what loadDds expects to find at each level.
+// Right-shift with a floor of 1 -- Engine/Asset/Image/DdsLoader.h's mip-extent contract, repeated
+// here so the baked chain's dimensions match what loadDds expects to find at each level.
 uint32_t mipExtent(uint32_t base, uint32_t level) {
     const uint32_t extent = base >> level;
     return extent > 0 ? extent : 1;

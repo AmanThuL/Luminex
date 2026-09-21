@@ -113,7 +113,7 @@ asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, Scene&
 //======================================================================================================================
 // A flat quad in the local Z=0 plane, +Z normal, corners wound CCW as seen from +Z (this
 // project's one front-facing winding -- RHI.h's CullMode::Back). UV spans the full [0,1] range
-// left to right, top to bottom, unlike Render/Mesh.cpp's makePlane whose UVs are all zero.
+// left to right, top to bottom, unlike Engine/Types/Mesh.cpp's makePlane whose UVs are all zero.
 engine::MeshData makeMaterialQuad(float halfWidth, float halfHeight) {
     engine::MeshData mesh;
     struct Corner {
@@ -189,10 +189,10 @@ std::vector<uint8_t> makeNormalMapPixels() {
 // 64x64, one texel per checker, alternating black/white by (x+y) parity -- deliberately the
 // highest possible spatial frequency a box filter can still resolve. Every 2x2 block therefore
 // contains exactly two black and two white texels, so box-filtering it converges to an exact
-// uniform mid-gray from mip level 1 onward (Source/Asset/TextureBake.h's bakeMips); point-picking
-// instead of filtering samples the same parity every time it steps by a power of two, producing a
-// solid black or solid white mip instead. RGBA8Unorm_sRGB -- colour, not data, so it goes through
-// the same sRGB decode/filter/encode path as an authored base-color texture.
+// uniform mid-gray from mip level 1 onward (Source/Engine/Asset/Texture/TextureBake.h's bakeMips);
+// point-picking instead of filtering samples the same parity every time it steps by a power of two,
+// producing a solid black or solid white mip instead. RGBA8Unorm_sRGB -- colour, not data, so it
+// goes through the same sRGB decode/filter/encode path as an authored base-color texture.
 std::vector<uint8_t> makeCheckerboardPixels() {
     constexpr uint32_t kSize = 64;
     std::vector<uint8_t> pixels(size_t{kSize} * kSize * 4);
@@ -412,7 +412,8 @@ asset::AssetResult<std::unique_ptr<Scene>> loadMaterialLabScene(rojoRHI::Device&
     }
 
     // Mip-filtering probe: a 64x64 1-texel checkerboard, its full chain baked in memory by the
-    // same deterministic box filter Tools/TextureBake bakes to disk (Source/Asset/TextureBake.h)
+    // same deterministic box filter Tools/TextureBake bakes to disk
+    // (Source/Engine/Asset/Texture/TextureBake.h)
     // -- proof that a GPU test's minified read converges to mid-gray because mips came from
     // filtering, not point-picking (a point-picked mip of a 1-texel checkerboard reads solid black
     // or solid white instead). Positioned behind initialCamera's default view (world Z beyond the

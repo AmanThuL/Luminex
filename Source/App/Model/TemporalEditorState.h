@@ -14,7 +14,7 @@
 namespace lmx::app {
 
 /// Editor-owned temporal bookkeeping the shell keeps across scene switches, entirely separate from
-/// the scene's own animation clock (Scene/Scene.h): a monotonic counter `TemporalSettings::
+/// the scene's own animation clock (Engine/Scene/Scene.h): a monotonic counter `TemporalSettings::
 /// sceneGeneration` is built from, and a one-shot camera-cut request the Inspector's "Camera cut"
 /// button raises. Pure and SDL/ImGui-free, like ExposureReset.h, so it is unit-testable without a
 /// device.

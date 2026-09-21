@@ -337,11 +337,12 @@ Attribution is not required under CC0. Original author: Sergej Majboroda.
                                   "--tree-sha256", san_miguel_sha256})
         end
 
-        -- Deterministic offline mip bake (Source/Asset/TextureBake.h): every base-color and
-        -- normal image the two glTF/GLB files reference gets a sibling Baked/image<N>.dds that
-        -- Scene/Scene.cpp's ensureUploaded prefers over the runtime fallback path. Re-running
-        -- setup is cheap here too -- Tools/bake_gltf_textures.py skips any image whose manifest
-        -- matches the current source hash, role-specific filter, and bake-tool version.
+        -- Deterministic offline mip bake (Source/Engine/Asset/Texture/TextureBake.h): every
+        -- base-color and normal image the two glTF/GLB files reference gets a sibling
+        -- Baked/image<N>.dds that Engine/Scene/Scene.cpp's ensureUploaded prefers over the runtime
+        -- fallback path. Re-running setup is cheap here too -- Tools/bake_gltf_textures.py skips
+        -- any image whose manifest matches the current source hash, role-specific filter, and
+        -- bake-tool version.
         import("core.project.config")
         import("core.project.project")
         -- setup is a one-command bootstrap, including xrepo packages the bake tool links. CI and

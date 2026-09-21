@@ -33,7 +33,8 @@ enum class BakeMode {
 std::string_view bakeFilterName(BakeMode mode);
 
 /// A full mip chain baked in memory: one 2D image, RGBA8, tightly packed and mip-major (matches
-/// Asset/DdsLoader.h's DdsImage payload layout for a single face). `mips` is createTexture-ready
+/// Engine/Asset/Image/DdsLoader.h's DdsImage payload layout for a single face). `mips` is
+/// createTexture-ready
 /// -- MaterialLab hands it to rojoRHI::Device::createTexture directly, without ever touching a
 /// file. Move-only because each TextureMip points into `payload`; a default copy would leave the
 /// copied descriptors pointing into the source object's storage.
@@ -60,15 +61,15 @@ struct BakedMipChain {
 /// from the immediately preceding level's *already-rounded* output, not recomputed from level 0 --
 /// so the chain matches what a human re-deriving level N from a saved level N-1 file would get.
 ///
-/// Level dimensions follow Asset/DdsLoader.h's contract: level L is max(1, base >> L) on each
-/// axis independently (not a recursive ceiling-halve), which is exactly a recursive floor-halve of
-/// the previous level because right-shift is associative ((n>>a)>>b == n>>(a+b)). Each step from
-/// one level to the next is therefore a 2x2 box filter EXCEPT when the source extent on an axis is
-/// 1 (that axis stops halving, kernel width 1, a direct copy) or odd (destination extent is
-/// floor(source/2); the trailing unpaired source texel -- index sourceExtent-1 -- folds into the
-/// LAST destination texel with equal area weight alongside its normal pair, e.g. a source width of
-/// 5 makes destination texel 0 average source columns {0,1} at weight 1/2 each, and destination
-/// texel 1 (the last) average columns {2,3,4} at weight 1/3 each). The two axes combine
+/// Level dimensions follow Engine/Asset/Image/DdsLoader.h's contract: level L is max(1, base >> L)
+/// on each axis independently (not a recursive ceiling-halve), which is exactly a recursive
+/// floor-halve of the previous level because right-shift is associative ((n>>a)>>b == n>>(a+b)).
+/// Each step from one level to the next is therefore a 2x2 box filter EXCEPT when the source extent
+/// on an axis is 1 (that axis stops halving, kernel width 1, a direct copy) or odd (destination
+/// extent is floor(source/2); the trailing unpaired source texel -- index sourceExtent-1 -- folds
+/// into the LAST destination texel with equal area weight alongside its normal pair, e.g. a source
+/// width of 5 makes destination texel 0 average source columns {0,1} at weight 1/2 each, and
+/// destination texel 1 (the last) average columns {2,3,4} at weight 1/3 each). The two axes combine
 /// separably, so a corner destination texel with both axes odd-and-last can average up to 9 source
 /// texels at weight 1/9 each. Every accumulation iterates source rows top-to-bottom, and within a
 /// row left-to-right (scanline order) -- fully deterministic, no parallel reduction, no ordering
@@ -81,8 +82,9 @@ BakedMipChain bakeMips(std::span<const uint8_t> rgba8, uint32_t width, uint32_t 
                        BakeMode mode);
 
 /// Writes `image` as an uncompressed A8R8G8B8 DDS with a full mip chain, Tex2D only (no cubemap
-/// bake path exists) -- the exact legacy layout Asset/DdsLoader.h's loadDds parses, byte-swapped
-/// to the file's B,G,R,A order on write the same way loadDds swaps it back to R,G,B,A on read.
+/// bake path exists) -- the exact legacy layout Engine/Asset/Image/DdsLoader.h's loadDds parses,
+/// byte-swapped to the file's B,G,R,A order on write the same way loadDds swaps it back to R,G,B,A
+/// on read.
 AssetResult<void> writeDds(std::string_view path, const BakedMipChain& image);
 
 /// Writes `<path>` (the caller passes the full "<out>.dds.json" name) with deterministic key

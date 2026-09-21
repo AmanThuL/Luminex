@@ -163,9 +163,10 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 // The environment is built through the production generators on a constant white cube, so this
 // exercises the same irradiance convolution, prefiltered chain and RG16Float DFG table a real scene
 // carries; both generators reproduce a constant environment exactly at every roughness
-// (Source/Asset/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading is 1.0 with no
-// integration error folded into it. Lights are off and exposure is 0, which leaves the image-based
-// terms as the entire signal, and the HDR target is read directly so no tone map stands in the way.
+// (Source/Engine/Asset/Texture/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading
+// is 1.0 with no integration error folded into it. Lights are off and exposure is 0, which leaves
+// the image-based terms as the entire signal, and the HDR target is read directly so no tone map
+// stands in the way.
 //
 // The bound is derived from the quantization chain rather than chosen. E = 1.0 is exact in binary16
 // and survives the cube upload unchanged; the DFG table's own half-precision error cancels

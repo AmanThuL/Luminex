@@ -11,9 +11,9 @@
 // to be written independently of it.
 //
 // The one thing this file does *not* re-derive is the split-sum DFG table: it reads the very table
-// Source/Asset/Ibl.h generates and the renderer uploads, because the point of a probe comparison
-// is to check the shader's use of that data, not to re-implement the integrator. The integrator has
-// its own independent oracle in Tests/EngineIblTests.cpp.
+// Source/Engine/Asset/Texture/Ibl.h generates and the renderer uploads, because the point of a
+// probe comparison is to check the shader's use of that data, not to re-implement the integrator.
+// The integrator has its own independent oracle in Tests/EngineIblTests.cpp.
 
 #include "Engine/Asset/Texture/Ibl.h"
 
@@ -174,8 +174,9 @@ inline glm::vec2 sampleDfg(float nov, float perceptualRoughness) {
 
 //======================================================================================================================
 // The whole fragment, for a surface in a uniform environment of radiance `environment`. A constant
-// environment is what Source/Asset/Ibl.h's generators reproduce exactly at every roughness, so
-// both image-based samples are that radiance itself and no cube lookup has to be mirrored here.
+// environment is what Source/Engine/Asset/Texture/Ibl.h's generators reproduce exactly at every
+// roughness, so both image-based samples are that radiance itself and no cube lookup has to be
+// mirrored here.
 //
 // `lights` is the same three-light set a SceneView carries, with the shadow factor already folded
 // into each strength by the caller.

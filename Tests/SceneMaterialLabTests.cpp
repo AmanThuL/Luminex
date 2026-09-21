@@ -378,8 +378,8 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     view.tables = (*scene)->tables();
     // A white uniform environment and no analytic lights: every patch is lit only by the
     // image-based terms, which for a constant environment are that environment's own radiance
-    // (Asset/Ibl.h) -- so what reaches the target is the patch's total reflectance and nothing
-    // about the geometry of a light rig enters the expectation.
+    // (Engine/Asset/Texture/Ibl.h) -- so what reaches the target is the patch's total reflectance
+    // and nothing about the geometry of a light rig enters the expectation.
     const lmx::engine::ibl::IblTextures environment =
         lmx::test::makeUniformIbl(**device, glm::vec3(1.0f), "lmx.test.patchFurnace");
     view.irradiance = environment.irradiance.get();
@@ -467,9 +467,10 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 // Exit-gate check: Metal's blit generateMipmaps was measured to point-pick, not filter, so a
 // point-picked mip of MaterialLab's 1-texel checkerboard (makeCheckerboardPixels) reads solid
 // black or solid white -- stepping by a power of two always lands on the same parity. A correctly
-// box-filtered chain (Source/Asset/TextureBake.h's bakeMips, the same function the offline bake
-// tool uses) instead converges every level above 0 to an exact uniform mid-gray, because every 2x2
-// block of a 1-texel checkerboard contains exactly two black and two white texels.
+// box-filtered chain (Source/Engine/Asset/Texture/TextureBake.h's bakeMips, the same function the
+// offline bake tool uses) instead converges every level above 0 to an exact uniform mid-gray,
+// because every 2x2 block of a 1-texel checkerboard contains exactly two black and two white
+// texels.
 //
 // The bespoke camera sits 10 world units from the probe -- a 1x1 unit quad at that distance,
 // against a 64px target and 45-degree vertical FOV, covers roughly 8 screen pixels while sampling

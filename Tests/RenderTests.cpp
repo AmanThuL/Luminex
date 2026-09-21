@@ -324,11 +324,11 @@ TEST_CASE("the scene shader's specular mip count matches the IBL generator's", "
 //======================================================================================================================
 // The energy statement the whole material model rests on, made without a GPU.
 //
-// In a uniform environment of radiance E, Source/Asset/Ibl.h's generators reproduce E exactly at
-// every roughness -- the irradiance convolution and the prefilter both normalize by their own
-// accumulated weight -- so both image-based samples are E and the fragment reduces to E times the
-// surface's total reflectance. A white surface must then return E itself: it absorbs nothing, so
-// every photon that arrived has to leave.
+// In a uniform environment of radiance E, Source/Engine/Asset/Texture/Ibl.h's generators reproduce
+// E exactly at every roughness -- the irradiance convolution and the prefilter both normalize by
+// their own accumulated weight -- so both image-based samples are E and the fragment reduces to E
+// times the surface's total reflectance. A white surface must then return E itself: it absorbs
+// nothing, so every photon that arrived has to leave.
 //
 // That closure is algebraic rather than approximate, which is why this runs as a unit test at
 // float precision before Tests/GpuRendererTests.cpp measures it through the pipeline. For albedo 1
