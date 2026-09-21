@@ -176,7 +176,7 @@ def load_pending_paths(contract: dict, units: dict) -> set[str]:
     verbatim, and it may exist, so a move commit needs no contract edit; the contract drops the
     field once every move has landed.
     """
-    pending = contract.setdefault("pendingPaths", [])
+    pending = contract.get("pendingPaths", [])
     if not isinstance(pending, list) or not all(isinstance(item, str) for item in pending):
         raise ModuleContractError("pendingPaths must hold a list of strings")
     unit_paths = {entry for unit in units.values() if isinstance(unit, dict)
