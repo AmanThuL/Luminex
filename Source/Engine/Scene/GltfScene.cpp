@@ -12,7 +12,6 @@
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Texture/TextureBake.h"
-#include "Engine/Catalog/SponzaLightRig.h"
 #include "Engine/Types/Mesh.h"
 #include "Engine/Upload/DdsUpload.h"
 #include "Engine/Upload/SceneEnvironment.h"
@@ -53,8 +52,10 @@ std::filesystem::path bakedDdsPath(const std::filesystem::path& gltfPath, size_t
 } // namespace
 
 //======================================================================================================================
-asset::AssetResult<std::unique_ptr<Scene>>
-loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_view sceneName) {
+asset::AssetResult<std::unique_ptr<Scene>> loadGltfScene(rojoRHI::Device& device,
+                                                         std::string_view assetPath,
+                                                         std::string_view sceneName,
+                                                         const SceneAuthoring& beforeFinalize) {
     const std::filesystem::path path(assetPath);
     auto loaded = asset::loadGltf(path.string());
     if (!loaded) {
@@ -283,9 +284,8 @@ loadGltfScene(rojoRHI::Device& device, std::string_view assetPath, std::string_v
         return std::unexpected(sky.error());
     }
 
-    if (sceneName == "Sponza") {
-        SponzaLightRig rig;
-        if (auto authored = rig.setEnabled(*scene, true); !authored)
+    if (beforeFinalize) {
+        if (auto authored = beforeFinalize(*scene); !authored)
             return std::unexpected(uploadFailure(std::move(authored.error())));
     }
     if (auto finalized = scene->finalize(device); !finalized) {

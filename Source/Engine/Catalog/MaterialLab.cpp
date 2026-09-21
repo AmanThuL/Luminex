@@ -3,7 +3,7 @@
 /// @brief Builds the deterministic material-diagnostic scene.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Engine/Scene/Scene.h"
+#include "Engine/Catalog/CatalogScenes.h"
 
 #include "Engine/Asset/RepositoryAsset.h"
 

@@ -5,6 +5,7 @@
 
 #include "Engine/Catalog/LightLab.h"
 
+#include "Engine/Catalog/CatalogScenes.h"
 #include "Engine/Scene/Scene.h"
 
 #include "Core/Diagnostics/Assert.h"

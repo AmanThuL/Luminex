@@ -187,7 +187,7 @@ bool SceneSession::localLightRigAvailable() const {
 bool SceneSession::localLightRigEnabled() const {
     if (!localLightRigAvailable())
         return false;
-    for (const auto id : m_scene->sponzaLightIds()) {
+    for (const auto id : m_scene->rigLightIds()) {
         if (const auto* light = m_scene->light(id); light && light->enabled)
             return true;
     }
