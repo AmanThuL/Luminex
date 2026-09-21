@@ -87,70 +87,65 @@ constexpr uint32_t kComputeThreadsPerGroup2D = 8;
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<void> ExposureStage::loadLibraries(rojoRHI::Device& device) {
+rojoRHI::Result<std::unique_ptr<ExposureStage>> ExposureStage::create(rojoRHI::Device& device,
+                                                                      bool cpuReadback) {
+    std::unique_ptr<ExposureStage> self(new ExposureStage);
+
     {
         auto library = device.loadShaderLibrary("Shaders/HistogramAccumulate");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_histogramLibrary = std::move(*library);
+        self->m_histogramLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/ExposureResolve");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_exposureResolveLibrary = std::move(*library);
+        self->m_exposureResolveLibrary = std::move(*library);
     }
     {
         auto library = device.loadShaderLibrary("Shaders/ExposureSeed");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_exposureSeedLibrary = std::move(*library);
+        self->m_exposureSeedLibrary = std::move(*library);
     }
-    return {};
-}
 
-//======================================================================================================================
-rojoRHI::Result<void> ExposureStage::createPipelines(rojoRHI::Device& device) {
     {
         auto pipeline = device.createComputePipeline(
-            {.library = m_histogramLibrary.get(),
+            {.library = self->m_histogramLibrary.get(),
              .computeEntry = "computeHistogramAccumulate",
              .threadsPerThreadgroup = {kComputeThreadsPerGroup2D, kComputeThreadsPerGroup2D, 1},
              .label = "lmx.render.histogramPipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_histogramPipeline = std::move(*pipeline);
+        self->m_histogramPipeline = std::move(*pipeline);
     }
     {
         auto pipeline =
-            device.createComputePipeline({.library = m_exposureResolveLibrary.get(),
+            device.createComputePipeline({.library = self->m_exposureResolveLibrary.get(),
                                           .computeEntry = "computeExposureResolve",
                                           .threadsPerThreadgroup = {1, 1, 1},
                                           .label = "lmx.render.exposureResolvePipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_exposureResolvePipeline = std::move(*pipeline);
+        self->m_exposureResolvePipeline = std::move(*pipeline);
     }
     {
-        auto pipeline = device.createComputePipeline({.library = m_exposureSeedLibrary.get(),
+        auto pipeline = device.createComputePipeline({.library = self->m_exposureSeedLibrary.get(),
                                                       .computeEntry = "computeExposureSeed",
                                                       .threadsPerThreadgroup = {1, 1, 1},
                                                       .label = "lmx.render.exposureSeedPipeline"});
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_exposureSeedPipeline = std::move(*pipeline);
+        self->m_exposureSeedPipeline = std::move(*pipeline);
     }
-    return {};
-}
 
-//======================================================================================================================
-rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bool cpuReadback) {
     {
         auto buffer = device.createBuffer({.size = kHistogramBufferSize,
                                            .storageRead = true,
@@ -160,7 +155,7 @@ rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bo
         if (!buffer) {
             return std::unexpected(buffer.error());
         }
-        m_histogramBuffer = std::move(*buffer);
+        self->m_histogramBuffer = std::move(*buffer);
     }
     // The persistent {applied, previous} pair (spec 9's feedback buffer, widened by M6.2 spec 7):
     // the seed and resolve passes write it, and -- when auto-exposure is on -- the *next* frame's
@@ -181,11 +176,11 @@ rojoRHI::Result<void> ExposureStage::createResources(rojoRHI::Device& device, bo
             if (!buffer) {
                 return std::unexpected(buffer.error());
             }
-            m_exposureBuffer = std::move(*buffer);
+            self->m_exposureBuffer = std::move(*buffer);
         }
     }
 
-    return {};
+    return self;
 }
 
 //======================================================================================================================
@@ -231,8 +226,10 @@ GraphBuffer ExposureStage::declareSeed(RenderGraph& graph, rojoRHI::CommandList&
 
 //======================================================================================================================
 void ExposureStage::declareMetering(RenderGraph& graph, rojoRHI::CommandList& commands,
-                                    const SceneView& view, const FrameExtents& extents,
-                                    GraphTexture sceneColorRead, GraphBuffer exposureCurrent) {
+                                    const SceneView& view, const ExposureMeteringInputs& inputs) {
+    const auto& extents = inputs.extents;
+    const auto sceneColorRead = inputs.sceneColorRead;
+    const auto exposureCurrent = inputs.exposureCurrent;
     // ---- Exposure feedback continued: histogram + resolve (spec 9). Declared every frame;
     // exported only when auto-exposure is on, so dead-pass culling drops the whole chain when it
     // is off. Both read `exposureCurrent` -- the exact version the scene/sky passes read above (or

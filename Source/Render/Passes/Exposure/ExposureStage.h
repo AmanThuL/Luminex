@@ -11,14 +11,18 @@
 
 namespace lmx::render {
 
+// Frame values and graph versions borrowed by the declared pass.
+struct ExposureMeteringInputs {
+    FrameExtents extents;
+    GraphTexture sceneColorRead;
+    GraphBuffer exposureCurrent;
+};
+
 // Renderer owns this stage for the full lifetime of its deferred graph callbacks.
 class ExposureStage {
 public:
-    // Initialization phases preserve Renderer's resource creation order.
-    rojoRHI::Result<void> loadLibraries(rojoRHI::Device& device);
-    rojoRHI::Result<void> createPipelines(rojoRHI::Device& device);
-    // Allocates persistent metering and {applied, previous} exposure feedback.
-    rojoRHI::Result<void> createResources(rojoRHI::Device& device, bool cpuReadback);
+    static rojoRHI::Result<std::unique_ptr<ExposureStage>> create(rojoRHI::Device& device,
+                                                                  bool cpuReadback);
     // The frame composition root imports the persistent pair before scene declaration.
     rojoRHI::Buffer& buffer() { return *m_exposureBuffer; }
     // Seeds manual/reset exposure before the scene reads it; callbacks live through execution.
@@ -26,10 +30,11 @@ public:
                             const SceneView& view, GraphBuffer exposureImport);
     // Declares metering after the raw scene, exporting feedback only in auto mode.
     void declareMetering(RenderGraph& graph, rojoRHI::CommandList& commands, const SceneView& view,
-                         const FrameExtents& extents, GraphTexture sceneColorRead,
-                         GraphBuffer exposureCurrent);
+                         const ExposureMeteringInputs& inputs);
 
 private:
+    ExposureStage() = default;
+
     std::unique_ptr<rojoRHI::ShaderLibrary> m_histogramLibrary;
     std::unique_ptr<rojoRHI::ShaderLibrary> m_exposureResolveLibrary;
     std::unique_ptr<rojoRHI::ShaderLibrary> m_exposureSeedLibrary;

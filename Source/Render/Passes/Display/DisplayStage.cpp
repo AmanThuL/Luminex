@@ -29,23 +29,21 @@ constexpr uint32_t kDisplayParamsSlot = 0;
 } // namespace
 
 //======================================================================================================================
-rojoRHI::Result<void> DisplayStage::loadLibraries(rojoRHI::Device& device) {
+rojoRHI::Result<std::unique_ptr<DisplayStage>> DisplayStage::create(rojoRHI::Device& device) {
+    std::unique_ptr<DisplayStage> self(new DisplayStage);
+
     {
         auto library = device.loadShaderLibrary("Shaders/DisplayTransform");
         if (!library) {
             return std::unexpected(library.error());
         }
-        m_displayLibrary = std::move(*library);
+        self->m_displayLibrary = std::move(*library);
     }
-    return {};
-}
 
-//======================================================================================================================
-rojoRHI::Result<void> DisplayStage::createPipelines(rojoRHI::Device& device) {
     // A fullscreen triangle over an already-rasterised image: no depth to test against and no
     // face to cull, since the one primitive covers the target by construction.
     {
-        auto pipeline = device.createGraphicsPipeline({.library = m_displayLibrary.get(),
+        auto pipeline = device.createGraphicsPipeline({.library = self->m_displayLibrary.get(),
                                                        .vertexEntry = "vertexMain",
                                                        .fragmentEntry = "fragmentMain",
                                                        .colorFormat = kDisplayFormat,
@@ -55,14 +53,9 @@ rojoRHI::Result<void> DisplayStage::createPipelines(rojoRHI::Device& device) {
         if (!pipeline) {
             return std::unexpected(pipeline.error());
         }
-        m_displayPipeline = std::move(*pipeline);
+        self->m_displayPipeline = std::move(*pipeline);
     }
 
-    return {};
-}
-
-//======================================================================================================================
-rojoRHI::Result<void> DisplayStage::createResources(rojoRHI::Device& device) {
     // A valid resource for DisplayTransform's bloom slot when bloom is off. The shader skips the
     // texture load in that mode, but the argument table must still contain a bound texture.
     {
@@ -78,17 +71,21 @@ rojoRHI::Result<void> DisplayStage::createResources(rojoRHI::Device& device) {
             if (!texture) {
                 return std::unexpected(texture.error());
             }
-            m_blackBloomFallback = std::move(*texture);
+            self->m_blackBloomFallback = std::move(*texture);
         }
     }
 
-    return {};
+    return self;
 }
 
 //======================================================================================================================
 void DisplayStage::declare(RenderGraph& graph, rojoRHI::CommandList& commands,
-                           GraphTexture displayInput, GraphTexture bloomResult,
-                           GraphTexture displayColor, bool bloomEnabled, float bloomIntensity) {
+                           const DisplayInputs& inputs) {
+    const auto displayInput = inputs.displayInput;
+    const auto bloomResult = inputs.bloomResult;
+    const auto displayColor = inputs.displayColor;
+    const auto bloomEnabled = inputs.bloomEnabled;
+    const auto bloomIntensity = inputs.bloomIntensity;
     PassDesc displayDesc;
     // Declaring the read is what orders this pass after the scene pass and puts the scene
     // target's transition to a shader read in front of it; nothing here places a barrier.
