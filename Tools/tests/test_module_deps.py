@@ -1582,10 +1582,59 @@ class RepositoryContractTests(unittest.TestCase):
         self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
 
     def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
-        self.assertNotIn("pendingPaths", self.contract)
+        pending = set(self.contract.get("pendingPaths", []))
+        self.assertLessEqual(pending, {"Source/Scenes"})
         for unit in self.contract["units"].values():
             for path in unit["paths"]:
-                self.assertTrue((self.root / path).exists(), path)
+                if path not in pending:
+                    self.assertTrue((self.root / path).exists(), path)
+
+    def unit_closure(self, name: str) -> set[str]:
+        """Every unit `name` lists, directly or transitively, `name` itself included."""
+        units = self.contract["units"]
+        seen: set[str] = set()
+        pending = [name]
+        while pending:
+            current = pending.pop()
+            if current not in seen:
+                seen.add(current)
+                pending.extend(units[current]["units"])
+        return seen
+
+    def test_the_scenes_unit_owns_its_folder_and_depends_on_core_asset_and_engine(self) -> None:
+        scenes = self.contract["units"]["scenes"]
+        self.assertEqual(scenes["paths"], ["Source/Scenes"])
+        self.assertEqual(scenes["targets"], ["Scenes"])
+        self.assertEqual(sorted(scenes["units"]), ["asset", "core", "engine"])
+
+    def test_scenes_consumes_every_public_rhi_header(self) -> None:
+        self.assertEqual(self.contract["externals"]["rhi"]["consumers"]["scenes"], ["*"])
+
+    def test_nothing_scenes_reaches_depends_on_render(self) -> None:
+        units = self.contract["units"]
+        self.assertEqual(sorted(name for name in self.unit_closure("scenes") if "render" in units[name]["units"]), [])
+
+    def test_engine_does_not_depend_on_scenes(self) -> None:
+        self.assertNotIn("scenes", self.unit_closure("engine"))
+
+    def test_the_app_and_test_units_depend_on_scenes(self) -> None:
+        for name in ("app-model", "app-shell", "tests"):
+            with self.subTest(unit=name):
+                self.assertIn("scenes", self.contract["units"][name]["units"])
+
+    def test_the_scenes_target_builds_on_core_rhi_asset_and_engine(self) -> None:
+        self.assertEqual(self.contract["targets"]["Scenes"]["deps"], ["Core", "RojoRHI", "Asset", "Engine"])
+
+    def test_core_depends_on_no_unit_and_every_other_unit_depends_on_core(self) -> None:
+        units = self.contract["units"]
+        self.assertEqual(units["core"]["units"], [])
+        self.assertEqual(sorted(name for name, unit in units.items() if name != "core" and "core" not in unit["units"]), [])
+
+    def test_the_core_archive_may_reference_no_other_unit_or_the_rhi(self) -> None:
+        self.assertEqual(
+            self.contract["targets"]["Core"]["forbidUndefined"],
+            ["lmx::asset::", "lmx::engine::", "lmx::scenes::", "lmx::render::", "lmx::app::", "rojoRHI::"],
+        )
 
     def test_no_target_or_unit_names_the_dissolved_scene_target(self) -> None:
         self.assertNotIn("Scene", self.contract["targets"])
