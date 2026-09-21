@@ -48,15 +48,15 @@ holds the borrowed frame input independently of the renderer.
   explicit offsets, per-pass GPU timing, and capture support. Its MetalFX temporal scaler translates reciprocal scale units, uses a public fence to hand work across opaque encoders, and retains state in every encoded frame slot until retirement. CPU-readable outputs use a creation-time private scratch and a copy inside the same timed call. The optional `RojoRHIMetal4ImGui` target
   owns the adapter (sources under `RojoRHI/Backends/Metal4/ImGui/Source/`), its ImGui-dependent public
   extension header, and the dependency on Dear ImGui; the core RHI does not inherit any of them.
-- **Render** depends on Engine for camera, CPU geometry vocabulary (`Vertex`/`MeshData`) and shared
-  scene-table rows, and owns the validating render graph (`RenderGraph`), the shadow/scene/sky/display passes it declares, and the plain per-frame `SceneView` it consumes, which `render::buildSceneView` (`SceneViewBuilder.h`) produces from a scene. The graph is
+- **Render** has `Graph/` for graph construction/execution and records, `Renderer/` for orchestration and `SceneView`, `Common/` for shared mechanics, and the ten shader-matched `Passes/<family>/` folders. It depends on Engine for camera, CPU geometry vocabulary (`Vertex`/`MeshData`) and shared
+  scene-table rows. `render::buildSceneView` (`Renderer/SceneViewBuilder.h`) produces its borrowed frame input. Creation, frame derivation/imports and status recording have separate Renderer units; `Renderer.cpp` retains stage wiring. SceneStage separates layouts, pipeline creation and draw encoding from packing/declaration. The graph is
   declared fresh every frame and validates its declarations before any of them reach the GPU. It declares raster, compute, copy and external passes with per-subresource uses over resources it either
   imports from a caller or creates as one-frame transients, culls every pass no declared sink
   reaches, places lifetime-disjoint transients in the shared bytes of a `TransientPool` placement
   heap, and answers with a `CompiledFrameRecord` describing the frame it encoded — schedule,
   barriers, transient lifetimes and assignments, and memory totals; `GraphDump.h` renders that
   record as deterministic text. `CompiledFrameRecord.h` owns this value-only observer contract, independently of the builder. Declaration/execution, compile/lifetime assignment, transitions and
-  validation have separate implementation units with private shared range helpers. `Renderer`
+  validation have separate units; private transition steps share one state and retain alias, RAW, WAW/WAR and access-recording order. Range overlap uses Core `Interval`. `Renderer`
   composes `ShadowStage` and `SceneStage`, which own opaque/masked pipelines and direct, indirect or instanced batched submission. Engine's `SceneTables.h` and its Slang module mirror the
   240-byte instance, 112-byte material, 48-byte mesh and 64-byte local-light rows, including bounds.
   `Visibility.h` classifies canonical uploaded CPU rows against five normalized planes from the
