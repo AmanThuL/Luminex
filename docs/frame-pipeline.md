@@ -163,7 +163,7 @@ With zero live lights there is no light-table import or light-list/debug pass; a
 bindings still resolve through immutable fallbacks. Direct uses no list passes. Retired counters
 join declaration frame/mode, and `--light-check` compares captured lists with that frame's CPU
 mirror; `drainLightingAfterIdle` resolves the final in-flight frames before headless completion.
-Stage callbacks borrow inputs through graph execution; Renderer retains frame targets and ordering.
+Stage callbacks borrow inputs through graph execution; `Renderer.cpp` retains stage ordering, while `RendererFrame.cpp` derives state and imports resources, `RendererCreate.cpp` owns construction/resize and `RendererStatus.cpp` records outcomes. SceneStage packing/declaration, layouts, pipelines and draw encoding occupy separate units.
 
 ## The render graph
 
@@ -171,7 +171,7 @@ Stage callbacks borrow inputs through graph execution; Renderer retains frame ta
 `GraphTexture`/`GraphBuffer` handles. Imports borrow persistent resources at version 0; transients
 belong to one frame (ADR 0008). Each pass declares every read/write and its subresource range.
 `compile()` rejects missing producers, duplicate writers, overlapping in-pass read/write ranges,
-cycles, invalid attachments/formats, transient reads before writes and invalid sinks/exports.
+cycles, invalid attachments/formats, transient reads before writes and invalid sinks/exports. Resolved mip/layer bounds use Core `Interval`; transition derivation seeds earlier accesses, then emits alias, RAW and WAW/WAR dependencies before recording each pass's accesses.
 It returns a serial topological schedule containing only passes reachable from a declared sink:
 exports, presentation or readback destinations. Execution validates again, then runs each callback
 with `PassResources` restricted to that pass's declared handles. Raster, compute and copy callbacks

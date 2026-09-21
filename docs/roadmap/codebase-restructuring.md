@@ -209,7 +209,7 @@ unit tests; the duplicates the record lists are gone; the Engine archive defines
 symbol; R3.3's archive checks and every pre-existing test case name still pass.
 
 ### R3.5 — Render
-**In progress 2026-09-22:** the accepted [record](../milestones/r/r3.5.md) is executing in two PRs.
+**In progress 2026-09-22:** part A implements the folders, Core adoptions and decompositions; part B remains active. The [record](../milestones/r/r3.5.md) and [validation](../milestones/r/r3.5-validation.md) retain delivery state and evidence.
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
 compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
