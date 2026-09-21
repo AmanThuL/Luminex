@@ -36,7 +36,8 @@ public:
     /// Builds the right-handed world-to-view transform.
     glm::mat4 viewMatrix() const;
     /// Reversed infinite-far perspective for Metal's [0,1] clip depth: the near plane maps to 1
-    /// and depth falls toward 0 with distance, never reaching it. Derived in Camera.cpp.
+    /// and depth falls toward 0 with distance, never reaching it. Derived in
+    /// Core/Math/Projection.h.
     glm::mat4 projectionMatrix(float aspect) const;
 };
 

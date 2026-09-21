@@ -291,9 +291,9 @@ std::array<uint8_t, 4> pixelAt(const std::vector<std::byte>& payload, size_t off
 // White and black 2x2 quadrants arranged diagonally: filtering never mixes colours within a
 // uniform quadrant, so level 1 (2x2) must equal the four quadrant colours exactly -- no sRGB math
 // needed to check that level. Level 2 (1x1) averages white and black through the sRGB curve:
-// linear mean (1+0+0+1)/4 = 0.5, and Core/Color.h's linearToSrgb(0.5) is the same 0.735... value
-// already pinned elsewhere in this codebase as byte 188 (e.g. Tests/GpuRendererTests.cpp's "the
-// scene pass encodes its linear output to sRGB").
+// linear mean (1+0+0+1)/4 = 0.5, and Core/Math/Color.h's linearToSrgb(0.5) is the same 0.735...
+// value already pinned elsewhere in this codebase as byte 188 (e.g. Tests/GpuRendererTests.cpp's
+// "the scene pass encodes its linear output to sRGB").
 TEST_CASE("bakeMips --srgb filters a 4x4 diagonal image to exact level 1 and level 2 bytes",
           "[asset]") {
     constexpr std::array<uint8_t, 4> kWhite = {255, 255, 255, 255};

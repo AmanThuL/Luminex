@@ -114,7 +114,7 @@ asset::AssetResult<void> attachStudioEnvironment(rojoRHI::Device& device, engine
 //======================================================================================================================
 // A flat quad in the local Z=0 plane, +Z normal, corners wound CCW as seen from +Z (this
 // project's one front-facing winding -- RHI.h's CullMode::Back). UV spans the full [0,1] range
-// left to right, top to bottom, unlike Engine/Types/Mesh.cpp's makePlane whose UVs are all zero.
+// left to right, top to bottom, unlike Engine/Geometry/Mesh.cpp's makePlane whose UVs are all zero.
 engine::MeshData makeMaterialQuad(float halfWidth, float halfHeight) {
     engine::MeshData mesh;
     struct Corner {

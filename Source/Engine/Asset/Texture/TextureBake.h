@@ -75,9 +75,9 @@ struct BakedMipChain {
 /// row left-to-right (scanline order) -- fully deterministic, no parallel reduction, no ordering
 /// that depends on hardware thread count.
 ///
-/// Alpha is never colour-space transformed in any mode (Core/Color.h's rule: alpha is coverage,
-/// not colour) -- it box-filters as a raw normalized value in every mode, round-to-nearest on
-/// write-back like every other channel.
+/// Alpha is never colour-space transformed in any mode (Core/Math/Color.h's rule: alpha is
+/// coverage, not colour) -- it box-filters as a raw normalized value in every mode,
+/// round-to-nearest on write-back like every other channel.
 BakedMipChain bakeMips(std::span<const uint8_t> rgba8, uint32_t width, uint32_t height,
                        BakeMode mode);
 
