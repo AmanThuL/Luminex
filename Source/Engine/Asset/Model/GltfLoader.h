@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Asset/Asset.h"
+#include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 

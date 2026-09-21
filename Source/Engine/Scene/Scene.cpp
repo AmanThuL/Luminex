@@ -8,7 +8,7 @@
 
 #include "Engine/Catalog/SponzaCameraTour.h"
 
-#include "Asset/RepositoryAsset.h"
+#include "Engine/Asset/RepositoryAsset.h"
 
 #include "Core/Assert.h"
 #include "Core/Color.h"

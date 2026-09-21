@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Asset/Asset.h"
+#include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Types/Camera.h"
 #include "Engine/Types/Mesh.h"

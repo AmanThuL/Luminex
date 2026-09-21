@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "Asset/Asset.h"
 #include "Core/Bounds.h"
+#include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Model/Transform.h"
 #include "Engine/Scene/MaterialRecord.h"
