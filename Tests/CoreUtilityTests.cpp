@@ -2,7 +2,7 @@
 #include "Core/IO/Json.h"
 #include "Core/Math/Align.h"
 #include "Core/Math/Scalar.h"
-#include "Core/Parse.h"
+#include "Core/Util/Parse.h"
 
 #include <catch2/catch_test_macros.hpp>
 
