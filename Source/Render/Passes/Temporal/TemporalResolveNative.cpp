@@ -14,6 +14,10 @@
 #include <glm/mat4x4.hpp>
 #include <glm/vec2.hpp>
 
+#include <algorithm>
+#include <array>
+#include <cstring>
+#include <span>
 #include <utility>
 
 namespace lmx::render {
@@ -57,6 +61,37 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
     // sized by.
     const uint32_t width = inputs.extents.outputWidth;
     const uint32_t height = inputs.extents.outputHeight;
+    const bool historyValid = inputs.resetReason == HistoryResetReason::None;
+    const TemporalResolveParams params{
+        .width = width,
+        .height = height,
+        .historyValid = historyValid ? 1u : 0u,
+        .writeDiagnostics = (rejectionWanted ? 1u : 0u) | (reprojectedWanted ? 2u : 0u),
+        .inverseViewProjection = inputs.camera.inverseViewProjection,
+        .previousViewProjection = inputs.previousCamera.viewProjection,
+        .previousNearZ = inputs.previousCamera.nearZ};
+
+    declareReconstruction(graph, commands, inputs,
+                          {.parameters = std::as_bytes(std::span{&params, 1}),
+                           .parameterAlignment = alignof(TemporalResolveParams),
+                           .pipeline = *m_resolvePipeline,
+                           .passName = "lmx.pass.temporal.resolve",
+                           .width = width,
+                           .height = height,
+                           .rejectionWanted = rejectionWanted,
+                           .reprojectedWanted = reprojectedWanted},
+                          outputs);
+}
+
+//======================================================================================================================
+void TemporalResolve::declareReconstruction(
+    RenderGraph& graph, rojoRHI::CommandList& commands, const TemporalInputs& inputs,
+    const temporal_detail::ReconstructionDeclaration& declaration,
+    TemporalResolveOutputs& outputs) {
+    const uint32_t width = declaration.width;
+    const uint32_t height = declaration.height;
+    const bool rejectionWanted = declaration.rejectionWanted;
+    const bool reprojectedWanted = declaration.reprojectedWanted;
     if (rejectionWanted) {
         outputs.rejection = graph.createTexture({.width = width,
                                                  .height = height,
@@ -92,23 +127,24 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
         resolveDesc.textureWrites.push_back(outputs.reprojected);
     }
 
-    const bool historyValid = inputs.resetReason == HistoryResetReason::None;
-    const TemporalResolveParams params{
-        .width = width,
-        .height = height,
-        .historyValid = historyValid ? 1u : 0u,
-        .writeDiagnostics = (rejectionWanted ? 1u : 0u) | (reprojectedWanted ? 2u : 0u),
-        .inverseViewProjection = inputs.camera.inverseViewProjection,
-        .previousViewProjection = inputs.previousCamera.viewProjection,
-        .previousNearZ = inputs.previousCamera.nearZ};
+    // The caller's shader mirror is stack-owned; the deferred pass needs its own exact bytes.
+    std::array<std::byte, sizeof(temporal_detail::TemporalUpscaleParams)> parameters{};
+    const uint64_t parameterSize = declaration.parameters.size();
+    LMX_ASSERT(parameterSize > 0 && parameterSize <= parameters.size(),
+               "temporal reconstruction parameters must fit the owned callback block");
+    std::memcpy(parameters.data(), declaration.parameters.data(), parameterSize);
+    const uint64_t parameterAlignment =
+        std::max(declaration.parameterAlignment, rojoRHI::kFrameDataAlignment);
+    auto* pipeline = &declaration.pipeline;
 
     const GraphTexture output = inputs.colorSlot;
     const GraphTexture rejection = outputs.rejection;
     const GraphTexture reprojected = outputs.reprojected;
     graph.addComputePass(
-        "lmx.pass.temporal.resolve", std::move(resolveDesc),
+        declaration.passName, std::move(resolveDesc),
         [this, &commands, inputs, output, rejection, reprojected, rejectionWanted,
-         reprojectedWanted, params, width, height](const PassResources& resources) {
+         reprojectedWanted, parameters, parameterSize, parameterAlignment, pipeline, width,
+         height](const PassResources& resources) {
             const auto bindRead = [&](uint32_t slot, GraphTexture handle) {
                 auto& texture = lmx::render::texture(resources, handle);
                 commands.bindTexture(slot, texture);
@@ -123,7 +159,7 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
             auto& target = lmx::render::texture(resources, output);
             auto& exposure = lmx::render::buffer(resources, inputs.exposure);
 
-            commands.bindComputePipeline(*m_resolvePipeline);
+            commands.bindComputePipeline(*pipeline);
             commands.bindStorageTexture(kResolveOutputSlot, target, {},
                                         rojoRHI::StorageAccess::Write);
             // The argument table entry has to hold a writable texture even where the kernel's
@@ -146,8 +182,10 @@ void TemporalResolve::declareResolve(RenderGraph& graph, rojoRHI::CommandList& c
             }
             commands.bindStorageBuffer(kResolveExposureSlot, exposure,
                                        rojoRHI::StorageAccess::Read);
+            // Clamping keeps reconstruction taps at the active rectangle edge on that edge.
             commands.bindSampler(kResolveSamplerSlot, *m_sampler);
-            commands.bindFrameData(kResolveParamsSlot, params);
+            commands.bindFrameData(kResolveParamsSlot, parameters.data(), parameterSize,
+                                   parameterAlignment);
             const auto groups = dispatchGroups2D(width, height);
             commands.dispatch(groups[0], groups[1], 1);
         });

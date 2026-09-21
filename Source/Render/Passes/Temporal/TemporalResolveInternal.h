@@ -6,6 +6,9 @@
 #pragma once
 #include "Render/Passes/Temporal/TemporalResolve.h"
 
+#include <span>
+#include <string_view>
+
 namespace lmx::render::temporal_detail {
 
 // Mirrors Shaders/Passes/Temporal/SpatialUpscale.slang's SpatialUpscaleParams.
@@ -43,6 +46,18 @@ struct TemporalUpscaleParams {
 };
 static_assert(sizeof(TemporalUpscaleParams) == 192,
               "must match TemporalUpscale.slang's TemporalUpscaleParams");
+
+// Borrowed declaration facts consumed immediately; parameter bytes are copied for execution.
+struct ReconstructionDeclaration {
+    std::span<const std::byte> parameters;
+    uint64_t parameterAlignment;
+    rojoRHI::ComputePipeline& pipeline;
+    std::string_view passName;
+    uint32_t width;
+    uint32_t height;
+    bool rejectionWanted;
+    bool reprojectedWanted;
+};
 
 // TemporalResolve.slang's slot map.
 constexpr uint32_t kResolveSceneColorSlot = 0;    // texture

@@ -14,6 +14,9 @@
 #include <memory>
 
 namespace lmx::render {
+namespace temporal_detail {
+struct ReconstructionDeclaration;
+} // namespace temporal_detail
 
 /// Effective reconstruction and the reason a vendor request fell back.
 struct ReconstructionSelection {
@@ -211,6 +214,10 @@ private:
     // The accumulation itself. The two diagnostic transients are created and written only when
     // `rejectionWanted`/`reprojectedWanted` say a debug view sinks them, which is what keeps a
     // shipped frame from paying for either.
+    void declareReconstruction(RenderGraph& graph, rojoRHI::CommandList& commands,
+                               const TemporalInputs& inputs,
+                               const temporal_detail::ReconstructionDeclaration& declaration,
+                               TemporalResolveOutputs& outputs);
     void declareResolve(RenderGraph& graph, rojoRHI::CommandList& commands,
                         const TemporalInputs& inputs, bool rejectionWanted, bool reprojectedWanted,
                         TemporalResolveOutputs& outputs);
