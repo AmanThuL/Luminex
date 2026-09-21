@@ -15,8 +15,8 @@
 namespace lmx {
 
 //======================================================================================================================
-// The one translate-rotate-scale composition SceneObject::modelMatrix and decomposeTransform's
-// round-trip check both go through, so the two can never disagree about the order.
+// `T * Ry * Rx * Rz * S`, Euler angles in degrees. decomposeTransform's round-trip check goes
+// through this same function, so extraction and composition can never disagree about the order.
 glm::mat4 composeTransform(const DecomposedTransform& transform) {
     glm::mat4 model = glm::translate(glm::mat4{1.0f}, transform.position);
     model = glm::rotate(model, glm::radians(transform.eulerDegrees.y), glm::vec3{0.0f, 1.0f, 0.0f});
@@ -67,7 +67,7 @@ std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world) {
         return std::nullopt; // one surviving axis fixes no rotation
     }
 
-    // Extraction must match SceneObject's Y-X-Z composition order to round-trip compound rotation.
+    // Extraction must match composeTransform's Y-X-Z order to round-trip compound rotation.
     float yaw = 0.f, pitch = 0.f, roll = 0.f;
     glm::extractEulerAngleYXZ(glm::mat4(basis), yaw, pitch, roll);
     const DecomposedTransform decomposed{.position = glm::vec3(world[3]),

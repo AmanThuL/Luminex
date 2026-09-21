@@ -18,15 +18,15 @@ struct DecomposedTransform {
     glm::vec3 scale{1.f};        ///< Extracted per-axis scale.
 };
 
-/// Extracts translation, Euler rotation, and scale when `world` is decomposable, in the Y-X-Z
-/// order `SceneObject::modelMatrix` composes them, so the two round-trip. The factorisation is
+/// Extracts translation, Euler rotation, and scale when `world` is decomposable, in the order
+/// composeTransform composes them, so the two round-trip. The factorisation is
 /// proved by recomposing it, so shear -- a non-orthogonal basis, which no translate-rotate-scale
 /// chain can produce -- is rejected rather than silently orthogonalised, as is a projective row.
 /// A single zero-scale axis is accepted, because a collapsed object is a legitimate authored pose;
 /// two or more leave no rotation to extract and are rejected.
 std::optional<DecomposedTransform> decomposeTransform(const glm::mat4& world);
 
-/// Composes a pose in the Y-X-Z order shared by decoded clips and scene objects.
+/// Composes translation, then rotations about Y, X and Z, then scale: `T * Ry * Rx * Rz * S`.
 glm::mat4 composeTransform(const DecomposedTransform& transform);
 
 } // namespace lmx

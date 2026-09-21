@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Stopwatch.h
-/// @brief Declares a high-resolution timer for measuring elapsed milliseconds.
+/// @brief Declares a monotonic timer for measuring elapsed milliseconds.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -9,7 +9,7 @@
 
 namespace lmx {
 
-/// High-resolution timer for measuring elapsed time using steady_clock.
+/// Monotonic timer for measuring elapsed time using steady_clock.
 class Stopwatch {
 public:
     /// Initializes the stopwatch, starting measurement immediately.

@@ -1,6 +1,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file Sequence.h
-/// @brief Provides low-discrepancy sequence generators for temporal jitter and importance sampling.
+/// @brief Provides radical-inverse and Hammersley low-discrepancy sequence generators.
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
@@ -25,8 +25,8 @@ inline float radicalInverse(uint32_t index, uint32_t base) {
 }
 
 /// Van der Corput radical inverse in base 2: the low-discrepancy second coordinate of the
-/// Hammersley sequence, produced by reversing the bits of `index`. A sequence rather than an RNG is
-/// what makes every generator here reproducible without carrying a seed.
+/// Hammersley sequence, produced by reversing the bits of `index`. Each value depends on `index`
+/// alone, so these functions are reproducible without carrying a seed.
 inline float radicalInverseBase2(uint32_t index) {
     index = (index << 16u) | (index >> 16u);
     index = ((index & 0x55555555u) << 1u) | ((index & 0xAAAAAAAAu) >> 1u);
