@@ -111,7 +111,9 @@ public:
     uint32_t enabledLightCount() const;
     /// Authored rig identities, including disabled or subsequently removed lights.
     std::span<const LightId> rigLightIds() const { return m_rigLightIds; }
-    /// Records the authored rig identities that rigLightIds() reports.
+    /// Records the authored rig identities that rigLightIds() reports. The authoring rig sets it
+    /// once; a non-empty list makes `SponzaLightRig::setEnabled` skip authoring and only toggle
+    /// the recorded lights.
     void setRigLightIds(std::vector<LightId> ids) { m_rigLightIds = std::move(ids); }
     /// Resolves a `LightOrbitTrack::light` creation-order index (the order `addLight` was called,
     /// among lights added before `finalize`) to the `LightId` it was assigned, for playback and
