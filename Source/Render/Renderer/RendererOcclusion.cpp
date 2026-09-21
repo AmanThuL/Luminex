@@ -84,9 +84,11 @@ void Renderer::declareOcclusion(RenderGraph& graph, rojoRHI::CommandList& comman
             m_occlusionReference = std::move(*reference);
         }
         const auto declared = m_occlusionReference->declare(
-            graph, commands, view, m_currentOcclusionSource.viewProjection,
-            m_currentOcclusionSource.activeWidth, m_currentOcclusionSource.activeHeight,
-            m_occlusionStrictView);
+            graph, commands, view,
+            {.viewProjection = m_currentOcclusionSource.viewProjection,
+             .width = m_currentOcclusionSource.activeWidth,
+             .height = m_currentOcclusionSource.activeHeight,
+             .strictView = m_occlusionStrictView});
         LMX_ASSERT(declared.has_value(), declared.error().message);
     }
     if (view.hzbDebugLevel < 0)
