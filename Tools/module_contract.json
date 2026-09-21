@@ -368,7 +368,10 @@
         "RojoRHI",
         "Asset"
       ],
-      "forbidUndefined": "lmx::render::"
+      "forbidUndefined": [
+        "lmx::render::",
+        "lmx::scenes::"
+      ]
     },
     "Scenes": {
       "deps": [
