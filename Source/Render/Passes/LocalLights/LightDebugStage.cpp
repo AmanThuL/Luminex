@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "Render/Passes/LocalLights/LightDebugStage.h"
 #include "Core/Diagnostics/Assert.h"
+#include "Render/Common/Formats.h"
 
 namespace lmx::render {
 namespace {
@@ -27,7 +28,7 @@ rojoRHI::Result<std::unique_ptr<LightDebugStage>> LightDebugStage::create(rojoRH
     auto pipeline = device.createGraphicsPipeline({.library = stage->m_library.get(),
                                                    .vertexEntry = "vertexMain",
                                                    .fragmentEntry = "fragmentMain",
-                                                   .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                                   .colorFormat = kDisplayFormat,
                                                    .cullMode = rojoRHI::CullMode::None,
                                                    .label = "lmx.render.lightDebugPipeline"});
     if (!pipeline)

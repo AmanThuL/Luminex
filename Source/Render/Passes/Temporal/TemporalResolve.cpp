@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "Render/Passes/Temporal/TemporalResolve.h"
+#include "Render/Common/Formats.h"
 #include "Render/Passes/Temporal/TemporalResolveInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
@@ -126,7 +127,7 @@ rojoRHI::Result<std::unique_ptr<TemporalResolve>> TemporalResolve::create(rojoRH
             device.createGraphicsPipeline({.library = self->m_debugViewLibrary.get(),
                                            .vertexEntry = "vertexMain",
                                            .fragmentEntry = "fragmentMain",
-                                           .colorFormat = rojoRHI::Format::BGRA8Unorm,
+                                           .colorFormat = kDisplayFormat,
                                            .depthFormat = rojoRHI::Format::Unknown,
                                            .cullMode = rojoRHI::CullMode::None,
                                            .label = "lmx.render.temporalDebugViewPipeline"});
