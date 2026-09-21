@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Types/Camera.h"
 #include "Engine/Types/Mesh.h"
 #include "Render/Renderer.h"

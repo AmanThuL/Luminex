@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "Asset/SceneAnimation.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Types/LocalLight.h"
 
 #include <cstdint>

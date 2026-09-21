@@ -10,13 +10,13 @@
 
 #include "Asset/RepositoryAsset.h"
 
-#include "Asset/GeometryGenerator.h"
-#include "Asset/GltfLoader.h"
 #include "Asset/Ibl.h"
 #include "Asset/TextureBake.h"
 #include "Core/Assert.h"
 #include "Core/Color.h"
 #include "Core/Log.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Upload/DdsUpload.h"
 #include "Engine/Upload/SceneEnvironment.h"
 

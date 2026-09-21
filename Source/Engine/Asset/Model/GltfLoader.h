@@ -6,8 +6,8 @@
 #pragma once
 
 #include "Asset/Asset.h"
-#include "Asset/GeometryGenerator.h"
-#include "Asset/SceneAnimation.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 
 #include <glm/glm.hpp>
 

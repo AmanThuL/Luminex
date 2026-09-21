@@ -5,8 +5,8 @@
 
 #include "App/Model/SceneSession.h"
 
-#include "Asset/SceneAnimation.h"
 #include "Core/Assert.h"
+#include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Catalog/LightLab.h"
 #include "Render/SceneViewBuilder.h"
 

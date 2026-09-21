@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "Asset/GeometryGenerator.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Render/Temporal.h"
 #include "Render/TemporalHistory.h"
 

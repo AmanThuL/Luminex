@@ -3,7 +3,7 @@
 /// @brief Implements shared translate-rotate-scale composition and validation.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/Transform.h"
+#include "Engine/Asset/Model/Transform.h"
 
 #include <glm/gtc/matrix_transform.hpp>
 #define GLM_ENABLE_EXPERIMENTAL

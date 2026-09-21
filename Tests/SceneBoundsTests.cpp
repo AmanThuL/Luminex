@@ -3,8 +3,8 @@
 /// @brief Tests shared mesh bounds, canonical uploaded world rows, and static dirty convergence.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "Asset/GeometryGenerator.h"
 #include "Core/Bounds.h"
+#include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
 
 #include <catch2/catch_approx.hpp>
