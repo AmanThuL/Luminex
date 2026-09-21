@@ -3,10 +3,10 @@
 /// @brief Coordinates CPU declarations and separately retired GPU visibility diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Util/Stopwatch.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "Render/Passes/Visibility/GpuVisibility.h"
 #include "Render/Renderer/Renderer.h"
-#include <chrono>
 #include <limits>
 
 namespace lmx::render {
@@ -44,7 +44,7 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
     m_visibilityStatus.checkEnabled = view.classifyCheck;
     m_visibilityStatus.frameNumber = frame;
     m_visibilityStatus.sceneGeneration = view.temporal.sceneGeneration;
-    const auto classifyBegin = std::chrono::steady_clock::now();
+    const Stopwatch classifyTimer;
     if (view.classifyMode == ClassifyMode::Cpu) {
         m_visibilityStatus.scene =
             classifyView(planes, view.items, view.tables, view.visibilityEnabled);
@@ -68,11 +68,10 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
             m_gpuVisibility = std::move(*stage);
         }
     }
-    const auto prepareBegin = std::chrono::steady_clock::now();
-    m_visibilityStatus.classifyMs =
-        view.classifyMode == ClassifyMode::Cpu
-            ? std::chrono::duration<double, std::milli>(prepareBegin - classifyBegin).count()
-            : 0;
+    const Stopwatch prepareTimer;
+    m_visibilityStatus.classifyMs = view.classifyMode == ClassifyMode::Cpu
+                                        ? classifyTimer.elapsedMillisecondsUntil(prepareTimer)
+                                        : 0;
     const auto prepared =
         m_drawSubmission.prepare(frame, view, m_visibilityStatus.scene, m_visibilityStatus.shadow);
     LMX_ASSERT(prepared.has_value(), prepared.error().message);
@@ -98,9 +97,7 @@ std::array<GraphBuffer, 2> Renderer::prepareVisibility(RenderGraph& graph,
         m_visibilityStatus.shadowCounters =
             cpuCounters(m_visibilityStatus.shadow, m_visibilityStatus.submission.shadowCommands);
     }
-    m_visibilityStatus.prepareMs =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - prepareBegin)
-            .count();
+    m_visibilityStatus.prepareMs = prepareTimer.elapsedMilliseconds();
     if (view.classifyMode == ClassifyMode::Gpu)
         m_gpuVisibility->recordDeclarationStatus(m_visibilityStatus);
     // CPU-only frames keep their historical imports; once a GPU writer has used this allocation
