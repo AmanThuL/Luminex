@@ -1515,6 +1515,23 @@ class RepositoryContractTests(unittest.TestCase):
             ["rojoRHI/Format.h", "rojoRHI/TextureDesc.h"],
         )
 
+    def test_the_old_asset_and_scene_folders_belong_to_no_unit(self) -> None:
+        for path in ("Source/Scene/Scene.h", "Source/Asset/Asset.h"):
+            with self.subTest(path=path):
+                self.assertIsNone(modules.owner_of(Path(path), self.contract))
+
+    def test_the_engine_archive_may_not_reference_render(self) -> None:
+        self.assertEqual(self.contract["targets"]["Engine"]["forbidUndefined"], "lmx::render::")
+
+    def test_every_unit_path_exists_once_the_moves_have_landed(self) -> None:
+        self.assertEqual(self.contract["pendingPaths"], [])
+
+    def test_no_target_or_unit_names_the_dissolved_scene_target(self) -> None:
+        self.assertNotIn("Scene", self.contract["targets"])
+        named = {dep for target in self.contract["targets"].values() for dep in target.get("deps", [])}
+        named |= {target for unit in self.contract["units"].values() for target in unit["targets"]}
+        self.assertNotIn("Scene", named)
+
 
 if __name__ == "__main__":
     unittest.main()
