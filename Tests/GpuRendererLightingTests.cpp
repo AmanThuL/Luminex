@@ -1,11 +1,11 @@
 #include "GpuRendererTestSupport.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 #include "Scenes/CatalogScenes.h"
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <algorithm>
 #include <array>

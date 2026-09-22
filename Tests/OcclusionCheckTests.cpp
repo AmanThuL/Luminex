@@ -1,4 +1,4 @@
-#include "Render/OcclusionCheck.h"
+#include "Render/Passes/Occlusion/OcclusionCheck.h"
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 

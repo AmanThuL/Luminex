@@ -66,3 +66,34 @@ Choose evidence by risk, not file extension:
 Review the smallest useful diff. Generated evidence and measurements do not become source comments;
 record durable conclusions in an ADR, guide, milestone record, or postmortem.
 
+## Render stages
+
+A stage creates GPU objects at construction and declares passes each frame. Shared mechanics live
+in `Render/Common`; shader mirror structs, binding slots and rendering policy stay with the stage.
+
+1. Provide `static rojoRHI::Result<std::unique_ptr<X>> create(rojoRHI::Device&, ...)`, keep the
+   constructor private and complete initialization in that one call. Additional creation arguments
+   describe formats, owned extents or readback requirements.
+2. Use one `declare(RenderGraph&, rojoRHI::CommandList&, [const SceneView&,] const XInputs&)`,
+   returning the graph handle or outputs it produces, or void when it writes an input target.
+   More than three arguments after commands require an inputs struct; mutable status remains an
+   explicit separate output argument when needed.
+3. Only extent-owning stages expose resize. Document whether equal extents preserve resource
+   identity and history or recreate them; callers' reset semantics decide this policy. Use three
+   paced slots for frame data and two entries for ping-pong history.
+4. Propagate expected failures as `auto x = ...; if (!x) { return std::unexpected(x.error()); }`.
+   Keep a local scope when it preserves the old result object's destruction boundary.
+5. Label every library, pipeline and resource. New pipelines use `lmx.render.<name>Pipeline` and
+   new passes `lmx.pass.<family>.<step>`. Existing capture labels remain frozen.
+6. Reuse the free functions and templates in Common for repeated setup, resource resolution,
+   dispatch, paced retirement and draw encoding. No stage base class or virtual dispatch is needed.
+
+Named exceptions: VendorTemporalScaler is an adapter with an infallible constructor; its fallible
+prepare reports native fallback, and declarePack remains beside declare. ExposureStage keeps
+separate declareSeed and declareMetering around the scene. OcclusionReference::declare returns
+Result<void> because it allocates per frame. Existing pipeline labels under `lmx.visibility.*`,
+`lmx.light.*`, `lmx.selection.*`, `lmx.occlusion.reference.*` and `lmx.pipeline.temporal.vendor.*`
+remain unchanged. SelectionOutline and OcclusionReference retain their independent direct-item
+loops; they share scene-table binding, while draw-run encoding belongs to Scene and Shadow.
+
+R3.5 measured adoption exception: Scene retains `encodeDrawRuns` and all four stages retain `bindSceneTables`; Shadow keeps its explicit run loop after the fixed fallback selected the measured Scene-only candidate. The [validation record](../milestones/r/r3.5-validation.md) owns the frozen paired decision.

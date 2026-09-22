@@ -75,7 +75,7 @@ evidence is `21-graph-temporal-off-selection.jpg`.
   while the controller is active. [InspectorPanel](../../Source/App/Panels/InspectorPanel.cpp)
   presents this as frame GPU time, explaining the stale/zero observation. Keep controller
   observations distinct from independent retired-frame telemetry.
-- [Renderer](../../Source/Render/Renderer.cpp) writes the current reset reason each frame while
+- [Renderer](../../Source/Render/Renderer/Renderer.cpp) writes the current reset reason each frame while
   retaining the event frame only when a reset occurs. The UI needs a coherent last-event pair;
   replacing the render contract blindly would risk changing existing consumers.
 - [GraphNodeModel](../../Source/App/Model/GraphNodeModel.cpp) includes pin labels and resource

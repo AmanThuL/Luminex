@@ -5,7 +5,7 @@
 
 #pragma once
 #include "Engine/Lights/LocalLight.h"
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <string_view>

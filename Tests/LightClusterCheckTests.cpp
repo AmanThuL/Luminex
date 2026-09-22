@@ -2,7 +2,7 @@
 /// @file LightClusterCheckTests.cpp
 /// @brief Pins exact list checking, including lengths, offsets and truncated records.
 //----------------------------------------------------------------------------------------------------------------------
-#include "Render/LightClusterCheck.h"
+#include "Render/Passes/LocalLights/LightClusterCheck.h"
 
 #include <catch2/catch_test_macros.hpp>
 

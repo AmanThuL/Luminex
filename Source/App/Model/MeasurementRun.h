@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/LightingStatus.h"
-#include "Render/Visibility.h"
+#include "Render/Passes/LocalLights/LightingStatus.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include <rojoRHI/Device.h>
 
 #include <cstdint>

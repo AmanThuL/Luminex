@@ -26,6 +26,12 @@ public:
         return elapsed.count();
     }
 
+    /// Measures to another stopwatch's captured start without sampling the clock again.
+    /// The result is negative if that start precedes this one; restart changes a captured start.
+    double elapsedMillisecondsUntil(const Stopwatch& boundary) const {
+        return std::chrono::duration<double, std::milli>(boundary.m_start - m_start).count();
+    }
+
 private:
     std::chrono::steady_clock::time_point
         m_start; ///< Time point when stopwatch started or restarted.

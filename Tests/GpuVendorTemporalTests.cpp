@@ -1,8 +1,8 @@
 #include "GpuTestSupport.h"
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
-#include "Render/Temporal.h"
-#include "Render/TemporalHistory.h"
+#include "Render/Passes/Temporal/Temporal.h"
+#include "Render/Passes/Temporal/TemporalHistory.h"
 
 #include "SceneTableTestSupport.h"
 #include <array>
@@ -35,7 +35,7 @@ constexpr uint32_t kMeasureFirstFrame = 17;
 
 //======================================================================================================================
 // The motion target is RG16Float, so a readback carries IEEE halves. Widening them here keeps the
-// oracle comparisons in the same units Source/Render/Temporal.h states motion in.
+// oracle comparisons in the same units Source/Render/Passes/Temporal/Temporal.h states motion in.
 float halfToFloat(uint16_t bits) {
     const uint32_t sign = uint32_t{bits & 0x8000u} << 16;
     const uint32_t exponent = (bits >> 10) & 0x1Fu;

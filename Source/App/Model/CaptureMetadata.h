@@ -6,8 +6,8 @@
 #pragma once
 
 #include "App/Model/AppOptions.h"
-#include "Render/DisplayDomain.h"
-#include "Render/LightingStatus.h"
+#include "Render/Passes/LocalLights/LightingStatus.h"
+#include "Render/Renderer/DisplayDomain.h"
 
 #include <string>
 #include <string_view>

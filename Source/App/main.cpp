@@ -12,10 +12,10 @@
 #include "App/Screenshot.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
-#include "Render/FrameDeclaration.h"
-#include "Render/RenderGraph.h"
-#include "Render/Renderer.h"
-#include "Render/RhiLog.h"
+#include "Render/Common/RhiLog.h"
+#include "Render/Graph/FrameDeclaration.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
 #include <rojoRHI/CaptureSchema.h>
 #include <rojoRHI/Metal4/Metal4Capture.h>

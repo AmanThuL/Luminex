@@ -5,7 +5,7 @@
 
 #pragma once
 #include "App/Model/GraphInspectorModel.h"
-#include "Render/CompiledFrameRecord.h"
+#include "Render/Graph/CompiledFrameRecord.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>

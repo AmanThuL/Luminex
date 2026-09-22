@@ -20,7 +20,7 @@ source of applied exposure lives so the resolve, the metering and the shading ag
 
 ## Decision
 
-**Reconstruction contract.** `Source/Render/TemporalResolve.h` declares `TemporalInputs` (the
+**Reconstruction contract.** `Source/Render/Passes/Temporal/TemporalResolve.h` declares `TemporalInputs` (the
 graph handles and per-frame values one frame hands the stage: `sceneColor`, `depth`,
 `previousDepth`, `motion`, `reactive`, `history`, `colorSlot`, the exposure pair, both cameras,
 extents, the reset reason and the reconstruction mode) and `TemporalResolveOutputs` (`resolved`,

@@ -1,5 +1,5 @@
 #include "GpuTestSupport.h"
-#include "Render/OcclusionReference.h"
+#include "Render/Passes/Occlusion/OcclusionReference.h"
 #include "SceneTableTestSupport.h"
 #include <array>
 #include <glm/gtc/matrix_transform.hpp>
@@ -31,8 +31,11 @@ VisibilityStatus referenceFrame(Device& device, TransientPool& pool, OcclusionRe
     camera.fovY = glm::half_pi<float>();
     const auto result = reference.declare(
         graph, commands, view,
-        camera.projectionMatrix(static_cast<float>(width) / height) * camera.viewMatrix(), width,
-        height, true);
+        {.viewProjection =
+             camera.projectionMatrix(static_cast<float>(width) / height) * camera.viewMatrix(),
+         .width = width,
+         .height = height,
+         .strictView = true});
     INFO(errorOf(result));
     REQUIRE(result);
     graph.execute(commands, device.frameNumber());

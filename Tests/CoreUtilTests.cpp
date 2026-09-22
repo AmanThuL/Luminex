@@ -30,3 +30,18 @@ TEST_CASE("toLowerAscii converts only ASCII uppercase letters", "[core]") {
     const std::string result = lmx::toLowerAscii("AbC-Ω1");
     REQUIRE(result == "abc-Ω1");
 }
+
+//======================================================================================================================
+TEST_CASE("Stopwatch captured boundary stays fixed and shares adjacent intervals", "[core]") {
+    lmx::Stopwatch start;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    lmx::Stopwatch boundary;
+    const double captured = start.elapsedMillisecondsUntil(boundary);
+    REQUIRE(captured > 0);
+    REQUIRE(start.elapsedMillisecondsUntil(start) == 0);
+    REQUIRE(boundary.elapsedMillisecondsUntil(start) == -captured);
+    REQUIRE(start.elapsedMilliseconds() >= captured);
+    REQUIRE(start.elapsedMillisecondsUntil(boundary) == captured);
+    start.restart();
+    REQUIRE(start.elapsedMillisecondsUntil(boundary) <= 0);
+}

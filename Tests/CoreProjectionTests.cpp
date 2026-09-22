@@ -64,8 +64,9 @@ TEST_CASE("perspectiveReversedInfinite maps the near plane to depth 1", "[core]"
 
 //======================================================================================================================
 TEST_CASE("fitOrthoToSphere matches the shadow fit's view and projection", "[core]") {
-    // Captured from Source/Render/ShadowStage.cpp's fitShadowOrtho at 52945a6 (its lightView and
-    // lightProj, for a sphere centred at (1, 2, 3) with radius 5) via std::format("{:a}", ...).
+    // Captured from Source/Render/Passes/Shadow/ShadowStage.cpp's fitShadowOrtho at 52945a6 (its
+    // lightView and lightProj, for a sphere centred at (1, 2, 3) with radius 5) via
+    // std::format("{:a}", ...).
     const OrthoFit fit = lmx::fitOrthoToSphere(kSphere, glm::vec3(-1.0f, -2.0f, -1.0f));
     requireExactly(fit.view, {0x1.6a09e6p-1f, -0x1.279a74p-1f, 0x1.a20bd6p-2f, 0.0f,  //
                               0.0f, 0x1.279a74p-1f, 0x1.a20bd6p-1f, 0.0f,             //

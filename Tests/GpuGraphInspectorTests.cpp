@@ -4,9 +4,9 @@
 #include "App/Model/GraphInspectorModel.h"
 #include "App/Model/GraphLayout.h"
 #include "App/Model/GraphNodeModel.h"
-#include "Render/GraphDump.h"
-#include "Render/RenderGraph.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/GraphDump.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 
 #include "SceneTableTestSupport.h"
 #include <algorithm>

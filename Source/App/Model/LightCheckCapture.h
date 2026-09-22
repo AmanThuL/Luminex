@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/LightClusterCheck.h"
+#include "Render/Passes/LocalLights/LightClusterCheck.h"
 
 #include <iosfwd>
 

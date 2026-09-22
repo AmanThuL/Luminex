@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "App/Model/DynamicResolution.h"
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 
 #include <cstdint>
 #include <utility>

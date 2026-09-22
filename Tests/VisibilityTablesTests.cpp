@@ -1,5 +1,5 @@
-#include "Render/SceneView.h"
-#include "Render/VisibilityTables.h"
+#include "Render/Passes/Visibility/VisibilityTables.h"
+#include "Render/Renderer/SceneView.h"
 #include <catch2/catch_test_macros.hpp>
 #include <cmath>
 #include <numeric>
