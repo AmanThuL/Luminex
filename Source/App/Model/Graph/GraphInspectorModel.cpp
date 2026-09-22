@@ -3,7 +3,7 @@
 /// @brief Implements the row shaping behind the Render Graph inspector panel.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/GraphInspectorModel.h"
+#include "App/Model/Graph/GraphInspectorModel.h"
 
 #include <algorithm>
 #include <format>

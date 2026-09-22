@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 #include "Render/Graph/FrameDeclaration.h"
 
 #include "SceneTableTestSupport.h"

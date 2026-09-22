@@ -5,7 +5,7 @@
 
 #pragma once
 #include "App/Model/EditorRenderSettings.h"
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 #include "Render/Passes/Temporal/ResolutionController.h"
 #include <rojoRHI/RHI.h>
 

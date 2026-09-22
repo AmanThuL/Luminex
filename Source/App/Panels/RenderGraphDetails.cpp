@@ -5,7 +5,7 @@
 
 #include "App/Panels/RenderGraphPanelInternal.h"
 
-#include "App/Model/GraphInspectorModel.h"
+#include "App/Model/Graph/GraphInspectorModel.h"
 #include "App/Panels/EditorStyle.h"
 
 #include <imgui.h>

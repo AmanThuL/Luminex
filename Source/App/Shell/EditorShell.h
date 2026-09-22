@@ -9,7 +9,7 @@
 #include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/ExposureReset.h"
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/LightingDisplay.h"
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/MetricsContextRevision.h"

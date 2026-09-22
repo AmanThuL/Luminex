@@ -3,7 +3,7 @@
 /// @brief Publishes coherent graph records and their exact matched timing sets.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/GraphSnapshot.h"
+#include "App/Model/Graph/GraphSnapshot.h"
 
 namespace lmx::app {
 

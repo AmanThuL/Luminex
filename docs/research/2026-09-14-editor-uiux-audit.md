@@ -78,7 +78,7 @@ evidence is `21-graph-temporal-off-selection.jpg`.
 - [Renderer](../../Source/Render/Renderer/Renderer.cpp) writes the current reset reason each frame while
   retaining the event frame only when a reset occurs. The UI needs a coherent last-event pair;
   replacing the render contract blindly would risk changing existing consumers.
-- [GraphNodeModel](../../Source/App/Model/GraphNodeModel.cpp) includes pin labels and resource
+- [GraphNodeModel](../../Source/App/Model/Graph/GraphNodeModel.cpp) includes pin labels and resource
   identity in its shape signature; [RenderGraphCanvas](../../Source/App/Panels/RenderGraphCanvas.cpp)
   clears selection and arranges the picture when that signature changes. Alternating temporal
   resources are a plausible cause of the observed instability. The symptom and on/off contrast
