@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/LightingDisplay.h"
+#include "App/Model/Rendering/Lighting/LightingDisplay.h"
 #include "App/Model/Rendering/Settings/EditorRenderSettings.h"
 #include "App/Model/Rendering/Settings/ExposureReset.h"
 #include "App/Model/Rendering/Temporal/DynamicResolution.h"

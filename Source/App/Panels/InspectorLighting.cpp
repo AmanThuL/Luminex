@@ -5,8 +5,8 @@
 
 #include "App/Panels/InspectorLighting.h"
 
-#include "App/Model/LightingDiagnostics.h"
-#include "App/Model/LightingHistory.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/EditorStyle.h"

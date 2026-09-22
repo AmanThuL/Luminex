@@ -2,7 +2,7 @@
 /// @file EditorLighting.cpp
 /// @brief Publishes retired lighting diagnostics to the editor and reports check failures.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
 

@@ -2,8 +2,8 @@
 /// @file AppLightingDisplayTests.cpp
 /// @brief Tests lighting publication cadence, retirement context and exact-frame timing joins.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/LightingDiagnostics.h"
-#include "App/Model/LightingDisplay.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDisplay.h"
 #include <catch2/catch_test_macros.hpp>
 
 using namespace lmx;
