@@ -3,7 +3,7 @@
 /// @brief Implements the App-owned action intents the main menu and shortcuts emit.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/EditorActions.h"
+#include "App/Model/Capture/EditorActions.h"
 
 namespace lmx::app {
 

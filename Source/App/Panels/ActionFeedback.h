@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "App/Model/ActionResult.h"
+#include "App/Model/Capture/ActionResult.h"
 
 namespace lmx::app {
 

@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/EditorActions.h"
+#include "App/Model/Capture/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/ExposureReset.h"
 #include "App/Model/Scene/EditorSelection.h"

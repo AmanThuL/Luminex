@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "App/Model/Capture/EditorActions.h"
 #include "App/Model/Console/ConsoleModel.h"
 #include "App/Model/DynamicResolution.h"
-#include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
 #include "App/Model/ExposureReset.h"
 #include "App/Model/Graph/FrameRecordRing.h"
