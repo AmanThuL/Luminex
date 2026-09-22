@@ -201,12 +201,12 @@ holds the borrowed frame input independently of the renderer.
   wait from encoding, and exclude the post-submit wait; they do not measure realtime throughput.
   Editor runs remain interactive/unscored. Toolbar Measure Play starts the fixed plan; Stop cancels, Pause is disabled, and completion/cancellation restores preview state while retaining results. Performance owns plan/results/export in a detached native window. Measure mode selection has no window side effect; Play opens/focuses Measure once, while closing the window leaves the run active. Completion/cancellation never reopens it; explicit Show measurement opens/focuses it anytime. Headless scored runs refuse validation/capture flags.
   The [debugging guide](../guides/gpu-debugging.md#measure-visibility-and-submission) owns commands.
-- **App** owns SDL3, the editor shell, and the frame loops. `Source/App/Panels/` holds the six
-  panel drawing functions (Hierarchy, Viewport, Inspector, Performance, Console, Render Graph);
-  `EditorShell` coordinates them and the process-global ImGui context. Hierarchy, Viewport and
-  Inspector dock together, with Console alone below. Performance and Render Graph each own a
-  detached native window with an `ImGuiWindowClass` that disallows unclassed docking and overrides
-  auto-merge off under Dear ImGui platform viewports (`ImGuiConfigFlags_ViewportsEnable`).
+- **App** owns SDL3 and the frame loops: `Source/App/Shell/` holds `main.cpp` and `EditorShell`; `Headless/` holds Screenshot, Measurement and OcclusionValidation.
+  `Panels/` groups the six panels in `Scene/`, `Inspector/`, `Viewport/`, `Graph/`, `Performance/` and `Console/`, with controls in `Shared/`.
+  `EditorShell` coordinates panels and the process-global ImGui context; `EditorWorkspace` owns settings callbacks, default docking and UI-scale controls; `EditorInput` owns camera input.
+  Inspector's camera, rendering/temporal/display, directional-light and object units share private `InspectorInternal.h`; dispatch and row helpers stay in `InspectorPanel`.
+  Hierarchy, Viewport and Inspector dock together, with Console alone below. Performance and Render Graph each own a detached native window.
+  Their `ImGuiWindowClass` disallows unclassed docking and overrides auto-merge off under Dear ImGui platform viewports (`ImGuiConfigFlags_ViewportsEnable`).
   The dock builder places neither; both start closed, and Window menu toggles remain explicit.
   Selection (`EditorSelection.h`), panel visibility and the workspace persistence schema (`WorkspaceModel.h`), menu- and shortcut-raised action intents
   (`EditorActions.h`), the Performance panel's coherent snapshot (`PerformanceModel.h`), the Render
