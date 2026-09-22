@@ -209,7 +209,7 @@ unit tests; the duplicates the record lists are gone; the Engine archive defines
 symbol; R3.3's archive checks and every pre-existing test case name still pass.
 
 ### R3.5 — Render
-**Integration blocked 2026-09-22:** source implementation is complete; the Accepted [record](../milestones/r/r3.5.md) and active plan retain the recorded gate dispositions. The [validation](../milestones/r/r3.5-validation.md) records measured adoption limits, retained failures and actual PR state.
+**Implemented and owner-accepted 2026-09-22:** the executor plan is closed. The [record](../milestones/r/r3.5.md) describes the delivered structure; [acceptance](../milestones/r/r3.5-validation.md#owner-acceptance-and-integration) scopes the single retained part A parity failure. Part B passes its local gates; measured adoption limits and both PRs remain in the validation record.
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
 compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
