@@ -5,7 +5,7 @@
 
 #include "App/Panels/Scene/ScenePanel.h"
 
-#include "App/Panels/EditorStyle.h"
+#include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
 

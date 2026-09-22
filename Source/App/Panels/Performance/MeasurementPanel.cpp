@@ -3,7 +3,7 @@
 /// @brief Implements responsive controls for live unscored measurement runs.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Panels/Performance/MeasurementPanel.h"
-#include "App/Panels/EditorStyle.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include <algorithm>
 #include <array>
 #include <cstring>

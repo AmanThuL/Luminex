@@ -9,8 +9,8 @@
 #include "App/Model/Rendering/Lighting/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
-#include "App/Panels/EditorStyle.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include "Core/Math/Color.h"
 
 #include <algorithm>

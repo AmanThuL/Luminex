@@ -7,13 +7,13 @@
 
 #include "App/Shell/EditorFont.h"
 
-#include "App/Panels/ActionFeedback.h"
 #include "App/Panels/Console/ConsolePanel.h"
-#include "App/Panels/EditorStyle.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Panels/Shared/ActionFeedback.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"

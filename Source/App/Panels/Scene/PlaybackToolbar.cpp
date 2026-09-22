@@ -5,7 +5,7 @@
 
 #include "App/Panels/Scene/PlaybackToolbar.h"
 
-#include "App/Panels/EditorStyle.h"
+#include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
