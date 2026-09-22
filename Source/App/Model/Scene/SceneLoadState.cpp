@@ -3,7 +3,7 @@
 /// @brief Implements one-shot scene requests and persistent failure recovery state.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/SceneLoadState.h"
+#include "App/Model/Scene/SceneLoadState.h"
 
 #include <utility>
 

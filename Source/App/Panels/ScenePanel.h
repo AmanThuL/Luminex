@@ -4,9 +4,9 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/EditorSelection.h"
-#include "App/Model/SceneLoadState.h"
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/EditorSelection.h"
+#include "App/Model/Scene/SceneLoadState.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"

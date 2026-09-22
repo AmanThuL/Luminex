@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/EditorSelection.h"
+#include "App/Model/Scene/EditorSelection.h"
 #include "Engine/Scene/Scene.h"
 #include "Scenes/SceneLibrary.h"
 

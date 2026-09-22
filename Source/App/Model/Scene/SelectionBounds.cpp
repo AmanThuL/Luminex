@@ -3,7 +3,7 @@
 /// @brief Implements conservative world bounds and scale-aware selected-object framing.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/SelectionBounds.h"
+#include "App/Model/Scene/SelectionBounds.h"
 
 #include <algorithm>
 #include <cmath>

@@ -3,7 +3,7 @@
 /// @brief Implements shared scene playback clocks and frame motion ownership.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneSession.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/SceneAnimation.h"

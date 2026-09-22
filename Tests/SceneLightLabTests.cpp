@@ -3,7 +3,7 @@
 /// @brief Tests LightLab's deterministic light/track generation, density scaling and catalog load.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/LightLab.h"
 #include "Scenes/SceneLibrary.h"

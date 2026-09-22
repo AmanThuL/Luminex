@@ -6,8 +6,8 @@
 
 #include "App/Headless/OcclusionValidation.h"
 #include "App/Model/LightingDiagnostics.h"
-#include "App/Model/SceneDefaults.h"
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneDefaults.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/IO/File.h"

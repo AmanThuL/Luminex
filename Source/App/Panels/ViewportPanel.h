@@ -6,9 +6,9 @@
 #pragma once
 #include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"
-#include "App/Model/EditorSelection.h"
 #include "App/Model/ExposureReset.h"
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/EditorSelection.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"
