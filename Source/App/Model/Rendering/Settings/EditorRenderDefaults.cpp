@@ -3,7 +3,7 @@
 /// @brief Implements independent rendering reset scopes without resetting playback.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/EditorRenderDefaults.h"
+#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 
 namespace lmx::app {
 

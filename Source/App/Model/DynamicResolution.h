@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/EditorRenderSettings.h"
 #include "App/Model/Graph/FrameRecordRing.h"
+#include "App/Model/Rendering/Settings/EditorRenderSettings.h"
 #include "Render/Passes/Temporal/ResolutionController.h"
 #include <rojoRHI/RHI.h>
 

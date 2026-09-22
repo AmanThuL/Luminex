@@ -3,7 +3,7 @@
 /// @brief Formats visibility diagnostics and validates retained candidate identities.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/VisibilityDisplay.h"
-#include "App/Model/DiagnosticRefresh.h"
+#include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include <algorithm>
