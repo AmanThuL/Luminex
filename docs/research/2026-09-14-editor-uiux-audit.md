@@ -68,7 +68,7 @@ evidence is `21-graph-temporal-off-selection.jpg`.
 
 ## Source corroboration and uncertainty
 
-- [PerformancePanel](../../Source/App/Panels/PerformancePanel.cpp) reserves a fixed 260 pt stats
+- [PerformancePanel](../../Source/App/Panels/Performance/PerformancePanel.cpp) reserves a fixed 260 pt stats
   column plus a plot width floor before allocating the timing table. Its timed pass sum is
   explicitly narrower than total GPU frame time; a redesign must preserve that meaning.
 - [DynamicResolution](../../Source/App/Model/Rendering/Temporal/DynamicResolution.cpp) updates its last measurement

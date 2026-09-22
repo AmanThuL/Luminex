@@ -3,7 +3,7 @@
 /// @brief Implements the Performance panel over one coherent `PerformanceSnapshot`.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/PerformancePanel.h"
+#include "App/Panels/Performance/PerformancePanel.h"
 
 #include "App/Panels/EditorStyle.h"
 

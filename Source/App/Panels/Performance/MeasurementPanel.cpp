@@ -2,7 +2,7 @@
 /// @file MeasurementPanel.cpp
 /// @brief Implements responsive controls for live unscored measurement runs.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Panels/MeasurementPanel.h"
+#include "App/Panels/Performance/MeasurementPanel.h"
 #include "App/Panels/EditorStyle.h"
 #include <algorithm>
 #include <array>

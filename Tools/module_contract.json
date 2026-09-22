@@ -162,7 +162,7 @@
         "Source/App/Shell/ConsoleLogSink.h",
         "Source/App/Panels/ConsolePanel.h",
         "Source/App/Panels/Inspector/InspectorPanel.h",
-        "Source/App/Panels/PerformancePanel.h",
+        "Source/App/Panels/Performance/PerformancePanel.h",
         "Source/App/Panels/Graph/RenderGraphPanel.h",
         "Source/App/Panels/Graph/RenderGraphPanelInternal.h",
         "Source/App/Panels/Scene/ScenePanel.h",
