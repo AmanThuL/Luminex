@@ -59,16 +59,12 @@ bool PassTimingHistory::addFrame(uint64_t frameId, std::span<const rojoRHI::Pass
         m_series.clear();
         m_series.reserve(timings.size());
         for (const rojoRHI::PassTiming& timing : timings) {
-            m_series.push_back({.label = timing.label, .samples = {}});
+            m_series.push_back({.label = timing.label});
         }
     }
 
     for (size_t index = 0; index < timings.size(); ++index) {
-        std::vector<double>& samples = m_series[index].samples;
-        if (samples.size() == kSampleCapacity) {
-            samples.erase(samples.begin());
-        }
-        samples.push_back(timings[index].gpuMilliseconds);
+        m_series[index].samples.push(timings[index].gpuMilliseconds);
     }
     return scheduleChanged;
 }
@@ -78,7 +74,7 @@ std::vector<PassTimingSummary> PassTimingHistory::summaries() const {
     std::vector<PassTimingSummary> result;
     result.reserve(m_series.size());
     for (const Series& series : m_series) {
-        if (series.samples.empty()) {
+        if (series.samples.size() == 0) {
             continue;
         }
         const auto [minimum, maximum] =

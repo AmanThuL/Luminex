@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Containers/RingBuffer.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstddef>
@@ -59,7 +60,7 @@ public:
 private:
     struct Series {
         std::string label;
-        std::vector<double> samples;
+        RingBuffer<double> samples{kSampleCapacity};
     };
 
     uint64_t m_lastFrameId = 0;
