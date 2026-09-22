@@ -5,9 +5,9 @@
 
 #include "App/Panels/Graph/RenderGraphPanel.h"
 
-#include "App/Panels/ActionFeedback.h"
-#include "App/Panels/EditorStyle.h"
 #include "App/Panels/Graph/RenderGraphPanelInternal.h"
+#include "App/Panels/Shared/ActionFeedback.h"
+#include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
 

@@ -7,8 +7,8 @@
 
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Model/Scene/SelectionBounds.h"
-#include "App/Panels/ActionFeedback.h"
-#include "App/Panels/EditorStyle.h"
+#include "App/Panels/Shared/ActionFeedback.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <imgui.h>

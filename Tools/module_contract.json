@@ -168,8 +168,8 @@
         "Source/App/Panels/Scene/ScenePanel.h",
         "Source/App/Panels/Viewport/ViewportPanel.h",
         "Source/App/Headless/Screenshot.h",
-        "Source/App/Panels/ActionFeedback.h",
-        "Source/App/Panels/EditorStyle.h",
+        "Source/App/Panels/Shared/ActionFeedback.h",
+        "Source/App/Panels/Shared/EditorStyle.h",
         "Source/App/Headless/Measurement.h"
       ]
     },

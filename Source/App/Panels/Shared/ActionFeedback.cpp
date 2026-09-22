@@ -3,7 +3,7 @@
 /// @brief Handles output-path actions and displays their recoverable failures.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/ActionFeedback.h"
+#include "App/Panels/Shared/ActionFeedback.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>

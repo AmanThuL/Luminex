@@ -5,8 +5,8 @@
 
 #include "App/Panels/Console/ConsolePanel.h"
 
-#include "App/Panels/ActionFeedback.h"
-#include "App/Panels/EditorStyle.h"
+#include "App/Panels/Shared/ActionFeedback.h"
+#include "App/Panels/Shared/EditorStyle.h"
 
 #include <SDL3/SDL.h>
 #include <imgui.h>
