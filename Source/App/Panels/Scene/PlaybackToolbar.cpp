@@ -3,7 +3,7 @@
 /// @brief Draws fixed-height vector playback controls above the editor docking area.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/PlaybackToolbar.h"
+#include "App/Panels/Scene/PlaybackToolbar.h"
 
 #include "App/Panels/EditorStyle.h"
 

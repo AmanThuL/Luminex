@@ -3,7 +3,7 @@
 /// @brief Implements the compact subject Hierarchy and File menu scene-loading workflow.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/ScenePanel.h"
+#include "App/Panels/Scene/ScenePanel.h"
 
 #include "App/Panels/EditorStyle.h"
 

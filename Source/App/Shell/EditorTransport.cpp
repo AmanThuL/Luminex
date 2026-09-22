@@ -3,7 +3,7 @@
 /// @brief Connects top-bar playback actions to restorable scene previews and measurements.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/PlaybackToolbar.h"
+#include "App/Panels/Scene/PlaybackToolbar.h"
 #include "App/Shell/EditorShell.h"
 
 #include <array>

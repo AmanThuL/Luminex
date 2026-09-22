@@ -165,7 +165,7 @@
         "Source/App/Panels/PerformancePanel.h",
         "Source/App/Panels/RenderGraphPanel.h",
         "Source/App/Panels/RenderGraphPanelInternal.h",
-        "Source/App/Panels/ScenePanel.h",
+        "Source/App/Panels/Scene/ScenePanel.h",
         "Source/App/Panels/ViewportPanel.h",
         "Source/App/Headless/Screenshot.h",
         "Source/App/Panels/ActionFeedback.h",
