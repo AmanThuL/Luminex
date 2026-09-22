@@ -188,7 +188,7 @@ holds the borrowed frame input independently of the renderer.
   publish immediately; later changes, including topology, wait for the next boundary. Freeze owns
   the displayed publication through ring eviction and scene changes. `ConsoleLog` serializes
   ingestion/snapshot/clear, limiting storage to 2,000 messages and 2 MiB of payload with a 16 KiB
-  per-message cap. `ConsoleModel` owns independent filtered/frozen display and loss counters.
+  per-message cap. Core's `RingBuffer` stores frame, timing and Console history; Console uses `log::Level`. `ConsoleModel` owns independent filtered/frozen display and loss counters.
   `SceneTableDisplay` formats live scene counts/capacities, geometry bytes, writes, slot, growth
   events and pending release buffers for Inspector's read-only Scene tables topic. `SceneSession` captures local-light defaults by full `LightId`; reset samples current orbit
   position while restoring other authored fields. It retains actual LightLab pile IDs for bounded
