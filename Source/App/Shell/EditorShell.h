@@ -23,7 +23,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
-#include "App/Panels/PerformancePanel.h"
+#include "App/Panels/Performance/PerformancePanel.h"
 #include "Engine/View/Camera.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
 #include "Render/Passes/Temporal/ResolutionController.h"

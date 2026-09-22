@@ -12,7 +12,7 @@
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
-#include "App/Panels/PerformancePanel.h"
+#include "App/Panels/Performance/PerformancePanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
