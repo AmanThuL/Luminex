@@ -5,10 +5,10 @@
 
 #pragma once
 #include "App/Model/Rendering/Temporal/TemporalEditorState.h"
+#include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
-#include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"
 #include "Scenes/SceneLibrary.h"
 

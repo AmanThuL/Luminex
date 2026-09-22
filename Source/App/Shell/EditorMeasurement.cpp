@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Headless/Measurement.h"
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
-#include "App/Model/VisibilityDiagnostics.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Shell/EditorShell.h"
 
 #include <chrono>

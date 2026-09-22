@@ -2,7 +2,7 @@
 /// @file VisibilityDiagnostics.cpp
 /// @brief Serializes visibility counters and identifies invalid capture evidence.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/VisibilityDiagnostics.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 
 #include <format>
 

@@ -5,7 +5,7 @@
 
 #include "App/Model/Capture/CaptureMetadata.h"
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
-#include "App/Model/VisibilityDiagnostics.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 
 #include "Engine/Asset/Model/SceneAnimation.h"
 

@@ -2,9 +2,9 @@
 /// @file VisibilityDisplay.cpp
 /// @brief Formats visibility diagnostics and validates retained candidate identities.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/VisibilityDisplay.h"
+#include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
-#include "App/Model/VisibilityDiagnostics.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 
 #include <algorithm>
 #include <format>

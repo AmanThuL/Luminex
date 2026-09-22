@@ -7,8 +7,8 @@
 
 #include "App/Model/Rendering/Lighting/DirectionalLightRole.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneTableDisplay.h"
-#include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorLighting.h"
 #include "App/Shell/EditorShell.h"
