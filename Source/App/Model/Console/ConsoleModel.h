@@ -6,7 +6,7 @@
 #pragma once
 
 #include "App/Model/ActionResult.h"
-#include "App/Model/ConsoleLog.h"
+#include "App/Model/Console/ConsoleLog.h"
 
 #include <memory>
 

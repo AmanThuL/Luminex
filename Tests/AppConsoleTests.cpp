@@ -1,4 +1,4 @@
-#include "App/Model/ConsoleModel.h"
+#include "App/Model/Console/ConsoleModel.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Diagnostics/LogSink.h"
 

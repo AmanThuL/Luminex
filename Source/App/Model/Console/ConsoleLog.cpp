@@ -3,7 +3,7 @@
 /// @brief Implements bounded log ingestion and coherent copies without a UI dependency.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/ConsoleLog.h"
+#include "App/Model/Console/ConsoleLog.h"
 
 #include <algorithm>
 #include <format>

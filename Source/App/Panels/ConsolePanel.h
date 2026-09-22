@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "App/Model/ConsoleModel.h"
+#include "App/Model/Console/ConsoleModel.h"
 
 namespace lmx::app {
 
