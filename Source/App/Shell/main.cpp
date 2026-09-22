@@ -12,6 +12,7 @@
 #include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
+#include "Core/Util/Stopwatch.h"
 #include "Render/Common/RhiLog.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/RenderGraph.h"
@@ -26,7 +27,6 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -310,9 +310,9 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         shell->buildUI(**device, **renderer, deltaSeconds, frameRecords);
         ImGui::Render();
 
-        const auto measurementWaitStart = std::chrono::steady_clock::now();
+        const lmx::Stopwatch measurementWait;
         rojoRHI::CommandList& commands = (*device)->beginFrame();
-        const auto measurementEncodeStart = std::chrono::steady_clock::now();
+        const lmx::Stopwatch measurementEncode;
         shell->retireMeasurement((*device)->passTimingsFrame(), (*device)->passTimings());
         // The dynamic-resolution controller's attribution is by frame number, so this frame's
         // number is recorded as soon as it exists -- right after the beginFrame() that assigns it.
@@ -382,16 +382,12 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
         // is why the join is by number rather than by position.
         frameRecords.joinTimings((*device)->passTimingsFrame(), (*device)->passTimings());
         (*device)->endFrame(swapchain->get());
-        const auto measurementEncodeEnd = std::chrono::steady_clock::now();
+        const double measurementEncodeMs = measurementEncode.elapsedMilliseconds();
         if (const auto* measuredRecord = frameRecords.find((*device)->frameNumber())) {
-            shell->recordMeasurementFrame((*device)->frameNumber(),
-                                          std::chrono::duration<double, std::milli>(
-                                              measurementEncodeStart - measurementWaitStart)
-                                              .count(),
-                                          std::chrono::duration<double, std::milli>(
-                                              measurementEncodeEnd - measurementEncodeStart)
-                                              .count(),
-                                          measuredRecord->record);
+            shell->recordMeasurementFrame(
+                (*device)->frameNumber(),
+                measurementWait.elapsedMillisecondsUntil(measurementEncode), measurementEncodeMs,
+                measuredRecord->record);
         }
         if (shell->measurementNeedsRetirementWait()) {
             (*device)->waitIdle();
