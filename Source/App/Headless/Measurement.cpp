@@ -12,11 +12,11 @@
 #include "Core/Diagnostics/Log.h"
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
+#include "Core/Util/Stopwatch.h"
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Renderer/Renderer.h"
 
 #include <algorithm>
-#include <chrono>
 #include <crt_externs.h>
 #include <cstdlib>
 #include <filesystem>
@@ -27,12 +27,6 @@
 
 namespace lmx::app {
 namespace {
-using Clock = std::chrono::steady_clock;
-//======================================================================================================================
-double elapsedMs(Clock::time_point start, Clock::time_point end) {
-    return std::chrono::duration<double, std::milli>(end - start).count();
-}
-
 //======================================================================================================================
 std::string hashFile(const std::filesystem::path& path) {
     const auto bytes = readWholeFile(path);
@@ -232,9 +226,9 @@ int runMeasurement(const AppOptions& options) {
         session.prepareSequenceFrame(frame.sequenceFrame);
         if (!plan.cameraTrack)
             session.camera() = engine::cameraFromScene((*loaded)->initialCamera);
-        const auto waitStart = Clock::now();
+        const Stopwatch wait;
         auto& commands = (*device)->beginFrame();
-        const auto encodeStart = Clock::now();
+        const Stopwatch encode;
         if (!run.retire((*device)->passTimingsFrame(), (*device)->passTimings())) {
             (*device)->endFrame(nullptr);
             break;
@@ -269,12 +263,12 @@ int runMeasurement(const AppOptions& options) {
         auto record = declaration.execute();
         session.commitFrame();
         (*device)->endFrame(nullptr);
-        const auto encodeEnd = Clock::now();
+        const double encodeMs = encode.elapsedMilliseconds();
         run.recordCpu(
-            measurementCpuSample(frame.sequenceFrame, elapsedMs(waitStart, encodeStart),
-                                 elapsedMs(encodeStart, encodeEnd), (*renderer)->visibilityStatus(),
-                                 session.tableStats(), record, view.skySphere.has_value(),
-                                 (*renderer)->temporalStatus(), (*renderer)->lightingStatus()));
+            measurementCpuSample(frame.sequenceFrame, wait.elapsedMillisecondsUntil(encode),
+                                 encodeMs, (*renderer)->visibilityStatus(), session.tableStats(),
+                                 record, view.skySphere.has_value(), (*renderer)->temporalStatus(),
+                                 (*renderer)->lightingStatus()));
         if (options.temporal == TemporalMode::Vendor &&
             (*renderer)->temporalStatus().vendorFallback != render::VendorFallback::None) {
             run.cancel("Requested vendor reconstruction fell back during measurement");
