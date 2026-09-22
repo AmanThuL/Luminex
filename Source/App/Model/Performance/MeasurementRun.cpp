@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/Performance/MeasurementRun.h"
 
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
 #include <algorithm>

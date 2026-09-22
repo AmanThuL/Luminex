@@ -2,7 +2,7 @@
 /// @file LightingDiagnostics.cpp
 /// @brief Serializes lighting diagnostics without discarding declaration identity.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include <format>
 namespace lmx::app {
 //======================================================================================================================

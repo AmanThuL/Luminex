@@ -5,7 +5,7 @@
 #include "App/Headless/Measurement.h"
 
 #include "App/Headless/OcclusionValidation.h"
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"

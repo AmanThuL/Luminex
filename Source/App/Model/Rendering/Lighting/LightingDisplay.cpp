@@ -3,7 +3,7 @@
 /// @brief Formats and publishes coherent local-light counters and matched GPU timings.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/LightingDisplay.h"
+#include "App/Model/Rendering/Lighting/LightingDisplay.h"
 
 #include <algorithm>
 #include <format>

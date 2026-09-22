@@ -3,7 +3,7 @@
 /// @brief Connects live editor playback, frame samples, and measurement exports.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Headless/Measurement.h"
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Shell/EditorShell.h"
 

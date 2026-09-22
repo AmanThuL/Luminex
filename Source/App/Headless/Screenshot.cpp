@@ -9,7 +9,7 @@
 #include "App/Model/Capture/CaptureMetadata.h"
 #include "App/Model/Capture/LightCheckCapture.h"
 #include "App/Model/Graph/FrameRecordRing.h"
-#include "App/Model/LightingDiagnostics.h"
+#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/Rendering/Temporal/DynamicResolution.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Model/Scene/SceneSession.h"
