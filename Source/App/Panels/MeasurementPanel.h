@@ -3,7 +3,7 @@
 /// @brief Declares interactive measurement controls and one-frame action intents.
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
-#include "App/Model/MeasurementRun.h"
+#include "App/Model/Performance/MeasurementRun.h"
 #include <string>
 namespace lmx::app {
 /// Explicit action requested by measurement controls.

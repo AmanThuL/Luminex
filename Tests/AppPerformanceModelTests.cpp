@@ -6,8 +6,8 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/MetricsContextRevision.h"
-#include "App/Model/PerformanceModel.h"
+#include "App/Model/Performance/MetricsContextRevision.h"
+#include "App/Model/Performance/PerformanceModel.h"
 
 #include <array>
 #include <vector>

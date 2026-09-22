@@ -2,7 +2,7 @@
 /// @file MeasurementRun.cpp
 /// @brief Implements strict measurement joins and lossless report serialization.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/MeasurementRun.h"
+#include "App/Model/Performance/MeasurementRun.h"
 
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"

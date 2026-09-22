@@ -3,7 +3,7 @@
 /// @brief Implements monotonic editor measurement revisions across configuration re-entry.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/MetricsContextRevision.h"
+#include "App/Model/Performance/MetricsContextRevision.h"
 
 namespace lmx::app {
 
