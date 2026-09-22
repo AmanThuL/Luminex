@@ -5,7 +5,7 @@
 
 #pragma once
 #include "App/Model/DiagnosticRefresh.h"
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 
 #include <optional>
 

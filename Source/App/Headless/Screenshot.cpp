@@ -8,7 +8,7 @@
 #include "App/Headless/OcclusionValidation.h"
 #include "App/Model/CaptureMetadata.h"
 #include "App/Model/DynamicResolution.h"
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/LightCheckCapture.h"
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/Scene/SceneDefaults.h"

@@ -5,7 +5,7 @@
 
 #include "App/Headless/Measurement.h"
 #include "App/Headless/Screenshot.h"
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
 #include "App/Model/Scene/SceneDefaults.h"
 #include "App/Shell/ConsoleLogSink.h"

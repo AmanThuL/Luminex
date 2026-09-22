@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/GraphInspectorModel.h"
+#include "App/Model/Graph/GraphInspectorModel.h"
 #include "Render/Graph/CompiledFrameRecord.h"
 #include <rojoRHI/RHI.h>
 

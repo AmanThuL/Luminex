@@ -5,8 +5,8 @@
 
 #pragma once
 #include "App/Model/ActionResult.h"
-#include "App/Model/GraphLayout.h"
-#include "App/Model/GraphSnapshot.h"
+#include "App/Model/Graph/GraphLayout.h"
+#include "App/Model/Graph/GraphSnapshot.h"
 
 #include <cstdint>
 #include <memory>

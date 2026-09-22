@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/GraphNodeModel.h"
+#include "App/Model/Graph/GraphNodeModel.h"
 
 #include <cstdint>
 #include <optional>
