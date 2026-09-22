@@ -233,7 +233,7 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
-Then, as the [record](../milestones/r/r3.6.md) lists, the three history holders sit on Core's
+Implementation is in progress. As the [record](../milestones/r/r3.6.md) lists, history holders sit on Core's
 `RingBuffer` behind unchanged interfaces, and timing and fit-to-bounds code comes from Core.
 
 **Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
