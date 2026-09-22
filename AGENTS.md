@@ -232,6 +232,8 @@ SelectionMask and SelectionOutline (editor-only).
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.
 - xrepo deps only as needed (current: libsdl3, glm, spdlog, catch2, cgltf, stb). ThirdParty/ and
   Assets/Fetched/ are fetched via `xmake setup`, pinned in xmake/setup.lua, never committed.
+- Integration uses squash merge, normally one commit per milestone; keep staged work in one final PR
+  where practical. Preserve validation revisions before branch deletion; see `docs/conventions/commits.md`.
 - Engineering and documentation follow `docs/conventions/`. Every commit compiles, passes the
   relevant tests and `xmake policy` (including private-header visibility and shader import checks).
 - Experimental source does not live on `main`. Preserve accepted evidence with an immutable tag
