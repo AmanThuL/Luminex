@@ -2,11 +2,11 @@
 /// @file AppGpuVisibilityTests.cpp
 /// @brief Pins delayed visibility identity, exact measurement joins and CLI/capture refusal.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/AppOptions.h"
-#include "App/Model/CaptureMetadata.h"
-#include "App/Model/MeasurementRun.h"
-#include "App/Model/VisibilityDiagnostics.h"
-#include "App/Model/VisibilityDisplay.h"
+#include "App/Model/Capture/CaptureMetadata.h"
+#include "App/Model/Options/AppOptions.h"
+#include "App/Model/Performance/MeasurementRun.h"
+#include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
+#include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 
 #include <algorithm>
 #include <array>

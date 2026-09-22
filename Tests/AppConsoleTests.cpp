@@ -1,4 +1,4 @@
-#include "App/Model/ConsoleModel.h"
+#include "App/Model/Console/ConsoleModel.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Diagnostics/LogSink.h"
 
@@ -16,7 +16,7 @@ TEST_CASE("console count and byte caps evict oldest messages with explicit count
     ConsoleLog log;
     SECTION("entry capacity") {
         for (size_t i = 0; i <= ConsoleLog::kMaxEntries; ++i) {
-            log.append(ConsoleSeverity::Info, static_cast<int64_t>(i), "small");
+            log.append(lmx::log::Level::Info, static_cast<int64_t>(i), "small");
         }
         const auto snapshot = log.snapshot();
         REQUIRE(snapshot.entries.size() == ConsoleLog::kMaxEntries);
@@ -27,7 +27,7 @@ TEST_CASE("console count and byte caps evict oldest messages with explicit count
     SECTION("payload capacity") {
         const std::string message(ConsoleLog::kMaxMessageBytes, 'x');
         for (int i = 0; i < 129; ++i)
-            log.append(ConsoleSeverity::Info, i, message);
+            log.append(lmx::log::Level::Info, i, message);
         const auto snapshot = log.snapshot();
         CHECK(snapshot.entries.size() == 128);
         CHECK(snapshot.payloadBytes == ConsoleLog::kMaxPayloadBytes);
@@ -42,7 +42,7 @@ TEST_CASE("console truncation retains valid UTF-8 boundary and counts lost paylo
           "[app][console]") {
     ConsoleLog log;
     const std::string prefix(ConsoleLog::kMaxMessageBytes - 1, 'x');
-    log.append(ConsoleSeverity::Warning, 123, prefix + "€tail");
+    log.append(lmx::log::Level::Warning, 123, prefix + "€tail");
     const auto snapshot = log.snapshot();
     REQUIRE(snapshot.entries.size() == 1);
     CHECK(snapshot.entries.front().message == prefix);
@@ -56,11 +56,11 @@ TEST_CASE("console truncation retains valid UTF-8 boundary and counts lost paylo
 TEST_CASE("console freeze keeps its snapshot while producers continue and Clear empties both views",
           "[app][console]") {
     auto log = std::make_shared<ConsoleLog>();
-    log->append(ConsoleSeverity::Info, 1, "startup");
+    log->append(lmx::log::Level::Info, 1, "startup");
     ConsoleModel model(log);
     model.setFrozen(true);
     const auto frozenRevision = model.snapshot().revision;
-    log->append(ConsoleSeverity::Error, 2, "later error");
+    log->append(lmx::log::Level::Error, 2, "later error");
     model.refresh();
     REQUIRE(model.snapshot().entries.size() == 1);
     CHECK(model.snapshot().revision == frozenRevision);
@@ -79,7 +79,7 @@ TEST_CASE("console freeze keeps its snapshot while producers continue and Clear 
     CHECK(model.snapshot().payloadBytes == 0);
     CHECK(model.snapshot().evictedEntries == 0);
     CHECK(model.snapshot().truncatedMessages == 0);
-    log->append(ConsoleSeverity::Info, 3, "after clear");
+    log->append(lmx::log::Level::Info, 3, "after clear");
     model.refresh();
     CHECK(model.snapshot().entries.empty());
     model.setFrozen(false);
@@ -92,11 +92,11 @@ TEST_CASE("console freeze keeps its snapshot while producers continue and Clear 
 TEST_CASE("console clipboard includes exactly the displayed matching messages and multiline text",
           "[app][console]") {
     auto log = std::make_shared<ConsoleLog>();
-    log->append(ConsoleSeverity::Info, 1, "Shader started");
-    log->append(ConsoleSeverity::Warning, 1234, "SHADER warning\nsecond line");
-    log->append(ConsoleSeverity::Error, 2000, "scene error");
+    log->append(lmx::log::Level::Info, 1, "Shader started");
+    log->append(lmx::log::Level::Warning, 1234, "SHADER warning\nsecond line");
+    log->append(lmx::log::Level::Error, 2000, "scene error");
     ConsoleModel model(log);
-    model.filter = {ConsoleSeverity::Warning, "shader"};
+    model.filter = {lmx::log::Level::Warning, "shader"};
     CHECK(consoleVisibleText(model.snapshot(), model.filter) ==
           "[00:00:01.234 UTC] [Warning] SHADER warning\nsecond line\n");
     model.filter.search = "absent";
@@ -112,7 +112,7 @@ TEST_CASE("console ingestion serializes concurrent producers and preserves bound
     for (int worker = 0; worker < 4; ++worker) {
         producers.emplace_back([&log, worker] {
             for (int i = 0; i < 600; ++i)
-                log.append(ConsoleSeverity::Info, worker, "thread message");
+                log.append(lmx::log::Level::Info, worker, "thread message");
         });
     }
     producers.clear();

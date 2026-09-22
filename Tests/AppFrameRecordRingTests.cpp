@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/FrameRecordRing.h"
+#include "App/Model/Graph/FrameRecordRing.h"
 
 #include <array>
 #include <string>

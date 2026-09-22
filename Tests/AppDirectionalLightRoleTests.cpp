@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/DirectionalLightRole.h"
+#include "App/Model/Rendering/Lighting/DirectionalLightRole.h"
 
 using namespace lmx::app;
 

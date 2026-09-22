@@ -5,8 +5,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/EditorSelection.h"
-#include "App/Model/SceneLoadState.h"
+#include "App/Model/Scene/EditorSelection.h"
+#include "App/Model/Scene/SceneLoadState.h"
 
 using namespace lmx;
 using namespace lmx::app;

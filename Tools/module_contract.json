@@ -158,19 +158,20 @@
         "libsdl3"
       ],
       "privateHeaders": [
-        "Source/App/EditorShell.h",
-        "Source/App/ConsoleLogSink.h",
-        "Source/App/Panels/ConsolePanel.h",
-        "Source/App/Panels/InspectorPanel.h",
-        "Source/App/Panels/PerformancePanel.h",
-        "Source/App/Panels/RenderGraphPanel.h",
-        "Source/App/Panels/RenderGraphPanelInternal.h",
-        "Source/App/Panels/ScenePanel.h",
-        "Source/App/Panels/ViewportPanel.h",
-        "Source/App/Screenshot.h",
-        "Source/App/Panels/ActionFeedback.h",
-        "Source/App/Panels/EditorStyle.h",
-        "Source/App/Measurement.h"
+        "Source/App/Shell/EditorShell.h",
+        "Source/App/Shell/ConsoleLogSink.h",
+        "Source/App/Panels/Console/ConsolePanel.h",
+        "Source/App/Panels/Inspector/InspectorPanel.h",
+        "Source/App/Panels/Performance/PerformancePanel.h",
+        "Source/App/Panels/Graph/RenderGraphPanel.h",
+        "Source/App/Panels/Graph/RenderGraphPanelInternal.h",
+        "Source/App/Panels/Scene/ScenePanel.h",
+        "Source/App/Panels/Viewport/ViewportPanel.h",
+        "Source/App/Headless/Screenshot.h",
+        "Source/App/Panels/Shared/ActionFeedback.h",
+        "Source/App/Panels/Shared/EditorStyle.h",
+        "Source/App/Headless/Measurement.h",
+        "Source/App/Panels/Inspector/InspectorInternal.h"
       ]
     },
     "tests": {

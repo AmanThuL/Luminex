@@ -2,7 +2,7 @@
 /// @file LightCheckCaptureTests.cpp
 /// @brief Pins the independent auditor's portable raw-light-evidence record layout.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/LightCheckCapture.h"
+#include "App/Model/Capture/LightCheckCapture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
