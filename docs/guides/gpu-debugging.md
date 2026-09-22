@@ -260,7 +260,7 @@ These tests validate the parsers and report generation without requiring a GPU c
 M5 added histogram auto-exposure and bloom as passes declared every frame; dead-pass culling keeps
 only the features that are enabled. With both features off, `--screenshot` output must stay byte-identical to what the pre-M5 tip rendered.
 There is no golden-image automation for this. The procedure below, re-run by hand, is the accepted mechanism. Auto-exposure is off by default already; bloom is not, so disabling it needs
-`LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Screenshot.cpp`), an undocumented-to-users env var that exists solely for this check.
+`LMX_SCREENSHOT_NO_BLOOM=1` (`Source/App/Headless/Screenshot.cpp`), an undocumented-to-users env var that exists solely for this check.
 
 Build the baseline from the commit before the change under test (substitute the actual parent commit), then the tip, capturing all three scenes both times:
 

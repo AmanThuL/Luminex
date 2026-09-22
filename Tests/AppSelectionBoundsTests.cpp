@@ -6,7 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/SelectionBounds.h"
+#include "App/Model/Scene/SelectionBounds.h"
 
 #include <cmath>
 #include <limits>

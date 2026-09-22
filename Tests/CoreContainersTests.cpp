@@ -6,8 +6,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <deque>
 #include <iterator>
 #include <limits>
+#include <memory>
 #include <type_traits>
 #include <vector>
 
@@ -230,4 +232,111 @@ TEST_CASE("RingBuffer's mutable iterator and operator[] write through to held va
     ring.back() = 100; // requires a non-const back()
     REQUIRE(ring.back() == 100);
     REQUIRE(ring[2] == 100);
+}
+
+//======================================================================================================================
+TEST_CASE("RingBuffer::popOldest preserves partial, full and wrapped FIFO order", "[core]") {
+    lmx::RingBuffer<int> ring(3);
+    ring.push(1);
+    ring.push(2);
+    ring.popOldest();
+    REQUIRE(ring.size() == 1);
+    REQUIRE(ring[0] == 2);
+    ring.push(3);
+    ring.push(4);
+    REQUIRE(std::vector<int>(ring.begin(), ring.end()) == std::vector<int>{2, 3, 4});
+    ring.popOldest();
+    ring.push(5);
+    ring.push(6);
+    REQUIRE(std::vector<int>(ring.begin(), ring.end()) == std::vector<int>{4, 5, 6});
+    ring.popOldest();
+    REQUIRE(ring[0] == 5);
+    REQUIRE(ring.back() == 6);
+    ring.popOldest();
+    ring.popOldest();
+    REQUIRE(ring.size() == 0);
+    REQUIRE(ring.begin() == ring.end());
+    REQUIRE(ring.capacity() == 3);
+    ring.push(7);
+    REQUIRE(ring[0] == 7);
+    REQUIRE(ring.back() == 7);
+    ring.clear();
+    ring.push(8);
+    REQUIRE(ring[0] == 8);
+}
+
+//======================================================================================================================
+TEST_CASE("RingBuffer mixed push, pop and clear operations match a deque", "[core]") {
+    for (const uint32_t capacity : {1u, 2u, 3u, 7u}) {
+        CAPTURE(capacity);
+        lmx::RingBuffer<int> ring(capacity);
+        std::deque<int> expected;
+        uint32_t state = 12345;
+        for (int step = 0; step < 512; ++step) {
+            state = state * 1664525u + 1013904223u;
+            const uint32_t operation = (state >> 16) % 8;
+            if (operation == 0) {
+                ring.clear();
+                expected.clear();
+            } else if (operation < 3 && !expected.empty()) {
+                ring.popOldest();
+                expected.pop_front();
+            } else {
+                ring.push(step);
+                expected.push_back(step);
+                if (expected.size() > capacity)
+                    expected.pop_front();
+            }
+            CAPTURE(step, operation);
+            REQUIRE(ring.capacity() == capacity);
+            REQUIRE(ring.size() == expected.size());
+            const auto& view = ring;
+            REQUIRE(std::vector<int>(view.begin(), view.end()) ==
+                    std::vector<int>(expected.begin(), expected.end()));
+            for (uint32_t index = 0; index < ring.size(); ++index)
+                REQUIRE(ring[index] == expected[index]);
+            if (!expected.empty())
+                REQUIRE(ring.back() == expected.back());
+        }
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("RingBuffer releases move-only values on pop, eviction, clear and destruction",
+          "[core]") {
+    std::vector<int> released;
+    const auto release = [&released](int* value) {
+        released.push_back(*value);
+        delete value;
+    };
+    using Value = std::unique_ptr<int, decltype(release)>;
+    static_assert(!std::is_default_constructible_v<Value>);
+    static_assert(!std::is_copy_constructible_v<Value>);
+    const auto value = [&](int number) { return Value(new int(number), release); };
+    {
+        lmx::RingBuffer<Value> ring(3);
+        ring.push(value(1));
+        ring.push(value(2));
+        ring.popOldest();
+        REQUIRE(released == std::vector<int>{1});
+        REQUIRE(*ring[0] == 2);
+        ring.push(value(3));
+        ring.push(value(4));
+        ring.push(value(5));
+        REQUIRE(released == std::vector<int>{1, 2});
+        REQUIRE(*ring[0] == 3);
+        ring.popOldest();
+        REQUIRE(released == std::vector<int>{1, 2, 3});
+        REQUIRE(*ring.back() == 5);
+        ring.clear();
+        REQUIRE(released.size() == 5);
+        std::sort(released.begin(), released.end());
+        REQUIRE(released == std::vector<int>{1, 2, 3, 4, 5});
+        ring.push(value(6));
+        ring.popOldest();
+        REQUIRE(released.back() == 6);
+        ring.push(value(7));
+        REQUIRE(*ring.back() == 7);
+    }
+    REQUIRE(released == std::vector<int>{1, 2, 3, 4, 5, 6, 7});
 }

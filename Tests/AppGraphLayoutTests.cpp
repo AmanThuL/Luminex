@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/GraphLayout.h"
-#include "App/Model/GraphNodeModel.h"
+#include "App/Model/Graph/GraphLayout.h"
+#include "App/Model/Graph/GraphNodeModel.h"
 #include "GraphTestSupport.h"
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"

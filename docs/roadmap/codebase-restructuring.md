@@ -233,8 +233,8 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
-Then `FrameRecordRing`, `PassTimingHistory` and `ConsoleLog` hold their history in Core's
-`RingBuffer` behind unchanged interfaces, and timing and fit-to-bounds code comes from Core.
+Part A is implemented and [accepted with one scoped exception](../milestones/r/r3.6-validation.md#owner-acceptance-and-integration);
+B is implemented; its Core adoptions, retained double fit and closed plan are recorded in the [record](../milestones/r/r3.6.md).
 
 **Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
 workspace schema 3 files load unchanged; AppModel still links no ImGui, SDL or Metal.
