@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/ConsoleModel.h"
+#include "App/Model/Console/ConsoleModel.h"
 #include "App/Model/DynamicResolution.h"
 #include "App/Model/EditorActions.h"
 #include "App/Model/EditorRenderSettings.h"

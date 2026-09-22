@@ -3,7 +3,7 @@
 /// @brief Implements log filtering, clipboard text, freeze and clear semantics.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/ConsoleModel.h"
+#include "App/Model/Console/ConsoleModel.h"
 
 #include "Core/Diagnostics/Assert.h"
 
