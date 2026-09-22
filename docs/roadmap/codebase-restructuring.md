@@ -233,7 +233,7 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 `Graph`, `Performance`, `Console`, `Shared` in Panels. After the moves, `InspectorPanel.cpp` is
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
-Part A is implemented but [14/15 parity blocks integration](../milestones/r/r3.6-validation.md#part-a-head);
+Part A is implemented and [accepted with one scoped exception](../milestones/r/r3.6-validation.md#owner-acceptance-and-integration);
 B has not started. Its Core adoptions and gate-limited fit remain in the [record](../milestones/r/r3.6.md).
 
 **Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
