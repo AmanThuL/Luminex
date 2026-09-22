@@ -2,8 +2,8 @@
 /// @file EditorLighting.cpp
 /// @brief Publishes retired lighting diagnostics to the editor and reports check failures.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/EditorShell.h"
 #include "App/Model/LightingDiagnostics.h"
+#include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
 
 namespace lmx::app {

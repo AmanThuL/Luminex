@@ -84,9 +84,9 @@ void renderFrame(rojoRHI::Device& device, Renderer& renderer, const Camera& came
 }
 
 //======================================================================================================================
-// The same frame without the drain: exactly what App/main.cpp submits every frame, so a temporal
-// resource a frame still in flight holds is left held rather than quietly retired by a waitIdle
-// the shipped loop never performs.
+// The same frame without the drain: exactly what App/Shell/main.cpp submits every frame, so a
+// temporal resource a frame still in flight holds is left held rather than quietly retired by a
+// waitIdle the shipped loop never performs.
 void renderFrameInFlight(rojoRHI::Device& device, Renderer& renderer, const Camera& camera,
                          const FixtureSceneView& view) {
     rojoRHI::CommandList& commands = device.beginFrame();

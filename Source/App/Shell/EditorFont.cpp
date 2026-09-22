@@ -3,7 +3,7 @@
 /// @brief Loads the editor's proportional typeface with fixed-width diagnostic digits.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/EditorFont.h"
+#include "App/Shell/EditorFont.h"
 
 #include "Core/Diagnostics/Log.h"
 

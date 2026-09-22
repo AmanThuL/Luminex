@@ -2,7 +2,7 @@
 /// @file EditorVisibility.cpp
 /// @brief Joins renderer declarations and retired visibility into editor diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/EditorShell.h"
+#include "App/Shell/EditorShell.h"
 
 #include "App/Model/VisibilityDiagnostics.h"
 #include "Core/Diagnostics/Log.h"

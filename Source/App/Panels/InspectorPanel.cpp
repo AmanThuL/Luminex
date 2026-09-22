@@ -5,13 +5,13 @@
 
 #include "App/Panels/InspectorPanel.h"
 
-#include "App/EditorShell.h"
 #include "App/Model/DirectionalLightRole.h"
 #include "App/Model/EditorRenderDefaults.h"
 #include "App/Model/SceneTableDisplay.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorLighting.h"
+#include "App/Shell/EditorShell.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
 

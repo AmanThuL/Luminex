@@ -1,6 +1,6 @@
 target("App")
     set_kind("binary")
-    add_files("*.cpp", "Panels/*.cpp")
+    add_files("*.cpp", "Shell/*.cpp", "Panels/*.cpp")
     add_deps("Core", "RojoRHI", "RojoRHIMetal4ImGui", "Render", "Asset", "AppModel", "ImGui", "ImGuiNodeEditor", "Engine", "Scenes")
     add_packages("libsdl3", "glm")
     -- Compile every shader for App so test-only entries cannot silently drift out of build health.

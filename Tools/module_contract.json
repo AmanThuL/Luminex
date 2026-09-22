@@ -158,8 +158,8 @@
         "libsdl3"
       ],
       "privateHeaders": [
-        "Source/App/EditorShell.h",
-        "Source/App/ConsoleLogSink.h",
+        "Source/App/Shell/EditorShell.h",
+        "Source/App/Shell/ConsoleLogSink.h",
         "Source/App/Panels/ConsolePanel.h",
         "Source/App/Panels/InspectorPanel.h",
         "Source/App/Panels/PerformancePanel.h",

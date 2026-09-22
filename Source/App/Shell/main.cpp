@@ -3,13 +3,13 @@
 /// @brief Runs the windowed editor or offscreen screenshot application.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/ConsoleLogSink.h"
-#include "App/EditorShell.h"
 #include "App/Measurement.h"
 #include "App/Model/AppOptions.h"
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Screenshot.h"
+#include "App/Shell/ConsoleLogSink.h"
+#include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
 #include "Render/Common/RhiLog.h"
