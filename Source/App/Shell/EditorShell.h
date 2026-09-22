@@ -237,6 +237,8 @@ private:
     void showMeasurement();
     void stopPlayback();
     void finishMeasurementPlayback();
+    void registerWorkspaceSettings();
+    void buildDefaultLayout(uint32_t dockspaceId);
     // Queues a bounded UI-density preference for the next frame and persistence.
     void setUiScale(uint32_t percent);
     // Global shortcuts exclude text editing, active widgets, popups and camera look.
