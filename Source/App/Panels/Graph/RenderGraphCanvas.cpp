@@ -3,7 +3,7 @@
 /// @brief Draws and owns the Render Graph node-editor canvas.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/RenderGraphPanelInternal.h"
+#include "App/Panels/Graph/RenderGraphPanelInternal.h"
 
 #include "Core/Diagnostics/Assert.h"
 

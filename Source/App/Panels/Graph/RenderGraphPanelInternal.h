@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Panels/RenderGraphPanel.h"
+#include "App/Panels/Graph/RenderGraphPanel.h"
 
 #include <string_view>
 
