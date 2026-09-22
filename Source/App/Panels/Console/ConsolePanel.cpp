@@ -3,7 +3,7 @@
 /// @brief Displays bounded log snapshots with filtering and controlled auto-scroll.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/ConsolePanel.h"
+#include "App/Panels/Console/ConsolePanel.h"
 
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/EditorStyle.h"

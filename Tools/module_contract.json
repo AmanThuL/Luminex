@@ -160,7 +160,7 @@
       "privateHeaders": [
         "Source/App/Shell/EditorShell.h",
         "Source/App/Shell/ConsoleLogSink.h",
-        "Source/App/Panels/ConsolePanel.h",
+        "Source/App/Panels/Console/ConsolePanel.h",
         "Source/App/Panels/Inspector/InspectorPanel.h",
         "Source/App/Panels/Performance/PerformancePanel.h",
         "Source/App/Panels/Graph/RenderGraphPanel.h",

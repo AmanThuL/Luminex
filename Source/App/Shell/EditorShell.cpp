@@ -8,7 +8,7 @@
 #include "App/Shell/EditorFont.h"
 
 #include "App/Panels/ActionFeedback.h"
-#include "App/Panels/ConsolePanel.h"
+#include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
