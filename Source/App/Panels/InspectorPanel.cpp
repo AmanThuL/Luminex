@@ -6,7 +6,7 @@
 #include "App/Panels/InspectorPanel.h"
 
 #include "App/Model/DirectionalLightRole.h"
-#include "App/Model/EditorRenderDefaults.h"
+#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Scene/SceneTableDisplay.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Panels/EditorStyle.h"

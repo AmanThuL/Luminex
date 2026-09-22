@@ -5,8 +5,8 @@
 
 #pragma once
 #include "App/Model/Capture/EditorActions.h"
-#include "App/Model/EditorRenderSettings.h"
-#include "App/Model/ExposureReset.h"
+#include "App/Model/Rendering/Settings/EditorRenderSettings.h"
+#include "App/Model/Rendering/Settings/ExposureReset.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"

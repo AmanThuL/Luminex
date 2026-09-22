@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/Graph/FrameRecordRing.h"
+#include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
 
 #include <optional>
 

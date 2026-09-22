@@ -1,5 +1,5 @@
-#include "App/Model/EditorRenderDefaults.h"
 #include "App/Model/LightingHistory.h"
+#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 
 #include <catch2/catch_test_macros.hpp>
 

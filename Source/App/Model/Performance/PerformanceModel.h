@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/DiagnosticRefresh.h"
 #include "App/Model/Performance/PassTimingHistory.h"
+#include "App/Model/Rendering/Settings/DiagnosticRefresh.h"
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>
