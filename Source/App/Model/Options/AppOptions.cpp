@@ -3,7 +3,7 @@
 /// @brief Implements command-line option parsing for application run modes.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/AppOptions.h"
+#include "App/Model/Options/AppOptions.h"
 
 #include "Core/Util/Parse.h"
 #include "Render/Passes/Temporal/Temporal.h"

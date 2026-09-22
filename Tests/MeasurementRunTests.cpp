@@ -2,8 +2,8 @@
 /// @file MeasurementRunTests.cpp
 /// @brief Tests deterministic measurement plans, strict timing joins and scored refusal.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/AppOptions.h"
 #include "App/Model/MeasurementRun.h"
+#include "App/Model/Options/AppOptions.h"
 #include <array>
 #include <catch2/catch_test_macros.hpp>
 #include <limits>

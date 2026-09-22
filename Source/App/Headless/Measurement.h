@@ -4,8 +4,8 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "App/Model/AppOptions.h"
 #include "App/Model/MeasurementRun.h"
+#include "App/Model/Options/AppOptions.h"
 #include "Engine/Scene/SceneTableStats.h"
 #include "Render/Graph/CompiledFrameRecord.h"
 #include "Render/Passes/Visibility/Visibility.h"
