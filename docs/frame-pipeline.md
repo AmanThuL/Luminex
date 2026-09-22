@@ -12,7 +12,7 @@ publication reads all mips. Two output-capacity pyramids alternate independently
 Invalid source/camera/coverage history or wireframe retains globally; shadows remain unculled.
 Independent direct ID/depth checks copy into paced readback and join by frame and instance identity.
 
-`App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
+`App/Model/Scene/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
 `Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
 Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
@@ -259,7 +259,7 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
   DisplayTransform composites bloom, applies PBR Neutral and encodes sRGB. Authored clear colour
   decodes and pre-exposes once at declaration using manual exposure; a sky draws over that clear.
 - **Reset policy**: exposure clears on scene/extent changes and auto enable, independently of the
-  temporal camera/projection resets. `App/Model/ExposureReset.h` owns that mapping.
+  temporal camera/projection resets. `App/Model/Rendering/Settings/ExposureReset.h` owns that mapping.
 - **Reversed infinite-far depth**: near maps to 1, distance tends toward 0. Scene/shadow clear to
   zero and compare Greater; sky pins depth zero and compares GreaterEqual. View-space depth is `-nearZ / sampledDepth`. Light 0 casts through the scene-bound ortho fit with reversed bias
   `{-4.0, -32.0}`. PCF uses 25 Poisson taps; PCSS retains its view/NDC blocker-search mismatch.
