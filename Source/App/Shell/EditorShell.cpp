@@ -13,7 +13,7 @@
 #include "App/Panels/InspectorPanel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
-#include "App/Panels/ScenePanel.h"
+#include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
