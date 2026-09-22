@@ -3,7 +3,7 @@
 /// @brief Serializes schema-4 measurement scopes and exact-frame retired diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
 #include "App/Model/LightingDiagnostics.h"
-#include "App/Model/MeasurementRun.h"
+#include "App/Model/Performance/MeasurementRun.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "Core/IO/Json.h"
 

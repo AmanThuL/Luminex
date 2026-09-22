@@ -3,7 +3,7 @@
 /// @brief Implements rolling GPU pass-timing summaries for the editor Stats panel.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/PassTimingHistory.h"
+#include "App/Model/Performance/PassTimingHistory.h"
 
 #include <algorithm>
 #include <numeric>

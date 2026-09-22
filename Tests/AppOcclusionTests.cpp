@@ -2,8 +2,8 @@
 /// @file AppOcclusionTests.cpp
 /// @brief Pins occlusion CLI dependencies, retired diagnostics and measurement isolation.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/MeasurementRun.h"
 #include "App/Model/Options/AppOptions.h"
+#include "App/Model/Performance/MeasurementRun.h"
 #include "App/Model/VisibilityDiagnostics.h"
 #include "App/Model/VisibilityDisplay.h"
 

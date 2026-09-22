@@ -6,7 +6,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/PassTimingHistory.h"
+#include "App/Model/Performance/PassTimingHistory.h"
 
 #include <array>
 #include <string>

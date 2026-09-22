@@ -2,7 +2,7 @@
 /// @file MeasurementLightingTests.cpp
 /// @brief Pins exact lighting retirement, retained failures, and separate GPU measurement scopes.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/MeasurementRun.h"
+#include "App/Model/Performance/MeasurementRun.h"
 
 #include <catch2/catch_test_macros.hpp>
 
