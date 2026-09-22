@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/ActionResult.h"
+#include "App/Model/Capture/ActionResult.h"
 #include "App/Model/Graph/GraphLayout.h"
 #include "App/Model/Graph/GraphSnapshot.h"
 

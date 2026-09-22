@@ -2,7 +2,7 @@
 /// @file LightCheckCapture.cpp
 /// @brief Serializes checked light lists without native padding or host-endian assumptions.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/LightCheckCapture.h"
+#include "App/Model/Capture/LightCheckCapture.h"
 
 #include <ostream>
 

@@ -3,7 +3,7 @@
 /// @brief Serializes offscreen capture domains, settings, and per-frame state.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/CaptureMetadata.h"
+#include "App/Model/Capture/CaptureMetadata.h"
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
 
