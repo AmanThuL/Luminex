@@ -3,7 +3,7 @@
 /// @brief Implements panel visibility and the workspace persistence schema decision.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/WorkspaceModel.h"
+#include "App/Model/Workspace/WorkspaceModel.h"
 
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Util/Parse.h"

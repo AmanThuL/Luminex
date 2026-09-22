@@ -5,7 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/WorkspaceModel.h"
+#include "App/Model/Workspace/WorkspaceModel.h"
 
 #include <format>
 #include <limits>
