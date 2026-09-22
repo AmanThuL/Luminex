@@ -14,7 +14,7 @@
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
-#include "App/Panels/ViewportPanel.h"
+#include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>

@@ -3,7 +3,7 @@
 /// @brief Draws the scene image, editor selection, camera tools and diagnostic legend.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/ViewportPanel.h"
+#include "App/Panels/Viewport/ViewportPanel.h"
 
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Model/Scene/SelectionBounds.h"
