@@ -167,10 +167,10 @@
         "Source/App/Panels/RenderGraphPanelInternal.h",
         "Source/App/Panels/ScenePanel.h",
         "Source/App/Panels/ViewportPanel.h",
-        "Source/App/Screenshot.h",
+        "Source/App/Headless/Screenshot.h",
         "Source/App/Panels/ActionFeedback.h",
         "Source/App/Panels/EditorStyle.h",
-        "Source/App/Measurement.h"
+        "Source/App/Headless/Measurement.h"
       ]
     },
     "tests": {

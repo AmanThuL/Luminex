@@ -2,7 +2,7 @@
 /// @file OcclusionValidation.cpp
 /// @brief Validates the isolated offscreen active-extent recovery diagnostic.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/OcclusionValidation.h"
+#include "App/Headless/OcclusionValidation.h"
 #include "Core/Util/Parse.h"
 #include <cmath>
 #include <cstdlib>

@@ -3,8 +3,9 @@
 /// @brief Implements deterministic offscreen scene capture.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Screenshot.h"
+#include "App/Headless/Screenshot.h"
 
+#include "App/Headless/OcclusionValidation.h"
 #include "App/Model/CaptureMetadata.h"
 #include "App/Model/DynamicResolution.h"
 #include "App/Model/FrameRecordRing.h"
@@ -13,7 +14,6 @@
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
-#include "App/OcclusionValidation.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Util/Parse.h"
 #include "Engine/Asset/Image/BmpImage.h"
