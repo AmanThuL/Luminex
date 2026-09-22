@@ -3,11 +3,11 @@
 /// @brief Runs the windowed editor or offscreen screenshot application.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Measurement.h"
+#include "App/Headless/Measurement.h"
+#include "App/Headless/Screenshot.h"
 #include "App/Model/AppOptions.h"
 #include "App/Model/FrameRecordRing.h"
 #include "App/Model/SceneDefaults.h"
-#include "App/Screenshot.h"
 #include "App/Shell/ConsoleLogSink.h"
 #include "App/Shell/EditorShell.h"
 #include "Core/Diagnostics/Log.h"

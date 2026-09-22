@@ -2,13 +2,13 @@
 /// @file Measurement.cpp
 /// @brief Implements deterministic offscreen measurement with explicit retirement pacing.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Measurement.h"
+#include "App/Headless/Measurement.h"
 
+#include "App/Headless/OcclusionValidation.h"
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/SceneDefaults.h"
 #include "App/Model/SceneSession.h"
 #include "App/Model/VisibilityDiagnostics.h"
-#include "App/OcclusionValidation.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/IO/File.h"
 #include "Core/Util/Sha256.h"
