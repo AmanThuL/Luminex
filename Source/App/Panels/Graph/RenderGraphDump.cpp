@@ -3,7 +3,7 @@
 /// @brief Writes the displayed compiled frame to its deterministic text dump.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/RenderGraphPanelInternal.h"
+#include "App/Panels/Graph/RenderGraphPanelInternal.h"
 
 #include "Core/Diagnostics/Log.h"
 #include "Render/Graph/GraphDump.h"

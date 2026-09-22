@@ -3,7 +3,7 @@
 /// @brief Draws selection details and stage expansion controls for the Render Graph panel.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/RenderGraphPanelInternal.h"
+#include "App/Panels/Graph/RenderGraphPanelInternal.h"
 
 #include "App/Model/Graph/GraphInspectorModel.h"
 #include "App/Panels/EditorStyle.h"

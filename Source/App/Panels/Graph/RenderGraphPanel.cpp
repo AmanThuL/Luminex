@@ -3,11 +3,11 @@
 /// @brief Coordinates the detached Render Graph window, canvas, details and dump actions.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/RenderGraphPanel.h"
+#include "App/Panels/Graph/RenderGraphPanel.h"
 
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/EditorStyle.h"
-#include "App/Panels/RenderGraphPanelInternal.h"
+#include "App/Panels/Graph/RenderGraphPanelInternal.h"
 
 #include <imgui.h>
 
