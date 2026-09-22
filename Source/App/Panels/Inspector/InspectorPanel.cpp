@@ -3,14 +3,14 @@
 /// @brief Implements the Inspector panel's per-subject Camera, Rendering, Light, Object sections.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/InspectorPanel.h"
+#include "App/Panels/Inspector/InspectorPanel.h"
 
 #include "App/Model/Rendering/Lighting/DirectionalLightRole.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneTableDisplay.h"
 #include "App/Panels/EditorStyle.h"
-#include "App/Panels/InspectorLighting.h"
+#include "App/Panels/Inspector/InspectorLighting.h"
 #include "App/Shell/EditorShell.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
