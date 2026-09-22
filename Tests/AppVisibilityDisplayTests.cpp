@@ -2,7 +2,7 @@
 /// @file AppVisibilityDisplayTests.cpp
 /// @brief Pins visibility formatting and scene/frame identity isolation.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/VisibilityDisplay.h"
+#include "App/Model/Rendering/Visibility/VisibilityDisplay.h"
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
