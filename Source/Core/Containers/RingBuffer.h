@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -20,36 +21,44 @@ namespace lmx {
 /// next push evicts the oldest. Index 0 is always the oldest held value.
 template <typename T>
 class RingBuffer {
-    static_assert(
-        !std::is_same_v<T, bool>,
-        "RingBuffer<bool> would store std::vector<bool> proxies, which break const T& access");
+    static_assert(!std::is_same_v<T, bool>, "RingBuffer<bool> is not supported");
 
 public:
     /// Constructs a buffer retaining at most `capacity` values.
     explicit RingBuffer(uint32_t capacity) : m_capacity(capacity) {
         LMX_ASSERT(capacity > 0, "RingBuffer capacity must be positive");
-        m_storage.reserve(capacity);
+        m_storage.resize(capacity);
     }
 
     /// Appends one value, evicting the oldest held value once `capacity` are already held.
     void push(T value) {
-        if (m_storage.size() < m_capacity) {
-            m_storage.push_back(std::move(value));
+        const size_t offset = (size_t{m_oldest} + m_size) % m_capacity;
+        m_storage[offset].emplace(std::move(value));
+        if (m_size < m_capacity) {
+            ++m_size;
         } else {
-            m_storage[m_oldest] = std::move(value);
             m_oldest = (m_oldest + 1) % m_capacity;
         }
     }
 
+    /// Discards and destroys the oldest held value in constant time. Asserts if empty.
+    /// Remaining values shift down one chronological index, invalidating existing iterators.
+    void popOldest() {
+        LMX_ASSERT(m_size > 0, "RingBuffer::popOldest on an empty buffer");
+        m_storage[m_oldest].reset();
+        m_oldest = (m_oldest + 1) % m_capacity;
+        --m_size;
+    }
+
     /// Values currently held, at most `capacity`.
-    uint32_t size() const { return static_cast<uint32_t>(m_storage.size()); }
+    uint32_t size() const { return m_size; }
 
     /// Values retained before the oldest is evicted.
     uint32_t capacity() const { return m_capacity; }
 
     /// The most recently pushed value.
     const T& back() const {
-        LMX_ASSERT(!m_storage.empty(), "RingBuffer::back on an empty buffer");
+        LMX_ASSERT(m_size > 0, "RingBuffer::back on an empty buffer");
         return (*this)[size() - 1];
     }
 
@@ -58,16 +67,17 @@ public:
 
     /// Discards every held value; `capacity` is unchanged.
     void clear() {
-        m_storage.clear();
+        while (m_size > 0) {
+            popOldest();
+        }
         m_oldest = 0;
     }
 
     /// Indexes chronologically: 0 is the oldest held value, `size() - 1` the newest.
     const T& operator[](uint32_t index) const {
         LMX_ASSERT(index < size(), "RingBuffer index out of range");
-        const uint32_t offset =
-            (m_storage.size() < m_capacity) ? index : (m_oldest + index) % m_capacity;
-        return m_storage[offset];
+        const size_t offset = (size_t{m_oldest} + index) % m_capacity;
+        return *m_storage[offset];
     }
 
     /// Indexes chronologically, mutable: 0 is the oldest held value, `size() - 1` the newest.
@@ -146,8 +156,9 @@ public:
 
 private:
     uint32_t m_capacity;
-    uint32_t m_oldest = 0; ///< Storage index of the oldest value once `capacity` is reached.
-    std::vector<T> m_storage;
+    uint32_t m_oldest = 0; ///< Storage index of the oldest held value.
+    uint32_t m_size = 0;
+    std::vector<std::optional<T>> m_storage;
 };
 
 } // namespace lmx
