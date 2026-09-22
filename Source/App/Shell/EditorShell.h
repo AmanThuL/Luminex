@@ -6,7 +6,6 @@
 #pragma once
 #include "App/Model/Capture/EditorActions.h"
 #include "App/Model/Console/ConsoleModel.h"
-#include "App/Model/DynamicResolution.h"
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/LightingDisplay.h"
 #include "App/Model/Options/AppOptions.h"
@@ -15,11 +14,12 @@
 #include "App/Model/Performance/PerformanceModel.h"
 #include "App/Model/Rendering/Settings/EditorRenderSettings.h"
 #include "App/Model/Rendering/Settings/ExposureReset.h"
+#include "App/Model/Rendering/Temporal/DynamicResolution.h"
+#include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Scene/EditorPlayback.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneLoadState.h"
 #include "App/Model/Scene/SceneSession.h"
-#include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/PerformancePanel.h"
@@ -327,7 +327,7 @@ private:
 
     // The dynamic-resolution controller (render::ResolutionController.h) and the shell-local state
     // applyDynamicResolution() needs to tell an off->on edge and an already-observed frame apart
-    // from one buildUI() to the next (Source/App/Model/DynamicResolution.h).
+    // from one buildUI() to the next (Source/App/Model/Rendering/Temporal/DynamicResolution.h).
     render::ResolutionController m_resolutionController;
     DynamicResolutionState m_dynamicResolutionState;
 

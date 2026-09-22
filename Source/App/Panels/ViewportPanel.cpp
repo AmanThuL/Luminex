@@ -5,7 +5,7 @@
 
 #include "App/Panels/ViewportPanel.h"
 
-#include "App/Model/DiagnosticLegend.h"
+#include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Model/Scene/SelectionBounds.h"
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/EditorStyle.h"

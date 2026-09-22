@@ -1,6 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "App/Model/TemporalEditorState.h"
+#include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "Scenes/SceneLibrary.h"
 
 using namespace lmx;

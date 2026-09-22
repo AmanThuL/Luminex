@@ -3,7 +3,7 @@
 /// @brief Describes the actual diagnostic encodings and authored lab fixtures.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/DiagnosticLegend.h"
+#include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 
 namespace lmx::app {
 

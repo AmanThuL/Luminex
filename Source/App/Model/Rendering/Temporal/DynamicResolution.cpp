@@ -3,7 +3,7 @@
 /// @brief Implements the pure per-frame dynamic-resolution policy.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/DynamicResolution.h"
+#include "App/Model/Rendering/Temporal/DynamicResolution.h"
 
 namespace lmx::app {
 
