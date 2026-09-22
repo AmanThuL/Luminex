@@ -1,4 +1,4 @@
-#include "App/Model/DiagnosticLegend.h"
+#include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 
 #include <catch2/catch_test_macros.hpp>
 

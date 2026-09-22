@@ -5,10 +5,10 @@
 
 #include "App/Panels/InspectorLighting.h"
 
-#include "App/Model/DiagnosticLegend.h"
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
+#include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/EditorStyle.h"
 #include "App/Panels/InspectorPanel.h"
 #include "Core/Math/Color.h"

@@ -4,13 +4,13 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/DynamicResolution.h"
 #include "App/Model/LightingDisplay.h"
 #include "App/Model/Rendering/Settings/EditorRenderSettings.h"
 #include "App/Model/Rendering/Settings/ExposureReset.h"
+#include "App/Model/Rendering/Temporal/DynamicResolution.h"
+#include "App/Model/Rendering/Temporal/TemporalEditorState.h"
 #include "App/Model/Scene/EditorSelection.h"
 #include "App/Model/Scene/SceneSession.h"
-#include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
