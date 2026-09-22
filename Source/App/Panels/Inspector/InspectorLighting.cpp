@@ -3,14 +3,14 @@
 /// @brief Implements editable local-light subjects and clustered-lighting controls.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Panels/InspectorLighting.h"
+#include "App/Panels/Inspector/InspectorLighting.h"
 
 #include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
 #include "App/Model/Rendering/Lighting/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/EditorStyle.h"
-#include "App/Panels/InspectorPanel.h"
+#include "App/Panels/Inspector/InspectorPanel.h"
 #include "Core/Math/Color.h"
 
 #include <algorithm>

@@ -10,7 +10,7 @@
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/ConsolePanel.h"
 #include "App/Panels/EditorStyle.h"
-#include "App/Panels/InspectorPanel.h"
+#include "App/Panels/Inspector/InspectorPanel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
