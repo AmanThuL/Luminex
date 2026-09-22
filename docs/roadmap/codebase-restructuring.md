@@ -234,7 +234,7 @@ under both: `Scene`, `Graph`, `Performance`, `Console`, `Capture`, `Workspace`, 
 decomposed by subject and `EditorShell.cpp` brought under the review budget.
 
 Part A is implemented and [accepted with one scoped exception](../milestones/r/r3.6-validation.md#owner-acceptance-and-integration);
-B has not started. Its Core adoptions and gate-limited fit remain in the [record](../milestones/r/r3.6.md).
+B is implemented; its Core adoptions, retained double fit and closed plan are recorded in the [record](../milestones/r/r3.6.md).
 
 **Exit gate:** the protocol and the format check hold; scripted editor runs are validation-clean;
 workspace schema 3 files load unchanged; AppModel still links no ImGui, SDL or Metal.
