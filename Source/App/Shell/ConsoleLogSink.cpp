@@ -3,7 +3,7 @@
 /// @brief Forwards neutral log callbacks into the bounded App console store.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/ConsoleLogSink.h"
+#include "App/Shell/ConsoleLogSink.h"
 
 #include "Core/Diagnostics/Assert.h"
 

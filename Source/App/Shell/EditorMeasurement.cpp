@@ -2,10 +2,10 @@
 /// @file EditorMeasurement.cpp
 /// @brief Connects live editor playback, frame samples, and measurement exports.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/EditorShell.h"
 #include "App/Measurement.h"
 #include "App/Model/LightingDiagnostics.h"
 #include "App/Model/VisibilityDiagnostics.h"
+#include "App/Shell/EditorShell.h"
 
 #include <chrono>
 #include <filesystem>

@@ -3,9 +3,9 @@
 /// @brief Implements the docked editor UI, input, and scene interaction.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/EditorShell.h"
+#include "App/Shell/EditorShell.h"
 
-#include "App/EditorFont.h"
+#include "App/Shell/EditorFont.h"
 
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/ConsolePanel.h"
