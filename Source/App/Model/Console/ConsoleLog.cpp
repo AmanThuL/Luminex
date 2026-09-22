@@ -12,7 +12,7 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void ConsoleLog::append(ConsoleSeverity severity, int64_t timestampMilliseconds,
+void ConsoleLog::append(log::Level severity, int64_t timestampMilliseconds,
                         std::string_view message) {
     size_t count = std::min(message.size(), kMaxMessageBytes);
     const bool truncated = count < message.size();
@@ -73,19 +73,19 @@ ConsoleSnapshot ConsoleLog::clear() {
 }
 
 //======================================================================================================================
-std::string_view consoleSeverityName(ConsoleSeverity severity) {
+std::string_view consoleSeverityName(log::Level severity) {
     switch (severity) {
-    case ConsoleSeverity::Trace:
+    case log::Level::Trace:
         return "Trace";
-    case ConsoleSeverity::Debug:
+    case log::Level::Debug:
         return "Debug";
-    case ConsoleSeverity::Info:
+    case log::Level::Info:
         return "Info";
-    case ConsoleSeverity::Warning:
+    case log::Level::Warning:
         return "Warning";
-    case ConsoleSeverity::Error:
+    case log::Level::Error:
         return "Error";
-    case ConsoleSeverity::Critical:
+    case log::Level::Critical:
         return "Critical";
     }
     return "Info";

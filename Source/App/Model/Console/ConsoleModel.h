@@ -14,7 +14,7 @@ namespace lmx::app {
 
 /// Display-only log filters; changing these never discards retained messages.
 struct ConsoleFilter {
-    ConsoleSeverity minimumSeverity = ConsoleSeverity::Trace; ///< Inclusive minimum importance.
+    log::Level minimumSeverity = log::Level::Trace; ///< Inclusive minimum importance.
     std::string search; ///< Case-insensitive ASCII substring matched against message payloads.
 };
 
