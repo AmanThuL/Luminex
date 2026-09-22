@@ -1,5 +1,5 @@
 #include "GpuTemporalTestSupport.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "SceneTableTestSupport.h"
 #include "Scenes/CatalogScenes.h"
 
@@ -264,7 +264,7 @@ TEST_CASE("the reprojection diagnostic is zero on a static scene", "[gpu][tempor
 // motion is the invalid sentinel and a static one puts the two mappings on opposite sides of the
 // seam for a whole column of output pixels: taking motion from the corner reports "nothing to
 // compare" for pixels that sample the static surface, and compares pixels that sample the invalid
-// one. The expected texel is computed on the CPU with Source/Render/Temporal.h's
+// one. The expected texel is computed on the CPU with Source/Render/Passes/Temporal/Temporal.h's
 // renderSamplePosition, so what the case pins is the mapping and not a hand-picked pixel.
 TEST_CASE("the reprojection diagnostic reads motion at the sampled texel", "[gpu][temporal]") {
     using namespace rojoRHI;

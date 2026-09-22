@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 
 namespace lmx::app {
 

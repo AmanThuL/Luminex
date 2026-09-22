@@ -7,7 +7,7 @@
 
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
-#include "Render/SceneView.h"
+#include "Render/Renderer/SceneView.h"
 #include "Scenes/SponzaLightRig.h"
 
 #include <array>

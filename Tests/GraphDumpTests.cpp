@@ -1,9 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "GraphTestSupport.h"
-#include "Render/GraphDump.h"
-#include "Render/RenderGraph.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/GraphDump.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 
 #include <filesystem>
 #include <fstream>

@@ -1,7 +1,7 @@
 #include "App/Model/GraphSnapshot.h"
 
 #include "App/Model/GraphNodeModel.h"
-#include "Render/GraphDump.h"
+#include "Render/Graph/GraphDump.h"
 
 #include <catch2/catch_test_macros.hpp>
 

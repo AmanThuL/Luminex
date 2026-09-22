@@ -1,5 +1,5 @@
 #include "GpuTestSupport.h"
-#include "Render/GpuVisibility.h"
+#include "Render/Passes/Visibility/GpuVisibility.h"
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -108,8 +108,14 @@ struct WorkFixture {
                  .worldBounds = {rows[i].worldBoundsMin, rows[i].worldBoundsMax}});
         status.shadow.candidates = status.scene.candidates;
         visibility->setCapacityOverride(capacities);
-        visibility->declare(graph, commands, view, planes, submission->prepared(), instanceHandle,
-                            meshHandle, rowHandle, argumentHandle, status);
+        visibility->declare(graph, commands, view,
+                            {.planes = planes,
+                             .submission = submission->prepared(),
+                             .instances = instanceHandle,
+                             .meshes = meshHandle,
+                             .rows = rowHandle,
+                             .arguments = argumentHandle},
+                            status);
         if (capacities) {
             const auto record = graph.compileFrame(frame);
             REQUIRE(record);

@@ -3,8 +3,8 @@
 #include "App/Model/GraphLayout.h"
 #include "App/Model/GraphNodeModel.h"
 #include "GraphTestSupport.h"
-#include "Render/RenderGraph.h"
-#include "Render/TransientPool.h"
+#include "Render/Graph/RenderGraph.h"
+#include "Render/Graph/TransientPool.h"
 
 #include <algorithm>
 #include <array>

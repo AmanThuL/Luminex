@@ -13,7 +13,7 @@ Invalid source/camera/coverage history or wireframe retains globally; shadows re
 Independent direct ID/depth checks copy into paced readback and join by frame and instance identity.
 
 `App/Model/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
-`Render/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
+`Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
 Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
 Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
@@ -96,7 +96,7 @@ beginFrame (blocks until frame N-3 retired; shared-event pacing, arena page-curs
 │       colour instead) + bilinearly reconstructed bloomBlur mip 0 × bloomIntensity
 │       (bloom-off binds an exact-zero fallback, bit-identical to no bloom) → Khronos PBR Neutral (Shaders/Common/Tonemap.slang, shared with the
 │       debug view) → sRGB encode → display color (BGRA8Unorm), described by
-│       Render/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
+│       Render/Renderer/DisplayDomain.h: opaque 8-bit SDR, BT.709/D65, reference and peak white 1.0
 ├─ [a debug view selected] 10b. lmx.pass.temporal.debugView   raster, not compute — BGRA8Unorm
 │       carries no storage-write usage under this RHI. Declared against the display pass's own
 │       not-yet-declared output version; the graph's topological schedule still orders it after.
@@ -163,15 +163,15 @@ With zero live lights there is no light-table import or light-list/debug pass; a
 bindings still resolve through immutable fallbacks. Direct uses no list passes. Retired counters
 join declaration frame/mode, and `--light-check` compares captured lists with that frame's CPU
 mirror; `drainLightingAfterIdle` resolves the final in-flight frames before headless completion.
-Stage callbacks borrow inputs through graph execution; Renderer retains frame targets and ordering.
+Stage callbacks borrow inputs through graph execution; `Renderer.cpp` retains stage ordering, while `RendererFrame.cpp` derives state and imports resources, `RendererCreate.cpp` owns construction/resize and `RendererStatus.cpp` records outcomes. SceneStage packing/declaration, layouts, pipelines and draw encoding occupy separate units.
 
 ## The render graph
 
-`Source/Render/RenderGraph.h/.cpp` declares raster, compute, copy and external passes over versioned
+`Source/Render/Graph/RenderGraph.h/.cpp` declares raster, compute, copy and external passes over versioned
 `GraphTexture`/`GraphBuffer` handles. Imports borrow persistent resources at version 0; transients
 belong to one frame (ADR 0008). Each pass declares every read/write and its subresource range.
 `compile()` rejects missing producers, duplicate writers, overlapping in-pass read/write ranges,
-cycles, invalid attachments/formats, transient reads before writes and invalid sinks/exports.
+cycles, invalid attachments/formats, transient reads before writes and invalid sinks/exports. Resolved mip/layer bounds use Core `Interval`; transition derivation seeds earlier accesses, then emits alias, RAW and WAW/WAR dependencies before recording each pass's accesses.
 It returns a serial topological schedule containing only passes reachable from a declared sink:
 exports, presentation or readback destinations. Execution validates again, then runs each callback
 with `PassResources` restricted to that pass's declared handles. Raster, compute and copy callbacks

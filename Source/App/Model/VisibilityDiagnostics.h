@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 #pragma once
 
-#include "Render/Visibility.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include <string>
 #include <string_view>
 

@@ -835,8 +835,12 @@ render::GraphTexture EditorShell::declareSelection(render::RenderGraph& graph,
         m_settings.classifyMode == render::ClassifyMode::Gpu ||
         m_selection.index >= result.candidates.size() ||
         result.candidates[m_selection.index].state != render::VisibilityState::Rejected;
-    return m_selectionOutline->declare(graph, commands, display, m_session.camera(), view,
-                                       m_selection.index, m_viewportBackingScale, visible);
+    return m_selectionOutline->declare(graph, commands, view,
+                                       {.display = display,
+                                        .camera = m_session.camera(),
+                                        .selectedDraw = static_cast<uint32_t>(m_selection.index),
+                                        .backingScale = m_viewportBackingScale,
+                                        .visible = visible});
 }
 
 //======================================================================================================================

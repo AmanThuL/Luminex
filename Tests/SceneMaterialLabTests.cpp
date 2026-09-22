@@ -1,5 +1,5 @@
 #include "EngineSceneTestSupport.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 
 //======================================================================================================================

@@ -187,8 +187,7 @@ Evidence, deviations and limits: [validation record](../milestones/r/r3.3-valida
 
 ### R3.4 — Core
 
-**Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning.
-**Implemented 2026-09-21:** evidence and limits in the [validation record](../milestones/r/r3.4-validation.md).
+**Outcome:** Core owns domain-free math and data structures; Engine keeps only scene meaning. **Implemented 2026-09-21:** evidence and limits in the [validation record](../milestones/r/r3.4-validation.md).
 
 **Deliver:** [ADR 0026](../decisions/0026-core-charter-and-placement.md), accepted first: Core's
 charter, glm as the one vector vocabulary, and the rule that domain-free math and data structures go to Core whatever their consumer count while a
@@ -210,16 +209,17 @@ unit tests; the duplicates the record lists are gone; the Engine archive defines
 symbol; R3.3's archive checks and every pre-existing test case name still pass.
 
 ### R3.5 — Render
+**Implemented and owner-accepted 2026-09-22:** the executor plan is closed. The [record](../milestones/r/r3.5.md) describes the delivered structure; [acceptance](../milestones/r/r3.5-validation.md#owner-acceptance-and-integration) scopes the single retained part A parity failure. Part B passes its local gates; measured adoption limits and both PRs remain in the validation record.
 
 **Deliver:** `Render/Graph/` (graph, compile units, dump, transient pool, frame declaration,
 compiled record), `Render/Renderer/` (orchestrator and its partial units, `SceneView.h`, its
 builder, `DisplayDomain.h`) and `Render/Passes/<the same ten names as the shaders>/`, one folder
 per pass family holding its stages, CPU mirrors, checks and readbacks.
 
-Then the code: stage math (frustum, shadow fit, jitter, froxel-sphere test) and range algebra come
-from Core; `Renderer.cpp` and `SceneStage.cpp` are decomposed by responsibility; the shape the
-stages share is written into the engineering convention and followed; repeated pipeline and resource
-setup moves into shared helpers. No class name, label, `SceneView` field or interface changes.
+Then the code: stage math and range algebra come from Core; `Renderer.cpp`, `SceneStage.cpp` and
+barrier derivation are decomposed; the stages' shared shape enters the engineering convention and is
+followed; repeated setup and draw encoding move into shared helpers. No class name, label or
+`SceneView` field changes; signatures change only as the [record](../milestones/r/r3.5.md) lists.
 
 **Exit gate:** the protocol and the format check hold; graph dumps and capture semantics match the
 parent; no Render source implements math that Core's charter claims.

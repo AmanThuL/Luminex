@@ -16,7 +16,7 @@ and [milestone record](../milestones/m6/m6.5.md) preserve the evaluation and acc
 
 ## Verified SDR contract
 
-`Render/DisplayDomain.h` owns the output view, transfer, primaries, tone map, white levels, bit
+`Render/Renderer/DisplayDomain.h` owns the output view, transfer, primaries, tone map, white levels, bit
 depth and opaque-alpha fact. `Renderer::displayDomain()` exposes SDR, sRGB, BT.709/D65, PBR
 Neutral, reference white 1, peak white 1, eight bits and opaque alpha. No shader changes accompany
 this description. Diagnostics retain their selected debug-view identity in frame metadata.

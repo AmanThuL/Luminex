@@ -1,7 +1,7 @@
 #include "GraphTestSupport.h"
 
-#include "Render/GraphDump.h"
-#include "Render/Renderer.h"
+#include "Render/Graph/GraphDump.h"
+#include "Render/Renderer/Renderer.h"
 
 #include <catch2/catch_test_macros.hpp>
 

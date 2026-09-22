@@ -7,7 +7,7 @@
 
 #include "Core/Diagnostics/Assert.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/LightLab.h"
 
 #include <algorithm>

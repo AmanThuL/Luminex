@@ -1,8 +1,8 @@
 #include "GpuTestSupport.h"
 
 #include "Core/Math/Scalar.h"
-#include "Render/HzbStage.h"
-#include "Render/Occlusion.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
+#include "Render/Passes/Occlusion/Occlusion.h"
 
 #include <algorithm>
 #include <bit>
@@ -141,10 +141,10 @@ TEST_CASE("occlusion GPU results equal the CPU mirror on actual raster-built rea
                               commands.bindFrameData(0, masked);
                               commands.draw(3);
                           });
-            const auto pyramid = (*stage)->build(graph, commands, nextVersion(depthInput),
-                                                 {.frameNumber = (*device)->frameNumber(),
-                                                  .activeWidth = width,
-                                                  .activeHeight = height});
+            const auto pyramid = (*stage)->declare(graph, commands, nextVersion(depthInput),
+                                                   {.frameNumber = (*device)->frameNumber(),
+                                                    .activeWidth = width,
+                                                    .activeHeight = height});
             auto buffer = graph.importBuffer(**readback, "lmx.test.hzbParity.readback");
             for (const auto params : readParams) {
                 ComputePassDesc desc;

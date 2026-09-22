@@ -1,5 +1,5 @@
 #include "EngineSceneTestSupport.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 
 //======================================================================================================================
 // A Scene with no IBL attached must still publish a renderable view. Empty objects make the

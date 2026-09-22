@@ -1,7 +1,7 @@
 #include "GpuTestSupport.h"
 
 #include "App/Model/FrameRecordRing.h"
-#include "Render/FrameDeclaration.h"
+#include "Render/Graph/FrameDeclaration.h"
 
 #include "SceneTableTestSupport.h"
 #include <algorithm>

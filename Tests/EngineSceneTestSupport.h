@@ -20,7 +20,7 @@
 #include "Engine/View/Camera.h"
 #include "EngineTestSupport.h"
 #include "GpuTestSupport.h"
-#include "Render/Renderer.h"
+#include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
 #include <rojoRHI/RHI.h>
 

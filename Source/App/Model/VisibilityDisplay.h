@@ -5,7 +5,7 @@
 #pragma once
 
 #include "Engine/Scene/Scene.h"
-#include "Render/Visibility.h"
+#include "Render/Passes/Visibility/Visibility.h"
 #include <rojoRHI/Device.h>
 
 #include <deque>

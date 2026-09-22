@@ -17,6 +17,9 @@ import random
 import statistics
 import subprocess
 import sys
+import tempfile
+from types import SimpleNamespace
+from unittest import mock
 
 import lighting_report
 
@@ -50,6 +53,10 @@ CONTROLS.update({
     "occlusion-on-off-indirect": ((True, "indirect", "gpu", False), (True, "indirect", "gpu", True)),
     "occlusion-on-off-batched": ((True, "batched", "gpu", False), (True, "batched", "gpu", True)),
 })
+BINARY_WORKLOADS = ("sponza", "visibility-16384")
+BINARY_CONTROLS = {"binary-" + mode: ((True, mode, "cpu"),) * 2
+                   for mode in ("direct", "indirect", "batched")}
+CONTROLS.update(BINARY_CONTROLS)
 METRICS = ("classifyMs", "prepareMs", "encodeMs", "slotWaitMs", "gpuSumMs", "visibilityGpuMs",
            "hzbGpuMs", "sceneGpuMs", "shadowGpuMs")
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,7 +173,7 @@ def validate_report(report, expected, scored):
         if sample["renderWidth"] != expected["width"] or sample["renderHeight"] != expected["height"]:
             raise ValueError("actual raster extent differs from frozen Native TAA scale 1")
         nonnegative_number(sample.get("effectiveScale"), "effectiveScale")
-        # Render/Temporal.h orders Raw=0, NativeTaa=1, VendorTemporal=2.
+        # Render/Passes/Temporal/Temporal.h orders Raw=0, NativeTaa=1, VendorTemporal=2.
         if sample["effectiveScale"] != 1 or sample["vendorFallback"] != 0 or sample["effectiveReconstruction"] != 1:
             raise ValueError("effective reconstruction differs from frozen Native TAA plan")
         if legacy:
@@ -293,6 +300,10 @@ def run_side(binary, report_path, plan, unscored, timeout):
             cmd += ["--lab-occluders", str(plan["labOccluders"])]
     if plan["occlusionEnabled"]:
         cmd += ["--occlusion", "on"]
+    if "localLightMode" in plan:
+        cmd += ["--local-lights", plan["localLightMode"], "--light-view", "off"]
+        if plan["scene"] == "sponza":
+            cmd += ["--local-light-rig", "on" if plan["localLightRig"] else "off"]
     if unscored:
         cmd += ["--unscored"]
     attempt = {"command": cmd}
@@ -315,6 +326,36 @@ def run_side(binary, report_path, plan, unscored, timeout):
         report_path.with_suffix(".attempt.json").write_text(json.dumps(attempt, indent=2) + "\n")
 
 
+def checked_provenance(args, reports):
+    """Only the executable hash may differ in a parent/candidate binary control."""
+    parent = getattr(args, "parent", None)
+    normalized = []
+    for side in (0, 1):
+        report = reports[side]
+        if parent and report.get("schemaVersion") != 4:
+            raise ValueError("binary comparison requires schema 4 on both sides")
+        provenance = copy.deepcopy(report["provenance"])
+        expected_hash = args.parent_hash if parent and side == 0 else args.binary_hash
+        if provenance.get("executableHash") != expected_hash:
+            raise ValueError("executable changed since collection freeze")
+        if parent:
+            del provenance["executableHash"]
+        normalized.append(provenance)
+    if normalized[0] != normalized[1]:
+        raise ValueError("runtime provenance changed between paired sides")
+    if args.frozen_provenance is not None and normalized[0] != args.frozen_provenance:
+        raise ValueError("runtime provenance differs across pairs or workload cells")
+    return normalized[0]
+
+
+def encode_regressions(cells):
+    """List only complete cells whose baseline-minus-candidate CI is wholly negative."""
+    return [dict(cell=name, metric="encodeMs", **cell["analysis"]["encodeMs"]["absolute"])
+            for name, cell in cells.items() if cell["complete"] and
+            cell["analysis"]["encodeMs"]["absolute"]["available"] and
+            cell["analysis"]["encodeMs"]["absolute"]["ci95Ms"][1] < 0]
+
+
 def collect_cell(args, workload, control, output):
     pairs = {metric: [] for metric in METRICS}
     failures = []
@@ -326,21 +367,21 @@ def collect_cell(args, workload, control, output):
         for side in order:
             path = output / f"{workload}.{control}.rep{repetition:02d}.{'A' if side == 0 else 'B'}.json"
             plan = expected_plan(workload, CONTROLS[control][side], args.warmup, args.frames)
-            report, attempt = run_side(args.binary, path, plan, args.unscored, args.timeout)
+            parent = getattr(args, "parent", None)
+            if parent:
+                plan.update(lighting_report.DEFAULT_PLAN)
+                plan["localLightRig"] = plan["scene"] == "sponza"
+            binary = parent if parent and side == 0 else args.binary
+            report, attempt = run_side(binary, path, plan, args.unscored, args.timeout)
             reports[side] = report
             if report is None:
                 failures.append(dict(repetition=repetition, side=side, reason=attempt["failure"]))
         if any(report is None for report in reports.values()):
             continue
-        provenance = reports[0]["provenance"]
-        if provenance != reports[1]["provenance"] or (frozen_provenance and provenance != frozen_provenance):
-            failures.append(dict(repetition=repetition, reason="runtime provenance changed"))
-            continue
-        if provenance["executableHash"] != args.binary_hash:
-            failures.append(dict(repetition=repetition, reason="executable changed since collection freeze"))
-            continue
-        if args.frozen_provenance is not None and provenance != args.frozen_provenance:
-            failures.append(dict(repetition=repetition, reason="runtime provenance differs across workload cells"))
+        try:
+            provenance = checked_provenance(args, reports)
+        except ValueError as exc:
+            failures.append(dict(repetition=repetition, reason=str(exc)))
             continue
         frozen_provenance = provenance
         args.frozen_provenance = provenance
@@ -363,6 +404,96 @@ def collect_cell(args, workload, control, output):
                 "absolute": {key.removesuffix("Ms"): value for key, value in
                              analyze_pairs(values)["absolute"].items()}}
                 for name, values in observations.items()}}
+
+
+def binary_selftest(template):
+    """Exercise collection dispatch, report validation and the binary comparison guard."""
+    import contextlib
+    import io
+
+    args = SimpleNamespace(parent=Path("/parent/App"), binary=Path("/candidate/App"),
+                           parent_hash="a" * 64, binary_hash="c" * 64,
+                           repetitions=2, warmup=32, frames=256, unscored=False,
+                           timeout=10, frozen_provenance=None)
+    calls, accepted = [], []
+
+    def fake_run(binary, path, plan, unscored, timeout):
+        calls.append((binary, copy.deepcopy(plan)))
+        report = copy.deepcopy(template)
+        report.update(schemaVersion=4, plan=copy.deepcopy(plan))
+        report["provenance"]["executableHash"] = args.parent_hash if binary == args.parent else args.binary_hash
+        first = report["samples"][0]
+        first.update(effectiveSubmission=plan["submission"], encodeMs=1 if binary == args.parent else 2,
+                     localLightMode=plan["localLightMode"], lightingGpuMs=0,
+                     liveLightCount=16 if plan["localLightRig"] else 0)
+        first["lighting"] = dict(frameId=1, sceneGeneration=1, requestedMode=plan["localLightMode"],
+                                  effectiveMode="clustered" if first["liveLightCount"] else "off",
+                                  liveLightCount=first["liveLightCount"], retired=True,
+                                  counters={k: 0 for k in lighting_report.COUNTERS},
+                                  listBytes=0, allocatedListBytes=0, checkEnabled=False,
+                                  gridMismatches=0, indexMismatches=0, counterMismatches=0)
+        report["samples"] = []
+        for ordinal in range(plan["measuredFrames"]):
+            sample = copy.deepcopy(first)
+            sample.update(ordinal=ordinal, frameId=ordinal + 1,
+                          sequenceFrame=plan["warmupFrames"] + ordinal)
+            sample["visibility"]["frameId"] = sample["lighting"]["frameId"] = ordinal + 1
+            report["samples"].append(sample)
+        validate_report(report, plan, not unscored)
+        accepted.append(copy.deepcopy(report))
+        return report, {"valid": True}
+
+    with tempfile.TemporaryDirectory() as tmp, mock.patch(__name__ + ".run_side", side_effect=fake_run), \
+            contextlib.redirect_stdout(io.StringIO()):
+        cells = {}
+        for workload in BINARY_WORKLOADS:
+            for control in BINARY_CONTROLS:
+                calls.clear()
+                cells[workload + "/" + control] = collect_cell(args, workload, control, Path(tmp))
+                assert cells[workload + "/" + control]["complete"]
+                assert [x[0] for x in calls] == [args.parent, args.binary, args.binary, args.parent]
+                assert all(x[1] == calls[0][1] for x in calls)
+                assert (calls[0][1]["warmupFrames"], calls[0][1]["measuredFrames"]) == (32, 256)
+                assert calls[0][1]["submission"] == control.removeprefix("binary-")
+        assert len(encode_regressions(cells)) == 6
+        cell = copy.deepcopy(next(iter(cells.values())))
+        cell["analysis"]["encodeMs"] = analyze_pairs([[2, 1]] * 12)
+        assert not encode_regressions({"faster": cell})
+        cell["analysis"]["encodeMs"] = analyze_pairs([[1, 1]] * 12)
+        assert not encode_regressions({"equal": cell})
+        with mock.patch(__name__ + ".run_side", return_value=(None, {"failure": "process failed"})):
+            incomplete = collect_cell(args, "sponza", "binary-direct", Path(tmp))
+            assert not incomplete["complete"] and not incomplete["analysis"]
+            assert not encode_regressions({"incomplete": incomplete})
+    pair = {0: accepted[0], 1: accepted[1]}
+    for side, mutation in (
+        (0, lambda r: r.update(schemaVersion=3)),
+        (1, lambda r: r["provenance"].update(executableHash="d" * 64)),
+        (1, lambda r: r["provenance"].update(device="different")),
+        (1, lambda r: r["provenance"]["shaderHashes"].update(scene="e" * 64)),
+        (1, lambda r: r["provenance"]["environment"].update(UNEXPECTED="1")),
+    ):
+        bad = copy.deepcopy(pair); mutation(bad[side])
+        try:
+            checked_provenance(args, bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("binary provenance drift accepted")
+    for field in ("device", "os", "buildMode", "shaderHashes", "environment"):
+        bad = copy.deepcopy(pair)
+        for report in bad.values():
+            value = report["provenance"][field]
+            if isinstance(value, dict):
+                value["unexpected"] = "f" * 64
+            else:
+                report["provenance"][field] = "different"
+        try:
+            checked_provenance(args, bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("cross-cell provenance drift accepted")
 
 
 def selftest():
@@ -499,6 +630,7 @@ def selftest():
         else:
             raise AssertionError("duplicate selector accepted")
     assert unique_selection("sponza,san-miguel", WORKLOADS, "workload") == ["sponza", "san-miguel"]
+    binary_selftest(report)
     print("visibility_paired.py --selftest: all checks passed")
     return 0
 
@@ -508,21 +640,31 @@ def main():
         return selftest()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
+    parser.add_argument("--parent", type=Path, help="frozen parent App for same-plan binary controls")
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--repetitions", default=12, type=int)
     parser.add_argument("--warmup", default=32, type=int)
     parser.add_argument("--frames", default=256, type=int)
-    parser.add_argument("--workloads", default=",".join(DEFAULT_WORKLOADS))
-    parser.add_argument("--controls", default=",".join(DEFAULT_CONTROLS))
+    parser.add_argument("--workloads")
+    parser.add_argument("--controls")
     parser.add_argument("--unscored", action="store_true")
     parser.add_argument("--timeout", default=1200, type=int)
     args = parser.parse_args()
     args.binary, args.out = args.binary.resolve(), args.out.resolve()
+    args.parent = args.parent.resolve() if args.parent else None
+    if args.workloads is None:
+        args.workloads = ",".join(BINARY_WORKLOADS if args.parent else DEFAULT_WORKLOADS)
+    if args.controls is None:
+        args.controls = ",".join(BINARY_CONTROLS if args.parent else DEFAULT_CONTROLS)
     try:
         workloads = unique_selection(args.workloads, WORKLOADS, "workload")
         controls = unique_selection(args.controls, CONTROLS, "control")
     except ValueError as exc:
         parser.error(str(exc))
+    if any((control in BINARY_CONTROLS) != bool(args.parent) for control in controls):
+        parser.error("binary controls require --parent; --parent accepts only binary controls")
+    if args.parent and not args.parent.is_file():
+        parser.error("parent binary must exist")
     if not args.binary.is_file() or args.repetitions < 1 or args.warmup < 0 or args.frames < 1:
         parser.error("binary must exist; repetitions/frames positive and warmup nonnegative")
     if args.out == ROOT or ROOT in args.out.parents:
@@ -536,6 +678,7 @@ def main():
     raw = args.out / "raw"
     raw.mkdir()
     args.binary_hash = hashlib.sha256(args.binary.read_bytes()).hexdigest()
+    args.parent_hash = hashlib.sha256(args.parent.read_bytes()).hexdigest() if args.parent else None
     args.frozen_provenance = None
     collection = dict(schemaVersion=3, scoredProtocol=frozen and not args.unscored,
                       binary=str(args.binary), binarySha256=args.binary_hash,
@@ -546,13 +689,24 @@ def main():
                       repetitions=args.repetitions, warmup=args.warmup, frames=args.frames,
                       environment={k: v for k, v in os.environ.items() if k.startswith(("MTL_", "METAL_", "DYLD_", "LMX_"))},
                       cells={})
+    if args.parent:
+        collection.update(parent=str(args.parent), parentSha256=args.parent_hash,
+                          comparison="same settings, parent A and candidate B",
+                          regressionMetric="encodeMs", regressions=[],
+                          cpuCommandScope="CPU classification; identical submission mode on both binaries")
     destination = args.out / "analysis.json"
     for workload in workloads:
         for control in controls:
             collection["cells"][workload + "/" + control] = collect_cell(args, workload, control, raw)
+            collection["complete"] = len(collection["cells"]) == len(workloads) * len(controls) and all(
+                cell["complete"] for cell in collection["cells"].values())
+            if args.parent:
+                collection["regressions"] = encode_regressions(collection["cells"])
             destination.write_text(json.dumps(collection, indent=2) + "\n")
     complete = all(cell["complete"] for cell in collection["cells"].values())
     print(f"Wrote {destination}; complete={complete}")
+    if args.parent:
+        print("encodeMs regressions: " + ", ".join(row["cell"] for row in collection["regressions"]))
     return 0 if complete else 1
 
 

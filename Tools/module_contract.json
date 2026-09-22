@@ -101,11 +101,17 @@
         "glm"
       ],
       "privateHeaders": [
-        "Source/Render/ExposureStage.h",
-        "Source/Render/BloomStage.h",
-        "Source/Render/DisplayStage.h",
-        "Source/Render/RenderGraphInternal.h",
-        "Source/Render/TemporalResolveInternal.h"
+        "Source/Render/Passes/Scene/SceneStageInternal.h",
+        "Source/Render/Passes/Exposure/ExposureStage.h",
+        "Source/Render/Passes/Bloom/BloomStage.h",
+        "Source/Render/Passes/Display/DisplayStage.h",
+        "Source/Render/Graph/RenderGraphInternal.h",
+        "Source/Render/Passes/Temporal/TemporalResolveInternal.h",
+        "Source/Render/Renderer/RendererInternal.h",
+        "Source/Render/Common/GraphResources.h",
+        "Source/Render/Common/StageSetup.h",
+        "Source/Render/Common/PacedSlots.h",
+        "Source/Render/Common/DrawEncoding.h"
       ]
     },
     "app-model": {
@@ -126,7 +132,7 @@
         "glm"
       ],
       "forbidHeaders": [
-        "Source/Render/RenderGraph.h"
+        "Source/Render/Graph/RenderGraph.h"
       ],
       "privateHeaders": []
     },

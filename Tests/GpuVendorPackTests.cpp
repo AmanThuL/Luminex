@@ -1,6 +1,6 @@
 #include "GpuTestSupport.h"
 
-#include "Render/VendorTemporalScaler.h"
+#include "Render/Passes/Temporal/VendorTemporalScaler.h"
 
 #include <array>
 

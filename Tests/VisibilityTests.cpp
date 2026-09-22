@@ -1,6 +1,6 @@
 #include "Engine/View/Camera.h"
-#include "Render/DrawSubmission.h"
-#include "Render/SceneView.h"
+#include "Render/Passes/Scene/DrawSubmission.h"
+#include "Render/Renderer/SceneView.h"
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <limits>

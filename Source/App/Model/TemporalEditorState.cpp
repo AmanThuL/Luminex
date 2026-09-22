@@ -5,7 +5,7 @@
 
 #include "App/Model/TemporalEditorState.h"
 
-#include "Render/Temporal.h"
+#include "Render/Passes/Temporal/Temporal.h"
 
 namespace lmx::app {
 

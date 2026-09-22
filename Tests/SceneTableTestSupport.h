@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Engine/Scene/Scene.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include <catch2/catch_test_macros.hpp>
 #include <deque>
 #include <unordered_map>

@@ -1,7 +1,7 @@
 #include "GpuTemporalTestSupport.h"
 
 #include "Engine/Scene/Scene.h"
-#include "Render/SceneViewBuilder.h"
+#include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 
 #include <algorithm>
