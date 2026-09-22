@@ -2,7 +2,7 @@
 /// @file SceneTableDisplay.cpp
 /// @brief Formats coherent read-only scene table diagnostics.
 //----------------------------------------------------------------------------------------------------------------------
-#include "App/Model/SceneTableDisplay.h"
+#include "App/Model/Scene/SceneTableDisplay.h"
 #include <format>
 
 namespace lmx::app {

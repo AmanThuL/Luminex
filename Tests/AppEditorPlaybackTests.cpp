@@ -1,4 +1,4 @@
-#include "App/Model/EditorPlayback.h"
+#include "App/Model/Scene/EditorPlayback.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

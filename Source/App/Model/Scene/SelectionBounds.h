@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/EditorSelection.h"
+#include "App/Model/Scene/EditorSelection.h"
 
 namespace lmx::app {
 

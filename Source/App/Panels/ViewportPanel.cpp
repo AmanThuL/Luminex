@@ -6,7 +6,7 @@
 #include "App/Panels/ViewportPanel.h"
 
 #include "App/Model/DiagnosticLegend.h"
-#include "App/Model/SelectionBounds.h"
+#include "App/Model/Scene/SelectionBounds.h"
 #include "App/Panels/ActionFeedback.h"
 #include "App/Panels/EditorStyle.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>

@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneSession.h"
 
 #include <glm/vec3.hpp>
 

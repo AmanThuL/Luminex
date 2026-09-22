@@ -1,4 +1,4 @@
-#include "App/Model/SceneTableDisplay.h"
+#include "App/Model/Scene/SceneTableDisplay.h"
 #include <catch2/catch_test_macros.hpp>
 
 //======================================================================================================================

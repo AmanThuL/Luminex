@@ -3,7 +3,7 @@
 /// @brief Implements the Scene panel's editor-local selection resolver, transitions, and rows.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/EditorSelection.h"
+#include "App/Model/Scene/EditorSelection.h"
 
 #include <algorithm>
 #include <cctype>

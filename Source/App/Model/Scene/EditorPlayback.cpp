@@ -3,7 +3,7 @@
 /// @brief Implements reversible playback snapshots and transport transitions.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "App/Model/EditorPlayback.h"
+#include "App/Model/Scene/EditorPlayback.h"
 
 #include "Core/Diagnostics/Assert.h"
 

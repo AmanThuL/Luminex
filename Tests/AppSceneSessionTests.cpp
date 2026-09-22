@@ -1,4 +1,4 @@
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "GraphTestSupport.h"
 
 #include <catch2/catch_approx.hpp>

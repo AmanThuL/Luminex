@@ -1,4 +1,4 @@
-#include "App/Model/SceneSession.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "Core/Util/Sha256.h"
 #include "Engine/Lights/LocalLightMath.h"
 #include "EngineSceneTestSupport.h"
