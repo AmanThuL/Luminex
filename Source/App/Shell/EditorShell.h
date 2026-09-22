@@ -21,7 +21,7 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "App/Model/TemporalEditorState.h"
 #include "App/Model/VisibilityDisplay.h"
-#include "App/Model/WorkspaceModel.h"
+#include "App/Model/Workspace/WorkspaceModel.h"
 #include "App/Panels/PerformancePanel.h"
 #include "App/Panels/RenderGraphPanel.h"
 #include "Engine/View/Camera.h"
