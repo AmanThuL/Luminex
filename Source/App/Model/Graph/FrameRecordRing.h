@@ -4,6 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
+#include "Core/Containers/RingBuffer.h"
 #include "Render/Graph/CompiledFrameRecord.h"
 #include <rojoRHI/RHI.h>
 
@@ -86,9 +87,7 @@ public:
     size_t size() const { return m_frames.size(); }
 
 private:
-    // Oldest first, so eviction is from the front and the newest is the back. At four entries a
-    // vector is cheaper and clearer than an index-wrapped buffer.
-    std::vector<RetainedFrame> m_frames;
+    RingBuffer<RetainedFrame> m_frames{kCapacity};
 };
 
 } // namespace lmx::app
