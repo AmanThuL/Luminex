@@ -4,7 +4,6 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/AppOptions.h"
 #include "App/Model/ConsoleModel.h"
 #include "App/Model/DynamicResolution.h"
 #include "App/Model/EditorActions.h"
@@ -16,6 +15,7 @@
 #include "App/Model/LightingDisplay.h"
 #include "App/Model/MeasurementRun.h"
 #include "App/Model/MetricsContextRevision.h"
+#include "App/Model/Options/AppOptions.h"
 #include "App/Model/PerformanceModel.h"
 #include "App/Model/SceneLoadState.h"
 #include "App/Model/SceneSession.h"
