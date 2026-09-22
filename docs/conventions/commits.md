@@ -5,8 +5,8 @@
 - Use `<scope>: <imperative outcome>` in English. Keep the subject at 60 characters when practical,
   never over 72, and omit the trailing period. Scopes include `rhi`, `metal`, `render`, `shader`,
   `scene`, `asset`, `engine`, `editor`, `app`, `core`, `tool`, `build`, `ci`, `docs`, and `test`.
-- Make one explainable behavior or constraint one commit. Keep its implementation, tests, and nearby
-  documentation together. Do not split work to manufacture commit count or combine unrelated files
+- On a development branch, make one explainable behavior or constraint one commit. Keep its implementation,
+  tests, and nearby documentation together. Do not split work to manufacture commit count or combine unrelated files
   into a cleanup wave.
 - A body, when useful, records the problem, decision, tradeoff, and durable reference. Validation
   details belong in the pull request unless they are essential to understanding the decision.
@@ -15,19 +15,34 @@
 - The commit author's configured personal identity may appear only in Git author metadata. It must
   not appear in the subject, body, trailers, repository content, URLs, examples, or home-directory
   paths. Do not add AI co-author trailers or any other tool identity.
-- Use local `fixup!` commits while iterating and autosquash them before publication. Published `main`
-  contains no WIP or fixup commits and is never rewritten after the M3.1 cutover.
+- Use local `fixup!` commits while iterating and autosquash them before review. Published `main`
+  contains no WIP or fixup commits. Routine integration never rewrites published history; the
+  owner-authorized [R3 history consolidation](../guides/r3-history-consolidation.md) is a one-time exception.
 - Source changes pass formatting, the relevant tests, and a build. Pull requests pass the full build,
   test, format, and policy suite; renderer/RHI/shader changes also provide appropriate GPU validation,
   capture, image, or performance evidence.
 
 ## Branches and integration
 
-- `main` is protected, always buildable, and never force-pushed after the baseline cutover. Merge
-  commits and direct pushes are disabled.
-- Use one short-lived outcome branch: `feat/<outcome>`, `fix/<outcome>`, `docs/<outcome>`, or
-  `spike/<question>`. Do not keep `develop`, milestone-wide, or release branches without multiple
-  supported release lines.
-- Rebase before review. Rebase-merge 2–5 independently useful green commits; squash a single logical
-  change or local trial-and-error. A spike records its result, then a clean implementation branch
-  carries accepted production work.
+- `main` is protected and always buildable. Routine direct pushes, force pushes, merge commits and
+  rebase merges are disabled. GitHub permits squash merge only; restore protection immediately
+  after the one-time history consolidation linked above.
+- Use one short-lived outcome branch: `codex/<outcome>`, `feat/<outcome>`, `fix/<outcome>`,
+  `docs/<outcome>`, or `spike/<question>`. Do not keep `develop` or release branches without
+  multiple supported release lines.
+- Default to one squash commit per milestone. Keep design, implementation, validation and closure
+  together in the final integration PR where practical. Fine-grained development commits and
+  per-change gates remain useful on the branch; they do not require rebase merge onto `main`.
+- For a milestone developed in stages, prefer one final integration PR. Intermediate reviews and
+  evidence may use temporary branches or draft PRs without merging each stage into `main`.
+  If independent fixes or separately shipped stages need earlier integration, separate squash PRs
+  are acceptable; do not delay a necessary fix or routinely rewrite `main` to force an exact count.
+- Refresh the branch against current `main` before final review and rerun affected gates. Merge
+  with `gh pr merge --squash` (add `--auto` when waiting for CI), never `--rebase` or `--merge`.
+  Explicitly choose a policy-compliant squash subject/body; GitHub's defaults use the PR title
+  with an empty body. PR titles follow the commit subject convention above.
+- Preserve named validation revisions before deleting development branches: keep an immutable
+  evidence tag or a verified archived bundle and link its recovery location from the validation
+  record. Record the final squash SHA and verify its file tree against the validated branch tip;
+  rebasing or squashing does not turn failed gates or scoped exceptions into passing results.
+- A spike records its result, then a clean implementation branch carries accepted production work.
