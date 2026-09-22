@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <format>
+#include <utility>
 
 namespace lmx::app {
 
@@ -21,13 +22,19 @@ void ConsoleLog::append(ConsoleSeverity severity, int64_t timestampMilliseconds,
         }
     }
     std::scoped_lock lock(m_mutex);
-    m_entries.push_back({m_nextSequence++, timestampMilliseconds, severity,
-                         std::string(message.substr(0, count)), truncated});
+    ConsoleEntry entry{m_nextSequence++, timestampMilliseconds, severity,
+                       std::string(message.substr(0, count)), truncated};
+    if (m_entries.size() == kMaxEntries) {
+        m_payloadBytes -= m_entries[0].message.size();
+        m_entries.popOldest();
+        ++m_evictedEntries;
+    }
+    m_entries.push(std::move(entry));
     m_payloadBytes += count;
     m_truncatedMessages += truncated ? 1 : 0;
-    while (m_entries.size() > kMaxEntries || m_payloadBytes > kMaxPayloadBytes) {
-        m_payloadBytes -= m_entries.front().message.size();
-        m_entries.pop_front();
+    while (m_payloadBytes > kMaxPayloadBytes) {
+        m_payloadBytes -= m_entries[0].message.size();
+        m_entries.popOldest();
         ++m_evictedEntries;
     }
     ++m_revision;

@@ -5,9 +5,10 @@
 
 #pragma once
 
+#include "Core/Containers/RingBuffer.h"
+
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -71,7 +72,7 @@ private:
     ConsoleSnapshot snapshotLocked() const;
 
     mutable std::mutex m_mutex;
-    std::deque<ConsoleEntry> m_entries;
+    RingBuffer<ConsoleEntry> m_entries{kMaxEntries};
     uint64_t m_revision = 0;
     uint64_t m_nextSequence = 1;
     size_t m_payloadBytes = 0;
