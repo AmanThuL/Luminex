@@ -29,13 +29,13 @@ void nextControl(float width) {
 }
 
 //======================================================================================================================
-ImVec4 severityColor(ConsoleSeverity severity) {
-    if (severity >= ConsoleSeverity::Error)
+ImVec4 severityColor(log::Level severity) {
+    if (severity >= log::Level::Error)
         return {1.0f, 0.48f, 0.45f, 1.0f};
-    if (severity == ConsoleSeverity::Warning)
+    if (severity == log::Level::Warning)
         return editor_style::kWarning;
-    return severity < ConsoleSeverity::Info ? editor_style::kMuted
-                                            : ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    return severity < log::Level::Info ? editor_style::kMuted
+                                       : ImGui::GetStyleColorVec4(ImGuiCol_Text);
 }
 
 } // namespace
@@ -89,7 +89,7 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
         ImGui::SetNextItemWidth(
             std::min(editor_style::scaled(180.0f), ImGui::GetContentRegionAvail().x));
         if (ImGui::Combo("##severity", &severity, kSeverityNames, 6)) {
-            model.filter.minimumSeverity = static_cast<ConsoleSeverity>(severity);
+            model.filter.minimumSeverity = static_cast<log::Level>(severity);
         }
         editorTooltip("Show this severity and more important messages. Hidden messages remain in "
                       "bounded storage.");

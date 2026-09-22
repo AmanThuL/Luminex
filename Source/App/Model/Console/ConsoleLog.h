@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Core/Containers/RingBuffer.h"
+#include "Core/Diagnostics/LogSink.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -17,21 +18,11 @@
 
 namespace lmx::app {
 
-/// Increasing log importance, independent of any logging library or UI.
-enum class ConsoleSeverity : uint8_t {
-    Trace,    ///< Detailed trace.
-    Debug,    ///< Debugging detail.
-    Info,     ///< Informational event.
-    Warning,  ///< Recoverable warning.
-    Error,    ///< Failed operation.
-    Critical, ///< Critical failure.
-};
-
 /// One retained log message; text is owned and never exceeds the per-message payload limit.
 struct ConsoleEntry {
     uint64_t sequence = 0;             ///< Monotonic ingestion identity, retained across Clear.
     int64_t timestampMilliseconds = 0; ///< UTC milliseconds since the Unix epoch.
-    ConsoleSeverity severity = ConsoleSeverity::Info; ///< Message importance.
+    log::Level severity = log::Level::Info; ///< Message importance.
     std::string message;    ///< UTF-8 log payload, truncated at a code-point boundary when needed.
     bool truncated = false; ///< Original payload exceeded the per-message limit.
 };
@@ -59,7 +50,7 @@ public:
 
     /// Copies one message, truncates it if needed, then evicts oldest entries until both limits
     /// hold.
-    void append(ConsoleSeverity severity, int64_t timestampMilliseconds, std::string_view message);
+    void append(log::Level severity, int64_t timestampMilliseconds, std::string_view message);
     /// Returns an owned coherent snapshot; may be called from any thread.
     ConsoleSnapshot snapshot() const;
     /// Avoids copying payloads when the caller already has the current revision.
@@ -81,7 +72,7 @@ private:
 };
 
 /// Stable readable severity text for display and clipboard output.
-std::string_view consoleSeverityName(ConsoleSeverity severity);
+std::string_view consoleSeverityName(log::Level severity);
 /// Formats UTC time of day with millisecond precision; timestamps are Unix epoch milliseconds.
 std::string consoleTimestamp(int64_t milliseconds);
 
