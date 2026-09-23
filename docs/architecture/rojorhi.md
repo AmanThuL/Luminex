@@ -3,10 +3,11 @@
 **Status**: Implemented
 
 RojoRHI is Luminex's rendering hardware interface: a dependency-free API over Metal 4, with D3D12
-as a design target. It is a repository-root component rather than a `Source/` unit. Engine and
-Render link it directly, outside the Core-based stack; which Luminex units may include which
-RojoRHI headers is the `externals` contract in [modules](../conventions/modules.md) (Asset and
-TextureBake see only `Format.h` and `TextureDesc.h`). RojoRHI's own [architecture
+as a design target. It is a repository-root component rather than a `Source/` unit. Engine,
+Scenes, Render and the layers above them link it directly, outside the Core-based stack; which
+Luminex units may include which RojoRHI headers is the `externals` contract in
+[modules](../conventions/modules.md) (Asset and TextureBake see only `Format.h` and
+`TextureDesc.h`). RojoRHI's own [architecture
 page](../../RojoRHI/docs/architecture/overview.md) owns its directory layout, its standalone
 `xmake -P RojoRHI` build, and its private base that replaces a Core dependency. This page covers
 the Luminex side of the boundary, and the parts of the public interface and Metal 4 backend that
@@ -97,11 +98,11 @@ dependency on Dear ImGui; the core RHI does not inherit any of them
 ## Luminex-side integration
 
 RojoRHI has no dependency on Core, and Core has none on RojoRHI (its private base is on RojoRHI's
-page). Diagnostics leave
-through `rojoRHI/Message.h`'s severity/text callback, which writes to stderr when unset
-([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)). `Render/Common/RhiLog`
-installs the process-wide sink and forwards each message into spdlog and the Console, mapping
-Info, Warning, and Error onto the matching project log level, for App and Luminex's `Tests` binary.
+page). Diagnostics leave through `rojoRHI/Message.h`'s severity/text callback, which writes to
+stderr when unset ([RojoRHI ADR 0003](../../RojoRHI/docs/decisions/0003-thin-rhi.md)).
+`Render/Common/RhiLog` installs the process-wide sink and forwards each message into spdlog and the
+Console, mapping Info, Warning, and Error onto the matching project log level, for App and
+Luminex's `Tests` binary.
 
 ## Tests
 

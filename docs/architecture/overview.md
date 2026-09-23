@@ -21,7 +21,6 @@ Render   -> AppModel
 Scenes   -> AppModel
 AppModel -> App
 Scenes   -> App
-Scenes   -> Tests
 RojoRHI  -> Engine   (independent root component, no dependency on Core)
 RojoRHI  -> Render
 
@@ -61,9 +60,10 @@ reconstruction, exposure/bloom/display, and the editor-only selection outline.
 shell, panels, and frame loops under `Source/App` outside `Model`.
 
 [RojoRHI](rojorhi.md) is the repository-root RHI component: a dependency-free API over Metal 4,
-mounted as a git submodule of the public `rojo-rhi` repository. Engine and Render link it directly,
-outside the Core-based stack; `RojoRHI/docs/architecture/overview.md`, inside the submodule, owns
-its internal layout and standalone build. [RojoRHI](rojorhi.md) covers the Luminex side.
+mounted as a git submodule of the public `rojo-rhi` repository. Engine, Scenes, Render and the
+layers above them link it directly, outside the Core-based stack. That page covers the Luminex
+side; `RojoRHI/docs/architecture/overview.md`, inside the submodule, owns its internal layout and
+standalone build.
 
 [Frame walkthrough](frame-pipeline.md) orders the passes of one rendered frame, from `beginFrame`
 through presentation.
