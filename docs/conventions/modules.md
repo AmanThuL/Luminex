@@ -105,6 +105,24 @@ App and Tests link AppModel. Tests compiles only its own C++ sources, alongside 
 Render owns shared FrameDeclaration graph execution; App retains its returned record. AppModel
 must not include RenderGraph.h directly or transitively; graph observers use CompiledFrameRecord.h.
 
+### Test placement
+
+`Tests/` mirrors `Source/` one level down, including `Render/Passes/<family>/` and
+`App/Model/<feature>/`; `Engine/Asset/` stays one folder. The subject of a case is the Source
+symbol whose behaviour it asserts, not the fixtures it builds, and a file sits in its subject's
+folder. In a file whose cases assert several subjects, a subject group of three or more cases
+splits into its own file; smaller groups stay in the file of the largest group, and ties go to
+the group of the file's first case. The [R3.7 record](../milestones/r/r3.7.md#cases-outside-their-subjects-folder)
+lists the cases that stay outside their subject's folder.
+
+A GPU case that renders a full frame belongs to
+the pass family whose output it asserts; `Render/Renderer/` holds only cases about `Renderer`'s
+own composition, not about a pass family it composes. A case whose subject is RojoRHI stays
+beside its Luminex consumer, since a Luminex commit cannot move a case into `rojo-rhi`.
+`Tests/xmake.lua` adds `Tests/` itself as a private include directory and compiles every `.cpp`
+under it; shared test helpers live in `Tests/Support/`, the only folder that holds headers, each
+listed by the contract's `privateHeaders` for the `tests` unit and included as `Support/<Name>.h`.
+
 ## Ownership precedence
 
 Ownership comes from one explicit map from unit to paths, never from inference:
