@@ -6,6 +6,7 @@
 #include <glm/gtc/epsilon.hpp>
 
 #include "Support/BrdfOracle.h"
+#include "Support/EngineTestSupport.h"
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Texture/Ibl.h"
@@ -17,14 +18,10 @@
 #include <cmath>
 
 using namespace lmx::render;
+using lmx::test::near3;
 
 namespace {
 constexpr float kEps = 1e-5f;
-
-//======================================================================================================================
-bool near3(const glm::vec3& a, const glm::vec3& b) {
-    return glm::all(glm::epsilonEqual(a, b, kEps));
-}
 
 //======================================================================================================================
 glm::vec3 riggedLightDir() {
@@ -69,8 +66,8 @@ TEST_CASE("default camera looks down -Z", "[render]") {
     lmx::engine::Camera camera;
     camera.yaw = 0.0f;
     camera.pitch = 0.0f;
-    REQUIRE(near3(camera.forward(), {0.0f, 0.0f, -1.0f}));
-    REQUIRE(near3(camera.right(), {1.0f, 0.0f, 0.0f}));
+    REQUIRE(near3(camera.forward(), {0.0f, 0.0f, -1.0f}, kEps));
+    REQUIRE(near3(camera.right(), {1.0f, 0.0f, 0.0f}, kEps));
 }
 
 //======================================================================================================================
@@ -81,7 +78,7 @@ TEST_CASE("view matrix moves the world opposite the camera", "[render]") {
     camera.pitch = 0.0f;
     // A point 1 unit in front of the camera lands 1 unit down the view -Z axis.
     const glm::vec4 p = camera.viewMatrix() * glm::vec4(0.0f, 0.0f, 4.0f, 1.0f);
-    REQUIRE(near3(glm::vec3(p), {0.0f, 0.0f, -1.0f}));
+    REQUIRE(near3(glm::vec3(p), {0.0f, 0.0f, -1.0f}, kEps));
 }
 
 //======================================================================================================================
@@ -131,9 +128,9 @@ TEST_CASE("move is camera-relative on the horizontal plane", "[render]") {
     camera.yaw = glm::half_pi<float>(); // facing +X
     camera.pitch = 0.0f;
     camera.move({0.0f, 0.0f, 2.0f}); // forward
-    REQUIRE(near3(camera.position, {2.0f, 0.0f, 0.0f}));
+    REQUIRE(near3(camera.position, {2.0f, 0.0f, 0.0f}, kEps));
     camera.move({1.0f, 0.0f, 0.0f}); // right of +X-facing = -Z... verify via right()
-    REQUIRE(near3(camera.position, glm::vec3{2.0f, 0.0f, 0.0f} + camera.right()));
+    REQUIRE(near3(camera.position, glm::vec3{2.0f, 0.0f, 0.0f} + camera.right(), kEps));
 }
 
 //======================================================================================================================
@@ -251,9 +248,9 @@ TEST_CASE("fromGeo copies every Engine vertex field verbatim", "[render]") {
     for (size_t i = 0; i < data.vertices.size(); ++i) {
         const lmx::engine::Vertex& out = data.vertices[i];
         const lmx::asset::VertexPNTU& in = geo.vertices[i];
-        REQUIRE(near3({out.px, out.py, out.pz}, {in.px, in.py, in.pz}));
-        REQUIRE(near3({out.nx, out.ny, out.nz}, {in.nx, in.ny, in.nz}));
-        REQUIRE(near3({out.tx, out.ty, out.tz}, {in.tx, in.ty, in.tz}));
+        REQUIRE(near3({out.px, out.py, out.pz}, {in.px, in.py, in.pz}, kEps));
+        REQUIRE(near3({out.nx, out.ny, out.nz}, {in.nx, in.ny, in.nz}, kEps));
+        REQUIRE(near3({out.tx, out.ty, out.tz}, {in.tx, in.ty, in.tz}, kEps));
         REQUIRE(out.tw == in.tw);
         REQUIRE(out.u == in.u);
         REQUIRE(out.v == in.v);
@@ -270,8 +267,8 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
         lo = glm::min(lo, {v.px, v.py, v.pz});
         hi = glm::max(hi, {v.px, v.py, v.pz});
     }
-    REQUIRE(near3(lo, {-0.5f, -0.5f, -0.5f}));
-    REQUIRE(near3(hi, {0.5f, 0.5f, 0.5f}));
+    REQUIRE(near3(lo, {-0.5f, -0.5f, -0.5f}, kEps));
+    REQUIRE(near3(hi, {0.5f, 0.5f, 0.5f}, kEps));
     // Every triangle's geometric normal must agree with its vertices' stored normal --
     // this pins both winding (CCW from outside) and per-face normals in one property.
     for (size_t i = 0; i < cube.indices.size(); i += 3) {
@@ -288,7 +285,7 @@ TEST_CASE("cube mesh has 24 vertices, 36 CCW indices, unit bounds", "[render]") 
     // so the tangent is a fixed placeholder rather than a per-face frame, and the uv is 0.
     // Pinned so that a future generator change has to say so out loud.
     for (const lmx::engine::Vertex& v : cube.vertices) {
-        REQUIRE(near3({v.tx, v.ty, v.tz}, {1.0f, 0.0f, 0.0f}));
+        REQUIRE(near3({v.tx, v.ty, v.tz}, {1.0f, 0.0f, 0.0f}, kEps));
         REQUIRE(v.tw == 1.0f);
         REQUIRE(v.u == 0.0f);
         REQUIRE(v.v == 0.0f);
@@ -302,10 +299,10 @@ TEST_CASE("plane mesh spans its half extent with +Y normals", "[render]") {
     REQUIRE(plane.indices.size() == 6);
     for (const lmx::engine::Vertex& v : plane.vertices) {
         REQUIRE(v.py == 0.0f);
-        REQUIRE(near3({v.nx, v.ny, v.nz}, {0.0f, 1.0f, 0.0f}));
+        REQUIRE(near3({v.nx, v.ny, v.nz}, {0.0f, 1.0f, 0.0f}, kEps));
         REQUIRE(std::abs(v.px) == Catch::Approx(5.0f));
         REQUIRE(std::abs(v.pz) == Catch::Approx(5.0f));
-        REQUIRE(near3({v.tx, v.ty, v.tz}, {1.0f, 0.0f, 0.0f}));
+        REQUIRE(near3({v.tx, v.ty, v.tz}, {1.0f, 0.0f, 0.0f}, kEps));
         REQUIRE(v.tw == 1.0f);
         REQUIRE(v.u == 0.0f);
         REQUIRE(v.v == 0.0f);

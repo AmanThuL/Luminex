@@ -13,7 +13,6 @@
 namespace lmx::test {
 
 namespace {
-constexpr float kEpsilon = 1e-4f;
 
 //======================================================================================================================
 void writeFile(const std::filesystem::path& path, std::string_view text) {
@@ -30,8 +29,8 @@ void appendBytes(std::vector<uint8_t>& buf, const void* data, size_t size) {
 } // namespace
 
 //======================================================================================================================
-bool near3(const glm::vec3& a, const glm::vec3& b) {
-    return glm::all(glm::epsilonEqual(a, b, kEpsilon));
+bool near3(const glm::vec3& a, const glm::vec3& b, float epsilon) {
+    return glm::all(glm::epsilonEqual(a, b, epsilon));
 }
 
 //======================================================================================================================

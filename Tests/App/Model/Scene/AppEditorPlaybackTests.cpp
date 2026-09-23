@@ -1,16 +1,17 @@
 #include "App/Model/Scene/EditorPlayback.h"
+#include "Support/EngineTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
-#include <cmath>
 
 namespace {
 using lmx::app::EditorPlayback;
 using lmx::app::PlaybackState;
 using lmx::app::SceneActivationMotion;
 using lmx::app::SceneSession;
+using lmx::test::near3;
 namespace asset = lmx::asset;
 namespace render = lmx::render;
 namespace engine = lmx::engine;
@@ -51,13 +52,6 @@ engine::Scene playbackScene() {
                             .nearZ = 0.25f,
                             .farZ = 500};
     return result;
-}
-
-//======================================================================================================================
-bool near3(const glm::vec3& a, const glm::vec3& b) {
-    constexpr float kMargin = 1e-4f;
-    return std::abs(a.x - b.x) <= kMargin && std::abs(a.y - b.y) <= kMargin &&
-           std::abs(a.z - b.z) <= kMargin;
 }
 
 //======================================================================================================================

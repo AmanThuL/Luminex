@@ -12,7 +12,7 @@
 
 namespace lmx::test {
 
-[[nodiscard]] bool near3(const glm::vec3& a, const glm::vec3& b);
+[[nodiscard]] bool near3(const glm::vec3& a, const glm::vec3& b, float epsilon = 1e-4f);
 [[nodiscard]] std::optional<std::filesystem::path> findRepoAsset(std::string_view relativePath);
 
 // The uploaded IBL set of a uniform environment, generated through the production path rather than
