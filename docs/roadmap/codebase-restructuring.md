@@ -242,7 +242,7 @@ workspace schema 3 files load unchanged; AppModel still links no ImGui, SDL or M
 ### R3.7 — Tests and architecture pages
 
 **Deliver:**
-`Tests/{Core,Engine/{Asset,Scene},Scenes,Render/<family>,App/<feature>,Tools,Support,Golden}` with
+`Tests/` mirroring `Source/` to `Render/Passes/<family>` and `App/Model/<feature>`, plus `Tools`, `Support` and `Golden`, as the [record](../milestones/r/r3.7.md) tabulates, with
 CPU and GPU cases of one family side by side, since tags and not folders select GPU runs; tags, case
 names, run filters and Luminex's checkpoint A filter unchanged. Test helpers defined more than once
 become one in `Support/`; the shader oracles stay independent of Core.
