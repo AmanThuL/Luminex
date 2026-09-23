@@ -1,14 +1,16 @@
 # R3 history consolidation
 
-**Status**: Accepted
+**Status**: Closed (historical record; current mapping in the [history guide](history-consolidation.md))
 
 On 2026-09-23 the owner authorized a one-time consolidation of Luminex's published R3.1–R3.6
 history, to be published after both R3.6 PRs and their evidence custody completed. The target is
 one commit per milestone; routine future integration uses [squash merge](../conventions/commits.md).
-R2 and all earlier history remain unchanged. RojoRHI's repository and submodule commit remain
-unchanged. This authorization is the sole exception to the normal prohibition on rewriting `main`.
+This first consolidation left R2 and earlier history unchanged. RojoRHI's repository and submodule
+commit were unchanged. The owner later authorized the broader consolidation and message revision
+recorded in the [current history guide](history-consolidation.md). The hashes below identify this
+first publication; they remain available through its archive and the second publication's archive.
 
-## Canonical milestone commits
+## First publication milestone commits
 
 The unchanged parent is `d7d43edf10e82fc8c89c5cc9a476f85b43f1b07a` (the R2.4 closure).
 Each replacement commit uses exactly its original milestone's final Git tree, including file
@@ -16,7 +18,7 @@ modes, documentation and the submodule gitlink. The 214 original commits become 
 R3.2 includes the format-gate follow-up (#47); R3.5 and R3.6 each combine their two integration PRs.
 The integration-policy and recovery documents are a separate documentation commit after R3.6.
 
-| Milestone | Original PRs | Original commits | Original end | Canonical end |
+| Milestone | Original PRs | Original commits | Original end | First publication end |
 |---|---|---:|---|---|
 | R3.1 | #46 | 27 | `d2a0e55b2eb72d40c3f6fec23b318182ed4470a3` | `f9172dbd27f0b47f310f6fee87ebcf98c80ea287` |
 | R3.2 | #47, #48 | 28 | `75dd5396768fff5407ae17cec3f90a67bff00222` | `6b189c812c368f9621f24aef21a64df68832d7ca` |

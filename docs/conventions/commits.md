@@ -8,6 +8,11 @@
 - On a development branch, make one explainable behavior or constraint one commit. Keep its implementation,
   tests, and nearby documentation together. Do not split work to manufacture commit count or combine unrelated files
   into a cleanup wave.
+- For a milestone integration, add its identifier to the subject, for example
+  `render: add native temporal reconstruction (M6.2)`. Keep independent fixes and CI changes separate.
+- Write the final message from the resulting behavior. Do not concatenate development commit logs
+  or PR checklists. Use concrete verbs and plain technical prose; remove repeated summaries and
+  promotional claims. Retain the facts, failed gates and limits that explain the result.
 - A body, when useful, records the problem, decision, tradeoff, and durable reference. Validation
   details belong in the pull request unless they are essential to understanding the decision.
 - Commit messages describe engineering outcomes, never execution bookkeeping. Do not mention work
@@ -17,7 +22,8 @@
   paths. Do not add AI co-author trailers or any other tool identity.
 - Use local `fixup!` commits while iterating and autosquash them before review. Published `main`
   contains no WIP or fixup commits. Routine integration never rewrites published history; the
-  owner-authorized [R3 history consolidation](../guides/r3-history-consolidation.md) is a one-time exception.
+  two owner-authorized consolidations on 2026-09-23 are recorded in the
+  [history recovery guide](../guides/history-consolidation.md). They do not authorize further rewrites.
 - Source changes pass formatting, the relevant tests, and a build. Pull requests pass the full build,
   test, format, and policy suite; renderer/RHI/shader changes also provide appropriate GPU validation,
   capture, image, or performance evidence.
@@ -26,7 +32,7 @@
 
 - `main` is protected and always buildable. Routine direct pushes, force pushes, merge commits and
   rebase merges are disabled. GitHub permits squash merge only; restore protection immediately
-  after the one-time history consolidation linked above.
+  after any separately authorized recovery operation.
 - Use one short-lived outcome branch: `codex/<outcome>`, `feat/<outcome>`, `fix/<outcome>`,
   `docs/<outcome>`, or `spike/<question>`. Do not keep `develop` or release branches without
   multiple supported release lines.
