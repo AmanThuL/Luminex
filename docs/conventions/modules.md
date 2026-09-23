@@ -84,10 +84,11 @@ Rules the entry carries:
   target without failing the target-closure check, which is how the standalone build stays
   standalone. `Asset`'s `forbidUndefined: rojoRHI::` still runs under `--link`.
 
-`tests` takes no header out of the component's own suite: the repository suite keeps its own copy
-of the GPU bootstrap, merged into `Tests/GpuTestSupport.h` alongside its Asset, Render and Engine
-helpers, so no edge reaches `RojoRHI/Tests`. The two test binaries partition the suite: a case lives
-in exactly one of them, and `RojoRHITests` links the `RojoRHI` target and no other project library.
+`tests` takes no header out of the component's own suite: the repository suite keeps its own copy of
+the GPU bootstrap, merged into `Tests/Support/GpuTestSupport.h` alongside its Asset, Render and
+Engine helpers, so no edge reaches `RojoRHI/Tests`. The two test binaries partition the suite: a
+case lives in exactly one of them, and `RojoRHITests` links the `RojoRHI` target and no other
+project library.
 
 ### Directory ownership
 

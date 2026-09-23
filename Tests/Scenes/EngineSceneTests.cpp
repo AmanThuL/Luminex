@@ -120,9 +120,9 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 // levels above 0 as undefined GPU memory (a minified sample would otherwise read stale VRAM), so
 // this proves the two paths agree: load Helmet normally (baked DDS present), then again with
 // Baked/ renamed aside (forcing the fallback), and require the two textures' level-1 mips are
-// byte-identical -- compared as hashes so a mismatch stays diagnosable rather than asking Catch2
-// to print a 16KB byte vector (see Tests/EngineAssetTests.cpp's determinism test for the same
-// reasoning). Both loads start from the same stb_image-decoded JPEG bytes and run through the
+// byte-identical -- compared as hashes so a mismatch stays diagnosable rather than asking Catch2 to
+// print a 16KB byte vector (see Tests/Engine/Asset/EngineAssetTests.cpp's determinism test for the
+// same reasoning). Both loads start from the same stb_image-decoded JPEG bytes and run through the
 // same bakeMips code (Source/Engine/Asset/Texture/TextureBake.h), so equality is exact, not
 // approximate.
 TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offline bake would",

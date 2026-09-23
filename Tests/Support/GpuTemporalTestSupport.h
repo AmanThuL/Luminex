@@ -33,7 +33,8 @@ using lmx::test::FixtureSceneView;
 using lmx::test::goldenPath;
 using lmx::test::requireMatchesGolden;
 
-// TemporalLab's deliberately static object, at the position Tests/SceneTemporalLabTests.cpp pins.
+// TemporalLab's deliberately static object, at the position
+// Tests/Scenes/SceneTemporalLabTests.cpp pins.
 [[maybe_unused]] constexpr glm::vec3 kReferenceCubeCenter{3.0f, 1.0f, 0.0f};
 
 //======================================================================================================================

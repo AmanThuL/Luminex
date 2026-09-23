@@ -154,13 +154,13 @@ TEST_CASE("the scene target holds radiance above 1.0 and exposure scales it exac
 
 //======================================================================================================================
 // Auto-exposure's cross-frame read through the real Renderer graph -- not a kernel dispatched in
-// isolation (Tests/GpuExposureBloomTests.cpp covers the exact kernel oracle) but the actual scene
-// pass over two command buffers kept in flight together. Frame 1 seeds exp2(manual EV), shades,
-// meters, and resolves; frame 2 is submitted immediately, without waitIdle, and shades from frame
-// 1's result. Waiting only after both submissions is what exercises the explicit cross-frame
-// producer barrier instead of accidentally serialising the test on the CPU. The whole loop has no
-// CPU readback; after retirement the final target must contain a finite positive pre-exposed value,
-// while Metal validation checks the access itself is hazard-free.
+// isolation (Tests/Render/Passes/Exposure/GpuExposureBloomTests.cpp covers the exact kernel oracle)
+// but the actual scene pass over two command buffers kept in flight together. Frame 1 seeds
+// exp2(manual EV), shades, meters, and resolves; frame 2 is submitted immediately, without
+// waitIdle, and shades from frame 1's result. Waiting only after both submissions is what exercises
+// the explicit cross-frame producer barrier instead of accidentally serialising the test on the
+// CPU. The whole loop has no CPU readback; after retirement the final target must contain a finite
+// positive pre-exposed value, while Metal validation checks the access itself is hazard-free.
 TEST_CASE("auto exposure applies through the real scene pass with no CPU readback", "[gpu]") {
     using namespace rojoRHI;
 

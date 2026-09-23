@@ -1,8 +1,8 @@
-// Test-only oracle for Shaders/Common/Lighting.slang's ComputePunctualLight: one thread per
-// sample, evaluating the shipped function on a host-supplied light row and surface and writing the
+// Test-only oracle for Shaders/Common/Lighting.slang's ComputePunctualLight: one thread per sample,
+// evaluating the shipped function on a host-supplied light row and surface and writing the
 // scene-linear result straight back. Nothing here reimplements the light model -- the point is to
-// run the production function and let Tests/GpuLocalLightTests.cpp hold it against
-// Source/Engine/Lights/LocalLightMath.cpp's CPU mirror.
+// run the production function and let Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp hold
+// it against Source/Engine/Lights/LocalLightMath.cpp's CPU mirror.
 //
 // The math mode is the file default, which is the mode the scene pass compiles under, so the
 // agreement this measures is the agreement the renderer will actually have.
@@ -10,8 +10,9 @@
 import Lighting;
 import SceneTables;
 
-// Mirrors the PunctualSample struct in Tests/GpuLocalLightTests.cpp. Every float3 is followed by a
-// scalar so the structured-buffer stride is the 16-byte-aligned layout both sides agree on.
+// Mirrors the PunctualSample struct in Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp.
+// Every float3 is followed by a scalar so the structured-buffer stride is the 16-byte-aligned
+// layout both sides agree on.
 struct PunctualSample
 {
     LightRow light;

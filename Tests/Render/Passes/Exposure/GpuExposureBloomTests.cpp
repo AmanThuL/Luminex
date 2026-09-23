@@ -405,12 +405,12 @@ TEST_CASE("auto exposure converges to the CPU-predicted target after one frame",
 // spec 9's four reset triggers -- first frame, scene switch, auto-exposure enable, and resize --
 // all resolve to the same GPU work in Renderer::declarePasses whenever EditorShell's
 // shouldResetExposure() (App/Model/Rendering/Settings/ExposureReset.h,
-// Tests/AppExposureResetTests.cpp) says a reset is pending: an ordinary computeExposureSeed
-// dispatch that writes exp2(manualEV) into the persistent exposure buffer, no CPU readback
-// involved, and no reason to run the same kernel four times over
-// -- which trigger fired is a CPU-only decision this test does not need to remake. What belongs
-// here is the one thing shouldResetExposure()'s unit tests cannot cover: that the kernel a reset
-// actually dispatches does the right GPU-side thing with the seed value it is given.
+// Tests/App/Model/Rendering/Settings/AppExposureResetTests.cpp) says a reset is pending: an
+// ordinary computeExposureSeed dispatch that writes exp2(manualEV) into the persistent exposure
+// buffer, no CPU readback involved, and no reason to run the same kernel four times over -- which
+// trigger fired is a CPU-only decision this test does not need to remake. What belongs here is the
+// one thing shouldResetExposure()'s unit tests cannot cover: that the kernel a reset actually
+// dispatches does the right GPU-side thing with the seed value it is given.
 TEST_CASE("the exposure seed kernel writes exp2(manual EV) when a reset is applied", "[gpu]") {
     auto device = createDevice();
     INFO(errorOf(device));

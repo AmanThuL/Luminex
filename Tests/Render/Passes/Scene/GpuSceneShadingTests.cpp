@@ -10,8 +10,8 @@ using lmx::test::FixtureSceneView;
 
 //======================================================================================================================
 // The exit gate on the reversed projection: not that its matrix has the entries it should, which
-// Tests/RenderTests.cpp pins, but that the number a real frame leaves in the depth buffer inverts
-// back to the distance the geometry actually sits at.
+// Tests/Engine/View/EngineCameraTests.cpp pins, but that the number a real frame leaves in the
+// depth buffer inverts back to the distance the geometry actually sits at.
 //
 // The projection emits clip.z = nearZ and clip.w = -z_view, so a fragment stores
 // d = nearZ / (-z_view) and the inverse is
@@ -153,10 +153,10 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 // The environment is built through the production generators on a constant white cube, so this
 // exercises the same irradiance convolution, prefiltered chain and RG16Float DFG table a real scene
 // carries; both generators reproduce a constant environment exactly at every roughness
-// (Source/Engine/Asset/Texture/Ibl.h, pinned in Tests/EngineIblTests.cpp), so the expected reading
-// is 1.0 with no integration error folded into it. Lights are off and exposure is 0, which leaves
-// the image-based terms as the entire signal, and the HDR target is read directly so no tone map
-// stands in the way.
+// (Source/Engine/Asset/Texture/Ibl.h, pinned in Tests/Engine/Asset/EngineIblTests.cpp), so the
+// expected reading is 1.0 with no integration error folded into it. Lights are off and exposure is
+// 0, which leaves the image-based terms as the entire signal, and the HDR target is read directly
+// so no tone map stands in the way.
 //
 // The bound is derived from the quantization chain rather than chosen. E = 1.0 is exact in binary16
 // and survives the cube upload unchanged; the DFG table's own half-precision error cancels
@@ -168,8 +168,8 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
 //
 // Only the dielectric and conductor rows are held to that equality. The rows between them are a
 // blend of two materials rather than a material, so no furnace closes there (see
-// Tests/RenderTests.cpp's furnace case); what they must still honour is that nothing creates
-// energy, which is asserted across the whole grid.
+// Tests/Render/Passes/Scene/RenderBrdfTests.cpp's furnace case); what they must still honour is
+// that nothing creates energy, which is asserted across the whole grid.
 TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu]") {
     using namespace rojoRHI;
 
@@ -271,8 +271,8 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
 // the probe measures the analytic lobe alone -- the image-based half of the model is what the
 // furnace case above measures, and separating them means a failure here names which one broke.
 //
-// The reference is Tests/BrdfOracle.h, a CPU mirror written from the same published formulations
-// rather than transliterated from the shader.
+// The reference is Tests/Support/BrdfOracle.h, a CPU mirror written from the same published
+// formulations rather than transliterated from the shader.
 TEST_CASE("dielectric and conductor probes match a CPU BRDF reference at pinned angles", "[gpu]") {
     using namespace rojoRHI;
 

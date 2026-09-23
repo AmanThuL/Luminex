@@ -310,7 +310,7 @@ TEST_CASE("loadMaterialLabScene's normal-map probe encodes an exact flat {128,12
 // readback must be that constant decoded, tone mapped, and encoded, with nothing else in between.
 // A second decode or a second encode anywhere on that path moves every patch off its number.
 //
-// Derived expectations at exposure 0, from Tests/DisplayTransformOracle.h (bytes, rounded):
+// Derived expectations at exposure 0, from Tests/Support/DisplayTransformOracle.h (bytes, rounded):
 //   red   (1,0,0)      -> linear (1, 0, 0)          -> 241, 33, 33
 //   green (0,1,0)      -> linear (0, 1, 0)          -> 33, 241, 33
 //   blue  (0,0,1)      -> linear (0, 0, 1)          -> 33, 33, 241
@@ -482,11 +482,11 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
 //
 // Lighting is a white uniform environment and no analytic lights -- the same configuration as this
 // file's known-colour patch test above -- so the shaded radiance is that base colour's split-sum
-// reconstruction, stated here through the same CPU mirror of the BRDF (Tests/BrdfOracle.h) and then
-// through the full display path (Tests/DisplayTransformOracle.h, mirroring the PBR Neutral tone map
-// and the sRGB encode). What matters to this case is only that the three outcomes stay well
-// separated: a point-picked mip lands on the black or the white end, and a filtered one lands
-// between them.
+// reconstruction, stated here through the same CPU mirror of the BRDF (Tests/Support/BrdfOracle.h)
+// and then through the full display path (Tests/Support/DisplayTransformOracle.h, mirroring the PBR
+// Neutral tone map and the sRGB encode). What matters to this case is only that the three outcomes
+// stay well separated: a point-picked mip lands on the black or the white end, and a filtered one
+// lands between them.
 TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong minification, "
           "proving its mips are filtered rather than point-picked",
           "[gpu]") {

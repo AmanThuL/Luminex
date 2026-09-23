@@ -17,14 +17,15 @@
 // times the surface's total reflectance. A white surface must then return E itself: it absorbs
 // nothing, so every photon that arrived has to leave.
 //
-// That closure is algebraic rather than approximate, which is why this runs as a unit test at
-// float precision before Tests/GpuRendererTests.cpp measures it through the pipeline. For albedo 1
-// the diffuse term carries exactly the energy the two specular terms did not
+// That closure is algebraic rather than approximate, which is why this runs as a unit test at float
+// precision before Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp measures it through the
+// pipeline. For albedo 1 the diffuse term carries exactly the energy the two specular terms did not
 // (diffuseEnergy = 1 - singleScatter - multiScatter), so the three sum to 1 for any DFG pair; for a
 // conductor the diffuse term vanishes and the compensation alone restores what single scattering
 // dropped, since Favg collapses to 1 when F0 does. Single scattering by itself would fail this: the
-// DFG table's scale + bias falls to 0.32 at roughness 1 (pinned in Tests/EngineIblTests.cpp), so an
-// uncompensated rough conductor would return a third of the light it received.
+// DFG table's scale + bias falls to 0.32 at roughness 1 (pinned in
+// Tests/Engine/Asset/EngineIblTests.cpp), so an uncompensated rough conductor would return a third
+// of the light it received.
 TEST_CASE("a white furnace returns its own radiance at every roughness", "[render]") {
     namespace brdf = lmx::test::brdf;
 

@@ -35,7 +35,7 @@ struct ShadowMatrices {
 /// GreaterEqual.
 ///
 /// A free function because it is pure arithmetic on the scene's bounds -- unit-testable without a
-/// device, which is where its coverage lives (Tests/RenderTests.cpp).
+/// device, which is where its coverage lives (Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp).
 ///
 /// `lightDir` is the direction the rays travel and need not be normalised. A direction parallel to
 /// world up is handled rather than producing NaNs because the editor can reach it.

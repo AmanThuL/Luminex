@@ -35,8 +35,8 @@ float radians(float degrees) {
 // attenuation=1/cone=1 at 1 m and normal incidence -- i.e. that the point-light-specific plumbing
 // (row decode, distance/cone terms) is transparent at unit distance. Both sides call the same
 // D_GGX/V_SmithHeightCorrelated/F_Schlick formulas (LocalLightMath.cpp's private core here,
-// Tests/BrdfOracle.h's copy there), so this is not an independent check of BRDF correctness itself
-// -- that is Tests/BrdfOracle.h's and the shader oracles' job.
+// Tests/Support/BrdfOracle.h's copy there), so this is not an independent check of BRDF correctness
+// itself -- that is Tests/Support/BrdfOracle.h's and the shader oracles' job.
 TEST_CASE("a point light of intensity 2 at 1 m and normal incidence matches the directional mirror",
           "[render][light]") {
     const lmx::test::brdf::Surface surface{glm::vec3(0.5f, 0.6f, 0.7f), 0.5f, 0.2f, 1.0f,

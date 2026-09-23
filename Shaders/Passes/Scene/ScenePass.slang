@@ -28,7 +28,8 @@ import Shadow;
 
 // Mip count of the prefiltered chain, mirroring Source/Engine/Ibl.h's kSpecularMipCount. Perceptual
 // roughness maps linearly onto [0, kSpecularMipCount - 1], which is the mapping that file
-// prefilters each level for. Tests/RenderTests.cpp pins the two constants against each other.
+// prefilters each level for. Tests/Engine/Asset/EngineMeshGeneratorTests.cpp pins the two constants
+// against each other.
 static const float kSpecularMipCount = 5.0f;
 
 struct Vertex

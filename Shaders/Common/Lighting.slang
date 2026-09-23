@@ -153,7 +153,7 @@ public float SpotTerm(float cosTheta, float spotScale, float spotOffset)
 //======================================================================================================================
 // One analytic point or spot light, sharing SurfaceResponse's BRDF core with the directional light
 // above. Source/Engine/Lights/LocalLightMath.cpp mirrors this function statement for statement and
-// Tests/GpuLocalLightTests.cpp holds the two to a 64-sample agreement.
+// Tests/Render/Passes/LocalLights/GpuLocalLightTests.cpp holds the two to a 64-sample agreement.
 //
 // The three tests below are one ordered early-out, each returning exact zero: outside the range,
 // outside the cone, or facing away. Exactness is a contract, not an optimization -- clustered
@@ -204,7 +204,7 @@ public float3 ComputePunctualLight(LightRow light, float3 position, float3 norma
 // conductor. Fdez-Aguera's compensation redistributes exactly that missing fraction, weighted by
 // the average Fresnel a further bounce would see, and hands whatever neither lobe took to diffuse.
 // A white furnace then returns its own radiance at every roughness and every metallic value, which
-// is the property Tests/GpuRendererTests.cpp's furnace case measures.
+// is the property Tests/Render/Passes/Scene/GpuSceneShadingTests.cpp's furnace case measures.
 public float3 ImageBasedLight(float3 irradiance, float3 prefiltered, float2 dfg, float3 baseColor,
                               float3 f0, float metallic)
 {

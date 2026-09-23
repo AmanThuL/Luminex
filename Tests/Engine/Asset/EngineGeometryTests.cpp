@@ -13,9 +13,9 @@ using lmx::test::near3;
 namespace {
 
 //======================================================================================================================
-// dot(geometric normal, stored normal) > 0 for every triangle pins both the winding (CCW as
-// seen from outside) and per-vertex normals in one property -- same check RenderTests.cpp uses
-// for Mesh::makeCube.
+// dot(geometric normal, stored normal) > 0 for every triangle pins both the winding (CCW as seen
+// from outside) and per-vertex normals in one property -- the same check
+// EngineMeshGeneratorTests.cpp uses for Mesh::makeCube.
 void requireConsistentWinding(const GeoData& mesh) {
     for (size_t i = 0; i < mesh.indices.size(); i += 3) {
         const VertexPNTU& a = mesh.vertices[mesh.indices[i]];

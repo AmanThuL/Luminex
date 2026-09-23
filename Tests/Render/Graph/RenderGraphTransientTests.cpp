@@ -485,12 +485,13 @@ TEST_CASE("transient buffers alias on the buffer path", "[render][graph]") {
 //======================================================================================================================
 // Renderer::declarePasses() declares the exposure histogram/resolve chain and the bloom
 // threshold/downsample/upsample chain every frame regardless of either feature's toggle (spec
-// 9/10): what varies is whether anything reaches a sink. This mirrors that exact declaration
-// shape -- pass kinds, labels, and use lists -- with both toggles off, and asserts every one of
-// the six feature passes is culled while the three passes that are always live are not. It is the
-// culling half of the "declare honestly, let the graph decide" pattern the exposure and bloom
-// features exercise; Tests/GpuRendererTests.cpp's "pass timings name every pass the graph ran"
-// case is the schedule's positive half, with bloom (the default-on feature) live.
+// 9/10): what varies is whether anything reaches a sink. This mirrors that exact declaration shape
+// -- pass kinds, labels, and use lists -- with both toggles off, and asserts every one of the six
+// feature passes is culled while the three passes that are always live are not. It is the culling
+// half of the "declare honestly, let the graph decide" pattern the exposure and bloom features
+// exercise; Tests/Render/Passes/Scene/GpuRendererTests.cpp's
+// "pass timings name every pass the graph ran" case is the schedule's positive half, with bloom
+// (the default-on feature) live.
 TEST_CASE("exposure and bloom passes are culled when both features are off", "[render][graph]") {
     FakeDevice device;
     TransientPool pool(device);

@@ -13,7 +13,7 @@
 // The one thing this file does *not* re-derive is the split-sum DFG table: it reads the very table
 // Source/Engine/Asset/Texture/Ibl.h generates and the renderer uploads, because the point of a
 // probe comparison is to check the shader's use of that data, not to re-implement the integrator.
-// The integrator has its own independent oracle in Tests/EngineIblTests.cpp.
+// The integrator has its own independent oracle in Tests/Engine/Asset/EngineIblTests.cpp.
 
 #include "Engine/Asset/Texture/Ibl.h"
 
