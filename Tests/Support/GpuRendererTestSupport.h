@@ -1,17 +1,17 @@
 #pragma once
 
-#include "BrdfOracle.h"
-#include "DisplayTransformOracle.h"
 #include "Engine/Upload/IblUpload.h"
-#include "GpuTestSupport.h"
+#include "Support/BrdfOracle.h"
+#include "Support/DisplayTransformOracle.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Engine/Asset/Texture/Ibl.h"
 #include "Engine/Scene/Scene.h"
-#include "EngineTestSupport.h"
+#include "Support/EngineTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <cmath>
 #include <cstring>
 

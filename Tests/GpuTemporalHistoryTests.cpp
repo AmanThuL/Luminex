@@ -1,5 +1,5 @@
-#include "GpuTemporalTestSupport.h"
-#include "SceneTableTestSupport.h"
+#include "Support/GpuTemporalTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;

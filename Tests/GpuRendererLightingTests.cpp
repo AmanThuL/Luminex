@@ -1,7 +1,7 @@
-#include "GpuRendererTestSupport.h"
 #include "Render/Renderer/SceneViewBuilder.h"
-#include "SceneTableTestSupport.h"
 #include "Scenes/CatalogScenes.h"
+#include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"

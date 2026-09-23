@@ -1,10 +1,10 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Render/Graph/FrameDeclaration.h"
 #include "Render/Graph/GraphDump.h"
 #include "Render/Passes/SelectionOutline/SelectionOutline.h"
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
 

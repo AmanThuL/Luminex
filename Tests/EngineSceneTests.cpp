@@ -1,11 +1,11 @@
 #include "App/Model/Scene/SceneSession.h"
 #include "Core/Util/Sha256.h"
 #include "Engine/Lights/LocalLightMath.h"
-#include "EngineSceneTestSupport.h"
 #include "Render/Renderer/SceneViewBuilder.h"
-#include "SceneTableTestSupport.h"
 #include "Scenes/CatalogScenes.h"
 #include "Scenes/SponzaLightRig.h"
+#include "Support/EngineSceneTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 
 #include <cstring>
 

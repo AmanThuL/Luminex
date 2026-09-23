@@ -194,15 +194,16 @@
         "catch2"
       ],
       "privateHeaders": [
-        "Tests/BrdfOracle.h",
-        "Tests/DisplayTransformOracle.h",
-        "Tests/EngineSceneTestSupport.h",
-        "Tests/EngineTestSupport.h",
-        "Tests/GpuRendererTestSupport.h",
-        "Tests/GpuTemporalTestSupport.h",
-        "Tests/GpuTestSupport.h",
-        "Tests/GraphTestSupport.h",
-        "Tests/RenderGraphTestSupport.h"
+        "Tests/Support/BrdfOracle.h",
+        "Tests/Support/DisplayTransformOracle.h",
+        "Tests/Support/EngineSceneTestSupport.h",
+        "Tests/Support/EngineTestSupport.h",
+        "Tests/Support/GpuRendererTestSupport.h",
+        "Tests/Support/GpuTemporalTestSupport.h",
+        "Tests/Support/GpuTestSupport.h",
+        "Tests/Support/GraphTestSupport.h",
+        "Tests/Support/RenderGraphTestSupport.h",
+        "Tests/Support/SceneTableTestSupport.h"
       ]
     },
     "texture-bake": {

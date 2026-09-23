@@ -1,5 +1,5 @@
 #include "App/Model/Scene/SceneSession.h"
-#include "GraphTestSupport.h"
+#include "Support/GraphTestSupport.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

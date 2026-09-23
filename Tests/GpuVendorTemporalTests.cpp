@@ -1,10 +1,10 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <array>
 #include <cmath>
 #include <cstdio>

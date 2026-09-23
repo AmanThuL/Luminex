@@ -3,7 +3,7 @@
 /// @brief Tests the CPU point/spot light model, its GPU row and its shading-function mirror.
 //----------------------------------------------------------------------------------------------------------------------
 
-#include "BrdfOracle.h"
+#include "Support/BrdfOracle.h"
 
 #include "Engine/Lights/LocalLight.h"
 #include "Engine/Lights/LocalLightMath.h"

@@ -1,4 +1,4 @@
-#include "GpuTemporalTestSupport.h"
+#include "Support/GpuTemporalTestSupport.h"
 
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Graph/GraphInspectorModel.h"
@@ -8,7 +8,7 @@
 #include "Render/Graph/RenderGraph.h"
 #include "Render/Graph/TransientPool.h"
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>

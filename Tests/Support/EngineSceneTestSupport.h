@@ -9,19 +9,19 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 
-#include "BrdfOracle.h"
 #include "Core/Math/Color.h"
 #include "Core/Math/Transform.h"
-#include "DisplayTransformOracle.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Asset/Texture/TextureBake.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Scene/Scene.h"
 #include "Engine/View/Camera.h"
-#include "EngineTestSupport.h"
-#include "GpuTestSupport.h"
 #include "Render/Renderer/Renderer.h"
 #include "Scenes/SceneLibrary.h"
+#include "Support/BrdfOracle.h"
+#include "Support/DisplayTransformOracle.h"
+#include "Support/EngineTestSupport.h"
+#include "Support/GpuTestSupport.h"
 #include <rojoRHI/RHI.h>
 
 #include <algorithm>

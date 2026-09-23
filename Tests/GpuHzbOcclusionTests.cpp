@@ -1,4 +1,4 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Core/Math/Scalar.h"
 #include "Render/Passes/Occlusion/HzbStage.h"

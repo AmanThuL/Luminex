@@ -1,9 +1,9 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "Render/Graph/FrameDeclaration.h"
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
 #include <vector>

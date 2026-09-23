@@ -1,6 +1,6 @@
 #include "Engine/Scene/Scene.h"
-#include "GpuTestSupport.h"
 #include "Render/Renderer/SceneViewBuilder.h"
+#include "Support/GpuTestSupport.h"
 
 #include <algorithm>
 #include <cmath>

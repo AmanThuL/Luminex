@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Scene/Scene.h"
@@ -12,7 +12,7 @@
 
 #include <catch2/catch_approx.hpp>
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <cmath>
 #include <cstring>
 #include <fstream>

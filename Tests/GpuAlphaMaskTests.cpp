@@ -1,8 +1,8 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include <glm/gtc/packing.hpp>
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <array>
 #include <cmath>
 

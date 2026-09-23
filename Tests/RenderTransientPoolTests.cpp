@@ -1,7 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
-#include "GraphTestSupport.h"
 #include "Render/Graph/TransientPool.h"
+#include "Support/GraphTestSupport.h"
 
 using namespace lmx;
 using namespace lmx::render;

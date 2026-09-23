@@ -1,5 +1,5 @@
-#include "EngineSceneTestSupport.h"
 #include "Scenes/CatalogScenes.h"
+#include "Support/EngineSceneTestSupport.h"
 
 //======================================================================================================================
 TEST_CASE("loadTemporalLabScene places its diagnostics at the documented world positions",

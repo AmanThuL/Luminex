@@ -1,4 +1,4 @@
-#include "GpuRendererTestSupport.h"
+#include "Support/GpuRendererTestSupport.h"
 
 #include "Core/Util/Sha256.h"
 #include "Render/Renderer/SceneViewBuilder.h"

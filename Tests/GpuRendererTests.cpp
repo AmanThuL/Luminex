@@ -1,5 +1,5 @@
-#include "GpuRendererTestSupport.h"
-#include "SceneTableTestSupport.h"
+#include "Support/GpuRendererTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;

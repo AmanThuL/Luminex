@@ -1,4 +1,4 @@
-#include "GraphTestSupport.h"
+#include "Support/GraphTestSupport.h"
 
 #include "Render/Graph/GraphDump.h"
 #include "Render/Passes/Temporal/VendorTemporalScaler.h"

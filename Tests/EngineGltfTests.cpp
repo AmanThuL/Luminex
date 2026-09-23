@@ -7,7 +7,7 @@
 
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
-#include "EngineTestSupport.h"
+#include "Support/EngineTestSupport.h"
 
 #include <cmath>
 #include <cstddef>

@@ -5,7 +5,7 @@
 #include <glm/gtc/constants.hpp>
 #include <glm/gtc/epsilon.hpp>
 
-#include "BrdfOracle.h"
+#include "Support/BrdfOracle.h"
 
 #include "Engine/Asset/Model/GeometryGenerator.h"
 #include "Engine/Asset/Texture/Ibl.h"

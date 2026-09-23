@@ -1,4 +1,4 @@
-#include "GpuTestSupport.h"
+#include "Support/GpuTestSupport.h"
 
 #include "Engine/Scene/SceneTables.h"
 

@@ -1,6 +1,6 @@
-#include "GpuTestSupport.h"
 #include "Render/Passes/Occlusion/OcclusionReference.h"
-#include "SceneTableTestSupport.h"
+#include "Support/GpuTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <array>
 #include <glm/gtc/matrix_transform.hpp>
 

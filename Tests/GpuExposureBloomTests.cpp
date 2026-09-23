@@ -9,7 +9,7 @@
 // -- rather than through Renderer::declarePasses(), so a failure here points at one kernel's math
 // instead of the whole frame's wiring (spec 9/10).
 
-#include "DisplayTransformOracle.h"
+#include "Support/DisplayTransformOracle.h"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -23,7 +23,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/packing.hpp>
 
-#include "SceneTableTestSupport.h"
+#include "Support/SceneTableTestSupport.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
