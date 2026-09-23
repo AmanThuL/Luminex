@@ -4,7 +4,7 @@ one backend. Direction: graph-scheduled GPU-driven hybrid rendering with shared 
 light/temporal semantics, visible quality and reproducible evidence. Future scope and prerequisites
 live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 ## Golden sources
-- Founding design: `docs/decisions/0000-founding-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
+- Founding design: `docs/decisions/0000-founding-design.md` (D1–D10 binding). Architecture/frame: `docs/architecture/overview.md` · `docs/architecture/frame-pipeline.md`; guides: `docs/guides/gpu-debugging.md` · `docs/guides/temporal-comparison.md` · `docs/guides/screenshot-comparison.md`
 - ADRs: `docs/decisions/` · Conventions: `docs/conventions/` · Roadmap: `docs/roadmap.md` · Evidence storage/recovery: `docs/guides/evidence-archive.md`
 - Design and planning write to two places: a brainstormed design is the `Proposed` milestone record
   in its series folder under `docs/milestones/`; an executor plan goes to `docs/plans/`.
@@ -226,7 +226,7 @@ ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassM
 HistogramAccumulate, ExposureSeed, ExposureResolve, BloomThreshold/BloomDownsample/BloomUpsample,
 DisplayTransform, TemporalReproject, TemporalResolve, TemporalUpscale, SpatialUpscale, TemporalDebugView, VendorTemporalPack (with module TemporalCommon),
 SelectionMask and SelectionOutline (editor-only).
-`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/frame-pipeline.md`.
+`Shaders/Tests/` owns FrameDataQuad and the sampler/shadow/fullscreen/MRT/compute-image/buffer-hazard/full-field scene-table ABI oracles. `RojoRHI/Shaders/Tests/` is the RHI component's own tree over `Modules/Shadow.slang`: Triangle, the cube/render-area/compute/indirect/binding-limit smoke shaders, and byte-identical copies of the six oracles both test targets need. Runtime LightClusterCount/Scan/Fill and LightDebugView entries build and inspect local-light assignment. Runtime basenames stay unchanged; frame walkthrough: `docs/architecture/frame-pipeline.md`.
 ## Hard rules
 - C++23. No Metal 3 fallback (`MTLGPUFamilyMetal4` required). 3 frames in flight.
 - Creation returns `Result<T>`; misuse is `LMX_ASSERT`. GPU objects always get labels.

@@ -98,7 +98,7 @@ encoder inspection remain explicit follow-ups, not completed checks.
 TAA with exposure correction, temporal upscaling and dynamic resolution. Their base is the
 scene-linear PBR/HDR renderer, validating graph, transient pooling, frame-data path and selection
 workspace documented in [Part I](roadmap/rendering-foundations.md). Current implementation detail
-belongs to the [architecture](architecture/overview.md) and [frame walkthrough](frame-pipeline.md).
+belongs to the [architecture](architecture/overview.md) and [frame walkthrough](architecture/frame-pipeline.md).
 [R1.1](milestones/r/r1.1.md) adds the module contract, dependency checks and standalone Source header
 checks, with an explicit migration allowlist.
 [R1.2](milestones/r/r1.2.md) separates CPU Asset from GPU Scene and clears their migration

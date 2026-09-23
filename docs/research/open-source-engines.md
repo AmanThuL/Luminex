@@ -5,7 +5,7 @@
 **Scope:** Mature or instructive public renderer implementations, with emphasis on render-graph and
 RHI structure, actual pass ordering, temporal reconstruction, GPU-driven submission, and native
 Metal/D3D12 portability.  
-**Local baseline:** [`docs/frame-pipeline.md`](../frame-pipeline.md)
+**Local baseline:** [`docs/architecture/frame-pipeline.md`](../architecture/frame-pipeline.md)
 
 This is a research notebook for the larger Luminex pipeline report, not a claim that every feature
 listed below belongs in Luminex. It deliberately separates three kinds of evidence:

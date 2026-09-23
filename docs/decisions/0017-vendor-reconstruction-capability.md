@@ -132,6 +132,6 @@ declarations, shaders, tolerances and checkpoint cases remain the reference. Met
 internal allocation and image-quality behavior; its creation cost, private scratch and history
 are additional to the graph's transient footprint. The
 [milestone record](../milestones/m6/m6.4.md) owns measurements and validation evidence;
-[frame pipeline](../frame-pipeline.md) and [GPU debugging](../guides/gpu-debugging.md) own current
+[frame pipeline](../architecture/frame-pipeline.md) and [GPU debugging](../guides/gpu-debugging.md) own current
 operation. [ADR 0016](0016-active-render-extent-and-resolution-control.md) continues to own render
 extent and controller policy.

@@ -278,7 +278,7 @@ holds the borrowed frame input independently of the renderer.
 Shaders are authored in Slang and compiled to readable MSL, then to a metallib when the offline Metal
 toolchain is present. Common modules live in `Shaders/Common/`, family entries and local modules in `Shaders/Passes/<family>/`, test oracles in `Shaders/Tests/`;
 entry points and modules import only modules, enforced by policy. Runtime basenames stay unchanged.
-Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/frame-pipeline.md`.
+Root xmake includes unit-local targets and `xmake/` setup/rules/tasks. The runtime MSL fallback and live frame/resource sequence are documented in `docs/architecture/frame-pipeline.md`.
 
 The root component is a physical and build boundary: `RojoRHI/` mounts the separately published Apache-2.0 `rojo-rhi` repository as a submodule pinned to a commit reachable from its `main`; it has
 no Core dependency but still builds, tests and passes policy inside this repository. The RHI grows

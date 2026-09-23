@@ -11,7 +11,7 @@ silently override an accepted higher-precedence decision.
    change them with a superseding ADR.
 2. **Convention** (`docs/conventions/`): enforceable project-wide behavior. Update it with the code
    or tooling that makes the rule true.
-3. **Architecture or guide** (`docs/architecture/`, `docs/guides/`, `docs/frame-pipeline.md`): current
+3. **Architecture or guide** (`docs/architecture/`, `docs/guides/`, `docs/architecture/frame-pipeline.md`): current
    system shape and operator workflow. These describe the repository as it exists now.
 4. **Roadmap** (`docs/roadmap.md` and its parts under `docs/roadmap/`): accepted ordering,
    outcomes, gates, and explicit deferrals. Together they are the sole owner of current milestone

@@ -1,11 +1,13 @@
 # Luminex — one frame with visibility, local lighting and reconstruction (2026-09-18)
 
-Native TAA, CPU culling, indirect submission and Clustered local lighting are defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
+**Status**: Implemented
+
+Native TAA, CPU culling, indirect submission and Clustered local lighting are defaults; vendor reconstruction shares temporal inputs. The [local-light default decision](../milestones/m7/m7.5-validation.md#default-decision) follows the passed lossless-list and scoped exact-image gates; Direct remains the reference.
 ## The frame at a glance
 
 A fresh `RenderGraph` imports targets, five geometry/material scene buffers (plus lights when live), two submission buffers, persistent histogram/exposure buffers and the drawable. Renderer composes the stages below; graph compilation
 validates the DAG, culls dead passes and derives RAW/WAR/WAW barriers before serial execution.
-Opt-in [GPU visibility](guides/gpu-visibility.md) adds reset/classify/scan/emit before draws.
+Opt-in [GPU visibility](../guides/gpu-visibility.md) adds reset/classify/scan/emit before draws.
 Occlusion reads the preceding declared frame's HZB using that frame's matrix, jitter and active extent.
 After temporal consumers, current depth builds half-resolution R32Float minima, one pass per mip;
 publication reads all mips. Two output-capacity pyramids alternate independently of temporal slots.
@@ -16,7 +18,7 @@ Independent direct ID/depth checks copy into paced readback and join by frame an
 `Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
 Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
-Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](guides/gpu-debugging.md#editor-playback).
+Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](../guides/gpu-debugging.md#editor-playback).
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa` (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
 `renderScale == 1.0` (below 1.0 the scene pass's render area shrinks; see Resources and lifetime). Auto-exposure, bloom, and temporal are ordinary
@@ -205,7 +207,7 @@ holds the soft border and display for UI sampling. Its GPU costs remain visible 
 It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture paths do not declare the passes; the Viewport toggle controls the editor cue.
 
 Console alone occupies the bottom dock; Performance/Graph are detached, initially closed. Workspace schema 3 restores visibility/bounds; schema 2 migrates to default topology and preserves valid UI scale.
-Window > Performance toggles normally; Show measurement opens/focuses Measure anytime. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](guides/gpu-debugging.md).
+Window > Performance toggles normally; Show measurement opens/focuses Measure anytime. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
 
 Neutral interfaces/capture schema live in `RojoRHI/Include/rojoRHI/`, shared implementation in `RojoRHI/Source/`,
 and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImGui` contains UI dependencies.
@@ -215,12 +217,11 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **3 frames in flight.** Each slot owns an argument table, command allocator and growable
   frame-data arena. `bindFrameData` copies at 256-byte or wider alignment into 256 KiB pages
   (oversize pages round up to that quantum), returning the GPU address and binding it. `beginFrame` proves retirement before cursor reuse; pages retain their high-water capacity.
-- **Scene tables.** Three `cpuWrite` slots per kind; changes mark all slots dirty, but only the
-  retired slot uploads. Static scenes converge to zero writes. Mesh rows initialize once; growing
-  tables retain old buffers until the last prepared frame + 3. Stable handles survive reorder and
-  reject stale/foreign identities; new instances seed previous pose, promoted by `commitFrame`.
-  `Buffer::write` validates permission/source/range. Inspector reports capacities, bytes and writes;
-  Scene tables and submission lists are CPU-written graph imports without GPU-write barriers.
+- **Scene tables.** Three `cpuWrite` slots per kind; changes mark all slots dirty, but only the retired slot uploads.
+  Static scenes converge to zero writes. Mesh rows initialize once; growing tables retain old buffers until the last
+  prepared frame + 3. Stable handles survive reorder and reject stale/foreign identities; new instances seed previous
+  pose, promoted by `commitFrame`. `Buffer::write` validates permission/source/range. Inspector reports capacities,
+  bytes and writes; Scene tables and submission lists are CPU-written graph imports without GPU-write barriers.
 - **RHI resources join one residency set** attached to the queue; MetalFX manages its own private resources.
 - **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable on request),
   display color (`BGRA8Unorm`, what the viewport and a screenshot read), `lmx.render.motion` (`RG16Float`), `lmx.render.reactive` (`R8Unorm`), and two ping-ponged pairs — colour history
@@ -238,11 +239,10 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **Scenes are cached for the device's lifetime** (`Source/Scenes/SceneLibrary.h`). GPU resources build on
   first selection; destruction requires retired GPU reads, while removed textures retire after three frames. IDs
   resolve to per-draw pointers/fallbacks. Only referenced images upload; decoded CPU data is freed.
-- **IBL assets** (`Source/Engine/Asset/Texture/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered
-  specular (64², or 128² for MaterialLab, five mips), and a 64² DFG LUT. Filtering crosses cube
-  faces and chooses source mips by GGX footprint. MaterialLab bounds diffuse work with a separate
-  32² source. `Engine/Upload/IblUpload.h` owns GPU upload; RGBA16Float/RG16Float preserve HDR and absent
-  inputs bind black-cube/zero-DFG fallbacks.
+- **IBL assets** (`Source/Engine/Asset/Texture/Ibl.h`): per-scene diffuse irradiance (16² cube), filtered specular
+  (64², or 128² for MaterialLab, five mips), and a 64² DFG LUT. Filtering crosses cube faces and chooses source
+  mips by GGX footprint. MaterialLab bounds diffuse work with a separate 32² source. `Engine/Upload/IblUpload.h`
+  owns GPU upload; RGBA16Float/RG16Float preserve HDR and absent inputs bind black-cube/zero-DFG fallbacks.
 - **Texture mip baking** (`Source/Engine/Asset/Texture/TextureBake.h`): setup writes deterministic DDS mip chains
   and manifests. Colour filters in linear light; normal maps renormalize. Scene loading prefers
   baked assets and falls back to the same in-process filter. Metal's removed mip generator was measured to point-pick.
@@ -252,7 +252,7 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **GGX metallic-roughness** (`Lighting.slang`): Trowbridge-Reitz D, height-correlated Smith
   visibility, Schlick F (`F0 = mix(0.04, baseColor, metallic)`) and energy-conserving Lambert diffuse.
   Perceptual roughness floors at 0.045 before squaring. Split-sum IBL uses Fdez-Agüera multiple-scattering compensation; occlusion attenuates image-based terms only.
-- **Local lights**: relative intensity × linear colour uses finite-range inverse-square attenuation, a 0.01 m distance floor and squared spot-cone response. Exact range/cone/back-face early-outs precede the shared GGX core. The punctual accumulator applies Tokuyoshi/Kaplanyan 2021 Eq.13 normal-footprint specular filtering before divergent light traversal; authored roughness, directional lighting and IBL stay unchanged. See [follow-up](milestones/m7/m7.5-followup.md); local shadows and glTF light import are absent.
+- **Local lights**: relative intensity × linear colour uses finite-range inverse-square attenuation, a 0.01 m distance floor and squared spot-cone response. Exact range/cone/back-face early-outs precede the shared GGX core. The punctual accumulator applies Tokuyoshi/Kaplanyan 2021 Eq.13 normal-footprint specular filtering before divergent light traversal; authored roughness, directional lighting and IBL stay unchanged. See [follow-up](../milestones/m7/m7.5-followup.md); local shadows and glTF light import are absent.
 - **Exposure/display**: fragments pre-expose linear radiance before the scene target. Manual
   exposure is `exp2(EV)`; auto uses the persistent `{applied, previous}` pair with bounded histogram
   adaptation. Temporal history is corrected by `applied / previous` before clipping/blending.
@@ -280,11 +280,11 @@ entries with setup guidance; unavailable explicit CLI scenes fail rather than fa
 `--capture-sequence <directory> --frames N --warmup W` saves N frames after W unsaved frames at
 60 Hz as PNG by default (`--capture-format bmp` preserves BMP), with camera/settings/status
 metadata. Manifest v2 names the display domain, container and absence of UI. PNG carries sRGB,
-gAMA and cHRM plus `lmx:display` and `lmx:frame` text; screenshots select PNG/BMP by extension. The [offline comparison guide](guides/temporal-comparison.md)
+gAMA and cHRM plus `lmx:display` and `lmx:frame` text; screenshots select PNG/BMP by extension. The [offline comparison guide](../guides/temporal-comparison.md)
 covers synchronized reports and optional LDR-FLIP differences against Native TAA, not ground truth.
 
 `--visibility cull|off` and `--submission direct|indirect|batched` apply to every run mode.
-[Measurement](guides/gpu-debugging.md#measure-visibility-and-submission) uses exact frame joins and
+[Measurement](../guides/gpu-debugging.md#measure-visibility-and-submission) uses exact frame joins and
 serialized retirement, separating wait/encode time; editor runs are unscored, not throughput tests.
 
 ## Known limits
@@ -293,8 +293,8 @@ PCSS retains its view/NDC blocker-search mismatch; IBL rebuilds on load; direct 
 Sponza startup is synchronous; Metal is the only backend. UI blends straight alpha in encoded SDR
 sRGB. The Viewport maps pixels 1:1 after resize debounce and stretches the old target during it. Detached windows remain SDR. EDR is deferred; future scope belongs to the roadmap.
 
-Cross-references: [render graph](decisions/0005-render-graph.md), [scene-linear image formation](decisions/0006-scene-linear-image-formation.md),
-[vendor reconstruction](decisions/0017-vendor-reconstruction-capability.md); `Shaders/Passes/<family>/` holds entries,
+Cross-references: [render graph](../decisions/0005-render-graph.md), [scene-linear image formation](../decisions/0006-scene-linear-image-formation.md),
+[vendor reconstruction](../decisions/0017-vendor-reconstruction-capability.md); `Shaders/Passes/<family>/` holds entries,
 `Shaders/Common/` shared math and `Shaders/Tests/` oracles; runtime shader basenames stay unchanged.
 
 UI zoom applies before NewFrame; debounced resize preserves camera, render scale and saved layouts.

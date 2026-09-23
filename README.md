@@ -57,7 +57,7 @@ Layout and scale are saved automatically.
 ## Explore the project
 
 [Architecture](docs/architecture/overview.md) ·
-[Frame walkthrough](docs/frame-pipeline.md) ·
+[Frame walkthrough](docs/architecture/frame-pipeline.md) ·
 [GPU debugging](docs/guides/gpu-debugging.md) ·
 [Temporal comparisons](docs/guides/temporal-comparison.md) ·
 [Roadmap](docs/roadmap.md)
