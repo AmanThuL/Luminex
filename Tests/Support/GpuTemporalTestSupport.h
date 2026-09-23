@@ -12,11 +12,10 @@
 
 #include <catch2/catch_approx.hpp>
 
+#include "Support/GoldenFile.h"
 #include "Support/SceneTableTestSupport.h"
 #include <cmath>
 #include <cstring>
-#include <fstream>
-#include <sstream>
 
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMaterial;
@@ -31,6 +30,8 @@ using lmx::render::Renderer;
 using lmx::test::FixtureDrawItem;
 using lmx::test::FixtureMesh;
 using lmx::test::FixtureSceneView;
+using lmx::test::goldenPath;
+using lmx::test::requireMatchesGolden;
 
 // TemporalLab's deliberately static object, at the position Tests/SceneTemporalLabTests.cpp pins.
 [[maybe_unused]] constexpr glm::vec3 kReferenceCubeCenter{3.0f, 1.0f, 0.0f};
@@ -159,32 +160,6 @@ inline glm::vec3 skyDirectionAtPixel(const Camera& camera, uint32_t x, uint32_t 
     const float tangent = std::tan(camera.fovY * 0.5f);
     const glm::vec4 viewDirection{ndcX * tangent, ndcY * tangent, -1.0f, 0.0f};
     return glm::vec3(glm::inverse(camera.viewMatrix()) * viewDirection);
-}
-
-//======================================================================================================================
-// The Tests binary runs with its own target dir as CWD, so the golden files are addressed from the
-// repo root the build passes in.
-inline std::string goldenPath(std::string_view name) {
-    return std::string(LMX_REPO_ROOT) + "/Tests/Golden/" + std::string(name);
-}
-
-//======================================================================================================================
-inline void requireMatchesGolden(const std::string& dump, std::string_view name) {
-    const std::string path = goldenPath(name);
-    std::ifstream file(path, std::ios::binary);
-    INFO("golden file: " + path);
-    REQUIRE(file.good());
-
-    std::ostringstream expected;
-    expected << file.rdbuf();
-
-    if (expected.str() != dump) {
-        std::ofstream actual(path + ".actual", std::ios::binary | std::ios::trunc);
-        actual << dump;
-        INFO("actual output written to: " + path + ".actual");
-        INFO("--- actual ---\n" + dump);
-    }
-    REQUIRE(expected.str() == dump);
 }
 
 } // namespace

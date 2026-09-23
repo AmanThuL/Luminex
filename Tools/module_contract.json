@@ -198,6 +198,7 @@
         "Tests/Support/DisplayTransformOracle.h",
         "Tests/Support/EngineSceneTestSupport.h",
         "Tests/Support/EngineTestSupport.h",
+        "Tests/Support/GoldenFile.h",
         "Tests/Support/GpuRendererTestSupport.h",
         "Tests/Support/GpuTemporalTestSupport.h",
         "Tests/Support/GpuTestSupport.h",
