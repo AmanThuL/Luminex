@@ -43,7 +43,7 @@ the row says otherwise.
 | 8 | [M7.4](roadmap/gpu-driven-hybrid-rendering.md#m74--conservative-occlusion) conservative occlusion | II | Implemented, owner-accepted 2026-09-18; image gate failed 13/15 | M7.3 |
 | 9 | [M7.5](roadmap/gpu-driven-hybrid-rendering.md#m75--clustered-local-lighting) clustered local lighting | II | Owner-accepted for integration 2026-09-19; historical image failures retained | M7.1; may run before steps 6–8 |
 | 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r/r2.md) | M7 complete |
-| 11 | [R3.1–R3.7](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | R3.1–R3.5 implemented; R3.5 owner-accepted 2026-09-22 with a scoped part A parity exception and plan closed; R3.6 implemented, implementation plan closed; A retains its scoped parity exception; B gates pass with [automatic integration in PR #54](https://github.com/AmanThuL/Luminex/pull/54); R3.7 inactive; [series record](milestones/r/r3.md) | R2 |
+| 11 | [R3.1–R3.7](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | R3.1–R3.5 implemented; R3.5 owner-accepted 2026-09-22 with a scoped part A parity exception and plan closed; R3.6 implemented, implementation plan closed; A retains its scoped parity exception; B gates pass with [automatic integration in PR #54](https://github.com/AmanThuL/Luminex/pull/54); R3.7 implemented 2026-09-24, plan closed, [validation](milestones/r/r3.7-validation.md); [series record](milestones/r/r3.md) | R2 |
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Inactive; [proposed record](milestones/r/r4.md) | R3 |
 | 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux/ux2.md) | R4 |
 | 14 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX2; technically gate B |
@@ -98,7 +98,7 @@ encoder inspection remain explicit follow-ups, not completed checks.
 TAA with exposure correction, temporal upscaling and dynamic resolution. Their base is the
 scene-linear PBR/HDR renderer, validating graph, transient pooling, frame-data path and selection
 workspace documented in [Part I](roadmap/rendering-foundations.md). Current implementation detail
-belongs to the [architecture](architecture/overview.md) and [frame walkthrough](frame-pipeline.md).
+belongs to the [architecture](architecture/overview.md) and [frame walkthrough](architecture/frame-pipeline.md).
 [R1.1](milestones/r/r1.1.md) adds the module contract, dependency checks and standalone Source header
 checks, with an explicit migration allowlist.
 [R1.2](milestones/r/r1.2.md) separates CPU Asset from GPU Scene and clears their migration

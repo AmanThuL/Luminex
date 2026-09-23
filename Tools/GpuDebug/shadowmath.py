@@ -2,10 +2,11 @@
 so a dump can recompute the shadow matrices a captured frame *should* have uploaded and compare
 them against the ones it actually did.
 
-Ground truth is `lmx::render::fitShadowOrtho`, ported literally -- including the
-degenerate-up guard and the texcoord bake, with the comments that carry the *why* brought across.
-The properties `Tests/RenderTests.cpp` asserts about the original are re-asserted about this port
-in `tests/test_shadowmath.py`; if the two ever disagree, this file is the one that is wrong.
+Ground truth is `lmx::render::fitShadowOrtho`, ported literally -- including the degenerate-up guard
+and the texcoord bake, with the comments that carry the *why* brought across. The properties
+`Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp` asserts about the original are re-asserted
+about this port in `tests/test_shadowmath.py`; if the two ever disagree, this file is the one that
+is wrong.
 
 **Storage convention: column-major, `m[col][row]`** -- glm's, and therefore the convention every
 formula below is transcribed in. A matrix is a list of four columns, each a list of four floats,

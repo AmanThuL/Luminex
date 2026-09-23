@@ -3,7 +3,7 @@
 **Status**: Frozen — non-normative  
 **Research date**: 2026-08-09  
 **Scope**: Metal 4 on Apple silicon first; Vulkan and D3D12 on PC later  
-**Baseline**: [the M3 frame pipeline](../frame-pipeline.md)  
+**Baseline**: [the M3 frame pipeline](../architecture/frame-pipeline.md)  
 **Accepted roadmap**: [roadmap.md](../roadmap.md)
 
 This long-form report preserves the evidence and tradeoff analysis behind the compact accepted
@@ -1139,7 +1139,7 @@ neural methods are independent research programs, not one compulsory "M12" rewri
 
 | Technique | Placement | Decision rationale | Evidence anchor and class |
 |---|---|---|---|
-| Correct filtered mips, tangent/normal transforms | Adopt in M4 | Existing visible correctness defects; every temporal/material path inherits them. | Current evidence: [M3 gaps](../frame-pipeline.md). |
+| Correct filtered mips, tangent/normal transforms | Adopt in M4 | Existing visible correctness defects; every temporal/material path inherits them. | Current evidence: [M3 gaps](../architecture/frame-pipeline.md). |
 | Reversed-Z `D32Float` | Adopt in M4 | High precision, simple modern convention, shared by HZB and screen-space work; changing it later invalidates many utilities. | Platform/reference: [depth-precision analysis](https://developer.nvidia.com/blog/visualizing-depth-precision/). |
 | Metallic-roughness GGX, IBL, physical light/exposure convention | Adopt in M4 | Prerequisite for meaningful lighting research and imported-content fidelity. | Specification + mature engine: [glTF](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html), [Filament](https://google.github.io/filament/Materials.md.html). |
 | Scene-linear FP16 HDR and explicit SDR/HDR output | Adopt in M4 | Prerequisite for exposure, bloom, temporal stability, HDR display and physically interpretable lights. | Mature/platform: [Filament](https://github.com/google/filament), [Apple HDR](https://developer.apple.com/documentation/metal/hdr-content). |

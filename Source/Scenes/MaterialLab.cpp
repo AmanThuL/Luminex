@@ -241,8 +241,8 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   own distance, so the same 0.5 world-unit offset that comfortably separates the far probe
 //   (distance 40) both clips the frustum edge and fails to clear the grid at distance 2. The
 //   three offsets above put each probe in its own non-overlapping tangent band with margin;
-//   Tests/EngineSceneTests.cpp verifies this by projecting each object's exact world AABB (all 8
-//   corners) after a horizontal camera pan, not just its centre.
+//   Tests/Scenes/SceneMaterialLabTests.cpp verifies this by projecting each object's exact world
+//   AABB (all 8 corners) after a horizontal camera pan, not just its centre.
 //
 //   Mip probe: one unit quad at world Z = cameraZ + 15 (X = Y = 0), textured with the 64x64
 //   checkerboard above. Behind initialCamera's default view on purpose -- see
@@ -386,7 +386,7 @@ asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI:
     // offsets are world-space numbers sized per-probe (accounting for each cube's nearest-corner
     // amplification) so each lands in its own tangent-space band alongside the grid's -- see the
     // file-level comment above for the derivation and the corresponding test in
-    // Tests/EngineSceneTests.cpp that verifies it in screen space.
+    // Tests/Scenes/SceneMaterialLabTests.cpp that verifies it in screen space.
     engine::MaterialRecord depthProbeMaterial; // default albedo/roughness/fresnel
     const engine::MaterialId depthProbeMaterialIndex = scene->addMaterial(depthProbeMaterial);
 
@@ -418,7 +418,8 @@ asset::AssetResult<std::unique_ptr<engine::Scene>> loadMaterialLabScene(rojoRHI:
     // filtering, not point-picking (a point-picked mip of a 1-texel checkerboard reads solid black
     // or solid white instead). Positioned behind initialCamera's default view (world Z beyond the
     // camera itself, which looks toward -Z) so it never appears in the default frame;
-    // Tests/EngineSceneTests.cpp's mip-check test supplies its own camera on the +Z side to see it.
+    // Tests/Scenes/SceneMaterialLabTests.cpp's mip-check test supplies its own camera on the +Z
+    // side to see it.
     const std::vector<uint8_t> checkerPixels = makeCheckerboardPixels();
     const asset::BakedMipChain checkerChain =
         asset::bakeMips(checkerPixels, 64, 64, asset::BakeMode::Srgb);

@@ -124,7 +124,7 @@ sampling artifacts inside the reflection and bloom halo rather than changing sce
 
 ## References
 
-- [Current frame pipeline](../../frame-pipeline.md)
+- [Current frame pipeline](../../architecture/frame-pipeline.md)
 - [Native TAA evidence](m6.2.md)
 - `Shaders/BloomUpsample.slang`, `Shaders/DisplayTransform.slang`
 - `Source/Engine/Ibl.h`, `Source/Engine/MaterialLab.cpp`

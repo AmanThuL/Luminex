@@ -31,8 +31,9 @@ static_assert(sizeof(ShadowPassUniforms) == 64);
 // the light so the surface stops shadowing itself, and away from the light is now the smaller
 // number. The magnitudes carry over unchanged -- the light's projection is orthographic, so its
 // depth is linear in light-space distance and reversing it negates the slope without changing
-// its size, which leaves the same 32 covering the same kernel. Tests/GpuRendererTests.cpp's
-// sloped-bias case is the instrument that pins the sign.
+// its size, which leaves the same 32 covering the same kernel.
+// Tests/Render/Passes/Shadow/GpuRendererShadowTests.cpp's sloped-bias case is the instrument that
+// pins the sign.
 constexpr rojoRHI::DepthBias kShadowDepthBias{.constant = -4.0f, .slopeScale = -32.0f};
 
 constexpr uint32_t kVertexBufferSlot = 0;

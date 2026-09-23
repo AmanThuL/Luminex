@@ -4,7 +4,7 @@
 **Research date:** 2026-08-09
 
 These notes are evidence for the renderer roadmap, not the final
-roadmap itself. They start from the frame described in [`docs/frame-pipeline.md`](../frame-pipeline.md)
+roadmap itself. They start from the frame described in [`docs/architecture/frame-pipeline.md`](../architecture/frame-pipeline.md)
 and deliberately separate a durable modern baseline from attractive but expensive research
 systems.
 

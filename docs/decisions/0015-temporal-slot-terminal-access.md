@@ -42,4 +42,4 @@ Existing GPU overlap coverage exercises both history pairs across frames in flig
 
 [ADR 0014](0014-temporal-reconstruction-and-exposure-correction.md) retains the original decision.
 [ADR 0013](0013-temporal-motion-and-history-contract.md) establishes persistent-history imports.
-[Frame pipeline](../frame-pipeline.md) describes the current consumers.
+[Frame pipeline](../architecture/frame-pipeline.md) describes the current consumers.

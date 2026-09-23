@@ -4,7 +4,9 @@ target("Tests")
     -- Keep test shader outputs separate from App; both targets may compile in parallel.
     -- Use singular "test" because the default macOS filesystem aliases it with the Tests binary.
     set_targetdir("$(builddir)/$(plat)/$(arch)/$(mode)/test")
-    add_files("*.cpp")
+    add_files("**.cpp")
+    -- Shared helpers are included as "Support/<Name>.h", rooted like Source includes.
+    add_includedirs(".")
     add_deps("Core", "RojoRHI", "Render", "Asset", "AppModel", "Engine", "Scenes")
     add_packages("catch2", "glm")
     -- ToolsTests needs a stable path to the Python suite when launched from the test build dir.

@@ -54,10 +54,25 @@ Use **File → Open Scene** to switch scenes and **Window → Render Graph** for
 The top-right **− / percentage / +** controls adjust UI scale; click the percentage to reset it.
 Layout and scale are saved automatically.
 
+## Repository layout
+
+| Path | Contents |
+|---|---|
+| `Source/Core` | Logging, assertions, math, geometry, and containers with no domain meaning. |
+| `Source/Engine` | Asset loading and baking, plus the GPU-resident scene: geometry, materials, lights, and cameras. |
+| `Source/Scenes` | The scene catalog built on top of Engine. |
+| `Source/Render` | The render graph, the renderer, and the shader-matched rendering pass families. |
+| `Source/App` | The editor's models, its SDL3 and Dear ImGui shell and panels, the frame loops, and the headless screenshot and measurement runners. |
+| `RojoRHI/` | The Metal 4 rendering hardware interface, mounted as a git submodule. |
+| `Shaders/` | Slang shader sources compiled to MSL. |
+| `Tests/` | Unit and GPU test cases, laid out to mirror `Source/`. |
+| `Tools/` | Build, policy, and diagnostic scripts, plus the offline texture baker. |
+| `docs/` | Architecture pages, conventions, decisions, guides, and the roadmap. |
+
 ## Explore the project
 
 [Architecture](docs/architecture/overview.md) ·
-[Frame walkthrough](docs/frame-pipeline.md) ·
+[Frame walkthrough](docs/architecture/frame-pipeline.md) ·
 [GPU debugging](docs/guides/gpu-debugging.md) ·
 [Temporal comparisons](docs/guides/temporal-comparison.md) ·
 [Roadmap](docs/roadmap.md)

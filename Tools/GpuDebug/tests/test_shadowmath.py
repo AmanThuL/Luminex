@@ -1,16 +1,17 @@
 """Tests for shadowmath.py -- the pure-Python mirror of Renderer.cpp's fitShadowOrtho.
 
-These are the same four properties Tests/RenderTests.cpp asserts about the C++ original, restated
-against the Python port. That duplication is the whole point: the port exists so a dump can say
-"the shadowTransform you uploaded is not the one your scene state implies", and a port that drifts
-from the C++ would turn that check into a false alarm generator. If a case here ever disagrees
-with its RenderTests.cpp counterpart, the port is wrong -- Renderer.cpp is ground truth.
+These are the same four properties Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp asserts about
+the C++ original, restated against the Python port. That duplication is the whole point: the port
+exists so a dump can say "the shadowTransform you uploaded is not the one your scene state implies",
+and a port that drifts from the C++ would turn that check into a false alarm generator. If a case
+here ever disagrees with its RenderShadowFitTests.cpp counterpart, the port is wrong -- Renderer.cpp
+is ground truth.
 
 Where a property needs a known light-space basis (which axis is "right"), these tests pick a light
 direction whose basis is derivable by hand from lookAtRH's own definition rather than asking
-shadowmath for it -- an assertion that re-derives the implementation cannot catch the
-implementation being wrong. The sphere-fit property, which must hold for *any* basis, is checked
-the way RenderTests.cpp checks it: by sampling the sphere's surface and bounding the clip-space
+shadowmath for it -- an assertion that re-derives the implementation cannot catch the implementation
+being wrong. The sphere-fit property, which must hold for *any* basis, is checked the way
+RenderShadowFitTests.cpp checks it: by sampling the sphere's surface and bounding the clip-space
 extremes, so nothing about the basis leaks into the assertion.
 
 Run: python3 -m unittest discover -s Tools/GpuDebug/tests -v
@@ -24,12 +25,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
 import shadowmath  # noqa: E402
 
-# Tests/RenderTests.cpp's riggedLightDir(): the baseline scene's light 0, normalised.
+# Tests/Render/Passes/Shadow/RenderShadowFitTests.cpp's riggedLightDir():
+# the baseline scene's light 0, normalised.
 _RIGGED_DIR = (0.577, -0.577, 0.577)
 
 
 def _sphere_clip_extent(view_proj, sphere):
-    """max|x|, max|y|, min z, max z over the sphere's surface, sampled -- RenderTests.cpp's
+    """max|x|, max|y|, min z, max z over the sphere's surface, sampled -- RenderShadowFitTests.cpp's
     sphereClipExtent, restated. Sampling rather than re-deriving keeps the assertion independent
     of how the fit chose its light-space basis, which no caller can see anyway."""
     cx, cy, cz, radius = sphere

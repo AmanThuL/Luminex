@@ -53,7 +53,7 @@ this repository, the missing dependencies put both behind execution and shader e
 | [Renderer](../../Source/Render/Renderer/Renderer.cpp), [frame-data decision](../decisions/0010-execution-model-partial-reshape.md) | Retained object model with efficient frame-owned data | Production iterates draw items; GPU addresses are not persistent GPU scene ownership |
 | [FrameData benchmark](../../Benchmarks/FrameData/Runner.cpp), [paired driver](../../Tools/Bench/frame_data_paired.py) | Existing discipline for repeatable paired CPU measurements | Must add visibility, GPU preparation, execution, and workload-specific accounting |
 | [Render graph](../../Source/Render/Graph/RenderGraph.h), [graph model](../../Source/App/Model/Graph/GraphNodeModel.h), [layout](../../Source/App/Model/Graph/GraphLayout.h) | Pass/resource/barrier inspection and exact retired-frame evidence | No device execution graph, command-processor counter, or causal bottleneck diagnosis |
-| `../../Shaders/Modules/Lighting.slang`, [BRDF oracle](../../Tests/BrdfOracle.h), `../../Source/Scene/SceneLibrary.h` | Analytic PBR and controlled material/image checks | No training, neural weights, or MaterialX compiler |
+| `../../Shaders/Modules/Lighting.slang`, [BRDF oracle](../../Tests/Support/BrdfOracle.h), `../../Source/Scene/SceneLibrary.h` | Analytic PBR and controlled material/image checks | No training, neural weights, or MaterialX compiler |
 | `../../Source/Asset/GltfLoader.cpp`, [pipeline descriptor](../../RojoRHI/Include/rojoRHI/GraphicsPipeline.h) | Mesh assets and conventional depth-tested raster | Loader accepts triangle primitives; pipeline exposes no configurable alpha blend state |
 
 M5.4/M5.5 make a complex experiment easier to understand and demonstrate. They do not implement
