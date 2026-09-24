@@ -223,6 +223,9 @@ int runOffscreen(AppOptions options) {
         return 1;
     }
     const uint32_t totalFrames = sequence ? sequence->warmup + frames : frames;
+    // R4.1 experiment harness; exp branch only.
+    static const bool kExperimentAutoExposure =
+        std::getenv("LMX_EXPERIMENT_AUTO_EXPOSURE") != nullptr;
     for (uint32_t frame = 0; frame < totalFrames; ++frame) {
         if (sequence) {
             session.prepareSequenceFrame(frame);
@@ -249,6 +252,11 @@ int runOffscreen(AppOptions options) {
         // pre-change tip" -- and is not a documented user-facing option.
         if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
             view.bloomEnabled = false;
+        }
+        // R4.1 experiment harness; exp branch only.
+        if (kExperimentAutoExposure) {
+            view.autoExposureEnabled = true;
+            view.exposureReset = frame == 0;
         }
         // A one-shot process has no prior generation to differ from and never teleports its own
         // camera, so both stay at SceneView's defaults (0, false).

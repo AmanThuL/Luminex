@@ -8,7 +8,10 @@
 #include "Render/Passes/Scene/SceneStage.h"
 
 #include "Core/Diagnostics/Assert.h"
+#include "Core/Diagnostics/Log.h"
 #include "Render/Passes/Scene/SceneStageInternal.h"
+
+#include <cstdlib>
 
 namespace lmx::render {
 using namespace scene_detail;
@@ -87,11 +90,21 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
             {kVertexBufferSlot, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
     }
 
+    // R4.1 experiment harness; exp branch only.
+    uint32_t opaqueRuns = 0;
+    uint32_t maskedRuns = 0;
+
     encodeDrawRuns(
         commands, {inputs.draws, view.tables.indices, opaquePipeline},
         [&](const DrawRun& run, const auto& bindPipeline) -> const engine::DrawItem& {
             const engine::DrawItem& item = view.items[run.itemIndex];
             const bool masked = item.alphaMode == engine::AlphaMode::Mask;
+            // R4.1 experiment harness; exp branch only.
+            if (masked) {
+                ++maskedRuns;
+            } else {
+                ++opaqueRuns;
+            }
             const uint32_t maskIndex = (item.doubleSided ? 8u : 0u) +
                                        (view.autoExposureEnabled ? 4u : 0u) +
                                        (temporalEnabled ? 2u : 0u) + (view.wireframe ? 1u : 0u);
@@ -118,6 +131,15 @@ void SceneStage::draw(rojoRHI::CommandList& commands, const SceneView& view,
 
             return item;
         });
+
+    // R4.1 experiment harness; exp branch only.
+    static const bool kExperimentPipelineLog =
+        std::getenv("LMX_EXPERIMENT_PIPELINE_LOG") != nullptr;
+    if (kExperimentPipelineLog) {
+        LMX_LOG_INFO("r4.1-coverage auto={} motion={} opaqueRuns={} maskedRuns={}",
+                     view.autoExposureEnabled ? 1 : 0, temporalEnabled ? 1 : 0, opaqueRuns,
+                     maskedRuns);
+    }
 
     // Draw the solid sky last so opaque geometry rejects covered fragments at the depth
     // clear.
