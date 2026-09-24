@@ -257,41 +257,41 @@ each page is within budget; policy and the format check green.
 ## R4 — Shader source deduplication
 
 **Outcome:** the scene shader variants share one implementation and differ only where the
-[shader-style convention](../conventions/shader-style.md) says they must, while every compiled
-pipeline stays separate. Entry is satisfied: M7.1 settled the binding model, so the shared code is
-the code M7 keeps. It runs after R3.2 has placed the family in `Shaders/Passes/Scene/` and before
-M8 and M9 multiply the mirrored edits the twin rule demands today.
+[shader-style convention](../conventions/shader-style.md) says they must, while every compiled pipeline stays
+separate. Entry is satisfied: M7.1 settled the binding model, so the shared code is the code M7 keeps. It runs
+after R3.2 has placed the family in `Shaders/Passes/Scene/` and before M8 and M9 multiply the mirrored edits
+the twin rule demands today.
 
-**Scope:** the `ScenePass` family, four files of 320 to 346 lines that differ by exposure source
-and alpha coverage. Thin entry-point files over one shared implementation module, with
-compile-time choices and no runtime branch: the runtime-branch regression behind the twin files
-justifies separate pipelines, not whole-file duplication. `TemporalResolve` and `TemporalUpscale`
-are not merged for overlap alone; each keeps its kernel, and only a helper with one contract
-moves into the temporal family's shared module.
+**Scope:** the `ScenePass` family, four files of 320 to 346 lines that differ by exposure source and alpha
+coverage. Thin entry-point files over one shared implementation module, with compile-time choices and no
+runtime branch: the runtime-branch regression behind the twin files justifies separate pipelines, not
+whole-file duplication. `TemporalResolve` and `TemporalUpscale` are not merged for overlap alone; each keeps
+its kernel, and only a helper with one contract moves into the temporal family's shared module.
 
-**Sequence:** R4.1 → R4.2, after R3. R4 changes generated shader source, so R3.2's
-identical-MSL gate does not apply; the gates below replace it.
+**Sequence:** R4.1 → R4.2, after R3. R4 changes generated shader source, so R3.2's identical-MSL gate does not
+apply; the gates below replace it.
 
-**Defer:** merging pipelines or adding a runtime exposure or coverage branch; any shading,
-binding or uniform-layout change; other families until this one is adopted.
+**Defer:** merging pipelines or adding a runtime exposure or coverage branch; any shading, binding or
+uniform-layout change; other families until this one is adopted.
 
 ### R4.1 — Bounded experiment
 
-**Deliver:** on a short-lived `exp/` branch, the shared module and thin entries for the
-`ScenePass` family; for each variant, the generated MSL, the reflected resource layout and the
-rendered output compared with the parent under the strict parity matrix; an immutable evidence
-tag; a recorded adopt or DEFER decision.
+**Deliver:** on a short-lived `exp/` branch, the shared module and thin entries for the `ScenePass` family;
+for each variant, the generated MSL, the reflected resource layout and the rendered output compared with the
+parent under the strict parity matrix; an immutable evidence tag; a recorded adopt or DEFER decision.
 
 **Exit gate:** the comparison is complete and recorded for all four variants whatever the outcome.
+**Implemented 2026-09-24:** the comparison is complete and recorded for all four variants, so this exit gate
+holds; the fixed rule records DEFER pending owner review ([validation](../milestones/r/r4.1-validation.md)).
 
 ### R4.2 — Adoption
 
-**Deliver:** only if R4.1 decides to adopt: the production change on `main`, and the shader-style
-convention's twin rule replaced by the rule the shared module now enforces.
+**Deliver:** only if R4.1 decides to adopt: the production change on `main`, and the shader-style convention's
+twin rule replaced by the rule the shared module now enforces.
 
-**Exit gate:** reflected resource layouts identical to the parent's; rendered output passes the
-strict parity matrix; pipeline inventory and labels unchanged; GPU suite validation-clean. A DEFER
-leaves the twin files and the convention as they are and closes R4 with its evidence.
+**Exit gate:** reflected resource layouts identical to the parent's; rendered output passes the strict parity
+matrix; pipeline inventory and labels unchanged; GPU suite validation-clean. A DEFER leaves the twin files and
+the convention as they are and closes R4 with its evidence.
 
 ## Opening a further R milestone
 
