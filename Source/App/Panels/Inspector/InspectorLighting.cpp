@@ -125,22 +125,12 @@ void drawLightingSection(const InspectorPanelContext& context) {
         if (ImGui::Combo("##localLightMode", &mode, "Off\0Direct\0Clustered\0")) {
             settings.localLightMode = static_cast<engine::LocalLightMode>(mode);
             if (settings.localLightMode != engine::LocalLightMode::Clustered) {
-                settings.lightDebugView = engine::LightDebugView::Off;
                 settings.lightCheck = false;
             }
         }
         editorTooltip("Direct evaluates every enabled local light. Clustered builds bounded lists "
-                      "per froxel. Off keeps directional lights and the environment.");
-        editor_style::field("Lighting view");
-        int view = static_cast<int>(settings.lightDebugView);
-        if (ImGui::Combo("##lightView", &view, "Final\0Count\0Overflow\0Missed\0")) {
-            settings.lightDebugView = static_cast<engine::LightDebugView>(view);
-            if (settings.lightDebugView != engine::LightDebugView::Off) {
-                settings.localLightMode = engine::LocalLightMode::Clustered;
-                settings.temporalDebugView = render::TemporalDebugView::Off;
-                settings.hzbDebugLevel = -1;
-            }
-        }
+                      "per froxel. Off keeps directional lights and the environment. Views: View > "
+                      "Debug View.");
         editor_style::field("CPU list check");
         if (ImGui::Checkbox("##lightCheck", &settings.lightCheck)) {
             if (settings.lightCheck)

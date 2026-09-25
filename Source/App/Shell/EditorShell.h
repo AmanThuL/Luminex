@@ -5,6 +5,7 @@
 
 #pragma once
 #include "App/Model/Capture/EditorActions.h"
+#include "App/Model/Capture/NoticeQueue.h"
 #include "App/Model/Console/ConsoleModel.h"
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
@@ -232,7 +233,11 @@ private:
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
-    void buildMainMenu();
+    void buildMainMenu(const render::Renderer& renderer);
+    void resetCamera();
+    void frameSelected(const render::Renderer& renderer);
+    void updateEditorShortcuts(const render::Renderer& renderer);
+    void postCaptureNotice();
     void buildPlaybackTransport(rojoRHI::Device& device, const render::Renderer& renderer);
     void showMeasurement();
     void stopPlayback();
@@ -368,6 +373,8 @@ private:
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the
     // operation: the frame loop for quit and capture, this shell for a layout reset.
     EditorActions m_actions;
+    NoticeQueue m_notices;
+    ActionResult m_lastCaptureNotice;
 
     // The coherent, pausable, clearable performance snapshot behind the Performance panel. Fed one
     // PerformanceFrameSample each buildUI when a GPU frame has newly retired; owns all of the

@@ -5,6 +5,7 @@
 
 #include "App/Shell/EditorShell.h"
 
+#include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Shell/EditorFont.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
@@ -65,7 +66,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    configureEditorFont();
+    editor_style::setIconFontAvailable(configureEditorFont());
     ImGui::StyleColorsDark();
     ImGui::GetStyle().FramePadding = ImVec2(8.0f, 5.0f);
     ImGui::GetStyle().ItemSpacing = ImVec2(8.0f, 8.0f);
@@ -115,6 +116,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     }
     self->m_activeSceneId = initialScene;
     self->m_session.activate(**scene, SceneActivationMotion::Reset);
+    SDL_SetWindowTitle(window, (self->m_session.scene().name + " — Luminex").c_str());
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
     // The startup scene is a selection like any other (spec 9): the generation counter bumps from
@@ -294,7 +296,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     updateUiScaleShortcuts();
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
-    buildMainMenu();
+    buildMainMenu(renderer);
     buildPlaybackTransport(device, renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
@@ -308,110 +310,11 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     buildPanels(device, renderer, frameRecords);
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
-}
-
-//======================================================================================================================
-void EditorShell::buildMainMenu() {
-    if (!ImGui::BeginMainMenuBar()) {
-        return;
-    }
-    if (ImGui::BeginMenu("File")) {
-        const auto requested = drawSceneMenu(SceneMenuContext{
-            .library = m_library, .activeSceneId = m_activeSceneId, .loading = m_sceneLoading});
-        if (requested && *requested != m_activeSceneId) {
-            m_sceneLoading.request(*requested);
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Quit")) {
-            m_actions.requestQuit();
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Window")) {
-        const auto visibilityItem = [this](const char* label, EditorPanel panel) {
-            bool visible = m_workspace.visibility.isVisible(panel);
-            if (ImGui::MenuItem(label, nullptr, &visible)) {
-                setPanelVisible(panel, visible);
-            }
-        };
-        visibilityItem(kScenePanelWindowName, EditorPanel::Scene);
-        visibilityItem(kViewportPanelWindowName, EditorPanel::Viewport);
-        visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
-        visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
-        visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
-        visibilityItem(kConsolePanelWindowName, EditorPanel::Console);
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Layout")) {
-        if (ImGui::BeginMenu("UI Scale")) {
-            const uint32_t current = m_workspace.uiScalePercent;
-            if (ImGui::MenuItem("Zoom Out", "Cmd+-", false, current > kUiScalePresets.front())) {
-                setUiScale(stepUiScalePercent(current, false));
-            }
-            if (ImGui::MenuItem("Zoom In", "Cmd++", false, current < kUiScalePresets.back())) {
-                setUiScale(stepUiScalePercent(current, true));
-            }
-            if (ImGui::MenuItem("Reset UI Scale", "Cmd+0")) {
-                setUiScale(kDefaultUiScalePercent);
-            }
-            ImGui::Separator();
-            for (const uint32_t percent : kUiScalePresets) {
-                const std::string label = std::to_string(percent) + "%";
-                if (ImGui::MenuItem(label.c_str(), nullptr, current == percent)) {
-                    setUiScale(percent);
-                }
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Reset Default Layout")) {
-            m_actions.requestResetLayout();
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Debug")) {
-        if (ImGui::MenuItem("Capture Next GPU Frame", "C", false,
-                            m_actions.captureAvailable() &&
-                                m_actions.captureResult().status != ActionStatus::Pending)) {
-            m_actions.requestCapture();
-        }
-        drawActionFeedback("capture", m_actions.captureResult());
-        ImGui::EndMenu();
-    }
-    const uint32_t current = m_workspace.uiScalePercent;
-    const float buttonPadding = ImGui::GetStyle().FramePadding.x * 2.0f;
-    const std::string resetLabel = std::to_string(current) + "%##ResetUiZoom";
-    const float controlsWidth = ImGui::CalcTextSize("-+").x +
-                                ImGui::CalcTextSize(resetLabel.c_str(), nullptr, true).x +
-                                buttonPadding * 3.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-    const float rightAlignedX =
-        ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - controlsWidth;
-    // Tiny detached/narrow arrangements still have the Layout menu and keyboard shortcuts.
-    if (rightAlignedX >= ImGui::GetCursorPosX()) {
-        ImGui::SetCursorPosX(rightAlignedX);
-        ImGui::BeginDisabled(current <= kUiScalePresets.front());
-        if (ImGui::SmallButton("-##UiZoomOut")) {
-            setUiScale(stepUiScalePercent(current, false));
-        }
-        ImGui::EndDisabled();
-        editorTooltip("Zoom out the editor UI (Cmd+-). Fonts and controls shrink; camera settings "
-                      "stay unchanged. Minimum 75%.");
-        ImGui::SameLine();
-        if (ImGui::SmallButton(resetLabel.c_str())) {
-            setUiScale(kDefaultUiScalePercent);
-        }
-        editorTooltip("Current editor UI scale. Click to reset to 100% (Cmd+0). Saved with the "
-                      "workspace; Reset Default Layout keeps this preference.");
-        ImGui::SameLine();
-        ImGui::BeginDisabled(current >= kUiScalePresets.back());
-        if (ImGui::SmallButton("+##UiZoomIn")) {
-            setUiScale(stepUiScalePercent(current, true));
-        }
-        ImGui::EndDisabled();
-        editorTooltip("Zoom in the editor UI (Cmd++ or Cmd+=). Maximum 150%. The detached Render "
-                      "Graph uses the same UI scale.");
-    }
-    ImGui::EndMainMenuBar();
+    updateEditorShortcuts(renderer);
+    if (const auto reason = reconcileDebugView(m_settings))
+        m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+    postCaptureNotice();
+    editor_style::drawNotice(m_notices, ImGui::GetTime());
 }
 
 //======================================================================================================================
@@ -445,17 +348,10 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
             open, ViewportPanelContext{.renderer = renderer,
                                        .outlineTarget = m_selectionOutline->target(),
                                        .showOutline = m_showSelectionOutline,
-                                       .activeSceneName = m_session.scene().name,
-                                       .camera = m_session.camera(),
                                        .scene = m_session.scene(),
                                        .settings = m_settings,
-                                       .exposureContext = m_exposureContext,
-                                       .exposureResetPending = m_exposureResetPending,
-                                       .session = m_session,
                                        .temporalState = m_temporalState,
                                        .selection = m_selection,
-                                       .actions = m_actions,
-                                       .sceneId = m_activeSceneId,
                                        .visibilityDisplay = &m_visibilityDisplay});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
@@ -748,6 +644,7 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     m_lightingDisplay.clear();
     m_lightingFailureLogged = false;
     m_session.activate(**scene, SceneActivationMotion::Reset);
+    SDL_SetWindowTitle(m_window, (m_session.scene().name + " — Luminex").c_str());
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
     // rather than reproject the previous scene's pixels onto this one's geometry.

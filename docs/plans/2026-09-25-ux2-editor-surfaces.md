@@ -145,15 +145,15 @@ std::optional<std::string>`, which returns to Final and returns notice text when
 **Consumes:** Tasks 3, 4. **Produces:** `enum class EditorShortcut { FrameSelected, ResetCamera,
 Capture }`; `struct ShortcutContext { bool textInput, cameraLook, popupOpen, captureAvailable,
 hasSelection; }`; `bool shortcutAllowed(EditorShortcut, const ShortcutContext&)`.
-- [ ] Tests first (Review focus 5): every shortcut is refused under text input, camera look or a
+- [x] Tests first (Review focus 5): every shortcut is refused under text input, camera look or a
   popup; FrameSelected needs a selection; Capture needs availability. Implement; pass.
-- [ ] Menus: File (scene catalog, Quit); View (Reset Camera `Home`, Frame Selected `F`, Selection
+- [x] Menus: File (scene catalog, Quit); View (Reset Camera `Home`, Frame Selected `F`, Selection
   Outline, Editor Camera, Debug View grouped by topic with each disabled entry's `reason` as its
   tooltip, UI Scale); Window (panel toggles, Reset Default Layout); Debug (Capture Next GPU Frame
   `C`); Help (Controls, the former Camera help). Reset camera and frame selected move from
   `ViewportPanel.cpp` into shell actions shared by menu, shortcut and Hierarchy; `C`, `F` and
   `Home` go through `shortcutAllowed`.
-- [ ] Viewport: `drawToolbar` goes; `drawLegend` becomes a chip over the image whose title is a
+- [x] Viewport: `drawToolbar` goes; `drawLegend` becomes a chip over the image whose title is a
   combo of the active topic's entries, with the HZB level stepper and Close to Final; nothing in
   Final. Capture results post notices. `reconcileDebugView` runs each frame before declaration.
   `SDL_SetWindowTitle` shows `<scene> — Luminex`. Commit `editor: move viewport commands into

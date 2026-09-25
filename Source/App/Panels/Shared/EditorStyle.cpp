@@ -23,15 +23,20 @@ void setIconFontAvailable(bool available) {
 }
 
 //======================================================================================================================
+float iconButtonWidth(EditorIcon icon) {
+    return iconFontAvailable ? ImGui::GetFrameHeight()
+                             : std::max(ImGui::GetFrameHeight(),
+                                        ImGui::CalcTextSize(editorIconInfo(icon).label.data()).x +
+                                            2.0f * ImGui::GetStyle().FramePadding.x);
+}
+
+//======================================================================================================================
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip) {
     const auto info = editorIconInfo(icon);
     const std::string label =
         iconFontAvailable ? encodeUtf8(info.codepoint) : std::string(info.label);
     const float height = ImGui::GetFrameHeight();
-    const float width = iconFontAvailable
-                            ? height
-                            : std::max(height, ImGui::CalcTextSize(label.c_str()).x +
-                                                   2.0f * ImGui::GetStyle().FramePadding.x);
+    const float width = iconButtonWidth(icon);
     ImGui::PushID(id);
     ImGui::BeginDisabled(!enabled);
     const bool clicked = ImGui::Button(label.c_str(), {width, height});
@@ -98,12 +103,7 @@ void drawNotice(NoticeQueue& notices, double nowSeconds) {
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavFocus;
     if (ImGui::Begin("Notice##Editor", nullptr, kFlags)) {
-        const float closeWidth =
-            iconFontAvailable
-                ? ImGui::GetFrameHeight()
-                : std::max(ImGui::GetFrameHeight(),
-                           ImGui::CalcTextSize(editorIconInfo(EditorIcon::Close).label.data()).x +
-                               2.0f * ImGui::GetStyle().FramePadding.x);
+        const float closeWidth = iconButtonWidth(EditorIcon::Close);
         ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x -
                              closeWidth);
         if (iconButton("dismiss", EditorIcon::Close, true, "Dismiss notice")) {

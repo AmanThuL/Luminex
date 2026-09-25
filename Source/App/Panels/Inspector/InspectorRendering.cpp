@@ -46,8 +46,8 @@ void drawTemporalSection(const InspectorPanelContext& context) {
         if (editor_style::beginFields("reconstructionFields", 300.0f)) {
             checkbox("Temporal inputs", "##temporal", &settings.temporalEnabled);
             editorTooltip("Enable motion and history inputs for reconstruction and diagnostics. "
-                          "Turning this off renders at full resolution; the algorithm, scale and "
-                          "diagnostic requests are retained.");
+                          "Turning this off renders at full resolution; algorithm and scale "
+                          "requests are retained. Debug views are in View > Debug View.");
             ImGui::BeginDisabled(!settings.temporalEnabled);
             field("Algorithm");
             if (ImGui::BeginCombo("##reconstruction",
@@ -68,18 +68,11 @@ void drawTemporalSection(const InspectorPanelContext& context) {
             ImGui::EndDisabled();
             editor_style::endFields();
         }
-        const auto effectiveMode =
-            render::resolveReconstruction(settings.reconstruction, context.temporalSupport,
-                                          status.vendorFallback ==
-                                              render::VendorFallback::CreationFailed)
-                .mode;
-        settings.temporalDebugView =
-            clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
         if (!settings.temporalEnabled)
             editor_style::message("Off: full resolution; temporal settings are retained.");
         if (settings.temporalEnabled &&
             settings.temporalDebugView != render::TemporalDebugView::Off)
-            editor_style::message("Diagnostic image active. Choose Final below.");
+            editor_style::message("Diagnostic image active. Choose Final in View > Debug View.");
         {
             ImGui::SeparatorText("Advanced & diagnostics");
             ImGui::BeginDisabled(!settings.temporalEnabled);
@@ -88,36 +81,6 @@ void drawTemporalSection(const InspectorPanelContext& context) {
                 editorTooltip(
                     "Offset raster samples each frame for temporal reconstruction. Motion "
                     "vectors stay unjittered; turning jitter off does not stop the sequence.");
-                constexpr const char* kDebugViewNames[] = {
-                    "Final",          "Motion vectors", "Reprojection error", "Reprojected history",
-                    "Rejection mask", "Blend weight",   "History age"};
-                field("Diagnostic view");
-                if (ImGui::BeginCombo(
-                        "##debugView",
-                        kDebugViewNames[static_cast<size_t>(settings.temporalDebugView)])) {
-                    for (size_t index = 0; index < std::size(kDebugViewNames); ++index) {
-                        const auto view = static_cast<render::TemporalDebugView>(index);
-                        const bool unavailable =
-                            clampTemporalDebugView(view, effectiveMode) != view;
-                        ImGui::BeginDisabled(unavailable);
-                        if (ImGui::Selectable(kDebugViewNames[index],
-                                              settings.temporalDebugView == view)) {
-                            settings.temporalDebugView = view;
-                            if (view != render::TemporalDebugView::Off) {
-                                settings.lightDebugView = engine::LightDebugView::Off;
-                                settings.hzbDebugLevel = -1;
-                            }
-                        }
-                        ImGui::EndDisabled();
-                        if (unavailable) {
-                            editorTooltip("Requires native accumulation; choose Native TAA to "
-                                          "inspect this view.");
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-                editorTooltip("Replace the final image with a temporal diagnostic. The Viewport "
-                              "explains its colors and units; Final restores the rendered image.");
                 editor_style::endFields();
             }
             ImGui::EndDisabled();
@@ -252,11 +215,6 @@ void drawRenderingSection(const InspectorPanelContext& context) {
     auto& settings = context.settings;
     auto& renderer = context.renderer;
     const auto status = renderer.temporalStatus();
-    const auto effectiveMode = render::resolveReconstruction(
-                                   settings.reconstruction, context.temporalSupport,
-                                   status.vendorFallback == render::VendorFallback::CreationFailed)
-                                   .mode;
-    settings.temporalDebugView = clampTemporalDebugView(settings.temporalDebugView, effectiveMode);
     const auto presentation =
         temporalPresentation(context.temporalState, settings, status, context.temporalSupport,
                              renderer.width(), renderer.height());
@@ -308,7 +266,6 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             !settings.visibilityEnabled) {
             settings.occlusionEnabled = false;
             settings.occlusionCheck = false;
-            settings.hzbDebugLevel = -1;
         }
         editorTooltip("Conservative camera-frustum test. Shadow candidates stay unculled.");
         if (editor_style::beginFields("visibilityControls", 300.0f)) {
@@ -323,7 +280,6 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                     settings.classifyCheck = false;
                     settings.occlusionEnabled = false;
                     settings.occlusionCheck = false;
-                    settings.hzbDebugLevel = -1;
                 }
             }
             editorTooltip(
@@ -346,41 +302,16 @@ void drawRenderingSection(const InspectorPanelContext& context) {
             ImGui::EndDisabled();
             editorTooltip(occlusionAvailable ? "Previous-frame depth evidence; camera motion can "
                                                "delay newly visible geometry by one frame. "
-                                               "Any coverage change retains all candidates."
-                                             : "Requires GPU classification and frustum culling.");
+                                               "Any coverage change retains all candidates. "
+                                               "HZB views are in View > Debug View."
+                                             : "Requires GPU classification and frustum culling. "
+                                               "HZB views are in View > Debug View.");
             if (!settings.occlusionEnabled) {
                 settings.occlusionCheck = false;
-                settings.hzbDebugLevel = -1;
             } else {
                 checkbox("Independent ID check", "##occlusionCheck", &settings.occlusionCheck);
                 editorTooltip("Draw all candidates independently and check missing visible "
                               "instances. Unscored.");
-                editor_style::field("HZB view");
-                const std::string preview = settings.hzbDebugLevel < 0
-                                                ? "Final"
-                                                : std::format("Level {}", settings.hzbDebugLevel);
-                if (ImGui::BeginCombo("##hzbLevel", preview.c_str())) {
-                    if (ImGui::Selectable("Final", settings.hzbDebugLevel < 0))
-                        settings.hzbDebugLevel = -1;
-                    uint32_t width = (renderer.width() + 1) / 2;
-                    uint32_t height = (renderer.height() + 1) / 2;
-                    uint32_t levels = 1;
-                    while (width > 16 || height > 16) {
-                        width = (width + 1) / 2;
-                        height = (height + 1) / 2;
-                        ++levels;
-                    }
-                    for (uint32_t level = 0; level < levels; ++level) {
-                        if (ImGui::Selectable(std::format("Level {}", level).c_str(),
-                                              settings.hzbDebugLevel ==
-                                                  static_cast<int32_t>(level))) {
-                            settings.hzbDebugLevel = static_cast<int32_t>(level);
-                            settings.lightDebugView = engine::LightDebugView::Off;
-                            settings.temporalDebugView = render::TemporalDebugView::Off;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
                 checkbox("Rejected bounds (max 128)", "##occlusionBounds",
                          &settings.showOcclusionBounds);
             }
@@ -400,7 +331,6 @@ void drawRenderingSection(const InspectorPanelContext& context) {
                     settings.classifyCheck = false;
                     settings.occlusionEnabled = false;
                     settings.occlusionCheck = false;
-                    settings.hzbDebugLevel = -1;
                 }
             }
             editorTooltip(

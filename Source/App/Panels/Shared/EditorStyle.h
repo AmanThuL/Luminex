@@ -19,6 +19,8 @@ inline constexpr float kPropertyGridMinWidth = 260.0f;
 
 /// Selects glyphs or readable text labels for all shared icon controls.
 void setIconFontAvailable(bool available);
+/// Width of an icon button at the current font and scale, including its labelled fallback.
+float iconButtonWidth(EditorIcon icon);
 /// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip);
 /// Begins a panel's grouped action row; place following controls with nextInRow or SameLine.
