@@ -43,6 +43,12 @@ std::string temporalName(const EditorRenderSettings& settings) {
 } // namespace
 //======================================================================================================================
 void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Renderer& renderer) {
+    if (m_measurement.active())
+        return;
+    if (m_playback.active()) {
+        m_measurementFeedback = "Stop scene playback before starting a measurement.";
+        return;
+    }
     if (m_settings.dynamicResolutionEnabled) {
         m_measurementFeedback =
             "Turn off dynamic resolution before starting a fixed-plan measurement.";
@@ -79,6 +85,7 @@ void EditorShell::startMeasurement(rojoRHI::Device& device, const render::Render
         m_measurementFeedback = m_measurement.failure();
         return;
     }
+    endMouseLook();
     m_playback.play(m_session, m_settings.followCameraTrack);
     m_measurementOwnsPlayback = true;
     m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);

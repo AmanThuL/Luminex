@@ -6,17 +6,11 @@
 #include "App/Panels/Scene/PlaybackToolbar.h"
 #include "App/Shell/EditorShell.h"
 
-#include <array>
+#include "App/Model/Workspace/MenuBarFit.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include <format>
 
 namespace lmx::app {
-
-//======================================================================================================================
-void EditorShell::showMeasurement() {
-    setPanelVisible(EditorPanel::Performance, true);
-    m_performancePanel.requestFocus = true;
-    m_revealMeasurement = true;
-}
 
 //======================================================================================================================
 void EditorShell::stopPlayback() {
@@ -37,39 +31,40 @@ void EditorShell::finishMeasurementPlayback() {
 }
 
 //======================================================================================================================
-void EditorShell::buildPlaybackTransport(rojoRHI::Device& device,
-                                         const render::Renderer& renderer) {
-    finishMeasurementPlayback();
+void EditorShell::buildPlaybackTransport() {
     const auto& scene = m_session.scene();
-    std::string status = m_playback.playing()  ? "Playing"
-                         : m_playback.active() ? "Paused"
-                                               : "Stopped";
-    if (m_measureOnPlay) {
-        constexpr std::array names{"Ready",    "Warmup",   "Measuring",
-                                   "Draining", "Complete", "Cancelled"};
-        status = std::format("{} {}/{}", names[static_cast<size_t>(m_measurement.state())],
-                             m_measurement.samples().size(), m_measurement.plan().measuredFrames);
+    const std::string readout =
+        m_measurement.active() ? std::format("Measuring {} / {}", m_measurement.samples().size(),
+                                             m_measurement.plan().measuredFrames)
+                               : std::format("{:.3f} s", scene.animationTime);
+    const PlaybackToolbarContext context{.followCameraRail = m_settings.followCameraTrack,
+                                         .playing = m_playback.playing(),
+                                         .active = m_playback.active(),
+                                         .measurementActive = m_measurement.active(),
+                                         .hasCameraRail = !scene.animation.cameraTrack.empty(),
+                                         .readout = readout};
+    const std::string zoomLabel = std::to_string(m_workspace.uiScalePercent) + "%##ResetUiZoom";
+    const float zoomWidth = ImGui::CalcTextSize(zoomLabel.c_str(), nullptr, true).x +
+                            ImGui::GetStyle().FramePadding.x * 2.0f;
+    const float available = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x;
+    const MenuBarWidths widths{ImGui::GetCursorPosX(), playbackToolbarButtonsWidth(context),
+                               ImGui::CalcTextSize(readout.c_str()).x, zoomWidth,
+                               ImGui::GetStyle().ItemSpacing.x};
+    const auto fit = fitMenuBar(available, widths);
+    ImGui::SetCursorPosX(fit.transportX);
+    const auto action = drawPlaybackToolbar(context, fit.showReadout);
+    if (fit.showZoom) {
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(available - zoomWidth);
+        if (ImGui::SmallButton(zoomLabel.c_str()))
+            setUiScale(kDefaultUiScalePercent);
+        editorTooltip(
+            "Current UI scale. Click to reset to 100% (Cmd+0). View > UI Scale has all sizes.");
     }
-    const PlaybackToolbarContext context{
-        .measureOnPlay = m_measureOnPlay,
-        .followCameraRail = m_settings.followCameraTrack,
-        .playing = m_playback.playing(),
-        .active = m_playback.active(),
-        .measurementActive = m_measurement.active(),
-        .hasCameraRail = !scene.animation.cameraTrack.empty(),
-        .canMeasure = !m_settings.dynamicResolutionEnabled,
-        .timeSeconds = scene.animationTime,
-        .status = status,
-        .disabledReason = "Turn off dynamic resolution before starting a fixed-plan measurement."};
-    switch (drawPlaybackToolbar(context)) {
+    switch (action) {
     case PlaybackToolbarAction::Play:
         endMouseLook();
-        if (m_measureOnPlay) {
-            showMeasurement();
-            startMeasurement(device, renderer);
-        } else {
-            m_playback.play(m_session, m_settings.followCameraTrack);
-        }
+        m_playback.play(m_session, m_settings.followCameraTrack);
         break;
     case PlaybackToolbarAction::Pause:
         m_playback.pause();
@@ -82,9 +77,6 @@ void EditorShell::buildPlaybackTransport(rojoRHI::Device& device,
         m_playback.step(m_session, m_settings.followCameraTrack);
         break;
     case PlaybackToolbarAction::None:
-        break;
-    case PlaybackToolbarAction::ShowMeasurement:
-        showMeasurement();
         break;
     }
 }

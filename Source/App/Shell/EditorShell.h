@@ -238,8 +238,7 @@ private:
     void frameSelected(const render::Renderer& renderer);
     void updateEditorShortcuts(const render::Renderer& renderer);
     void postCaptureNotice();
-    void buildPlaybackTransport(rojoRHI::Device& device, const render::Renderer& renderer);
-    void showMeasurement();
+    void buildPlaybackTransport();
     void stopPlayback();
     void finishMeasurementPlayback();
     void registerWorkspaceSettings();
@@ -276,9 +275,7 @@ private:
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
     SceneSession m_session;
     EditorPlayback m_playback;
-    bool m_measureOnPlay = false;
     bool m_measurementOwnsPlayback = false;
-    bool m_revealMeasurement = false;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at

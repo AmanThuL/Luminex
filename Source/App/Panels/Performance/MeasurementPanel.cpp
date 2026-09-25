@@ -12,20 +12,27 @@
 namespace lmx::app {
 //======================================================================================================================
 void drawMeasurementSection(MeasurementPanelContext& context) {
-    if (context.reveal)
-        ImGui::SetNextItemOpen(true);
-    const bool expanded = ImGui::CollapsingHeader("Measure");
-    if (context.reveal) {
-        ImGui::SetScrollHereY(0.0f);
-        context.reveal = false;
-    }
-    if (!expanded)
+    if (!ImGui::CollapsingHeader("Measure"))
         return;
     const auto& run = context.run;
     editor_style::message("Interactive / unscored. Live viewport, UI and presentation; each frame "
                           "waits for retirement.");
-    editor_style::message("Choose Measure in the top toolbar, then Play. Stop cancels the run. "
-                          "Closing this window keeps measurement running.");
+    ImGui::BeginDisabled(run.active() || !context.startDisabledReason.empty());
+    if (ImGui::Button("Start"))
+        context.action = MeasurementAction::Start;
+    ImGui::EndDisabled();
+    const std::string startHelp =
+        run.active() ? "A measurement is already running. Stop cancels it."
+        : !context.startDisabledReason.empty()
+            ? std::string(context.startDisabledReason)
+            : "Start the fixed measurement plan. Closing this window keeps the run active.";
+    editorTooltip(startHelp.c_str());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(!run.active());
+    if (ImGui::Button("Stop"))
+        context.action = MeasurementAction::Stop;
+    ImGui::EndDisabled();
+    editorTooltip("Cancel measurement and restore its starting scene and camera state.");
     ImGui::BeginDisabled(run.active());
     if (editor_style::beginFields("measurePlan")) {
         int warmup = static_cast<int>(context.warmup);

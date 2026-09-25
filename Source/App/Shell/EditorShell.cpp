@@ -296,8 +296,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     updateUiScaleShortcuts();
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
+    finishMeasurementPlayback();
     buildMainMenu(renderer);
-    buildPlaybackTransport(device, renderer);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
@@ -414,11 +414,25 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         m_performanceModel.setContextEpoch(metricsContextEpoch());
         MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
                                             m_measurementExportPath, m_measurementFeedback};
-        measurement.reveal = m_revealMeasurement;
+        measurement.startDisabledReason =
+            m_playback.active() ? "Stop scene playback before starting a measurement."
+            : m_settings.dynamicResolutionEnabled
+                ? "Turn off dynamic resolution before starting a fixed-plan measurement."
+                : "";
         drawPerformancePanel(open, m_performanceModel, m_performancePanel, &measurement);
-        m_revealMeasurement = measurement.reveal;
-        if (measurement.action == MeasurementAction::Export)
+        switch (measurement.action) {
+        case MeasurementAction::Start:
+            startMeasurement(device, renderer);
+            break;
+        case MeasurementAction::Stop:
+            stopPlayback();
+            break;
+        case MeasurementAction::Export:
             exportMeasurement();
+            break;
+        case MeasurementAction::None:
+            break;
+        }
         setPanelVisible(EditorPanel::Performance, open);
     }
 

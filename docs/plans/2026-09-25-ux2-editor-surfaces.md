@@ -167,10 +167,10 @@ hasSelection; }`; `bool shortcutAllowed(EditorShortcut, const ShortcutContext&)`
 **Produces:** `struct MenuBarWidths { float menus, buttons, readout, zoom, spacing; }`; `struct
 MenuBarFit { bool showReadout; bool showZoom; float transportX; }`; `MenuBarFit fitMenuBar(float
 available, const MenuBarWidths&)`.
-- [ ] Tests first: with room, the transport is centred between menus and zoom with both shown;
+- [x] Tests first: with room, the transport is centred between menus and zoom with both shown;
   shrinking drops the readout, then zoom; buttons never drop and `transportX >= menus + spacing`;
   1280 pt at 150% (menus 435, buttons 150, readout 180, zoom 70) shows everything.
-- [ ] The main menu bar draws Play/Pause, Stop, Step and Rail (scenes with a rail only) as
+- [x] The main menu bar draws Play/Pause, Stop, Step and Rail (scenes with a rail only) as
   `iconButton`s and a readout: the time, or `Measuring n / N` during a run, when only Stop is
   enabled. The side bar, Scene/Measure combo, options chevron and `measureOnPlay` go; clicking the
   zoom percentage resets it to 100%. The Measure tab gets Start and Stop and loses its instruction

@@ -148,17 +148,7 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer) {
         }
         ImGui::EndMenu();
     }
-    const std::string resetLabel = std::to_string(m_workspace.uiScalePercent) + "%##ResetUiZoom";
-    const float width = ImGui::CalcTextSize(resetLabel.c_str(), nullptr, true).x +
-                        ImGui::GetStyle().FramePadding.x * 2.0f;
-    const float rightX = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - width;
-    if (rightX >= ImGui::GetCursorPosX()) {
-        ImGui::SetCursorPosX(rightX);
-        if (ImGui::SmallButton(resetLabel.c_str()))
-            setUiScale(kDefaultUiScalePercent);
-        editorTooltip(
-            "Current UI scale. Click to reset to 100% (Cmd+0). View > UI Scale has all sizes.");
-    }
+    buildPlaybackTransport();
     ImGui::EndMainMenuBar();
 }
 

@@ -5,10 +5,13 @@
 #pragma once
 #include "App/Model/Performance/MeasurementRun.h"
 #include <string>
+#include <string_view>
 namespace lmx::app {
 /// Explicit action requested by measurement controls.
 enum class MeasurementAction {
     None,  ///< No action requested.
+    Start, ///< Start the configured fixed sequence from a stopped scene.
+    Stop,  ///< Cancel the active measurement and restore its preview.
     Export ///< Write the completed or cancelled report to the chosen path.
 };
 /// Shell-owned fields borrowed while drawing Performance.
@@ -19,7 +22,7 @@ struct MeasurementPanelContext {
     std::string& exportPath;                            ///< Destination for explicit Export.
     const std::string& feedback;                        ///< Export/start outcome.
     MeasurementAction action = MeasurementAction::None; ///< One action raised this frame.
-    bool reveal = false; ///< Expand the section when the top transport starts a measurement.
+    std::string_view startDisabledReason{}; ///< Why Start is unavailable, or empty when ready.
 };
 /// Draws the Measure section inside an existing Performance window.
 void drawMeasurementSection(MeasurementPanelContext& context);
