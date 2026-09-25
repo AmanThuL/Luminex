@@ -28,6 +28,16 @@ local inter_files = {
      sha256 = "262481e844521b326f5ecd053e59b98c8b2da78c8ee1bdbb6e8174305e54935a"}
 }
 
+local codicons_version = "0.0.46-24"
+local codicons_url = "https://registry.npmjs.org/@vscode/codicons/-/codicons-" .. codicons_version .. ".tgz"
+local codicons_sha256 = "d77bf2ed152e82c4b81288c5271a3481c61559d1a5416593756e3b0fe8a02bf1"
+local codicons_files = {
+    {source = "package/dist/codicon.ttf", name = "codicon.ttf",
+     sha256 = "3819e4ae4b87350e7c37a5d8f24e71ada2f1f2ee58f7ce5ebc1f88e3c8c38c80"},
+    {source = "package/LICENSE", name = "LICENSE",
+     sha256 = "af5e030844efddbc7ab00dcfea8b019703753d4d9f5172d727c533a492aec665"}
+}
+
 local helmet_pin = "2bac6f8c57bf471df0d2a1e8a8ec023c7801dddf" -- KhronosGroup/glTF-Sample-Assets
 local helmet_sha256 = "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
 local helmet_license_sha256 = "424cf69d2b709c8cd1316c72671e9f8370a15e10fee03734c2a95072152f2f5d"
@@ -119,6 +129,46 @@ task("setup")
         io.writefile("ThirdParty/Inter/SOURCE.txt",
                      "Inter 4.1 (Regular default outlines)\nhttps://github.com/rsms/inter/tree/" ..
                      inter_commit .. "\nLicense: SIL Open Font License 1.1; see LICENSE.txt\n")
+
+        local codicons_dir = "ThirdParty/Codicons"
+        os.mkdir(codicons_dir)
+        local codicons_verified = true
+        for _, entry in ipairs(codicons_files) do
+            local dest = path.join(codicons_dir, entry.name)
+            if os.isfile(dest) then
+                local actual = os.iorunv("shasum", {"-a", "256", dest}):match("^(%x+)")
+                assert(actual == entry.sha256, format("Codicons %s checksum mismatch; expected %s",
+                                                     entry.name, entry.sha256))
+            else
+                codicons_verified = false
+            end
+        end
+        if not codicons_verified then
+            local archive = path.join(codicons_dir, "codicons-" .. codicons_version .. ".tgz.download")
+            os.execv("curl", {"-fL", "--retry", "2", "--max-time", "300", "-o", archive, codicons_url})
+            local actual = os.iorunv("shasum", {"-a", "256", archive}):match("^(%x+)")
+            assert(actual == codicons_sha256, format("Codicons archive checksum mismatch; expected %s",
+                                                    codicons_sha256))
+            local unpacked = path.join(codicons_dir, ".unpacked")
+            os.tryrm(unpacked)
+            os.mkdir(unpacked)
+            os.execv("tar", {"-xzf", archive, "-C", unpacked,
+                             "package/dist/codicon.ttf", "package/LICENSE"})
+            for _, entry in ipairs(codicons_files) do
+                local candidate = path.join(unpacked, entry.source)
+                local actual = os.iorunv("shasum", {"-a", "256", candidate}):match("^(%x+)")
+                assert(actual == entry.sha256, format("Codicons %s checksum mismatch; expected %s",
+                                                     entry.name, entry.sha256))
+            end
+            for _, entry in ipairs(codicons_files) do
+                os.cp(path.join(unpacked, entry.source), path.join(codicons_dir, entry.name))
+            end
+            os.rm(unpacked)
+            os.rm(archive)
+        end
+        io.writefile(path.join(codicons_dir, "SOURCE.txt"),
+                     "@vscode/codicons " .. codicons_version .. "\n" .. codicons_url ..
+                     "\nLicense: CC BY 4.0; see LICENSE\n")
 
         if not os.isdir("ThirdParty/metal-cpp") then
             os.mkdir("ThirdParty/metal-cpp")

@@ -79,15 +79,15 @@ EAD1, Stop EAD7, Step EAD6, Reset EAE2 (discard), Close EA76, More EA7C (ellipsi
 EA75, Unlock EB74, Rail EADA (device-camera); `struct EditorIconInfo { char32_t codepoint;
 std::string_view label; }`; `EditorIconInfo editorIconInfo(EditorIcon)`; `std::string
 encodeUtf8(char32_t)`; `bool configureEditorFont()`, true when icons loaded.
-- [ ] Tests first: the table above; labels non-empty; code points distinct and within
+- [x] Tests first: the table above; labels non-empty; code points distinct and within
   U+EA60–U+EC40; `encodeUtf8(0xEAD3) == "\xEE\xAB\x93"`. Run, see fail; implement; pass.
-- [ ] Setup, after the Inter block: download the pinned tarball to a `.download` file, verify it,
+- [x] Setup, after the Inter block: download the pinned tarball to a `.download` file, verify it,
   extract `package/dist/codicon.ttf` and `package/LICENSE` into `ThirdParty/Codicons`, verify both,
   write `SOURCE.txt` (package, version, URL, "License: CC BY 4.0; see LICENSE"); skip when the
   verified files exist. `Source/App/xmake.lua` stages them into `Fonts/` as `codicon.ttf`,
   `Codicons-LICENSE.txt`, `Codicons-SOURCE.txt` when present, else one build warning, never a
   failure (Inter keeps its assert). `THIRD_PARTY_NOTICES.md` gains `## Codicons` in Inter's shape.
-- [ ] `configureEditorFont` merges `Fonts/codicon.ttf` into Inter (`MergeMode`, `GlyphMinAdvanceX =
+- [x] `configureEditorFont` merges `Fonts/codicon.ttf` into Inter (`MergeMode`, `GlyphMinAdvanceX =
   kReferenceSize`, range U+EA60–U+EC40); when absent it returns false and logs one `LMX_LOG_WARN`
   naming `xmake setup`. With the staged font moved aside, `LMX_MAX_FRAMES=30` logs it once.
   Commit `build: fetch and stage the Codicons icon font (UX2)`.

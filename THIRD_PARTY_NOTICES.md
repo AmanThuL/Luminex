@@ -76,3 +76,17 @@ Archive record: <https://casual-effects.com/data>.
 `LICENSE.txt` and `SOURCE.txt` to its `Fonts/` directory; keep them together when distributing App.
 The editor sets digit advances at runtime without modifying the font file. Gallery screenshots
 show the typeface in use; the font itself is not relicensed under Apache-2.0.
+
+## Codicons
+
+- Source: [@vscode/codicons 0.0.46-24](https://www.npmjs.com/package/@vscode/codicons/v/0.0.46-24)
+- Author: Microsoft Corporation and contributors
+- File: unmodified `package/dist/codicon.ttf`
+- License: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/legalcode), retained verbatim
+  alongside the font
+
+`xmake setup` verifies the pinned archive, font and license hashes. Building App copies the font,
+`Codicons-LICENSE.txt` and `Codicons-SOURCE.txt` to its `Fonts/` directory; keep them together when
+distributing App. The editor merges the glyphs into its atlas at runtime without modifying the
+font file. Gallery screenshots show the icons in use; the font itself is not relicensed under
+Apache-2.0.
