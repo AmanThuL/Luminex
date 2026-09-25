@@ -8,8 +8,8 @@ protocol and R1, which is complete; this file holds the milestones the owner pla
 [UX2](editor-experience.md#ux2--scene-documents-and-hierarchy) on 2026-09-19: **R2 → R3 → R4**.
 They add no rendering scope. Unless a section states otherwise they use the
 [R1 comparison protocol](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations)
-unchanged, and earlier parity exceptions relax nothing here. Proposed records hold design detail:
-[R2](../milestones/r/r2.md), [R3](../milestones/r/r3.md), [R4](../milestones/r/r4.md).
+unchanged, and earlier parity exceptions relax nothing here. Records hold design detail:
+[R2](../milestones/r/r2.md) and [R3](../milestones/r/r3.md) (Proposed), [R4](../milestones/r/r4.md) (closed as DEFER).
 
 ## R2 — RHI becomes RojoRHI
 
@@ -281,8 +281,8 @@ for each variant, the generated MSL, the reflected resource layout and the rende
 parent under the strict parity matrix; an immutable evidence tag; a recorded adopt or DEFER decision.
 
 **Exit gate:** the comparison is complete and recorded for all four variants whatever the outcome.
-**Implemented 2026-09-24:** the comparison is complete and recorded for all four variants, so this exit gate
-holds; the fixed rule records DEFER pending owner review ([validation](../milestones/r/r4.1-validation.md)).
+**Implemented 2026-09-24:** the recorded comparison is complete, so this exit gate holds. **R4 closed as DEFER
+2026-09-25** after a [follow-up](../milestones/r/r4.1-followup.md); R4.2 is not opened; [ADR 0027](../decisions/0027-scene-pass-deduplication-defer.md) owns reopening.
 
 ### R4.2 — Adoption
 

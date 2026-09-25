@@ -49,3 +49,4 @@ pair keeps matching ordinary and motion entry points, with reactive emissive exp
 same source in the scene pairs. Opaque and masked files are separate coverage variants, not this
 exposure twin relationship. Do not introduce a runtime exposure branch, generated rewriting or
 whole-file deduplication here: prior byte-parity evidence requires distinct manual shader output.
+R4 re-tested a shared scene-pass module and deferred it; [ADR 0027](../decisions/0027-scene-pass-deduplication-defer.md) owns reopening.
