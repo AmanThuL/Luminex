@@ -2,8 +2,8 @@
 
 **Status**: Proposed
 
-First draft for owner revision, from the owner's review of the running editor on 2026-09-25. UX2
-gives every control one home where its task belongs, removes duplicate routes and chrome that is
+From the owner's review of the running editor on 2026-09-25; its five open points were decided
+with the owner the same day. UX2 gives every control one home where its task belongs, removes duplicate routes and chrome that is
 always shown but rarely needed, and keeps every capability that is not redundant. It changes the
 editor only: rendered images, capture and measurement outputs and the CLI stay as they are.
 [Part IV](../../roadmap/editor-experience.md#ux2--editor-surfaces) owns the outcome and gates;
@@ -57,6 +57,11 @@ Reviewed in Sponza and Damaged Helmet at the default layout on 2026-09-25.
 | Scope | Editor only. No renderer, capture, manifest, measurement-schema or CLI change; an unchanged-image check replaces image gates |
 | Principle | The viewport shows the image and overlays that describe it; the transport controls time; panels show controls first and readings second; status appears when it is abnormal |
 | Performance | A compact docked tab exists beside the detached window, which it opens for detail |
+| Camera | The View menu and shortcuts, with no viewport chrome: a corner popover would repeat two or three commands, and a right-click menu would contend with right-button look |
+| Console reading | Scrolling off the bottom freezes the displayed view, because retained-log eviction otherwise slides lines under the reader; a ↓ N new chip, or returning to the bottom, resumes |
+| Icons | Codicons, pinned by `xmake setup` like Inter; drawn on a 16 px grid, it holds the editor's debugger and view icons, and the transport moves to it |
+| Menu bar | One row that never wraps. When it is tight it drops the time readout, into Play's tooltip, then the zoom percentage, which View > UI Scale keeps; buttons never drop |
+| Debug View reach | The View menu, grouped by topic, and the legend chip, whose title switches views while one is active. Rendering topics keep no route; their tooltips name the menu |
 
 ## Surface conventions
 
@@ -76,18 +81,18 @@ every panel:
 5. **Status by exception.** Normal states (`Stopped`, `Ready`, zero eviction) are not printed;
    warnings, failures and work in progress are. Explanations move into tooltips.
 6. **The viewport is the image.** Only overlays that describe the pixels, such as the debug-view
-   legend with its × and a pending capture, draw on it.
+   legend chip with its view dropdown and × and a pending capture, draw on it.
 
 ## Placement map
 
 | Today | UX2 |
 |---|---|
 | Viewport scene name | Main window title |
-| Reset camera, Frame selected | View menu, with F and Home; Frame selected also in the Hierarchy context menu |
+| Reset camera, Frame selected | View menu, with Home and F; Frame selected also in the Hierarchy context menu |
 | Camera help | Help > Controls |
 | Viewport GPU capture | Removed; Debug > Capture Next GPU Frame and `C` remain, and results appear in a transient notice |
 | Selection outline checkbox | View > Selection Outline |
-| Temporal, lighting and HZB views | One View > Debug View selector; unavailable views are disabled with the reason; the viewport keeps the legend chip. CLI options are unchanged |
+| Temporal, lighting and HZB views | One View > Debug View selector grouped by topic; unavailable views are disabled with the reason. The viewport's legend chip gains a view dropdown in its title and, for HZB, the mip-level stepper. CLI options are unchanged |
 | Toolbar row | The transport joins the menu-bar row: Play/Pause, Stop, Step, time, and a rail-follow toggle shown only for scenes with a rail |
 | Scene/Measure combo, options chevron | Removed. A run starts from Performance; during it the transport shows progress and only Stop is enabled |
 | Layout menu, menu-bar zoom | Layout merges into Window; View > UI Scale and the Cmd shortcuts remain; the menu bar keeps the percentage, which resets on click |
@@ -95,7 +100,7 @@ every panel:
 | Workspace > Editor Camera | Leaves the Hierarchy; View > Editor Camera shows it in the Inspector |
 | Local-light row checkboxes | The Inspector header checkbox; UX3 extends it to objects |
 | Clear search button | An × inside the search field |
-| Console controls | One row: search, severity chips with counts, ⋯ for Clear and Copy visible. Following is automatic at the bottom and scrolling up pauses it, so Freeze is removed. Statistics print when eviction or truncation is non-zero and otherwise sit in a tooltip |
+| Console controls | One row: search, severity chips with counts, ⋯ for Clear and Copy visible. Following is automatic at the bottom; scrolling up freezes the view and a ↓ N new chip resumes, so Freeze and Follow newest are removed. Statistics print when eviction or truncation is non-zero and otherwise sit in a tooltip |
 | Performance | A compact docked tab: frame and GPU time with a sparkline, the costliest stages, freshness and Details ↗. The detached window gains Live and Measure tabs, stage-grouped rows and a sortable schedule column in place of the Schedule order checkbox |
 | Render Graph header | One row: Freeze with live status, fit and 100% icons, ⋯ for Reset layout, Columns and Dump. Dump results appear in a transient notice; memory totals only in the details pane. Imported scene buffers bundle into one expandable pin per node |
 
@@ -103,13 +108,18 @@ every panel:
 
 **Deliver:** the conventions above in the architecture page; shared primitives in `EditorStyle`
 (header row, icon button, overflow menu, property grid, Diagnostics section, transient notice);
-File, View, Window, Debug and Help menus; the viewport without a header; one Debug View selector
-in AppModel whose availability reproduces the existing conflict rules; the transport in the
-menu-bar row; measurement started from Performance; the scene name in the window title.
+Codicons in `xmake setup` (pinned version, SHA-256, CC BY 4.0 license and `SOURCE.txt` in
+`ThirdParty/Codicons`), staged to `Fonts/` beside Inter, merged into the atlas, named by code-point
+constants in one header and credited in `THIRD_PARTY_NOTICES.md`; File, View, Window, Debug and
+Help menus; the viewport without a header; one Debug View selector in AppModel whose availability
+reproduces the existing conflict rules, with the chip dropdown and HZB stepper; the transport in
+the menu-bar row, placed by a pure AppModel fit function; measurement started from Performance;
+the scene name in the window title.
 
 **Exit gate:** every command removed from a surface stays reachable by its named route; AppModel
-tests cover Debug View availability case by case against the CLI conflict rules; capture and dump
-still report their path or reason.
+tests cover Debug View availability case by case against the CLI conflict rules, and the fit
+function's drop order at stated widths; without the icon font, every icon button shows its text
+label and one warning is logged; capture and dump still report their path or reason.
 
 ## UX2.2 — Hierarchy, Inspector and Rendering panel
 
@@ -122,18 +132,21 @@ as before; no Inspector page stacks labels at the default layout width.
 
 ## UX2.3 — Console, Performance and Render Graph chrome
 
-**Deliver:** the Console, Performance and Render Graph rows of the placement map.
+**Deliver:** the Console, Performance and Render Graph rows of the placement map, with the
+Console's freeze-on-scroll transitions owned by `ConsoleModel`.
 
 **Exit gate:** the completion gate's performance and graph tasks pass: find the costliest pass,
 freeze, clear and resume; hold graph selection and navigation for ten seconds under Native TAA,
 freeze, dump and resume. The compact tab and the detached window show the same snapshot; Console
-filtering, copying and clearing are unchanged.
+filtering, copying and clearing are unchanged. `ConsoleModel` tests cover freezing on scroll-up,
+counting new arrivals, resuming by the chip and by the bottom, Clear while frozen, and Copy visible
+copying the frozen view.
 
 ## UX2.4 — Workspace schema 4 and acceptance
 
 **Deliver:** workspace schema 4 with the Rendering panel and the Performance tab in the default
 docking, migrating schema 3 with its UI scale and window bounds; Reset Default Layout; the
-architecture and guide pages and `AGENTS.md`.
+architecture and guide pages and `AGENTS.md`, including the Codicons setup line.
 
 **Exit gate:** the whole [completion gate](../../roadmap/editor-experience.md#completion-gate) on
 the new layout at both window sizes; schema 3 workspaces open without loss; scene-only
@@ -148,16 +161,10 @@ theme editing remain deferred as [UX1](ux1.md) left them. Editing the rendering 
 separate [candidate](../../roadmap/editor-experience.md#candidate--offline-pipeline-editing), not
 part of UX2.
 
-## Risks and open points
+## Risks
 
-- **Camera controls.** The draft uses the View menu and shortcuts. A camera popover shown while
-  hovering a viewport corner, as in Blender and Unreal, would be the only viewport chrome that does
-  not describe the image.
-- **Console Freeze.** Removing it relies on a scrolled-up view holding still while ingestion
-  continues; confirm no workflow needs the view frozen at the bottom.
-- **Icons.** Icon buttons need glyphs: draw-list icons like the transport's, or a pinned icon font,
-  which would be a new setup dependency.
-- **Narrow menu bar.** Menus, transport and zoom share one row. At 1280 × 720 and 150% scale the
-  completion gate decides whether the transport wraps to a row of its own.
-- **Debug View reach.** Three views move to one selector; their old Inspector locations keep no
-  shortcut to it.
+- **Attribution.** Codicons' CC BY 4.0 license must travel with the staged font and its notice.
+- **Frozen Console.** The ↓ N new chip is the only sign that the view is frozen; it stays visible
+  whenever the view is scrolled up.
+- **Narrow windows.** Below 1280 pt the menu bar relies on dropping readouts; narrower widths are
+  otherwise unverified.

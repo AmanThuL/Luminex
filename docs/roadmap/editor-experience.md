@@ -131,7 +131,7 @@ one Debug View selector and the transport in the menu-bar row, with measurement 
 Performance (UX2.1); a scene-only Hierarchy, a Rendering panel and one property-grid Inspector
 layout (UX2.2); a one-row Console, a compact docked Performance tab beside the detached window and
 a one-row Render Graph header (UX2.3); workspace schema 4 and acceptance (UX2.4). The
-[proposed record](../milestones/ux/ux2.md) holds the placement map and open points.
+[proposed record](../milestones/ux/ux2.md) holds the placement map and decisions.
 
 **Exit gate:** the [completion gate](#completion-gate) tasks pass on the new layout at both window
 sizes; every command removed from a surface stays reachable by a named route; schema 3 workspaces
