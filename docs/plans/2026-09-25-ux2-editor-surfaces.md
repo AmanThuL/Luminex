@@ -105,14 +105,14 @@ EditorIcon, bool enabled, const char* tooltip) -> bool`, `setIconFontAvailable(b
 popup; caller ends it), `beginPropertyGrid(const char* id)` with one `kPropertyGridMinWidth =
 260.0f`, `beginDiagnostics() -> bool` (collapsed by default), `nextInRow(float width)`,
 `drawNotice(NoticeQueue&, double now)`.
-- [ ] Tests first: a success expires after 6 s; Failed, Pending and Unavailable stay until dismissed
+- [x] Tests first: a success expires after 6 s; Failed, Pending and Unavailable stay until dismissed
   or replaced; a newer post replaces the current one; Ready or an empty result yields null.
-- [ ] `iconButton` is square at the frame height, draws the glyph when the font is available and
+- [x] `iconButton` is square at the frame height, draws the glyph when the font is available and
   the label otherwise, with `editorTooltip`. `nextInRow` replaces the per-file `nextControl` and
   `nextToolbarItem`. `drawNotice` is a small borderless window at the main viewport's bottom-right
   work area with the `drawActionFeedback` body and a Close icon; `drawActionFeedback` prints
   nothing for Ready.
-- [ ] Record the six surface conventions in `docs/architecture/app.md`, trimming superseded panel
+- [x] Record the six surface conventions in `docs/architecture/app.md`, trimming superseded panel
   prose to stay in budget. Commit `editor: add shared surface primitives (UX2)`.
 
 ### Task 4: Debug View selector model (UX2.1, Opus)

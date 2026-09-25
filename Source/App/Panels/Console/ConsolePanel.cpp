@@ -21,14 +21,6 @@ namespace lmx::app {
 namespace {
 
 //======================================================================================================================
-void nextControl(float width) {
-    const float contentRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    if (contentRight - ImGui::GetItemRectMax().x >= width + ImGui::GetStyle().ItemSpacing.x) {
-        ImGui::SameLine();
-    }
-}
-
-//======================================================================================================================
 ImVec4 severityColor(log::Level severity) {
     if (severity >= log::Level::Error)
         return {1.0f, 0.48f, 0.45f, 1.0f};
@@ -49,12 +41,14 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
         }
         editorTooltip("Freeze only the displayed messages and counters. Logging continues; Resume "
                       "shows the current retained history.");
-        nextControl(ImGui::CalcTextSize("Clear").x + ImGui::GetStyle().FramePadding.x * 2);
+        editor_style::nextInRow(ImGui::CalcTextSize("Clear").x +
+                                ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button("Clear"))
             model.clear();
         editorTooltip("Clear retained and displayed messages plus loss counters. Freeze state and "
                       "filters are retained; later messages continue to arrive.");
-        nextControl(ImGui::CalcTextSize("Copy visible").x + ImGui::GetStyle().FramePadding.x * 2);
+        editor_style::nextInRow(ImGui::CalcTextSize("Copy visible").x +
+                                ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button("Copy visible")) {
             const auto text = consoleVisibleText(model.snapshot(), model.filter);
             if (SDL_SetClipboardText(text.c_str())) {
@@ -76,8 +70,8 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
         }
         editorTooltip("Copy exactly the messages matching the current severity/search filters in "
                       "the displayed snapshot, with UTC timestamps and severity.");
-        nextControl(ImGui::CalcTextSize("Follow newest").x + ImGui::GetFrameHeight() +
-                    ImGui::GetStyle().ItemInnerSpacing.x);
+        editor_style::nextInRow(ImGui::CalcTextSize("Follow newest").x + ImGui::GetFrameHeight() +
+                                ImGui::GetStyle().ItemInnerSpacing.x);
         ImGui::Checkbox("Follow newest", &model.autoScroll);
         editorTooltip("Follow new messages only while already scrolled to the end. Scroll up to "
                       "inspect earlier output without being pulled down.");
@@ -93,7 +87,7 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
         }
         editorTooltip("Show this severity and more important messages. Hidden messages remain in "
                       "bounded storage.");
-        nextControl(editor_style::scaled(200.0f));
+        editor_style::nextInRow(editor_style::scaled(200.0f));
         std::array<char, 256> search{};
         std::snprintf(search.data(), search.size(), "%s", model.filter.search.c_str());
         ImGui::SetNextItemWidth(

@@ -58,6 +58,9 @@ std::string revealOutput(std::string_view output) {
 
 //======================================================================================================================
 void drawActionFeedback(const char* id, ActionResult& result) {
+    if (result.status == ActionStatus::Ready) {
+        return;
+    }
     ImGui::PushID(id);
     ImGui::TextWrapped("%s: %s", actionStatusName(result.status), result.message.c_str());
     if (!result.path.empty()) {

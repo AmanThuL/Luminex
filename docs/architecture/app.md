@@ -117,7 +117,9 @@ owns an independent filtered and frozen display with its own loss counters.
 
 `CaptureMetadata` and `LightCheckCapture` record capture-time state. `EditorActions`
 retains capture capability and results for menu- and shortcut-raised action intents; `ActionResult`
-carries their outcome.
+carries their outcome. `NoticeQueue` keeps the newest result: success expires after six seconds;
+pending, failed and unavailable results stay until dismissed or replaced. Ready and empty results
+produce no notice.
 
 ### Workspace
 
@@ -187,19 +189,32 @@ a real topology change updates the model and explicitly invalidates any selectio
 Fit graph, Fit selection, 100% and Reset layout are explicit actions; a narrow graph window stacks
 the canvas and the details pane instead of placing them side by side.
 
-`EditorStyle.h` shares responsive layout fields and delayed contextual tooltips across panels;
-Inspector keeps a selected-subject heading above its scrolling fields. Rendering expands into
-category subjects, each pairing controls with compact live readings and no nested detail toggles;
-category selection also participates in filtering and keyboard navigation, and changing pages resets
-scroll. Editable reset groups keep their scoped defaults. File > Open Scene owns catalog
-availability, loading and retry. Hierarchy offers compact search, collapsible subject groups and
-keyboard navigation; local lights use row clipping with complete generational selection. Lighting
-owns its mode, check and view controls plus pile controls and reset; Hierarchy's per-light checkboxes
-preserve every light's identity and edits, including disabled lights, and Inspector's per-light edits
-decode an authored sRGB colour once into linear storage. Source names use scene-local
-disambiguation; a filtered-out selection stays explicit in Inspector and can clear its own filter
-there. Viewport owns camera help and Frame selected. The top Scene/Measure toolbar owns one
-state-switching Play/Pause button plus separate Stop/Step and camera-rail follow options.
+## Editor surface conventions
+
+The [UX2 placement map](../milestones/ux/ux2.md#placement-map) fixes each control's destination.
+Shared primitives in `Panels/Shared/EditorStyle` implement these conventions:
+
+1. **One home per function.** Commands have one menu route, plus a shortcut or frequent context
+   action. Panels do not repeat global commands.
+2. **Header row.** Frequent panel actions use icon buttons with tooltips; rare actions use More.
+   Inspector headers name the subject and kind, with a Reset icon explaining what it restores.
+3. **Property grid.** Inspector pages use label | value grids; they reflow to one column below
+   `kPropertyGridMinWidth` (260 base UI points, adjusted by UI scale).
+4. **Controls, readings, diagnostics.** Actionable readings stay visible. Identifiers, capacities,
+   bounds and frame numbers use a collapsed Diagnostics section. Timings belong to Performance;
+   other surfaces link there.
+5. **Status by exception.** Normal states such as Stopped, Ready and zero evictions stay quiet;
+   warnings, failures and pending work remain visible. Explanations use tooltips.
+6. **The viewport is the image.** Only pixel-related overlays belong there, including the Debug
+   View legend chip with its selector and Close action, and pending capture.
+
+`iconButton` uses square Codicons buttons and readable text labels when the font is unavailable.
+`nextInRow` shares width-aware wrapping; `beginHeaderRow` groups panel actions, `overflowMenu`
+opens their popup, `beginPropertyGrid` shares the reflow threshold, and `beginDiagnostics` starts
+collapsed. `drawNotice` displays the retained result and Copy path/Reveal actions in a dismissible,
+borderless window at the main viewport's bottom-right work area. `ActionFeedback` suppresses Ready.
+File > Open Scene owns catalog availability, loading and retry. Source names are disambiguated
+within each scene; filtering keeps selection. Scoped reset groups retain their own defaults.
 
 App alone declares `Render/Passes/SelectionOutline/SelectionOutline`, opting into it after scene
 display; see [render-passes.md#selection-outline](render-passes.md#selection-outline) for the pass

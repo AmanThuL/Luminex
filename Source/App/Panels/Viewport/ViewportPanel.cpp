@@ -27,18 +27,11 @@ uint32_t toPixels(float points, float scale) {
 }
 
 //======================================================================================================================
-void nextToolbarItem(float width) {
-    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    if (right - ImGui::GetItemRectMax().x >= width + ImGui::GetStyle().ItemSpacing.x) {
-        ImGui::SameLine();
-    }
-}
-
-//======================================================================================================================
 void drawToolbar(const ViewportPanelContext& context) {
     ImGui::TextUnformatted(context.activeSceneName.data(),
                            context.activeSceneName.data() + context.activeSceneName.size());
-    nextToolbarItem(ImGui::CalcTextSize("Reset camera").x + ImGui::GetStyle().FramePadding.x * 2);
+    editor_style::nextInRow(ImGui::CalcTextSize("Reset camera").x +
+                            ImGui::GetStyle().FramePadding.x * 2);
     if (ImGui::Button("Reset camera")) {
         context.camera = engine::cameraFromScene(context.scene.initialCamera);
         context.settings.followCameraTrack = false;
@@ -46,7 +39,8 @@ void drawToolbar(const ViewportPanelContext& context) {
     }
     editorTooltip(
         "Restore the scene's initial camera, stop rail following and reset temporal history.");
-    nextToolbarItem(ImGui::CalcTextSize("Camera help").x + ImGui::GetStyle().FramePadding.x * 2);
+    editor_style::nextInRow(ImGui::CalcTextSize("Camera help").x +
+                            ImGui::GetStyle().FramePadding.x * 2);
     if (ImGui::Button("Camera help")) {
         ImGui::OpenPopup("camera-help");
     }
@@ -59,7 +53,8 @@ void drawToolbar(const ViewportPanelContext& context) {
         ImGui::TextUnformatted("Text entry keeps camera and capture keys inactive.");
         ImGui::EndPopup();
     }
-    nextToolbarItem(ImGui::CalcTextSize("GPU capture").x + ImGui::GetStyle().FramePadding.x * 2);
+    editor_style::nextInRow(ImGui::CalcTextSize("GPU capture").x +
+                            ImGui::GetStyle().FramePadding.x * 2);
     if (ImGui::Button("GPU capture")) {
         ImGui::OpenPopup("capture-result");
     }
@@ -107,8 +102,8 @@ void drawToolbar(const ViewportPanelContext& context) {
             "Fit this object's bounds while preserving view direction and field of view. "
             "Stops camera-rail following and resets temporal history; does not remove occluders.");
     }
-    nextToolbarItem(ImGui::CalcTextSize("Selection outline").x + ImGui::GetFrameHeight() +
-                    ImGui::GetStyle().ItemInnerSpacing.x);
+    editor_style::nextInRow(ImGui::CalcTextSize("Selection outline").x + ImGui::GetFrameHeight() +
+                            ImGui::GetStyle().ItemInnerSpacing.x);
     const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
                               context.outlineTarget.height() == context.renderer.height();
     ImGui::BeginDisabled(!objectSelected || !outlineReady);
@@ -134,8 +129,8 @@ void drawLegend(const ViewportPanelContext& context) {
     if (context.settings.lightDebugView != engine::LightDebugView::Off) {
         const auto legend = diagnosticLegend(context.settings.lightDebugView);
         ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
-        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                        ImGui::GetStyle().FramePadding.x * 2);
+        editor_style::nextInRow(ImGui::CalcTextSize("Return to Final").x +
+                                ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button("Return to Final"))
             context.settings.lightDebugView = engine::LightDebugView::Off;
         if (context.scene.enabledLightCount() == 0)
@@ -160,8 +155,8 @@ void drawLegend(const ViewportPanelContext& context) {
         if (effectiveLevel != context.settings.hzbDebugLevel)
             ImGui::Text("Requested level %d clamped to available level %d",
                         context.settings.hzbDebugLevel, effectiveLevel);
-        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                        ImGui::GetStyle().FramePadding.x * 2);
+        editor_style::nextInRow(ImGui::CalcTextSize("Return to Final").x +
+                                ImGui::GetStyle().FramePadding.x * 2);
         if (ImGui::Button("Return to Final"))
             context.settings.hzbDebugLevel = -1;
         return;
@@ -172,8 +167,8 @@ void drawLegend(const ViewportPanelContext& context) {
     }
     const auto legend = diagnosticLegend(context.settings.temporalDebugView);
     ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
-    nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                    ImGui::GetStyle().FramePadding.x * 2);
+    editor_style::nextInRow(ImGui::CalcTextSize("Return to Final").x +
+                            ImGui::GetStyle().FramePadding.x * 2);
     if (ImGui::Button("Return to Final")) {
         context.settings.temporalDebugView = render::TemporalDebugView::Off;
     }
