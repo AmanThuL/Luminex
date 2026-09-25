@@ -1,6 +1,6 @@
 # UX2 — Editor surfaces implementation
 
-**Status**: Proposed
+**Status**: In progress
 
 > **For agentic workers:** REQUIRED SUB-SKILL: use superpowers:subagent-driven-development (or
 > superpowers:executing-plans) task by task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -19,7 +19,7 @@ and the record approved on 2026-09-25. Its placement map and conventions are bin
 
 ## Global constraints
 
-- Parent: `main` at `433e624` plus the record commit. Branch `feat/ux2-editor-surfaces`; one pull
+- Parent: `docs/ux2-design` at `de6bdcb` (approved record and plan). Branch `feat/ux2-editor-surfaces`; one pull
   request, squash-merged only after the owner accepts it.
 - Editor only: no change under `Source/Render`, `Source/Engine`, `Source/Scenes`, `Shaders/`,
   `RojoRHI/`, `Source/App/Headless`, or to `AppOptions` parsing, measurement schema 4, capture
@@ -64,7 +64,7 @@ controller commits them serially in task order.
 
 ### Task 1: Start execution (main thread)
 
-- [ ] Rename the branch, create both worktrees. Record `Accepted` (implementation authorized under
+- [x] Rename the branch, create both worktrees. Record `Accepted` (implementation authorized under
   this plan), this plan `In progress`, `docs/roadmap.md` and `AGENTS.md` (net zero lines) name UX2
   in progress. Policy passes. Commit `docs: start UX2 execution`.
 

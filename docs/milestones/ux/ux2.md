@@ -1,6 +1,6 @@
 # UX2 — Editor Surfaces
 
-**Status**: Proposed
+**Status**: Accepted — implementation authorized on 2026-09-26
 
 From the owner's review of the running editor on 2026-09-25; its five open points were decided
 with the owner the same day. UX2 gives every control one home where its task belongs, removes duplicate routes and chrome that is
