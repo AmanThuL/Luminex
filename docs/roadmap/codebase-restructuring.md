@@ -5,7 +5,7 @@
 Second file of Part III of the [rendering roadmap](../roadmap.md).
 [Module Boundaries](codebase-module-boundaries.md) holds the module contract, the comparison
 protocol and R1, which is complete; this file holds the milestones the owner placed between M7 and
-[UX2](editor-experience.md#ux2--scene-documents-and-hierarchy) on 2026-09-19: **R2 → R3 → R4**.
+scene documents (now [UX3](editor-experience.md#ux3--scene-documents-and-hierarchy)) on 2026-09-19: **R2 → R3 → R4**.
 They add no rendering scope. Unless a section states otherwise they use the
 [R1 comparison protocol](codebase-module-boundaries.md#r1--module-boundaries-and-shared-foundations)
 unchanged, and earlier parity exceptions relax nothing here. Records hold design detail:
@@ -116,7 +116,7 @@ App and Tests so each pushes generic code into a Core that already has a charter
 **Defer:** a repository-wide include directory or Donut's `include/`–`src/` split; headers shared
 between C++ and Slang; an engine-level shader factory or binding cache; a pass base class; moving
 the render graph out of Render; renaming Stage classes or test tags; Core vector types of its own,
-container wrappers, a VFS, a thread pool, platform or profiling layers; everything UX2 owns.
+container wrappers, a VFS, a thread pool, platform or profiling layers; everything UX2 and UX3 own.
 
 ### R3.1 — Documentation records
 

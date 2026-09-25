@@ -14,7 +14,7 @@ that decomposes the accepted boundary without expanding it.
 | [Rendering Foundations](roadmap/rendering-foundations.md) | M4–M6.5 and interface gate B | Establish image formation, execution, inspection, temporal and display contracts; retain acceptance limits |
 | [GPU-Driven Hybrid Rendering](roadmap/gpu-driven-hybrid-rendering.md) | M7–M11 and independent research | Scale scene data, visibility and lighting, then evaluate geometry, transport, GI and residency |
 | [Codebase Refactoring](roadmap/codebase-module-boundaries.md) | R1 between M6.5 and gate B; [R2–R4](roadmap/codebase-restructuring.md) between M7 and UX2 | Restructure modules and large units between rendering milestones without changing output; move the RHI to its own repository |
-| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; make scenes saved documents |
+| [Editor Experience](roadmap/editor-experience.md) | UX1 after gate B and before M7.1; UX2–UX3 after R4 and before N1 | Make scene inspection, controls and diagnostic data understandable and reliable for a human operator; give each control one home; make scenes saved documents |
 | [Neural and Learned Rendering](roadmap/neural-rendering.md) | N1–N4 interleaved after M7 | Evaluate learned techniques as bounded experimental features with oracles, fallbacks and hardware gates |
 
 The dividing point is the change from a trustworthy moving image and execution substrate to
@@ -45,12 +45,13 @@ the row says otherwise.
 | 10 | [R2.1–R2.4](roadmap/codebase-restructuring.md#r2--rhi-becomes-rojorhi) RHI becomes RojoRHI | III | R2.1 accepted 2026-09-19; R2.2 accepted 2026-09-19; R2.3 accepted 2026-09-20; R2.4 implemented 2026-09-20, pull request pending owner review; [proposed record](milestones/r/r2.md) | M7 complete |
 | 11 | [R3.1–R3.7](roadmap/codebase-restructuring.md#r3--subsystems-and-tree-restructure) Donut-style subsystems and tree restructure | III | R3.1–R3.5 implemented; R3.5 owner-accepted 2026-09-22 with a scoped part A parity exception and plan closed; R3.6 implemented, implementation plan closed; A retains its scoped parity exception; B gates pass with [automatic integration in PR #54](https://github.com/AmanThuL/Luminex/pull/54); R3.7 implemented 2026-09-24, plan closed, [validation](milestones/r/r3.7-validation.md); [series record](milestones/r/r3.md) | R2 |
 | 12 | [R4.1–R4.2](roadmap/codebase-restructuring.md#r4--shader-source-deduplication) shader source deduplication | III | Closed 2026-09-25 as DEFER ([ADR 0027](decisions/0027-scene-pass-deduplication-defer.md)): R4.1 implemented 2026-09-24, exit gate held ([validation](milestones/r/r4.1-validation.md), [follow-up](milestones/r/r4.1-followup.md)); R4.2 not opened; [record](milestones/r/r4.md) | R3 |
-| 13 | [UX2.1–UX2.5](roadmap/editor-experience.md#ux2--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux/ux2.md) | R4 |
-| 14 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX2; technically gate B |
-| 15 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
-| 16 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
-| 17 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
-| 18 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
+| 13 | [UX2.1–UX2.4](roadmap/editor-experience.md#ux2--editor-surfaces) editor surfaces | IV | Inactive; [proposed record](milestones/ux/ux2.md) | R4 |
+| 14 | [UX3.1–UX3.5](roadmap/editor-experience.md#ux3--scene-documents-and-hierarchy) scene documents and hierarchy | IV | Inactive; [proposed record](milestones/ux/ux3.md) | UX2 |
+| 15 | [N1.1–N1.4](roadmap/neural-rendering.md#n1--in-shader-inference-lab) in-shader inference lab | V | Inactive | UX3; technically gate B |
+| 16 | [M9](roadmap/gpu-driven-hybrid-rendering.md#m9--geometry-lod-and-surface-path-experiments) geometry LOD and surface paths | II | Inactive | M7 and N1 |
+| 17 | [M8.1–M8.5](roadmap/gpu-driven-hybrid-rendering.md#m8--shadows-indirect-lighting-floor-and-environment) shadows, indirect floor and environment | II | Inactive | M9; technically M7 |
+| 18 | [M10](roadmap/gpu-driven-hybrid-rendering.md#m10--hybrid-scene-query-and-reference-transport) scene query, transport and reflections | II | Inactive | M8; query/reference work needs only M7 |
+| 19 | [M11](roadmap/gpu-driven-hybrid-rendering.md#m11--dynamic-gi-and-content-residency) dynamic GI and residency | II | Inactive | M10 for GI; M7 and M9 for residency |
 
 Rows that interleave when their own prerequisites exist, without a fixed step:
 
@@ -62,12 +63,16 @@ Rows that interleave when their own prerequisites exist, without a fixed step:
 - Area lights and stochastic direct lighting after M7.5; other
   [independent research](roadmap/gpu-driven-hybrid-rendering.md#independent-research-and-graduation-gates)
   behind its own gates; a D3D12 backend only under [ADR 0007](decisions/0007-d3d12-backend-target.md).
+- [Offline pipeline editing](roadmap/editor-experience.md#candidate--offline-pipeline-editing) is
+  an unscheduled candidate awaiting the owner's discussion; it has no step.
 
 The order puts visible cluster geometry and the learned-rendering entry before the shadow and
 composition work while preserving every M-slice gate. On 2026-09-19 the owner placed R2, R3, R4
-and UX2 between M7 and N1: the RHI moves to its own repository, the tree takes Donut's core/engine/render/app subsystems, the scene
+and scene documents between M7 and N1: the RHI moves to its own repository, the tree takes Donut's core/engine/render/app subsystems, the scene
 shader variants are deduplicated if the experiment supports it, and scenes become saved documents
-before new rendering work starts. Identifiers are names, not ordinals:
+before new rendering work starts. On 2026-09-25 the owner inserted editor surfaces as UX2 and
+renumbered scene documents to UX3; records and ADRs dated earlier call scene documents UX2.
+Identifiers are names, not ordinals:
 M8 and M9 keep theirs although M9 delivers first, because frozen research and accepted records
 already use them; the Step column carries the order.
 [UX1](milestones/ux/ux1.md) is implemented and owner-accepted for integration after manual review.
@@ -148,7 +153,7 @@ implementation steps belong in a just-in-time plan or PR, not an expanding serie
 M6's five slices, M7's five and M8's five are fixed in Parts I and II; M9–M11 retain bounded work
 areas until planned. R milestones in Part III restructure code between rendering milestones and add no
 rendering scope; R2 has four slices, R3 seven and R4 two. Part IV owns editor experience and its completion
-criteria independently of the rendering and structural milestones; UX2 has five slices. Part V owns the four learned-rendering slices, each an
+criteria independently of the rendering and structural milestones; UX2 has four slices and UX3 five. Part V owns the four learned-rendering slices, each an
 independently accepted study that never becomes a correctness dependency of the shared frame; N1
 is itself four slices. The [execution sequence](#execution-sequence) and stated prerequisites,
 rather than numerical order, determine entry. Only one
