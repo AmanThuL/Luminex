@@ -3,7 +3,8 @@
 **Status**: Accepted
 
 Part IV of the [rendering roadmap](../roadmap.md) owns editor usability and the presentation of
-rendering evidence: UX1 before M7.1, and [UX2](#ux2--scene-documents-and-hierarchy) between R4 and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
+rendering evidence: UX1 before M7.1, then [UX2](#ux2--editor-surfaces) and
+[UX3](#ux3--scene-documents-and-hierarchy) between R4 and N1. The [2026-09-14 audit](../research/2026-09-14-editor-uiux-audit.md) found that
 the shipped controls expose substantial capability, but clipped data, ambiguous states and an
 unstable graph make that capability difficult to inspect. This part owns the accepted boundary; the milestone record distinguishes implementation
 from completed acceptance.
@@ -115,12 +116,36 @@ and PR merge. The executor plan is closed. This acceptance does not turn unverif
 gestures or known GPU/image limitations into passes; the [milestone](../milestones/ux/ux1.md) retains
 them. M7.1 is eligible for a separate plan and remains inactive.
 
-## UX2 — Scene documents and hierarchy
+## UX2 — Editor surfaces
+
+**Placement:** [R4](codebase-restructuring.md#r4--shader-source-deduplication) → UX2 → UX3 → N1.
+The owner inserted it on 2026-09-25 and renumbered scene documents to UX3; records and ADRs dated
+earlier call scene documents UX2.
+
+**Outcome:** every control has one home where its task belongs. The viewport shows the image and
+overlays that describe it, the transport controls time, panels show controls before readings, and
+status appears when it is abnormal. No capability is lost except redundant routes.
+
+**Deliver:** shared surface conventions, File/View/Window/Debug/Help menus, a header-free viewport,
+one Debug View selector and the transport in the menu-bar row, with measurement started from
+Performance (UX2.1); a scene-only Hierarchy, a Rendering panel and one property-grid Inspector
+layout (UX2.2); a one-row Console, a compact docked Performance tab beside the detached window and
+a one-row Render Graph header (UX2.3); workspace schema 4 and acceptance (UX2.4). The
+[proposed record](../milestones/ux/ux2.md) holds the placement map and open points.
+
+**Exit gate:** the [completion gate](#completion-gate) tasks pass on the new layout at both window
+sizes; every command removed from a surface stays reachable by a named route; schema 3 workspaces
+migrate without loss; scene-only screenshots are byte-identical to the parent.
+
+**Defer:** renderer, capture, manifest, measurement and CLI changes; everything UX3 owns;
+everything the UX1 deferrals above already name.
+
+## UX3 — Scene documents and hierarchy
 
 **Placement:** [R3](codebase-restructuring.md#r3--subsystems-and-tree-restructure) →
-[R4](codebase-restructuring.md#r4--shader-source-deduplication) → UX2 → N1, so
+[R4](codebase-restructuring.md#r4--shader-source-deduplication) → UX2 → UX3 → N1, so
 new editor and scene code lands in the restructured tree and the learned-rendering lab starts from
-saved scenes. UX2 changes behaviour, so it uses its own gates and one owned re-baseline instead of
+saved scenes. UX3 changes behaviour, so it uses its own gates and one owned re-baseline instead of
 the refactoring comparison protocol.
 
 **Outcome:** a scene is a saved document. An operator opens it, disables an object, edits a light
@@ -130,13 +155,13 @@ an authored disabled state is never confused with culling; the application has a
 **Deliver:** valid glTF 2.0 scene documents under `Assets/Scenes/` (`KHR_lights_punctual`,
 glTF cameras and animations with keys in a standard external buffer, and one `LMX_scene` extension
 for asset references, overrides, lab generators, enabled state and the saved look) loaded under
-the unchanged editor, replacing the C++ light rig, camera rails and initial cameras (UX2.1);
+the unchanged editor, replacing the C++ light rig, camera rails and initial cameras (UX3.1);
 Damaged Helmet joining MaterialLab and Milk Truck joining TemporalLab, leaving a six-scene catalog
-(UX2.2); enabled state for lights and objects across Scene, both classification paths, counters
-and measurement (UX2.3); a scene-only Hierarchy, the Inspector header checkbox, a Rendering panel
-for renderer configuration, workspace schema 4 and Open/Save/Save As/Revert (UX2.4); the
-application icon and whole-application acceptance (UX2.5). The scene's look is saved; renderer
-configuration stays with the editor session and CLI. The [proposed record](../milestones/ux/ux2.md)
+(UX3.2); enabled state for lights and objects across Scene, both classification paths, counters
+and measurement (UX3.3); a document-grouped Hierarchy, UX2's Inspector header checkbox extended to
+objects and Open/Save/Save As/Revert (UX3.4); the application icon and whole-application
+acceptance (UX3.5). The scene's look is saved; renderer
+configuration stays with the editor session and CLI. The [proposed record](../milestones/ux/ux3.md)
 holds the contract.
 
 **Exit gate:** converted scenes match the parent under the exact-image matrix at `--temporal off`
@@ -148,3 +173,31 @@ still pass on the new layout; capture manifests and measurement reports record t
 
 **Defer:** create, duplicate, delete and reparent; importing an asset into an open scene;
 persisting renderer configuration; an `.app` bundle; everything the UX1 deferrals above already name.
+
+## Candidate — offline pipeline editing
+
+**Status:** unscheduled candidate from the owner's 2026-09-25 review; it has no identifier, step or
+gate until the owner discusses it.
+
+**Idea:** edit the rendering pipeline without a running renderer, then launch Luminex and see the
+same graph live. Today `Renderer::declarePasses` composes the stages in code every frame, and the
+Render Graph window is a read-only view of each frame's `CompiledFrameRecord`.
+
+- **Stage-level pipeline document (the starting point).** A checked-in file lists catalog stages
+  (shadow, scene, light clusters, HZB, exposure, bloom, temporal, display) with enabled state,
+  parameters and connections, and the Renderer interprets it. Each stage publishes a static,
+  GPU-free description of its ports and parameters, so an editor or a small tool can load,
+  validate and lay out a pipeline without a device. Graph compilation runs on the CPU, so an
+  offline dry run can show schedule, barriers and lifetimes; memory totals need a size model,
+  since heap sizes come from the device. Online, the same canvas adds live timings and resources.
+  Hard parts: cross-frame edges (exposure feedback, temporal ping-pong, previous HZB) become
+  explicit previous-frame ports; CLI modes become preset documents; the document's hash joins
+  capture manifests and measurement reports. Roughly three to four slices.
+- **Pass-level wiring** (Falcor's Render Graph Editor and Mogwai). Bloom, light clustering and
+  temporal resolve are multi-pass stages with private invariants that arbitrary wiring would
+  break; several times the size. Not recommended.
+- **Shader node authoring.** Out of scope.
+
+**Open questions:** whether the purpose is toggling and rewiring existing stages or adding new
+passes; placement relative to N1, whose learned passes need insertion points; whether offline
+means the App without a scene or a separate tool.
