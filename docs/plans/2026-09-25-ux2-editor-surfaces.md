@@ -127,13 +127,13 @@ std::vector<DebugViewEntry>`; `activeDebugView(const EditorRenderSettings&) ->
 std::optional<DebugView>`; `selectDebugView(EditorRenderSettings&, std::optional<DebugView>)`,
 which clears the other two; `reconcileDebugView(EditorRenderSettings&) ->
 std::optional<std::string>`, which returns to Final and returns notice text when invalid.
-- [ ] Tests first. Oracle: for every view × temporal {off, raw, taa, metalfx} × local lights {off,
+- [x] Tests first. Oracle: for every view × temporal {off, raw, taa, metalfx} × local lights {off,
   direct, clustered} × occlusion {off, on} × classify {cpu, gpu}, `available` equals
   `parseAppOptions` accepting `--scene sponza --screenshot o.png --temporal <m> --local-lights <l>
   --occlusion <o> --classify <c>` plus that view's own flag. Also: `selectDebugView` leaves one
   field non-Final; `reason` is non-empty exactly when unavailable; Review focus 1 both ways, and
   `reconcileDebugView` returns nothing for a valid view.
-- [ ] Implement from the rules in `AppOptions.cpp` (light views need Clustered; HZB needs occlusion,
+- [x] Implement from the rules in `AppOptions.cpp` (light views need Clustered; HZB needs occlusion,
   which needs GPU classify; temporal views need temporal on; Rejection, Weight and Age conflict
   with MetalFX); pass. Commit `app: model one Debug View selector (UX2)`.
 
