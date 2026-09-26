@@ -8,6 +8,7 @@
 #include "App/Panels/Shared/ActionFeedback.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace lmx::app::editor_style {
@@ -33,13 +34,27 @@ float iconButtonWidth(EditorIcon icon) {
 //======================================================================================================================
 bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip) {
     const auto info = editorIconInfo(icon);
-    const std::string label =
-        iconFontAvailable ? encodeUtf8(info.codepoint) : std::string(info.label);
     const float height = ImGui::GetFrameHeight();
     const float width = iconButtonWidth(icon);
     ImGui::PushID(id);
     ImGui::BeginDisabled(!enabled);
-    const bool clicked = ImGui::Button(label.c_str(), {width, height});
+    const bool clicked =
+        ImGui::Button(iconFontAvailable ? "##glyph" : info.label.data(), {width, height});
+    if (iconFontAvailable && ImGui::IsItemVisible()) {
+        auto* baked = ImGui::GetFontBaked();
+        const auto* glyph = baked->FindGlyph(static_cast<ImWchar>(info.codepoint));
+        const float scale = ImGui::GetFontSize() / baked->Size;
+        const auto minimum = ImGui::GetItemRectMin();
+        const auto maximum = ImGui::GetItemRectMax();
+        // Merged fonts share a text baseline, not their visible glyph centre. Keep the native
+        // button's frame and interactions, and centre its glyph bounds at the current baked size.
+        const ImVec2 origin{
+            std::round((minimum.x + maximum.x - (glyph->X0 + glyph->X1) * scale) * 0.5f),
+            std::round((minimum.y + maximum.y - (glyph->Y0 + glyph->Y1) * scale) * 0.5f)};
+        const std::string label = encodeUtf8(info.codepoint);
+        ImGui::GetWindowDrawList()->AddText(origin, ImGui::GetColorU32(ImGuiCol_Text),
+                                            label.c_str());
+    }
     ImGui::EndDisabled();
     editorTooltip(tooltip ? tooltip : info.label.data());
     ImGui::PopID();
