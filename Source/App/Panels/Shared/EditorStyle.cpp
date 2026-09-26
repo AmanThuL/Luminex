@@ -9,12 +9,44 @@
 
 #include <algorithm>
 #include <cmath>
-#include <string>
 
 namespace lmx::app::editor_style {
 namespace {
 
 bool iconFontAvailable = false;
+
+//======================================================================================================================
+ImVec4 glyphInkBounds(const ImFontGlyph& glyph, const ImTextureData& texture) {
+    if (!texture.Pixels)
+        return {glyph.X0, glyph.Y0, glyph.X1, glyph.Y1};
+    const int x0 =
+        std::clamp(static_cast<int>(std::round(glyph.U0 * texture.Width)), 0, texture.Width);
+    const int y0 =
+        std::clamp(static_cast<int>(std::round(glyph.V0 * texture.Height)), 0, texture.Height);
+    const int x1 =
+        std::clamp(static_cast<int>(std::round(glyph.U1 * texture.Width)), 0, texture.Width);
+    const int y1 =
+        std::clamp(static_cast<int>(std::round(glyph.V1 * texture.Height)), 0, texture.Height);
+    int left = x1, top = y1, right = x0, bottom = y0;
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            const auto alpha =
+                texture.Pixels[(y * texture.Width + x + 1) * texture.BytesPerPixel - 1];
+            if (alpha == 0)
+                continue;
+            left = std::min(left, x);
+            top = std::min(top, y);
+            right = std::max(right, x + 1);
+            bottom = std::max(bottom, y + 1);
+        }
+    }
+    if (left >= right || top >= bottom)
+        return {glyph.X0, glyph.Y0, glyph.X1, glyph.Y1};
+    const float dx = (glyph.X1 - glyph.X0) / static_cast<float>(x1 - x0);
+    const float dy = (glyph.Y1 - glyph.Y0) / static_cast<float>(y1 - y0);
+    return {glyph.X0 + (left - x0) * dx, glyph.Y0 + (top - y0) * dy, glyph.X0 + (right - x0) * dx,
+            glyph.Y0 + (bottom - y0) * dy};
+}
 
 } // namespace
 
@@ -25,10 +57,13 @@ void setIconFontAvailable(bool available) {
 
 //======================================================================================================================
 float iconButtonWidth(EditorIcon icon) {
-    return iconFontAvailable ? ImGui::GetFrameHeight()
-                             : std::max(ImGui::GetFrameHeight(),
-                                        ImGui::CalcTextSize(editorIconInfo(icon).label.data()).x +
-                                            2.0f * ImGui::GetStyle().FramePadding.x);
+    const auto info = editorIconInfo(icon);
+    const bool hasGlyph = iconFontAvailable && ImGui::GetFontBaked()->FindGlyphNoFallback(
+                                                   static_cast<ImWchar>(info.codepoint));
+    return hasGlyph
+               ? ImGui::GetFrameHeight()
+               : std::max(ImGui::GetFrameHeight(), ImGui::CalcTextSize(info.label.data()).x +
+                                                       2.0f * ImGui::GetStyle().FramePadding.x);
 }
 
 //======================================================================================================================
@@ -36,24 +71,34 @@ bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* toolt
     const auto info = editorIconInfo(icon);
     const float height = ImGui::GetFrameHeight();
     const float width = iconButtonWidth(icon);
+    const bool hasGlyph = iconFontAvailable && ImGui::GetFontBaked()->FindGlyphNoFallback(
+                                                   static_cast<ImWchar>(info.codepoint));
     ImGui::PushID(id);
     ImGui::BeginDisabled(!enabled);
-    const bool clicked =
-        ImGui::Button(iconFontAvailable ? "##glyph" : info.label.data(), {width, height});
-    if (iconFontAvailable && ImGui::IsItemVisible()) {
+    const bool clicked = ImGui::Button(hasGlyph ? "##glyph" : info.label.data(), {width, height});
+    if (hasGlyph && ImGui::IsItemVisible()) {
         auto* baked = ImGui::GetFontBaked();
-        const auto* glyph = baked->FindGlyph(static_cast<ImWchar>(info.codepoint));
+        const auto glyph = *baked->FindGlyph(static_cast<ImWchar>(info.codepoint));
+        const auto* atlas = ImGui::GetFont()->OwnerAtlas;
+        const auto bounds = glyphInkBounds(glyph, *atlas->TexData);
         const float scale = ImGui::GetFontSize() / baked->Size;
         const auto minimum = ImGui::GetItemRectMin();
         const auto maximum = ImGui::GetItemRectMax();
-        // Merged fonts share a text baseline, not their visible glyph centre. Keep the native
-        // button's frame and interactions, and centre its glyph bounds at the current baked size.
+        const auto density = ImGui::GetWindowViewport()->FramebufferScale;
+        // Atlas quads can contain asymmetric transparent padding. Centre their actual ink and
+        // snap to framebuffer pixels; text rendering would truncate to whole logical points.
         const ImVec2 origin{
-            std::round((minimum.x + maximum.x - (glyph->X0 + glyph->X1) * scale) * 0.5f),
-            std::round((minimum.y + maximum.y - (glyph->Y0 + glyph->Y1) * scale) * 0.5f)};
-        const std::string label = encodeUtf8(info.codepoint);
-        ImGui::GetWindowDrawList()->AddText(origin, ImGui::GetColorU32(ImGuiCol_Text),
-                                            label.c_str());
+            std::round((minimum.x + maximum.x - (bounds.x + bounds.z) * scale) * 0.5f * density.x) /
+                density.x,
+            std::round((minimum.y + maximum.y - (bounds.y + bounds.w) * scale) * 0.5f * density.y) /
+                density.y};
+        auto* draw = ImGui::GetWindowDrawList();
+        draw->PushClipRect(minimum, maximum, true);
+        draw->AddImage(atlas->TexRef, {origin.x + glyph.X0 * scale, origin.y + glyph.Y0 * scale},
+                       {origin.x + glyph.X1 * scale, origin.y + glyph.Y1 * scale},
+                       {glyph.U0, glyph.V0}, {glyph.U1, glyph.V1},
+                       ImGui::GetColorU32(ImGuiCol_Text));
+        draw->PopClipRect();
     }
     ImGui::EndDisabled();
     editorTooltip(tooltip ? tooltip : info.label.data());
