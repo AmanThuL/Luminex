@@ -7,6 +7,8 @@
 
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
+#include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
@@ -25,7 +27,7 @@ namespace lmx::app {
 namespace {
 
 // The default topology's share of the work area: Scene and Inspector flank a central column whose
-// lower quarter holds Console, and the Viewport takes what remains.
+// lower quarter holds Console and its Performance summary tab; the Viewport takes what remains.
 
 // The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
@@ -134,25 +136,10 @@ float splitFraction(float extent, float available) {
     return std::clamp(extent / available, 0.05f, 0.95f);
 }
 
-} // namespace
-
 //======================================================================================================================
-void EditorShell::registerWorkspaceSettings() {
-    ImGuiSettingsHandler workspaceHandler;
-    workspaceHandler.TypeName = kWorkspaceSettingsType;
-    workspaceHandler.TypeHash = ImHashStr(kWorkspaceSettingsType);
-    workspaceHandler.ClearAllFn = workspaceSettingsClearAll;
-    workspaceHandler.ReadOpenFn = workspaceSettingsReadOpen;
-    workspaceHandler.ReadLineFn = workspaceSettingsReadLine;
-    workspaceHandler.WriteAllFn = workspaceSettingsWriteAll;
-    workspaceHandler.UserData = &m_workspace;
-    ImGui::AddSettingsHandler(&workspaceHandler);
-}
-
-//======================================================================================================================
-// Builds Scene/Inspector beside the Viewport and Console across the bottom.
+// Builds scene/settings beside the Viewport and Console/summary across the bottom.
 // Performance and Render Graph live in independent native windows.
-void EditorShell::buildDefaultLayout(uint32_t dockspaceId) {
+void buildDefaultDocking(uint32_t dockspaceId) {
     const ImVec2 work = ImGui::GetMainViewport()->WorkSize;
     const DefaultLayoutExtents extents = defaultLayoutExtents(work.x, work.y);
 
@@ -179,12 +166,46 @@ void EditorShell::buildDefaultLayout(uint32_t dockspaceId) {
                                 &inspectorId, &centerId);
 
     ImGui::DockBuilderDockWindow(kScenePanelWindowName, sceneId);
+    ImGui::DockBuilderDockWindow(kRenderingPanelWindowName, inspectorId);
     ImGui::DockBuilderDockWindow(kInspectorPanelWindowName, inspectorId);
+    ImGui::DockBuilderDockWindow(kPerformanceSummaryWindowName, consoleId);
     ImGui::DockBuilderDockWindow(kConsolePanelWindowName, consoleId);
     // Performance and Render Graph are deliberately absent: their window classes forbid docking
     // into an unclassed node, so each owns its own OS window and has no default dock node.
     ImGui::DockBuilderDockWindow(kViewportPanelWindowName, centerId);
     ImGui::DockBuilderFinish(dockspaceId);
+    const auto selectTab = [](ImGuiID nodeId, const char* name) {
+        if (auto* node = ImGui::DockBuilderGetNode(nodeId)) {
+            const ImGuiID tabId = ImHashStr("#TAB", 4, ImHashStr(name));
+            node->SelectedTabId = tabId;
+            if (node->TabBar)
+                node->TabBar->SelectedTabId = node->TabBar->NextSelectedTabId = tabId;
+        }
+    };
+    selectTab(inspectorId, kInspectorPanelWindowName);
+    selectTab(consoleId, kConsolePanelWindowName);
+    // A previously focused tab would otherwise override SelectedTabId on its next Begin.
+    ImGui::FocusWindow(ImGui::FindWindowByName(kViewportPanelWindowName));
+}
+
+} // namespace
+
+//======================================================================================================================
+void EditorShell::registerWorkspaceSettings() {
+    ImGuiSettingsHandler workspaceHandler;
+    workspaceHandler.TypeName = kWorkspaceSettingsType;
+    workspaceHandler.TypeHash = ImHashStr(kWorkspaceSettingsType);
+    workspaceHandler.ClearAllFn = workspaceSettingsClearAll;
+    workspaceHandler.ReadOpenFn = workspaceSettingsReadOpen;
+    workspaceHandler.ReadLineFn = workspaceSettingsReadLine;
+    workspaceHandler.WriteAllFn = workspaceSettingsWriteAll;
+    workspaceHandler.UserData = &m_workspace;
+    ImGui::AddSettingsHandler(&workspaceHandler);
+}
+
+//======================================================================================================================
+void EditorShell::buildDefaultLayout(uint32_t dockspaceId) {
+    buildDefaultDocking(dockspaceId);
 }
 
 //======================================================================================================================

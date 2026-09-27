@@ -145,6 +145,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     self->m_workspace.visibility = decision.visibility;
     self->m_workspace.uiScalePercent = decision.uiScalePercent;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
+    self->m_performancePanel.resetPlacement = decision.resetPerformancePlacement;
     self->m_layoutBuildReason = kNoSchemaReason;
 
     LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
@@ -307,6 +308,7 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
         m_workspace.visibility = resetWorkspaceVisibility();
         ImGui::MarkIniSettingsDirty();
         m_buildDefaultLayout = true;
+        m_performancePanel.resetPlacement = true;
         m_layoutBuildReason = kResetReason;
     }
 
@@ -320,7 +322,6 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
-        m_performancePanel.resetPlacement = true;
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 

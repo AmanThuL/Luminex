@@ -261,18 +261,18 @@ when there are at least two.
   FitSelection, `1:1`, and More (Reset layout, Columns, Dump). Dump posts a notice; the pooling
   line and explanation become tooltips; memory stays in Details. Commit `editor: compress the
   Render Graph header (UX2)`.
-- [ ] **Owner check (UX2.3):** find the costliest pass, freeze, clear, resume; hold graph selection
+- [x] **Owner check (UX2.3):** find the costliest pass, freeze, clear, resume; hold graph selection
   and navigation ten seconds under Native TAA, freeze, dump, resume; Console filter, copy, clear.
 
 ### Task 13: Workspace schema 4 (UX2.4, Opus)
 
 **Files:** `Source/App/Model/Workspace/WorkspaceModel.{h,cpp}`,
 `Source/App/Shell/{EditorWorkspace.cpp,EditorShell.cpp}`, `AppWorkspaceModelTests.cpp`.
-- [ ] Tests first: schema 4 round-trips eight visibilities and the scale; schema 3 migrates keeping
+- [x] Tests first: schema 4 round-trips eight visibilities and the scale; schema 3 migrates keeping
   its six visibilities and scale, shows Rendering and the Performance tab, and rebuilds docks once;
   schema 2 and unknown versions keep today's outcomes; Reset Default Layout restores schema 4
   defaults and keeps the scale.
-- [ ] Default docking: Rendering as a tab beside the Inspector and the Performance tab beside the
+- [x] Default docking: Rendering as a tab beside the Inspector and the Performance tab beside the
   Console, each neighbour focused. Check Review focus 3 with a saved schema 3 `imgui.ini`. Commit
   `editor: migrate the workspace to schema 4 (UX2)`.
 

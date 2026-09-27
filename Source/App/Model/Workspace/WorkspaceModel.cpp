@@ -16,6 +16,8 @@ constexpr std::string_view kSchemaKey = "Schema";
 constexpr std::string_view kUiScaleKey = "UiScalePercent";
 constexpr std::string_view kSceneKey = "Scene";
 constexpr std::string_view kViewportKey = "Viewport";
+constexpr std::string_view kRenderingKey = "Rendering";
+constexpr std::string_view kPerformanceSummaryKey = "PerformanceSummary";
 constexpr std::string_view kInspectorKey = "Inspector";
 constexpr std::string_view kPerformanceKey = "Performance";
 constexpr std::string_view kConsoleKey = "Console";
@@ -163,6 +165,10 @@ ParsedWorkspaceSettings parseWorkspaceSettings(std::string_view sectionText) {
             applyBoolValue(value, parsed.visibility.scene);
         } else if (key == kViewportKey) {
             applyBoolValue(value, parsed.visibility.viewport);
+        } else if (key == kRenderingKey) {
+            applyBoolValue(value, parsed.visibility.rendering);
+        } else if (key == kPerformanceSummaryKey) {
+            applyBoolValue(value, parsed.visibility.performanceSummary);
         } else if (key == kInspectorKey) {
             applyBoolValue(value, parsed.visibility.inspector);
         } else if (key == kPerformanceKey) {
@@ -195,8 +201,10 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
     };
     writeBool(kSceneKey, visibility.scene);
     writeBool(kViewportKey, visibility.viewport);
+    writeBool(kRenderingKey, visibility.rendering);
     writeBool(kInspectorKey, visibility.inspector);
     writeBool(kPerformanceKey, visibility.performance);
+    writeBool(kPerformanceSummaryKey, visibility.performanceSummary);
     writeBool(kRenderGraphKey, visibility.renderGraph);
     writeBool(kConsoleKey, visibility.console);
     text += kUiScaleKey;
@@ -212,8 +220,18 @@ WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& 
         parsed->schemaVersion == kWorkspaceSchemaVersion) {
         return WorkspaceDecision{.kind = WorkspaceDecisionKind::Restore,
                                  .visibility = parsed->visibility,
-                                 .uiScalePercent =
-                                     normalizedUiScalePercent(parsed->uiScalePercent)};
+                                 .uiScalePercent = normalizedUiScalePercent(parsed->uiScalePercent),
+                                 .resetPerformancePlacement = false};
+    }
+    if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
+        parsed->schemaVersion == 3) {
+        auto visibility = parsed->visibility;
+        visibility.rendering = true;
+        visibility.performanceSummary = true;
+        return WorkspaceDecision{.kind = WorkspaceDecisionKind::BuildDefault,
+                                 .visibility = visibility,
+                                 .uiScalePercent = normalizedUiScalePercent(parsed->uiScalePercent),
+                                 .resetPerformancePlacement = false};
     }
     if (parsed.has_value() && parsed->schemaState == WorkspaceSchemaState::Present &&
         parsed->schemaVersion == 2) {
