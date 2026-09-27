@@ -187,6 +187,38 @@ def load_pending_paths(contract: dict, units: dict) -> set[str]:
     return set(pending)
 
 
+def load_private_header_tests(contract: dict, root: Path) -> None:
+    """Validate exact test-source access to a private header without expanding unit reach."""
+    entries = contract.setdefault("privateHeaderTests", [])
+    if not isinstance(entries, list):
+        raise ModuleContractError("privateHeaderTests must hold a list")
+    seen: set[tuple[str, str]] = set()
+    for index, entry in enumerate(entries):
+        label = f"privateHeaderTests entry {index}"
+        if (not isinstance(entry, dict) or set(entry) != {"file", "header", "reason"}
+                or not all(isinstance(value, str) and value.strip() for value in entry.values())):
+            raise ModuleContractError(f"{label} must name one file, header and nonempty reason")
+        for field in ("file", "header"):
+            name = entry[field]
+            relative = Path(name)
+            if (relative.is_absolute() or ".." in relative.parts or relative.as_posix() != name
+                    or any(char in name for char in "*?[]") or not (root / relative).is_file()
+                    or not canonical_private_header(root, relative)):
+                raise ModuleContractError(f"{label} {field} must name an existing canonical path")
+        source = Path(entry["file"])
+        if (not under(entry["file"], "Tests") or source.suffix != ".cpp"
+                or owner_of(source, contract) != "tests"):
+            raise ModuleContractError(f"{label} file must be a .cpp source owned by tests in Tests/")
+        owner = owner_of(Path(entry["header"]), contract)
+        if (owner in (None, "tests")
+                or entry["header"] not in contract["units"][owner]["privateHeaders"]):
+            raise ModuleContractError(f"{label} header must be private to another unit")
+        edge = (entry["file"], entry["header"])
+        if edge in seen:
+            raise ModuleContractError(f"{label} duplicates a privateHeaderTests edge")
+        seen.add(edge)
+
+
 def load_contract(path: Path, root: Path | None = None) -> dict:
     """Load and validate the contract: schema, units, external components, targets, existing paths."""
     root = root or path.resolve().parents[1]
@@ -242,6 +274,7 @@ def load_contract(path: Path, root: Path | None = None) -> dict:
             if owner_of(Path(header), contract) != name:
                 raise ModuleContractError(f"unit {name} does not own private header {header}")
 
+    load_private_header_tests(contract, root)
     load_externals(contract, root, claimed)
 
     roots = contract.setdefault("roots", [])
@@ -678,6 +711,9 @@ def check_includes(
     contexts: dict[str, list[Path]] = {}
     resolved: dict[str, list[Resolved]] = {}
     identities = project_file_identities(root, contract)
+    private_tests = {(entry["file"], entry["header"])
+                     for entry in contract.get("privateHeaderTests", [])}
+    used_private_tests: set[tuple[str, str]] = set()
 
     def includes_of(path: Path) -> list[Resolved]:
         text = path.as_posix()
@@ -774,10 +810,14 @@ def check_includes(
                     )
                 owner_row = contract["units"].get(include.unit, {})
                 if include.unit != unit and reached in owner_row.get("privateHeaders", []):
-                    errors.append(
-                        f"{text}: {unit} reaches private header {reached} owned by {include.unit} via "
-                        f"{' -> '.join(chains[reached])}"
-                    )
+                    edge = (text, reached)
+                    if unit == "tests" and current == path and edge in private_tests:
+                        used_private_tests.add(edge)
+                    else:
+                        errors.append(
+                            f"{text}: {unit} reaches private header {reached} owned by {include.unit} via "
+                            f"{' -> '.join(chains[reached])}"
+                        )
                 if include.unit == unit or include.unit in row["units"] or include.unit in reported:
                     continue
                 if any(reached == name or reached.endswith(f"/{name}") for name in row["headers"]):
@@ -787,6 +827,10 @@ def check_includes(
                     continue
                 reported.add(include.unit or "")
                 errors.append(f"{text}: {unit} reaches {include.unit} via {' -> '.join(chains[reached])}")
+    scanned = {path.as_posix() for path in files}
+    for source, header in sorted(private_tests - used_private_tests):
+        if source in scanned:
+            errors.append(f"unused privateHeaderTests edge: {source} -> {header}")
 
 
 def dependency_closure(name: str, targets: dict[str, dict]) -> set[str]:

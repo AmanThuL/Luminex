@@ -341,12 +341,14 @@ AssetResult<JsonTokens> JsonTokens::parse(std::string text) {
     }
     // Strict jsmn requires a delimiter after a scalar root; whitespace preserves all source
     // offsets.
+    const size_t originalSize = text.size();
     text += '\n';
     jsmn_parser parser;
     jsmn_init(&parser);
     const int count = jsmn_parse(&parser, text.data(), text.size(), nullptr, 0);
     if (count <= 0) {
-        return std::unexpected(malformed(parser.pos, "invalid or incomplete JSON value"));
+        return std::unexpected(malformed(std::min<size_t>(parser.pos, originalSize),
+                                         "invalid or incomplete JSON value"));
     }
     auto storage = std::make_shared<Storage>();
     storage->text = std::move(text);
@@ -355,7 +357,8 @@ AssetResult<JsonTokens> JsonTokens::parse(std::string text) {
     const int parsed = jsmn_parse(&parser, storage->text.data(), storage->text.size(),
                                   storage->tokens.data(), storage->tokens.size());
     if (parsed < 0) {
-        return std::unexpected(malformed(parser.pos, "invalid or incomplete JSON value"));
+        return std::unexpected(malformed(std::min<size_t>(parser.pos, originalSize),
+                                         "invalid or incomplete JSON value"));
     }
     storage->tokens.resize(static_cast<size_t>(parsed));
     const auto valid =
@@ -431,6 +434,24 @@ std::optional<JsonNode> JsonNode::find(std::string_view key) const {
 size_t JsonNode::size() const {
     LMX_ASSERT(isObject() || isArray(), "JSON size requires an object or array");
     return static_cast<size_t>(m_storage->tokens[m_index].size);
+}
+
+//======================================================================================================================
+std::string JsonNode::memberName(size_t index) const {
+    LMX_ASSERT(isObject() && index < size(), "JSON object index is out of bounds");
+    size_t token = m_index + 1;
+    for (size_t remaining = index; remaining > 0; --remaining)
+        token = m_storage->next[token + 1];
+    return m_storage->strings[token];
+}
+
+//======================================================================================================================
+JsonNode JsonNode::memberValue(size_t index) const {
+    LMX_ASSERT(isObject() && index < size(), "JSON object index is out of bounds");
+    size_t token = m_index + 1;
+    for (size_t remaining = index; remaining > 0; --remaining)
+        token = m_storage->next[token + 1];
+    return JsonNode(m_storage, token + 1, m_path + '/' + pointerPart(m_storage->strings[token]));
 }
 
 //======================================================================================================================

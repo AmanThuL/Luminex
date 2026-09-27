@@ -189,10 +189,13 @@ The rules above are checked as include edges:
 - `forbidHeaders` names exact repository-relative headers a unit must never reach, including
   through an otherwise allowed unit. The checker reports the include chain and rejects stale paths.
 - `privateHeaders` enumerates canonical repository-relative headers owned by each unit. Foreign
-  direct or transitive inclusion fails even through an allowed public header; allowances cannot
-  widen private visibility. Missing, duplicate, malformed or foreign-owned entries fail. Empty
+  direct or transitive inclusion fails even through an allowed public header; ordinary include
+  allowances cannot widen visibility. Missing, duplicate, malformed or foreign-owned entries fail. Empty
   lists explicitly mean no private headers. Public API documentation excludes these headers, but
   standalone compilation and file-envelope checks still cover them.
+- `privateHeaderTests` grants one exact `Tests/` `.cpp` in `tests` a direct private-header include,
+  with a documented reason. It grants no unit dependency or transitive access. Globs, path aliases,
+  duplicate or unused edges and nonprivate headers fail; production cannot receive this allowance.
 - Project reach is transitive. A unit reaches every unit its includes reach, at any depth, so an
   `app-model` header cannot borrow ImGui by including a shell header that includes it.
 - Third-party reach is direct. A package is charged to the unit whose own file names it, not to
@@ -207,15 +210,14 @@ The rules above are checked as include edges:
 
 ## Private implementation boundaries
 
-The exact inventory is `Tools/module_contract.json`. Render's exposure/bloom/display owners,
-range/temporal implementation declarations are private. Shared `SceneTables.h` row layouts are
-public Engine vocabulary that Render consumes; scene identity stores and table ownership stay in
-Engine. Engine's environment assembly is private; uploads used by tests remain public. Every shell/panel header
-is private to App, while AppModel's shared model headers remain public. Test and benchmark
-fixtures are private to their units. Core and Asset have no private entries; the RHI component
-keeps its own private inventory, which Luminex neither reads nor needs: a file outside the entry's
-`includeRoots` is unreachable from Luminex whether the component calls it private or not. Public
-Renderer uses incomplete stage owners with out-of-line destruction.
+The exact inventory is `Tools/module_contract.json`. Render's pass owners and range/temporal
+implementation declarations are private; public Renderer uses incomplete stage owners with
+out-of-line destruction. Shared `SceneTables.h` layouts are public Engine vocabulary; scene identity,
+table ownership and environment assembly stay private. Asset's URI/save helpers are private, with
+one direct rollback-test include listed explicitly. App shell/panel headers and test/benchmark
+fixtures are private; AppModel shared headers and Engine uploads used by tests remain public.
+Core has no private entries. The RHI component owns its inventory: any file outside its
+`includeRoots` is unreachable from Luminex regardless of that inventory.
 
 Root `xmake.lua` includes unit-local target definitions; reusable shader rules, dependency setup
 and maintenance tasks live under `xmake/`. The RHI component keeps the same shape one level down:

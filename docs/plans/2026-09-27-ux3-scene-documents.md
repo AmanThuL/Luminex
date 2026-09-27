@@ -97,7 +97,7 @@ AssetResult<SceneDocument>`, `sceneDocumentJson(doc, bufferUri)`, `sceneDocument
 `unwrapYaw(previous, yaw)`, `exactRotationForCamera(yaw, pitch, previousYaw)` and
 `exactRotationForDirection(dir)` returning `std::optional<glm::quat>` after a ±4-ulp search per
 component, `encodeStrength`/`decodeStrength` with a power-of-two intensity.
-- [ ] Tests first: the golden reads and rewrites byte-identically; each missing or mistyped
+- [x] Tests first: the golden reads and rewrites byte-identically; each missing or mistyped
   `LMX_scene` field fails naming its pointer; a key time other than `float(k / sampleRate)` fails
   naming the animation and key; a short `.bin` fails naming the buffer; a point light without
   `range` is skipped with one warning while directional lights load; `encodeStrength` round-trips

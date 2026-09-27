@@ -11,6 +11,28 @@
 using namespace lmx::asset;
 
 //======================================================================================================================
+TEST_CASE("JSON object iteration preserves decoded keys and source order", "[asset][json-tokens]") {
+    const auto parsed = JsonTokens::parse(R"({"b":2,"a/b":false,"\u0063":{"x":1}})");
+    REQUIRE(parsed);
+    const auto root = parsed->root();
+    REQUIRE(root.memberName(0) == "b");
+    REQUIRE(root.memberName(1) == "a/b");
+    REQUIRE(root.memberName(2) == "c");
+    REQUIRE(root.memberValue(0).asUInt() == 2);
+    REQUIRE(root.memberValue(1).path() == "/a~1b");
+    REQUIRE(root.memberValue(2).find("x")->asUInt() == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("padded JSON tokenizer errors stay inside the original text", "[asset][json-tokens]") {
+    for (const std::string source : {"[", "{", "{\"a\":", "[1"}) {
+        const auto parsed = JsonTokens::parse(source);
+        REQUIRE_FALSE(parsed);
+        REQUIRE(parsed.error().message.contains("byte " + std::to_string(source.size())));
+    }
+}
+
+//======================================================================================================================
 TEST_CASE("JSON tokens traverse nested members and preserve pointer paths",
           "[asset][json-tokens]") {
     const auto parsed = JsonTokens::parse(R"({"extensions":{"LMX_scene":{"look":{"bloom":{

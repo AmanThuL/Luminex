@@ -59,6 +59,10 @@ public:
     std::optional<JsonNode> find(std::string_view key) const;
     /// Returns array length or object member count; asserts for scalar values.
     size_t size() const;
+    /// Returns a decoded object key in source order; asserts for non-objects or invalid index.
+    std::string memberName(size_t index) const;
+    /// Returns the corresponding object value with its escaped pointer; same bounds contract.
+    JsonNode memberValue(size_t index) const;
     /// Returns an array element; asserts unless this is an array and index is smaller than size().
     JsonNode at(size_t index) const;
     /// Reads a finite float with complete-token from_chars conversion; overflow/underflow fails.
