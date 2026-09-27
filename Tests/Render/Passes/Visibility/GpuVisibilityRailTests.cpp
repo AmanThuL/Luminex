@@ -27,7 +27,7 @@ TEST_CASE("GPU VisibilityLab states and canonical output equal the CPU at three 
             auto& commands = (*device)->beginFrame();
             REQUIRE(world.prepareFrame((*device)->frameNumber()));
             std::vector<engine::DrawItem> items;
-            auto view = render::buildSceneView(world, items, render::ShadowFilter::PCF, false);
+            auto view = render::buildSceneView(world, items, false);
             view.classifyMode = render::ClassifyMode::Gpu;
             view.classifyCheck = true;
             view.submission = mode;

@@ -91,8 +91,7 @@ TEST_CASE("view depth reconstructs from the scene depth buffer at MaterialLab's 
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
-    const auto view =
-        lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF, false);
+    const auto view = lmx::render::buildSceneView(**scene, items, false);
     (*renderer)->render(commands, camera, lmx::test::prepareSceneView(view, device),
                         /*barrierForSampling=*/false);
     commands.textureBarrier((*renderer)->depthTarget(), TextureUse::RenderTarget,
@@ -195,8 +194,7 @@ TEST_CASE("MaterialLab's sphere grid conserves energy in a white furnace", "[gpu
     CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> allItems;
-    const auto sceneView =
-        lmx::render::buildSceneView(**scene, allItems, lmx::render::ShadowFilter::PCF, false);
+    const auto sceneView = lmx::render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
     std::vector<glm::vec3> centers;
     std::vector<const lmx::engine::SceneObject*> spheres;

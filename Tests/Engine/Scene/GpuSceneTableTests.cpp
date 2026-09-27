@@ -60,7 +60,7 @@ std::unique_ptr<rojoRHI::Buffer> submitTables(rojoRHI::Device& device, engine::S
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<engine::DrawItem> items;
-    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+    auto view = render::buildSceneView(scene, items, false);
     view.bloomEnabled = false;
     view.temporal.enabled = true;
     view.temporal.jitterEnabled = false;

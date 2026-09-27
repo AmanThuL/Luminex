@@ -32,6 +32,8 @@ struct SceneLook {
         float compensationEv = 0.0f;          ///< Automatic exposure bias in stops.
         float adaptUpStopsPerSecond = 3.0f;   ///< Brightening speed.
         float adaptDownStopsPerSecond = 1.5f; ///< Darkening speed.
+        /// Compares the complete authored values without tolerance.
+        bool operator==(const Exposure&) const = default;
     };
 
     /// Bloom contribution to the display transform.
@@ -39,6 +41,8 @@ struct SceneLook {
         bool enabled = true;    ///< Enables bloom contribution.
         float threshold = 1.0f; ///< Scene-linear luminance threshold.
         float intensity = 0.2f; ///< Contribution weight.
+        /// Compares the complete authored values without tolerance.
+        bool operator==(const Bloom&) const = default;
     };
 
     /// A required HDRI file with its conversion settings and content identity.
@@ -50,18 +54,25 @@ struct SceneLook {
         float scale = 0.25f;           ///< Scene-linear radiance multiplier.
         uint32_t faceSize = 128;       ///< Sky and reflection cubemap face extent.
         uint32_t diffuseFaceSize = 32; ///< Diffuse-convolution source face extent.
+        /// Compares the complete authored values without tolerance.
+        bool operator==(const Hdri&) const = default;
     };
 
     /// Neutral authored sky or a required HDRI used by sky and IBL together.
     struct Environment {
         std::array<uint8_t, 3> skySrgb8{149, 170, 196}; ///< Neutral sky's encoded sRGB bytes.
         std::optional<Hdri> hdri;                       ///< When present replaces the neutral sky.
+        /// Compares the complete authored values without tolerance.
+        bool operator==(const Environment&) const = default;
     };
 
     Exposure exposure;                             ///< Saved metering configuration.
     Bloom bloom;                                   ///< Saved bloom configuration.
     ShadowFilter shadowFilter = ShadowFilter::PCF; ///< Saved shadow filter.
     Environment environment;                       ///< Saved sky and IBL source.
+
+    /// Compares the complete authored look without tolerance.
+    bool operator==(const SceneLook&) const = default;
 };
 
 } // namespace lmx::asset

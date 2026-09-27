@@ -347,7 +347,7 @@ TEST_CASE("LightLab graph declares the selected light consumers",
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
-        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, false);
         view.localLightMode = mode;
         view.temporal.enabled = false;
         view.bloomEnabled = false;
@@ -458,7 +458,7 @@ TEST_CASE("LightLab direct and clustered paths preserve all written scene attach
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
                 std::vector<lmx::engine::DrawItem> items;
-                auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+                auto view = buildSceneView(**scene, items, false);
                 view.localLightMode = mode;
                 view.temporal.enabled = motionEnabled;
                 view.temporal.jitterEnabled = false;
@@ -550,7 +550,7 @@ TEST_CASE("lighting retirement keeps declaration modes through paced switches",
         (*scene)->advanceAnimation(0.4);
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
-        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, false);
         view.localLightMode = mode;
         view.lightCheck = true;
         view.temporal.enabled = false;

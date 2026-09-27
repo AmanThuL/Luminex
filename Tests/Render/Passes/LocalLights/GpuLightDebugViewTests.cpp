@@ -260,7 +260,7 @@ TEST_CASE("light diagnostics reuse actual temporal depth without contaminating h
                 auto& commands = (*device)->beginFrame();
                 REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
                 std::vector<lmx::engine::DrawItem> items;
-                auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+                auto view = buildSceneView(**scene, items, false);
                 view.localLightMode = lmx::engine::LocalLightMode::Clustered;
                 view.temporal.enabled = true;
                 view.temporal.jitterEnabled = true;
@@ -309,7 +309,7 @@ TEST_CASE("zero-live light debug leaves the graph unchanged after removal", "[gp
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> items;
-    auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(**scene, items, false);
     view.localLightMode = lmx::engine::LocalLightMode::Clustered;
     view.lightDebugView = lmx::engine::LightDebugView::Missed;
     view.temporal.enabled = false;

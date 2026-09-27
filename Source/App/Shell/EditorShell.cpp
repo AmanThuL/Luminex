@@ -128,10 +128,8 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // its 0-as-unset start, motion has nothing to report yet.
     onSceneSelected(self->m_temporalState, self->m_settings, initialScene);
 
-    ExposureResetContext initial = self->m_exposureContext;
-    initial.sceneId = initialScene;
-    self->m_exposureResetPending = shouldResetExposure(self->m_exposureContext, initial);
-    self->m_exposureContext = initial;
+    activateExposureLook(self->m_exposureContext, self->m_exposureResetPending, initialScene,
+                         self->m_session.look());
 
     // Register before any settings are read so Luminex's section is routed to this handler, and
     // read the ini here rather than letting the first NewFrame() do it: the schema decision below
@@ -540,10 +538,7 @@ rojoRHI::Result<void> EditorShell::prepareSceneFrame(uint64_t frameNumber) {
 
 //======================================================================================================================
 render::SceneView EditorShell::sceneView() {
-    render::SceneView view =
-        m_session.view(m_drawItems, m_settings.shadowFilter, m_settings.wireframe);
-    // Exposure is a shell knob rather than scene data, so it is applied after the scene has
-    // described itself -- the same way the wireframe and shadow-filter settings are.
+    render::SceneView view = m_session.view(m_drawItems, m_settings.wireframe);
     view.localLightMode = m_settings.localLightMode;
     view.lightCheck = m_settings.lightCheck;
     view.lightDebugView = m_settings.lightDebugView;
@@ -554,21 +549,6 @@ render::SceneView EditorShell::sceneView() {
     view.occlusionEnabled = m_settings.occlusionEnabled;
     view.occlusionCheck = m_settings.occlusionCheck;
     view.hzbDebugLevel = m_settings.hzbDebugLevel;
-    view.exposureEv = m_settings.exposureEv;
-    view.autoExposureEnabled = m_settings.autoExposureEnabled;
-    // exposureReset is left at SceneView's default (false); main.cpp sets it from
-    // consumeExposureReset() before declaring passes.
-    view.exposureLowPercentile = m_settings.exposureLowPercentile;
-    view.exposureHighPercentile = m_settings.exposureHighPercentile;
-    view.exposureTargetGrey = m_settings.exposureTargetGrey;
-    view.exposureEvMin = m_settings.exposureEvMin;
-    view.exposureEvMax = m_settings.exposureEvMax;
-    view.exposureCompensationEv = m_settings.exposureCompensationEv;
-    view.exposureAdaptUpStopsPerSecond = m_settings.exposureAdaptUpStopsPerSecond;
-    view.exposureAdaptDownStopsPerSecond = m_settings.exposureAdaptDownStopsPerSecond;
-    view.bloomEnabled = m_settings.bloomEnabled;
-    view.bloomThreshold = m_settings.bloomThreshold;
-    view.bloomIntensity = m_settings.bloomIntensity;
     view.temporal.enabled = m_settings.temporalEnabled;
     view.temporal.jitterEnabled = m_settings.jitterEnabled;
     view.temporal.reconstruction = m_settings.reconstruction;
@@ -724,12 +704,7 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     onSceneSelected(m_temporalState, m_settings, id);
     // A scene switch is a reset trigger (spec 9): the previous scene's metering has nothing to say
     // about the new one's content.
-    ExposureResetContext candidate = m_exposureContext;
-    candidate.sceneId = id;
-    if (shouldResetExposure(m_exposureContext, candidate)) {
-        m_exposureResetPending = true;
-    }
-    m_exposureContext = candidate;
+    activateExposureLook(m_exposureContext, m_exposureResetPending, id, m_session.look());
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
                  m_session.scene().objects.size());
     return true;

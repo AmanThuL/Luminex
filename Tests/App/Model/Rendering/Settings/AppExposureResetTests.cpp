@@ -99,14 +99,16 @@ TEST_CASE("an unchanged context does not reset (a failed resize, or any other no
 // call, so the disabled->enabled edge has to fire the same trigger from either site.
 TEST_CASE("setAutoExposureEnabled writes settings and resets on the disabled->enabled edge",
           "[app]") {
-    EditorRenderSettings settings;
-    settings.autoExposureEnabled = false;
+    engine::Scene scene;
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    scene.look.exposure.autoEnabled = false;
     ExposureResetContext exposureContext = loaded(scenes::defaultSceneId(), false);
     bool exposureResetPending = false;
 
-    setAutoExposureEnabled(settings, exposureContext, exposureResetPending, true);
+    setAutoExposureEnabled(session, exposureContext, exposureResetPending, true);
 
-    REQUIRE(settings.autoExposureEnabled);
+    REQUIRE(scene.look.exposure.autoEnabled);
     REQUIRE(exposureContext.autoExposureEnabled);
     REQUIRE(exposureResetPending);
 }
@@ -114,14 +116,16 @@ TEST_CASE("setAutoExposureEnabled writes settings and resets on the disabled->en
 //======================================================================================================================
 TEST_CASE("setAutoExposureEnabled writes settings without resetting on the enabled->disabled edge",
           "[app]") {
-    EditorRenderSettings settings;
-    settings.autoExposureEnabled = true;
+    engine::Scene scene;
+    SceneSession session;
+    session.activate(scene, SceneActivationMotion::Reset);
+    scene.look.exposure.autoEnabled = true;
     ExposureResetContext exposureContext = loaded(scenes::defaultSceneId(), true);
     bool exposureResetPending = false;
 
-    setAutoExposureEnabled(settings, exposureContext, exposureResetPending, false);
+    setAutoExposureEnabled(session, exposureContext, exposureResetPending, false);
 
-    REQUIRE_FALSE(settings.autoExposureEnabled);
+    REQUIRE_FALSE(scene.look.exposure.autoEnabled);
     REQUIRE_FALSE(exposureContext.autoExposureEnabled);
     REQUIRE_FALSE(exposureResetPending);
 }

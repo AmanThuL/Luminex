@@ -36,7 +36,7 @@ TEST_CASE("visibility lab keeps its requested population and initial boundary la
     (*device)->beginFrame();
     REQUIRE(scene.prepareFrame((*device)->frameNumber()));
     std::vector<engine::DrawItem> items;
-    const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(scene, items, false);
     auto camera = engine::cameraFromScene(scene.initialCamera);
     const auto classify = [&] {
         const auto planes = render::extractFrustumPlanes(camera.projectionMatrix(16.0f / 9.0f) *

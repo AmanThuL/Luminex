@@ -240,12 +240,9 @@ int runOffscreen(AppOptions options) {
             return 1;
         }
         std::vector<engine::DrawItem> items;
-        render::SceneView view =
-            session.view(items, render::ShadowFilter::PCF, /*wireframe=*/false);
-        // Bloom defaults on here exactly as in the editor (spec 10); auto-exposure defaults off
-        // (spec 9). LMX_SCREENSHOT_NO_BLOOM exists solely for the M5 parity check against pre-bloom
-        // output -- "with auto exposure off and bloom off, a frame is byte-identical to the
-        // pre-change tip" -- and is not a documented user-facing option.
+        render::SceneView view = session.view(items, /*wireframe=*/false);
+        view.exposureReset = frame == 0;
+        // The capture-only override never changes the persistent document look.
         if (std::getenv("LMX_SCREENSHOT_NO_BLOOM") != nullptr) {
             view.bloomEnabled = false;
         }

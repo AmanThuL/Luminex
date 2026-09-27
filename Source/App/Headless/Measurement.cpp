@@ -241,7 +241,8 @@ int runMeasurement(const AppOptions& options) {
             break;
         }
         std::vector<engine::DrawItem> items;
-        auto view = session.view(items, render::ShadowFilter::PCF, false);
+        auto view = session.view(items, false);
+        view.exposureReset = frame.sequenceFrame == 0;
         view.localLightMode = options.localLightMode;
         view.lightCheck = options.lightCheck;
         view.lightDebugView = options.lightDebugView;

@@ -151,8 +151,7 @@ TEST_CASE("document caster role survives binding with none and disabled roles su
             (*device)->beginFrame();
             REQUIRE(loaded->scene->prepareFrame((*device)->frameNumber()));
             std::vector<engine::DrawItem> items;
-            const auto view =
-                render::buildSceneView(*loaded->scene, items, render::ShadowFilter::PCF, false);
+            const auto view = render::buildSceneView(*loaded->scene, items, false);
             REQUIRE(view.shadowCaster == (enabled ? caster : -1));
             for (uint32_t role = 0; role < 3; ++role) {
                 REQUIRE(loaded->binding.nodes[roleNodes[role]].directional == role);
@@ -212,8 +211,7 @@ TEST_CASE("document missing directional roles stay inert in the rendered view",
     (*device)->beginFrame();
     REQUIRE(loaded->scene->prepareFrame((*device)->frameNumber()));
     std::vector<engine::DrawItem> items;
-    const auto view =
-        render::buildSceneView(*loaded->scene, items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(*loaded->scene, items, false);
     REQUIRE(view.shadowCaster == -1);
     for (const auto& light : view.lights)
         REQUIRE(light.strength == glm::vec3(0));

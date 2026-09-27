@@ -174,7 +174,8 @@ TEST_CASE("SceneSession view borrows item storage while commit and rewind preser
     device.frame = 1;
     REQUIRE(session.prepareFrame(device.frameNumber()));
     std::vector<engine::DrawItem> items;
-    const render::SceneView view = session.view(items, render::ShadowFilter::PCSS, true);
+    scene.look.shadowFilter = asset::ShadowFilter::PCSS;
+    const render::SceneView view = session.view(items, true);
     REQUIRE(view.items.data() == items.data());
     REQUIRE(view.items.size() == 1);
     REQUIRE(view.items[0].instanceRow == scene.objects[0].id.slot);

@@ -136,7 +136,7 @@ public:
                                           const render::Renderer& renderer);
 
     /// This frame's scene, valid until the next call -- it spans a draw list this shell owns.
-    /// Build the UI first: the Inspector edits the active scene's objects and lights that this
+    /// Build the UI first: controls edit the active scene's look, objects and lights that this
     /// SceneView is derived from. exposureReset is left at its default (false); main.cpp sets it
     /// from consumeExposureReset() before declaring the frame's passes.
     render::SceneView sceneView();
@@ -296,8 +296,7 @@ private:
     bool m_showSelectionOutline = true;
     bool m_viewportUsable = false;
     float m_viewportBackingScale = 1.0f;
-    // Render knobs the Inspector writes and render::buildSceneView() reads. Shell state, not scene
-    // state -- switching scenes does not reset any of them.
+    // Renderer configuration survives scene switches; authored look values belong to the scene.
     EditorRenderSettings m_settings;
     VisibilityDisplay m_visibilityDisplay;
     LightingDisplay m_lightingDisplay;
@@ -315,17 +314,8 @@ private:
     uint32_t m_labOccluders = 0;
     uint32_t m_labLights = 256;
     uint32_t m_labLightPile = 0;
-    // Set by create() (first frame), selectScene() (scene switch), the auto-exposure checkbox's
-    // off->on transition, and a completed applyPendingViewportResize() (resize) -- each of those
-    // four sites decides via shouldResetExposure() (ExposureReset.h) rather than its own inline
-    // condition, so the trigger rules live in one pure, unit-tested place. create() always sets it
-    // true (m_exposureContext starts with sceneId unset, so the pure function agrees), which is why
-    // the default here does not have to. consumeExposureReset() reads and clears it, which is what
-    // makes each trigger fire exactly once rather than on every frame the condition still holds.
+    // Activation, automatic-exposure enable and resize latch feedback reset until consumption.
     bool m_exposureResetPending = false;
-    // The state shouldResetExposure() last compared against, updated at each of the four trigger
-    // sites after the decision is made. Starts with sceneId unset, which is what makes the very
-    // first call at create() read as "first frame" without a separate flag to keep in sync.
     ExposureResetContext m_exposureContext;
     // Scene-generation counter, camera-cut latch, and TemporalLab's once-only defaults
     // (TemporalEditorState.h). onSceneSelected() is called both by create() (the initial scene) and

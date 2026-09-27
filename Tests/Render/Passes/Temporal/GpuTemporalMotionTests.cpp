@@ -422,7 +422,7 @@ TEST_CASE("TemporalLab writes motion for its animated tracks", "[gpu][temporal]"
     for (int frame = 0; frame < 2; ++frame) {
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
-        auto view = lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF,
+        auto view = lmx::render::buildSceneView(**scene, items,
                                                 /*wireframe=*/false);
         view.temporal.enabled = true;
         view.temporal.debugView = lmx::render::TemporalDebugView::MotionVectors;

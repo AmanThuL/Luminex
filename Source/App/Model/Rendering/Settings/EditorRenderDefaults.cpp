@@ -8,7 +8,8 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group) {
+void resetRenderingGroup(EditorRenderSettings& settings, SceneSession& session,
+                         EditorRenderGroup group) {
     const EditorRenderSettings defaults;
     switch (group) {
     case EditorRenderGroup::Lighting:
@@ -16,25 +17,19 @@ void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group
         settings.lightCheck = defaults.lightCheck;
         break;
     case EditorRenderGroup::Exposure:
-        settings.exposureEv = defaults.exposureEv;
-        settings.autoExposureEnabled = defaults.autoExposureEnabled;
-        settings.exposureLowPercentile = defaults.exposureLowPercentile;
-        settings.exposureHighPercentile = defaults.exposureHighPercentile;
-        settings.exposureTargetGrey = defaults.exposureTargetGrey;
-        settings.exposureEvMin = defaults.exposureEvMin;
-        settings.exposureEvMax = defaults.exposureEvMax;
-        settings.exposureCompensationEv = defaults.exposureCompensationEv;
-        settings.exposureAdaptUpStopsPerSecond = defaults.exposureAdaptUpStopsPerSecond;
-        settings.exposureAdaptDownStopsPerSecond = defaults.exposureAdaptDownStopsPerSecond;
-        break;
     case EditorRenderGroup::Bloom:
-        settings.bloomEnabled = defaults.bloomEnabled;
-        settings.bloomThreshold = defaults.bloomThreshold;
-        settings.bloomIntensity = defaults.bloomIntensity;
+    case EditorRenderGroup::Shadows: {
+        auto look = session.look();
+        const auto& baseline = session.lookDefault();
+        if (group == EditorRenderGroup::Exposure)
+            look.exposure = baseline.exposure;
+        else if (group == EditorRenderGroup::Bloom)
+            look.bloom = baseline.bloom;
+        else
+            look.shadowFilter = baseline.shadowFilter;
+        session.editLook(look);
         break;
-    case EditorRenderGroup::Shadows:
-        settings.shadowFilter = defaults.shadowFilter;
-        break;
+    }
     case EditorRenderGroup::Reconstruction:
         settings.temporalEnabled = defaults.temporalEnabled;
         settings.jitterEnabled = defaults.jitterEnabled;
@@ -53,29 +48,19 @@ void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group
 }
 
 //======================================================================================================================
-bool renderingGroupChanged(const EditorRenderSettings& settings, EditorRenderGroup group) {
+bool renderingGroupChanged(const EditorRenderSettings& settings, const SceneSession& session,
+                           EditorRenderGroup group) {
     const EditorRenderSettings defaults;
     switch (group) {
     case EditorRenderGroup::Lighting:
         return settings.localLightMode != defaults.localLightMode ||
                settings.lightCheck != defaults.lightCheck;
     case EditorRenderGroup::Exposure:
-        return settings.exposureEv != defaults.exposureEv ||
-               settings.autoExposureEnabled != defaults.autoExposureEnabled ||
-               settings.exposureLowPercentile != defaults.exposureLowPercentile ||
-               settings.exposureHighPercentile != defaults.exposureHighPercentile ||
-               settings.exposureTargetGrey != defaults.exposureTargetGrey ||
-               settings.exposureEvMin != defaults.exposureEvMin ||
-               settings.exposureEvMax != defaults.exposureEvMax ||
-               settings.exposureCompensationEv != defaults.exposureCompensationEv ||
-               settings.exposureAdaptUpStopsPerSecond != defaults.exposureAdaptUpStopsPerSecond ||
-               settings.exposureAdaptDownStopsPerSecond != defaults.exposureAdaptDownStopsPerSecond;
+        return session.look().exposure != session.lookDefault().exposure;
     case EditorRenderGroup::Bloom:
-        return settings.bloomEnabled != defaults.bloomEnabled ||
-               settings.bloomThreshold != defaults.bloomThreshold ||
-               settings.bloomIntensity != defaults.bloomIntensity;
+        return session.look().bloom != session.lookDefault().bloom;
     case EditorRenderGroup::Shadows:
-        return settings.shadowFilter != defaults.shadowFilter;
+        return session.look().shadowFilter != session.lookDefault().shadowFilter;
     case EditorRenderGroup::Reconstruction:
         return settings.temporalEnabled != defaults.temporalEnabled ||
                settings.jitterEnabled != defaults.jitterEnabled ||

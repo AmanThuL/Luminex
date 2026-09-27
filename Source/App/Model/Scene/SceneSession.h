@@ -51,6 +51,24 @@ public:
     /// The active scene, editable by its owner; asserts if no scene has been activated.
     engine::Scene& scene() const;
 
+    /// Current persistent look; controls commit a modified copy through editLook.
+    const asset::SceneLook& look() const;
+    /// Loaded or successfully saved look, retained independently of current edits and playback.
+    const asset::SceneLook& lookDefault() const;
+    /// Commits changed persistent look values and increments the active scene's edit generation.
+    /// An unchanged value is a no-op; exposure feedback reconciliation remains caller-owned.
+    void editLook(const asset::SceneLook& look);
+    /// Replaces only the reset baseline after a successful canonical Save/Save As adoption.
+    /// The caller adopts the document/hash/path together; this neither edits the look nor marks it
+    /// dirty. Baseline storage lives until invalidate removes the scene's session state.
+    void adoptLookResetBaseline(const asset::SceneLook& saved);
+    /// Active scene's persistent-edit notification counter, starting at zero on first activation.
+    /// Playback preview and baseline adoption leave it unchanged; switching preserves each count.
+    uint64_t editGeneration() const;
+    /// Shared notification hook for a completed persistent edit outside editLook. Preview-only
+    /// changes must not call it. Dirty tracking uses this as an invalidation, not a dirty verdict.
+    void notifyPersistentEdit();
+
     /// The camera edited by the owner, including fly input and lens changes.
     engine::Camera& camera() { return m_camera; }
     /// The camera used when declaring passes for this session.
@@ -87,9 +105,9 @@ public:
 
     /// Fills caller-owned items and borrows them in the returned view. The view, items, camera, and
     /// scene resources must stay alive and unmodified through pass declaration and graph execution.
-    /// Render settings and one-shot exposure/temporal state remain the caller's responsibility.
-    render::SceneView view(std::vector<engine::DrawItem>& items, render::ShadowFilter filter,
-                           bool wireframe) const;
+    /// The active look is included; renderer configuration and one-shot exposure/temporal state
+    /// remain the caller's responsibility.
+    render::SceneView view(std::vector<engine::DrawItem>& items, bool wireframe) const;
 
     /// Collapses object motion after an activation or explicit discontinuity. A camera cut alone
     /// is a temporal latch owned by the caller and does not imply resetting object motion.
@@ -153,6 +171,8 @@ public:
 
 private:
     struct Defaults {
+        asset::SceneLook look;
+        uint64_t editGeneration = 0;
         std::vector<DecomposedTransform> objects;
         std::array<engine::DirectionalLight, 3> lights;
         std::unordered_map<uint64_t, engine::LocalLight> localLights;

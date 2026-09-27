@@ -24,7 +24,7 @@ TEST_CASE("occlusion graph roots every HZB mip and reads the immediately precedi
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
-        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, false);
         view.classifyMode = ClassifyMode::Gpu;
         view.submission = SubmissionMode::Indirect;
         view.occlusionEnabled = true;

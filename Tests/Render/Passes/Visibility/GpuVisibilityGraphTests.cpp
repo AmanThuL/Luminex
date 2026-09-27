@@ -22,7 +22,7 @@ TEST_CASE("GPU visibility declares writers and precise draw consumers in both la
         auto& commands = (*device)->beginFrame();
         REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
         std::vector<lmx::engine::DrawItem> items;
-        auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+        auto view = buildSceneView(**scene, items, false);
         view.classifyMode = ClassifyMode::Gpu;
         view.submission = mode;
         view.bloomEnabled = false;
@@ -76,7 +76,7 @@ TEST_CASE("empty GPU views preserve readable diagnostics as graph sinks",
     auto& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
-    auto view = buildSceneView(**scene, items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(**scene, items, false);
     view.items = {};
     view.classifyMode = ClassifyMode::Gpu;
     view.submission = SubmissionMode::Batched;

@@ -56,7 +56,7 @@ std::unique_ptr<rojoRHI::Buffer> submitVisibility(rojoRHI::Device& device, engin
     INFO(errorOf(prepared));
     REQUIRE(prepared.has_value());
     std::vector<engine::DrawItem> items;
-    auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+    auto view = render::buildSceneView(scene, items, false);
     view.bloomEnabled = false;
     view.submission = mode;
     view.visibilityEnabled = cull;
@@ -202,7 +202,7 @@ TEST_CASE("draw submission slots grow and retire with paced scene capacity",
         }
         REQUIRE(scene.prepareFrame((*device)->frameNumber()));
         std::vector<engine::DrawItem> items;
-        auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+        auto view = render::buildSceneView(scene, items, false);
         render::VisibilityResult camera;
         camera.visibleItems = {frame % 2};
         render::VisibilityResult shadow;

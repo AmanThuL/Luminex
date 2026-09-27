@@ -14,7 +14,7 @@ namespace lmx::render {
 
 //======================================================================================================================
 SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawItem>& items,
-                         ShadowFilter filter, bool wireframe) {
+                         bool wireframe) {
     scene.fillDrawItems(items);
 
     SceneView sceneView;
@@ -43,7 +43,22 @@ SceneView buildSceneView(const engine::Scene& scene, std::vector<engine::DrawIte
     sceneView.irradiance = scene.irradianceMap.get();
     sceneView.prefilteredEnv = scene.prefilteredEnvMap.get();
     sceneView.dfgLut = scene.dfgLut.get();
-    sceneView.shadowFilter = filter;
+    const auto& look = scene.look;
+    sceneView.shadowFilter =
+        look.shadowFilter == asset::ShadowFilter::PCSS ? ShadowFilter::PCSS : ShadowFilter::PCF;
+    sceneView.exposureEv = look.exposure.ev;
+    sceneView.autoExposureEnabled = look.exposure.autoEnabled;
+    sceneView.exposureLowPercentile = look.exposure.lowPercentile;
+    sceneView.exposureHighPercentile = look.exposure.highPercentile;
+    sceneView.exposureTargetGrey = look.exposure.targetGrey;
+    sceneView.exposureEvMin = look.exposure.evMin;
+    sceneView.exposureEvMax = look.exposure.evMax;
+    sceneView.exposureCompensationEv = look.exposure.compensationEv;
+    sceneView.exposureAdaptUpStopsPerSecond = look.exposure.adaptUpStopsPerSecond;
+    sceneView.exposureAdaptDownStopsPerSecond = look.exposure.adaptDownStopsPerSecond;
+    sceneView.bloomEnabled = look.bloom.enabled;
+    sceneView.bloomThreshold = look.bloom.threshold;
+    sceneView.bloomIntensity = look.bloom.intensity;
     sceneView.wireframe = wireframe;
     return sceneView;
 }

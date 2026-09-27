@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/Rendering/Settings/EditorRenderSettings.h"
+#include "App/Model/Scene/SceneSession.h"
 #include "Scenes/SceneLibrary.h"
 
 #include <cstdint>
@@ -44,12 +44,19 @@ struct ExposureResetContext {
 /// `previous`) answers exactly the question that field's call site is asking.
 bool shouldResetExposure(const ExposureResetContext& previous, const ExposureResetContext& current);
 
-/// Applies an auto-exposure enable/disable edit: writes `enabled` into `settings`, then folds the
-/// transition through `shouldResetExposure` and records the result in `exposureContext`, setting
-/// `exposureResetPending` true on the disabled->enabled edge. The Rendering panel's Exposure
-/// control and its topic reset both call this rather than each re-deriving spec 9's auto-exposure
-/// trigger, so a future change to the rule cannot drift between the two controls.
-void setAutoExposureEnabled(EditorRenderSettings& settings, ExposureResetContext& exposureContext,
+/// Reconciles the active look after an edit or scoped reset, latching the disabled-to-enabled edge.
+/// This only updates feedback state; the persistent look must be committed through SceneSession.
+void reconcileExposureLook(const asset::SceneLook& look, ExposureResetContext& exposureContext,
+                           bool& exposureResetPending);
+
+/// Records a fully activated scene look and restarts feedback, including replacement under the
+/// same scene identity. Failed loads do not call this operation and retain existing feedback.
+void activateExposureLook(ExposureResetContext& exposureContext, bool& exposureResetPending,
+                          const scenes::SceneId& sceneId, const asset::SceneLook& look);
+
+/// Commits the active scene's automatic-exposure mode through its persistent-edit hook, then
+/// reconciles feedback. Holding the same mode neither marks an edit nor requests another reset.
+void setAutoExposureEnabled(SceneSession& session, ExposureResetContext& exposureContext,
                             bool& exposureResetPending, bool enabled);
 
 } // namespace lmx::app

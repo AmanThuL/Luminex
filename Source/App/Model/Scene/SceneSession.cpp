@@ -28,6 +28,7 @@ void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) 
     m_loaded = nullptr;
     auto [entry, inserted] = m_defaults.try_emplace(&scene);
     if (inserted) {
+        entry->second.look = scene.look;
         for (const auto& object : scene.objects) {
             entry->second.objects.push_back({object.position, object.eulerDegrees, object.scale});
         }
@@ -45,7 +46,10 @@ void SceneSession::activate(engine::Scene& scene, SceneActivationMotion motion) 
 
 //======================================================================================================================
 void SceneSession::activate(engine::LoadedScene& loaded, SceneActivationMotion motion) {
+    const bool firstActivation = !m_defaults.contains(loaded.scene.get());
     activate(*loaded.scene, motion);
+    if (firstActivation)
+        m_defaults.at(m_scene).look = loaded.document.look;
     m_loaded = &loaded;
     m_documentStates.try_emplace(loaded.scene.get(), scenes::initialDocumentState(loaded));
 }
@@ -70,6 +74,39 @@ const scenes::SessionDocumentState& SceneSession::documentState() const {
 engine::Scene& SceneSession::scene() const {
     LMX_ASSERT(m_scene != nullptr, "SceneSession requires an active scene");
     return *m_scene;
+}
+
+//======================================================================================================================
+const asset::SceneLook& SceneSession::look() const {
+    return scene().look;
+}
+
+//======================================================================================================================
+const asset::SceneLook& SceneSession::lookDefault() const {
+    return m_defaults.at(m_scene).look;
+}
+
+//======================================================================================================================
+void SceneSession::editLook(const asset::SceneLook& look) {
+    if (scene().look == look)
+        return;
+    scene().look = look;
+    notifyPersistentEdit();
+}
+
+//======================================================================================================================
+void SceneSession::adoptLookResetBaseline(const asset::SceneLook& saved) {
+    m_defaults.at(m_scene).look = saved;
+}
+
+//======================================================================================================================
+uint64_t SceneSession::editGeneration() const {
+    return m_defaults.at(m_scene).editGeneration;
+}
+
+//======================================================================================================================
+void SceneSession::notifyPersistentEdit() {
+    ++m_defaults.at(m_scene).editGeneration;
 }
 
 //======================================================================================================================
@@ -121,9 +158,8 @@ engine::SceneTableStats SceneSession::tableStats() const {
 }
 
 //======================================================================================================================
-render::SceneView SceneSession::view(std::vector<engine::DrawItem>& items,
-                                     render::ShadowFilter filter, bool wireframe) const {
-    return render::buildSceneView(scene(), items, filter, wireframe);
+render::SceneView SceneSession::view(std::vector<engine::DrawItem>& items, bool wireframe) const {
+    return render::buildSceneView(scene(), items, wireframe);
 }
 
 //======================================================================================================================

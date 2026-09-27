@@ -165,7 +165,7 @@ std::vector<bool> nodeEnabled; std::optional<engine::SceneCamera> sceneCamera; }
 ### Task 8: The look per scene (UX3.1, Opus)
 **Files:** `EditorRenderSettings.h`, `EditorRenderDefaults`, `EditorShell.cpp` (`sceneView`),
 `Headless/{Screenshot,Measurement}.cpp`, `RenderingTopics.cpp`, `ExposureReset`, tests.
-- [ ] Tests first: exposure, bloom and shadow fields leave `EditorRenderSettings`; the view takes
+- [x] Tests first: exposure, bloom and shadow fields leave `EditorRenderSettings`; the view takes
   them from the active scene's look; a scene switch applies that scene's look and resets exposure
   when it flips auto exposure; the Exposure, Bloom
   and Shadows resets restore the loaded document's look; headless and editor views agree for one

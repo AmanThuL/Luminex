@@ -19,7 +19,7 @@ uint64_t prepareCoverage(rojoRHI::Device& device, engine::Scene& scene) {
     device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<engine::DrawItem> items;
-    const auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+    const auto view = render::buildSceneView(scene, items, false);
     REQUIRE(view.coverageEpoch == scene.coverageEpoch());
     const auto epoch = view.coverageEpoch;
     device.endFrame(nullptr);
@@ -137,7 +137,7 @@ TEST_CASE("Scene view tokens distinguish stores and recycled instance rows", "[s
     };
     const auto token = [](engine::Scene& scene) {
         std::vector<engine::DrawItem> items;
-        render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+        render::buildSceneView(scene, items, false);
         REQUIRE(items.size() == 1);
         return items.front().instanceIdentity;
     };

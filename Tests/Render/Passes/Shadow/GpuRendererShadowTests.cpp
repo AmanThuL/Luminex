@@ -474,7 +474,7 @@ TEST_CASE("renderer applies the chosen directional caster and leaves none or dis
                 auto& commands = (*device)->beginFrame();
                 REQUIRE(scene.prepareFrame((*device)->frameNumber()));
                 std::vector<engine::DrawItem> items;
-                auto view = render::buildSceneView(scene, items, render::ShadowFilter::PCF, false);
+                auto view = render::buildSceneView(scene, items, false);
                 view.bloomEnabled = false;
                 view.autoExposureEnabled = automatic;
                 view.exposureReset = true;

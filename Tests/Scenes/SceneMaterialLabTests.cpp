@@ -83,8 +83,7 @@ TEST_CASE("loadMaterialLabScene does not double-light the fetched studio environ
     (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()));
     std::vector<lmx::engine::DrawItem> items;
-    const auto view =
-        lmx::render::buildSceneView(**scene, items, lmx::render::ShadowFilter::PCF, false);
+    const auto view = lmx::render::buildSceneView(**scene, items, false);
     for (const auto& light : view.lights)
         REQUIRE(light.strength == glm::vec3(0));
     (*device)->endFrame(nullptr);
@@ -358,7 +357,7 @@ TEST_CASE("loadMaterialLabScene's known-colour patches round-trip the display tr
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
-    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
     std::vector<glm::vec3> patchPositions;
     for (const Patch& patch : kPatches) {
@@ -513,7 +512,7 @@ TEST_CASE("loadMaterialLabScene's mip probe converges to mid-gray under strong m
     rojoRHI::CommandList& commands = (*device)->beginFrame();
     REQUIRE((*scene)->prepareFrame((*device)->frameNumber()).has_value());
     std::vector<lmx::engine::DrawItem> allItems;
-    render::buildSceneView(**scene, allItems, render::ShadowFilter::PCF, false);
+    render::buildSceneView(**scene, allItems, false);
     std::vector<lmx::engine::DrawItem> items;
     items.push_back(allItems[static_cast<size_t>(probe - (*scene)->objects.data())]);
 

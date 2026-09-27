@@ -41,7 +41,7 @@ VisibilityStatus checkedFrame(Device& device, engine::Scene& scene, Renderer& re
     auto& commands = device.beginFrame();
     REQUIRE(scene.prepareFrame(device.frameNumber()));
     std::vector<engine::DrawItem> items;
-    auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
+    auto view = buildSceneView(scene, items, false);
     view.classifyMode = ClassifyMode::Gpu;
     view.classifyCheck = true;
     view.occlusionEnabled = true;
@@ -288,7 +288,7 @@ TEST_CASE("occlusion joins overlapping retired frames across slot reuse in both 
             auto& commands = (*device)->beginFrame();
             REQUIRE(scene.prepareFrame((*device)->frameNumber()));
             std::vector<engine::DrawItem> items;
-            auto view = buildSceneView(scene, items, ShadowFilter::PCF, false);
+            auto view = buildSceneView(scene, items, false);
             view.classifyMode = ClassifyMode::Gpu;
             view.submission = mode;
             view.classifyCheck = true;
