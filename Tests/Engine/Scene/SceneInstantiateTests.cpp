@@ -206,6 +206,181 @@ TEST_CASE("source own-enabled overrides survive ancestor suppression", "[scene-d
 }
 
 //======================================================================================================================
+TEST_CASE("preflight rejects independent phases that can shear an imported child",
+          "[scene-doc][instantiate][ux3]") {
+    asset::GltfScene source;
+    source.nodes.resize(2);
+    source.nodes[0].name = "Scaling parent";
+    source.nodes[1].name = "Rotating child";
+    source.nodes[1].parent = 0;
+    source.nodes[1].animated = true;
+    source.nodes[1].instances = {0};
+    source.instances.push_back({.node = 1});
+    source.clips = {{.name = "scale",
+                     .duration = 2.0,
+                     .channels = {{.node = 0,
+                                   .path = asset::GltfAnimationPath::Scale,
+                                   .step = true,
+                                   .keys = {{.time = 0, .value = {1, 1, 1, 0}},
+                                            {.time = .5, .value = {2, 1, 1, 0}},
+                                            {.time = 1, .value = {1, 1, 1, 0}},
+                                            {.time = 2, .value = {1, 1, 1, 0}}}}}},
+                    {.name = "rotation",
+                     .duration = 4.0,
+                     .channels = {{.node = 1,
+                                   .path = asset::GltfAnimationPath::Rotation,
+                                   .step = true,
+                                   .keys = {{.time = 0, .value = {0, 0, 0, 1}},
+                                            {.time = 2, .value = {0, 0, .3826834f, .9238795f}},
+                                            {.time = 4, .value = {0, 0, 0, 1}}}}}}};
+    const glm::mat4 independentPose = glm::scale(glm::mat4(1), glm::vec3(2, 1, 1)) *
+                                      glm::mat4_cast(glm::quat(.9238795f, 0, 0, .3826834f));
+    REQUIRE_FALSE(decomposeTransform(independentPose));
+    auto result = engine::validateIndependentAssetClips(source, glm::mat4(1),
+                                                        "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("/nodes/1/extensions/LMX_scene/asset") !=
+            std::string::npos);
+    REQUIRE(result.error().message.find("Scaling parent") != std::string::npos);
+    REQUIRE(result.error().message.find("Rotating child") != std::string::npos);
+
+    source.clips[0].channels[0].path = asset::GltfAnimationPath::Translation;
+    result = engine::validateIndependentAssetClips(source, glm::mat4(1),
+                                                   "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE(result);
+}
+
+//======================================================================================================================
+TEST_CASE("preflight rejects decoupled rotations beneath a static nonuniform root",
+          "[scene-doc][instantiate][ux3]") {
+    asset::GltfScene source;
+    source.nodes.resize(2);
+    source.nodes[0].name = "Empty rotating parent";
+    source.nodes[1].name = "Mesh rotating child";
+    source.nodes[1].parent = 0;
+    source.nodes[0].animated = true;
+    source.nodes[1].animated = true;
+    source.nodes[1].instances = {0};
+    source.instances.push_back({.node = 1});
+    const glm::vec4 plus45{0, 0, .3826834f, .9238795f};
+    const glm::vec4 minus45{0, 0, -.3826834f, .9238795f};
+    const glm::vec4 identity{0, 0, 0, 1};
+    source.clips = {{.name = "parent",
+                     .duration = 2,
+                     .channels = {{.node = 0,
+                                   .path = asset::GltfAnimationPath::Rotation,
+                                   .step = true,
+                                   .keys = {{.time = 0, .value = identity},
+                                            {.time = .5, .value = plus45},
+                                            {.time = 1, .value = identity},
+                                            {.time = 2, .value = identity}}}}},
+                    {.name = "child",
+                     .duration = 4,
+                     .channels = {{.node = 1,
+                                   .path = asset::GltfAnimationPath::Rotation,
+                                   .step = true,
+                                   .keys = {{.time = 0, .value = identity},
+                                            {.time = .5, .value = minus45},
+                                            {.time = 1, .value = identity},
+                                            {.time = 4, .value = identity}}}}}};
+    const glm::mat4 rootWorld = glm::scale(glm::mat4(1), glm::vec3(2, 1, 1));
+    const glm::mat4 sharedPose =
+        rootWorld * glm::mat4_cast(glm::quat(plus45.w, plus45.x, plus45.y, plus45.z)) *
+        glm::mat4_cast(glm::quat(minus45.w, minus45.x, minus45.y, minus45.z));
+    REQUIRE(decomposeTransform(sharedPose));
+    const glm::mat4 decoupledPose =
+        rootWorld * glm::mat4_cast(glm::quat(plus45.w, plus45.x, plus45.y, plus45.z));
+    REQUIRE_FALSE(decomposeTransform(decoupledPose));
+    const auto result = engine::validateIndependentAssetClips(
+        source, rootWorld, "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("/nodes/1/extensions/LMX_scene/asset") !=
+            std::string::npos);
+    REQUIRE(result.error().message.find("Empty rotating parent") != std::string::npos);
+    REQUIRE(result.error().message.find("Mesh rotating child") != std::string::npos);
+
+    source.nodes.push_back({.name = "Static scaled ancestor", .scale = {2, 1, 1}});
+    source.nodes[0].parent = 2;
+    const auto restScale = engine::validateIndependentAssetClips(
+        source, glm::mat4(1), "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(restScale);
+    REQUIRE(restScale.error().message.find("Mesh rotating child") != std::string::npos);
+    source.nodes[2].scale = glm::vec3(1);
+    source.nodes[2].matrix = glm::scale(glm::mat4(1), glm::vec3(2, 1, 1));
+    const auto restMatrix = engine::validateIndependentAssetClips(
+        source, glm::mat4(1), "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(restMatrix);
+}
+
+//======================================================================================================================
+TEST_CASE("preflight rejects shear between baked samples of one short clip",
+          "[scene-doc][instantiate][ux3]") {
+    asset::GltfScene source;
+    source.nodes.resize(2);
+    source.nodes[0].name = "Scaling parent";
+    source.nodes[1].name = "Rotating child";
+    source.nodes[1].parent = 0;
+    source.nodes[1].instances = {0};
+    source.instances.push_back({.node = 1});
+    source.clips = {
+        {.name = "short",
+         .duration = .025,
+         .channels = {{.node = 0,
+                       .path = asset::GltfAnimationPath::Scale,
+                       .keys = {{.time = 0, .value = {2, 1, 1, 0}},
+                                {.time = 1.0 / 60.0, .value = {1, 1, 1, 0}},
+                                {.time = .025, .value = {1, 1, 1, 0}}}},
+                      {.node = 1,
+                       .path = asset::GltfAnimationPath::Rotation,
+                       .keys = {{.time = 0, .value = {0, 0, 0, 1}},
+                                {.time = 1.0 / 60.0, .value = {0, 0, .3826834f, .9238795f}},
+                                {.time = .025, .value = {0, 0, .3826834f, .9238795f}}}}}}};
+    const glm::mat4 betweenBakeKeys =
+        glm::scale(glm::mat4(1), glm::vec3(1.5f, 1, 1)) *
+        glm::mat4_cast(glm::angleAxis(glm::radians(22.5f), glm::vec3(0, 0, 1)));
+    REQUIRE_FALSE(decomposeTransform(betweenBakeKeys));
+    const auto result = engine::validateIndependentAssetClips(
+        source, glm::mat4(1), "/nodes/1/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("Scaling parent") != std::string::npos);
+    REQUIRE(result.error().message.find("Rotating child") != std::string::npos);
+}
+
+//======================================================================================================================
+TEST_CASE("structural clip preflight preserves the two catalog asset stations",
+          "[scene-doc][instantiate][ux3]") {
+    const auto assets = std::filesystem::path(LMX_REPO_ROOT) / "Assets";
+    for (const char* id : {"material-lab", "temporal-lab"}) {
+        const auto document = scenes::readCatalogDocument(id);
+        REQUIRE(document);
+        const auto prepared = engine::prepareSceneDocument(*document, assets);
+        INFO((prepared ? "ok" : prepared.error().message));
+        REQUIRE(prepared);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("preflight rejects a scale segment that crosses two zero axes between bake keys",
+          "[scene-doc][instantiate][ux3]") {
+    asset::GltfScene source;
+    source.nodes.resize(1);
+    source.nodes[0].name = "Collapsing draw";
+    source.nodes[0].instances = {0};
+    source.instances.push_back({.node = 0});
+    source.clips = {{.duration = .025,
+                     .channels = {{.node = 0,
+                                   .path = asset::GltfAnimationPath::Scale,
+                                   .keys = {{.time = 0, .value = {1, 1, 1, 0}},
+                                            {.time = 1.0 / 60.0, .value = {-1, -1, 1, 0}},
+                                            {.time = .025, .value = {-1, -1, 1, 0}}}}}}};
+    REQUIRE_FALSE(decomposeTransform(glm::scale(glm::mat4(1), glm::vec3(0, 0, 1))));
+    const auto result = engine::validateIndependentAssetClips(
+        source, glm::mat4(1), "/nodes/2/extensions/LMX_scene/asset");
+    REQUIRE_FALSE(result);
+    REQUIRE(result.error().message.find("Collapsing draw") != std::string::npos);
+}
+
+//======================================================================================================================
 TEST_CASE("separate document camera clips compose channels in source order",
           "[scene-doc][instantiate]") {
     asset::SceneDocument doc;

@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "MaterialLab",
-      "nodes": [0, 1, 2, 3, 4]
+      "nodes": [0, 1, 2, 3, 4, 5]
     }
   ],
   "nodes": [
@@ -18,7 +18,9 @@
           "enabled": true,
           "generator": {
             "name": "material-lab",
-            "params": {}
+            "params": {
+              "axisStation": 1
+            }
           }
         }
       }
@@ -72,6 +74,19 @@
           "enabled": false,
           "role": "rim",
           "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Damaged Helmet · axis station",
+      "translation": [6.2, 0, 0],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/DamagedHelmet/DamagedHelmet.glb",
+            "sha256": "a1e3b04de97b11de564ce6e53b95f02954a297f0008183ac63a4f5974f6b32d8"
+          }
         }
       }
     }

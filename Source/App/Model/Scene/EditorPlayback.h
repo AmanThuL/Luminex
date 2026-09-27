@@ -74,6 +74,7 @@ private:
         std::optional<engine::MeshId> identity;
         engine::Camera camera;
         double time = 0;
+        double unwrappedTime = 0; ///< Asset clip phase before the scene clock's modulo.
         bool followRail = false;
         std::unordered_map<uint32_t, ObjectSnapshot> objects;
         std::unordered_map<uint32_t, LightSnapshot> lights;

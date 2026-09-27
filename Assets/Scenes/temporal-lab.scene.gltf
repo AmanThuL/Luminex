@@ -7,7 +7,7 @@
   "scenes": [
     {
       "name": "TemporalLab",
-      "nodes": [0, 1, 2, 3, 4]
+      "nodes": [0, 1, 2, 3, 4, 5]
     }
   ],
   "nodes": [
@@ -73,6 +73,20 @@
           "enabled": true,
           "role": "rim",
           "castsShadow": false
+        }
+      }
+    },
+    {
+      "name": "Milk Truck · animated asset",
+      "translation": [6.7, 0, -4],
+      "scale": [0.85, 0.85, 0.85],
+      "extensions": {
+        "LMX_scene": {
+          "enabled": true,
+          "asset": {
+            "uri": "Fetched/CesiumMilkTruck/CesiumMilkTruck.glb",
+            "sha256": "09371b34608116de5842d23abe260bf11acf3e1554daf334a647eb566eee5c49"
+          }
         }
       }
     }

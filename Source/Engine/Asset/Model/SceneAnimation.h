@@ -27,6 +27,7 @@ struct RigidKey {
 struct RigidTrack {
     uint32_t objectIndex = 0;   ///< Index into `Scene::objects`.
     std::vector<RigidKey> keys; ///< Time-sorted keys; sampling requires at least one.
+    double loopDuration = 0.0;  ///< Independent seconds per loop; zero uses the scene clock.
     /// When true the track holds the previous key until the next key's time is reached, instead of
     /// interpolating between them.
     bool step = false;
@@ -93,7 +94,8 @@ bool hasAnimationTracks(const SceneAnimation& animation);
 /// Returns `track`'s world matrix at `time` seconds, as translate * rotate * scale. Translation
 /// and scale interpolate linearly and rotation slerps between the bracketing keys; a `step` track
 /// holds the earlier key instead. Times outside the key range clamp to the first or last key.
-/// `track.keys` must not be empty.
+/// A positive `loopDuration` wraps the requested time before sampling; zero leaves the scene
+/// clock to the caller. `track.keys` must not be empty.
 glm::mat4 sampleRigidTrack(const RigidTrack& track, double time);
 
 /// Returns the camera pose at `time` seconds: position and both angles interpolate linearly

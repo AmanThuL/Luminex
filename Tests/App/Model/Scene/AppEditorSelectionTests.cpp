@@ -29,7 +29,7 @@ engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
 }
 
 const scenes::SceneId kSceneA{"sponza"};
-const scenes::SceneId kSceneB{"damaged-helmet"};
+const scenes::SceneId kSceneB{"material-lab"};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
 template <typename T>
 constexpr bool hasRenderingSubject = requires { T::Rendering; };

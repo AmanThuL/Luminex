@@ -19,14 +19,13 @@ TEST_CASE("Scene::view forwards a missing IBL set as null rather than fabricatin
 //======================================================================================================================
 TEST_CASE("scene IDs are stable and reject unknown input", "[scene]") {
     REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("sponza")) == "sponza");
-    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("damaged-helmet")) ==
-            "damaged-helmet");
     REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("material-lab")) ==
             "material-lab");
-    REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("milk-truck")) == "milk-truck");
     REQUIRE(lmx::scenes::sceneIdString(*lmx::scenes::parseSceneId("temporal-lab")) ==
             "temporal-lab");
     REQUIRE_FALSE(lmx::scenes::parseSceneId("3"));
+    REQUIRE_FALSE(lmx::scenes::parseSceneId("damaged-helmet"));
+    REQUIRE_FALSE(lmx::scenes::parseSceneId("milk-truck"));
     REQUIRE_FALSE(lmx::scenes::parseSceneId("Sponza"));
     REQUIRE(lmx::scenes::sceneIdString(lmx::scenes::defaultSceneId()) == "sponza");
 }
@@ -136,6 +135,117 @@ TEST_CASE("Scene::advanceAnimation wraps at the clip duration only while looping
     scene.advanceAnimation(1.5);
     scene.advanceAnimation(1.0);
     REQUIRE(scene.animationTime == Catch::Approx(2.5));
+}
+
+//======================================================================================================================
+TEST_CASE("asset channels loop independently through the TemporalLab clock wrap", "[scene][ux3]") {
+    Scene scene = makeMotionTestScene();
+    scene.animation.duration = 24.0;
+    scene.animation.loop = true;
+    lmx::engine::AssetClipPlayback asset;
+    asset.rootWorld = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 0.0f, 0.0f));
+    asset.nodes.resize(2);
+    asset.nodes[1].parent = 0;
+    asset.nodes[1].animated = true;
+    asset.nodes[1].instances = {0};
+    asset.instances = {scene.objects[0].id};
+    asset.clips = {{.name = "parent",
+                    .duration = 2.0,
+                    .channels = {{.node = 0,
+                                  .path = lmx::asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0.0, .value = {0.0f, 0.0f, 0.0f, 0.0f}},
+                                           {.time = 2.0, .value = {2.0f, 0.0f, 0.0f, 0.0f}}}}}},
+                   {.name = "child",
+                    .duration = 3.0,
+                    .channels = {{.node = 1,
+                                  .path = lmx::asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0.0, .value = {0.0f, 0.0f, 0.0f, 0.0f}},
+                                           {.time = 3.0, .value = {3.0f, 0.0f, 0.0f, 0.0f}}}}}}};
+    scene.assetAnimations.push_back(std::move(asset));
+
+    scene.animate(2.5);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(13.0f));
+    scene.assetAnimations[0].clips.push_back(
+        {.name = "later parent override",
+         .duration = 4.0,
+         .channels = {{.node = 0,
+                       .path = lmx::asset::GltfAnimationPath::Translation,
+                       .keys = {{.time = 0.0, .value = {0.0f, 0.0f, 0.0f, 0.0f}},
+                                {.time = 4.0, .value = {4.0f, 0.0f, 0.0f, 0.0f}}}}}});
+    scene.animate(2.5);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(15.0f));
+    scene.animationTime = 23.5;
+    scene.unwrappedAnimationTime = 23.5;
+    scene.advanceAnimation(1.0);
+    REQUIRE(scene.animationTime == Catch::Approx(0.5));
+    scene.animate(scene.animationTime, scene.unwrappedAnimationTime);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(11.0f));
+    scene.animate(0.5);
+    REQUIRE(scene.objects[0].position.x == Catch::Approx(11.0f));
+}
+
+//======================================================================================================================
+TEST_CASE("asset playback follows stable identities after deletion and slot reuse",
+          "[scene][ux3]") {
+    Scene scene = makeMotionTestScene();
+    const auto mesh = scene.objects[0].mesh;
+    const auto material = scene.objects[0].material;
+    const auto before = scene.objects[0].id;
+    const auto animated = scene.addObject({.name = "asset", .mesh = mesh, .material = material});
+    lmx::engine::AssetClipPlayback asset;
+    asset.instances = {animated};
+    asset.nodes.resize(1);
+    asset.nodes[0].animated = true;
+    asset.nodes[0].instances = {0};
+    asset.clips = {{.duration = 2.0,
+                    .channels = {{.node = 0,
+                                  .path = lmx::asset::GltfAnimationPath::Translation,
+                                  .keys = {{.time = 0.0, .value = {0, 0, 0, 0}},
+                                           {.time = 2.0, .value = {2, 0, 0, 0}}}}}}};
+    scene.assetAnimations.push_back(asset);
+    scene.removeObject(before);
+    scene.animate(1.0);
+    REQUIRE(scene.tryObject(animated));
+    REQUIRE(scene.tryObject(animated)->position.x == Catch::Approx(1.0f));
+
+    scene.removeObject(animated);
+    const auto replacement = scene.addObject(
+        {.name = "replacement", .position = {9, 0, 0}, .mesh = mesh, .material = material});
+    REQUIRE_FALSE(scene.tryObject(animated));
+    scene.animate(1.5);
+    REQUIRE(scene.tryObject(replacement)->position.x == 9.0f);
+}
+
+//======================================================================================================================
+TEST_CASE("asset playback composes an empty animated parent before decomposing its child",
+          "[scene][ux3]") {
+    Scene scene = makeMotionTestScene();
+    lmx::engine::AssetClipPlayback asset;
+    asset.rootWorld = glm::scale(glm::mat4(1), glm::vec3(2, 1, 1));
+    asset.instances = {scene.objects[0].id};
+    asset.nodes.resize(2);
+    asset.nodes[0].animated = true;
+    asset.nodes[1].parent = 0;
+    asset.nodes[1].animated = true;
+    asset.nodes[1].instances = {0};
+    asset.clips = {{.duration = 2,
+                    .channels = {{.node = 0,
+                                  .path = lmx::asset::GltfAnimationPath::Rotation,
+                                  .step = true,
+                                  .keys = {{.time = 0, .value = {0, 0, 0, 1}},
+                                           {.time = .5, .value = {0, 0, .3826834f, .9238795f}},
+                                           {.time = 2, .value = {0, 0, 0, 1}}}}}},
+                   {.duration = 2,
+                    .channels = {{.node = 1,
+                                  .path = lmx::asset::GltfAnimationPath::Rotation,
+                                  .step = true,
+                                  .keys = {{.time = 0, .value = {0, 0, 0, 1}},
+                                           {.time = .5, .value = {0, 0, -.3826834f, .9238795f}},
+                                           {.time = 2, .value = {0, 0, 0, 1}}}}}}};
+    scene.assetAnimations.push_back(std::move(asset));
+    scene.animate(.5);
+    REQUIRE(scene.objects[0].scale.x == Catch::Approx(2.0f));
+    REQUIRE(scene.objects[0].scale.y == Catch::Approx(1.0f));
 }
 
 //======================================================================================================================

@@ -56,6 +56,12 @@ bool hasAnimationTracks(const SceneAnimation& animation) {
 
 //======================================================================================================================
 glm::mat4 sampleRigidTrack(const RigidTrack& track, double time) {
+    if (track.loopDuration > 0.0) {
+        time = std::fmod(time, track.loopDuration);
+        if (time < 0.0) {
+            time += track.loopDuration;
+        }
+    }
     const std::span<const RigidKey> keys(track.keys);
     const KeySpan span = bracket(keys, time);
     const RigidKey& earlier = keys[span.earlier];

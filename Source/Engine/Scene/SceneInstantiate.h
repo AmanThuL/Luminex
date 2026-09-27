@@ -105,6 +105,11 @@ uint64_t sceneLightKey(LightId id);
 /// Computes ancestor AND from separate own flags; document hierarchy must already be valid.
 std::vector<bool> effectiveDocumentEnabled(const asset::SceneDocument& document,
                                            const std::vector<bool>& own);
+/// Rejects asset hierarchies whose nonuniform ancestor scale and descendant animated rotation can
+/// shear between baked keys or after independent clip wraps, even with one clip.
+asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& source,
+                                                       const glm::mat4& rootWorld,
+                                                       std::string_view assetPointer);
 /// Resolves decoded relative paths beneath assetsRoot, checks hashes, source overrides and light
 /// conversions, and decodes required content without creating any GPU object. The input hierarchy
 /// and array indices must already have passed readSceneDocument. Runtime accepts LINEAR selected-

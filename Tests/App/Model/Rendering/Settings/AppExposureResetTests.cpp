@@ -32,7 +32,7 @@ TEST_CASE("the first frame resets: no scene has loaded yet", "[app]") {
 //======================================================================================================================
 TEST_CASE("a scene switch resets", "[app]") {
     const scenes::SceneId first = scenes::defaultSceneId();
-    const scenes::SceneId second{"damaged-helmet"};
+    const scenes::SceneId second{"material-lab"};
 
     const ExposureResetContext previous = loaded(first);
     const ExposureResetContext current = loaded(second);

@@ -182,11 +182,12 @@ std::vector<uint8_t> makeCheckerboardPixels() {
 //   makeCheckerboardPixels
 //   -- a dedicated GPU test supplies its own camera on the far side to read it minified.
 //
-//   initialCamera: (0, 0, 12) looking down -Z (yaw=pitch=0), 45 degree vertical FOV. The complete
-//   sphere matrix occupies roughly 70% of a square viewport's height while retaining comfortable
-//   edge clearance. The texture and depth lanes use the identical pose translated to their lane X.
+//   The camera starts at (0, 0, 12), looking down -Z at 45 degrees vertical. The opening 16:9
+//   view frames the sphere matrix and the optional helmet/axis station together. Archived
+//   documents omit the station parameter. Texture and depth lanes use a horizontal camera pan.
 asset::AssetResult<void> appendMaterialLab(rojoRHI::Device& device, engine::Scene& target,
-                                           const engine::EnvironmentHook& environment) {
+                                           const engine::EnvironmentHook& environment,
+                                           bool axisStation) {
     engine::Scene* scene = &target;
 
     Aabb aabb = emptyAabb();
@@ -226,6 +227,44 @@ asset::AssetResult<void> appendMaterialLab(rojoRHI::Device& device, engine::Scen
                  .mesh = sphereMeshIndex,
                  .material = materialIndex});
             expandAabb(position, glm::vec3(kSphereRadius));
+        }
+    }
+
+    // The document opts this station in when it places the helmet beside the sphere grid.
+    // Coloured +X/+Y/+Z shafts and square tips make the imported asset's axis convention visible
+    // in the rendered scene; their names spell it out in Hierarchy and the viewport legend.
+    if (axisStation) {
+        constexpr glm::vec3 origin{6.2f, -2.0f, 0.0f};
+        struct Axis {
+            const char* name;
+            glm::vec3 direction;
+            glm::vec3 colour;
+        };
+        constexpr std::array<Axis, 3> axes{{
+            {"+X red", {1.0f, 0.0f, 0.0f}, {1.0f, 0.08f, 0.06f}},
+            {"+Y green", {0.0f, 1.0f, 0.0f}, {0.08f, 1.0f, 0.12f}},
+            {"+Z blue", {0.0f, 0.0f, 1.0f}, {0.08f, 0.25f, 1.0f}},
+        }};
+        for (const Axis& axis : axes) {
+            engine::MaterialRecord material;
+            material.albedo = srgbToLinear(glm::vec4(axis.colour, 1.0f));
+            material.roughness = 0.35f;
+            const engine::MaterialId id = scene->addMaterial(material);
+            const glm::vec3 shaftCentre = origin + axis.direction * 0.45f;
+            const glm::vec3 shaftScale = glm::vec3(0.07f) + axis.direction * 0.83f;
+            scene->addObject({.name = std::string("material-lab axis ") + axis.name + " shaft",
+                              .position = shaftCentre,
+                              .scale = shaftScale,
+                              .mesh = cubeMeshIndex,
+                              .material = id});
+            expandAabb(shaftCentre, shaftScale * 0.5f);
+            const glm::vec3 tip = origin + axis.direction;
+            scene->addObject({.name = std::string("material-lab axis ") + axis.name + " tip",
+                              .position = tip,
+                              .scale = glm::vec3(0.16f),
+                              .mesh = cubeMeshIndex,
+                              .material = id});
+            expandAabb(tip, glm::vec3(0.08f));
         }
     }
 

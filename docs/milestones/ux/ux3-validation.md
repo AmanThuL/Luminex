@@ -123,8 +123,55 @@ code-generation effects from the new selected-shadow-caster expressions remain u
   does not describe unsaved live edits. Path-opened reports retain the caller's spelling.
   PNG `lmx:frame` metadata remains unchanged.
 
+## UX3.2 — fixture integration
+
+MaterialLab now includes the fetched Helmet beside its sphere grid and RGB axis station;
+TemporalLab includes the fetched Truck beside its generated movers. Their original cameras and
+asset URI/hash pairs remain unchanged. The two standalone IDs and document/buffer pairs retire.
+The generator axis parameter defaults off, preserving explicit-path replay of the archived lab.
+Opening captures in `task11/` show both stations within the frame; five-mode re-baselining is pending.
+
+Asset playback keeps source-local channels and independent clip periods on unwrapped elapsed
+time. Reset uses the same pose evaluator, and stable instance handles prevent removal or slot
+reuse from retargeting animation. CPU tests pass 822 cases / 1,491,957 assertions; the real Truck
+paused Reset and global-wrap check passes 14 assertions under Metal validation. Khronos passes
+57 documents. The combined Task 11/13 tree passes all eleven required checks, including full
+Metal validation (`task11-integrated-gates.json`). The first full run's canonical/layout failures
+remain in `task11-final-*`; the
+catalog JSON was rewritten canonically without changing its companion buffers or source hashes.
+
+**Review failure retained: P2.** After three repairs to animation preflight, independently looping
+ancestor and child STEP scale clips can still combine into an indecomposable pose and assert.
+The source-level counterexample uses a parent period of 2 seconds with scale `(0,1,1)` during
+`[0.5,1)`, and a child period of 4 seconds with `(1,0,1)` during `[2,3)`; each otherwise uses
+identity. Shared-clock validation sees at most one collapsed axis. Independent phases at 2.5
+seconds produce `(0,0,1)`, which the playback decomposition rejects. This counterexample was
+reviewed from source, not executed as part of the passing suite. The catalog Truck does not use
+this scale pattern. Preflight rejects the tested shear/linear-collapse cases but is incomplete;
+no general fail-closed claim is made.
+
+`task11-review-final-against-d568570.patch`, the final report and retained RED/GREEN logs describe
+the repair boundary. Execution deviates from the review-pass dependency rule here: the requested
+three-attempt limit and continuation instruction were applied, so the remaining review failure
+is carried forward without approval. Re-baselining does not accept or hide this defect.
+
+## UX3.3 — disabled instance rows
+
+Task 13 is implemented at `e3a6b3f`; independent review and all eleven required gate commands pass
+(`task13-final-gates.json`). Disabled identities retain their rows but produce no scene, shadow,
+outline or independent occlusion-reference contribution. All five submission/classification
+paths restore the exact prior image after re-enabling. The observing-camera test changes 2,739
+pixels when disabled; its subject is Sponza's `column_a` material primitive group, not a separately
+authored pillar node. Persisted source-node edits fan out to every primitive of that node.
+
+The positive-occluder test proves history invalidation: holding the old coverage epoch yields one
+false rejection; restoring the production epoch passes 148 assertions across both GPU layouts.
+The temporary negative control is absent from committed code. Independent review remained separate
+from implementation; a reviewer was reused after two fresh-reviewer creation attempts hit the
+runtime thread limit. Session enablement, save/dirty behavior and GUI checks remain later work.
+
 ## Remaining slices
 
-Fixture integration/re-baseline, disabled rows, persistent export/dirty state, editor workflow,
-both-size gesture verification, icon verification and the integrated head gates are pending.
-No later slice is marked passed by the work above.
+Lab re-baselining, session enablement, persistent export/dirty state, editor workflow, both-size
+gesture verification, icon verification and integrated head gates are pending. No later slice
+is marked passed by the work above.

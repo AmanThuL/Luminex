@@ -251,6 +251,17 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
                 }
                 scene.boundingSphere = toVec4(boundingSphere(scene.authoredBounds));
             }
+            if (!imported->source.clips.empty()) {
+                AssetClipPlayback playback;
+                playback.objectBase = objectBase;
+                playback.rootWorld = imported->rootWorld;
+                playback.instances.reserve(imported->source.instances.size());
+                for (size_t i = 0; i < imported->source.instances.size(); ++i)
+                    playback.instances.push_back(scene.objects[objectBase + i].id);
+                playback.nodes = imported->source.nodes;
+                playback.clips = imported->source.clips;
+                scene.assetAnimations.push_back(std::move(playback));
+            }
             bindAsset(binding, n, objectBase, *imported);
             if (auto result = environment(scene); !result)
                 return std::unexpected(result.error());

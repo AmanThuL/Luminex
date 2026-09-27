@@ -8,7 +8,8 @@
 namespace lmx::scenes {
 /// Appends the material diagnostics, then calls the document environment hook.
 asset::AssetResult<void> appendMaterialLab(rojoRHI::Device& device, engine::Scene& scene,
-                                           const engine::EnvironmentHook& environment);
+                                           const engine::EnvironmentHook& environment,
+                                           bool axisStation = false);
 /// Appends temporal geometry and rigid/emissive tracks, retaining previous content and clock.
 asset::AssetResult<void> appendTemporalLab(rojoRHI::Device& device, engine::Scene& scene,
                                            const engine::EnvironmentHook& environment);

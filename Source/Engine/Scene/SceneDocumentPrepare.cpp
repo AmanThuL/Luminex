@@ -16,6 +16,8 @@
 #include <cmath>
 #include <glm/gtc/matrix_transform.hpp>
 #include <limits>
+#include <optional>
+#include <utility>
 
 namespace lmx::engine {
 namespace {
@@ -138,6 +140,133 @@ std::vector<bool> effectiveDocumentEnabled(const asset::SceneDocument& document,
     return result;
 }
 //======================================================================================================================
+asset::AssetResult<void> validateIndependentAssetClips(const asset::GltfScene& source,
+                                                       const glm::mat4& rootWorld,
+                                                       std::string_view assetPointer) {
+    const auto ancestorOf = [&](uint32_t ancestor, uint32_t descendant) {
+        for (int32_t p = source.nodes[descendant].parent; p >= 0;
+             p = source.nodes[static_cast<size_t>(p)].parent) {
+            if (static_cast<uint32_t>(p) == ancestor)
+                return true;
+        }
+        return false;
+    };
+    const auto affectsInstance = [&](uint32_t node) {
+        for (const auto& instance : source.instances)
+            if (instance.node == node || ancestorOf(node, instance.node))
+                return std::optional<uint32_t>(instance.node);
+        return std::optional<uint32_t>{};
+    };
+    const auto nonuniform = [](const asset::GltfAnimationChannel& channel) {
+        for (const auto& key : channel.keys) {
+            const auto scale = glm::vec3(key.value);
+            if (std::abs(scale.x - scale.y) > 1e-5f || std::abs(scale.y - scale.z) > 1e-5f)
+                return true;
+        }
+        return false;
+    };
+    const auto nonuniformMatrix = [](const glm::mat4& matrix) {
+        const float x = glm::length(glm::vec3(matrix[0]));
+        const float y = glm::length(glm::vec3(matrix[1]));
+        const float z = glm::length(glm::vec3(matrix[2]));
+        return std::abs(x - y) > 1e-5f || std::abs(y - z) > 1e-5f ||
+               std::abs(glm::dot(glm::vec3(matrix[0]), glm::vec3(matrix[1]))) > 1e-5f ||
+               std::abs(glm::dot(glm::vec3(matrix[1]), glm::vec3(matrix[2]))) > 1e-5f ||
+               std::abs(glm::dot(glm::vec3(matrix[0]), glm::vec3(matrix[2]))) > 1e-5f;
+    };
+    const auto staticAnisotropyAbove = [&](uint32_t node) {
+        if (nonuniformMatrix(rootWorld))
+            return true;
+        for (int32_t p = source.nodes[node].parent; p >= 0;
+             p = source.nodes[static_cast<size_t>(p)].parent) {
+            const auto& ancestor = source.nodes[static_cast<size_t>(p)];
+            if (ancestor.matrix ? nonuniformMatrix(*ancestor.matrix)
+                                : std::abs(ancestor.scale.x - ancestor.scale.y) > 1e-5f ||
+                                      std::abs(ancestor.scale.y - ancestor.scale.z) > 1e-5f)
+                return true;
+        }
+        return false;
+    };
+    const auto label = [&](uint32_t node) {
+        const auto& name = source.nodes[node].name;
+        return name.empty() ? std::to_string(node)
+                            : "'" + name + "' (" + std::to_string(node) + ")";
+    };
+    const auto nearZeroInterval = [](double start,
+                                     double end) -> std::optional<std::pair<double, double>> {
+        constexpr double kTolerance = 1e-4; // decomposeTransform's degenerate-axis threshold.
+        if (start == end) {
+            if (std::abs(start) <= kTolerance)
+                return std::pair{0.0, 1.0};
+            return std::nullopt;
+        }
+        const double a = (-kTolerance - start) / (end - start);
+        const double b = (kTolerance - start) / (end - start);
+        const double low = std::max(0.0, std::min(a, b));
+        const double high = std::min(1.0, std::max(a, b));
+        if (low <= high)
+            return std::pair{low, high};
+        return std::nullopt;
+    };
+    for (const auto& clip : source.clips) {
+        for (const auto& channel : clip.channels) {
+            if (channel.path != asset::GltfAnimationPath::Scale || channel.step ||
+                !affectsInstance(channel.node))
+                continue;
+            for (size_t i = 1; i < channel.keys.size(); ++i) {
+                const auto& a = channel.keys[i - 1].value;
+                const auto& b = channel.keys[i].value;
+                for (int first = 0; first < 3; ++first) {
+                    const auto firstZero = nearZeroInterval(a[first], b[first]);
+                    if (!firstZero)
+                        continue;
+                    for (int second = first + 1; second < 3; ++second) {
+                        const auto secondZero = nearZeroInterval(a[second], b[second]);
+                        if (secondZero && std::max(firstZero->first, secondZero->first) <=
+                                              std::min(firstZero->second, secondZero->second))
+                            return std::unexpected(asset::AssetError{
+                                asset::AssetErrorCode::Unsupported,
+                                std::string(assetPointer) +
+                                    ": local scale interpolation can collapse two axes at source " +
+                                    "node " + label(channel.node)});
+                    }
+                }
+            }
+        }
+    }
+    // The local sampler interpolates between baked keys and wraps each clip separately. A baked
+    // shared-clock proof cannot cover those phases, even with just one short clip. Reject the
+    // structural scale-above-rotation hazard instead of relying on a finite sampling grid.
+    for (const auto& clip : source.clips) {
+        for (const auto& rotation : clip.channels) {
+            if (rotation.path != asset::GltfAnimationPath::Rotation)
+                continue;
+            const auto affected = affectsInstance(rotation.node);
+            if (!affected)
+                continue;
+            if (staticAnisotropyAbove(rotation.node))
+                return std::unexpected(asset::AssetError{
+                    asset::AssetErrorCode::Unsupported,
+                    std::string(assetPointer) + ": local clip interpolation can shear source " +
+                        "node " + label(rotation.node) + " affecting " + label(*affected) +
+                        " beneath static nonuniform ancestry"});
+            for (const auto& scaleClip : source.clips) {
+                for (const auto& scale : scaleClip.channels) {
+                    if (scale.path != asset::GltfAnimationPath::Scale || !nonuniform(scale) ||
+                        !ancestorOf(scale.node, rotation.node))
+                        continue;
+                    return std::unexpected(asset::AssetError{
+                        asset::AssetErrorCode::Unsupported,
+                        std::string(assetPointer) + ": local clip interpolation can shear source " +
+                            "node " + label(rotation.node) + " beneath nonuniform scale at " +
+                            label(scale.node)});
+                }
+            }
+        }
+    }
+    return {};
+}
+//======================================================================================================================
 asset::AssetResult<PreparedSceneDocument>
 prepareSceneDocument(const asset::SceneDocument& document,
                      const std::filesystem::path& assetsRoot) {
@@ -245,6 +374,10 @@ prepareSceneDocument(const asset::SceneDocument& document,
                                glm::mat4_cast(transform.rotation) *
                                glm::scale(glm::mat4(1), transform.scale);
         }
+        if (auto phases =
+                validateIndependentAssetClips(asset.source, asset.rootWorld, pointer + "/asset");
+            !phases)
+            return std::unexpected(phases.error());
         const bool identityRoot = asset.rootWorld == glm::mat4(1.0f);
         for (auto& instance : asset.source.instances) {
             if (!identityRoot)

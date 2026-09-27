@@ -10,12 +10,10 @@
 
 namespace lmx::scenes {
 namespace {
-constexpr std::array<std::string_view, 8> kIds{"sponza",         "damaged-helmet", "milk-truck",
-                                               "material-lab",   "temporal-lab",   "san-miguel",
-                                               "visibility-lab", "light-lab"};
-constexpr std::array<std::string_view, 8> kNames{"Sponza",        "Damaged Helmet", "Milk Truck",
-                                                 "MaterialLab",   "TemporalLab",    "San Miguel",
-                                                 "VisibilityLab", "LightLab"};
+constexpr std::array<std::string_view, 6> kIds{"sponza",     "material-lab",   "temporal-lab",
+                                               "san-miguel", "visibility-lab", "light-lab"};
+constexpr std::array<std::string_view, 6> kNames{"Sponza",     "MaterialLab",   "TemporalLab",
+                                                 "San Miguel", "VisibilityLab", "LightLab"};
 //======================================================================================================================
 bool available(const asset::SceneDocument& document) {
     const auto root = asset::findRepositoryAsset("Assets");
@@ -67,13 +65,11 @@ SceneLibrary::SceneLibrary(rojoRHI::Device& device, std::optional<uint32_t> inst
         m_entries.push_back({{std::string(kIds[i])},
                              std::string(kIds[i]),
                              std::string(kNames[i]),
-                             i == 0 || i == 5   ? SceneRole::Showcase
-                             : i == 1 || i == 2 ? SceneRole::Sample
-                                                : SceneRole::Diagnostic,
+                             i == 0 || i == 3 ? SceneRole::Showcase : SceneRole::Diagnostic,
                              "document and its referenced assets",
                              ready,
                              ready    ? ""
-                             : i == 5 ? "run `xmake setup --san-miguel`"
+                             : i == 3 ? "run `xmake setup --san-miguel`"
                                       : "run `xmake setup`"});
     }
 }

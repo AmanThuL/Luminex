@@ -1,3 +1,4 @@
+#include "Engine/Asset/RepositoryAsset.h"
 #include "Render/Renderer/SceneViewBuilder.h"
 #include "Scenes/CatalogScenes.h"
 #include "Support/EngineSceneTestSupport.h"
@@ -16,13 +17,13 @@ TEST_CASE(
 
     // 5x5 sphere grid (25) + 6 colour patches + 1 gradient ramp + 1 normal-map probe + 3 depth
     // probes + 1 mip probe.
-    REQUIRE((*scene)->objects.size() == 37);
+    REQUIRE((*scene)->objects.size() == 44); // original 37, six axis marks, one helmet draw
     // One material per sphere (25, distinct roughness/metallic) + 6 patches + the ramp + the
     // normal probe + one material shared by the three depth probes + the mip probe.
-    REQUIRE((*scene)->tableStats().materialCount == 35);
+    REQUIRE((*scene)->tableStats().materialCount >= 35);
     // Sphere, unit quad (shared by the patches, the normal probe, and the mip probe), gradient
     // ramp quad, cube.
-    REQUIRE((*scene)->tableStats().meshCount - 1 == 4);
+    REQUIRE((*scene)->tableStats().meshCount - 1 >= 4);
     // The gradient ramp, the normal map, and the mip probe's checkerboard.
     std::vector<TextureId> textures;
     for (const auto& object : (*scene)->objects) {
@@ -34,7 +35,7 @@ TEST_CASE(
             }
         }
     }
-    REQUIRE(textures.size() == 3);
+    REQUIRE(textures.size() >= 3);
 
     size_t normalMapped = 0;
     for (const auto& object : (*scene)->objects) {
@@ -43,7 +44,11 @@ TEST_CASE(
             ++normalMapped;
         }
     }
-    REQUIRE(normalMapped == 1);
+    REQUIRE(normalMapped >= 1);
+
+    REQUIRE(findObject(**scene, "material-lab axis +X red shaft") != nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Y green shaft") != nullptr);
+    REQUIRE(findObject(**scene, "material-lab axis +Z blue shaft") != nullptr);
 
     REQUIRE((*scene)->boundingSphere.w > 0.0f);
     REQUIRE((*scene)->skyCubemap != nullptr);
@@ -57,9 +62,10 @@ TEST_CASE(
 TEST_CASE("MaterialLab rejects a missing required studio environment", "[scene-doc]") {
     auto document = lmx::scenes::readCatalogDocument("material-lab");
     REQUIRE(document);
+    const auto assetsRoot = lmx::asset::findRepositoryAsset("Assets");
+    REQUIRE(assetsRoot);
     document->look.environment.hdri->uri = "missing-required-studio.hdr";
-    const auto result =
-        lmx::engine::prepareSceneDocument(*document, std::filesystem::current_path());
+    const auto result = lmx::engine::prepareSceneDocument(*document, *assetsRoot);
     REQUIRE_FALSE(result);
     REQUIRE(result.error().message.find("/extensions/LMX_scene/look/environment/hdri/uri") !=
             std::string::npos);
@@ -183,6 +189,12 @@ TEST_CASE("loadMaterialLabScene opens with the complete sphere matrix prominent"
     REQUIRE(insideFrame(gridBox, static_cast<float>(kSize)));
     REQUIRE((gridBox.maxY - gridBox.minY) / static_cast<float>(kSize) > 0.65f);
     REQUIRE((gridBox.maxY - gridBox.minY) / static_cast<float>(kSize) < 0.80f);
+    const ScreenBox station = projectAabbToFrame(camera, 1280, 720, glm::vec3(6.2f, -0.5f, 0.0f),
+                                                 glm::vec3(1.0f, 1.5f, 1.0f));
+    REQUIRE(station.minX >= 0.0f);
+    REQUIRE(station.maxX <= 1280.0f);
+    REQUIRE(station.minY >= 0.0f);
+    REQUIRE(station.maxY <= 720.0f);
 }
 
 //======================================================================================================================

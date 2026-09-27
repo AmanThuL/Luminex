@@ -9,6 +9,7 @@
 #include "Core/Math/Transform.h"
 #include "Engine/Asset/Asset.h"
 #include "Engine/Asset/Document/SceneLook.h"
+#include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Engine/Geometry/Mesh.h"
 #include "Engine/Lights/DirectionalLight.h"
@@ -23,6 +24,7 @@
 
 #include <glm/glm.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -60,6 +62,16 @@ struct SceneObject {
 
     /// Builds the object's model matrix from its authored transform fields.
     glm::mat4 modelMatrix() const;
+};
+
+/// Owned asset-local playback inputs. The document binding keeps a separate copy for identity and
+/// export; scene playback never borrows that binding or depends on its lifetime.
+struct AssetClipPlayback {
+    size_t objectBase = 0;     ///< Initial append offset for diagnostics; playback uses instances.
+    glm::mat4 rootWorld{1.0f}; ///< Document transform preceding the source node hierarchy.
+    std::vector<InstanceId> instances;  ///< Stable identity for each source primitive instance.
+    std::vector<asset::GltfNode> nodes; ///< Source indices, rest transforms and instance maps.
+    std::vector<asset::GltfAnimationClip> clips; ///< Source-ordered channels and own durations.
 };
 
 /// Authored initial camera pose copied into a renderer camera at scene activation.
@@ -191,6 +203,8 @@ public:
     SceneCamera initialCamera{};     ///< Camera pose restored when the scene becomes active.
     asset::SceneAnimation animation; ///< Tracks this scene plays; empty for a static scene.
     double animationTime = 0.0; ///< Playback position in seconds, advanced by advanceAnimation().
+    double unwrappedAnimationTime = 0.0; ///< Elapsed playback time for independently looping clips.
+    std::vector<AssetClipPlayback> assetAnimations; ///< Owned source clips for document assets.
 
     /// Collapses every object's motion onto its current pose, so the next frame reports no
     /// movement. Called when the scene becomes active or after a discontinuity.
@@ -211,6 +225,13 @@ public:
     /// and sampled poses are validated where tracks are built, so a pose that cannot be decomposed
     /// here is a contract violation.
     void animate(double seconds);
+    /// Supplies elapsed time separately when the scene clock has wrapped. Generator and camera
+    /// tracks use `seconds`; asset clips use `assetSeconds` and wrap against their own durations.
+    void animate(double seconds, double assetSeconds);
+
+    /// Evaluates an imported object's authored pose at its own clip phases without changing the
+    /// scene. Returns none when the identity is not animated by an owned asset clip.
+    std::optional<DecomposedTransform> authoredAssetPose(InstanceId id, double seconds) const;
 
     /// Samples the nonempty camera track at `animationTime` and assigns position, yaw, and pitch.
     /// Lens state remains owned by the caller and is unchanged.

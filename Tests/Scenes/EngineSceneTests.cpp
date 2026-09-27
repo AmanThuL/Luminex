@@ -85,7 +85,7 @@ TEST_CASE("loadHelmetScene loads the fetched DamagedHelmet asset", "[gpu]") {
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "damaged-helmet");
+    auto scene = loadGltfScene(**device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
 
@@ -142,7 +142,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
 
-    auto bakedScene = lmx::test::loadCatalogScene(**device, "damaged-helmet");
+    auto bakedScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
     INFO(describeSceneError(bakedScene));
     REQUIRE(bakedScene.has_value());
     rojoRHI::Texture* bakedDiffuse =
@@ -154,7 +154,7 @@ TEST_CASE("loadHelmetScene's unbaked fallback computes the same mip 1 the offlin
     std::vector<uint8_t> fallbackMip1;
     {
         const TemporarilyHiddenDirectory hidden(bakedDir);
-        auto fallbackScene = lmx::test::loadCatalogScene(**device, "damaged-helmet");
+        auto fallbackScene = loadGltfScene(**device, path->string(), "Damaged Helmet");
         INFO(describeSceneError(fallbackScene));
         REQUIRE(fallbackScene.has_value());
         rojoRHI::Texture* fallbackDiffuse =
@@ -358,31 +358,23 @@ TEST_CASE("SceneLibrary lists the scenes in a fixed order", "[gpu]") {
     REQUIRE(device.has_value());
     lmx::scenes::SceneLibrary library(**device);
 
-    REQUIRE(library.entries().size() == 8);
+    REQUIRE(library.entries().size() == 6);
     REQUIRE(lmx::scenes::sceneIdString(library.entries()[0].id) == "sponza");
     REQUIRE(library.entries()[0].stableId == "sponza");
     REQUIRE(library.entries()[0].displayName == "Sponza");
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[1].id) == "damaged-helmet");
-    REQUIRE(library.entries()[1].stableId == "damaged-helmet");
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[2].id) == "milk-truck");
-    REQUIRE(library.entries()[2].stableId == "milk-truck");
-    REQUIRE(library.entries()[2].displayName == "Milk Truck");
-    REQUIRE(library.entries()[2].role == lmx::scenes::SceneRole::Sample);
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[3].id) == "material-lab");
-    REQUIRE(library.entries()[3].stableId == "material-lab");
-    REQUIRE(library.entries()[3].displayName == "MaterialLab");
-    REQUIRE(library.entries()[3].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(lmx::scenes::sceneIdString(library.entries()[4].id) == "temporal-lab");
-    REQUIRE(library.entries()[4].stableId == "temporal-lab");
-    REQUIRE(library.entries()[4].displayName == "TemporalLab");
+    REQUIRE(library.entries()[1].stableId == "material-lab");
+    REQUIRE(library.entries()[1].displayName == "MaterialLab");
+    REQUIRE(library.entries()[1].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[2].stableId == "temporal-lab");
+    REQUIRE(library.entries()[2].displayName == "TemporalLab");
+    REQUIRE(library.entries()[2].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[3].stableId == "san-miguel");
+    REQUIRE(library.entries()[3].role == lmx::scenes::SceneRole::Showcase);
+    REQUIRE(library.entries()[4].stableId == "visibility-lab");
     REQUIRE(library.entries()[4].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(library.entries()[5].stableId == "san-miguel");
-    REQUIRE(library.entries()[5].role == lmx::scenes::SceneRole::Showcase);
-    REQUIRE(library.entries()[6].stableId == "visibility-lab");
-    REQUIRE(library.entries()[6].role == lmx::scenes::SceneRole::Diagnostic);
-    REQUIRE(library.entries()[7].stableId == "light-lab");
-    REQUIRE(library.entries()[7].displayName == "LightLab");
-    REQUIRE(library.entries()[7].role == lmx::scenes::SceneRole::Diagnostic);
+    REQUIRE(library.entries()[5].stableId == "light-lab");
+    REQUIRE(library.entries()[5].displayName == "LightLab");
+    REQUIRE(library.entries()[5].role == lmx::scenes::SceneRole::Diagnostic);
 }
 
 //======================================================================================================================
@@ -401,19 +393,15 @@ TEST_CASE("SceneLibrary reports the fetched scenes' availability from what this 
 
     const bool helmetPresent =
         findRepoAsset("Assets/Fetched/DamagedHelmet/DamagedHelmet.glb").has_value();
-    REQUIRE(library.entries()[1].available == helmetPresent);
-    REQUIRE(library.entries()[1].hint.empty() == helmetPresent);
+    const bool studioPresent =
+        findRepoAsset("Assets/Fetched/MaterialLab/studio_small_09_1k.hdr").has_value();
+    REQUIRE(library.entries()[1].available == (helmetPresent && studioPresent));
+    REQUIRE(library.entries()[1].hint.empty() == (helmetPresent && studioPresent));
 
     const bool truckPresent =
         findRepoAsset("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb").has_value();
     REQUIRE(library.entries()[2].available == truckPresent);
     REQUIRE(library.entries()[2].hint.empty() == truckPresent);
-
-    // Both labs are code-generated: available regardless of what this checkout fetched.
-    REQUIRE(library.entries()[3].available);
-    REQUIRE(library.entries()[3].hint.empty());
-    REQUIRE(library.entries()[4].available);
-    REQUIRE(library.entries()[4].hint.empty());
 }
 
 //======================================================================================================================
@@ -448,7 +436,7 @@ TEST_CASE("loadMilkTruckScene loads the fetched CesiumMilkTruck asset with its w
 
     auto device = rojoRHI::createDevice();
     REQUIRE(device.has_value());
-    auto scene = lmx::test::loadCatalogScene(**device, "milk-truck");
+    auto scene = loadGltfScene(**device, path->string(), "Milk Truck");
     INFO(describeSceneError(scene));
     REQUIRE(scene.has_value());
     REQUIRE_FALSE((*scene)->objects.empty());

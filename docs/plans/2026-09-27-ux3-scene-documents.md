@@ -194,7 +194,7 @@ std::vector<bool> nodeEnabled; std::optional<engine::SceneCamera> sceneCamera; }
 **Files:** `Assets/Scenes/{material-lab,temporal-lab}.scene.gltf`, `SceneAnimation.{h,cpp}`
 (`RigidTrack::loopDuration`, 0 meaning the scene clock), `MaterialLab.cpp`, `TemporalLab.cpp`, the
 catalog, `AppOptionsTests.cpp`, `EngineSceneTests.cpp`, `ScenePlaybackTests.cpp`.
-- [ ] Tests first: a track with `loopDuration` 2 samples at 2.5 s as at 0.5 s; asset clips carry
+- [x] Tests first: a track with `loopDuration` 2 samples at 2.5 s as at 0.5 s; asset clips carry
   their own duration. Add the helmet as an asset node beside MaterialLab's spheres with an axis
   annotation, and the truck beside TemporalLab's movers; retire both ids and documents; loader
   tests keep loading both assets. Commit `scene: fold the helmet and truck into the labs (UX3)`.

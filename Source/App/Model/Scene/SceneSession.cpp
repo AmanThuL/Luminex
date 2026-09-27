@@ -130,19 +130,21 @@ void SceneSession::prepareScreenshotFrame(uint32_t frame) {
 //======================================================================================================================
 void SceneSession::prepareSequenceFrame(uint32_t frame) {
     scene().animationTime = static_cast<double>(frame) / asset::kAnimationBakeRate;
-    scene().animate(scene().animationTime);
+    scene().unwrappedAnimationTime = scene().animationTime;
+    scene().animate(scene().animationTime, scene().unwrappedAnimationTime);
     followCameraTrack();
 }
 
 //======================================================================================================================
 void SceneSession::stepAnimation() {
     scene().advanceAnimation(1.0 / asset::kAnimationBakeRate);
-    scene().animate(scene().animationTime);
+    scene().animate(scene().animationTime, scene().unwrappedAnimationTime);
 }
 
 //======================================================================================================================
 void SceneSession::rewindAnimation() {
     scene().animationTime = 0.0;
+    scene().unwrappedAnimationTime = 0.0;
     scene().animate(0.0);
     resetMotion();
 }
@@ -182,6 +184,10 @@ void SceneSession::followCameraTrack() {
 //======================================================================================================================
 DecomposedTransform SceneSession::objectDefault(size_t index) const {
     LMX_ASSERT(index < scene().objects.size(), "Object index out of range");
+    if (const auto pose =
+            scene().authoredAssetPose(scene().objects[index].id, scene().unwrappedAnimationTime)) {
+        return *pose;
+    }
     for (const auto& track : scene().animation.tracks) {
         if (track.objectIndex == index) {
             const auto pose =
