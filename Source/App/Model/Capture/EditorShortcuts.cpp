@@ -9,15 +9,14 @@ namespace lmx::app {
 
 //======================================================================================================================
 bool shortcutAllowed(EditorShortcut shortcut, const ShortcutContext& context) {
-    if (context.textInput || context.cameraLook || context.popupOpen)
+    if (context.textInput || context.cameraLook || context.popupOpen || context.otherSurfaceFocused)
         return false;
     switch (shortcut) {
     case EditorShortcut::FrameSelected:
         return context.hasSelection;
     case EditorShortcut::ResetCamera:
-        return true;
     case EditorShortcut::Capture:
-        return context.captureAvailable;
+        return true;
     }
     return false;
 }

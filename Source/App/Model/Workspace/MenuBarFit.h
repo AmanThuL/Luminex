@@ -8,7 +8,9 @@ namespace lmx::app {
 
 /// Measured widths in one common coordinate system, including internal button spacing.
 struct MenuBarWidths {
-    float menus;   ///< Occupied left edge through the last menu.
+    /// Occupied left edge through the last menu, excluding any trailing item spacing the layout
+    /// already advanced past it; fitMenuBar adds `spacing` itself.
+    float menus;
     float buttons; ///< Transport buttons, including spacing between buttons.
     float readout; ///< Time or measurement progress text.
     float zoom;    ///< Clickable zoom percentage.

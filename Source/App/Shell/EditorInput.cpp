@@ -19,6 +19,19 @@ namespace {
 // Tuned so a roughly screen-wide drag turns the camera 180 degrees.
 constexpr float kLookRadiansPerPixel = 0.0025f;
 
+//======================================================================================================================
+// Keyboard events reach Dear ImGui from every platform window, so a detached tool window's own
+// keys (the node editor's F, for instance) must not also drive the viewport's commands. Only the
+// Render Graph and Performance windows never merge; an undocked editor panel still owns them.
+bool detachedSurfaceFocused() {
+    for (const ImGuiViewport* viewport : ImGui::GetPlatformIO().Viewports) {
+        if ((viewport->Flags & ImGuiViewportFlags_IsFocused) &&
+            (viewport->Flags & ImGuiViewportFlags_NoAutoMerge))
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 //======================================================================================================================
@@ -48,8 +61,7 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
         .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
         .popupOpen =
             ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
-        .captureAvailable = m_actions.captureAvailable() &&
-                            m_actions.captureResult().status != ActionStatus::Pending,
+        .otherSurfaceFocused = detachedSurfaceFocused(),
         .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value()};
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_F, false) &&
         shortcutAllowed(EditorShortcut::FrameSelected, context))
@@ -57,8 +69,14 @@ void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
     if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_Home, false) &&
         shortcutAllowed(EditorShortcut::ResetCamera, context))
         resetCamera();
-    if (ImGui::IsKeyPressed(ImGuiKey_C, false) && shortcutAllowed(EditorShortcut::Capture, context))
+    if (ImGui::IsKeyPressed(ImGuiKey_C, false) &&
+        shortcutAllowed(EditorShortcut::Capture, context)) {
+        // An unavailable request only records its unchanged recovery explanation; forget the last
+        // posted result so the notice returns even after the user dismissed it.
+        if (!m_actions.captureAvailable())
+            m_lastCaptureNotice = {};
         m_actions.requestCapture();
+    }
 }
 
 //======================================================================================================================

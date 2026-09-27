@@ -20,8 +20,10 @@ void NoticeQueue::post(ActionResult result, double nowSeconds) {
 
 //======================================================================================================================
 const ActionResult* NoticeQueue::current(double nowSeconds) const {
-    if (!m_visible || (m_result.status == ActionStatus::Succeeded &&
-                       nowSeconds - m_postedSeconds >= kSuccessSeconds)) {
+    // A clipboard/Finder failure written onto the stored result keeps it until dismissal.
+    const bool expires =
+        m_result.status == ActionStatus::Succeeded && m_result.pathActionError.empty();
+    if (!m_visible || (expires && nowSeconds - m_postedSeconds >= kSuccessSeconds)) {
         return nullptr;
     }
     return &m_result;

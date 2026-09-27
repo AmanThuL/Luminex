@@ -114,7 +114,8 @@ bool drawHeader(ConsoleModel& model) {
     for (size_t level = 0; level < labels.size(); ++level) {
         ImGui::SameLine();
         const auto severity = static_cast<log::Level>(level);
-        const bool selected = model.filter.minimumSeverity == severity;
+        // The chips set a minimum, so every level the filter shows reads as selected.
+        const bool selected = severity >= model.filter.minimumSeverity;
         if (selected)
             ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
         ImGui::PushID(static_cast<int>(level));
@@ -177,9 +178,11 @@ void drawConsolePanel(bool& open, ConsoleModel& model) {
             const ImGuiID scrollKey = ImGui::GetID("previousScrollY");
             const float previousScrollY = storage->GetFloat(scrollKey, scrollY);
             // Inspect the old content before refreshing: eviction must not move the reader's lines.
-            // Shrinking content after Clear/filtering is not a request to resume a frozen view.
+            // Shrinking content after Clear/filtering is not a request to resume a frozen view,
+            // but a downward wheel at a clamped end is, since the reader cannot scroll further.
+            const bool wheelDown = ImGui::IsWindowHovered() && ImGui::GetIO().MouseWheel < 0.0f;
             if (!resumed) {
-                if (model.frozen() && atEnd && scrollY > previousScrollY)
+                if (model.frozen() && atEnd && (scrollY > previousScrollY || wheelDown))
                     model.setScrolledToEnd(true);
                 else if (!model.frozen() && !atEnd && scrollY < previousScrollY)
                     model.setScrolledToEnd(false);

@@ -138,10 +138,14 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
 
     editor_style::beginHeaderRow();
     const bool frozen = state.snapshot.frozen();
-    if (editor_style::iconButton(
-            "GraphFreeze", frozen ? EditorIcon::Unlock : EditorIcon::Lock, true,
-            frozen ? "Resume graph: publish the newest retired frame."
-                   : "Freeze this frame and its exact GPU timings. Scene playback continues.")) {
+    const std::string freezeHelp = std::format(
+        "{}\nFrame {}. Exact-frame timings, published at 4 Hz. Freeze does not pause the scene. "
+        "Pooling {}. Memory totals are in Details.",
+        frozen ? "Resume graph: publish the newest retired frame."
+               : "Freeze this frame and its exact GPU timings. Scene playback continues.",
+        newest->record.frameId, newest->record.debug.poolingEnabled ? "on" : "off");
+    if (editor_style::iconButton("GraphFreeze", frozen ? EditorIcon::Unlock : EditorIcon::Lock,
+                                 true, freezeHelp.c_str())) {
         if (frozen)
             state.snapshot.resume();
         else
@@ -193,12 +197,6 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
                       "export the shown frame.");
         ImGui::EndPopup();
     }
-    const std::string graphHelp =
-        std::format("Frame {}. Exact-frame timings, published at 4 Hz. "
-                    "Freeze does not pause the scene. Pooling {}. "
-                    "Memory totals are in Details.",
-                    newest->record.frameId, model.poolingEnabled ? "on" : "off");
-    editorTooltip(graphHelp.c_str());
     if (state.snapshot.frozen() || state.snapshot.stale(ImGui::GetTime())) {
         ImGui::SameLine();
         ImGui::TextDisabled("%s | frame %llu", state.snapshot.frozen() ? "Frozen" : "Stale",

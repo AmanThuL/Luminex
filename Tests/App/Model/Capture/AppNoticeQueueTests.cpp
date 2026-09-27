@@ -67,8 +67,7 @@ TEST_CASE("ready and empty results suppress and replace notices", "[app][notice]
 }
 
 //======================================================================================================================
-TEST_CASE("notice feedback retains output-action errors without replacing its lifetime",
-          "[app][notice]") {
+TEST_CASE("notice feedback retains output-action errors on the visible result", "[app][notice]") {
     NoticeQueue notices;
     notices.post({ActionStatus::Succeeded, "Saved", "/frame.gputrace"}, 10.0);
     auto* result = notices.current(11.0);
@@ -78,7 +77,25 @@ TEST_CASE("notice feedback retains output-action errors without replacing its li
     REQUIRE(readOnly.current(12.0));
     REQUIRE(readOnly.current(12.0)->pathActionError == "Copy path failed");
     REQUIRE(readOnly.current(12.0)->path == "/frame.gputrace");
-    REQUIRE_FALSE(readOnly.current(16.0));
     notices.post({ActionStatus::Failed, "Write failed", "/other.gputrace"}, 17.0);
     REQUIRE(notices.current(17.0)->pathActionError.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("success notices with output-action errors remain until dismissed or replaced",
+          "[app][notice]") {
+    NoticeQueue notices;
+    notices.post({ActionStatus::Succeeded, "Saved", "/frame.gputrace"}, 10.0);
+    notices.current(11.0)->pathActionError = "Reveal in Finder failed";
+    REQUIRE(notices.current(16.0));
+    REQUIRE(notices.current(1000.0));
+    REQUIRE(notices.current(1000.0)->pathActionError == "Reveal in Finder failed");
+    notices.dismiss();
+    REQUIRE_FALSE(notices.current(1000.0));
+
+    notices.post({ActionStatus::Succeeded, "Saved", "/frame.gputrace"}, 2000.0);
+    notices.current(2001.0)->pathActionError = "Copy path failed";
+    notices.post({ActionStatus::Succeeded, "Saved again", "/next.gputrace"}, 2002.0);
+    REQUIRE(notices.current(2007.999));
+    REQUIRE_FALSE(notices.current(2008.0));
 }

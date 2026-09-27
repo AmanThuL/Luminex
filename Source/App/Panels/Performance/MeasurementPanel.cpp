@@ -21,10 +21,12 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
                                       : "Start the fixed measurement plan. Interactive / unscored: "
                                         "live viewport, UI and presentation; each frame waits for "
                                         "retirement. Closing this window keeps the run active.";
-    if (editor_style::iconButton("StartMeasurement", EditorIcon::Play,
-                                 !run.active() && context.startDisabledReason.empty(),
-                                 startHelp.c_str()))
+    // A labelled button: the shared Play glyph's text fallback would read "Play" here.
+    ImGui::BeginDisabled(run.active() || !context.startDisabledReason.empty());
+    if (ImGui::Button("Start measurement##StartMeasurement"))
         context.action = MeasurementAction::Start;
+    ImGui::EndDisabled();
+    editorTooltip(startHelp.c_str());
     ImGui::SameLine();
     if (editor_style::iconButton(
             "StopMeasurement", EditorIcon::Stop, run.active(),
