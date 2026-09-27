@@ -199,7 +199,7 @@ of `InspectorRendering.cpp` and `drawLightingSection`; `EditorShell.cpp`; `Works
 (`EditorPanel::Rendering`, visible by default, not persisted until Task 13).
 **Produces:** `kRenderingPanelWindowName = "Rendering"`; `drawRenderingPanel(bool& open, const
 InspectorPanelContext&)`.
-- [ ] One collapsing header per topic in today's order, Reconstruction open; each header carries a
+- [x] One collapsing header per topic in today's order, Reconstruction open; each header carries a
   Reset icon calling that topic's `resetRenderingGroup` scope, and topics without one show none.
   Controls, then readings, then `beginDiagnostics`; per-pass timings become a Details icon opening
   Performance. `EditorSubject::Rendering` goes. Check every scoped reset against the parent in

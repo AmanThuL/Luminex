@@ -457,3 +457,53 @@ TEST_CASE("performance mode re-entry rejects delayed frames from the first visit
     REQUIRE(model.snapshot().frameId == 12);
     REQUIRE(model.snapshot().passRows.front().sampleCount == 1);
 }
+
+//======================================================================================================================
+TEST_CASE("migrated rendering timings publish freeze and clear as one performance snapshot",
+          "[app][performance-migration]") {
+    PerformanceModel model;
+    const std::array timings{rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 4.0}};
+    auto sample = sampleFor(10, timings);
+    sample.renderingTimings = {.classifyMilliseconds = 0.25,
+                               .prepareMilliseconds = 0.75,
+                               .compatibleGpu = PerformanceTimingReading{10, 4.0},
+                               .controllerInput = PerformanceTimingReading{7, 6.5}};
+    model.tick(0.01f, &sample);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 0.25);
+    REQUIRE(model.snapshot().renderingTimings.prepareMilliseconds == 0.75);
+    REQUIRE(model.snapshot().renderingTimings.compatibleGpu->frameId == 10);
+    REQUIRE(model.snapshot().renderingTimings.compatibleGpu->milliseconds == 4.0);
+    REQUIRE(model.snapshot().renderingTimings.controllerInput->frameId == 7);
+    REQUIRE(model.snapshot().renderingTimings.controllerInput->milliseconds == 6.5);
+    sample.frameId = 11;
+    sample.renderingTimings.classifyMilliseconds = 2.0;
+    sample.renderingTimings.compatibleGpu = PerformanceTimingReading{11, 5.0};
+    model.tick(0.01f, &sample);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 0.25);
+    model.tick(0.25f, nullptr);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 2.0);
+    model.setPaused(true);
+    sample.frameId = 12;
+    sample.renderingTimings = {};
+    model.tick(0.5f, &sample);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 2.0);
+    REQUIRE(model.snapshot().renderingTimings.controllerInput->frameId == 7);
+    model.setContextEpoch(1);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 2.0);
+    model.clearHistory();
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 0.0);
+    REQUIRE_FALSE(model.snapshot().renderingTimings.compatibleGpu);
+    REQUIRE_FALSE(model.snapshot().renderingTimings.controllerInput);
+    model.setPaused(false);
+    sample.frameId = 13;
+    sample.renderingTimings.classifyMilliseconds = 3.0;
+    model.tick(0.5f, &sample);
+    REQUIRE(model.snapshot().waitingForSamples);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 0.0);
+    sample.frameId = 14;
+    sample.contextEpoch = 1;
+    model.tick(0.5f, &sample);
+    REQUIRE(model.snapshot().renderingTimings.classifyMilliseconds == 3.0);
+    REQUIRE_FALSE(model.snapshot().renderingTimings.compatibleGpu);
+    REQUIRE_FALSE(model.snapshot().renderingTimings.controllerInput);
+}

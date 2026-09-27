@@ -210,3 +210,25 @@ TEST_CASE("capture frame retention does not invent editor metrics", "[app]") {
     REQUIRE(ring.joinTimings(1, {}));
     REQUIRE_FALSE(ring.newestTimedFrame()->metrics.has_value());
 }
+
+//======================================================================================================================
+TEST_CASE("CPU visibility timings stay with their declaration through delayed retirement",
+          "[app][performance-migration]") {
+    FrameRecordRing ring;
+    FrameMetricsMetadata first{.classifyMilliseconds = 0.25, .prepareMilliseconds = 0.75};
+    ring.retain(recordFor(10, "scene"), first);
+    FrameMetricsMetadata later{.classifyMilliseconds = 8.0, .prepareMilliseconds = 9.0};
+    ring.retain(recordFor(11, "scene"), later);
+    const std::array timings{rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 4.0}};
+    REQUIRE(ring.joinTimings(10, timings));
+    REQUIRE(ring.newestTimedFrame()->record.frameId == 10);
+    REQUIRE(ring.newestTimedFrame()->metrics->classifyMilliseconds == 0.25);
+    REQUIRE(ring.newestTimedFrame()->metrics->prepareMilliseconds == 0.75);
+    const auto saved = *ring.newestTimedFrame();
+    ring.retain(recordFor(12, "scene"), later);
+    ring.retain(recordFor(13, "scene"), later);
+    ring.retain(recordFor(14, "scene"), later);
+    REQUIRE_FALSE(ring.find(10));
+    REQUIRE(saved.metrics->classifyMilliseconds == 0.25);
+    REQUIRE(saved.metrics->prepareMilliseconds == 0.75);
+}

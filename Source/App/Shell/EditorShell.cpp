@@ -12,6 +12,7 @@
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
@@ -243,6 +244,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     if (newestTimed != nullptr && newestTimed->metrics) {
         const FrameMetricsMetadata& metrics = *newestTimed->metrics;
         sample = PerformanceFrameSample{
+            .renderingTimings = {.classifyMilliseconds = metrics.classifyMilliseconds,
+                                 .prepareMilliseconds = metrics.prepareMilliseconds},
             .frameId = newestTimed->record.frameId,
             .contextEpoch = metrics.contextEpoch,
             .timings = newestTimed->timings,
@@ -259,7 +262,6 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
             .transientAliasSavingsBytes = newestTimed->record.debug.memory.aliasSavings,
         };
     }
-    m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
     const float renderScaleBeforeDynamicResolution = m_settings.renderScale;
     applyDynamicResolution(m_dynamicResolutionState, m_resolutionController, m_settings,
                            newestTimed);
@@ -269,6 +271,21 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
                      renderScaleBeforeDynamicResolution, m_settings.renderScale,
                      m_dynamicResolutionState.lastObservedMilliseconds);
     }
+
+    if (sample) {
+        const auto presentation = temporalPresentation(
+            m_temporalState, m_settings, renderer.temporalStatus(),
+            device.capabilities().temporalScaler, renderer.width(), renderer.height());
+        if (m_temporalState.liveTimedPassSumMilliseconds && !presentation.waitingForDeclaration)
+            sample->renderingTimings.compatibleGpu =
+                PerformanceTimingReading{m_temporalState.liveMeasurementFrame,
+                                         *m_temporalState.liveTimedPassSumMilliseconds};
+        if (m_dynamicResolutionState.lastMeasurementFrame != 0)
+            sample->renderingTimings.controllerInput =
+                PerformanceTimingReading{m_dynamicResolutionState.lastMeasurementFrame,
+                                         m_dynamicResolutionState.lastObservedMilliseconds};
+    }
+    m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
@@ -384,30 +401,39 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         endMouseLook();
     }
 
+    m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
+    const auto inspectorContext =
+        InspectorPanelContext{.selection = m_selection,
+                              .session = m_session,
+                              .renderer = renderer,
+                              .settings = m_settings,
+                              .exposureContext = m_exposureContext,
+                              .exposureResetPending = m_exposureResetPending,
+                              .temporalState = m_temporalState,
+                              .dynamicResolutionState = m_dynamicResolutionState,
+                              .temporalSupport = device.capabilities().temporalScaler,
+                              .viewportWidth = m_viewportWidth,
+                              .viewportHeight = m_viewportHeight,
+                              .viewportVisible = viewportUsable,
+                              .selectionHiddenByFilter = selectionHiddenByFilter(
+                                  m_session.scene(), m_selection, m_sceneFilter),
+                              .visibilityDisplay = &m_visibilityDisplay,
+                              .sceneFilter = &m_sceneFilter,
+                              .openPerformance =
+                                  [this] {
+                                      setPanelVisible(EditorPanel::Performance, true);
+                                      m_performancePanel.requestFocus = true;
+                                  },
+                              .lightingDisplay = &m_lightingDisplay};
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
         bool open = true;
-        // Healed here, immediately before the draw that reads it, so a stale scene id or
-        // out-of-range index from any source never reaches the panel (spec section 5).
-        m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
-        drawInspectorPanel(
-            open, InspectorPanelContext{.selection = m_selection,
-                                        .session = m_session,
-                                        .renderer = renderer,
-                                        .settings = m_settings,
-                                        .exposureContext = m_exposureContext,
-                                        .exposureResetPending = m_exposureResetPending,
-                                        .temporalState = m_temporalState,
-                                        .dynamicResolutionState = m_dynamicResolutionState,
-                                        .temporalSupport = device.capabilities().temporalScaler,
-                                        .viewportWidth = m_viewportWidth,
-                                        .viewportHeight = m_viewportHeight,
-                                        .viewportVisible = viewportUsable,
-                                        .selectionHiddenByFilter = selectionHiddenByFilter(
-                                            m_session.scene(), m_selection, m_sceneFilter),
-                                        .visibilityDisplay = &m_visibilityDisplay,
-                                        .sceneFilter = &m_sceneFilter,
-                                        .lightingDisplay = &m_lightingDisplay});
+        drawInspectorPanel(open, inspectorContext);
         setPanelVisible(EditorPanel::Inspector, open);
+    }
+    if (m_workspace.visibility.isVisible(EditorPanel::Rendering)) {
+        bool open = true;
+        drawRenderingPanel(open, inspectorContext);
+        setPanelVisible(EditorPanel::Rendering, open);
     }
 
     ImGui::EndDisabled();
@@ -603,6 +629,8 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
     const auto& io = ImGui::GetIO();
     const auto& extents = renderer.temporalStatus().extents;
     return {
+        .classifyMilliseconds = renderer.visibilityStatus().classifyMs,
+        .prepareMilliseconds = renderer.visibilityStatus().prepareMs,
         .contextEpoch = metricsContextEpoch(),
         .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
         .drawCount = renderer.visibilityStatus().submission.sceneCommands +

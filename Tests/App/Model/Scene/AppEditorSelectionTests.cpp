@@ -31,6 +31,8 @@ engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
 const scenes::SceneId kSceneA{0};
 const scenes::SceneId kSceneB{1};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
+template <typename T>
+constexpr bool hasRenderingSubject = requires { T::Rendering; };
 constexpr size_t kFirstLightRow = 0;
 constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
 
@@ -43,13 +45,11 @@ TEST_CASE("resolveSelection keeps a selection whose scene and index are still va
 
     const EditorSelection none{.sceneId = kSceneA, .subject = EditorSubject::None, .index = 0};
     const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
-    const EditorSelection rendering{
-        .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = 0};
     const EditorSelection light2{
         .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 2};
     const EditorSelection object1{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 1};
 
-    for (const EditorSelection& selection : {none, camera, rendering, light2, object1}) {
+    for (const EditorSelection& selection : {none, camera, light2, object1}) {
         const EditorSelection resolved = resolveSelection(selection, kSceneA, scene);
         REQUIRE(resolved.subject == selection.subject);
         REQUIRE(resolved.index == selection.index);
@@ -207,11 +207,6 @@ TEST_CASE("rendering topics have stable category identities and independent labe
     for (size_t i = 0; i < labels.size(); ++i) {
         CAPTURE(i);
         REQUIRE(renderingCategoryLabel(static_cast<RenderingCategory>(i)) == labels[i]);
-        const EditorSelection selected{
-            .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = i};
-        REQUIRE(resolveSelection(selected, kSceneA, scene).index == i);
-        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, labels[i]));
-        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, "unrelated scene filter"));
     }
     REQUIRE(renderingCategoryLabel(RenderingCategory::Count) == "Unavailable");
 }
@@ -222,53 +217,32 @@ TEST_CASE("rendering category searches do not invent selectable parent matches",
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "oCcLuS");
     REQUIRE(rows.empty());
-    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
-    const EditorSelection occlusion{.sceneId = kSceneA,
-                                    .subject = EditorSubject::Rendering,
-                                    .index = static_cast<size_t>(RenderingCategory::Occlusion)};
-    REQUIRE_FALSE(selectionHiddenByFilter(scene, overview, "occlus"));
-    REQUIRE_FALSE(selectionHiddenByFilter(scene, occlusion, "bloom"));
-    REQUIRE_FALSE(nextVisibleRow(rows, overview));
-    REQUIRE_FALSE(previousVisibleRow(rows, occlusion));
+    const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera};
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, camera, "occlus"));
+    REQUIRE_FALSE(nextVisibleRow(rows, camera));
+    REQUIRE_FALSE(previousVisibleRow(rows, camera));
     REQUIRE(buildSceneSelectionRows(scene, "scene tables").empty());
 }
 
 //======================================================================================================================
-TEST_CASE("rendering navigation follows expanded topics and skips collapsed descendants",
-          "[app][selection]") {
+TEST_CASE("camera navigation enters only visible scene subjects", "[app][selection]") {
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "");
-    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
-    const EditorSelection firstTopic{.sceneId = kSceneA,
-                                     .subject = EditorSubject::Rendering,
-                                     .index =
-                                         static_cast<size_t>(RenderingCategory::Reconstruction)};
-    const EditorSelection lastTopic{.sceneId = kSceneA,
-                                    .subject = EditorSubject::Rendering,
-                                    .index = static_cast<size_t>(RenderingCategory::SceneTables)};
-    REQUIRE(nextVisibleRow(rows, overview)->subject == EditorSubject::DirectionalLight);
-    REQUIRE(previousVisibleRow(rows, firstTopic)->subject == EditorSubject::DirectionalLight);
-    REQUIRE(nextVisibleRow(rows, lastTopic)->subject == EditorSubject::DirectionalLight);
+    const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera};
+    REQUIRE(nextVisibleRow(rows, camera)->subject == EditorSubject::DirectionalLight);
+    REQUIRE(previousVisibleRow(rows, camera)->subject == EditorSubject::DirectionalLight);
     const std::vector<EditorSelectionRow> collapsed{rows[2]};
-    REQUIRE(nextVisibleRow(collapsed, overview)->index == 2);
-    REQUIRE(previousVisibleRow(collapsed, overview)->index == 2);
-    REQUIRE(nextVisibleRow(collapsed, firstTopic)->index == 2);
-    REQUIRE(resolveSelection(firstTopic, kSceneA, scene).index == firstTopic.index);
+    REQUIRE(nextVisibleRow(collapsed, camera)->index == 2);
+    REQUIRE(previousVisibleRow(collapsed, camera)->index == 2);
 }
 
 //======================================================================================================================
-TEST_CASE("rendering category validation and scene switches preserve selection policy",
-          "[app][selection]") {
+TEST_CASE("camera scene switches preserve selection policy", "[app][selection]") {
     const auto scene = sceneWithObjects({});
-    const EditorSelection invalid{
-        .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = kRenderingCategoryCount};
-    REQUIRE(resolveSelection(invalid, kSceneA, scene).subject == EditorSubject::None);
-    const EditorSelection selected{.sceneId = kSceneA,
-                                   .subject = EditorSubject::Rendering,
-                                   .index = static_cast<size_t>(RenderingCategory::Occlusion)};
+    const EditorSelection selected{.sceneId = kSceneA, .subject = EditorSubject::Camera};
     const auto failed = sceneSwitchOutcome(false, kSceneA, kSceneB, selected, "Occlusion");
     REQUIRE(failed.selection.index == selected.index);
-    REQUIRE(failed.selection.subject == EditorSubject::Rendering);
+    REQUIRE(failed.selection.subject == EditorSubject::Camera);
     REQUIRE(failed.filter == "Occlusion");
     const auto same = sceneSwitchOutcome(true, kSceneA, kSceneA, selected, "Occlusion");
     REQUIRE(same.selection.index == selected.index);
@@ -573,4 +547,10 @@ TEST_CASE("catalog LightLab and Sponza hierarchy counts include every local ligh
         }
     }
     (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("rendering panel is outside the selection subject model",
+          "[app][selection][ux2-rendering]") {
+    REQUIRE_FALSE(hasRenderingSubject<EditorSubject>);
 }

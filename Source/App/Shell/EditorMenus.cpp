@@ -10,6 +10,7 @@
 #include "App/Model/Scene/SelectionBounds.h"
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
+#include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
@@ -111,6 +112,7 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer) {
         visibilityItem(kScenePanelWindowName, EditorPanel::Scene);
         visibilityItem(kViewportPanelWindowName, EditorPanel::Viewport);
         visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
+        visibilityItem(kRenderingPanelWindowName, EditorPanel::Rendering);
         visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
         visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
         visibilityItem(kConsolePanelWindowName, EditorPanel::Console);

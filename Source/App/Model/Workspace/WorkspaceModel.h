@@ -25,10 +25,11 @@ uint32_t normalizedUiScalePercent(uint32_t percent);
 /// input is normalized to the default before stepping; zoomIn selects the greater direction.
 uint32_t stepUiScalePercent(uint32_t percent, bool zoomIn);
 
-/// One of the editor's six independently visible top-level panels (spec section 3).
+/// One of the editor's independently visible top-level panels (spec section 3).
 enum class EditorPanel {
     Scene,       ///< Active-scene choice, filtering, grouped subjects, single selection.
     Viewport,    ///< Rendered image, camera input, compact rendering toolbar.
+    Rendering,   ///< Rendering controls, readings and diagnostics.
     Inspector,   ///< Properties of the selected subject only.
     Performance, ///< Rolling frame-interval and GPU-pass observations.
     RenderGraph, ///< Coherent published compiled-frame record and dump.
@@ -42,6 +43,7 @@ enum class EditorPanel {
 struct WorkspaceVisibility {
     bool scene = true;        ///< `EditorPanel::Scene`.
     bool viewport = true;     ///< `EditorPanel::Viewport`.
+    bool rendering = true;    ///< `EditorPanel::Rendering`; session-local until the next schema.
     bool inspector = true;    ///< `EditorPanel::Inspector`.
     bool performance = false; ///< `EditorPanel::Performance`; a detached diagnostic window.
     bool console = true;      ///< `EditorPanel::Console`; the bottom dock's only default panel.

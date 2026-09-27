@@ -34,6 +34,7 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
         sample->frameId > m_lastAcceptedFrameId) {
         scheduleChanged = m_passTimingHistory.addFrame(sample->frameId, sample->timings);
         m_lastAcceptedFrameId = sample->frameId;
+        m_renderingTimings = sample->renderingTimings;
         m_objectCount = sample->objectCount;
         m_drawCount = sample->drawCount;
         m_viewportLogicalWidth = sample->viewportLogicalWidth;
@@ -91,6 +92,7 @@ void PerformanceModel::clearHistory() {
     m_frameIntervalMsHistory.clear();
     m_passTimingHistory = PassTimingHistory{};
     m_lastAcceptedFrameId = m_lastSeenFrameId;
+    m_renderingTimings = {};
     m_objectCount = 0;
     m_drawCount = 0;
     m_viewportLogicalWidth = 0;
@@ -115,6 +117,7 @@ void PerformanceModel::clearHistory() {
 //======================================================================================================================
 void PerformanceModel::rebuildLiveSnapshot() {
     PerformanceSnapshot snapshot;
+    snapshot.renderingTimings = m_renderingTimings;
     snapshot.frameIntervalsMs = m_frameIntervalMsHistory;
     snapshot.latestFrameIntervalMs =
         m_frameIntervalMsHistory.empty() ? 0.0f : m_frameIntervalMsHistory.back();

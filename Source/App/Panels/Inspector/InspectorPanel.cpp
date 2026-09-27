@@ -30,35 +30,6 @@ void valueRow(const char* label, const std::string& value) {
 }
 
 //======================================================================================================================
-void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup group) {
-    ImGui::PushID(static_cast<int>(group));
-    const bool changed =
-        renderingGroupChanged(context.settings, group) ||
-        (group == EditorRenderGroup::Display &&
-         (context.renderer.clearColor[0] != 0.05f || context.renderer.clearColor[1] != 0.07f ||
-          context.renderer.clearColor[2] != 0.10f || context.renderer.clearColor[3] != 1.0f));
-    if (ImGui::SmallButton("Reset group")) {
-        resetRenderingGroup(context.settings, group);
-        if (group == EditorRenderGroup::Exposure) {
-            setAutoExposureEnabled(context.settings, context.exposureContext,
-                                   context.exposureResetPending,
-                                   context.settings.autoExposureEnabled);
-        }
-        if (group == EditorRenderGroup::Display) {
-            constexpr std::array kClear{0.05f, 0.07f, 0.10f, 1.0f};
-            std::copy(kClear.begin(), kClear.end(), context.renderer.clearColor);
-        }
-    }
-    editorTooltip("Restore the editor defaults for this rendering group. Other groups, the camera "
-                  "and scene playback keep their current settings.");
-    if (changed) {
-        ImGui::SameLine();
-        editor_style::message("Modified");
-    }
-    ImGui::PopID();
-}
-
-//======================================================================================================================
 bool beginReadings(const char* id) {
     if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp))
         return false;
@@ -85,10 +56,6 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             editor_style::message("Local light");
         } else if (subject == EditorSubject::Camera) {
             ImGui::TextUnformatted("Editor Camera");
-        } else if (subject == EditorSubject::Rendering) {
-            ImGui::TextUnformatted(
-                renderingCategoryLabel(static_cast<RenderingCategory>(context.selection.index))
-                    .data());
         }
         if (context.selectionHiddenByFilter) {
             editor_style::message("Selection is hidden by the Scene search filter. Clear the "
@@ -116,13 +83,10 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             switch (subject) {
             case EditorSubject::None:
                 editor_style::message(
-                    "Select a camera, rendering settings, light or object in Scene.");
+                    "Select a light or object in Hierarchy, or Editor Camera in View.");
                 break;
             case EditorSubject::Camera:
                 drawCameraSection(context);
-                break;
-            case EditorSubject::Rendering:
-                drawRenderingSection(context);
                 break;
             case EditorSubject::DirectionalLight:
                 drawDirectionalLightSection(context, context.selection.index);

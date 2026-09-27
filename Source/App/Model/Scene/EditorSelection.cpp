@@ -43,8 +43,7 @@ bool matchesRow(const EditorSelectionRow& row, const EditorSelection& selection)
     }
     if (row.subject == EditorSubject::LocalLight)
         return row.lightId == selection.lightId;
-    if (row.subject == EditorSubject::Rendering || row.subject == EditorSubject::DirectionalLight ||
-        row.subject == EditorSubject::Object) {
+    if (row.subject == EditorSubject::DirectionalLight || row.subject == EditorSubject::Object) {
         return row.index == selection.index;
     }
     return true;
@@ -121,11 +120,6 @@ EditorSelection resolveSelection(const EditorSelection& current, scenes::SceneId
             return healed;
         }
         break;
-    case EditorSubject::Rendering:
-        if (current.index >= static_cast<size_t>(RenderingCategory::Count)) {
-            return healed;
-        }
-        break;
     case EditorSubject::None:
     case EditorSubject::Camera:
         break;
@@ -184,7 +178,6 @@ bool selectionHiddenByFilter(const engine::Scene& scene, const EditorSelection& 
     std::string compact;
     switch (selection.subject) {
     case EditorSubject::Camera:
-    case EditorSubject::Rendering:
         return false;
     case EditorSubject::LocalLight:
         label = sceneLocalLightLabel(scene, selection.lightId);

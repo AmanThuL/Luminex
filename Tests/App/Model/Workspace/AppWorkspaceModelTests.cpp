@@ -424,3 +424,18 @@ TEST_CASE("workspace scale persistence is deterministic and round-trips every su
     REQUIRE(parseWorkspaceSettings(writeWorkspaceSettings(3, visibility, 999)).uiScalePercent ==
             100);
 }
+
+//======================================================================================================================
+TEST_CASE("Rendering visibility is shared and session local before schema migration",
+          "[app][workspace][ux2-rendering]") {
+    WorkspaceVisibility visibility;
+    REQUIRE(visibility.isVisible(EditorPanel::Rendering));
+    visibility.setVisible(EditorPanel::Rendering, false);
+    REQUIRE_FALSE(visibility.rendering);
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::Rendering));
+    const auto text = writeWorkspaceSettings(kWorkspaceSchemaVersion, visibility);
+    REQUIRE(text.find("Rendering=") == std::string::npos);
+    REQUIRE(parseWorkspaceSettings(text).visibility.isVisible(EditorPanel::Rendering));
+    REQUIRE(parseWorkspaceSettings("Schema=3\nRendering=0\n").visibility.rendering);
+    REQUIRE(resetWorkspaceVisibility().rendering);
+}

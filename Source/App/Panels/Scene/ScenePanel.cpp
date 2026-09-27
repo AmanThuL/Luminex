@@ -29,8 +29,7 @@ constexpr ImGuiTreeNodeFlags kGroupFlags =
 bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selection) {
     if (row.subject == EditorSubject::LocalLight)
         return selection.subject == row.subject && selection.lightId == row.lightId;
-    return row.subject == selection.subject && ((row.subject != EditorSubject::Rendering &&
-                                                 row.subject != EditorSubject::DirectionalLight &&
+    return row.subject == selection.subject && ((row.subject != EditorSubject::DirectionalLight &&
                                                  row.subject != EditorSubject::Object) ||
                                                 row.index == selection.index);
 }

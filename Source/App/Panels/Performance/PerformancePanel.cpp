@@ -364,6 +364,30 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
             editorTooltip(
                 "Copy the full renderer pass label for logs, captures or the Render Graph.");
         }
+        if (!snapshot.waitingForSamples) {
+            ImGui::Text("CPU classify / prepare: %.3f / %.3f ms · declared frame %llu",
+                        snapshot.renderingTimings.classifyMilliseconds,
+                        snapshot.renderingTimings.prepareMilliseconds,
+                        static_cast<unsigned long long>(snapshot.frameId));
+            editorTooltip("CPU classification and list/argument preparation recorded when this "
+                          "retained frame was declared.");
+        }
+        const auto timingRow = [](const char* label,
+                                  const std::optional<PerformanceTimingReading>& reading) {
+            if (reading)
+                ImGui::Text("%s: %.3f ms · frame %llu", label, reading->milliseconds,
+                            static_cast<unsigned long long>(reading->frameId));
+            else
+                ImGui::Text("%s: N/A", label);
+        };
+        timingRow("Latest compatible GPU pass sum", snapshot.renderingTimings.compatibleGpu);
+        editorTooltip("Newest compatible retired sum at snapshot publication; distinct from the "
+                      "rolling average above. Presentation, driver and untimed work are excluded.");
+        timingRow("Last observed controller input", snapshot.renderingTimings.controllerInput);
+        editorTooltip(
+            "Last timing offered while dynamic resolution was active, not necessarily applied. The "
+            "controller may skip a sample during settling or for an obsolete scale; this value "
+            "remains when inactive. Freeze holds every reading.");
         ImGui::TextWrapped(
             "Timed pass sum averages the retained GPU pass samples; present, driver "
             "and untimed work are outside this sum. Latest is the newest retired frame. "

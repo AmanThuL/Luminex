@@ -16,6 +16,7 @@
 #include "Engine/View/Camera.h"
 #include "Render/Renderer/Renderer.h"
 
+#include <functional>
 #include <string>
 
 namespace lmx::app {
@@ -28,9 +29,9 @@ inline constexpr const char* kInspectorPanelWindowName = "Inspector";
 ///
 /// Every reference names storage the shell owns, so the panel edits the shell's values in place and
 /// holds nothing past the call that resolved them. Selection is a resolved editor-local value;
-/// overview links may change its rendering category, without borrowing any scene row.
+/// the Rendering panel shares the editing context without selecting a scene subject.
 struct InspectorPanelContext {
-    EditorSelection& selection;     ///< Resolved subject; overview links select a rendering topic.
+    EditorSelection& selection;     ///< Resolved scene subject.
     SceneSession& session;          ///< Borrowed active scene, camera, and playback operations.
     render::Renderer& renderer;     ///< Borrowed for clear color and read-only display status.
     EditorRenderSettings& settings; ///< Editor-owned render knobs.
@@ -53,6 +54,7 @@ struct InspectorPanelContext {
     bool selectionHiddenByFilter = false; ///< Selected subject remains valid but search hides it.
     const VisibilityDisplay* visibilityDisplay = nullptr; ///< Last rendered object identity map.
     std::string* sceneFilter = nullptr; ///< Borrowed Scene search text for the Clear filter action.
+    std::function<void()> openPerformance; ///< Opens and focuses detailed performance readings.
     const LightingDisplay* lightingDisplay =
         nullptr; ///< Coherent lighting readings and latest warnings.
 };
