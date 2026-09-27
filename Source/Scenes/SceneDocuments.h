@@ -19,10 +19,14 @@ struct GeneratorOverrides {
 struct SessionDocumentState {
     std::vector<bool> nodeEnabled;     ///< Document own-enabled flags.
     std::vector<bool> importedEnabled; ///< Imported binding own flags, including empty ancestors.
+    /// Immutable load-time world poses by imported binding, absent for animated or empty nodes.
+    /// Capture before editing/playback; a subsequently saved document override takes precedence.
+    std::vector<std::optional<asset::ObjectPose>> importedPoseBaseline;
     std::optional<engine::SceneCamera>
         sceneCamera; ///< Explicitly changed saved camera, absent initially.
 };
-/// Copies authored flags from a loaded snapshot without incorporating ancestor/CLI masks.
+/// Copies authored flags and static imported pose baselines before editing or playback begins.
+/// Ancestor/CLI masks are excluded; retain this state until its loaded scene is replaced.
 SessionDocumentState initialDocumentState(const engine::LoadedScene& loaded);
 /// Resolves one known catalog id to its checked-in document under the discovered Assets root.
 asset::AssetResult<std::filesystem::path> catalogDocumentPath(std::string_view stableId);

@@ -13,8 +13,15 @@ SessionDocumentState initialDocumentState(const engine::LoadedScene& loaded) {
     SessionDocumentState state;
     for (const auto& node : loaded.document.nodes)
         state.nodeEnabled.push_back(node.enabled);
-    for (const auto& node : loaded.binding.importedNodes)
+    for (const auto& node : loaded.binding.importedNodes) {
         state.importedEnabled.push_back(node.enabled);
+        std::optional<asset::ObjectPose> pose;
+        if (!node.animated && !node.objects.empty()) {
+            const auto& object = loaded.scene->objects.at(node.objects.front());
+            pose = {object.position, object.eulerDegrees, object.scale};
+        }
+        state.importedPoseBaseline.push_back(pose);
+    }
     return state;
 }
 //======================================================================================================================

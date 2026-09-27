@@ -240,7 +240,7 @@ SceneDocumentExportTests.cpp`.
 **Produces:** `exportSceneDocument(const engine::LoadedScene&, const engine::Scene&, const
 SessionDocumentState&) -> asset::SceneDocument`; `documentDirty(const asset::SceneDocument& loaded,
 const asset::SceneDocument& exported) -> bool`, comparing writer outputs as bytes.
-- [ ] Tests first: an unedited scene exports byte-identically; edit-then-restore and Play, Step,
+- [x] Tests first: an unedited scene exports byte-identically; edit-then-restore and Play, Step,
   Stop stay clean; object, group and light toggles, a light edit and an exposure change are dirty
   and survive save and reload; generated edits and animated-node poses are never written; a CLI rig
   override stays clean (Review focus 3); a non-canonical file saves canonically (Review focus 1).
