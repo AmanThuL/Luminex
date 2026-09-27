@@ -131,7 +131,12 @@ one Debug View selector and the transport in the menu-bar row, with measurement 
 Performance (UX2.1); a scene-only Hierarchy, a Rendering panel and one property-grid Inspector
 layout (UX2.2); a one-row Console, a compact docked Performance tab beside the detached window and
 a one-row Render Graph header (UX2.3); workspace schema 4 and acceptance (UX2.4). The
-[proposed record](../milestones/ux/ux2.md) holds the placement map and decisions.
+[implemented record](../milestones/ux/ux2.md) holds the placement map and decisions.
+
+Implemented and owner-accepted on 2026-09-27; the executor plan is closed. The
+[validation record](../milestones/ux/ux2-validation.md) retains passing 8/8 exact-image pairs,
+unit/GPU suites and native schema migration, plus unverified per-gesture evidence. The branch
+remains local under the owner's no-push instruction; integration and PR publication are pending.
 
 **Exit gate:** the [completion gate](#completion-gate) tasks pass on the new layout at both window
 sizes; every command removed from a surface stays reachable by a named route; schema 3 workspaces
