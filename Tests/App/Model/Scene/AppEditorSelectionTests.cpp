@@ -196,6 +196,41 @@ TEST_CASE("scene selection rows follow the spec's fixed group and item order", "
 }
 
 //======================================================================================================================
+TEST_CASE("local-light rows sit between directional lights and objects and filter by label",
+          "[app][selection]") {
+    auto scene = sceneWithObjects({"Crate", "Barrel"});
+    const auto point = scene.addLight(engine::LocalLight{});
+    engine::LocalLight spotLight;
+    spotLight.type = engine::LocalLightType::Spot;
+    spotLight.innerCone = 0.2f;
+    spotLight.outerCone = 0.4f;
+    const auto spot = scene.addLight(spotLight);
+    REQUIRE(point);
+    REQUIRE(spot);
+
+    const auto rows = buildSceneSelectionRows(scene, "");
+    REQUIRE(rows.size() == kFirstObjectRow + 2 + 2);
+    for (size_t i = 0; i < 3; ++i)
+        REQUIRE(rows[kFirstLightRow + i].subject == EditorSubject::DirectionalLight);
+    REQUIRE(rows[3].subject == EditorSubject::LocalLight);
+    REQUIRE(rows[3].group == EditorSelectionGroup::LocalLights);
+    REQUIRE(rows[3].lightId == *point);
+    REQUIRE(rows[4].subject == EditorSubject::LocalLight);
+    REQUIRE(rows[4].lightId == *spot);
+    REQUIRE(rows[5].subject == EditorSubject::Object);
+    REQUIRE(rows[5].displayLabel == "Crate");
+    REQUIRE(rows[6].subject == EditorSubject::Object);
+    REQUIRE(rows[6].displayLabel == "Barrel");
+
+    const std::string spotLabel = sceneLocalLightLabel(scene, *spot);
+    const auto filtered = buildSceneSelectionRows(scene, spotLabel);
+    REQUIRE(filtered.size() == 1);
+    REQUIRE(filtered.front().subject == EditorSubject::LocalLight);
+    REQUIRE(filtered.front().lightId == *spot);
+    REQUIRE(filtered.front().displayLabel == spotLabel);
+}
+
+//======================================================================================================================
 TEST_CASE("rendering topics have stable category identities and independent labels",
           "[app][selection]") {
     const auto scene = sceneWithObjects({});
@@ -503,6 +538,7 @@ TEST_CASE("hierarchy counts include disabled local lights and count only scene s
     const size_t total =
         std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
     REQUIRE(total == 8);
+    REQUIRE(hierarchyTotal(scene) == buildSceneSelectionRows(scene, "").size());
     for (const auto filter : {"", "light", "POINT", "crate", "CAM", "rendering", "missing"}) {
         CAPTURE(filter);
         const auto count = hierarchyCount(scene, filter);

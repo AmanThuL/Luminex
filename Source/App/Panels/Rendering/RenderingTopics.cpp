@@ -8,6 +8,7 @@
 #include "App/Model/Rendering/Visibility/VisibilityDiagnostics.h"
 #include "App/Model/Scene/SceneTableDisplay.h"
 
+#include "App/Panels/Inspector/InspectorInternal.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "Render/Passes/Temporal/Temporal.h"
 #include "Render/Passes/Temporal/TemporalHistory.h"
@@ -28,11 +29,6 @@ namespace {
 constexpr float kMinExposurePercentileGap = 1.0f;
 
 } // namespace
-
-//======================================================================================================================
-static void renderValueRow(const char* label, const std::string& value) {
-    editor_style::readOnly(label, value.c_str());
-}
 
 using editor_style::checkbox;
 using editor_style::field;
@@ -55,9 +51,6 @@ static void drawTemporalReadings(const InspectorPanelContext& context) {
     }
     if (presentation.requestedName != presentation.effectiveName)
         ImGui::TextWrapped("Requested: %s", std::string(presentation.requestedName).c_str());
-    if (!presentation.fallbackReason.empty()) {
-        editor_style::message(std::string(presentation.fallbackReason).c_str(), true);
-    }
 }
 
 //======================================================================================================================
@@ -117,49 +110,47 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
         drawTemporalReadings(context);
         if (editor_style::beginDiagnostics()) {
             if (editor_style::beginPropertyGrid("historyFields")) {
-                renderValueRow("Declared device frame",
-                               std::to_string(context.temporalState.declaredFrameId));
-                renderValueRow("History", !presentation.temporalActive ? "N/A"
-                                          : status.historyValid        ? "Valid"
-                                                                       : "Reset / warming up");
-                renderValueRow("Warmup", !presentation.temporalActive ? "N/A"
-                                         : status.warmupComplete      ? "Complete"
-                                                                      : "In progress");
-                renderValueRow("History age", presentation.temporalActive
-                                                  ? std::format("{} frames", status.historyAge)
-                                                  : "N/A");
-                renderValueRow("Jitter index", presentation.temporalActive
-                                                   ? std::to_string(status.jitterIndex)
-                                                   : "N/A");
-                renderValueRow("Last reset event",
-                               context.temporalState.lastResetFrame == 0
-                                   ? "N/A"
-                                   : std::format("{} · declared frame {}",
-                                                 render::historyResetReasonName(
-                                                     context.temporalState.lastResetReason),
-                                                 context.temporalState.lastResetFrame));
-                renderValueRow("History memory",
-                               std::format("{} color + {} depth bytes", status.historyBytes,
-                                           status.depthHistoryBytes));
-                renderValueRow("Vendor capability", context.temporalSupport.available
-                                                        ? std::string(context.temporalSupport.name)
-                                                        : "Unavailable");
-                renderValueRow("Vendor scale range",
-                               context.temporalSupport.available
-                                   ? std::format("{:.2f}–{:.2f}",
-                                                 context.temporalSupport.minInputScale,
-                                                 context.temporalSupport.maxInputScale)
-                                   : "N/A");
-                renderValueRow("Vendor generation",
-                               presentation.temporalActive &&
-                                       status.reconstruction ==
-                                           render::ReconstructionMode::VendorTemporal
-                                   ? std::to_string(status.vendorScalerGeneration)
-                                   : "N/A");
+                valueRow("Declared device frame",
+                         std::to_string(context.temporalState.declaredFrameId));
+                valueRow("History", !presentation.temporalActive ? "N/A"
+                                    : status.historyValid        ? "Valid"
+                                                                 : "Reset / warming up");
+                valueRow("Warmup", !presentation.temporalActive ? "N/A"
+                                   : status.warmupComplete      ? "Complete"
+                                                                : "In progress");
+                valueRow("History age", presentation.temporalActive
+                                            ? std::format("{} frames", status.historyAge)
+                                            : "N/A");
+                valueRow("Jitter index",
+                         presentation.temporalActive ? std::to_string(status.jitterIndex) : "N/A");
+                valueRow("Last reset event",
+                         context.temporalState.lastResetFrame == 0
+                             ? "N/A"
+                             : std::format("{} · declared frame {}",
+                                           render::historyResetReasonName(
+                                               context.temporalState.lastResetReason),
+                                           context.temporalState.lastResetFrame));
+                valueRow("History memory",
+                         std::format("{} color + {} depth bytes", status.historyBytes,
+                                     status.depthHistoryBytes));
+                valueRow("Vendor capability", context.temporalSupport.available
+                                                  ? std::string(context.temporalSupport.name)
+                                                  : "Unavailable");
+                valueRow("Vendor scale range",
+                         context.temporalSupport.available
+                             ? std::format("{:.2f}–{:.2f}", context.temporalSupport.minInputScale,
+                                           context.temporalSupport.maxInputScale)
+                             : "N/A");
+                valueRow("Vendor generation",
+                         presentation.temporalActive &&
+                                 status.reconstruction == render::ReconstructionMode::VendorTemporal
+                             ? std::to_string(status.vendorScalerGeneration)
+                             : "N/A");
                 editor_style::endFields();
             }
             editorTooltip("Motion = current UV - previous UV, unjittered render-extent UV, +Y "
                           "down; infinity marks invalid motion.");
+            editor_style::endDiagnostics();
         }
     }
     if (category == RenderingCategory::Resolution) {
@@ -190,17 +181,19 @@ static void drawTemporalSection(const InspectorPanelContext& context, RenderingC
             editor_style::message("Scale adjusts automatically to the GPU budget.");
         drawTemporalReadings(context);
         if (editor_style::beginPropertyGrid("resolutionReadings")) {
-            renderValueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
-            renderValueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
+            valueRow("Effective scale", std::format("{:.2f}", presentation.effectiveScale));
+            valueRow("Controller", dynamicResolutionActive(settings) ? "Active" : "Inactive");
             editor_style::endFields();
         }
         drawPerformanceDetails(context);
         if (editor_style::beginDiagnostics()) {
             if (editor_style::beginPropertyGrid("resolutionDiagnostics")) {
-                renderValueRow("Controller sample frame",
-                               std::to_string(context.dynamicResolutionState.lastMeasurementFrame));
+                const uint64_t sampleFrame = context.dynamicResolutionState.lastMeasurementFrame;
+                valueRow("Controller sample frame",
+                         sampleFrame == 0 ? "N/A" : std::to_string(sampleFrame));
                 editor_style::endFields();
             }
+            editor_style::endDiagnostics();
         }
     }
 }
@@ -355,16 +348,18 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                     if (diagnostic(row) != details ||
                         (row.group != group && row.group != VisibilityFieldGroup::Frame))
                         continue;
-                    renderValueRow(row.label.c_str(), row.value);
+                    valueRow(row.label.c_str(), row.value);
                 }
             } else
-                renderValueRow("Visibility", "Waiting for this scene's rendered frame");
+                valueRow("Visibility", "Waiting for this scene's rendered frame");
             editor_style::endFields();
         };
         drawRows(false);
         drawPerformanceDetails(context);
-        if (editor_style::beginDiagnostics())
+        if (editor_style::beginDiagnostics()) {
             drawRows(true);
+            editor_style::endDiagnostics();
+        }
     }
     if (category == RenderingCategory::Exposure) {
         if (editor_style::beginPropertyGrid("exposureFields")) {
@@ -457,18 +452,22 @@ void drawRenderingTopic(const InspectorPanelContext& context, RenderingCategory 
                           "do not overlap. Inspect assignments and memory totals in Render Graph.");
             editor_style::endFields();
         }
-        if (editor_style::beginDiagnostics())
+        if (editor_style::beginDiagnostics()) {
             drawDisplaySection(context);
+            editor_style::endDiagnostics();
+        }
     }
     if (category == RenderingCategory::Lighting) {
         drawLightingTopic(context);
     }
     if (category == RenderingCategory::SceneTables) {
-        if (editor_style::beginDiagnostics() &&
-            editor_style::beginPropertyGrid("sceneTableFields")) {
-            for (const auto& row : sceneTableFields(context.session.tableStats()))
-                renderValueRow(row.label.data(), row.value);
-            editor_style::endFields();
+        if (editor_style::beginDiagnostics()) {
+            if (editor_style::beginPropertyGrid("sceneTableFields")) {
+                for (const auto& row : sceneTableFields(context.session.tableStats()))
+                    valueRow(row.label.data(), row.value);
+                editor_style::endFields();
+            }
+            editor_style::endDiagnostics();
         }
     }
 }

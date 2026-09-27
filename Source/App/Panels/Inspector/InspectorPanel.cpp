@@ -18,7 +18,7 @@ namespace lmx::app {
 using editor_style::field;
 
 //======================================================================================================================
-bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip,
+bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip, bool changed,
                          bool* enabled) {
     editor_style::beginHeaderRow();
     bool reset = false;
@@ -46,7 +46,7 @@ bool drawInspectorHeader(const char* name, const char* kind, const char* resetTo
                           "orbit track.");
         }
         ImGui::TableNextColumn();
-        reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, true, resetTooltip);
+        reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, changed, resetTooltip);
         ImGui::EndTable();
     }
     editor_style::endHeaderRow();
@@ -62,15 +62,6 @@ void beginFieldRow(const char* label) {
 //======================================================================================================================
 void valueRow(const char* label, const std::string& value) {
     editor_style::readOnly(label, value.c_str());
-}
-
-//======================================================================================================================
-bool beginReadings(const char* id) {
-    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp))
-        return false;
-    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, 0.48f);
-    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.52f);
-    return true;
 }
 
 //======================================================================================================================

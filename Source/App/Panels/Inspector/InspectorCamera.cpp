@@ -25,9 +25,14 @@ constexpr float kMinClipGap = 0.01f;
 void drawCameraSection(const InspectorPanelContext& context) {
     auto& camera = context.session.camera();
     const auto initial = engine::cameraFromScene(context.session.scene().initialCamera);
+    const bool changed = camera.position != initial.position || camera.yaw != initial.yaw ||
+                         camera.pitch != initial.pitch || camera.fovY != initial.fovY ||
+                         camera.nearZ != initial.nearZ || camera.farZ != initial.farZ ||
+                         camera.moveSpeed != initial.moveSpeed;
     if (drawInspectorHeader("Editor Camera", "Camera",
                             "Restore this scene's initial camera pose, lens and fly speed, stop "
-                            "following its camera track, and reset temporal history.")) {
+                            "following its camera track, and reset temporal history.",
+                            changed)) {
         camera = initial;
         context.settings.followCameraTrack = false;
         requestCameraCut(context.temporalState);

@@ -16,6 +16,9 @@ TEST_CASE("pass stages keep renderer families and preserve foreign labels", "[ap
     REQUIRE(passStage("lmx.pass.bloom.downsample2") == "bloom");
     REQUIRE(passStage("lmx.pass.scene") == "scene");
     REQUIRE(passStage("lmx.pass.temporal.vendor.pack") == "temporal");
+    REQUIRE(passStage("lmx.pass.hzb.level3") == "hzb");
+    REQUIRE(passStage("lmx.pass.light.count") == "light");
+    REQUIRE(passStage("lmx.pass..x") == "lmx.pass..x");
     REQUIRE(passStage("external.draw") == "external.draw");
     REQUIRE(passStage("lmx.pass.") == "lmx.pass.");
     REQUIRE(passStage("").empty());

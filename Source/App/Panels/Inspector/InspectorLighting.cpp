@@ -5,13 +5,12 @@
 
 #include "App/Panels/Inspector/InspectorLighting.h"
 
-#include "App/Model/Rendering/Lighting/LightingDiagnostics.h"
-#include "App/Model/Rendering/Lighting/LightingHistory.h"
-#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
-#include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
 #include "App/Panels/Inspector/InspectorInternal.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "Core/Math/Color.h"
+
+#include <glm/glm.hpp>
+#include <imgui.h>
 
 #include <algorithm>
 
@@ -36,7 +35,7 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
                             "Restore the authored enable state, colour, intensity, range, "
                             "direction and cones. An orbiting light resets its position to the "
                             "track at the current playback time.",
-                            &light.enabled)) {
+                            session.localLightChanged(id), &light.enabled)) {
         if (const auto result = session.resetLocalLight(id); !result)
             editor_style::message(result.error().message.c_str(), true);
         else

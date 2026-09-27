@@ -132,7 +132,13 @@ bool beginPropertyGrid(const char* id) {
 
 //======================================================================================================================
 bool beginDiagnostics() {
-    return ImGui::CollapsingHeader("Diagnostics");
+    // A plain tree node, not a framed header, so it never reads as another Rendering topic.
+    return ImGui::TreeNodeEx("Diagnostics", ImGuiTreeNodeFlags_SpanAvailWidth);
+}
+
+//======================================================================================================================
+void endDiagnostics() {
+    ImGui::TreePop();
 }
 
 //======================================================================================================================

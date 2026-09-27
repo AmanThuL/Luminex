@@ -111,8 +111,10 @@ void drawLightingTopic(const InspectorPanelContext& context) {
         };
         drawRows(false);
         drawPerformanceDetails(context);
-        if (editor_style::beginDiagnostics())
+        if (editor_style::beginDiagnostics()) {
             drawRows(true);
+            editor_style::endDiagnostics();
+        }
     }
 }
 

@@ -143,6 +143,10 @@ struct HierarchyCount {
 /// Counts the filtered rows and the unfiltered scene-only population under the same row contract.
 HierarchyCount hierarchyCount(const engine::Scene& scene, std::string_view filter);
 
+/// The unfiltered row count (directional lights, local lights including disabled ones, objects),
+/// counted without building rows; equals `buildSceneSelectionRows(scene, "").size()`.
+size_t hierarchyTotal(const engine::Scene& scene);
+
 /// Objects grouped for navigation in first-source encounter order. An empty source label means
 /// leaves can draw directly under Objects. Rows preserve their scene-local selection indices.
 struct EditorObjectGroup {

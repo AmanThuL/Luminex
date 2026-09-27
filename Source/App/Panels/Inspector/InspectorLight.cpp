@@ -29,7 +29,8 @@ void drawDirectionalLightSection(const InspectorPanelContext& context, size_t in
     const std::string name = "Light " + std::to_string(index);
     if (drawInspectorHeader(name.c_str(), "Directional",
                             "Restore this directional light's direction and scene-linear "
-                            "radiance from the current scene defaults.")) {
+                            "radiance from the current scene defaults.",
+                            session.lightChanged(index))) {
         session.resetLight(index);
     }
     if (editor_style::beginPropertyGrid("directionalLightFields")) {

@@ -276,10 +276,14 @@ std::vector<EditorSelectionRow> buildSceneSelectionRows(const engine::Scene& sce
 
 //======================================================================================================================
 HierarchyCount hierarchyCount(const engine::Scene& scene, std::string_view filter) {
-    const size_t total =
-        std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
+    const size_t total = hierarchyTotal(scene);
     return {.shown = filter.empty() ? total : buildSceneSelectionRows(scene, filter).size(),
             .total = total};
+}
+
+//======================================================================================================================
+size_t hierarchyTotal(const engine::Scene& scene) {
+    return std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
 }
 
 //======================================================================================================================

@@ -11,7 +11,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <cfloat>
 #include <format>
 #include <span>
 #include <string>
@@ -306,9 +305,9 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         }
         ImGui::PopStyleVar();
         ImGui::EndGroup();
+        // Rows are built once; the total is counted without building the unfiltered rows.
         const auto rows = buildSceneSelectionRows(context.activeScene, context.filter);
-        const auto count = hierarchyCount(context.activeScene, context.filter);
-        ImGui::TextDisabled("%zu / %zu", count.shown, count.total);
+        ImGui::TextDisabled("%zu / %zu", rows.size(), hierarchyTotal(context.activeScene));
         editorTooltip(
             "Matching / total selectable scene subjects, including directional lights, local "
             "lights and objects. Dimmed names are culled objects or disabled lights. "

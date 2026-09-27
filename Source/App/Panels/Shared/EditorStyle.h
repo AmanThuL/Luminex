@@ -31,8 +31,11 @@ void endHeaderRow();
 bool overflowMenu(const char* id);
 /// Begins a property grid using the shared reflow threshold; pair success with endFields.
 bool beginPropertyGrid(const char* id);
-/// Opens the collapsed-by-default Diagnostics section, returning whether to draw its contents.
+/// Opens the collapsed-by-default Diagnostics tree node, returning whether to draw its contents;
+/// pair a true result with endDiagnostics.
 bool beginDiagnostics();
+/// Closes a Diagnostics section that beginDiagnostics opened.
+void endDiagnostics();
 /// Keeps the next item on this line if its width fits, otherwise leaves it on the next line.
 void nextInRow(float width);
 /// Draws the current notice at the main viewport's bottom-right work-area corner.

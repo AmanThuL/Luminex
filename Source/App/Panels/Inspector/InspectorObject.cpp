@@ -24,7 +24,8 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     if (drawInspectorHeader(sceneObjectLabel(session.scene(), index).c_str(), "Object",
                             "Restore this object's authored transform and reset temporal "
                             "history. Animated objects use their authored track at the current "
-                            "playback time.")) {
+                            "playback time.",
+                            session.objectChanged(index))) {
         session.resetObject(index);
         requestCameraCut(context.temporalState);
     }
@@ -57,14 +58,17 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
         }
         editor_style::endFields();
     }
-    if (editor_style::beginDiagnostics() && editor_style::beginPropertyGrid("objectDiagnostics")) {
-        valueRow("Mesh row", std::to_string(object.mesh.slot));
-        valueRow("Material row", std::to_string(object.material.slot));
-        for (const auto& row : visibilityFields) {
-            if (diagnostic(row))
-                valueRow(row.label.c_str(), row.value);
+    if (editor_style::beginDiagnostics()) {
+        if (editor_style::beginPropertyGrid("objectDiagnostics")) {
+            valueRow("Mesh row", std::to_string(object.mesh.slot));
+            valueRow("Material row", std::to_string(object.material.slot));
+            for (const auto& row : visibilityFields) {
+                if (diagnostic(row))
+                    valueRow(row.label.c_str(), row.value);
+            }
+            editor_style::endFields();
         }
-        editor_style::endFields();
+        editor_style::endDiagnostics();
     }
 }
 
