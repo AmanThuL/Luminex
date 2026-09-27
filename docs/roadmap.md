@@ -161,7 +161,7 @@ implementation plan is active at a time; independent entry does not start anothe
 
 Every rendering slice includes a diagnostic fixture, relevant intermediate views, deterministic
 seeds/camera tracks and declared temporal warmup, plus raw/reference and final captures. Retain
-Sponza and Helmet integration checks. Freeze a device, resolution, content and CPU/GPU/memory
+Sponza and MaterialLab integration checks. Freeze a device, resolution, content and CPU/GPU/memory
 budget before measuring; 60 real frames/s is a planning target, not an unmeasured performance claim.
 Report full update/render/reconstruction/composite cost, timing variation and unavailable counters.
 Track pipeline variants, cache misses and compilation stalls when a slice introduces them. Grow

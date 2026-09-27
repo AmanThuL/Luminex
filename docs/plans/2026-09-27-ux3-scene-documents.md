@@ -201,11 +201,11 @@ catalog, `AppOptionsTests.cpp`, `EngineSceneTests.cpp`, `ScenePlaybackTests.cpp`
 
 ### Task 12: Re-baseline and matrix (UX3.2)
 **Files:** `Tools/Screenshots/{reference.json,parity.py,compare.py}`, `docs/roadmap.md`, validation.
-- [ ] `reference.json` schema 2 covers Sponza, MaterialLab and TemporalLab × five with a
-  `documents` hash map; `parity.py` checks the hashes first and names a drifted scene. Capture
-  parent and candidate images for both labs in five modes into the evidence folder; list every
-  retired and new hash; Sponza still matches. The roadmap's "Sponza and Helmet integration checks"
-  become Sponza and MaterialLab. **Owner checkpoint (blocking).** Commit `tool: re-baseline (UX3)`.
+- [ ] `reference.json` schema 2 covers Sponza and both labs × five, with document-hash preflight;
+  parent/candidate lab captures and every retired/new hash are retained. The roadmap integration
+  pair is now Sponza and MaterialLab. Commit `tool: re-baseline (UX3)` after review.
+  Measured: lab re-baselines are present; parity is 10/15 exact because all five retained Sponza hashes still fail.
+  The owner replaced the intermediate stop with measured continuation; final acceptance remains pending; originals stay frozen.
 
 ### Task 13: Disabled rows in classification (UX3.3, Opus)
 **Files:** `SceneTables.{h,slang}` (`kInstanceDisabled = 4u`), `SceneFrame.cpp`, `Scene.h`

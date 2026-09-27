@@ -1,10 +1,13 @@
 {
-  "schemaVersion": 1,
-  "source": "docs/milestones/m6/m6.4.md#initial-adapter-parity-and-vendor-baselines",
+  "schemaVersion": 2,
+  "source": "docs/milestones/ux/ux3-validation.md#ux32--fixture-integration",
+  "originalReference": "../Luminex-evidence/ux3/original-reference.json",
+  "originalDocuments": "../Luminex-evidence/ux3/original-documents/",
+  "originalReferenceSha256": "40a6bd60db1141d3142dea569466ec8b3b30b0225a807234f38e7a1b59121c79",
   "provenance": {
     "device": "Apple M3 Max",
-    "macOS": "26.5.2",
-    "xcode": "26.6",
+    "macOS": "26.7 (25G229)",
+    "xcode": "26.6 (17F113)",
     "buildMode": "release",
     "width": 1280,
     "height": 720,
@@ -16,20 +19,25 @@
       "LMX_SCREENSHOT_NO_BLOOM": "unset"
     }
   },
-  "evidenceLimit": "These are the initial adapter hashes, not a newly captured masked-material baseline. The later real-scene extension records within-version drift on Sponza and Damaged Helmet, including non-byte-identical batches; the cause remains unproven. A failed hash is evidence to investigate, never permission to replace the reference or loosen its check.",
+  "evidenceLimit": "Five Sponza hashes are retained byte-for-byte from schema 1; current captures still fail their historical gate. Ten lab hashes were captured after fixture integration on the same device, release build, fixed 1280x720/32-frame BMP settings. This is a requested re-baseline, with owner acceptance pending. Original schema-1 reference and eight documents remain frozen for explicit-path replay; neither historical failures nor tolerances are erased.",
+  "documents": {
+    "sponza": "fce4c430a537e1cb2e97d6aa2a597f6cf481aab2d55ecb028308657ebaf0d2dc",
+    "material-lab": "46924032cc023d36f662286fd1149958ff23de671c5abac302f93e0860d856a6",
+    "temporal-lab": "4eda44f54b3000353e2cb783bb49892af67760f878b7204b130500e3ef884114"
+  },
   "images": [
     {
       "name": "sponza-off",
       "scene": "sponza",
       "temporal": "off",
-      "renderScale": 1.0,
+      "renderScale": 1,
       "sha256": "eac4b6d1e3478e4c84bd43e2415f71718c9870157c344154c223545b74bc28d1"
     },
     {
       "name": "sponza-taa-1",
       "scene": "sponza",
       "temporal": "taa",
-      "renderScale": 1.0,
+      "renderScale": 1,
       "sha256": "99f1232b04c3cc0ed8a8c1a4edfa491c78fcc1c100eac3ce75f9531d7e56c4d8"
     },
     {
@@ -40,52 +48,10 @@
       "sha256": "28740b86e4a4fea7f38005383ec9da974f8db0383a57702c3ffcde26bc4292d1"
     },
     {
-      "name": "damaged-helmet-off",
-      "scene": "damaged-helmet",
-      "temporal": "off",
-      "renderScale": 1.0,
-      "sha256": "05263c25be5f53e43c57eb74eec73e41d31f87c04a6b077ea205c6f2229f9219"
-    },
-    {
-      "name": "damaged-helmet-taa-1",
-      "scene": "damaged-helmet",
-      "temporal": "taa",
-      "renderScale": 1.0,
-      "sha256": "f82515f2b5fe43320d9cf1685e80e725dbce34c9f99b34ffb203ae1370801bc9"
-    },
-    {
-      "name": "damaged-helmet-taa-0.5",
-      "scene": "damaged-helmet",
-      "temporal": "taa",
-      "renderScale": 0.5,
-      "sha256": "46c520d3cd2f3cf0991f9312b64619303138933be4c3da652e13c33dc963288f"
-    },
-    {
-      "name": "material-lab-off",
-      "scene": "material-lab",
-      "temporal": "off",
-      "renderScale": 1.0,
-      "sha256": "37287f61e17d099cc4076e662ce54032f45e3d727d00d757800c3ddd3b988960"
-    },
-    {
-      "name": "material-lab-taa-1",
-      "scene": "material-lab",
-      "temporal": "taa",
-      "renderScale": 1.0,
-      "sha256": "ddbcd5cfdbb3f2e75a32d4de63dabca610b19dcfc1ebd1692b227a9d5ed18a72"
-    },
-    {
-      "name": "material-lab-taa-0.5",
-      "scene": "material-lab",
-      "temporal": "taa",
-      "renderScale": 0.5,
-      "sha256": "be9eaa09b7db59dcccdae55e2c4e728b2fcff0e6996298df3a2bcca969fd9347"
-    },
-    {
       "name": "sponza-vendor-1",
       "scene": "sponza",
       "temporal": "metalfx",
-      "renderScale": 1.0,
+      "renderScale": 1,
       "sha256": "8191b647e06bdeecd0d42c391718eb9a445b53f8e5c22ffddc7719e35e64060e"
     },
     {
@@ -96,32 +62,74 @@
       "sha256": "8763a45404c40f9a10f04cb5861156f34c677c318ded9ea32546a6b56974b92c"
     },
     {
-      "name": "damaged-helmet-vendor-1",
-      "scene": "damaged-helmet",
-      "temporal": "metalfx",
-      "renderScale": 1.0,
-      "sha256": "43f2e77a46d478618fb2af5e7becb45e92d222f1ce69b53350c1cb6c8eab8bab"
+      "name": "material-lab-off",
+      "scene": "material-lab",
+      "temporal": "off",
+      "renderScale": 1,
+      "sha256": "227dc4bef138821a23857ccec7f280555bcae89e645944d2d753e0fa306ec622"
     },
     {
-      "name": "damaged-helmet-vendor-0.5",
-      "scene": "damaged-helmet",
-      "temporal": "metalfx",
+      "name": "material-lab-taa-1",
+      "scene": "material-lab",
+      "temporal": "taa",
+      "renderScale": 1,
+      "sha256": "a6386adf9bb7b7ae9651bf7dca89b12cc881863d5db60230e705411bdab26646"
+    },
+    {
+      "name": "material-lab-taa-0.5",
+      "scene": "material-lab",
+      "temporal": "taa",
       "renderScale": 0.5,
-      "sha256": "f98ce89d2afa44046a10967d361c9e2e4d550e544c1e5b659691a26de2a67ebf"
+      "sha256": "ef7cfb3ff64ba0b1ef9b18b6428fc3fed96609655446d154a90412f1ad5d6166"
     },
     {
       "name": "material-lab-vendor-1",
       "scene": "material-lab",
       "temporal": "metalfx",
-      "renderScale": 1.0,
-      "sha256": "b8d6d1619fd5675b7f91d7185a13939939a40751df0a6ecfee63eda9cdfc0ec1"
+      "renderScale": 1,
+      "sha256": "dc8e2bdd3ea024d676402e583d1fe12570e7648fdda71c47fdcebead50c7ff15"
     },
     {
       "name": "material-lab-vendor-0.5",
       "scene": "material-lab",
       "temporal": "metalfx",
       "renderScale": 0.5,
-      "sha256": "61aff50cf919604c521eda66ba9fe1f7064308b26adee34c8219fd595d4af08e"
+      "sha256": "f55237e7b197a88bd211bc4889f519ef28bf1b8426efbb2613b850957a0cf319"
+    },
+    {
+      "name": "temporal-lab-off",
+      "scene": "temporal-lab",
+      "temporal": "off",
+      "renderScale": 1,
+      "sha256": "89becf9c930c1135dde7bfc37969896e61129d29de02ffc9070625998ce66b71"
+    },
+    {
+      "name": "temporal-lab-taa-1",
+      "scene": "temporal-lab",
+      "temporal": "taa",
+      "renderScale": 1,
+      "sha256": "969c4e2fe8d69c1c48fceeb33975588174576577136e2872c90e5ff83aafa849"
+    },
+    {
+      "name": "temporal-lab-taa-0.5",
+      "scene": "temporal-lab",
+      "temporal": "taa",
+      "renderScale": 0.5,
+      "sha256": "91f9f582fbc190f0a424eb0f9b73a4a01325f23aa37e0b04db6a9d51ba09afb9"
+    },
+    {
+      "name": "temporal-lab-vendor-1",
+      "scene": "temporal-lab",
+      "temporal": "metalfx",
+      "renderScale": 1,
+      "sha256": "3b1c024f83a683ccccf9ba48aad1fcc7b4a0d578ca6fcf84d70d0ffe5e747d31"
+    },
+    {
+      "name": "temporal-lab-vendor-0.5",
+      "scene": "temporal-lab",
+      "temporal": "metalfx",
+      "renderScale": 0.5,
+      "sha256": "6e547b4d39ed9c8e5f60b6b00552925753c8ad130ece99ca97ea8436510fc43a"
     }
   ]
 }

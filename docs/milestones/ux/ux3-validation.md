@@ -137,8 +137,8 @@ reuse from retargeting animation. CPU tests pass 822 cases / 1,491,957 assertion
 paused Reset and global-wrap check passes 14 assertions under Metal validation. Khronos passes
 57 documents. The combined Task 11/13 tree passes all eleven required checks, including full
 Metal validation (`task11-integrated-gates.json`). The first full run's canonical/layout failures
-remain in `task11-final-*`; the
-catalog JSON was rewritten canonically without changing its companion buffers or source hashes.
+remain in `task11-final-*`; the catalog JSON was rewritten canonically without changing its
+companion buffers or source hashes.
 
 **Review failure retained: P2.** After three repairs to animation preflight, independently looping
 ancestor and child STEP scale clips can still combine into an indecomposable pose and assert.
@@ -154,6 +154,47 @@ no general fail-closed claim is made.
 the repair boundary. Execution deviates from the review-pass dependency rule here: the requested
 three-attempt limit and continuation instruction were applied, so the remaining review failure
 is carried forward without approval. Re-baselining does not accept or hide this defect.
+
+### Task 12 measured re-baseline
+
+`Tools/Screenshots/reference.json` now uses schema 2: Sponza, MaterialLab and TemporalLab each
+have Off, Native TAA at 1 and 0.5, and MetalFX at 1 and 0.5. The five Sponza SHA-256 values are
+unchanged from the archived schema-1 `original-reference.json`; Helmet's five values retire,
+MaterialLab's former five are superseded, and the ten new lab values come from the candidate
+captures. `task12/reference-transition-inventory.json` lists every old/new hash, both App hashes,
+document hashes and the unchanged embedded Helmet/Truck asset hashes. The archived original
+reference and all eight document/buffer pairs remain available for explicit-path replay.
+
+Schema 2 follows App's nearest-first catalog search from its working directory and checks the
+document JSON it will actually load, plus its referenced buffer, before the first image and again
+after each capture. A drifted, missing or malformed document names the scene. Regression tests
+cover a nearer shadowing catalog file or directory and malformed JSON root/buffer shapes. The
+repair's RED and GREEN output is retained in `task12/repair/`. The recorded capture tree had no
+nearer `Assets/Scenes` copy, so those captures remain attributable to the checked catalog.
+Schema 1 remains readable when callers pass the original reference and document directory
+explicitly. The existing image thresholds were not changed.
+
+The original Task 12 test-first RED output was not retained, so that chronology is not independently
+auditable. The controller's fresh 246-test Python suite log is `task12/controller-python-suite.log`;
+the independent review separately ran 269 tests on the pre-repair patch. The repair's focused
+tests and a fresh 246-test suite pass are recorded under `task12/repair/`.
+
+The parent `f181d8e` has ten complete lab captures in `parent-lab-modes/captures.json`; their
+commands and hashes were rechecked. The candidate at `2a148f2` captured all fifteen modes with
+Metal validation in `task12/candidate-matrix-final/`, using the shared GPU lock. The current
+strict hash replay is **10/15 exact**: both labs pass all five, while all five retained Sponza
+historical hashes fail (`task12/parity-current/parity.json`). The strict parent/candidate image
+comparison is **1/15 within the existing threshold** (`task12/matrix-strict.json`); only Sponza
+Off passes that threshold, although its exact historical hash still fails. The ten changed lab
+images are the requested fixture differences, not a retrospective pass of UX3.1.
+
+An independent visual check examined all ten parent/candidate lab pairs; MaterialLab's helmet
+and RGB axes and TemporalLab's truck remain visible across the modes, without an obvious missing
+fixture or gross corruption (`task12/visual-inspection.json`). Still frames at 32 do not prove
+animation or pixel equivalence. This is **re-baselined; owner acceptance pending**. Task 10's
+original image/orientation failures and Task 11's P2 remain open. A first Task 12 capture attempt
+used an incorrect BMP height-sign check; its output is retained in `task12/candidate-matrix/`,
+followed by the corrected complete matrix.
 
 ## UX3.3 — disabled instance rows
 
@@ -172,6 +213,6 @@ runtime thread limit. Session enablement, save/dirty behavior and GUI checks rem
 
 ## Remaining slices
 
-Lab re-baselining, session enablement, persistent export/dirty state, editor workflow, both-size
+Owner acceptance of lab re-baselining, session enablement, persistent export/dirty state, editor workflow, both-size
 gesture verification, icon verification and integrated head gates are pending. No later slice
 is marked passed by the work above.

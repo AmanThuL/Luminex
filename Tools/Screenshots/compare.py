@@ -118,7 +118,7 @@ def sequence_inputs(parent: Path, candidate: Path) -> tuple[list[dict], dict, tu
 
 
 def compare(parent: Path, candidate: Path, output: Path, sequence: bool = False,
-            profile: str = "strict") -> bool:
+            profile: str = "strict", reference_path: Path | None = None) -> bool:
     applied_profile(profile, "off")  # Reject unknown profiles before creating evidence.
     parent, candidate, output = parent.resolve(), candidate.resolve(), output.resolve()
     if parent == candidate:
@@ -128,7 +128,7 @@ def compare(parent: Path, candidate: Path, output: Path, sequence: bool = False,
     if sequence:
         pairs, provenance, extent = sequence_inputs(parent, candidate)
     else:
-        reference_path = Path(__file__).with_name("reference.json")
+        reference_path = reference_path or Path(__file__).with_name("reference.json")
         reference = load_reference(reference_path)
         pairs = [{"name": row["name"], "parent": row["name"] + ".bmp",
                   "candidate": row["name"] + ".bmp", "temporal": row["temporal"]} for row in reference["images"]]
@@ -346,6 +346,8 @@ def main() -> int:
     parser.add_argument("--sequence", action="store_true", help="Compare exactly three TemporalLab frames and their manifests")
     parser.add_argument("--profile", choices=PROFILES, default="strict",
                         help="Opt in to vendor-only one-code-value tolerance plus an RGB mean-error budget")
+    parser.add_argument("--reference", type=Path, default=Path(__file__).with_name("reference.json"),
+                        help="matrix case list; pass a frozen schema-1 reference for original replay")
     parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
     if args.selftest:
@@ -354,7 +356,8 @@ def main() -> int:
     if None in (args.parent, args.candidate, args.output):
         parser.error("--parent, --candidate and --output are required unless --selftest is used")
     try:
-        return 0 if compare(args.parent, args.candidate, args.output, args.sequence, args.profile) else 1
+        return 0 if compare(args.parent, args.candidate, args.output, args.sequence,
+                            args.profile, args.reference) else 1
     except (OSError, ValueError, KeyError, TypeError, ImportError) as error:
         print(f"comparison refused: {error}", file=sys.stderr)
         return 1
