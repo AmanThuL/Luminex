@@ -12,28 +12,39 @@
 namespace lmx::app {
 //======================================================================================================================
 void drawMeasurementSection(MeasurementPanelContext& context) {
-    if (context.reveal)
-        ImGui::SetNextItemOpen(true);
-    const bool expanded = ImGui::CollapsingHeader("Measure");
-    if (context.reveal) {
-        ImGui::SetScrollHereY(0.0f);
-        context.reveal = false;
-    }
-    if (!expanded)
-        return;
     const auto& run = context.run;
-    editor_style::message("Interactive / unscored. Live viewport, UI and presentation; each frame "
-                          "waits for retirement.");
-    editor_style::message("Choose Measure in the top toolbar, then Play. Stop cancels the run. "
-                          "Closing this window keeps measurement running.");
+    editor_style::beginHeaderRow();
+    const std::string startHelp = run.active()
+                                      ? "A measurement is already running. Stop cancels it."
+                                  : !context.startDisabledReason.empty()
+                                      ? std::string(context.startDisabledReason)
+                                      : "Start the fixed measurement plan. Interactive / unscored: "
+                                        "live viewport, UI and presentation; each frame waits for "
+                                        "retirement. Closing this window keeps the run active.";
+    // A labelled button: the shared Play glyph's text fallback would read "Play" here.
+    ImGui::BeginDisabled(run.active() || !context.startDisabledReason.empty());
+    if (ImGui::Button("Start measurement##StartMeasurement"))
+        context.action = MeasurementAction::Start;
+    ImGui::EndDisabled();
+    editorTooltip(startHelp.c_str());
+    ImGui::SameLine();
+    if (editor_style::iconButton(
+            "StopMeasurement", EditorIcon::Stop, run.active(),
+            "Cancel measurement and restore its starting scene and camera state."))
+        context.action = MeasurementAction::Stop;
+    editor_style::endHeaderRow();
     ImGui::BeginDisabled(run.active());
-    if (editor_style::beginFields("measurePlan")) {
+    if (editor_style::beginPropertyGrid("measurePlan")) {
         int warmup = static_cast<int>(context.warmup);
         int frames = static_cast<int>(context.frames);
         editor_style::field("Warmup frames");
+        ImGui::SetNextItemWidth(
+            std::min(ImGui::GetContentRegionAvail().x, editor_style::scaled(140.0f)));
         if (ImGui::InputInt("##measureWarmup", &warmup))
             context.warmup = std::clamp(warmup, 0, 10000);
         editor_style::field("Measured frames");
+        ImGui::SetNextItemWidth(
+            std::min(ImGui::GetContentRegionAvail().x, editor_style::scaled(140.0f)));
         if (ImGui::InputInt("##measureFrames", &frames))
             context.frames = std::clamp(frames, 1, 10000);
         editor_style::endFields();
@@ -41,8 +52,9 @@ void drawMeasurementSection(MeasurementPanelContext& context) {
     ImGui::EndDisabled();
     const std::array<const char*, 6> names{"Idle",     "Warmup",   "Measuring",
                                            "Draining", "Complete", "Cancelled"};
-    ImGui::TextWrapped("%s | %zu / %u measured frames", names[static_cast<size_t>(run.state())],
-                       run.samples().size(), run.plan().measuredFrames);
+    if (run.state() != MeasurementState::Idle)
+        ImGui::TextWrapped("%s | %zu / %u measured frames", names[static_cast<size_t>(run.state())],
+                           run.samples().size(), run.plan().measuredFrames);
     if (!run.failure().empty())
         editor_style::message(run.failure().c_str(), true);
     if (run.state() == MeasurementState::Complete) {

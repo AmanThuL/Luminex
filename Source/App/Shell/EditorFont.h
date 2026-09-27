@@ -7,7 +7,7 @@
 namespace lmx::app {
 
 /// Loads the bundled Regular face with stable digit advances, or logs and uses the embedded
-/// fallback.
-void configureEditorFont();
+/// fallback. Merges Codicons when available and returns true only when icons loaded.
+bool configureEditorFont();
 
 } // namespace lmx::app

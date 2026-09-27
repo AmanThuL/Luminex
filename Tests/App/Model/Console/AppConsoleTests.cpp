@@ -152,3 +152,104 @@ TEST_CASE("scoped log observers preserve other observers and detach after startu
     REQUIRE(second.size() == 1);
     CHECK(second[0] == lmx::log::Level::Warning);
 }
+
+//======================================================================================================================
+TEST_CASE("console scrolling freezes the displayed history and returning to the end resumes",
+          "[app][console]") {
+    auto log = std::make_shared<ConsoleLog>();
+    log->append(lmx::log::Level::Info, 1, "shown");
+    ConsoleModel model(log);
+    model.setScrolledToEnd(false);
+    CHECK(model.frozen());
+    CHECK(model.newSinceFreeze() == 0);
+    log->append(lmx::log::Level::Info, 2, "new");
+    model.setScrolledToEnd(false);
+    model.refresh();
+    REQUIRE(model.snapshot().entries.size() == 1);
+    CHECK(model.newSinceFreeze() == 1);
+    model.setScrolledToEnd(true);
+    CHECK_FALSE(model.frozen());
+    CHECK(model.newSinceFreeze() == 0);
+    CHECK(model.snapshot().entries.size() == 2);
+}
+
+//======================================================================================================================
+TEST_CASE("console frozen arrivals survive eviction and resume by chip", "[app][console]") {
+    auto log = std::make_shared<ConsoleLog>();
+    log->append(lmx::log::Level::Warning, 1, "keep this displayed");
+    ConsoleModel model(log);
+    model.setScrolledToEnd(false);
+    for (size_t i = 0; i < ConsoleLog::kMaxEntries + 7; ++i)
+        log->append(lmx::log::Level::Info, 2, "arrival");
+    CHECK(model.newSinceFreeze() == ConsoleLog::kMaxEntries + 7);
+    CHECK(consoleVisibleText(model.snapshot(), {}).find("keep this displayed") !=
+          std::string::npos);
+    CHECK(consoleVisibleText(model.snapshot(), {}).find("arrival") == std::string::npos);
+    model.resumeAtEnd();
+    CHECK_FALSE(model.frozen());
+    CHECK(model.newSinceFreeze() == 0);
+    CHECK(model.snapshot().entries.size() == ConsoleLog::kMaxEntries);
+}
+
+//======================================================================================================================
+TEST_CASE("console Clear while frozen starts the arrival count at the clear boundary",
+          "[app][console]") {
+    auto log = std::make_shared<ConsoleLog>();
+    log->append(lmx::log::Level::Info, 1, "before freeze");
+    ConsoleModel model(log);
+    model.filter = {lmx::log::Level::Warning, "wanted"};
+    model.setScrolledToEnd(false);
+    log->append(lmx::log::Level::Info, 2, "before clear");
+    CHECK(model.newSinceFreeze() == 1);
+    model.clear();
+    CHECK(model.frozen());
+    CHECK(model.newSinceFreeze() == 0);
+    CHECK(model.snapshot().entries.empty());
+    CHECK(model.filter.minimumSeverity == lmx::log::Level::Warning);
+    CHECK(model.filter.search == "wanted");
+    log->append(lmx::log::Level::Warning, 3, "wanted after clear");
+    log->append(lmx::log::Level::Info, 4, "filtered after clear");
+    model.refresh();
+    CHECK(model.newSinceFreeze() == 2);
+    CHECK(consoleVisibleText(model.snapshot(), model.filter).empty());
+    model.resumeAtEnd();
+    CHECK(model.newSinceFreeze() == 0);
+    CHECK(consoleVisibleText(model.snapshot(), model.filter) ==
+          "[00:00:00.003 UTC] [Warning] wanted after clear\n");
+}
+
+//======================================================================================================================
+TEST_CASE("console sequence cursors are coherent with snapshots and never reset at Clear",
+          "[app][console]") {
+    ConsoleLog log;
+    CHECK(log.nextSequence() == 1);
+    log.append(lmx::log::Level::Info, 1, "first");
+    const auto shown = log.snapshot();
+    CHECK(shown.nextSequence == 2);
+    log.append(lmx::log::Level::Info, 2, "second");
+    CHECK(shown.nextSequence == 2);
+    CHECK(log.nextSequence() == 3);
+    const auto cleared = log.clear();
+    log.append(lmx::log::Level::Info, 3, "after clear");
+    CHECK(cleared.nextSequence == 3);
+    CHECK(log.nextSequence() - cleared.nextSequence == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("console severity counts describe each level of the displayed snapshot",
+          "[app][console]") {
+    auto log = std::make_shared<ConsoleLog>();
+    CHECK(consoleSeverityCounts(log->snapshot()) == ConsoleSeverityCounts{});
+    for (int level = 0; level != 6; ++level)
+        for (int n = 0; n <= level; ++n)
+            log->append(static_cast<lmx::log::Level>(level), n, "message");
+    ConsoleModel model(log);
+    const ConsoleSeverityCounts expected{1, 2, 3, 4, 5, 6};
+    CHECK(consoleSeverityCounts(model.snapshot()) == expected);
+    model.setScrolledToEnd(false);
+    log->append(lmx::log::Level::Error, 0, "hidden arrival");
+    model.filter = {lmx::log::Level::Critical, "absent"};
+    CHECK(consoleSeverityCounts(model.snapshot()) == expected);
+    model.resumeAtEnd();
+    CHECK(consoleSeverityCounts(model.snapshot())[4] == 6);
+}

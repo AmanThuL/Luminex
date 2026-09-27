@@ -4,7 +4,7 @@
 //----------------------------------------------------------------------------------------------------------------------
 
 #pragma once
-#include "App/Model/Capture/ActionResult.h"
+#include "App/Model/Capture/NoticeQueue.h"
 #include "App/Model/Graph/GraphLayout.h"
 #include "App/Model/Graph/GraphSnapshot.h"
 
@@ -79,8 +79,7 @@ struct RenderGraphPanelState {
     /// number being typed -- because adopting each intermediate value would relayout the picture
     /// and drop the dragged positions and the selection with it. Zero, the default, is no wrap.
     int columnsEdit = 0;
-    GraphSnapshot snapshot;  ///< Owns the 4 Hz publication or frozen record and matched timings.
-    ActionResult dumpResult; ///< Last dump outcome, retained until another dump or dismissal.
+    GraphSnapshot snapshot; ///< Owns the 4 Hz publication or frozen record and matched timings.
     std::optional<render::CompiledFrameRecord>
         dumpPending;             ///< Exact clicked record awaiting write.
     std::string selectedKey;     ///< Logical selection identity across topology updates.
@@ -100,9 +99,9 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 /// Draws the Render Graph panel over its owned 4 Hz publication of the newest retained frame with
 /// retired GPU timings. First data and Resume publish immediately. The record and timings are
 /// joined by frame ID: the compiled frame as a node canvas on the left, and a details pane scoped
-/// to the selected item on the right, under a header row carrying the frame identity, its transient
-/// totals, a button that dumps that same record to a file next to the binary, a layout reset, and
-/// the column count the layout wraps at -- zero, the default, being no wrap at all. `open` follows
+/// to the selected item on the right. One header row holds freeze and navigation, with layout and
+/// exact-frame dump actions in its overflow menu. Dump outcomes post to the shared notice queue;
+/// memory totals remain in Details. `open` follows
 /// the window's close button, and equally the OS window's, exactly as `ImGui::Begin` writes it.
 ///
 /// A stage of passes draws as one group node until it is double-clicked open, and a pin carries a
@@ -115,6 +114,6 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state);
 ///
 /// This panel's time domain is one published exact retired frame, independent of Performance pause.
 void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
-                          const FrameRecordRing& frameRecords);
+                          const FrameRecordRing& frameRecords, NoticeQueue& notices);
 
 } // namespace lmx::app

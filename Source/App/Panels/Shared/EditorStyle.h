@@ -5,11 +5,41 @@
 
 #pragma once
 
+#include "App/Model/Capture/NoticeQueue.h"
+#include "App/Model/Workspace/EditorIcon.h"
+
 #include <imgui.h>
 
 #include <cfloat>
 
 namespace lmx::app::editor_style {
+
+/// Minimum property-grid width in base UI points before labels stack above values.
+inline constexpr float kPropertyGridMinWidth = 260.0f;
+
+/// Selects glyphs or readable text labels for all shared icon controls.
+void setIconFontAvailable(bool available);
+/// Width of an icon button at the current font and scale, including its labelled fallback.
+float iconButtonWidth(EditorIcon icon);
+/// Draws a square glyph button, or a label-sized fallback, with delayed help when disabled too.
+bool iconButton(const char* id, EditorIcon icon, bool enabled, const char* tooltip);
+/// Begins a panel's grouped action row; place following controls with nextInRow or SameLine.
+void beginHeaderRow();
+/// Ends the current panel header group.
+void endHeaderRow();
+/// Opens a More-button popup; the caller calls ImGui::EndPopup when this returns true.
+bool overflowMenu(const char* id);
+/// Begins a property grid using the shared reflow threshold; pair success with endFields.
+bool beginPropertyGrid(const char* id);
+/// Opens the collapsed-by-default Diagnostics tree node, returning whether to draw its contents;
+/// pair a true result with endDiagnostics.
+bool beginDiagnostics();
+/// Closes a Diagnostics section that beginDiagnostics opened.
+void endDiagnostics();
+/// Keeps the next item on this line if its width fits, otherwise leaves it on the next line.
+void nextInRow(float width);
+/// Draws the current notice at the main viewport's bottom-right work-area corner.
+void drawNotice(NoticeQueue& notices, double nowSeconds);
 
 /// Small gap in logical points.
 inline constexpr float kSpaceSmall = 4.0f;

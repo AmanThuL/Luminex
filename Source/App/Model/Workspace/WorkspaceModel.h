@@ -25,14 +25,16 @@ uint32_t normalizedUiScalePercent(uint32_t percent);
 /// input is normalized to the default before stepping; zoomIn selects the greater direction.
 uint32_t stepUiScalePercent(uint32_t percent, bool zoomIn);
 
-/// One of the editor's six independently visible top-level panels (spec section 3).
+/// One of the editor's independently visible top-level panels (spec section 3).
 enum class EditorPanel {
-    Scene,       ///< Active-scene choice, filtering, grouped subjects, single selection.
-    Viewport,    ///< Rendered image, camera input, compact rendering toolbar.
-    Inspector,   ///< Properties of the selected subject only.
-    Performance, ///< Rolling frame-interval and GPU-pass observations.
-    RenderGraph, ///< Coherent published compiled-frame record and dump.
-    Console,     ///< Bounded project log viewer.
+    Scene,              ///< Scene-only Hierarchy: filtering, grouped subjects, single selection.
+    Viewport,           ///< Rendered image, camera input and the debug-view legend chip.
+    Rendering,          ///< Rendering controls, readings and diagnostics.
+    Inspector,          ///< Properties of the selected subject only.
+    PerformanceSummary, ///< Compact dockable performance readings.
+    Performance,        ///< Rolling frame-interval and GPU-pass observations.
+    RenderGraph,        ///< Coherent published compiled-frame record and dump.
+    Console,            ///< Bounded project log viewer.
 };
 
 /// One app-owned visibility value per panel. Performance and Render Graph start closed; the
@@ -40,11 +42,13 @@ enum class EditorPanel {
 /// write the same storage through `isVisible`/`setVisible`, so close, reopen, and menu toggle
 /// cannot disagree.
 struct WorkspaceVisibility {
-    bool scene = true;        ///< `EditorPanel::Scene`.
-    bool viewport = true;     ///< `EditorPanel::Viewport`.
-    bool inspector = true;    ///< `EditorPanel::Inspector`.
-    bool performance = false; ///< `EditorPanel::Performance`; a detached diagnostic window.
-    bool console = true;      ///< `EditorPanel::Console`; the bottom dock's only default panel.
+    bool scene = true;              ///< `EditorPanel::Scene`.
+    bool viewport = true;           ///< `EditorPanel::Viewport`.
+    bool rendering = true;          ///< `EditorPanel::Rendering`.
+    bool inspector = true;          ///< `EditorPanel::Inspector`.
+    bool performanceSummary = true; ///< `EditorPanel::PerformanceSummary`.
+    bool performance = false;       ///< `EditorPanel::Performance`; a detached diagnostic window.
+    bool console = true;      ///< `EditorPanel::Console`; selected beside the summary by default.
     bool renderGraph = false; ///< `EditorPanel::RenderGraph`.
 
     /// Reads the stored value for `panel`.
@@ -59,11 +63,11 @@ struct WorkspaceVisibility {
 /// workspace contract or the required default topology changes -- never for cosmetic spacing or
 /// labels.
 ///
-/// Version 3 detaches Performance as well as Render Graph, leaving Console alone in the bottom
-/// dock. A version 2 workspace rebuilds its default layout and visibility once, preserving its
-/// valid UI scale. Older, invalid and future schemas reset every preference to defaults.
+/// Version 4 persists Rendering and the docked Performance summary. Version 3 rebuilds main docks
+/// once while preserving its six visibilities, UI scale and detached window placement. Version 2
+/// rebuilds default visibility and docks while preserving scale. Unknown schemas use defaults.
 /// Visibility and UI scale keys remain optional within the current schema.
-inline constexpr uint32_t kWorkspaceSchemaVersion = 3;
+inline constexpr uint32_t kWorkspaceSchemaVersion = 4;
 
 /// Whether a settings-section body named a schema version, and if so, whether it was a parseable
 /// non-negative integer.
@@ -102,7 +106,7 @@ std::string writeWorkspaceSettings(uint32_t schemaVersion, const WorkspaceVisibi
 
 /// What the workspace shell must do with a parsed settings section (or its absence) at startup.
 enum class WorkspaceDecisionKind {
-    BuildDefault, ///< Build the default dock topology once and apply default visibility.
+    BuildDefault, ///< Rebuild the main dock topology once and apply the returned visibility.
     Restore,      ///< Apply the stored visibility; the shell restores dock data as ImGui parsed it.
 };
 
@@ -111,18 +115,19 @@ struct WorkspaceDecision {
     /// See `WorkspaceDecisionKind`.
     WorkspaceDecisionKind kind = WorkspaceDecisionKind::BuildDefault;
     WorkspaceVisibility visibility; ///< Visibility to apply either way.
-    /// Restored scale for the current schema or known version 2 migration; default otherwise.
+    /// Restored scale for the current schema or known version 2/3 migration; default otherwise.
     uint32_t uiScalePercent = kDefaultUiScalePercent;
+    /// Re-center Performance on its next open only for default recovery, never schema 3 migration.
+    bool resetPerformancePlacement = true;
 };
 
 /// Decides `BuildDefault` vs `Restore` from a parsed settings section, or from `std::nullopt` when
 /// the ini had no Luminex workspace section at all -- a clean run, or an M5.2-era ini with no such
 /// section, are both legacy (spec section 4).
 ///
-/// Only an exact schema match restores parsed visibility and normalized scale. Every other schema
-/// rebuilds default topology and visibility, so old dock data cannot reattach a detached panel.
-/// The known version 2 migration retains normalized UI scale; absent, unparseable, older and future
-/// schemas reset scale to its default as well.
+/// The current schema restores docks and all values. Version 3 rebuilds main docking once while
+/// preserving old visibilities/scale and enabling both new docked panels. Its detached window
+/// settings remain valid. Version 2 keeps only scale; unknown schemas reset every preference.
 WorkspaceDecision decideWorkspace(const std::optional<ParsedWorkspaceSettings>& parsed);
 
 /// The default visibility (spec section 3), used both for `WorkspaceDecision::BuildDefault` and to

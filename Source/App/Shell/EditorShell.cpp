@@ -5,18 +5,21 @@
 
 #include "App/Shell/EditorShell.h"
 
+#include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Shell/EditorFont.h"
 
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Graph/RenderGraphPanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
 #include "App/Panels/Performance/PerformancePanel.h"
+#include "App/Panels/Rendering/RenderingPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
 #include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
+#include "Render/Passes/Temporal/TemporalResolve.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <SDL3/SDL.h>
@@ -41,6 +44,9 @@ constexpr uint32_t kResizeDebounceFrames = 10;
 // The section body ImGui hands back never includes its own header line, so the schema decision is
 // reached through the same text writeWorkspaceSettings emits.
 constexpr std::string_view kNoSchemaReason = "no matching workspace schema in imgui.ini";
+constexpr std::string_view kMigrationReason =
+    "migrating workspace schema 3 to 4; keeping panel visibility, UI scale and detached window "
+    "bounds";
 constexpr std::string_view kResetReason = "layout reset requested";
 
 } // namespace
@@ -65,7 +71,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     // Metal 4 ImGui backend creates a CAMetalLayer per extra window and renders it with its own
     // command buffer on the shared device queue. main.cpp drives them after each presented frame.
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-    configureEditorFont();
+    editor_style::setIconFontAvailable(configureEditorFont());
     ImGui::StyleColorsDark();
     ImGui::GetStyle().FramePadding = ImVec2(8.0f, 5.0f);
     ImGui::GetStyle().ItemSpacing = ImVec2(8.0f, 8.0f);
@@ -115,6 +121,7 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     }
     self->m_activeSceneId = initialScene;
     self->m_session.activate(**scene, SceneActivationMotion::Reset);
+    SDL_SetWindowTitle(window, (self->m_session.scene().name + " — Luminex").c_str());
     // Startup selects the scene's Camera (spec section 5); every scene provides one.
     self->m_selection = initialSelection(initialScene);
     // The startup scene is a selection like any other (spec 9): the generation counter bumps from
@@ -142,13 +149,24 @@ std::unique_ptr<EditorShell> EditorShell::create(SDL_Window* window, rojoRHI::De
     self->m_workspace.visibility = decision.visibility;
     self->m_workspace.uiScalePercent = decision.uiScalePercent;
     self->m_buildDefaultLayout = decision.kind == WorkspaceDecisionKind::BuildDefault;
-    self->m_layoutBuildReason = kNoSchemaReason;
+    self->m_performancePanel.resetPlacement = decision.resetPerformancePlacement;
+    // Schema 3 is the one known migration: it rebuilds docking but keeps the stored preferences,
+    // so it logs its own reason rather than the generic no-match recovery.
+    const bool migrating = self->m_buildDefaultLayout && parsed.has_value() &&
+                           parsed->schemaState == WorkspaceSchemaState::Present &&
+                           parsed->schemaVersion == 3;
+    self->m_layoutBuildReason = migrating ? kMigrationReason : kNoSchemaReason;
 
-    LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)",
-                 self->m_buildDefaultLayout
-                     ? "no matching workspace schema -- the default layout will be built"
-                     : "workspace schema matches -- restoring the docked layout from imgui.ini",
-                 self->m_session.scene().name, self->m_session.scene().objects.size());
+    std::string_view startup =
+        "workspace schema matches -- restoring the docked layout from imgui.ini";
+    if (migrating) {
+        startup = "workspace schema 3 found -- migrating to schema 4 and building the default "
+                  "layout";
+    } else if (self->m_buildDefaultLayout) {
+        startup = "no matching workspace schema -- the default layout will be built";
+    }
+    LMX_LOG_INFO("editor shell: {} (scene '{}', {} objects)", startup, self->m_session.scene().name,
+                 self->m_session.scene().objects.size());
     return self;
 }
 
@@ -241,6 +259,8 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
     if (newestTimed != nullptr && newestTimed->metrics) {
         const FrameMetricsMetadata& metrics = *newestTimed->metrics;
         sample = PerformanceFrameSample{
+            .renderingTimings = {.classifyMilliseconds = metrics.classifyMilliseconds,
+                                 .prepareMilliseconds = metrics.prepareMilliseconds},
             .frameId = newestTimed->record.frameId,
             .contextEpoch = metrics.contextEpoch,
             .timings = newestTimed->timings,
@@ -257,7 +277,6 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
             .transientAliasSavingsBytes = newestTimed->record.debug.memory.aliasSavings,
         };
     }
-    m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
     const float renderScaleBeforeDynamicResolution = m_settings.renderScale;
     applyDynamicResolution(m_dynamicResolutionState, m_resolutionController, m_settings,
                            newestTimed);
@@ -267,6 +286,21 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
                      renderScaleBeforeDynamicResolution, m_settings.renderScale,
                      m_dynamicResolutionState.lastObservedMilliseconds);
     }
+
+    if (sample) {
+        const auto presentation = temporalPresentation(
+            m_temporalState, m_settings, renderer.temporalStatus(),
+            device.capabilities().temporalScaler, renderer.width(), renderer.height());
+        if (m_temporalState.liveTimedPassSumMilliseconds && !presentation.waitingForDeclaration)
+            sample->renderingTimings.compatibleGpu =
+                PerformanceTimingReading{m_temporalState.liveMeasurementFrame,
+                                         *m_temporalState.liveTimedPassSumMilliseconds};
+        if (m_dynamicResolutionState.lastMeasurementFrame != 0)
+            sample->renderingTimings.controllerInput =
+                PerformanceTimingReading{m_dynamicResolutionState.lastMeasurementFrame,
+                                         m_dynamicResolutionState.lastObservedMilliseconds};
+    }
+    m_performanceModel.tick(deltaSeconds, sample ? &*sample : nullptr);
 
     // Healed before any panel draws (spec section 5): a stale scene id or out-of-range index from
     // a prior frame resolves to None here, so the Inspector never sees an invalid reference.
@@ -288,130 +322,32 @@ void EditorShell::buildUI(rojoRHI::Device& device, render::Renderer& renderer, f
         m_workspace.visibility = resetWorkspaceVisibility();
         ImGui::MarkIniSettingsDirty();
         m_buildDefaultLayout = true;
+        m_performancePanel.resetPlacement = true;
         m_layoutBuildReason = kResetReason;
     }
 
     updateUiScaleShortcuts();
 
     // Before the dockspace, so the work area the topology is built into excludes the menu bar.
-    buildMainMenu();
-    buildPlaybackTransport(device, renderer);
+    finishMeasurementPlayback();
+    buildMainMenu(renderer, device);
 
     const ImGuiID dockspaceId = ImGui::DockSpaceOverViewport();
     if (m_buildDefaultLayout) {
         m_buildDefaultLayout = false;
         buildDefaultLayout(dockspaceId);
-        m_performancePanel.resetPlacement = true;
         LMX_LOG_INFO("editor workspace: built the default panel layout ({})", m_layoutBuildReason);
     }
 
     buildPanels(device, renderer, frameRecords);
     // Input consumes this frame's hover state and Inspector edits.
     updateCameraInput(deltaSeconds);
-}
-
-//======================================================================================================================
-void EditorShell::buildMainMenu() {
-    if (!ImGui::BeginMainMenuBar()) {
-        return;
-    }
-    if (ImGui::BeginMenu("File")) {
-        const auto requested = drawSceneMenu(SceneMenuContext{
-            .library = m_library, .activeSceneId = m_activeSceneId, .loading = m_sceneLoading});
-        if (requested && *requested != m_activeSceneId) {
-            m_sceneLoading.request(*requested);
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Quit")) {
-            m_actions.requestQuit();
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Window")) {
-        const auto visibilityItem = [this](const char* label, EditorPanel panel) {
-            bool visible = m_workspace.visibility.isVisible(panel);
-            if (ImGui::MenuItem(label, nullptr, &visible)) {
-                setPanelVisible(panel, visible);
-            }
-        };
-        visibilityItem(kScenePanelWindowName, EditorPanel::Scene);
-        visibilityItem(kViewportPanelWindowName, EditorPanel::Viewport);
-        visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
-        visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
-        visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
-        visibilityItem(kConsolePanelWindowName, EditorPanel::Console);
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Layout")) {
-        if (ImGui::BeginMenu("UI Scale")) {
-            const uint32_t current = m_workspace.uiScalePercent;
-            if (ImGui::MenuItem("Zoom Out", "Cmd+-", false, current > kUiScalePresets.front())) {
-                setUiScale(stepUiScalePercent(current, false));
-            }
-            if (ImGui::MenuItem("Zoom In", "Cmd++", false, current < kUiScalePresets.back())) {
-                setUiScale(stepUiScalePercent(current, true));
-            }
-            if (ImGui::MenuItem("Reset UI Scale", "Cmd+0")) {
-                setUiScale(kDefaultUiScalePercent);
-            }
-            ImGui::Separator();
-            for (const uint32_t percent : kUiScalePresets) {
-                const std::string label = std::to_string(percent) + "%";
-                if (ImGui::MenuItem(label.c_str(), nullptr, current == percent)) {
-                    setUiScale(percent);
-                }
-            }
-            ImGui::EndMenu();
-        }
-        ImGui::Separator();
-        if (ImGui::MenuItem("Reset Default Layout")) {
-            m_actions.requestResetLayout();
-        }
-        ImGui::EndMenu();
-    }
-    if (ImGui::BeginMenu("Debug")) {
-        if (ImGui::MenuItem("Capture Next GPU Frame", "C", false,
-                            m_actions.captureAvailable() &&
-                                m_actions.captureResult().status != ActionStatus::Pending)) {
-            m_actions.requestCapture();
-        }
-        drawActionFeedback("capture", m_actions.captureResult());
-        ImGui::EndMenu();
-    }
-    const uint32_t current = m_workspace.uiScalePercent;
-    const float buttonPadding = ImGui::GetStyle().FramePadding.x * 2.0f;
-    const std::string resetLabel = std::to_string(current) + "%##ResetUiZoom";
-    const float controlsWidth = ImGui::CalcTextSize("-+").x +
-                                ImGui::CalcTextSize(resetLabel.c_str(), nullptr, true).x +
-                                buttonPadding * 3.0f + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-    const float rightAlignedX =
-        ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - controlsWidth;
-    // Tiny detached/narrow arrangements still have the Layout menu and keyboard shortcuts.
-    if (rightAlignedX >= ImGui::GetCursorPosX()) {
-        ImGui::SetCursorPosX(rightAlignedX);
-        ImGui::BeginDisabled(current <= kUiScalePresets.front());
-        if (ImGui::SmallButton("-##UiZoomOut")) {
-            setUiScale(stepUiScalePercent(current, false));
-        }
-        ImGui::EndDisabled();
-        editorTooltip("Zoom out the editor UI (Cmd+-). Fonts and controls shrink; camera settings "
-                      "stay unchanged. Minimum 75%.");
-        ImGui::SameLine();
-        if (ImGui::SmallButton(resetLabel.c_str())) {
-            setUiScale(kDefaultUiScalePercent);
-        }
-        editorTooltip("Current editor UI scale. Click to reset to 100% (Cmd+0). Saved with the "
-                      "workspace; Reset Default Layout keeps this preference.");
-        ImGui::SameLine();
-        ImGui::BeginDisabled(current >= kUiScalePresets.back());
-        if (ImGui::SmallButton("+##UiZoomIn")) {
-            setUiScale(stepUiScalePercent(current, true));
-        }
-        ImGui::EndDisabled();
-        editorTooltip("Zoom in the editor UI (Cmd++ or Cmd+=). Maximum 150%. The detached Render "
-                      "Graph uses the same UI scale.");
-    }
-    ImGui::EndMainMenuBar();
+    updateEditorShortcuts(renderer);
+    if (const auto reason =
+            reconcileDebugView(m_settings, effectiveReconstruction(renderer, device)))
+        m_notices.post({ActionStatus::Unavailable, *reason, {}}, ImGui::GetTime());
+    postCaptureNotice();
+    editor_style::drawNotice(m_notices, ImGui::GetTime());
 }
 
 //======================================================================================================================
@@ -424,15 +360,17 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
     // same storage the Window menu writes, so the two can never disagree.
     if (m_workspace.visibility.isVisible(EditorPanel::Scene)) {
         bool open = true;
+        bool frameSelectionRequested = false;
         drawScenePanel(open, ScenePanelContext{.activeSceneId = m_activeSceneId,
                                                .activeScene = m_session.scene(),
-                                               .session = m_session,
-                                               .temporalState = m_temporalState,
                                                .selection = m_selection,
                                                .filter = m_sceneFilter,
+                                               .frameSelectionRequested = frameSelectionRequested,
                                                .visibilityDisplay = m_visibilityDisplay,
                                                .visibilityStatus = m_visibilityDisplay.status(),
                                                .sceneGeneration = m_temporalState.sceneGeneration});
+        if (frameSelectionRequested)
+            frameSelected(renderer);
         setPanelVisible(EditorPanel::Scene, open);
     }
 
@@ -445,17 +383,12 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
             open, ViewportPanelContext{.renderer = renderer,
                                        .outlineTarget = m_selectionOutline->target(),
                                        .showOutline = m_showSelectionOutline,
-                                       .activeSceneName = m_session.scene().name,
-                                       .camera = m_session.camera(),
                                        .scene = m_session.scene(),
                                        .settings = m_settings,
-                                       .exposureContext = m_exposureContext,
-                                       .exposureResetPending = m_exposureResetPending,
-                                       .session = m_session,
                                        .temporalState = m_temporalState,
                                        .selection = m_selection,
-                                       .actions = m_actions,
-                                       .sceneId = m_activeSceneId,
+                                       .effectiveReconstruction =
+                                           effectiveReconstruction(renderer, device),
                                        .visibilityDisplay = &m_visibilityDisplay});
         setPanelVisible(EditorPanel::Viewport, open);
         m_viewportHovered = result.hovered;
@@ -486,30 +419,40 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         endMouseLook();
     }
 
+    m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
+    const auto inspectorContext =
+        InspectorPanelContext{.selection = m_selection,
+                              .session = m_session,
+                              .renderer = renderer,
+                              .settings = m_settings,
+                              .exposureContext = m_exposureContext,
+                              .exposureResetPending = m_exposureResetPending,
+                              .temporalState = m_temporalState,
+                              .dynamicResolutionState = m_dynamicResolutionState,
+                              .temporalSupport = device.capabilities().temporalScaler,
+                              .viewportWidth = m_viewportWidth,
+                              .viewportHeight = m_viewportHeight,
+                              .viewportVisible = viewportUsable,
+                              .selectionHiddenByFilter = selectionHiddenByFilter(
+                                  m_session.scene(), m_selection, m_sceneFilter),
+                              .visibilityDisplay = &m_visibilityDisplay,
+                              .sceneFilter = &m_sceneFilter,
+                              .openPerformance =
+                                  [this] {
+                                      setPanelVisible(EditorPanel::Performance, true);
+                                      m_performancePanel.requestFocus = true;
+                                      m_performancePanel.requestLiveTab = true;
+                                  },
+                              .lightingDisplay = &m_lightingDisplay};
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
         bool open = true;
-        // Healed here, immediately before the draw that reads it, so a stale scene id or
-        // out-of-range index from any source never reaches the panel (spec section 5).
-        m_selection = resolveSelection(m_selection, m_activeSceneId, m_session.scene());
-        drawInspectorPanel(
-            open, InspectorPanelContext{.selection = m_selection,
-                                        .session = m_session,
-                                        .renderer = renderer,
-                                        .settings = m_settings,
-                                        .exposureContext = m_exposureContext,
-                                        .exposureResetPending = m_exposureResetPending,
-                                        .temporalState = m_temporalState,
-                                        .dynamicResolutionState = m_dynamicResolutionState,
-                                        .temporalSupport = device.capabilities().temporalScaler,
-                                        .viewportWidth = m_viewportWidth,
-                                        .viewportHeight = m_viewportHeight,
-                                        .viewportVisible = viewportUsable,
-                                        .selectionHiddenByFilter = selectionHiddenByFilter(
-                                            m_session.scene(), m_selection, m_sceneFilter),
-                                        .visibilityDisplay = &m_visibilityDisplay,
-                                        .sceneFilter = &m_sceneFilter,
-                                        .lightingDisplay = &m_lightingDisplay});
+        drawInspectorPanel(open, inspectorContext);
         setPanelVisible(EditorPanel::Inspector, open);
+    }
+    if (m_workspace.visibility.isVisible(EditorPanel::Rendering)) {
+        bool open = true;
+        drawRenderingPanel(open, inspectorContext);
+        setPanelVisible(EditorPanel::Rendering, open);
     }
 
     ImGui::EndDisabled();
@@ -518,12 +461,36 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
         m_performanceModel.setContextEpoch(metricsContextEpoch());
         MeasurementPanelContext measurement{m_measurement, m_measurementWarmup, m_measurementFrames,
                                             m_measurementExportPath, m_measurementFeedback};
-        measurement.reveal = m_revealMeasurement;
+        measurement.startDisabledReason =
+            m_playback.active() ? "Stop scene playback before starting a measurement."
+            : m_settings.dynamicResolutionEnabled
+                ? "Turn off dynamic resolution before starting a fixed-plan measurement."
+                : "";
         drawPerformancePanel(open, m_performanceModel, m_performancePanel, &measurement);
-        m_revealMeasurement = measurement.reveal;
-        if (measurement.action == MeasurementAction::Export)
+        switch (measurement.action) {
+        case MeasurementAction::Start:
+            startMeasurement(device, renderer);
+            break;
+        case MeasurementAction::Stop:
+            stopPlayback();
+            break;
+        case MeasurementAction::Export:
             exportMeasurement();
+            break;
+        case MeasurementAction::None:
+            break;
+        }
         setPanelVisible(EditorPanel::Performance, open);
+    }
+
+    if (m_workspace.visibility.isVisible(EditorPanel::PerformanceSummary)) {
+        bool open = true;
+        if (drawPerformanceSummary(open, m_performanceModel)) {
+            setPanelVisible(EditorPanel::Performance, true);
+            m_performancePanel.requestFocus = true;
+            m_performancePanel.requestLiveTab = true;
+        }
+        setPanelVisible(EditorPanel::PerformanceSummary, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Console)) {
@@ -534,7 +501,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
 
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
         bool open = true;
-        drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords);
+        drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords, m_notices);
         setPanelVisible(EditorPanel::RenderGraph, open);
     }
 }
@@ -691,6 +658,8 @@ FrameMetricsMetadata EditorShell::frameMetrics(const render::Renderer& renderer)
     const auto& io = ImGui::GetIO();
     const auto& extents = renderer.temporalStatus().extents;
     return {
+        .classifyMilliseconds = renderer.visibilityStatus().classifyMs,
+        .prepareMilliseconds = renderer.visibilityStatus().prepareMs,
         .contextEpoch = metricsContextEpoch(),
         .objectCount = static_cast<uint32_t>(m_session.scene().objects.size()),
         .drawCount = renderer.visibilityStatus().submission.sceneCommands +
@@ -748,6 +717,7 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     m_lightingDisplay.clear();
     m_lightingFailureLogged = false;
     m_session.activate(**scene, SceneActivationMotion::Reset);
+    SDL_SetWindowTitle(m_window, (m_session.scene().name + " — Luminex").c_str());
     // The new scene has no motion to report yet, and its generation differs from whatever the
     // renderer last saw (TemporalEditorState.h), which is what tells the temporal history to reset
     // rather than reproject the previous scene's pixels onto this one's geometry.
@@ -763,6 +733,16 @@ bool EditorShell::selectScene(rojoRHI::Device& device, scenes::SceneId id) {
     LMX_LOG_INFO("scene switched to '{}' ({} objects)", m_session.scene().name,
                  m_session.scene().objects.size());
     return true;
+}
+
+//======================================================================================================================
+render::ReconstructionMode
+EditorShell::effectiveReconstruction(const render::Renderer& renderer,
+                                     const rojoRHI::Device& device) const {
+    return render::resolveReconstruction(
+               m_settings.reconstruction, device.capabilities().temporalScaler,
+               renderer.temporalStatus().vendorFallback == render::VendorFallback::CreationFailed)
+        .mode;
 }
 
 } // namespace lmx::app

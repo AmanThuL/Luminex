@@ -1,14 +1,14 @@
 //----------------------------------------------------------------------------------------------------------------------
 /// @file ViewportPanel.cpp
-/// @brief Draws the scene image, editor selection, camera tools and diagnostic legend.
+/// @brief Draws the scene image, editor selection and diagnostic legend chip.
 //----------------------------------------------------------------------------------------------------------------------
 
 #include "App/Panels/Viewport/ViewportPanel.h"
 
+#include "App/Model/Rendering/Settings/DebugView.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
-#include "App/Model/Scene/SelectionBounds.h"
-#include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
+#include "Render/Passes/Occlusion/HzbStage.h"
 #include <rojoRHI/Metal4/Metal4ImGui.h>
 
 #include <imgui.h>
@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <format>
+#include <optional>
 
 namespace lmx::app {
 namespace {
@@ -26,168 +27,100 @@ uint32_t toPixels(float points, float scale) {
     return static_cast<uint32_t>(std::max(points * scale, 0.0f) + 0.5f);
 }
 
+/// What the diagnostic legend chip reported after drawing.
+struct LegendChipResult {
+    bool hovered = false;        ///< Whether the pointer is over the chip, not the scene image.
+    std::optional<float> bottom; ///< Screen-space bottom edge when the chip was drawn.
+};
+
 //======================================================================================================================
-void nextToolbarItem(float width) {
-    const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    if (right - ImGui::GetItemRectMax().x >= width + ImGui::GetStyle().ItemSpacing.x) {
+LegendChipResult drawLegendChip(const ViewportPanelContext& context, ImVec2 origin,
+                                ImVec2 imageSize) {
+    const auto active = activeDebugView(context.settings);
+    if (!active)
+        return {};
+    const uint32_t hzbLevels = viewportHzbLevels(context.renderer);
+    const auto entries =
+        debugViewEntries(context.settings, hzbLevels, context.effectiveReconstruction);
+    const auto selected = std::ranges::find_if(entries, [&](const auto& entry) {
+        return entry.view.topic == active->topic && entry.view.value == active->value;
+    });
+    const std::string title =
+        selected != entries.end() ? selected->label : hzbLevelLabel(active->value);
+    const float inset = editor_style::scaled(8.0f);
+    const float width = std::min(editor_style::scaled(390.0f), imageSize.x - inset * 2);
+    if (width <= 0 || imageSize.y <= inset * 2)
+        return {};
+    ImGui::SetCursorScreenPos(ImVec2(origin.x + inset, origin.y + inset));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.09f, 0.9f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2(width, imageSize.y - inset * 2));
+    bool hovered = false;
+    if (ImGui::BeginChild("debug-legend", ImVec2(width, 0),
+                          ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysAutoResize |
+                              ImGuiChildFlags_Borders,
+                          ImGuiWindowFlags_NoSavedSettings)) {
+        hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
+        ImGui::SetNextItemWidth(
+            std::max(1.0f, ImGui::GetContentRegionAvail().x -
+                               editor_style::iconButtonWidth(EditorIcon::Close) -
+                               ImGui::GetStyle().ItemSpacing.x));
+        if (ImGui::BeginCombo("##debug-view", title.c_str())) {
+            for (const auto& entry : entries) {
+                if (entry.view.topic != active->topic)
+                    continue;
+                ImGui::BeginDisabled(!entry.available);
+                if (ImGui::Selectable(entry.label.c_str(), entry.view.value == active->value))
+                    selectDebugView(context.settings, entry.view);
+                ImGui::EndDisabled();
+                if (!entry.available)
+                    editorTooltip(entry.reason.c_str());
+            }
+            ImGui::EndCombo();
+        }
         ImGui::SameLine();
-    }
-}
-
-//======================================================================================================================
-void drawToolbar(const ViewportPanelContext& context) {
-    ImGui::TextUnformatted(context.activeSceneName.data(),
-                           context.activeSceneName.data() + context.activeSceneName.size());
-    nextToolbarItem(ImGui::CalcTextSize("Reset camera").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Reset camera")) {
-        context.camera = engine::cameraFromScene(context.scene.initialCamera);
-        context.settings.followCameraTrack = false;
-        requestCameraCut(context.temporalState);
-    }
-    editorTooltip(
-        "Restore the scene's initial camera, stop rail following and reset temporal history.");
-    nextToolbarItem(ImGui::CalcTextSize("Camera help").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Camera help")) {
-        ImGui::OpenPopup("camera-help");
-    }
-    editorTooltip("Hold the right mouse button over the image to look; WASD moves, Q/E "
-                  "lowers/raises the camera.");
-    if (ImGui::BeginPopup("camera-help")) {
-        ImGui::TextUnformatted("Hold RMB over the image to look.");
-        ImGui::TextUnformatted("While held: WASD move, Q down, E up.");
-        ImGui::TextUnformatted("Release RMB to return to editing.");
-        ImGui::TextUnformatted("Text entry keeps camera and capture keys inactive.");
-        ImGui::EndPopup();
-    }
-    nextToolbarItem(ImGui::CalcTextSize("GPU capture").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("GPU capture")) {
-        ImGui::OpenPopup("capture-result");
-    }
-    editorTooltip(
-        "Capture the next acquired GPU frame for Xcode inspection. C uses the same action.");
-    if (ImGui::BeginPopup("capture-result")) {
-        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + editor_style::scaled(400.0f));
-        ImGui::BeginDisabled(!context.actions.captureAvailable() ||
-                             context.actions.captureResult().status == ActionStatus::Pending);
-        if (ImGui::Button("Capture next frame (C)")) {
-            context.actions.requestCapture();
-        }
-        ImGui::EndDisabled();
-        drawActionFeedback("viewport-capture", context.actions.captureResult());
-        ImGui::PopTextWrapPos();
-        ImGui::EndPopup();
-    }
-    const auto captureStatus = context.actions.captureResult().status;
-    if (context.actions.captureFeedbackVisible()) {
-        ImGui::TextWrapped("Capture %s: %s", actionStatusName(captureStatus),
-                           context.actions.captureResult().message.c_str());
-        if (ImGui::SmallButton("Dismiss capture status")) {
-            context.actions.dismissCaptureFeedback();
-        }
-    }
-    const bool objectSelected = context.selection.subject == EditorSubject::Object &&
-                                context.selection.index < context.scene.objects.size();
-    const auto bounds = selectedObjectBounds(context.scene, context.selection);
-    ImGui::BeginDisabled(!bounds);
-    if (ImGui::Button("Frame selected")) {
-        const float aspect = static_cast<float>(context.renderer.width()) /
-                             static_cast<float>(context.renderer.height());
-        if (frameSelection(context.camera, *bounds, aspect)) {
-            context.settings.followCameraTrack = false;
-            requestCameraCut(context.temporalState);
-        }
-    }
-    ImGui::EndDisabled();
-    if (!objectSelected) {
-        editorTooltip("Select an object in Hierarchy to frame its geometry.");
-    } else if (!bounds) {
-        editorTooltip("Framing unavailable: this object has no reliable geometry bounds.");
-    } else {
-        editorTooltip(
-            "Fit this object's bounds while preserving view direction and field of view. "
-            "Stops camera-rail following and resets temporal history; does not remove occluders.");
-    }
-    nextToolbarItem(ImGui::CalcTextSize("Selection outline").x + ImGui::GetFrameHeight() +
-                    ImGui::GetStyle().ItemInnerSpacing.x);
-    const bool outlineReady = context.outlineTarget.width() == context.renderer.width() &&
-                              context.outlineTarget.height() == context.renderer.height();
-    ImGui::BeginDisabled(!objectSelected || !outlineReady);
-    ImGui::Checkbox("Selection outline", &context.showOutline);
-    ImGui::EndDisabled();
-    editorTooltip(objectSelected
-                      ? "Show a soft outline along the selected object's visible geometry. "
-                        "Hidden surfaces stay hidden. Editor-only; scene captures and history "
-                        "are unchanged."
-                      : "Select an object in Hierarchy to show its visible-geometry outline.");
-    if (!outlineReady) {
-        ImGui::TextWrapped(
-            "Outline unavailable after allocation failure. Resize the viewport to retry.");
-    }
-    const auto lab = labDescription(context.sceneId);
-    if (!lab.empty()) {
-        ImGui::TextWrapped("%.*s", static_cast<int>(lab.size()), lab.data());
-    }
-}
-
-//======================================================================================================================
-void drawLegend(const ViewportPanelContext& context) {
-    if (context.settings.lightDebugView != engine::LightDebugView::Off) {
-        const auto legend = diagnosticLegend(context.settings.lightDebugView);
-        ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
-        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                        ImGui::GetStyle().FramePadding.x * 2);
-        if (ImGui::Button("Return to Final"))
-            context.settings.lightDebugView = engine::LightDebugView::Off;
-        if (context.scene.enabledLightCount() == 0)
-            ImGui::TextWrapped(
-                "Requested view unavailable: no enabled local lights. Showing Final.");
-        else
+        if (editor_style::iconButton("close-debug", EditorIcon::Close, true, "Return to Final"))
+            selectDebugView(context.settings, std::nullopt);
+        if (active->topic == DebugViewTopic::Occlusion) {
+            // Zero levels (no output extent yet) still leaves level 0 as the only request.
+            const int top = std::max(static_cast<int>(hzbLevels), 1) - 1;
+            int level = context.settings.hzbDebugLevel;
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            if (ImGui::InputInt("##hzb-level", &level)) {
+                level = std::clamp(level, 0, top);
+                selectDebugView(context.settings,
+                                DebugView{DebugViewTopic::Occlusion, static_cast<uint8_t>(level)});
+            }
+            editorTooltip("HZB mip level. Higher levels summarize a larger source region.");
+            ImGui::TextWrapped("Farthest reversed depth; black is uncovered.");
+            if (active->value > top)
+                ImGui::Text("Requested level %u; showing available level %d", active->value, top);
+        } else {
+            const auto legend =
+                active->topic == DebugViewTopic::Temporal
+                    ? diagnosticLegend(static_cast<render::TemporalDebugView>(active->value))
+                    : diagnosticLegend(static_cast<engine::LightDebugView>(active->value));
             ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
                                legend.description.data());
-        return;
-    }
-    if (context.settings.hzbDebugLevel >= 0) {
-        uint32_t width = (context.renderer.width() + 1) / 2;
-        uint32_t height = (context.renderer.height() + 1) / 2;
-        int32_t top = 0;
-        while (width > 16 || height > 16) {
-            width = (width + 1) / 2;
-            height = (height + 1) / 2;
-            ++top;
+            if (active->topic == DebugViewTopic::Lighting && context.scene.enabledLightCount() == 0)
+                ImGui::TextWrapped("No enabled local lights. Showing Final.");
+            if (active->topic == DebugViewTopic::Temporal) {
+                const auto note =
+                    diagnosticModeNote(static_cast<render::TemporalDebugView>(active->value),
+                                       context.renderer.temporalStatus().reconstruction);
+                if (!note.empty())
+                    ImGui::TextWrapped("%.*s", static_cast<int>(note.size()), note.data());
+            }
         }
-        const auto effectiveLevel = std::min(context.settings.hzbDebugLevel, top);
-        ImGui::Text("HZB level %d: farthest reversed depth (black is uncovered)", effectiveLevel);
-        if (effectiveLevel != context.settings.hzbDebugLevel)
-            ImGui::Text("Requested level %d clamped to available level %d",
-                        context.settings.hzbDebugLevel, effectiveLevel);
-        nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                        ImGui::GetStyle().FramePadding.x * 2);
-        if (ImGui::Button("Return to Final"))
-            context.settings.hzbDebugLevel = -1;
-        return;
     }
-    if (!context.settings.temporalEnabled ||
-        context.settings.temporalDebugView == render::TemporalDebugView::Off) {
-        return;
-    }
-    const auto legend = diagnosticLegend(context.settings.temporalDebugView);
-    ImGui::Text("View: %.*s", static_cast<int>(legend.name.size()), legend.name.data());
-    nextToolbarItem(ImGui::CalcTextSize("Return to Final").x +
-                    ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Return to Final")) {
-        context.settings.temporalDebugView = render::TemporalDebugView::Off;
-    }
-    ImGui::TextWrapped("%.*s", static_cast<int>(legend.description.size()),
-                       legend.description.data());
-    const auto note = diagnosticModeNote(context.settings.temporalDebugView,
-                                         context.renderer.temporalStatus().reconstruction);
-    if (!note.empty()) {
-        ImGui::TextWrapped("%.*s", static_cast<int>(note.size()), note.data());
-    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+    return {hovered, ImGui::GetItemRectMax().y};
 }
 
 //======================================================================================================================
-void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, ImVec2 size) {
+/// Draws retired occlusion bounds; its caption sits below the legend chip when one is shown.
+void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, ImVec2 size,
+                          std::optional<float> chipBottom) {
     if (!context.settings.occlusionEnabled || !context.visibilityDisplay)
         return;
     const auto& display = *context.visibilityDisplay;
@@ -253,8 +186,8 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
         const auto label = std::format(
             "HZB source frame {}: yellow bounds / cyan test rectangle; rejected {} / 128",
             status.occlusionSourceFrame, rejected);
-        draw->AddText(ImVec2(origin.x + 8, origin.y + 8), IM_COL32(255, 240, 180, 255),
-                      label.c_str());
+        const float labelY = chipBottom ? *chipBottom + 8 : origin.y + 8;
+        draw->AddText(ImVec2(origin.x + 8, labelY), IM_COL32(255, 240, 180, 255), label.c_str());
     }
     draw->PopClipRect();
 }
@@ -262,12 +195,16 @@ void drawOcclusionOverlay(const ViewportPanelContext& context, ImVec2 origin, Im
 } // namespace
 
 //======================================================================================================================
+uint32_t viewportHzbLevels(const render::Renderer& renderer) {
+    if (renderer.width() == 0 || renderer.height() == 0)
+        return 0;
+    return render::hzbLayout(renderer.width(), renderer.height()).levelCount;
+}
+
+//======================================================================================================================
 ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& context) {
     ViewportPanelResult result;
     if (ImGui::Begin(kViewportPanelWindowName, &open)) {
-        drawToolbar(context);
-        drawLegend(context);
-        ImGui::Separator();
         const auto available = ImGui::GetContentRegionAvail();
         const ImVec2 imageSize(available.x, std::max(available.y, 1.0f));
         result.measured = available.x > 0.0f && available.y > 0.0f;
@@ -282,7 +219,11 @@ ViewportPanelResult drawViewportPanel(bool& open, const ViewportPanelContext& co
                                                              : context.renderer.colorTarget()),
                          imageSize);
             result.hovered = ImGui::IsItemHovered();
-            drawOcclusionOverlay(context, ImGui::GetItemRectMin(), imageSize);
+            const auto origin = ImGui::GetItemRectMin();
+            const auto chip = drawLegendChip(context, origin, imageSize);
+            if (chip.hovered)
+                result.hovered = false;
+            drawOcclusionOverlay(context, origin, imageSize, chip.bottom);
             const auto scale = ImGui::GetWindowViewport()->FramebufferScale;
             result.backingScale = scale.x;
             result.width = toPixels(imageSize.x, scale.x);

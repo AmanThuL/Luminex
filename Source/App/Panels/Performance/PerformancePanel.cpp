@@ -5,6 +5,7 @@
 
 #include "App/Panels/Performance/PerformancePanel.h"
 
+#include "App/Model/Performance/PassStages.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <SDL3/SDL.h>
@@ -194,14 +195,11 @@ void numericCell(double value, const char* format = "%.3f") {
 
 //======================================================================================================================
 const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, float height,
-                                       bool scheduleOrder) {
+                                       bool individualRows = false) {
     static std::string selectedLabel;
     static size_t selectedOccurrence = 0;
-    if (snapshot.waitingForSamples) {
-        editor_style::message("Waiting for a new retired GPU sample. Scene playback continues.");
+    if (snapshot.waitingForSamples)
         return nullptr;
-    }
-    const bool compact = ImGui::GetContentRegionAvail().x < editor_style::scaled(650.0f);
     const PassTimingSummary* selected = nullptr;
     size_t occurrence = 0;
     for (const auto& row : snapshot.passRows) {
@@ -210,77 +208,167 @@ const PassTimingSummary* drawPassTable(const PerformanceSnapshot& snapshot, floa
             break;
         }
     }
-    constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX |
-                                       ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg |
-                                       ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Sortable |
-                                       ImGuiTableFlags_SizingFixedFit;
-    if (!ImGui::BeginTable("PassCosts", compact ? 3 : 6, kFlags, ImVec2(0.0f, height))) {
+    constexpr ImGuiTableFlags flags = ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX |
+                                      ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg |
+                                      ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Sortable |
+                                      ImGuiTableFlags_SizingFixedFit;
+    if (!ImGui::BeginTable(individualRows ? "IndividualPassCosts" : "PassCosts",
+                           individualRows ? 7 : 4, flags, ImVec2(0.0f, height)))
         return selected;
-    }
+    ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_PreferSortAscending,
+                            editor_style::scaled(36.0f),
+                            static_cast<ImGuiID>(PassTimingSort::Schedule));
     ImGui::TableSetupColumn(
-        "Pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort, 1.0f);
-    ImGui::TableSetupColumn("Average (ms)",
-                            ImGuiTableColumnFlags_DefaultSort |
-                                ImGuiTableColumnFlags_PreferSortDescending,
-                            editor_style::scaled(100.0f), 1);
+        "Stage / pass", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort, 1.0f);
+    ImGui::TableSetupColumn(
+        "Average (ms)",
+        ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_PreferSortDescending,
+        editor_style::scaled(105.0f), static_cast<ImGuiID>(PassTimingSort::Average));
     ImGui::TableSetupColumn("Latest (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                            editor_style::scaled(90.0f), 2);
-    if (!compact) {
+                            editor_style::scaled(95.0f),
+                            static_cast<ImGuiID>(PassTimingSort::Latest));
+    if (individualRows) {
         ImGui::TableSetupColumn("Min (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(70.0f), 3);
+                                editor_style::scaled(75.0f),
+                                static_cast<ImGuiID>(PassTimingSort::Minimum));
         ImGui::TableSetupColumn("Max (ms)", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(70.0f), 4);
+                                editor_style::scaled(75.0f),
+                                static_cast<ImGuiID>(PassTimingSort::Maximum));
         ImGui::TableSetupColumn("Samples", ImGuiTableColumnFlags_PreferSortDescending,
-                                editor_style::scaled(60.0f), 5);
+                                editor_style::scaled(70.0f),
+                                static_cast<ImGuiID>(PassTimingSort::Samples));
     }
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableHeadersRow();
-    PassTimingSort sort = PassTimingSort::Average;
+    auto sort = PassTimingSort::Average;
     bool descending = true;
-    if (const ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs();
-        specs != nullptr && specs->SpecsCount > 0) {
-        const auto& spec = specs->Specs[0];
-        sort = static_cast<PassTimingSort>(spec.ColumnUserID);
-        descending = spec.SortDirection == ImGuiSortDirection_Descending;
+    if (const auto* specs = ImGui::TableGetSortSpecs(); specs && specs->SpecsCount > 0) {
+        sort = static_cast<PassTimingSort>(specs->Specs[0].ColumnUserID);
+        descending = specs->Specs[0].SortDirection == ImGuiSortDirection_Descending;
     }
-    const auto indices = sortedPassTimingIndices(
-        snapshot.passRows, scheduleOrder ? PassTimingSort::Schedule : sort, descending);
-    for (const size_t index : indices) {
+    const auto selectPass = [&](size_t index) {
         const auto& row = snapshot.passRows[index];
-        ImGui::PushID(static_cast<int>(index));
+        selected = &row;
+        selectedLabel = row.label;
+        selectedOccurrence = static_cast<size_t>(
+            std::count_if(snapshot.passRows.begin(),
+                          snapshot.passRows.begin() + static_cast<std::ptrdiff_t>(index),
+                          [&](const auto& candidate) { return candidate.label == row.label; }));
+    };
+    const auto passHelp = [](const PassTimingSummary& row) {
+        const std::string help =
+            std::format("{}\nRange {:.3f}-{:.3f} ms | {} / {} samples\nSelect for exact details "
+                        "and Copy pass ID.",
+                        row.label, row.minimumGpuMilliseconds, row.maximumGpuMilliseconds,
+                        row.sampleCount, PassTimingHistory::kSampleCapacity);
+        editorTooltip(help.c_str());
+    };
+    if (individualRows) {
+        const auto passSort = sort;
+        auto indices = sortedPassTimingIndices(snapshot.passRows, passSort, descending);
+        if (passSort == PassTimingSort::Schedule && descending)
+            std::reverse(indices.begin(), indices.end());
+        for (const auto index : indices) {
+            const auto& row = snapshot.passRows[index];
+            ImGui::PushID(static_cast<int>(index));
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            numericCell(static_cast<double>(index + 1), "%.0f");
+            ImGui::TableSetColumnIndex(1);
+            const char* label =
+                row.label.starts_with("lmx.pass.") ? row.label.c_str() + 9 : row.label.c_str();
+            if (ImGui::Selectable(label, selected == &row, ImGuiSelectableFlags_SpanAllColumns))
+                selectPass(index);
+            passHelp(row);
+            ImGui::TableSetColumnIndex(2);
+            numericCell(row.averageGpuMilliseconds);
+            ImGui::TableSetColumnIndex(3);
+            numericCell(row.latestGpuMilliseconds);
+            ImGui::TableSetColumnIndex(4);
+            numericCell(row.minimumGpuMilliseconds);
+            ImGui::TableSetColumnIndex(5);
+            numericCell(row.maximumGpuMilliseconds);
+            ImGui::TableSetColumnIndex(6);
+            numericCell(static_cast<double>(row.sampleCount), "%.0f");
+            ImGui::PopID();
+        }
+        ImGui::EndTable();
+        return selected;
+    }
+    const auto groups = groupPassStages(snapshot.passRows);
+    const auto stageSort = sort == PassTimingSort::Schedule ? StageTimingSort::Schedule
+                           : sort == PassTimingSort::Latest ? StageTimingSort::Latest
+                                                            : StageTimingSort::Average;
+    for (const size_t groupIndex : sortedStageTimingIndices(groups, stageSort, descending)) {
+        const auto& group = groups[groupIndex];
+        ImGui::PushID(group.stage.c_str());
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
-        const char* label =
-            row.label.starts_with("lmx.pass.") ? row.label.c_str() + 9 : row.label.c_str();
-        if (ImGui::Selectable(label, selected == &row, ImGuiSelectableFlags_SpanAllColumns)) {
-            selected = &row;
-            selectedLabel = row.label;
-            selectedOccurrence = static_cast<size_t>(
-                std::count_if(snapshot.passRows.begin(),
-                              snapshot.passRows.begin() + static_cast<std::ptrdiff_t>(index),
-                              [&](const auto& candidate) { return candidate.label == row.label; }));
-        }
-        const std::string help = std::format(
-            "{}\nRange {:.3f}-{:.3f} ms | {} / {} samples\nSelect for full details below.",
-            row.label, row.minimumGpuMilliseconds, row.maximumGpuMilliseconds, row.sampleCount,
-            PassTimingHistory::kSampleCapacity);
-        editorTooltip(help.c_str());
+        numericCell(group.firstSchedule + 1, "%.0f");
         ImGui::TableSetColumnIndex(1);
-        numericCell(row.averageGpuMilliseconds);
+        const bool hasMembers = group.members.size() > 1;
+        bool expanded = false;
+        if (hasMembers) {
+            expanded = ImGui::TreeNodeEx("##stage", ImGuiTreeNodeFlags_SpanAvailWidth, "%s (%zu)",
+                                         group.stage.c_str(), group.members.size());
+            editorTooltip("Summed Average and Latest costs. Expand for individual pass timings; # "
+                          "is the first pass in the schedule.");
+        } else {
+            const auto index = group.members.front();
+            if (ImGui::Selectable(group.stage.c_str(), selected == &snapshot.passRows[index],
+                                  ImGuiSelectableFlags_SpanAllColumns))
+                selectPass(index);
+            passHelp(snapshot.passRows[index]);
+        }
         ImGui::TableSetColumnIndex(2);
-        numericCell(row.latestGpuMilliseconds);
-        if (!compact) {
-            ImGui::TableSetColumnIndex(3);
-            numericCell(row.minimumGpuMilliseconds);
-            ImGui::TableSetColumnIndex(4);
-            numericCell(row.maximumGpuMilliseconds);
-            ImGui::TableSetColumnIndex(5);
-            numericCell(static_cast<double>(row.sampleCount), "%.0f");
+        numericCell(group.averageMs);
+        ImGui::TableSetColumnIndex(3);
+        numericCell(group.latestMs);
+        if (expanded) {
+            std::vector<PassTimingSummary> memberRows;
+            for (const auto index : group.members)
+                memberRows.push_back(snapshot.passRows[index]);
+            const auto memberSort = sort == PassTimingSort::Latest    ? PassTimingSort::Latest
+                                    : sort == PassTimingSort::Average ? PassTimingSort::Average
+                                                                      : PassTimingSort::Schedule;
+            auto members = sortedPassTimingIndices(memberRows, memberSort, descending);
+            if (sort == PassTimingSort::Schedule && descending)
+                std::reverse(members.begin(), members.end());
+            for (const auto member : members) {
+                const auto index = group.members[member];
+                const auto& row = snapshot.passRows[index];
+                ImGui::PushID(static_cast<int>(index));
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+                numericCell(static_cast<double>(index + 1), "%.0f");
+                ImGui::TableSetColumnIndex(1);
+                const char* label =
+                    row.label.starts_with("lmx.pass.") ? row.label.c_str() + 9 : row.label.c_str();
+                if (ImGui::Selectable(label, selected == &row, ImGuiSelectableFlags_SpanAllColumns))
+                    selectPass(index);
+                passHelp(row);
+                ImGui::TableSetColumnIndex(2);
+                numericCell(row.averageGpuMilliseconds);
+                ImGui::TableSetColumnIndex(3);
+                numericCell(row.latestGpuMilliseconds);
+                ImGui::PopID();
+            }
+            ImGui::TreePop();
         }
         ImGui::PopID();
     }
     ImGui::EndTable();
     return selected;
+}
+
+//======================================================================================================================
+void drawFreshness(const PerformanceModel& model) {
+    if (model.paused())
+        editor_style::message(model.snapshot().waitingForSamples ? "Frozen — empty" : "Frozen");
+    else if (model.snapshot().waitingForSamples)
+        editor_style::message("Waiting for retired GPU samples");
+    else if (model.stale())
+        editor_style::message("Stale — no new retired GPU sample for 1 s", true);
 }
 
 } // namespace
@@ -292,95 +380,188 @@ void drawPerformancePanel(bool& open, PerformanceModel& model, PerformancePanelS
         ImGui::End();
         return;
     }
-    static bool scheduleOrder = false;
-    const float contentRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-    if (ImGui::Button(model.paused() ? "Resume metrics" : "Freeze metrics")) {
-        model.setPaused(!model.paused());
+    if (!ImGui::BeginTabBar("PerformanceTabs")) {
+        ImGui::End();
+        return;
     }
-    editorTooltip("Freeze or resume this metrics snapshot, including the table and plot. Scene "
-                  "playback continues; resuming waits for fresh samples.");
-    const auto continueToolbar = [contentRight](float nextWidth) {
-        if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + nextWidth <=
-            contentRight) {
-            ImGui::SameLine();
-        }
-    };
-    continueToolbar(ImGui::CalcTextSize("Clear history").x + ImGui::GetStyle().FramePadding.x * 2);
-    if (ImGui::Button("Clear history")) {
-        model.clearHistory();
-    }
-    editorTooltip("Discard retained timing and frame interval history. A frozen snapshot stays "
-                  "empty until you resume metrics.");
-    continueToolbar(ImGui::CalcTextSize("Schedule order").x + ImGui::GetFrameHeight() +
-                    ImGui::GetStyle().ItemInnerSpacing.x);
-    ImGui::Checkbox("Schedule order", &scheduleOrder);
-    editorTooltip("Show declared pass schedule order. Turn off to use the numeric column sort; "
-                  "click a column header to change it.");
-    if (measurement != nullptr)
-        drawMeasurementSection(*measurement);
-    const PerformanceSnapshot& snapshot = model.snapshot();
-    ImGui::TextWrapped(
-        "%s | frame %llu | %.2f s | %zu / %zu samples | %.0f updates/s",
-        model.paused() ? (snapshot.waitingForSamples ? "Frozen - empty" : "Frozen") : "Live",
-        static_cast<unsigned long long>(snapshot.frameId), snapshot.publishedAtSeconds,
-        snapshot.passRows.empty() ? size_t{0} : snapshot.passRows.front().sampleCount,
-        PassTimingHistory::kSampleCapacity, 1.0f / PerformanceModel::kRepublishIntervalSeconds);
-    drawSummary(snapshot);
-    const ImVec2 available = ImGui::GetContentRegionAvail();
-    const bool wide = available.x >= editor_style::scaled(760.0f);
-    const float detailsRowHeight = ImGui::GetFrameHeightWithSpacing();
-    const float height = std::max(editor_style::scaled(48.0f),
-                                  available.y - detailsRowHeight - ImGui::GetStyle().ItemSpacing.y);
-    const float tableWidth = wide ? available.x * 0.65f : available.x;
-    const PassTimingSummary* selected = nullptr;
-    if (ImGui::BeginChild("Costs", ImVec2(tableWidth, height))) {
-        selected = drawPassTable(snapshot, height, scheduleOrder);
-    }
-    ImGui::EndChild();
-    if (wide) {
+    const bool showLive = ImGui::BeginTabItem("Live", nullptr,
+                                              state.requestLiveTab ? ImGuiTabItemFlags_SetSelected
+                                                                   : ImGuiTabItemFlags_None);
+    state.requestLiveTab = false;
+    if (showLive) {
+        static bool individualRows = false;
+        editor_style::beginHeaderRow();
+        if (editor_style::iconButton(
+                "FreezeMetrics", model.paused() ? EditorIcon::Unlock : EditorIcon::Lock, true,
+                model.paused() ? "Resume metrics; wait for fresh samples. Scene playback continues."
+                               : "Freeze the metrics snapshot, including both Performance "
+                                 "surfaces. Scene playback continues."))
+            model.setPaused(!model.paused());
         ImGui::SameLine();
-        if (ImGui::BeginChild("Intervals", ImVec2(0.0f, height))) {
-            drawIntervalPlot(snapshot);
+        if (editor_style::overflowMenu("MetricsMore")) {
+            if (ImGui::MenuItem("Clear history"))
+                model.clearHistory();
+            editorTooltip("Discard timing and interval history. A frozen snapshot stays empty "
+                          "until resumed.");
+            ImGui::Separator();
+            ImGui::MenuItem("Individual pass rows", nullptr, &individualRows);
+            editorTooltip("Show every pass separately, including sortable Min, Max and Samples. "
+                          "Turn off to group stages by their summed Average and Latest costs.");
+            ImGui::EndPopup();
+        }
+        editor_style::endHeaderRow();
+        const PerformanceSnapshot& snapshot = model.snapshot();
+        drawFreshness(model);
+        drawSummary(snapshot);
+        const ImVec2 available = ImGui::GetContentRegionAvail();
+        const bool wide = available.x >= editor_style::scaled(760.0f);
+        const float detailsRowHeight = ImGui::GetFrameHeightWithSpacing();
+        const float height =
+            std::max(editor_style::scaled(48.0f),
+                     available.y * 0.65f - detailsRowHeight - ImGui::GetStyle().ItemSpacing.y);
+        const float tableWidth = wide ? available.x * 0.65f : available.x;
+        const PassTimingSummary* selected = nullptr;
+        if (ImGui::BeginChild("Costs", ImVec2(tableWidth, height))) {
+            selected = drawPassTable(snapshot, height, individualRows);
         }
         ImGui::EndChild();
-    } else if (ImGui::CollapsingHeader("Frame interval history")) {
-        if (ImGui::BeginChild("Intervals", ImVec2(0.0f, editor_style::scaled(130.0f)))) {
-            drawIntervalPlot(snapshot);
-        }
-        ImGui::EndChild();
-    }
-    const char* detailsLabel = selected != nullptr
-                                   ? "Selected pass & metric details###MetricDetails"
-                                   : "Metric definitions & exact memory###MetricDetails";
-    if (ImGui::CollapsingHeader(detailsLabel)) {
-        if (selected != nullptr) {
-            ImGui::TextWrapped("%s", selected->label.c_str());
-            ImGui::TextWrapped("Range %.3f-%.3f ms | %zu / %zu samples",
-                               selected->minimumGpuMilliseconds, selected->maximumGpuMilliseconds,
-                               selected->sampleCount, PassTimingHistory::kSampleCapacity);
-            if (ImGui::SmallButton("Copy pass ID")) {
-                ImGui::SetClipboardText(selected->label.c_str());
+        if (wide) {
+            ImGui::SameLine();
+            if (ImGui::BeginChild("Intervals", ImVec2(0.0f, height))) {
+                drawIntervalPlot(snapshot);
             }
-            editorTooltip(
-                "Copy the full renderer pass label for logs, captures or the Render Graph.");
+            ImGui::EndChild();
+        } else if (ImGui::CollapsingHeader("Frame interval history")) {
+            if (ImGui::BeginChild("Intervals", ImVec2(0.0f, editor_style::scaled(130.0f)))) {
+                drawIntervalPlot(snapshot);
+            }
+            ImGui::EndChild();
         }
-        ImGui::TextWrapped(
-            "Timed pass sum averages the retained GPU pass samples; present, driver "
-            "and untimed work are outside this sum. Latest is the newest retired frame. "
-            "FPS uses the mean of the wall-clock interval history. Frame labels identify the "
-            "newest retirement; seconds identify snapshot publication since startup. "
-            "Freeze affects this panel only. Clear and Resume wait for new samples.");
-        if (!snapshot.waitingForSamples) {
+        const char* detailsLabel = selected != nullptr
+                                       ? "Selected pass & metric details###MetricDetails"
+                                       : "Metric definitions & exact memory###MetricDetails";
+        if (ImGui::CollapsingHeader(detailsLabel)) {
             ImGui::TextWrapped(
-                "Viewport: %u x %u pt. Transients: requested %llu B; high-water %llu B; "
-                "alias savings %llu B.",
-                snapshot.viewportLogicalWidth, snapshot.viewportLogicalHeight,
-                static_cast<unsigned long long>(snapshot.transientRequestedBytes),
-                static_cast<unsigned long long>(snapshot.transientHighWaterBytes),
-                static_cast<unsigned long long>(snapshot.transientAliasSavingsBytes));
+                "Frame %llu | published %.2f s | %zu / %zu samples | %.0f updates/s",
+                static_cast<unsigned long long>(snapshot.frameId), snapshot.publishedAtSeconds,
+                snapshot.passRows.empty() ? size_t{0} : snapshot.passRows.front().sampleCount,
+                PassTimingHistory::kSampleCapacity,
+                1.0f / PerformanceModel::kRepublishIntervalSeconds);
+            if (selected != nullptr) {
+                ImGui::TextWrapped("%s", selected->label.c_str());
+                ImGui::TextWrapped("Range %.3f-%.3f ms | %zu / %zu samples",
+                                   selected->minimumGpuMilliseconds,
+                                   selected->maximumGpuMilliseconds, selected->sampleCount,
+                                   PassTimingHistory::kSampleCapacity);
+                if (ImGui::SmallButton("Copy pass ID")) {
+                    ImGui::SetClipboardText(selected->label.c_str());
+                }
+                editorTooltip(
+                    "Copy the full renderer pass label for logs, captures or the Render Graph.");
+            }
+            if (!snapshot.waitingForSamples) {
+                ImGui::Text("CPU classify / prepare: %.3f / %.3f ms · declared frame %llu",
+                            snapshot.renderingTimings.classifyMilliseconds,
+                            snapshot.renderingTimings.prepareMilliseconds,
+                            static_cast<unsigned long long>(snapshot.frameId));
+                editorTooltip("CPU classification and list/argument preparation recorded when this "
+                              "retained frame was declared.");
+            }
+            const auto timingRow = [](const char* label,
+                                      const std::optional<PerformanceTimingReading>& reading) {
+                if (reading)
+                    ImGui::Text("%s: %.3f ms · frame %llu", label, reading->milliseconds,
+                                static_cast<unsigned long long>(reading->frameId));
+                else
+                    ImGui::Text("%s: N/A", label);
+            };
+            timingRow("Latest compatible GPU pass sum", snapshot.renderingTimings.compatibleGpu);
+            editorTooltip(
+                "Newest compatible retired sum at snapshot publication; distinct from the "
+                "rolling average above. Presentation, driver and untimed work are excluded.");
+            timingRow("Last observed controller input", snapshot.renderingTimings.controllerInput);
+            editorTooltip(
+                "Last timing offered while dynamic resolution was active, not necessarily applied. "
+                "The "
+                "controller may skip a sample during settling or for an obsolete scale; this value "
+                "remains when inactive. Freeze holds every reading.");
+            ImGui::TextWrapped(
+                "Timed pass sum averages the retained GPU pass samples; present, driver "
+                "and untimed work are outside this sum. Latest is the newest retired frame. "
+                "FPS uses the mean of the wall-clock interval history. Frame labels identify the "
+                "newest retirement; seconds identify snapshot publication since startup. "
+                "Freeze affects both Performance surfaces. Clear and Resume wait for new samples.");
+            if (!snapshot.waitingForSamples) {
+                ImGui::TextWrapped(
+                    "Viewport: %u x %u pt. Transients: requested %llu B; high-water %llu B; "
+                    "alias savings %llu B.",
+                    snapshot.viewportLogicalWidth, snapshot.viewportLogicalHeight,
+                    static_cast<unsigned long long>(snapshot.transientRequestedBytes),
+                    static_cast<unsigned long long>(snapshot.transientHighWaterBytes),
+                    static_cast<unsigned long long>(snapshot.transientAliasSavingsBytes));
+            }
+        }
+        ImGui::EndTabItem();
+    }
+    if (measurement && ImGui::BeginTabItem("Measure")) {
+        drawMeasurementSection(*measurement);
+        ImGui::EndTabItem();
+    }
+    ImGui::EndTabBar();
+    ImGui::End();
+}
+
+//======================================================================================================================
+bool drawPerformanceSummary(bool& open, const PerformanceModel& model) {
+    bool details = false;
+    ImGui::SetNextWindowSize(ImVec2(editor_style::scaled(480.0f), editor_style::scaled(220.0f)),
+                             ImGuiCond_FirstUseEver);
+    if (ImGui::Begin(kPerformanceSummaryWindowName, &open)) {
+        const auto& snapshot = model.snapshot();
+        editor_style::beginHeaderRow();
+        details = editor_style::iconButton("PerformanceDetails", EditorIcon::Details, true,
+                                           "Open Live details in the detached Performance window.");
+        ImGui::SameLine();
+        if (snapshot.frameIntervalsMs.empty())
+            ImGui::TextUnformatted("Frame —");
+        else
+            ImGui::Text("Frame %.2f ms", snapshot.latestFrameIntervalMs);
+        editorTooltip("Latest wall-clock frame interval; includes waiting and presentation.");
+        editor_style::nextInRow(ImGui::CalcTextSize("GPU 000.000 ms").x);
+        if (snapshot.waitingForSamples)
+            ImGui::TextUnformatted("GPU —");
+        else
+            ImGui::Text("GPU %.3f ms", snapshot.timedPassSumMilliseconds);
+        editorTooltip(
+            "Rolling average sum of timed GPU passes, excluding present, driver and untimed work.");
+        editor_style::endHeaderRow();
+        drawFreshness(model);
+        if (!snapshot.frameIntervalsMs.empty()) {
+            ImGui::PlotLines("##FrameIntervals", snapshot.frameIntervalsMs.data(),
+                             static_cast<int>(snapshot.frameIntervalsMs.size()), 0, nullptr, 0.0f,
+                             FLT_MAX, ImVec2(-FLT_MIN, editor_style::scaled(34.0f)));
+            editorTooltip("Wall-clock frame interval history (ms), oldest on the left; frozen with "
+                          "the readings.");
+        }
+        const auto groups = groupPassStages(snapshot.passRows);
+        const auto order = sortedStageTimingIndices(groups, StageTimingSort::Average);
+        if (ImGui::BeginTable("CostliestStages", 2, ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Stage", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("Average ms", ImGuiTableColumnFlags_WidthFixed,
+                                    editor_style::scaled(90.0f));
+            for (size_t i = 0; i < std::min(size_t{3}, order.size()); ++i) {
+                const auto& stage = groups[order[i]];
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(stage.stage.c_str());
+                ImGui::TableNextColumn();
+                numericCell(stage.averageMs);
+            }
+            ImGui::EndTable();
         }
     }
     ImGui::End();
+    return details;
 }
 
 } // namespace lmx::app

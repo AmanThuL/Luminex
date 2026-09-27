@@ -23,6 +23,9 @@ struct GraphLayoutOptions {
     /// Keys of the groups drawn as their member nodes. Every other group draws as one node. A key
     /// naming no group is ignored, which is what lets the set outlive a shape change.
     std::vector<std::string> expandedGroups;
+    /// Logical node keys from graphItemKey whose scene-import pins are expanded individually.
+    /// Other eligible nodes collapse two or more version-zero lmx.scene.* inputs into one pin.
+    std::vector<std::string> expandedPinBundles;
 };
 
 /// One stage of passes that a shared label prefix names, drawn as a single node while collapsed.
@@ -52,20 +55,23 @@ enum class GraphLayoutItemKind {
 
 /// One endpoint on an item, naming the exact resource version that flows through it.
 struct GraphLayoutPin {
-    uint32_t resource = 0;    ///< Index into GraphInspectorModel::resources.
+    uint32_t resource = 0; ///< Resource index, or UINT32_MAX for a bundle with no single resource.
     std::string resourceName; ///< The resource's name, copied for direct display.
     uint32_t version = 0;     ///< The version this pin carries.
     std::string shortLabel;   ///< Compact display text, `sceneColorHdr v1`.
-    std::string label;        ///< Full display text, `r3 "lmx.render.sceneColorHdr" v1`.
+    std::string label;        ///< Full display text, or all exact imported identities for a bundle.
+    /// Exact source pins represented by a collapsed scene-import bundle; empty for ordinary pins.
+    std::vector<GraphNodePin> bundledImports;
+    bool sceneImportsToggle = false; ///< Double-click toggles this node's import bundle.
 };
 
 /// One box on the canvas: a node the layout drew on its own, or a collapsed group standing in for
 /// several, with the pins it shows and the place it was put.
 ///
-/// A node item carries the node's own pins, unconnected imports included. A group item carries only
-/// the boundary pins its visible edges cross, so what a collapsed stage shows is exactly what
-/// enters and leaves it. `layer`, `rank`, `row`, and `column` describe the proved DAG; a culled
-/// item is not in that DAG and instead reports the band row and its ordinal along it.
+/// A node item carries its pins, with eligible scene imports bundled unless expanded. A group item
+/// carries only the boundary pins its visible edges cross, so what a collapsed stage shows is
+/// exactly what enters and leaves it. `layer`, `rank`, `row`, and `column` describe the proved DAG;
+/// a culled item is not in that DAG and instead reports the band row and its ordinal along it.
 ///
 /// A cell, never a pixel: a box is placed by the drawing code, which is the only side that can
 /// measure the text the box has to hold.
@@ -139,9 +145,9 @@ struct GraphLayout {
 /// deterministic; it simply cannot show a depth the collapse threw away.
 ///
 /// `signature` is the model's shape signature followed by the options that shaped it, so equal
-/// signatures mean the same picture. It changes when a group opens or the column count moves and
-/// never when a driver reports a different time, which is what lets a caller keep dragged positions
-/// across frames and know when it must not.
+/// signatures mean the same picture. It changes when a group or pin bundle opens or columns move
+/// and never when a driver reports a different time, which is what lets a caller keep dragged
+/// positions across frames and know when it must not.
 GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& options);
 
 /// Renders the compact pin text a node draws: the resource name's last dotted segment and its

@@ -58,6 +58,45 @@ TEST_CASE("Lighting reset is scoped to local-light settings", "[app][render-defa
     lmx::app::resetRenderingGroup(settings, lmx::app::EditorRenderGroup::Lighting);
     REQUIRE_FALSE(lmx::app::renderingGroupChanged(settings, lmx::app::EditorRenderGroup::Lighting));
     REQUIRE(settings.localLightMode == lmx::engine::LocalLightMode::Clustered);
+    REQUIRE_FALSE(settings.lightCheck);
+    REQUIRE(settings.lightDebugView == lmx::engine::LightDebugView::Missed);
     REQUIRE(settings.exposureEv == 3.0f);
     REQUIRE(settings.renderScale == 0.5f);
+}
+
+//======================================================================================================================
+TEST_CASE("scoped resets neither restore nor count debug views", "[app][render-defaults]") {
+    EditorRenderSettings settings;
+    settings.temporalDebugView = lmx::render::TemporalDebugView::RejectionMask;
+    settings.lightDebugView = lmx::engine::LightDebugView::Count;
+    CHECK_FALSE(renderingGroupChanged(settings, EditorRenderGroup::Reconstruction));
+    CHECK_FALSE(renderingGroupChanged(settings, EditorRenderGroup::Lighting));
+    settings.reconstruction = lmx::render::ReconstructionMode::Raw;
+    settings.localLightMode = lmx::engine::LocalLightMode::Direct;
+    resetRenderingGroup(settings, EditorRenderGroup::Reconstruction);
+    resetRenderingGroup(settings, EditorRenderGroup::Lighting);
+    CHECK(settings.temporalDebugView == lmx::render::TemporalDebugView::RejectionMask);
+    CHECK(settings.lightDebugView == lmx::engine::LightDebugView::Count);
+    // The restored defaults keep both active views valid: Native TAA and Clustered.
+    CHECK(settings.temporalEnabled);
+    CHECK(settings.reconstruction == lmx::render::ReconstructionMode::NativeTaa);
+    CHECK(settings.localLightMode == lmx::engine::LocalLightMode::Clustered);
+}
+
+//======================================================================================================================
+TEST_CASE("each Rendering topic maps to its documented reset scope", "[app][render-defaults]") {
+    CHECK(renderingTopicResetGroup(RenderingCategory::Reconstruction) ==
+          EditorRenderGroup::Reconstruction);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Resolution) == EditorRenderGroup::Resolution);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Lighting) == EditorRenderGroup::Lighting);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Exposure) == EditorRenderGroup::Exposure);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Bloom) == EditorRenderGroup::Bloom);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Shadows) == EditorRenderGroup::Shadows);
+    CHECK(renderingTopicResetGroup(RenderingCategory::Display) == EditorRenderGroup::Display);
+    for (const auto topic : {RenderingCategory::Overview, RenderingCategory::Visibility,
+                             RenderingCategory::Occlusion, RenderingCategory::Submission,
+                             RenderingCategory::SceneTables, RenderingCategory::Count}) {
+        CAPTURE(static_cast<int>(topic));
+        CHECK_FALSE(renderingTopicResetGroup(topic).has_value());
+    }
 }

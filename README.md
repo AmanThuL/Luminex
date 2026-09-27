@@ -47,11 +47,11 @@ xmake
 xmake run App
 ```
 
-Setup downloads pinned dependencies, the Inter font and sample assets. The editor opens maximized
+Setup downloads pinned dependencies, Inter and Codicons fonts, and sample assets. The editor opens maximized
 on Sponza. Hold the right mouse button in the viewport and use WASD + Q/E to fly.
 
 Use **File → Open Scene** to switch scenes and **Window → Render Graph** for the detached graph.
-The top-right **− / percentage / +** controls adjust UI scale; click the percentage to reset it.
+Use **View → UI Scale** or Cmd+- / Cmd++ to adjust UI scale; click the menu-row percentage or press Cmd+0 to reset it.
 Layout and scale are saved automatically.
 
 ## Repository layout

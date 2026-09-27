@@ -29,16 +29,15 @@ void drawCameraSection(const InspectorPanelContext& context) {
                          camera.pitch != initial.pitch || camera.fovY != initial.fovY ||
                          camera.nearZ != initial.nearZ || camera.farZ != initial.farZ ||
                          camera.moveSpeed != initial.moveSpeed;
-    if (ImGui::Button("Reset Camera")) {
+    if (drawInspectorHeader("Editor Camera", "Camera",
+                            "Restore this scene's initial camera pose, lens and fly speed, stop "
+                            "following its camera track, and reset temporal history.",
+                            changed)) {
         camera = initial;
         context.settings.followCameraTrack = false;
         requestCameraCut(context.temporalState);
     }
-    editorTooltip("Restore this scene's initial camera, stop following its camera track, and reset "
-                  "temporal history on the next frame.");
-    ImGui::SameLine();
-    editor_style::message(changed ? "Changed from scene default" : "Scene default");
-    if (editor_style::beginFields("cameraFields")) {
+    if (editor_style::beginPropertyGrid("cameraFields")) {
         editor_style::vector3("Position (world)", "cameraPosition", &camera.position.x, 0.05f);
 
         // Camera stores radians; present degrees.
@@ -76,7 +75,7 @@ void drawCameraSection(const InspectorPanelContext& context) {
         ImGui::DragFloat("##flySpeed", &camera.moveSpeed, 0.1f, 0.5f, 50.0f, "%.2f",
                          ImGuiSliderFlags_AlwaysClamp);
 
-        ImGui::EndTable();
+        editor_style::endFields();
     }
 }
 

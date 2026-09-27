@@ -5,6 +5,9 @@
 
 #include "App/Shell/EditorShell.h"
 
+#include "App/Model/Capture/EditorShortcuts.h"
+#include "App/Model/Scene/SelectionBounds.h"
+
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <imgui.h>
@@ -16,7 +19,65 @@ namespace {
 // Tuned so a roughly screen-wide drag turns the camera 180 degrees.
 constexpr float kLookRadiansPerPixel = 0.0025f;
 
+//======================================================================================================================
+// Keyboard events reach Dear ImGui from every platform window, so a detached tool window's own
+// keys (the node editor's F, for instance) must not also drive the viewport's commands. Only the
+// Render Graph and Performance windows never merge; an undocked editor panel still owns them.
+bool detachedSurfaceFocused() {
+    for (const ImGuiViewport* viewport : ImGui::GetPlatformIO().Viewports) {
+        if ((viewport->Flags & ImGuiViewportFlags_IsFocused) &&
+            (viewport->Flags & ImGuiViewportFlags_NoAutoMerge))
+            return true;
+    }
+    return false;
+}
+
 } // namespace
+
+//======================================================================================================================
+void EditorShell::resetCamera() {
+    m_session.camera() = engine::cameraFromScene(m_session.scene().initialCamera);
+    m_settings.followCameraTrack = false;
+    requestCameraCut(m_temporalState);
+}
+
+//======================================================================================================================
+void EditorShell::frameSelected(const render::Renderer& renderer) {
+    const auto bounds = selectedObjectBounds(m_session.scene(), m_selection);
+    if (bounds && frameSelection(m_session.camera(), *bounds,
+                                 static_cast<float>(renderer.width()) / renderer.height())) {
+        m_settings.followCameraTrack = false;
+        requestCameraCut(m_temporalState);
+    }
+}
+
+//======================================================================================================================
+void EditorShell::updateEditorShortcuts(const render::Renderer& renderer) {
+    const auto& io = ImGui::GetIO();
+    if (io.AppFocusLost || io.KeyCtrl || io.KeySuper || io.KeyAlt)
+        return;
+    const ShortcutContext context{
+        .textInput = io.WantTextInput || ImGui::IsAnyItemActive(),
+        .cameraLook = m_looking || ImGui::IsMouseDown(ImGuiMouseButton_Right),
+        .popupOpen =
+            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel),
+        .otherSurfaceFocused = detachedSurfaceFocused(),
+        .hasSelection = selectedObjectBounds(m_session.scene(), m_selection).has_value()};
+    if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_F, false) &&
+        shortcutAllowed(EditorShortcut::FrameSelected, context))
+        frameSelected(renderer);
+    if (!m_measurement.active() && ImGui::IsKeyPressed(ImGuiKey_Home, false) &&
+        shortcutAllowed(EditorShortcut::ResetCamera, context))
+        resetCamera();
+    if (ImGui::IsKeyPressed(ImGuiKey_C, false) &&
+        shortcutAllowed(EditorShortcut::Capture, context)) {
+        // An unavailable request only records its unchanged recovery explanation; forget the last
+        // posted result so the notice returns even after the user dismissed it.
+        if (!m_actions.captureAvailable())
+            m_lastCaptureNotice = {};
+        m_actions.requestCapture();
+    }
+}
 
 //======================================================================================================================
 void EditorShell::updateCameraInput(float deltaSeconds) {
@@ -29,7 +90,8 @@ void EditorShell::updateCameraInput(float deltaSeconds) {
     float relativeY = 0.0f;
     SDL_GetRelativeMouseState(&relativeX, &relativeY);
 
-    if (ImGui::GetIO().WantTextInput) {
+    if (ImGui::GetIO().WantTextInput ||
+        ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
         endMouseLook();
         return;
     }

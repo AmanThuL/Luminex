@@ -46,9 +46,9 @@ bool shouldResetExposure(const ExposureResetContext& previous, const ExposureRes
 
 /// Applies an auto-exposure enable/disable edit: writes `enabled` into `settings`, then folds the
 /// transition through `shouldResetExposure` and records the result in `exposureContext`, setting
-/// `exposureResetPending` true on the disabled->enabled edge. The Inspector's Rendering section and
-/// the Viewport toolbar's quick toggle both call this rather than each re-deriving spec 9's
-/// auto-exposure trigger, so a future change to the rule cannot drift between the two controls.
+/// `exposureResetPending` true on the disabled->enabled edge. The Rendering panel's Exposure
+/// control and its topic reset both call this rather than each re-deriving spec 9's auto-exposure
+/// trigger, so a future change to the rule cannot drift between the two controls.
 void setAutoExposureEnabled(EditorRenderSettings& settings, ExposureResetContext& exposureContext,
                             bool& exposureResetPending, bool enabled);
 

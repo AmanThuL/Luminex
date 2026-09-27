@@ -67,10 +67,6 @@ TemporalPresentation temporalPresentation(const TemporalEditorState& state,
 std::string_view reconstructionName(render::ReconstructionMode mode,
                                     const rojoRHI::TemporalScalerSupport& support);
 
-/// Restricts native accumulation diagnostics only when the effective reconstruction is vendor.
-render::TemporalDebugView clampTemporalDebugView(render::TemporalDebugView view,
-                                                 render::ReconstructionMode effectiveMode);
-
 /// Marks that the camera teleported this frame (the Inspector's "Camera cut" button). One-shot:
 /// `consumeCameraCut` reports it exactly once.
 void requestCameraCut(TemporalEditorState& state);

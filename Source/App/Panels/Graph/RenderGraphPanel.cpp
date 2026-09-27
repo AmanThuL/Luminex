@@ -6,12 +6,12 @@
 #include "App/Panels/Graph/RenderGraphPanel.h"
 
 #include "App/Panels/Graph/RenderGraphPanelInternal.h"
-#include "App/Panels/Shared/ActionFeedback.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
 
 #include <algorithm>
+#include <format>
 
 namespace lmx::app {
 namespace {
@@ -71,12 +71,11 @@ void releaseRenderGraphPanelState(RenderGraphPanelState& state) {
     state.selectedKey.clear();
     state.selectionNotice.clear();
     state.dumpPending.reset();
-    state.dumpResult = {};
 }
 
 //======================================================================================================================
 void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
-                          const FrameRecordRing& frameRecords) {
+                          const FrameRecordRing& frameRecords, NoticeQueue& notices) {
     // A class of its own, refusing unclassed dock targets and overriding the viewport into
     // NoAutoMerge: together those keep this panel out of the main dockspace and out of the main
     // OS window, so an open Render Graph always has its own window to be large in. Clearing
@@ -123,7 +122,8 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
     }
 
     if (state.dumpPending) {
-        state.dumpResult = graph_panel::dumpFrame(*state.dumpPending, state.dumpPending->frameId);
+        notices.post(graph_panel::dumpFrame(*state.dumpPending, state.dumpPending->frameId),
+                     ImGui::GetTime());
         state.dumpPending.reset();
     }
     state.snapshot.update(ImGui::GetTime(), frameRecords.newestTimedFrame());
@@ -136,74 +136,78 @@ void drawRenderGraphPanel(bool& open, RenderGraphPanelState& state,
         return;
     }
 
-    if (ImGui::Button(state.snapshot.frozen() ? "Resume graph" : "Freeze graph")) {
-        if (state.snapshot.frozen()) {
+    editor_style::beginHeaderRow();
+    const bool frozen = state.snapshot.frozen();
+    const std::string freezeHelp = std::format(
+        "{}\nFrame {}. Exact-frame timings, published at 4 Hz. Freeze does not pause the scene. "
+        "Pooling {}. Memory totals are in Details.",
+        frozen ? "Resume graph: publish the newest retired frame."
+               : "Freeze this frame and its exact GPU timings. Scene playback continues.",
+        newest->record.frameId, newest->record.debug.poolingEnabled ? "on" : "off");
+    if (editor_style::iconButton("GraphFreeze", frozen ? EditorIcon::Unlock : EditorIcon::Lock,
+                                 true, freezeHelp.c_str())) {
+        if (frozen)
             state.snapshot.resume();
-        } else {
+        else
             state.snapshot.freeze();
-        }
         state.snapshot.update(ImGui::GetTime(), frameRecords.newestTimedFrame());
         newest = state.snapshot.displayed();
     }
-    editorTooltip("Freeze the displayed compiled frame and its matching GPU timings. "
-                  "Resume publishes the newest retired frame immediately; scene playback and "
-                  "metrics continue.");
     if (!newest) {
+        editor_style::endHeaderRow();
         ImGui::TextUnformatted("Waiting for a retired frame.");
         ImGui::End();
         return;
     }
     ImGui::SameLine();
-    ImGui::Text("%s | frame %llu", state.snapshot.frozen() ? "Frozen" : "Live | 4 Hz",
-                static_cast<unsigned long long>(newest->record.frameId));
-    ImGui::TextDisabled("Exact-frame timings | freeze does not pause the scene.");
-    const GraphNodeModel model = buildGraphNodeModel(newest->record, newest->timings);
-    if (ImGui::Button("Fit graph")) {
+    if (editor_style::iconButton("FitGraph", EditorIcon::FitGraph, true,
+                                 "Fit all visible graph cards, including culled passes."))
         state.navigation = 1;
-    }
-    editorTooltip("Fit every visible graph card into the canvas, including culled passes.");
     ImGui::SameLine();
-    ImGui::BeginDisabled(!state.selectedItem);
-    if (ImGui::Button("Fit selection")) {
+    if (editor_style::iconButton("FitSelection", EditorIcon::FitSelection,
+                                 state.selectedItem.has_value(),
+                                 "Center and fit the selected card. Select a node or stage first."))
         state.navigation = 2;
-    }
-    editorTooltip("Center and fit the selected card. Select a node or stage first.");
-    ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("100%")) {
+    if (ImGui::Button("1:1"))
         state.navigation = 3;
-    }
-    editorTooltip(
-        "Restore one canvas unit per logical screen point while keeping the view center.");
+    editorTooltip("Restore one canvas unit per logical screen point, keeping the view center.");
     ImGui::SameLine();
-    const bool resetLayout = ImGui::Button("Reset layout");
-    editorTooltip("Re-measure and arrange cards, replacing positions you dragged. "
-                  "Group expansion and the column setting are preserved.");
-    if (ImGui::Button("Dump frame")) {
-        state.dumpPending = newest->record;
-        state.dumpResult = {ActionStatus::Pending, "Writing the displayed frame...", ""};
+    bool resetLayout = false;
+    const GraphNodeModel model = buildGraphNodeModel(newest->record, newest->timings);
+    if (editor_style::overflowMenu("GraphMore")) {
+        if (ImGui::MenuItem("Reset layout"))
+            resetLayout = true;
+        editorTooltip("Arrange cards again, replacing dragged positions. Expansion and columns are "
+                      "preserved.");
+        ImGui::SetNextItemWidth(kColumnsControlWidth * ImGui::GetStyle().FontScaleMain);
+        ImGui::InputInt("Columns", &state.columnsEdit);
+        if (ImGui::IsItemDeactivatedAfterEdit()) {
+            state.columnsEdit = std::clamp(state.columnsEdit, kMinColumns, kMaxColumns);
+            state.layoutOptions.columnsPerRow = static_cast<uint32_t>(state.columnsEdit);
+        }
+        editorTooltip(
+            "Maximum columns per row. Zero keeps one long row. Applied when editing finishes.");
+        if (ImGui::MenuItem("Dump frame")) {
+            state.dumpPending = newest->record;
+            notices.post({ActionStatus::Pending, "Writing the displayed frame...", ""},
+                         ImGui::GetTime());
+        }
+        editorTooltip("Write this displayed compiled frame beside the app binary. Frozen and live "
+                      "export the shown frame.");
+        ImGui::EndPopup();
     }
-    editorTooltip("Write this displayed compiled frame to a text file beside the app binary. "
-                  "Live and Frozen both export the shown frame, not a later retirement.");
-    ImGui::SameLine();
-    ImGui::SetNextItemWidth(kColumnsControlWidth * ImGui::GetStyle().FontScaleMain);
-    ImGui::InputInt("Columns", &state.columnsEdit);
-    if (ImGui::IsItemDeactivatedAfterEdit()) {
-        state.columnsEdit = std::clamp(state.columnsEdit, kMinColumns, kMaxColumns);
-        state.layoutOptions.columnsPerRow = static_cast<uint32_t>(state.columnsEdit);
+    if (state.snapshot.frozen() || state.snapshot.stale(ImGui::GetTime())) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s | frame %llu", state.snapshot.frozen() ? "Frozen" : "Stale",
+                            static_cast<unsigned long long>(newest->record.frameId));
+        editorTooltip(state.snapshot.frozen()
+                          ? "The displayed frame stays fixed until Resume."
+                          : "No newer retired frame has arrived for at least one second.");
     }
-    editorTooltip("Maximum layout columns before wrapping to another row. Zero keeps one long row. "
-                  "The layout changes when the edit is finished.");
-    ImGui::SameLine();
-    ImGui::TextDisabled("0 = no wrap");
-    drawActionFeedback("graph-dump", state.dumpResult);
-    if (!state.selectionNotice.empty()) {
+    editor_style::endHeaderRow();
+    if (!state.selectionNotice.empty())
         ImGui::TextWrapped("%s", state.selectionNotice.c_str());
-    }
-    ImGui::TextWrapped("Pooling %s | transient high-water %.2f MiB | timings: %s",
-                       model.poolingEnabled ? "on" : "off",
-                       static_cast<double>(model.memory.highWater) / (1024.0 * 1024.0),
-                       newest->timed ? "latest, matched to this frame" : "N/A");
     ImGui::Separator();
 
     graph_panel::ensureCanvas(state);

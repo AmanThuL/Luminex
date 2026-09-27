@@ -48,6 +48,14 @@ std::string consoleVisibleText(const ConsoleSnapshot& snapshot, const ConsoleFil
 }
 
 //======================================================================================================================
+ConsoleSeverityCounts consoleSeverityCounts(const ConsoleSnapshot& snapshot) {
+    ConsoleSeverityCounts counts{};
+    for (const auto& entry : snapshot.entries)
+        ++counts[static_cast<size_t>(entry.severity)];
+    return counts;
+}
+
+//======================================================================================================================
 ConsoleModel::ConsoleModel(std::shared_ptr<ConsoleLog> log) : m_log(std::move(log)) {
     LMX_ASSERT(m_log != nullptr, "ConsoleModel requires a log store");
     refresh();
@@ -66,6 +74,21 @@ void ConsoleModel::refresh() {
 void ConsoleModel::setFrozen(bool frozen) {
     m_frozen = frozen;
     refresh();
+}
+
+//======================================================================================================================
+void ConsoleModel::setScrolledToEnd(bool atEnd) {
+    setFrozen(!atEnd);
+}
+
+//======================================================================================================================
+uint64_t ConsoleModel::newSinceFreeze() const {
+    return m_frozen ? m_log->nextSequence() - m_snapshot.nextSequence : 0;
+}
+
+//======================================================================================================================
+void ConsoleModel::resumeAtEnd() {
+    setScrolledToEnd(true);
 }
 
 //======================================================================================================================

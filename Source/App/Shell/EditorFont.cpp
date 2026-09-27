@@ -15,7 +15,7 @@
 namespace lmx::app {
 
 //======================================================================================================================
-void configureEditorFont() {
+bool configureEditorFont() {
     constexpr float kReferenceSize = 16.0f;
     // The variable file's default outlines are Regular. ImGui scales these advances with the
     // requested size; no font-file modification or OpenType shaping is required for stable digits.
@@ -49,10 +49,27 @@ void configureEditorFont() {
         LMX_LOG_WARN("Editor font unavailable at '{}'; using embedded fallback. Run xmake setup "
                      "and rebuild App to restore Inter.",
                      fontPath.string());
-        return;
+        return false;
     }
     io.FontDefault = face;
     LMX_LOG_INFO("Editor font: Inter Regular, {} logical points, tabular digits", kReferenceSize);
+    const auto iconPath = std::filesystem::path(basePath) / "Fonts/codicon.ttf";
+    static constexpr ImWchar kIcons[] = {0xEA60, 0xEC40, 0};
+    // Exclusions also constrain the dynamic atlas, which does not use legacy glyph ranges.
+    static constexpr ImWchar kExceptIcons[] = {1, 0xEA5F, 0xEC41, IM_UNICODE_CODEPOINT_MAX, 0};
+    ImFontConfig icons;
+    icons.Flags = ImFontFlags_NoLoadError;
+    icons.MergeMode = true;
+    icons.GlyphMinAdvanceX = kReferenceSize;
+    icons.GlyphExcludeRanges = kExceptIcons;
+    if (io.Fonts->AddFontFromFileTTF(iconPath.c_str(), kReferenceSize, &icons, kIcons) == nullptr) {
+        LMX_LOG_WARN("Editor icons unavailable at '{}'; using text labels. Run xmake setup "
+                     "and rebuild App to restore Codicons.",
+                     iconPath.string());
+        return false;
+    }
+    LMX_LOG_INFO("Editor icons: Codicons, {} logical points", kReferenceSize);
+    return true;
 }
 
 } // namespace lmx::app

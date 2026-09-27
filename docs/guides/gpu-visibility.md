@@ -16,9 +16,9 @@ xmake run App --scene visibility-lab --classify gpu --submission batched --class
 ```
 
 The editor opens maximized to usable display bounds. Omit `--windowed` for fullscreen-windowed
-visual validation. Expand Rendering in Hierarchy: Visibility selects classifier/culling, Occlusion
-keeps HZB controls and readings together, and Submission selects draws beside work/cost counters.
-The compact summary shows kept/culled counts, its declared/retired frame and enabled check result.
+visual validation. Open Window > Rendering: Visibility selects classifier/culling, Occlusion keeps
+HZB controls/readings together, and Submission selects draws beside work counters. Details opens
+Performance for timings; Diagnostics holds frame IDs, capacities and memory. Visible readings keep counts and check results.
 Hierarchy dims frustum-rejected and occluded objects; visible, bypassed and pending names stay normal.
 Names have no status prefixes. Selected rows use normal text for contrast; hover and Inspector retain reasons.
 Each topic exposes its detailed fields in compact label/value rows; hover controls for explanations.
@@ -67,7 +67,7 @@ submission. The displayed frame label names that original frame. Full generation
 and world bounds are retained from declaration; removing an object and reusing its row cannot
 attach the old result to its replacement. A scene switch clears incompatible display context.
 A matching timing may be unavailable if the RHI's latest retired publication skipped that frame;
-Inspector reports that absence rather than showing another frame's duration.
+Performance metric details report unavailable compatible timings as N/A.
 
 Each view has candidates, visible, rejected, four bypass counts, emitted rows/commands and
 row/command overflow counts. Candidates equal visible + rejected + bypassed. Emitted rows plus
@@ -83,7 +83,7 @@ declaration's row span, including rejected GPU slots. Argument payload includes 
 
 Production allocations cover all candidates. Fixture overrides exercise drop-and-count behavior:
 no write crosses a physical capacity; a missing command drops its rows too; missing state entries
-are never read by emit. Overflow appears in Inspector/Console, fails a capture sequence and
+are never read by emit. Overflow appears in Rendering/Console, fails a capture sequence and
 invalidates scored measurement. Check mode reports state, valid-row, argument and counter mismatch
 counts against the declaration's CPU oracle. It is unscored and does not silently change thresholds.
 
@@ -136,8 +136,8 @@ The default stays off. `--lab-occluders` defaults to zero and only accepts Visib
 counts append deterministic slabs with gaps and masked coverage. Existing workloads keep their
 original geometry when it is zero. `--hzb-level` requires occlusion, selects a nearest-expanded
 raw reversed-depth view, and clamps to the available last level at the current output extent.
-White is near and black far; low reversed depth naturally looks dark. Inspector offers the actual
-available levels. Diagnostic views and ID checks require unscored measurement.
+White is near and black far; low reversed depth naturally looks dark. View > Debug View and the
+viewport HZB legend stepper offer the available levels. Diagnostic views and ID checks require unscored measurement.
 
 Each frame builds a half-resolution R32Float minimum pyramid after scene depth. Odd active
 extents use ceil coverage; padded allocation depends only on output extent. Each level is a
@@ -184,7 +184,7 @@ a rail. Temporal reconstruction must be enabled and measurements must be unscore
 these environment values and actual frame extents. This scripted step exercises source-extent
 handling; it is not a dynamic-resolution controller performance result.
 
-Inspector Visibility, Occlusion and Submission readings refresh together every 250 ms, matching
-Performance and Render Graph. Each publication owns one frame's counters and exact joined GPU
-times; these are sampled latest values, not rolling averages. Object lookup, renderer checks and
+Rendering Visibility, Occlusion and Submission readings refresh together every 250 ms, matching
+Performance and Render Graph. Each counter publication owns one frame; Performance presents rolling
+pass costs, while Render Graph shows exact joined GPU times for its displayed frame. Object lookup, renderer checks and
 measurement collection still run at their original rate, and failure warnings use the latest result.

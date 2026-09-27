@@ -19,6 +19,8 @@ namespace lmx::app {
 /// Editor measurements captured when a frame is declared, before GPU retirement. These values
 /// belong to that frame even when a later resize, scene switch or mode change has already occurred.
 struct FrameMetricsMetadata {
+    double classifyMilliseconds = 0.0; ///< CPU classification measured during this declaration.
+    double prepareMilliseconds = 0.0;  ///< CPU list/argument preparation during this declaration.
     uint64_t contextEpoch = 0;         ///< App revision separating incompatible scene/mode samples.
     uint32_t objectCount = 0;          ///< Scene object count submitted for this frame.
     uint32_t drawCount = 0;            ///< Draw items submitted for this frame.

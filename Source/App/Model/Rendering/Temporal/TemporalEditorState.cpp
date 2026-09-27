@@ -24,15 +24,6 @@ std::string_view reconstructionName(render::ReconstructionMode mode,
 }
 
 //======================================================================================================================
-render::TemporalDebugView clampTemporalDebugView(render::TemporalDebugView view,
-                                                 render::ReconstructionMode effectiveMode) {
-    return effectiveMode == render::ReconstructionMode::VendorTemporal &&
-                   render::nativeOnlyTemporalView(view)
-               ? render::TemporalDebugView::Off
-               : view;
-}
-
-//======================================================================================================================
 void observeDeclaredTemporal(TemporalEditorState& state, const EditorRenderSettings& settings,
                              const render::TemporalStatus& status, uint64_t frameId) {
     const bool changed = state.declaredFrameId == 0 ||

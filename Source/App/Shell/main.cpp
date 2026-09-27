@@ -209,13 +209,6 @@ int run(SDL_Window* window, void* metalLayer, const lmx::app::AppOptions& option
                     running = false;
                 }
                 break;
-            case SDL_EVENT_KEY_DOWN:
-                // Do not capture from key repeats or keyboard input owned by ImGui.
-                if (event.key.key == SDLK_C && !event.key.repeat &&
-                    !ImGui::GetIO().WantCaptureKeyboard) {
-                    shell->actions().requestCapture();
-                }
-                break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 // The same id filter, and here it is load-bearing today: resizing the detached
                 // Render Graph window would otherwise resize the one swapchain the main window

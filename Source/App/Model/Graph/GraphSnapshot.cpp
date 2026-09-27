@@ -9,6 +9,10 @@ namespace lmx::app {
 
 //======================================================================================================================
 void GraphSnapshot::update(double nowSeconds, const RetainedFrame* newest) {
+    if (!m_frozen && newest && m_lastObservedFrame != newest->record.frameId) {
+        m_lastObservedFrame = newest->record.frameId;
+        m_lastArrivalSeconds = nowSeconds;
+    }
     if (m_frozen || newest == nullptr || (m_frame && nowSeconds < m_nextPublishSeconds)) {
         return;
     }
@@ -29,11 +33,18 @@ void GraphSnapshot::resume() {
     m_frozen = false;
     m_frame.reset();
     m_nextPublishSeconds = 0.0;
+    m_lastObservedFrame.reset();
+    m_lastArrivalSeconds = 0.0;
 }
 
 //======================================================================================================================
 const RetainedFrame* GraphSnapshot::displayed() const {
     return m_frame ? &*m_frame : nullptr;
+}
+
+//======================================================================================================================
+bool GraphSnapshot::stale(double nowSeconds) const {
+    return !m_frozen && m_frame && m_lastObservedFrame && nowSeconds >= m_lastArrivalSeconds + 1.0;
 }
 
 } // namespace lmx::app

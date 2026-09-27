@@ -34,6 +34,8 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
         sample->frameId > m_lastAcceptedFrameId) {
         scheduleChanged = m_passTimingHistory.addFrame(sample->frameId, sample->timings);
         m_lastAcceptedFrameId = sample->frameId;
+        m_sampledAtSeconds = m_elapsedSeconds;
+        m_renderingTimings = sample->renderingTimings;
         m_objectCount = sample->objectCount;
         m_drawCount = sample->drawCount;
         m_viewportLogicalWidth = sample->viewportLogicalWidth;
@@ -58,6 +60,12 @@ void PerformanceModel::tick(float deltaSeconds, const PerformanceFrameSample* sa
         rebuildLiveSnapshot();
         m_republishAccumulator = 0.0f;
     }
+}
+
+//======================================================================================================================
+bool PerformanceModel::stale() const {
+    return m_paused || snapshot().waitingForSamples ||
+           m_elapsedSeconds - snapshot().sampledAtSeconds >= 1.0;
 }
 
 //======================================================================================================================
@@ -91,6 +99,8 @@ void PerformanceModel::clearHistory() {
     m_frameIntervalMsHistory.clear();
     m_passTimingHistory = PassTimingHistory{};
     m_lastAcceptedFrameId = m_lastSeenFrameId;
+    m_renderingTimings = {};
+    m_sampledAtSeconds = 0.0;
     m_objectCount = 0;
     m_drawCount = 0;
     m_viewportLogicalWidth = 0;
@@ -115,6 +125,7 @@ void PerformanceModel::clearHistory() {
 //======================================================================================================================
 void PerformanceModel::rebuildLiveSnapshot() {
     PerformanceSnapshot snapshot;
+    snapshot.renderingTimings = m_renderingTimings;
     snapshot.frameIntervalsMs = m_frameIntervalMsHistory;
     snapshot.latestFrameIntervalMs =
         m_frameIntervalMsHistory.empty() ? 0.0f : m_frameIntervalMsHistory.back();
@@ -137,6 +148,7 @@ void PerformanceModel::rebuildLiveSnapshot() {
 
     snapshot.frameId = snapshot.passRows.empty() ? 0 : m_lastAcceptedFrameId;
     snapshot.publishedAtSeconds = m_elapsedSeconds;
+    snapshot.sampledAtSeconds = m_sampledAtSeconds;
     snapshot.renderPixelWidth = m_renderPixelWidth;
     snapshot.renderPixelHeight = m_renderPixelHeight;
     snapshot.objectCount = m_objectCount;

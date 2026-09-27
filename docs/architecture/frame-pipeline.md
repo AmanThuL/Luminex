@@ -16,9 +16,9 @@ Independent direct ID/depth checks copy into paced readback and join by frame an
 
 `App/Model/Scene/SceneSession` owns shared playback, views and motion; `prepareFrame` updates the retired scene-table slot after `beginFrame`.
 `Render/Graph/FrameDeclaration` rotates the pool, declares/executes passes and returns App's retained record. Editor adds UI/present then platform windows; headless exports display and waits per frame.
-Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; top-toolbar Scene Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
+Screenshots start at zero and sequences sample frame/60 with warmup. Editor loads Stopped; menu-row Play/Step advances fixed steps after drawable acquisition, Pause stops advancement.
 First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Stop or scene switch restores them and resets motion/temporal/exposure. Rendering settings and unrelated edits remain outside this shared-scene preview restoration.
-Toolbar Measure Play runs deterministic W/N with Pause disabled and opens/focuses detached Performance once; closing it leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](../guides/gpu-debugging.md#editor-playback).
+Performance > Measure > Start runs deterministic W/N; the menu-row transport shows progress with only Stop enabled. Closing Performance leaves the run active. Stop/completion restores preview state, retains results and does not reopen it. CLI scheduling is unchanged; see [playback](../guides/gpu-debugging.md#editor-playback).
 
 Below is the *default* frame — manual exposure, bloom on, temporal on with `NativeTaa` (`SceneView::temporal.enabled == true`, `reconstruction == NativeTaa`, the default since M6.2), at
 `renderScale == 1.0` (below 1.0 the scene pass's render area shrinks; see Resources and lifetime). Auto-exposure, bloom, and temporal are ordinary
@@ -134,8 +134,7 @@ texel. The adapter passes negative render extents as motion scales, texel jitter
 and `preExposure=1`; bloom/display retain pre-exposed output. Vendor history is independent of
 engine slots: entry, engine reset or recreation resets the vendor, while switching modes leaves
 engine history valid. Unsupported or failed creation falls back to Native TAA with explicit status.
-`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation. Inspector
-separately retains the last reset event and live retired-frame timing, independent of panel freeze.
+`TemporalStatus` reports effective mode, fallback, vendor name, reset and generation. Rendering retains the last reset event; Performance metric details show compatible retired-frame timing and the last observed controller input. Temporal state continues independently of metric freeze.
 
 Motion/reprojection diagnostics stay engine-owned; ReprojectedHistory adds the vendor reprojection/exposure subset without accumulation. Rejection, blend-weight and per-pixel age are
 native-only. Vendor frames record `ExternalWrite` for current colour, `ExternalRead` for depth/scene
@@ -204,10 +203,10 @@ selected-only full-resolution unjittered depth/coverage retains a non-rejected o
 The composite depth-tests both border source and destination against scene visibility, avoiding
 false edges from foreground cuts and expansion onto foreground surfaces. A separate SDR target
 holds the soft border and display for UI sampling. Its GPU costs remain visible in the compiled record and timing observations.
-It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture paths do not declare the passes; the Viewport toggle controls the editor cue.
+It writes neither scene targets nor temporal histories. Ordinary Renderer and offscreen capture paths do not declare the passes; View > Selection Outline controls the editor cue.
 
-Console alone occupies the bottom dock; Performance/Graph are detached, initially closed. Workspace schema 3 restores visibility/bounds; schema 2 migrates to default topology and preserves valid UI scale.
-Window > Performance toggles normally; Show measurement opens/focuses Measure anytime. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
+Console shares the bottom dock with Performance summary; Rendering tabs beside Inspector. Detailed Performance/Graph are detached, initially closed. Schema 4 restores eight visibilities/scale and bounds; schema 3 migration preserves its six visibilities, scale and detached bounds while rebuilding main docks once.
+Window > Performance toggles the detailed window; summary Details opens/focuses Live, and its Measure tab owns runs. ImGui vertex/index uploads stay in per-slot used lists until the next paced visit, so native windows cannot overwrite main-frame GPU reads. Log ingestion remains independent of GPU/panel freeze; see the [guide](../guides/gpu-debugging.md).
 
 Neutral interfaces/capture schema live in `RojoRHI/Include/rojoRHI/`, shared implementation in `RojoRHI/Source/`,
 and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImGui` contains UI dependencies.
@@ -220,7 +219,7 @@ and the backend in `RojoRHI/Backends/Metal4/Source/`; optional `RojoRHIMetal4ImG
 - **Scene tables.** Three `cpuWrite` slots per kind; changes mark all slots dirty, but only the retired slot uploads.
   Static scenes converge to zero writes. Mesh rows initialize once; growing tables retain old buffers until the last
   prepared frame + 3. Stable handles survive reorder and reject stale/foreign identities; new instances seed previous
-  pose, promoted by `commitFrame`. `Buffer::write` validates permission/source/range. Inspector reports capacities,
+  pose, promoted by `commitFrame`. `Buffer::write` validates permission/source/range. Rendering > Scene tables > Diagnostics reports capacities,
   bytes and writes; Scene tables and submission lists are CPU-written graph imports without GPU-write barriers.
 - **RHI resources join one residency set** attached to the queue; MetalFX manages its own private resources.
 - **Renderer-owned targets**: scene color (`RGBA16Float`, scene-linear, cpu-readable on request),
@@ -272,7 +271,7 @@ File > Open Scene and `--scene` share eight IDs: **Sponza** (`sponza`, default, 
 courtyard with a 12-second rail), and **VisibilityLab** (`visibility-lab`, seeded cube/icosphere grid,
 four materials and a 12-second rail), plus **LightLab** (`light-lab`, point/spot grid and 12-second rail).
 `--lab-instances` accepts 1..1,048,576 only for VisibilityLab (default 4,096, including boundary probes).
-`--lab-lights` defaults to 256 (1..4096); `--lab-light-pile` defaults to 0 and their sum is at most 4096, both LightLab-only. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on. Explicit off retains disabled identities/rows; Hierarchy checkboxes preserve per-light edits. Only enabled lights count toward rendering participation.
+`--lab-lights` defaults to 256 (1..4096); `--lab-light-pile` defaults to 0 and their sum is at most 4096, both LightLab-only. Sponza authors 16 static lights; its `--local-light-rig on|off` defaults on. Explicit off retains disabled identities/rows; the Inspector's enable checkbox preserves per-light edits. Only enabled lights count toward rendering participation.
 San Miguel requires `xmake setup --san-miguel`; the procedural labs are always available. MaterialLab uses the fetched CC0 Studio Small 09 HDRI for sky/IBL, logging a neutral fallback
 otherwise. Other scenes retain the shared neutral cubemap/IBL. Missing glTF assets disable catalog
 entries with setup guidance; unavailable explicit CLI scenes fail rather than falling back.

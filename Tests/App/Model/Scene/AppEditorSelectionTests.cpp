@@ -4,6 +4,7 @@
 #include "Engine/Scene/Scene.h"
 #include "Scenes/SceneLibrary.h"
 
+#include <algorithm>
 #include <array>
 #include <optional>
 #include <string>
@@ -30,24 +31,25 @@ engine::Scene sceneWithObjects(std::vector<std::string> objectNames) {
 const scenes::SceneId kSceneA{0};
 const scenes::SceneId kSceneB{1};
 constexpr size_t kRenderingCategoryCount = static_cast<size_t>(RenderingCategory::Count);
-constexpr size_t kFirstLightRow = 1 + kRenderingCategoryCount;
+template <typename T>
+constexpr bool hasRenderingSubject = requires { T::Rendering; };
+constexpr size_t kFirstLightRow = 0;
 constexpr size_t kFirstObjectRow = kFirstLightRow + 3;
 
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("resolveSelection keeps a selection whose scene and index are still valid", "[app]") {
+TEST_CASE("resolveSelection keeps a selection whose scene and index are still valid",
+          "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
 
     const EditorSelection none{.sceneId = kSceneA, .subject = EditorSubject::None, .index = 0};
     const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
-    const EditorSelection rendering{
-        .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = 0};
     const EditorSelection light2{
         .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 2};
     const EditorSelection object1{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 1};
 
-    for (const EditorSelection& selection : {none, camera, rendering, light2, object1}) {
+    for (const EditorSelection& selection : {none, camera, light2, object1}) {
         const EditorSelection resolved = resolveSelection(selection, kSceneA, scene);
         REQUIRE(resolved.subject == selection.subject);
         REQUIRE(resolved.index == selection.index);
@@ -56,7 +58,8 @@ TEST_CASE("resolveSelection keeps a selection whose scene and index are still va
 }
 
 //======================================================================================================================
-TEST_CASE("resolveSelection heals a stale scene id to None on the active scene", "[app]") {
+TEST_CASE("resolveSelection heals a stale scene id to None on the active scene",
+          "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate"});
     const EditorSelection stale{.sceneId = kSceneB, .subject = EditorSubject::Object, .index = 0};
 
@@ -68,7 +71,7 @@ TEST_CASE("resolveSelection heals a stale scene id to None on the active scene",
 }
 
 //======================================================================================================================
-TEST_CASE("resolveSelection heals an out-of-range light index to None", "[app]") {
+TEST_CASE("resolveSelection heals an out-of-range light index to None", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({});
     const EditorSelection outOfRange{
         .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 3};
@@ -80,7 +83,7 @@ TEST_CASE("resolveSelection heals an out-of-range light index to None", "[app]")
 }
 
 //======================================================================================================================
-TEST_CASE("resolveSelection heals an out-of-range object index to None", "[app]") {
+TEST_CASE("resolveSelection heals an out-of-range object index to None", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate"});
     const EditorSelection outOfRange{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 1};
@@ -92,7 +95,7 @@ TEST_CASE("resolveSelection heals an out-of-range object index to None", "[app]"
 }
 
 //======================================================================================================================
-TEST_CASE("startup selects the scene's Camera", "[app]") {
+TEST_CASE("startup selects the scene's Camera", "[app][selection]") {
     const EditorSelection selection = initialSelection(kSceneA);
 
     REQUIRE(selection.subject == EditorSubject::Camera);
@@ -102,7 +105,7 @@ TEST_CASE("startup selects the scene's Camera", "[app]") {
 
 //======================================================================================================================
 TEST_CASE("a successful scene switch selects the new scene's Camera and clears the filter",
-          "[app]") {
+          "[app][selection]") {
     const EditorSelection previous{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
     const std::string previousFilter = "crate";
@@ -116,7 +119,7 @@ TEST_CASE("a successful scene switch selects the new scene's Camera and clears t
 }
 
 //======================================================================================================================
-TEST_CASE("a failed scene switch retains selection and filter exactly", "[app]") {
+TEST_CASE("a failed scene switch retains selection and filter exactly", "[app][selection]") {
     const EditorSelection previous{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
     const std::string previousFilter = "crate";
@@ -134,7 +137,7 @@ TEST_CASE("a failed scene switch retains selection and filter exactly", "[app]")
 // Reselecting the scene that is already active must not reset the workspace: a combo box that
 // fires on re-clicking the active row is safe to wire directly to this function without a caller
 // guard, exactly because it is a documented no-op here.
-TEST_CASE("selecting the already-active scene changes nothing", "[app]") {
+TEST_CASE("selecting the already-active scene changes nothing", "[app][selection]") {
     const EditorSelection previous{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
     const std::string previousFilter = "crate";
@@ -151,7 +154,7 @@ TEST_CASE("selecting the already-active scene changes nothing", "[app]") {
 //======================================================================================================================
 // A -> B -> A must not resurrect scene A's old object selection: each successful switch starts
 // fresh at Camera, so nothing stale can survive a round trip.
-TEST_CASE("repeated switching never restores a stale prior-scene selection", "[app]") {
+TEST_CASE("repeated switching never restores a stale prior-scene selection", "[app][selection]") {
     const EditorSelection start{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 4};
 
     const SceneSwitchOutcome toB = sceneSwitchOutcome(true, kSceneA, kSceneB, start, "filter");
@@ -165,18 +168,16 @@ TEST_CASE("repeated switching never restores a stale prior-scene selection", "[a
 }
 
 //======================================================================================================================
-TEST_CASE("scene selection rows follow the spec's fixed group and item order", "[app]") {
+TEST_CASE("scene selection rows follow the spec's fixed group and item order", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
 
     REQUIRE(rows.size() == kFirstObjectRow + 2);
-    REQUIRE(rows[0].subject == EditorSubject::Camera);
-    REQUIRE(rows[0].displayLabel == "Editor Camera");
-    REQUIRE(rows[0].group == EditorSelectionGroup::Workspace);
-    REQUIRE(rows[1].subject == EditorSubject::Rendering);
-    REQUIRE(rows[1].displayLabel == "Rendering");
-    REQUIRE(rows[1].group == EditorSelectionGroup::Workspace);
+    REQUIRE(std::all_of(rows.begin(), rows.end(), [](const auto& row) {
+        return row.subject == EditorSubject::DirectionalLight ||
+               row.subject == EditorSubject::LocalLight || row.subject == EditorSubject::Object;
+    }));
 
     for (size_t i = 0; i < 3; ++i) {
         const EditorSelectionRow& row = rows[kFirstLightRow + i];
@@ -195,82 +196,88 @@ TEST_CASE("scene selection rows follow the spec's fixed group and item order", "
 }
 
 //======================================================================================================================
-TEST_CASE("rendering topics have stable category identities and independent labels", "[app]") {
+TEST_CASE("local-light rows sit between directional lights and objects and filter by label",
+          "[app][selection]") {
+    auto scene = sceneWithObjects({"Crate", "Barrel"});
+    const auto point = scene.addLight(engine::LocalLight{});
+    engine::LocalLight spotLight;
+    spotLight.type = engine::LocalLightType::Spot;
+    spotLight.innerCone = 0.2f;
+    spotLight.outerCone = 0.4f;
+    const auto spot = scene.addLight(spotLight);
+    REQUIRE(point);
+    REQUIRE(spot);
+
+    const auto rows = buildSceneSelectionRows(scene, "");
+    REQUIRE(rows.size() == kFirstObjectRow + 2 + 2);
+    for (size_t i = 0; i < 3; ++i)
+        REQUIRE(rows[kFirstLightRow + i].subject == EditorSubject::DirectionalLight);
+    REQUIRE(rows[3].subject == EditorSubject::LocalLight);
+    REQUIRE(rows[3].group == EditorSelectionGroup::LocalLights);
+    REQUIRE(rows[3].lightId == *point);
+    REQUIRE(rows[4].subject == EditorSubject::LocalLight);
+    REQUIRE(rows[4].lightId == *spot);
+    REQUIRE(rows[5].subject == EditorSubject::Object);
+    REQUIRE(rows[5].displayLabel == "Crate");
+    REQUIRE(rows[6].subject == EditorSubject::Object);
+    REQUIRE(rows[6].displayLabel == "Barrel");
+
+    const std::string spotLabel = sceneLocalLightLabel(scene, *spot);
+    const auto filtered = buildSceneSelectionRows(scene, spotLabel);
+    REQUIRE(filtered.size() == 1);
+    REQUIRE(filtered.front().subject == EditorSubject::LocalLight);
+    REQUIRE(filtered.front().lightId == *spot);
+    REQUIRE(filtered.front().displayLabel == spotLabel);
+}
+
+//======================================================================================================================
+TEST_CASE("rendering topics have stable category identities and independent labels",
+          "[app][selection]") {
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "rendering");
     constexpr std::array<std::string_view, kRenderingCategoryCount> labels{
         "Rendering", "Reconstruction", "Resolution", "Visibility", "Occlusion", "Submission",
         "Lighting",  "Exposure",       "Bloom",      "Shadows",    "Display",   "Scene tables"};
-    REQUIRE(rows.size() == labels.size());
+    REQUIRE(rows.empty());
     for (size_t i = 0; i < labels.size(); ++i) {
         CAPTURE(i);
-        REQUIRE(rows[i].subject == EditorSubject::Rendering);
-        REQUIRE(rows[i].index == i);
-        REQUIRE(rows[i].displayLabel == labels[i]);
         REQUIRE(renderingCategoryLabel(static_cast<RenderingCategory>(i)) == labels[i]);
-        const EditorSelection selected{
-            .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = i};
-        REQUIRE(resolveSelection(selected, kSceneA, scene).index == i);
-        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, labels[i]));
-        REQUIRE_FALSE(selectionHiddenByFilter(scene, selected, "rEnDeR"));
     }
     REQUIRE(renderingCategoryLabel(RenderingCategory::Count) == "Unavailable");
 }
 
 //======================================================================================================================
-TEST_CASE("rendering category searches do not invent selectable parent matches", "[app]") {
+TEST_CASE("rendering category searches do not invent selectable parent matches",
+          "[app][selection]") {
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "oCcLuS");
-    REQUIRE(rows.size() == 1);
-    REQUIRE(rows.front().subject == EditorSubject::Rendering);
-    REQUIRE(rows.front().index == static_cast<size_t>(RenderingCategory::Occlusion));
-    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
-    const EditorSelection occlusion{.sceneId = kSceneA,
-                                    .subject = EditorSubject::Rendering,
-                                    .index = static_cast<size_t>(RenderingCategory::Occlusion)};
-    REQUIRE(selectionHiddenByFilter(scene, overview, "occlus"));
-    REQUIRE_FALSE(selectionHiddenByFilter(scene, occlusion, "occlus"));
-    REQUIRE(selectionHiddenByFilter(scene, occlusion, "bloom"));
-    REQUIRE(nextVisibleRow(rows, overview)->index == occlusion.index);
-    REQUIRE(previousVisibleRow(rows, occlusion)->index == occlusion.index);
-    REQUIRE(buildSceneSelectionRows(scene, "scene tables").size() == 1);
+    REQUIRE(rows.empty());
+    const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera};
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, camera, "occlus"));
+    REQUIRE_FALSE(nextVisibleRow(rows, camera));
+    REQUIRE_FALSE(previousVisibleRow(rows, camera));
+    REQUIRE(buildSceneSelectionRows(scene, "scene tables").empty());
 }
 
 //======================================================================================================================
-TEST_CASE("rendering navigation follows expanded topics and skips collapsed descendants", "[app]") {
+TEST_CASE("camera navigation enters only visible scene subjects", "[app][selection]") {
     const auto scene = sceneWithObjects({});
     const auto rows = buildSceneSelectionRows(scene, "");
-    const EditorSelection overview{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
-    const EditorSelection firstTopic{.sceneId = kSceneA,
-                                     .subject = EditorSubject::Rendering,
-                                     .index =
-                                         static_cast<size_t>(RenderingCategory::Reconstruction)};
-    const EditorSelection lastTopic{.sceneId = kSceneA,
-                                    .subject = EditorSubject::Rendering,
-                                    .index = static_cast<size_t>(RenderingCategory::SceneTables)};
-    REQUIRE(nextVisibleRow(rows, overview)->index == firstTopic.index);
-    REQUIRE(previousVisibleRow(rows, firstTopic)->index == 0);
-    REQUIRE(previousVisibleRow(rows, firstTopic)->subject == EditorSubject::Rendering);
-    REQUIRE(nextVisibleRow(rows, lastTopic)->subject == EditorSubject::DirectionalLight);
-    const std::vector<EditorSelectionRow> collapsed{rows[0], rows[1], rows[kFirstLightRow]};
-    REQUIRE(nextVisibleRow(collapsed, overview)->subject == EditorSubject::DirectionalLight);
-    REQUIRE(previousVisibleRow(collapsed, overview)->subject == EditorSubject::Camera);
-    REQUIRE(nextVisibleRow(collapsed, firstTopic)->subject == EditorSubject::Camera);
-    REQUIRE(resolveSelection(firstTopic, kSceneA, scene).index == firstTopic.index);
+    const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera};
+    REQUIRE(nextVisibleRow(rows, camera)->subject == EditorSubject::DirectionalLight);
+    REQUIRE(previousVisibleRow(rows, camera)->subject == EditorSubject::DirectionalLight);
+    const std::vector<EditorSelectionRow> collapsed{rows[2]};
+    REQUIRE(nextVisibleRow(collapsed, camera)->index == 2);
+    REQUIRE(previousVisibleRow(collapsed, camera)->index == 2);
 }
 
 //======================================================================================================================
-TEST_CASE("rendering category validation and scene switches preserve selection policy", "[app]") {
+TEST_CASE("camera scene switches preserve selection policy", "[app][selection]") {
     const auto scene = sceneWithObjects({});
-    const EditorSelection invalid{
-        .sceneId = kSceneA, .subject = EditorSubject::Rendering, .index = kRenderingCategoryCount};
-    REQUIRE(resolveSelection(invalid, kSceneA, scene).subject == EditorSubject::None);
-    const EditorSelection selected{.sceneId = kSceneA,
-                                   .subject = EditorSubject::Rendering,
-                                   .index = static_cast<size_t>(RenderingCategory::Occlusion)};
+    const EditorSelection selected{.sceneId = kSceneA, .subject = EditorSubject::Camera};
     const auto failed = sceneSwitchOutcome(false, kSceneA, kSceneB, selected, "Occlusion");
     REQUIRE(failed.selection.index == selected.index);
-    REQUIRE(failed.selection.subject == EditorSubject::Rendering);
+    REQUIRE(failed.selection.subject == EditorSubject::Camera);
     REQUIRE(failed.filter == "Occlusion");
     const auto same = sceneSwitchOutcome(true, kSceneA, kSceneA, selected, "Occlusion");
     REQUIRE(same.selection.index == selected.index);
@@ -284,7 +291,7 @@ TEST_CASE("rendering category validation and scene switches preserve selection p
 
 //======================================================================================================================
 // Two objects sharing a display name still occupy distinct rows: index, not text, is identity.
-TEST_CASE("duplicate object display names keep distinct row identity", "[app]") {
+TEST_CASE("duplicate object display names keep distinct row identity", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate", "Crate"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "crate");
@@ -297,16 +304,16 @@ TEST_CASE("duplicate object display names keep distinct row identity", "[app]") 
 }
 
 //======================================================================================================================
-TEST_CASE("the scene filter matches display names case-insensitively", "[app]") {
+TEST_CASE("the scene filter matches display names case-insensitively", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate"});
 
-    REQUIRE(buildSceneSelectionRows(scene, "CAM").size() == 1);
-    REQUIRE(buildSceneSelectionRows(scene, "cam").size() == 1);
+    REQUIRE(buildSceneSelectionRows(scene, "CAM").empty());
+    REQUIRE(buildSceneSelectionRows(scene, "cam").empty());
     REQUIRE(buildSceneSelectionRows(scene, "CrAtE").size() == 1);
 }
 
 //======================================================================================================================
-TEST_CASE("a filter matching nothing returns an empty row list", "[app]") {
+TEST_CASE("a filter matching nothing returns an empty row list", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate"});
 
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "nonexistent");
@@ -317,7 +324,8 @@ TEST_CASE("a filter matching nothing returns an empty row list", "[app]") {
 //======================================================================================================================
 // The filter only changes visibility: a filtered-out selection is still resolvable, and clearing
 // the filter reveals its row again at the same identity.
-TEST_CASE("a filtered-out selection is retained and revealed when the filter clears", "[app]") {
+TEST_CASE("a filtered-out selection is retained and revealed when the filter clears",
+          "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
     const EditorSelection selection{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
@@ -345,29 +353,33 @@ TEST_CASE("a filtered-out selection is retained and revealed when the filter cle
 }
 
 //======================================================================================================================
-TEST_CASE("nextVisibleRow and previousVisibleRow walk visible rows in order", "[app]") {
+TEST_CASE("nextVisibleRow and previousVisibleRow walk visible rows in order", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate"});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
     const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
 
     const std::optional<EditorSelectionRow> afterNext = nextVisibleRow(rows, camera);
     REQUIRE(afterNext.has_value());
-    REQUIRE(afterNext->subject == EditorSubject::Rendering);
+    REQUIRE(afterNext->subject == EditorSubject::DirectionalLight);
+    REQUIRE(afterNext->index == 0);
 
     const std::optional<EditorSelectionRow> afterPrevious = previousVisibleRow(rows, camera);
     REQUIRE(afterPrevious.has_value());
-    REQUIRE(afterPrevious->subject == EditorSubject::Camera);
+    REQUIRE(afterPrevious->subject == EditorSubject::DirectionalLight);
+    REQUIRE(afterPrevious->index == 0);
 }
 
 //======================================================================================================================
-TEST_CASE("visible-row navigation clamps at the first and last row", "[app]") {
+TEST_CASE("visible-row navigation clamps at the first and last row", "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "");
-    const EditorSelection first{.sceneId = kSceneA, .subject = EditorSubject::Camera, .index = 0};
+    const EditorSelection first{
+        .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 0};
     const EditorSelection last{
         .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 2};
 
-    REQUIRE(previousVisibleRow(rows, first)->subject == EditorSubject::Camera);
+    REQUIRE(previousVisibleRow(rows, first)->subject == EditorSubject::DirectionalLight);
+    REQUIRE(previousVisibleRow(rows, first)->index == 0);
     REQUIRE(nextVisibleRow(rows, last)->subject == EditorSubject::DirectionalLight);
     REQUIRE(nextVisibleRow(rows, last)->index == 2);
 }
@@ -375,7 +387,8 @@ TEST_CASE("visible-row navigation clamps at the first and last row", "[app]") {
 //======================================================================================================================
 // A retained selection that the filter hid is not "found": both directions restart at the first
 // visible row, matching the panel's documented policy rather than guessing a lost position.
-TEST_CASE("navigation from a filtered-out selection starts at the first visible row", "[app]") {
+TEST_CASE("navigation from a filtered-out selection starts at the first visible row",
+          "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"Crate", "Barrel"});
     const std::vector<EditorSelectionRow> rows = buildSceneSelectionRows(scene, "barrel");
     const EditorSelection filteredOut{
@@ -393,7 +406,7 @@ TEST_CASE("navigation from a filtered-out selection starts at the first visible 
 }
 
 //======================================================================================================================
-TEST_CASE("navigation over an empty row list finds nothing", "[app]") {
+TEST_CASE("navigation over an empty row list finds nothing", "[app][selection]") {
     const std::vector<EditorSelectionRow> empty;
     const EditorSelection selection{.sceneId = kSceneA, .subject = EditorSubject::None, .index = 0};
 
@@ -402,7 +415,8 @@ TEST_CASE("navigation over an empty row list finds nothing", "[app]") {
 }
 
 //======================================================================================================================
-TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local identity", "[app]") {
+TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local identity",
+          "[app][selection]") {
     const engine::Scene scene = sceneWithObjects({"", "Arch", "Arch"});
     const auto rows = buildSceneSelectionRows(scene, "");
     REQUIRE(rows[kFirstObjectRow].displayLabel == "Unnamed object [0]");
@@ -418,7 +432,8 @@ TEST_CASE("unnamed subjects and filtered selection keep explicit scene-local ide
 }
 
 //======================================================================================================================
-TEST_CASE("primitive qualifiers are compact but full source names remain searchable", "[app]") {
+TEST_CASE("primitive qualifiers are compact but full source names remain searchable",
+          "[app][selection]") {
     engine::Scene scene = sceneWithObjects({"Sponza / arch", "Sponza / leaf", "Courtyard / arch"});
     scene.objects[0].sourceName = "Sponza";
     scene.objects[0].materialQualifier = "arch";
@@ -443,7 +458,7 @@ TEST_CASE("primitive qualifiers are compact but full source names remain searcha
 
 //======================================================================================================================
 TEST_CASE("source hierarchy preserves distinct primitive identities and filtered parent groups",
-          "[app]") {
+          "[app][selection]") {
     engine::Scene scene =
         sceneWithObjects({"Hall / arch", "Courtyard / stone", "Hall / leaf", "Lamp"});
     scene.objects[0].sourceName = "Hall";
@@ -472,20 +487,23 @@ TEST_CASE("source hierarchy preserves distinct primitive identities and filtered
 }
 
 //======================================================================================================================
-TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses", "[app]") {
+TEST_CASE("hierarchy navigation uses drawn leaves after a source group collapses",
+          "[app][selection]") {
     const auto scene = sceneWithObjects({"Arch", "Leaf", "Lamp"});
     const auto all = buildSceneSelectionRows(scene, "");
     // The panel submits only leaves whose ancestors are expanded; closing the first source group
     // removes Arch and Leaf from navigation without changing the selected scene-local identity.
     const std::vector<EditorSelectionRow> drawn{all[0], all[1], all[kFirstObjectRow + 2]};
-    const EditorSelection rendering{.sceneId = kSceneA, .subject = EditorSubject::Rendering};
-    REQUIRE(nextVisibleRow(drawn, rendering)->index == 2);
-    REQUIRE(nextVisibleRow(drawn, rendering)->subject == EditorSubject::Object);
+    const EditorSelection light{
+        .sceneId = kSceneA, .subject = EditorSubject::DirectionalLight, .index = 1};
+    REQUIRE(nextVisibleRow(drawn, light)->index == 2);
+    REQUIRE(nextVisibleRow(drawn, light)->subject == EditorSubject::Object);
     const EditorSelection lamp{.sceneId = kSceneA, .subject = EditorSubject::Object, .index = 2};
-    REQUIRE(previousVisibleRow(drawn, lamp)->subject == EditorSubject::Rendering);
+    REQUIRE(previousVisibleRow(drawn, lamp)->subject == EditorSubject::DirectionalLight);
+    REQUIRE(previousVisibleRow(drawn, lamp)->index == 1);
     const EditorSelection collapsed{
         .sceneId = kSceneA, .subject = EditorSubject::Object, .index = 0};
-    REQUIRE(nextVisibleRow(drawn, collapsed)->subject == EditorSubject::Camera);
+    REQUIRE(nextVisibleRow(drawn, collapsed)->subject == EditorSubject::DirectionalLight);
     REQUIRE(collapsed.index == 0);
 }
 
@@ -507,4 +525,68 @@ TEST_CASE("Local light selections retain full identity through slot reuse", "[ap
     REQUIRE(scene.addLight(lmx::engine::LocalLight{}));
     REQUIRE(lmx::app::resolveSelection(selected, sceneId, scene).subject ==
             lmx::app::EditorSubject::None);
+}
+
+//======================================================================================================================
+TEST_CASE("hierarchy counts include disabled local lights and count only scene subjects",
+          "[app][selection]") {
+    auto scene = sceneWithObjects({"Crate", "Camera", "Rendering"});
+    engine::LocalLight disabled;
+    disabled.enabled = false;
+    REQUIRE(scene.addLight(disabled));
+    REQUIRE(scene.addLight(engine::LocalLight{}));
+    const size_t total =
+        std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
+    REQUIRE(total == 8);
+    REQUIRE(hierarchyTotal(scene) == buildSceneSelectionRows(scene, "").size());
+    for (const auto filter : {"", "light", "POINT", "crate", "CAM", "rendering", "missing"}) {
+        CAPTURE(filter);
+        const auto count = hierarchyCount(scene, filter);
+        REQUIRE(count.total == total);
+        REQUIRE(count.total == buildSceneSelectionRows(scene, "").size());
+        REQUIRE(count.shown == buildSceneSelectionRows(scene, filter).size());
+        REQUIRE(count.shown <= count.total);
+    }
+    const EditorSelection camera{.sceneId = kSceneA, .subject = EditorSubject::Camera};
+    REQUIRE_FALSE(selectionHiddenByFilter(scene, camera, "crate"));
+}
+
+//======================================================================================================================
+TEST_CASE("catalog LightLab and Sponza hierarchy counts include every local light",
+          "[gpu][selection]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    scenes::SceneLibrary library(**device);
+    for (const auto name : {"light-lab", "sponza"}) {
+        CAPTURE(name);
+        const auto id = scenes::parseSceneId(name);
+        REQUIRE(id);
+        REQUIRE(library.entry(*id).available);
+        const auto loaded = library.get(*id);
+        REQUIRE(loaded);
+        const auto& scene = **loaded;
+        const auto rows = buildSceneSelectionRows(scene, "");
+        const size_t total =
+            std::size(scene.lights) + scene.localLights().size() + scene.objects.size();
+        REQUIRE_FALSE(scene.localLights().empty());
+        REQUIRE(rows.size() == total);
+        REQUIRE(static_cast<size_t>(std::count_if(rows.begin(), rows.end(), [](const auto& row) {
+                    return row.subject == EditorSubject::LocalLight;
+                })) == scene.localLights().size());
+        for (const auto filter : {"", "light", "POINT", "spot", "Sponza", "sphere", "missing"}) {
+            CAPTURE(filter);
+            const auto count = hierarchyCount(scene, filter);
+            REQUIRE(count.total == total);
+            REQUIRE(count.total == rows.size());
+            REQUIRE(count.shown == buildSceneSelectionRows(scene, filter).size());
+            REQUIRE(count.shown <= count.total);
+        }
+    }
+    (*device)->waitIdle();
+}
+
+//======================================================================================================================
+TEST_CASE("rendering panel is outside the selection subject model",
+          "[app][selection][ux2-rendering]") {
+    REQUIRE_FALSE(hasRenderingSubject<EditorSubject>);
 }

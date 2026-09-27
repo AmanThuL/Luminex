@@ -171,7 +171,8 @@
         "Source/App/Panels/Shared/ActionFeedback.h",
         "Source/App/Panels/Shared/EditorStyle.h",
         "Source/App/Headless/Measurement.h",
-        "Source/App/Panels/Inspector/InspectorInternal.h"
+        "Source/App/Panels/Inspector/InspectorInternal.h",
+        "Source/App/Panels/Rendering/RenderingInternal.h"
       ]
     },
     "tests": {

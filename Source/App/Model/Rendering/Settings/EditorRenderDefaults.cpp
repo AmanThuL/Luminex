@@ -13,7 +13,6 @@ void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group
     switch (group) {
     case EditorRenderGroup::Lighting:
         settings.localLightMode = defaults.localLightMode;
-        settings.lightDebugView = defaults.lightDebugView;
         settings.lightCheck = defaults.lightCheck;
         break;
     case EditorRenderGroup::Exposure:
@@ -40,7 +39,6 @@ void resetRenderingGroup(EditorRenderSettings& settings, EditorRenderGroup group
         settings.temporalEnabled = defaults.temporalEnabled;
         settings.jitterEnabled = defaults.jitterEnabled;
         settings.reconstruction = defaults.reconstruction;
-        settings.temporalDebugView = defaults.temporalDebugView;
         break;
     case EditorRenderGroup::Resolution:
         settings.renderScale = defaults.renderScale;
@@ -60,7 +58,6 @@ bool renderingGroupChanged(const EditorRenderSettings& settings, EditorRenderGro
     switch (group) {
     case EditorRenderGroup::Lighting:
         return settings.localLightMode != defaults.localLightMode ||
-               settings.lightDebugView != defaults.lightDebugView ||
                settings.lightCheck != defaults.lightCheck;
     case EditorRenderGroup::Exposure:
         return settings.exposureEv != defaults.exposureEv ||
@@ -82,8 +79,7 @@ bool renderingGroupChanged(const EditorRenderSettings& settings, EditorRenderGro
     case EditorRenderGroup::Reconstruction:
         return settings.temporalEnabled != defaults.temporalEnabled ||
                settings.jitterEnabled != defaults.jitterEnabled ||
-               settings.reconstruction != defaults.reconstruction ||
-               settings.temporalDebugView != defaults.temporalDebugView;
+               settings.reconstruction != defaults.reconstruction;
     case EditorRenderGroup::Resolution:
         return settings.renderScale != defaults.renderScale ||
                settings.dynamicResolutionEnabled != defaults.dynamicResolutionEnabled ||
@@ -93,6 +89,34 @@ bool renderingGroupChanged(const EditorRenderSettings& settings, EditorRenderGro
                settings.poolingEnabled != defaults.poolingEnabled;
     }
     return false;
+}
+
+//======================================================================================================================
+std::optional<EditorRenderGroup> renderingTopicResetGroup(RenderingCategory topic) {
+    switch (topic) {
+    case RenderingCategory::Reconstruction:
+        return EditorRenderGroup::Reconstruction;
+    case RenderingCategory::Resolution:
+        return EditorRenderGroup::Resolution;
+    case RenderingCategory::Lighting:
+        return EditorRenderGroup::Lighting;
+    case RenderingCategory::Exposure:
+        return EditorRenderGroup::Exposure;
+    case RenderingCategory::Bloom:
+        return EditorRenderGroup::Bloom;
+    case RenderingCategory::Shadows:
+        return EditorRenderGroup::Shadows;
+    case RenderingCategory::Display:
+        return EditorRenderGroup::Display;
+    case RenderingCategory::Overview:
+    case RenderingCategory::Visibility:
+    case RenderingCategory::Occlusion:
+    case RenderingCategory::Submission:
+    case RenderingCategory::SceneTables:
+    case RenderingCategory::Count:
+        break;
+    }
+    return std::nullopt;
 }
 
 } // namespace lmx::app

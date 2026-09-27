@@ -377,7 +377,8 @@ uint32_t itemCountOfKind(const GraphLayout& layout, GraphLayoutItemKind kind) {
 //======================================================================================================================
 // A group exists only where it says something. Four segments make a stage, two members make it
 // worth drawing as one box, and scheduled work never shares a box with work that never ran.
-TEST_CASE("stage groups need four segments, two members, and one culled-ness", "[app]") {
+TEST_CASE("stage groups need four segments, two members, and one culled-ness",
+          "[app][graph-layout]") {
     BloomFrame bloom;
     declareBloomFrame(bloom);
     const GraphNodeModel bloomModel = modelOf(bloom.graph, 1);
@@ -420,7 +421,8 @@ TEST_CASE("stage groups need four segments, two members, and one culled-ness", "
 
 //======================================================================================================================
 // The point of collapsing is that a stage shows what crosses its boundary and hides what does not.
-TEST_CASE("a collapsed group shows only its boundary pins and hides its internal edges", "[app]") {
+TEST_CASE("a collapsed group shows only its boundary pins and hides its internal edges",
+          "[app][graph-layout]") {
     BloomFrame frame;
     declareBloomFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 3);
@@ -470,7 +472,8 @@ TEST_CASE("a collapsed group shows only its boundary pins and hides its internal
 
 //======================================================================================================================
 // Expanding is not a different picture of the graph, it is the same one with nothing hidden.
-TEST_CASE("expanding a group draws exactly the model's own nodes and edges", "[app]") {
+TEST_CASE("expanding a group draws exactly the model's own nodes and edges",
+          "[app][graph-layout]") {
     BloomFrame frame;
     declareBloomFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 4);
@@ -502,7 +505,8 @@ TEST_CASE("expanding a group draws exactly the model's own nodes and edges", "[a
 //======================================================================================================================
 // A collapsed stage has to answer "what did this cost" for the passes it hid, and say honestly how
 // many of them the driver actually measured.
-TEST_CASE("a group sums the GPU time of its measured members and counts them", "[app]") {
+TEST_CASE("a group sums the GPU time of its measured members and counts them",
+          "[app][graph-layout]") {
     BloomFrame frame;
     declareBloomFrame(frame);
     // Timings arrive in schedule order; the last two scheduled passes go unmeasured.
@@ -532,7 +536,8 @@ TEST_CASE("a group sums the GPU time of its measured members and counts them", "
 // Wrapping is what keeps a long chain on screen when a reader asks for it. Which row and column a
 // layer lands in is the whole of what the layout decides; how tall that row is drawn is measured
 // from the cards, and so belongs to the canvas.
-TEST_CASE("columns wrap layers into rows and leave ranks stacked within them", "[app]") {
+TEST_CASE("columns wrap layers into rows and leave ranks stacked within them",
+          "[app][graph-layout]") {
     ChainFrame frame;
     declareChainFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 7);
@@ -572,7 +577,7 @@ TEST_CASE("columns wrap layers into rows and leave ranks stacked within them", "
 //======================================================================================================================
 // Culled work is not part of the DAG the compiler proved, so it never occupies a layer of it. It
 // sits in its own band below everything that ran, in declaration order.
-TEST_CASE("a culled pass sits in the culled band below the last row", "[app]") {
+TEST_CASE("a culled pass sits in the culled band below the last row", "[app][graph-layout]") {
     CulledFrame frame;
     declareCulledFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 8);
@@ -621,7 +626,7 @@ TEST_CASE("a culled pass sits in the culled band below the last row", "[app]") {
 // The layout is what makes the canvas readable across runs and machines. It is derived from the
 // declarations alone, so two compiles of the same frame give every item the same cell and the
 // numbers a driver reported never move a box.
-TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]") {
+TEST_CASE("item cells are identical for two compiles and ignore timings", "[app][graph-layout]") {
     BloomFrame first;
     declareBloomFrame(first);
     const GraphNodeModel plain = modelOf(first.graph, 1);
@@ -662,7 +667,8 @@ TEST_CASE("item cells are identical for two compiles and ignore timings", "[app]
 //======================================================================================================================
 // Equal signatures mean the same picture, and the picture is the shape plus the two options that
 // place it. A time the driver reported is not part of either.
-TEST_CASE("the layout signature follows the options and not the measurements", "[app]") {
+TEST_CASE("the layout signature follows the options and not the measurements",
+          "[app][graph-layout]") {
     BloomFrame frame;
     declareBloomFrame(frame);
     const std::array<rojoRHI::PassTiming, 1> timings = {
@@ -687,7 +693,8 @@ TEST_CASE("the layout signature follows the options and not the measurements", "
 
 //======================================================================================================================
 // The compact pin label is what lets a node be 200 units wide instead of 500.
-TEST_CASE("a pin's short label is the resource's last segment and its version", "[app]") {
+TEST_CASE("a pin's short label is the resource's last segment and its version",
+          "[app][graph-layout]") {
     REQUIRE(graphPinShortLabel("lmx.render.sceneColorHdr", 1) == "sceneColorHdr v1");
     REQUIRE(graphPinShortLabel("displayColor", 0) == "displayColor v0");
     REQUIRE(graphPinShortLabel("", 3) == " v3");
@@ -696,7 +703,8 @@ TEST_CASE("a pin's short label is the resource's last segment and its version", 
 //======================================================================================================================
 // A reuse boundary is memory changing hands between two passes. When both of them are inside one
 // collapsed stage the handover happens out of sight, and there is nothing honest to draw.
-TEST_CASE("an alias link maps to items and disappears inside a collapsed stage", "[app]") {
+TEST_CASE("an alias link maps to items and disappears inside a collapsed stage",
+          "[app][graph-layout]") {
     AliasFrame frame;
     declareAliasFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 10);
@@ -723,7 +731,8 @@ TEST_CASE("an alias link maps to items and disappears inside a collapsed stage",
 // A frame can declare nothing that survives culling. The layout still has to place it: there is no
 // DAG to lay out, so the band it puts everything in starts at the top of the canvas rather than
 // below rows that do not exist.
-TEST_CASE("a frame with nothing scheduled lays out an empty DAG and a band at the top", "[app]") {
+TEST_CASE("a frame with nothing scheduled lays out an empty DAG and a band at the top",
+          "[app][graph-layout]") {
     DeadFrame frame;
     declareDeadFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 11);
@@ -754,7 +763,7 @@ TEST_CASE("a frame with nothing scheduled lays out an empty DAG and a band at th
 //======================================================================================================================
 // Grouping does not need a proved DAG either: a stage every one of whose passes was culled folds
 // into one box, and that box is the whole picture.
-TEST_CASE("an all-culled frame folds its stage into one box in the band", "[app]") {
+TEST_CASE("an all-culled frame folds its stage into one box in the band", "[app][graph-layout]") {
     DeadStageFrame frame;
     declareDeadStageFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 12);
@@ -783,7 +792,8 @@ TEST_CASE("an all-culled frame folds its stage into one box in the band", "[app]
 //======================================================================================================================
 // Asking for more columns than there are layers is not a degenerate wrap: it is the unlimited case
 // spelled out, and it must place exactly what an unlimited row does.
-TEST_CASE("a column count above the layer count leaves every item in row 0", "[app]") {
+TEST_CASE("a column count above the layer count leaves every item in row 0",
+          "[app][graph-layout]") {
     ChainFrame frame;
     declareChainFrame(frame);
     const GraphNodeModel model = modelOf(frame.graph, 13);
@@ -803,4 +813,151 @@ TEST_CASE("a column count above the layer count leaves every item in row 0", "[a
         REQUIRE(wide.items[index].column == unlimited.items[index].column);
         REQUIRE(wide.items[index].rank == unlimited.items[index].rank);
     }
+}
+
+//======================================================================================================================
+TEST_CASE("scene import pins collapse per node and preserve connected pin indices",
+          "[app][graph-layout]") {
+    GraphNodeModel model;
+    model.shapeSignature = "scene imports";
+    GraphNode producer{.label = "lmx.pass.producer", .scheduleOrder = 0};
+    producer.outputs.push_back({.resource = 8, .resourceName = "lmx.render.depth", .version = 1});
+    model.nodes.push_back(producer);
+    GraphNode scene{.label = "lmx.pass.scene", .scheduleOrder = 1};
+    for (uint32_t i = 0; i < 6; ++i) {
+        scene.inputs.push_back({.resource = i,
+                                .resourceName = "lmx.scene.table" + std::to_string(i),
+                                .version = 0,
+                                .label = "scene table " + std::to_string(i)});
+    }
+    scene.inputs.insert(scene.inputs.begin() + 3, producer.outputs.front());
+    model.nodes.push_back(scene);
+    model.edges.push_back({.fromNode = 0,
+                           .toNode = 1,
+                           .toPin = 3,
+                           .resource = 8,
+                           .version = 1,
+                           .resourceName = "lmx.render.depth"});
+
+    const auto collapsed = layoutGraph(model, {});
+    const auto& inputs = collapsed.items[1].inputs;
+    REQUIRE(inputs.size() == 2);
+    REQUIRE(inputs[0].shortLabel == "6 scene imports");
+    REQUIRE(inputs[0].bundledImports.size() == 6);
+    REQUIRE(inputs[0].sceneImportsToggle);
+    REQUIRE(inputs[1].resource == 8);
+    REQUIRE(collapsed.edges.size() == 1);
+    REQUIRE(collapsed.edges[0].toPin == 1);
+    REQUIRE(collapsed.edges[0].fromPin == 0);
+    REQUIRE(inputs[collapsed.edges[0].toPin].resource == collapsed.edges[0].resource);
+    for (uint32_t i = 0; i < 6; ++i) {
+        REQUIRE(inputs[0].bundledImports[i].resource == i);
+        REQUIRE(inputs[0].bundledImports[i].version == 0);
+    }
+    const auto key = graphItemKey(model, collapsed, 1);
+    const GraphLayoutOptions options{.expandedPinBundles = {key}};
+    const auto expanded = layoutGraph(model, options);
+    REQUIRE(expanded.items[1].inputs.size() == 7);
+    REQUIRE(expanded.edges[0].toPin == 3);
+    REQUIRE(findGraphItem(model, expanded, key) == 1);
+    for (size_t i = 0; i < scene.inputs.size(); ++i) {
+        const auto& pin = expanded.items[1].inputs[i];
+        REQUIRE(pin.resource == scene.inputs[i].resource);
+        REQUIRE(pin.version == scene.inputs[i].version);
+        REQUIRE(pin.bundledImports.empty());
+        REQUIRE(pin.sceneImportsToggle == (pin.version == 0));
+    }
+    REQUIRE(expanded.signature != collapsed.signature);
+    model.frameId = 99;
+    model.nodes[1].gpuMilliseconds = 17.0;
+    model.memory.highWater = 999;
+    REQUIRE(layoutGraph(model, options).signature == expanded.signature);
+    REQUIRE(graphItemKey(model, layoutGraph(model, options), 1) == key);
+}
+
+//======================================================================================================================
+TEST_CASE("one scene import and other input versions remain plain pins", "[app][graph-layout]") {
+    GraphNodeModel model;
+    GraphNode node{.label = "lmx.pass.scene", .scheduleOrder = 0};
+    node.inputs = {{.resource = 0, .resourceName = "lmx.scene.instances", .version = 0},
+                   {.resource = 1, .resourceName = "lmx.scene.materials", .version = 1},
+                   {.resource = 2, .resourceName = "lmx.scenery.meshes", .version = 0},
+                   {.resource = 3, .resourceName = "lmx.render.historyColor0", .version = 0},
+                   {.resource = 4, .resourceName = "lmx.render.historyDepth0", .version = 0}};
+    model.nodes.push_back(node);
+    const auto layout = layoutGraph(model, {});
+    REQUIRE(layout.items[0].inputs.size() == node.inputs.size());
+    for (size_t i = 0; i < node.inputs.size(); ++i) {
+        REQUIRE(layout.items[0].inputs[i].resource == node.inputs[i].resource);
+        REQUIRE(layout.items[0].inputs[i].bundledImports.empty());
+        REQUIRE_FALSE(layout.items[0].inputs[i].sceneImportsToggle);
+    }
+}
+
+//======================================================================================================================
+TEST_CASE("scene bundle expansion is keyed to one logical node and ignores key order",
+          "[app][graph-layout]") {
+    GraphNodeModel model;
+    for (uint32_t i = 0; i < 2; ++i) {
+        model.nodes.push_back({.label = "lmx.pass.scene",
+                               .scheduleOrder = i,
+                               .inputs = {{.resource = 0, .resourceName = "lmx.scene.instances"},
+                                          {.resource = 1, .resourceName = "lmx.scene.meshes"}}});
+    }
+    const auto collapsed = layoutGraph(model, {});
+    const auto first = graphItemKey(model, collapsed, 0);
+    const auto second = graphItemKey(model, collapsed, 1);
+    REQUIRE(first != second);
+    REQUIRE(layoutGraph(model, {.expandedPinBundles = {"missing-node"}}).signature ==
+            collapsed.signature);
+    const auto expanded = layoutGraph(model, {.expandedPinBundles = {second}});
+    REQUIRE(expanded.items[0].inputs.size() == 1);
+    REQUIRE(expanded.items[1].inputs.size() == 2);
+    const auto ordered = layoutGraph(model, {.expandedPinBundles = {first, second}});
+    const auto repeated = layoutGraph(model, {.expandedPinBundles = {second, first, second}});
+    REQUIRE(ordered.signature == repeated.signature);
+    REQUIRE(findGraphItem(model, expanded, first) == 0);
+    REQUIRE(findGraphItem(model, expanded, second) == 1);
+}
+
+//======================================================================================================================
+TEST_CASE("scene bundles keep logical layout and selection through temporal slot alternation",
+          "[app][graph-layout]") {
+    const auto makeModel = [](uint32_t slot) {
+        std::array<FakeTexture, 8> textures{FakeTexture{64}, FakeTexture{64}, FakeTexture{64},
+                                            FakeTexture{64}, FakeTexture{64}, FakeTexture{64},
+                                            FakeTexture{64}, FakeTexture{64}};
+        RenderGraph graph;
+        PassDesc pass;
+        for (uint32_t i = 0; i < 6; ++i)
+            pass.textureReads.push_back(graph.importTexture(
+                textures[i], rojoRHI::Format::RGBA16Float, "lmx.scene.table" + std::to_string(i)));
+        pass.textureReads.push_back(
+            graph.importTexture(textures[6], rojoRHI::Format::RGBA16Float,
+                                "lmx.render.historyColor" + std::to_string(slot)));
+        const auto color =
+            graph.importTexture(textures[7], rojoRHI::Format::RGBA16Float, "lmx.render.color");
+        pass.color = ColorAttachment{.handle = color};
+        graph.addPass("lmx.pass.scene", pass, kNoWork);
+        graph.presentTexture(nextVersion(color));
+        return modelOf(graph, slot + 1);
+    };
+    const auto first = makeModel(0);
+    const auto second = makeModel(1);
+    const auto collapsed = layoutGraph(first, {});
+    const auto key = graphItemKey(first, collapsed, 0);
+    REQUIRE(first.shapeSignature == second.shapeSignature);
+    REQUIRE(collapsed.signature == layoutGraph(second, {}).signature);
+    // The output attachment also retains its incoming version-zero pin.
+    REQUIRE(collapsed.items[0].inputs.size() == 3);
+    REQUIRE(std::ranges::any_of(collapsed.items[0].inputs, [](const auto& pin) {
+        return pin.resourceName == "lmx.render.historyColor0";
+    }));
+    REQUIRE(std::ranges::any_of(layoutGraph(second, {}).items[0].inputs, [](const auto& pin) {
+        return pin.resourceName == "lmx.render.historyColor1";
+    }));
+    const GraphLayoutOptions options{.expandedPinBundles = {key}};
+    REQUIRE(layoutGraph(first, options).signature == layoutGraph(second, options).signature);
+    REQUIRE(findGraphItem(second, layoutGraph(second, options), key) == 0);
+    REQUIRE(layoutGraph(second, options).items[0].inputs.size() == 8);
 }

@@ -5,6 +5,7 @@
 
 #pragma once
 #include "App/Model/Capture/EditorActions.h"
+#include "App/Model/Capture/NoticeQueue.h"
 #include "App/Model/Console/ConsoleModel.h"
 #include "App/Model/Graph/FrameRecordRing.h"
 #include "App/Model/Options/AppOptions.h"
@@ -232,9 +233,16 @@ private:
 
     // Submitted before the dockspace so the work area the topology is built into already excludes
     // the menu bar. Menu items only read visibility and raise intents.
-    void buildMainMenu();
-    void buildPlaybackTransport(rojoRHI::Device& device, const render::Renderer& renderer);
-    void showMeasurement();
+    void buildMainMenu(const render::Renderer& renderer, const rojoRHI::Device& device);
+    /// Resolves the reconstruction the renderer runs for the current request: a vendor request
+    /// falls back to Native TAA without device support or after the scaler's creation failed.
+    render::ReconstructionMode effectiveReconstruction(const render::Renderer& renderer,
+                                                       const rojoRHI::Device& device) const;
+    void resetCamera();
+    void frameSelected(const render::Renderer& renderer);
+    void updateEditorShortcuts(const render::Renderer& renderer);
+    void postCaptureNotice();
+    void buildPlaybackTransport();
     void stopPlayback();
     void finishMeasurementPlayback();
     void registerWorkspaceSettings();
@@ -271,9 +279,7 @@ private:
     // Borrows the scene owned by m_library and holds its camera. Active after create succeeds.
     SceneSession m_session;
     EditorPlayback m_playback;
-    bool m_measureOnPlay = false;
     bool m_measurementOwnsPlayback = false;
-    bool m_revealMeasurement = false;
     // The single selected subject shared by the Scene panel and the Inspector, plus the Scene
     // panel's case-insensitive filter text (spec sections 5-6). Editor-local navigation state --
     // never serialized, never passed to Render or the RHI. Initialized by initialSelection() at
@@ -368,6 +374,8 @@ private:
     // Raised by the main menu and by the keyboard shortcuts, consumed by whoever owns the
     // operation: the frame loop for quit and capture, this shell for a layout reset.
     EditorActions m_actions;
+    NoticeQueue m_notices;
+    ActionResult m_lastCaptureNotice;
 
     // The coherent, pausable, clearable performance snapshot behind the Performance panel. Fed one
     // PerformanceFrameSample each buildUI when a GPU frame has newly retired; owns all of the

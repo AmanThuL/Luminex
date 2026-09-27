@@ -5,12 +5,12 @@
 
 #include "App/Panels/Scene/ScenePanel.h"
 
+#include "App/Model/Scene/SelectionBounds.h"
 #include "App/Panels/Shared/EditorStyle.h"
 
 #include <imgui.h>
 
 #include <algorithm>
-#include <cfloat>
 #include <format>
 #include <span>
 #include <string>
@@ -28,8 +28,7 @@ constexpr ImGuiTreeNodeFlags kGroupFlags =
 bool isRowSelected(const EditorSelectionRow& row, const EditorSelection& selection) {
     if (row.subject == EditorSubject::LocalLight)
         return selection.subject == row.subject && selection.lightId == row.lightId;
-    return row.subject == selection.subject && ((row.subject != EditorSubject::Rendering &&
-                                                 row.subject != EditorSubject::DirectionalLight &&
+    return row.subject == selection.subject && ((row.subject != EditorSubject::DirectionalLight &&
                                                  row.subject != EditorSubject::Object) ||
                                                 row.index == selection.index);
 }
@@ -71,17 +70,7 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
     bool disabledLight = false;
     if (row.subject == EditorSubject::LocalLight) {
         if (const auto* light = context.activeScene.light(row.lightId)) {
-            bool enabled = light->enabled;
-            if (ImGui::Checkbox("##enabled", &enabled)) {
-                auto edited = *light;
-                edited.enabled = enabled;
-                if (context.session.editLocalLight(row.lightId, edited))
-                    requestCameraCut(context.temporalState);
-            }
-            disabledLight = !enabled;
-            editorTooltip(
-                "Enable this light without changing its identity, settings or animation.");
-            ImGui::SameLine();
+            disabledLight = !light->enabled;
         }
     }
     const bool dimmed = (culled || disabledLight) && !isRowSelected(row, context.selection);
@@ -94,9 +83,18 @@ void drawLeaf(const EditorSelectionRow& row, const ScenePanelContext& context,
         selectRow(context.selection, context.activeSceneId, row);
     }
     const std::string& fullName = row.detailLabel.empty() ? row.displayLabel : row.detailLabel;
-    const std::string tip = fullName + visibilityTip;
+    const std::string tip = fullName + visibilityTip +
+                            (disabledLight ? "\nDisabled light; enable it in the Inspector." : "");
     editorTooltip(tip.c_str());
     if (ImGui::BeginPopupContextItem("SubjectActions")) {
+        selectRow(context.selection, context.activeSceneId, row);
+        const bool canFrame =
+            selectedObjectBounds(context.activeScene, context.selection).has_value();
+        if (ImGui::MenuItem("Frame Selected", "F", false, canFrame)) {
+            context.frameSelectionRequested = true;
+        }
+        editorTooltip(canFrame ? "Fit this object's bounds in the viewport."
+                               : "Select an object with reliable bounds to frame it.");
         if (ImGui::MenuItem("Copy full name")) {
             ImGui::SetClipboardText(fullName.c_str());
         }
@@ -125,77 +123,11 @@ void drawLeaves(std::span<const EditorSelectionRow> rows, EditorSelectionGroup g
 }
 
 //======================================================================================================================
-void drawWorkspace(std::span<const EditorSelectionRow> rows, const ScenePanelContext& context,
-                   std::vector<EditorSelectionRow>& visibleLeaves) {
-    const EditorSelectionRow* rendering = nullptr;
-    bool hasRendering = false;
-    for (const auto& row : rows) {
-        if (row.subject == EditorSubject::Camera) {
-            drawLeaf(row, context, visibleLeaves);
-        } else if (row.subject == EditorSubject::Rendering) {
-            hasRendering = true;
-            if (row.index == static_cast<size_t>(RenderingCategory::Overview)) {
-                rendering = &row;
-            }
-        }
-    }
-    if (!hasRendering) {
-        return;
-    }
-    const bool keyboard = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-                          !ImGui::GetIO().WantTextInput;
-    if (!context.filter.empty()) {
-        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    } else if (keyboard && context.selection.subject == EditorSubject::Rendering) {
-        if (ImGui::IsKeyPressed(ImGuiKey_LeftArrow)) {
-            if (rendering && context.selection.index != rendering->index) {
-                selectRow(context.selection, context.activeSceneId, *rendering);
-            } else {
-                ImGui::SetNextItemOpen(false, ImGuiCond_Always);
-            }
-        } else if (ImGui::IsKeyPressed(ImGuiKey_RightArrow)) {
-            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-        }
-    }
-    const ImGuiTreeNodeFlags flags =
-        kGroupFlags |
-        (rendering && isRowSelected(*rendering, context.selection) ? ImGuiTreeNodeFlags_Selected
-                                                                   : 0);
-    const bool open = ImGui::TreeNodeEx("rendering", flags, "Rendering");
-    if (rendering) {
-        visibleLeaves.push_back(*rendering);
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left) && !ImGui::IsItemToggledOpen()) {
-            selectRow(context.selection, context.activeSceneId, *rendering);
-        }
-    }
-    editorTooltip(rendering ? "Rendering overview. Expand for controls and data by topic."
-                            : "Rendering topics matching search. Clear search for the overview.");
-    if (open) {
-        for (const auto& row : rows) {
-            if (row.subject == EditorSubject::Rendering &&
-                row.index != static_cast<size_t>(RenderingCategory::Overview)) {
-                drawLeaf(row, context, visibleLeaves);
-            }
-        }
-        ImGui::TreePop();
-    }
-}
-
-//======================================================================================================================
 void drawHierarchy(std::span<const EditorSelectionRow> rows, const ScenePanelContext& context,
                    std::vector<EditorSelectionRow>& visibleLeaves) {
     if (rows.empty()) {
         editor_style::message("No subjects match. Clear search to restore the tree.");
         return;
-    }
-    const size_t workspaceCount = groupCount(rows, EditorSelectionGroup::Workspace);
-    if (workspaceCount > 0 && !context.filter.empty()) {
-        ImGui::SetNextItemOpen(true, ImGuiCond_Always);
-    }
-    if (workspaceCount > 0 &&
-        ImGui::TreeNodeEx("workspace", kGroupFlags, "Workspace (%zu)", workspaceCount)) {
-        drawWorkspace(rows, context, visibleLeaves);
-        ImGui::TreePop();
     }
     const size_t lightCount = groupCount(rows, EditorSelectionGroup::DirectionalLights);
     const size_t objectCount = groupCount(rows, EditorSelectionGroup::Objects);
@@ -342,32 +274,44 @@ void drawScenePanel(bool& open, const ScenePanelContext& context) {
         char buffer[kFilterBufferSize];
         const size_t copied = context.filter.copy(buffer, sizeof(buffer) - 1);
         buffer[copied] = '\0';
-        ImGui::SetNextItemWidth(-FLT_MIN);
+        const bool showClear = !context.filter.empty();
+        const float width = ImGui::GetContentRegionAvail().x;
+        const float clearWidth =
+            showClear ? editor_style::iconButtonWidth(EditorIcon::Close) : 0.0f;
+        const ImVec2 searchPosition = ImGui::GetCursorScreenPos();
+        const ImVec2 searchEnd{searchPosition.x + width,
+                               searchPosition.y + ImGui::GetFrameHeight()};
+        ImGui::GetWindowDrawList()->AddRectFilled(searchPosition, searchEnd,
+                                                  ImGui::GetColorU32(ImGuiCol_FrameBg),
+                                                  ImGui::GetStyle().FrameRounding);
+        ImGui::BeginGroup();
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
+                            ImVec2(0.0f, ImGui::GetStyle().ItemSpacing.y));
+        ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+        ImGui::SetNextItemWidth(std::max(1.0f, width - clearWidth));
         if (ImGui::InputTextWithHint("##scene-filter", "Search subjects...", buffer,
                                      sizeof(buffer))) {
             context.filter.assign(buffer);
         }
-        editorTooltip("Filter subject and full source names without changing selection. Up/Down "
-                      "traverses visible subjects. Left/Right collapses or expands Rendering.");
-        if (ImGui::SmallButton("Clear search")) {
-            context.filter.clear();
-        }
-        editorTooltip("Show all subjects. The selected subject stays selected.");
-        const auto rows = buildSceneSelectionRows(context.activeScene, context.filter);
-        const std::string count = std::format(
-            "{} / {}", rows.size(),
-            size_t{1} + static_cast<size_t>(RenderingCategory::Count) +
-                std::size(context.activeScene.lights) + context.activeScene.objects.size());
-        const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
-        if (right - ImGui::GetItemRectMax().x >=
-            ImGui::CalcTextSize(count.c_str()).x + ImGui::GetStyle().ItemSpacing.x) {
+        ImGui::PopStyleColor();
+        editorTooltip("Filter scene subjects and full source names without changing selection. "
+                      "Up/Down traverses visible subjects.");
+        if (showClear) {
             ImGui::SameLine();
+            if (editor_style::iconButton("ClearSearch", EditorIcon::Close, true,
+                                         "Clear search. The selected subject stays selected.")) {
+                context.filter.clear();
+            }
         }
-        ImGui::TextDisabled("%s", count.c_str());
+        ImGui::PopStyleVar();
+        ImGui::EndGroup();
+        // Rows are built once; the total is counted without building the unfiltered rows.
+        const auto rows = buildSceneSelectionRows(context.activeScene, context.filter);
+        ImGui::TextDisabled("%zu / %zu", rows.size(), hierarchyTotal(context.activeScene));
         editorTooltip(
-            "Matching / total selectable subjects, including camera, rendering topics, lights "
-            "and objects. Dimmed names are outside the camera frustum, not disabled. "
-            "They remain selectable; hover a name for its visibility status.");
+            "Matching / total selectable scene subjects, including directional lights, local "
+            "lights and objects. Dimmed names are culled objects or disabled lights. "
+            "They remain selectable; hover a name for its status.");
         if (selectionHiddenByFilter(context.activeScene, context.selection, context.filter)) {
             editor_style::message("Selection hidden by search; Inspector keeps it selected.", true);
         }

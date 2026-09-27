@@ -4,17 +4,19 @@
 
 Use a capture for wrong rendered output, a timing trace for performance, and a render-graph dump for frame declarations. All three depend on meaningful GPU object and pass labels.
 
-Choose a catalog scene with File > Open Scene; the Hierarchy panel selects subjects using collapsible groups, search and keyboard navigation. Nonobvious controls show delayed contextual
-tips while disabled controls retain visible reasons. Expand Rendering in Hierarchy to choose a topic; each Inspector page keeps its controls and live readings together.
-Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables each have a page. The overview also links to each topic. Inspector pages scroll when the current layout is too narrow or short.
-Display includes the output domain, encoded-space SDR UI rule, framebuffer scale, target extent and 1:1 image mapping. A resize may briefly stretch the prior image while debounce settles. PNG screenshots preserve the display domain and frame facts; BMP remains available for exact historical parity.
+Choose a catalog scene with File > Open Scene. Hierarchy searches and selects scene lights and objects; its count includes disabled lights, and filtering retains selection. View > Editor Camera
+selects the camera in Inspector. Window > Rendering opens eleven topics: Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables.
+Each topic puts controls before readings and collapsed Diagnostics; timing Details opens Performance. Inspector headers show subject, kind and scoped Reset. Property grids stack only below 260 base UI
+points; vectors name their XYZ/RGB components. Hover controls for help, including disabled reasons. Display diagnostics describe the SDR output/UI domains, framebuffer scale, target extent and 1:1
+mapping. Resize may briefly stretch the prior image during debounce. PNG preserves display/frame metadata; BMP remains available for historical parity.
 
 ## Editor playback
 
-The top toolbar selects Scene or Measure and owns one Play/Pause button that switches icons with state, plus separate Stop and Step icons; options hold Follow camera rail.
-Scenes load Stopped. Scene Play captures the current camera/time and animation-owned object poses/emissive strength and tracked light positions on first entry; Pause retains the frame, and Step advances 1/60 s and pauses.
-Stop restores that captured preview state and resets motion, temporal and exposure history. Switching scenes first stops/restores the old run. Static scenes still support camera preview; unavailable camera-rail options explain their disabled state.
-The preview shares the scene: rendering settings and unrelated scene edits are outside restoration. Playback, metric freeze and graph freeze remain independent. See [Measure](#measure-visibility-and-submission) for fixed runs.
+The menu row holds Play/Pause, Stop, Step, time and a rail-follow toggle when the scene has a rail. Scenes load Stopped. First Play captures camera/time, animation-owned object poses/emissive strength
+and tracked light positions; Pause holds time, and Step advances 1/60 s and pauses. Stop or scene switch restores that preview and resets motion, temporal and exposure history. Rendering settings and
+unrelated edits remain outside restoration. Static scenes still allow camera preview. View > Reset Camera (Home) and Frame Selected (F) control framing; the latter is also in Hierarchy's context menu.
+View > Selection Outline toggles the outline, and Help > Controls explains movement. F, Home and C are suppressed during text entry, popups and RMB look. The window title names the scene. Start a
+fixed run in Performance > Measure; transport then shows progress and enables only Stop. Playback, metric freeze and graph freeze are independent. See [Measure](#measure-visibility-and-submission).
 
 ## Restore editor settings
 
@@ -25,13 +27,13 @@ Rendering groups restore these editor defaults without resetting playback or ano
 
 | Group | Defaults |
 |---|---|
-| Lighting | Clustered local lights; Final view; CPU list check off; LightLab overflow pile cleared; individual light state unchanged |
+| Lighting | Clustered local lights; lighting diagnostic off; CPU list check off; LightLab overflow pile cleared; individual light state unchanged |
 | Exposure | Manual 0 EV; auto off; percentiles 50–95%; target grey 0.18; automatic EV range −8 to 8; compensation 0 EV; adaptation up/down 3/1.5 stops per second |
 | Bloom | Enabled; linear threshold 1; intensity 0.2 |
 | Shadows | PCF |
-| Reconstruction | Temporal inputs and jitter enabled; Native TAA; Final diagnostic view |
+| Reconstruction | Temporal inputs and jitter enabled; Native TAA; temporal diagnostic off |
 | Resolution | Scale 1; dynamic resolution off; timed-pass budget 16 ms |
-| Display | Encoded sRGB clear RGBA (0.05, 0.07, 0.10, 1); wireframe off; transient pooling on |
+| Display | Encoded sRGB clear RGBA (0.7, 0.7, 0.7, 1); wireframe off; transient pooling on |
 
 ## Dump the compiled frame
 
@@ -45,44 +47,37 @@ the declared sinks, each scheduled pass with its uses in schedule order, each cu
 reason it was dropped, and the barriers the graph derived. It carries no GPU timing and no
 driver-reported value, so it answers "was this pass declared, ordered, and kept?" rather than "how long did it take", which is the timing trace's question.
 
-Reach for a graph dump first when a pass appears to do nothing: a pass listed under `culled` never ran, and its reason explains why. The detached Render Graph window displays one coherent
-frame as a grouped node canvas with selection-scoped details. Live publishes a complete owned
-record and its matched timing set four times per second, using Performance's 0.25-second interval.
-Graph timing is the exact latest value for that displayed frame, not a rolling average. The
-Live/Frozen label identifies it; node labels, details and Dump read the same publication. First data and Resume publish immediately; later topology and timing updates wait for the next
-publication boundary. Freeze keeps the displayed publication through later frames and scene switches. Unavailable matched timing is N/A.
-Fit graph, Fit selection and 100% change navigation explicitly. Dump frame writes the currently displayed record to `graph-dump-frame-<id>.txt` next to the binary, including while frozen.
-The result reports success or a recoverable write failure, with an absolute path and Copy path/
-Reveal controls. This text dump still contains graph declarations, not GPU timing measurements.
+A pass listed under `culled` never ran; its reason explains why. Window > Render Graph opens the detached graph window. It publishes one owned frame with exact matched timings at 4 Hz; first data and
+Resume publish immediately. Later topology and timing changes wait for publication. Freeze keeps that frame through scene switches. Missing matched timing is N/A. Frozen or stale data is labelled;
+stale means no new retired frame for one second.
+
+The header has Freeze/Resume, Fit Graph, Fit Selection and 1:1. More holds Reset layout, Columns (0 means no wrap) and Dump frame. Double-click a stage to expand it; double-click a scene-import bundle
+to see its individual pins, or an expanded imported pin to collapse them. Hover the bundle for exact resource identities. Physical temporal slots preserve unchanged selection and navigation; Details
+retains the exact displayed frame's physical resources and memory totals. Dump writes the displayed record, including a frozen one, to `graph-dump-frame-<id>.txt` beside the binary. The notice reports
+the path or write failure, with Copy path/Reveal. This dump contains graph declarations; GPU timings remain in the diagnostic views and timing traces.
 
 ## Console and editor selection diagnostics
 
-Window > Console opens the bounded read-only log viewer, alone in the default bottom dock. Performance and Render Graph use detached native windows, both closed by default; Window > Performance toggles its window.
-Workspace schema 3 restores visibility and geometry. Schema 2 migrates to default topology while preserving valid UI scale; Reset Default Layout closes Performance/Graph and resets Performance's next-open bounds. The store
-retains at most 2,000 messages and 2 MiB of payload, truncating each message at 16 KiB on a UTF-8
-boundary. UTC timestamps, Trace/Debug/Info/Warning/Error/Critical levels, and eviction/truncation
-counts remain visible. Minimum severity and case-insensitive message search filter only display.
-Freeze display retains the shown messages and counters while logging continues. Resume shows
-current retained history. Clear empties retained/displayed messages and counters, retaining filters
-and freeze state. Copy visible copies exactly the matching displayed messages, timestamps and
-severity. Follow newest scrolls only when already at the end; the search field executes no commands.
+Window > Console opens the bounded read-only log viewer. It shares the bottom dock with the compact Performance tab; Rendering shares Inspector's dock. Inspector and Console are the default active
+tabs. Detailed Performance and Render Graph are detached, closed by default. Window toggles each surface separately. Schema 4 saves eight visibilities and UI scale alongside docking and window bounds.
+Schema 3 migration keeps its six visibilities, scale and detached bounds, shows the new tabs and rebuilds main docks once. Schema 2 keeps valid scale and rebuilds defaults; unknown schemas use
+defaults. Window > Reset Default Layout preserves scale, closes both detached windows and resets Performance's next-open bounds; ordinary launches retain both windows' geometry.
 
-Viewport's selection outline follows visible selected geometry, including depth occlusion and
-masked cutouts; Frame selected separately fits reliable object bounds. The outline is an editor
-presentation aid that can be hidden. Foreground occlusion cuts never become silhouette edges;
-border source and destination are depth-tested. App declares `lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and
-`lmx.pass.selection.outline` through Render's `SelectionOutline` utility, then samples its separate
-SDR output target. Their GPU costs appear in graph/timing records. They never write scene targets
-or temporal history, and ordinary offscreen screenshots/sequences do not invoke them. See the
-[UX1 design](../milestones/ux/ux1-design.md) and [active acceptance record](../milestones/ux/ux1.md) for scope and validation status.
+Console retains 2,000 messages / 2 MiB, truncating payloads at 16 KiB on a UTF-8 boundary. UTC time and severity accompany each entry. The T/D/I/W/E/C chips count each retained severity and select
+that level and above; search is a case-insensitive substring filter. Scroll up to hold the displayed rows while logging continues. Return to the bottom or click `↓ N new` to resume; the chip stays
+visible even at zero. More > Clear empties messages/counters while keeping filters and freeze state; new arrivals then count from Clear. More > Copy visible copies matching displayed messages,
+including when frozen. Nonzero eviction/truncation counts print below the header; full statistics are in search help. Header counts may trail newly displayed rows by one frame. Search executes no
+commands.
+
+The selection outline follows visible geometry, including depth occlusion and masked cutouts. Foreground occlusion cuts never become silhouette edges; border endpoints are depth-tested. App adds
+`lmx.pass.selection.coverage`, `lmx.pass.selection.visibility` and `lmx.pass.selection.outline` to a separate SDR target. Their costs appear in graph/timing records; scene targets and temporal history
+stay unchanged. Offscreen screenshots/sequences omit these editor cues. See the [UX1 design](../milestones/ux/ux1-design.md) and [acceptance record](../milestones/ux/ux1.md).
 
 ## Capture and inspect a frame
 
-For an interactive capture, launch with `MTL_CAPTURE_ENABLED=1`, then use Debug > Capture Next
-GPU Frame, C outside text entry, or the Viewport GPU capture controls. They share one pending/result
-state. Startup without capture support explains how to enable it; changing the environment requires
-a relaunch. A successful result retains the output path with Copy path and Reveal. On failure,
-read the reason, correct the path or process capability and retry. Graph/metric freeze do not pause the rendered scene; pause the scene transport separately when a stable pose is needed.
+For an interactive capture, launch with `MTL_CAPTURE_ENABLED=1`, then use Debug > Capture Next GPU Frame or C outside text entry, popups and RMB look. Both share one pending/result state. Startup
+without capture support explains how to enable it; changing the environment requires a relaunch. A success notice shows the output path and Copy path/Reveal for six seconds. On failure, read the
+reason, correct the path or process capability and retry. Graph/metric freeze do not pause the rendered scene; pause the scene transport separately when a stable pose is needed.
 
 ```bash
 MTL_CAPTURE_ENABLED=1 \
@@ -126,14 +121,12 @@ Keep captures and dump directories outside the repository. A postmortem records 
 
 ## Inspect vendor temporal reconstruction
 
-`--temporal metalfx` opts into the capability-selected scaler. In Rendering > Reconstruction,
-compare the requested algorithm with the effective summary and fallback reason. Temporal inputs
-off retains that request while execution is Off at scale 1. Resolution > Timing & scale details separates the live retired
-timed-pass sum/frame from the controller sample; GPU budget appears with dynamic resolution enabled. Disable dynamic resolution
-for a controlled fixed-scale capture. History & vendor details retain the last reset event,
-declared-frame provenance, vendor generation and supported scale range. Advanced & diagnostics holds jitter, diagnostic view and Reset history. Native-only diagnostics
-explain why device reconstruction cannot provide them; choose Native TAA for rejection, blend
-weight and accumulation age. Native TAA remains the default. For a windowed TemporalLab capture with dynamic resolution:
+`--temporal metalfx` opts into the capability-selected scaler. In Rendering > Reconstruction, compare the requested algorithm with the effective summary and fallback reason. Temporal inputs off
+retains that request while execution is Off at scale 1. Resolution shows GPU budget when dynamic resolution is enabled; disable it for a controlled fixed-scale capture. Its Details opens Performance,
+whose metric details separate the latest compatible retired GPU sum from the last observed controller input. Reconstruction Diagnostics retains reset/frame provenance, vendor generation and supported
+scales; Jitter and Reset history are controls above it. View > Debug View groups temporal, lighting and HZB views and explains unavailable choices. The viewport legend title also switches views, HZB
+has a mip stepper, and Close returns to Final. Settings that invalidate a view return to Final with a notice. Choose Native TAA for rejection, blend weight and accumulation age; device reconstruction
+cannot provide those native-only diagnostics. Native TAA remains the default. For a windowed TemporalLab capture with dynamic resolution:
 
 ```bash
 MTL_DEBUG_LAYER=1 MTL_CAPTURE_ENABLED=1 \
@@ -182,9 +175,9 @@ performance claim. A missing optimized-away empty encoder is not a zero-duration
 
 ## Inspect local lighting
 
-`--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting shows requested/effective mode, capacities, retired counters, list memory and exact-frame pass costs at 250 ms; overflow/check warnings update immediately.
-LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode.
-Hierarchy > Local lights is clipped, selects full LightId identities and enables/disables each light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB colour, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause to retain manual orbit-position edits. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
+`--local-lights off|direct|clustered` selects one shared point/spot shading loop; Clustered is the default and Direct remains the reference. The [default decision](../milestones/m7/m7.5-validation.md#default-decision) follows passed lossless-list/scoped exact-image gates, independently of cost and remaining obligations. Local lights are unshadowed and affect opaque/masked surfaces. Zero-enabled frames import no light table and declare no light-list/debug pass, even with retained disabled rows. Zero-enabled mode-only edits preserve temporal history; content/live-mode changes still reset it. The [follow-up](../milestones/m7/m7.5-followup.md) separates these causal invariants from pending temporal repeatability diagnosis and preserves the original F5 failure. Rendering > Lighting publishes requested/effective mode and retired counters at 250 ms; capacities, list memory and frame IDs are in Diagnostics. Details opens Performance for
+pass costs. Overflow/check warnings update immediately. LightLab accepts `--lab-lights 1..4096` (default 256) and `--lab-light-pile P` (default 0), with total ≤4096. Its 12-second rail and authored light orbits repeat deterministically with 0.25 m whole-orbit material-field clearance. Sponza authors 16 static point/spot lights and a 120-second two-level corridor/atrium tour. Its `--local-light-rig on|off` defaults on; explicit off disables the group, retaining identities and allocated rows. Both scene restrictions apply in every run mode. Hierarchy > Local lights uses clipped rows and full LightId selection. The Inspector header enables/disables the selected light without deleting its edits or orbit. Disabled lights remain editable and consume identity capacity; Enabled lights reports only contributors. Inspector edits position, sRGB colour, relative intensity, range and spot direction/cones; stale IDs are rejected. Rendering has
+no rig toggle; Lighting Reset restores mode/diagnostics and clears the bounded pile before table preparation, preserving individual light edits. Pause to retain manual orbit-position edits. Shared punctual specular filtering broadens the normal footprint; authored roughness, directional light and IBL stay unchanged.
 
 ```sh
 xmake run App --scene light-lab --lab-lights 256 --local-lights clustered --light-check
@@ -199,12 +192,11 @@ Count uses 0 black, 1–4 blue, 5–16 green, 17–64 yellow and 65–128 red. O
 
 ## Measure visibility and submission
 
-Rendering > Visibility owns culling/classification; Submission selects direct/indirect/batched and shows work, memory and timings. Defaults remain CPU classification, culling and indirect submission.
-Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and
-CPU classify/prepare time. Hierarchy dims frustum-rejected names without disabling selection; hover status and Inspector bounds use the same retained
-frame; rejected selection has no outline. Invalid bounds/transforms bypass conservatively.
-The graph imports `lmx.draw.rows` and `lmx.draw.args` with scene/shadow reads; the default CPU path uploads them, while GPU classification declares compute writes.
-Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
+Rendering > Visibility owns culling/classification; Submission selects direct/indirect/batched and shows work readings, with memory/frame facts in Diagnostics and timing Details in Performance.
+Defaults remain CPU classification, culling and indirect submission. Counts retain scene and unculled shadow candidates, visible/rejected/bypass reasons, issued commands, payload bytes and CPU
+classify/prepare time in Performance metric details. Hierarchy dims frustum-rejected names without disabling selection; hover status and Inspector bounds use the same retained frame; rejected
+selection has no outline. Invalid bounds/transforms bypass conservatively. The graph imports `lmx.draw.rows` and `lmx.draw.args` with scene/shadow reads; the default CPU path uploads them, while GPU
+classification declares compute writes. Indirect issues one command per visible object; batched groups shared pipeline/material/mesh runs.
 
 Every run mode accepts `--visibility cull|off` and `--submission direct|indirect|batched`. GPU classification, previous-frame occlusion, retired counters and measurement schema 4: [GPU visibility guide](gpu-visibility.md).
 VisibilityLab adds `--lab-instances 1..1048576` (default 4096, total including boundary probes);
@@ -216,11 +208,16 @@ xmake run App --scene visibility-lab --measure /absolute/new-run.json --warmup 3
 python3 Tools/Bench/visibility_paired.py --binary /absolute/frozen/App --out /absolute/new-evidence
 ```
 
-Omit `--windowed` for maximized fullscreen-windowed editor validation. Selecting Measure mode does not open a window.
-Play starts deterministic W/N, opens/focuses the detached Performance window once and expands Measure; Stop cancels and Pause is disabled for the uninterrupted plan. Closing the window leaves the run active.
-Performance > Measure retains warmup/frame counts, results and Export; toolbar options > Show measurement opens/focuses this section anytime, including during a run. Window > Performance is a normal visibility toggle.
-Completion or Stop restores preview state and retains the report without reopening Performance. Editor reports remain interactive/unscored; disable dynamic resolution first.
-CLI behavior is unchanged: `--measure` conflicts with screenshot/sequence output; `--measure-camera initial|track` chooses authored camera or rail. Scored headless output refuses validation/capture instrumentation; `--unscored` permits an explicitly unscored run.
+Omit `--windowed` for maximized editor validation. The docked Performance tab shows frame/GPU time, a frame-interval sparkline and the three costliest stages from the same snapshot as the detached
+window. Details opens/focuses its Live tab. Live groups pass rows by stage; expand a stage for its members, or use More > Individual pass rows to sort every pass by Min, Max or Samples too. Click
+Average or Latest for cost order, or `#` for schedule order. Freeze holds both surfaces; More > Clear history empties even a frozen snapshot, and Resume waits for new samples. Waiting/frozen/stale
+states remain visible; stale means no new retired sample for one second.
+Average uses each pass's rolling window of up to 60 retired frames; Latest is its newest retired sample, and a stage adds its members. The timed-pass sum excludes presentation, driver and untimed GPU work.
+
+Window > Performance opens the detailed window. Its Measure tab retains Warmup, Frames, Start/Stop, results and Export. Start runs deterministic W/N; closing the window leaves the run active.
+Completion or Stop restores preview state and retains results without reopening the window. Editor reports remain interactive/unscored. Stop playback and disable dynamic resolution first. CLI behavior
+is unchanged: `--measure` conflicts with screenshot/sequence output; `--measure-camera initial|track` chooses authored camera or rail. Scored headless output refuses validation/capture
+instrumentation; `--unscored` permits an explicitly unscored run.
 
 Both front ends wait for GPU retirement after each submitted frame because RHI exposes only the
 newest retired timing set. Editor still renders and presents each frame; measurement pacing reduces
@@ -290,11 +287,9 @@ the file differs from the bloom-off capture (`cmp` reports a byte offset) and op
 
 ### Editor UI scale
 
-Use the main bar's minus/percentage/plus buttons or Layout > UI Scale to change fonts and controls together (75–150%). Click the percentage or press Cmd+0 for 100%; Cmd+- shrinks and
-Cmd++ / Cmd+= grows. Text editing, active widget drags and popups suppress these shortcuts.
-Detached Performance and Render Graph share this preference; graph canvas zoom remains independent.
-`UiScalePercent` persists in the workspace section of `imgui.ini`; missing values default to 100%. Schema 2 layout migration and Reset Default Layout preserve valid UI-scale preferences.
+Use View > UI Scale to change fonts and controls together (75–150%). Click the menu-row percentage or press Cmd+0 for 100%; Cmd+- shrinks and Cmd++ / Cmd+= grows. Text editing, active drags, popups
+and RMB look suppress shortcuts. When the row is tight, time moves into Play's tooltip, then the zoom percentage hides; action buttons remain. Detached windows share UI scale; graph zoom is
+independent. `UiScalePercent` persists in `imgui.ini`, defaults to 100% when absent, and survives schema 2/3 migration and Reset Default Layout.
 
-The editor uses bundled Inter Regular (16 logical points at 100%, 12 at 75%), with fixed-width
-digits for stable diagnostic columns. `xmake setup` fetches the pinned Inter 4.1 TrueType source and SIL license; building App stages `Fonts/` beside the executable. A missing font logs a
-warning and uses the embedded fallback; rerun setup and rebuild to restore Inter. UI zoom still controls all panels together and restores independently of docking.
+Inter Regular is 16 logical points at 100%, with fixed-width digits. `xmake setup` fetches pinned Inter 4.1 and its SIL license plus Codicons 0.0.46-24 and its CC BY 4.0 license/provenance. Building
+App stages them in `Fonts/` beside the executable. Without Codicons, buttons use readable labels and the editor logs one warning; rerun setup and rebuild. Missing Inter uses the embedded fallback.

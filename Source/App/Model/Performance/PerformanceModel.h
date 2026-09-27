@@ -9,10 +9,27 @@
 #include <rojoRHI/RHI.h>
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
 namespace lmx::app {
+
+/// One timing value and the frame that supplied it; zero-cost measurements remain valid.
+struct PerformanceTimingReading {
+    uint64_t frameId = 0; ///< Source frame, independently identified from the rolling snapshot.
+    double milliseconds = 0.0; ///< Measured elapsed time in milliseconds.
+};
+
+/// Rendering observations published and frozen together with the rolling performance snapshot.
+struct PerformanceRenderingTimings {
+    double classifyMilliseconds = 0.0; ///< CPU classification for the snapshot's declared frame.
+    double prepareMilliseconds = 0.0;  ///< CPU list/argument preparation for that same frame.
+    /// Latest compatible retired GPU pass sum; absent while waiting for compatible declaration.
+    std::optional<PerformanceTimingReading> compatibleGpu;
+    /// Last sample offered to dynamic resolution, which may be older or skipped by the controller.
+    std::optional<PerformanceTimingReading> controllerInput;
+};
 
 /// Everything known about one newly retired GPU frame, fed to `PerformanceModel::tick` together so
 /// it always joins one coherent snapshot rather than drifting in independently.
@@ -22,6 +39,7 @@ namespace lmx::app {
 /// shell already has to hand -- this model reads no `FrameRecordRing` or `CompiledFrameRecord`
 /// itself, so it stays ImGui/SDL/Metal/RHI-backend free.
 struct PerformanceFrameSample {
+    PerformanceRenderingTimings renderingTimings; ///< Exact observations accompanying this sample.
     uint64_t frameId = 0;                         ///< The device frame number this sample measured.
     uint64_t contextEpoch = 0;                    ///< Scene/mode revision captured at declaration.
     std::span<const rojoRHI::PassTiming> timings; ///< Per-pass GPU times, schedule order.
@@ -44,6 +62,8 @@ struct PerformanceFrameSample {
 /// tick, and while paused they all stay exactly as they were at the moment pause was requested.
 /// Nothing here mixes a frozen pass row with a live resolution or memory value.
 struct PerformanceSnapshot {
+    PerformanceRenderingTimings
+        renderingTimings; ///< Same publication and freeze boundary as every reading.
     /// Rolling wall-clock frame-interval history, oldest first, in milliseconds. Capacity
     /// `PerformanceModel::kFrameIntervalCapacity`. Comes from the App frame loop's `deltaSeconds`
     /// -- never CPU render time.
@@ -71,6 +91,7 @@ struct PerformanceSnapshot {
     uint32_t sceneTargetPixelHeight = 0; ///< Scene render target size, in device pixels.
     uint32_t renderPixelWidth = 0;       ///< Effective render width before reconstruction.
     uint32_t renderPixelHeight = 0;      ///< Effective render height before reconstruction.
+    double sampledAtSeconds = 0.0;       ///< Retirement arrival time for the displayed GPU rows.
     double publishedAtSeconds = 0.0; ///< Wall-clock seconds since model creation at publication.
     uint64_t transientRequestedBytes = 0;    ///< Bytes requested by the retained compiled frame.
     uint64_t transientHighWaterBytes = 0;    ///< Bytes its transient heap had to provide.
@@ -119,6 +140,9 @@ public:
     /// Whether the model is currently paused.
     bool paused() const { return m_paused; }
 
+    /// True while frozen, waiting, or when the displayed GPU retirement is at least one second old.
+    bool stale() const;
+
     /// Freezes the complete published snapshot. Resume clears both histories and reports waiting
     /// until a newer retired sample arrives; neither operation pauses scene playback.
     void setPaused(bool paused);
@@ -138,12 +162,14 @@ private:
     uint64_t m_lastSeenFrameId = 0;
     uint64_t m_contextEpoch = 0;
     double m_elapsedSeconds = 0.0;
+    double m_sampledAtSeconds = 0.0;
 
     std::vector<float> m_frameIntervalMsHistory;
     PassTimingHistory m_passTimingHistory;
 
     // The most recently accepted sample's context fields, held so they keep publishing alongside
     // the pass rows they accompanied between one accepted sample and the next.
+    PerformanceRenderingTimings m_renderingTimings;
     uint32_t m_objectCount = 0;
     uint32_t m_drawCount = 0;
     uint32_t m_viewportLogicalWidth = 0;

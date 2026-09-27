@@ -11,13 +11,48 @@
 
 #include <imgui.h>
 
-#include <algorithm>
-#include <array>
 #include <string>
 
 namespace lmx::app {
 
 using editor_style::field;
+
+//======================================================================================================================
+bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip, bool changed,
+                         bool* enabled) {
+    editor_style::beginHeaderRow();
+    bool reset = false;
+    const auto flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
+    if (ImGui::BeginTable("InspectorHeader", enabled ? 4 : 3, flags)) {
+        ImGui::TableSetupColumn("Subject", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed,
+                                ImGui::CalcTextSize(kind).x);
+        if (enabled)
+            ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn("Reset", ImGuiTableColumnFlags_WidthFixed,
+                                editor_style::iconButtonWidth(EditorIcon::Reset));
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(name);
+        editorTooltip(name);
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(editor_style::kMuted, "%s", kind);
+        if (enabled) {
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##enabled", enabled);
+            editorTooltip("Enable this light without changing its identity, edited properties or "
+                          "orbit track.");
+        }
+        ImGui::TableNextColumn();
+        reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, changed, resetTooltip);
+        ImGui::EndTable();
+    }
+    editor_style::endHeaderRow();
+    ImGui::Separator();
+    return reset;
+}
 
 //======================================================================================================================
 void beginFieldRow(const char* label) {
@@ -30,66 +65,9 @@ void valueRow(const char* label, const std::string& value) {
 }
 
 //======================================================================================================================
-void drawRenderingReset(const InspectorPanelContext& context, EditorRenderGroup group) {
-    ImGui::PushID(static_cast<int>(group));
-    const bool changed =
-        renderingGroupChanged(context.settings, group) ||
-        (group == EditorRenderGroup::Display &&
-         (context.renderer.clearColor[0] != 0.05f || context.renderer.clearColor[1] != 0.07f ||
-          context.renderer.clearColor[2] != 0.10f || context.renderer.clearColor[3] != 1.0f));
-    if (ImGui::SmallButton("Reset group")) {
-        resetRenderingGroup(context.settings, group);
-        if (group == EditorRenderGroup::Exposure) {
-            setAutoExposureEnabled(context.settings, context.exposureContext,
-                                   context.exposureResetPending,
-                                   context.settings.autoExposureEnabled);
-        }
-        if (group == EditorRenderGroup::Display) {
-            constexpr std::array kClear{0.05f, 0.07f, 0.10f, 1.0f};
-            std::copy(kClear.begin(), kClear.end(), context.renderer.clearColor);
-        }
-    }
-    editorTooltip("Restore the editor defaults for this rendering group. Other groups, the camera "
-                  "and scene playback keep their current settings.");
-    if (changed) {
-        ImGui::SameLine();
-        editor_style::message("Modified");
-    }
-    ImGui::PopID();
-}
-
-//======================================================================================================================
-bool beginReadings(const char* id) {
-    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp))
-        return false;
-    ImGui::TableSetupColumn("Label", ImGuiTableColumnFlags_WidthStretch, 0.48f);
-    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch, 0.52f);
-    return true;
-}
-
-//======================================================================================================================
 void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
     if (ImGui::Begin(kInspectorPanelWindowName, &open)) {
         const auto subject = context.selection.subject;
-        if (subject == EditorSubject::Object) {
-            ImGui::TextWrapped(
-                "%s", sceneObjectLabel(context.session.scene(), context.selection.index).c_str());
-            editor_style::message("Object transform");
-        } else if (subject == EditorSubject::DirectionalLight) {
-            ImGui::TextWrapped("Light %zu", context.selection.index);
-            editor_style::message("Directional light");
-        } else if (subject == EditorSubject::LocalLight) {
-            ImGui::TextWrapped(
-                "%s",
-                sceneLocalLightLabel(context.session.scene(), context.selection.lightId).c_str());
-            editor_style::message("Local light");
-        } else if (subject == EditorSubject::Camera) {
-            ImGui::TextUnformatted("Editor Camera");
-        } else if (subject == EditorSubject::Rendering) {
-            ImGui::TextUnformatted(
-                renderingCategoryLabel(static_cast<RenderingCategory>(context.selection.index))
-                    .data());
-        }
         if (context.selectionHiddenByFilter) {
             editor_style::message("Selection is hidden by the Scene search filter. Clear the "
                                   "filter to find it in the list.",
@@ -98,7 +76,6 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
                 context.sceneFilter->clear();
             }
         }
-        ImGui::Separator();
         const ImGuiID previousKey = ImGui::GetID("PreviousInspectorSubject");
         ImGuiStorage* storage = ImGui::GetStateStorage();
         ImGui::PushID(static_cast<int>(subject));
@@ -116,13 +93,10 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             switch (subject) {
             case EditorSubject::None:
                 editor_style::message(
-                    "Select a camera, rendering settings, light or object in Scene.");
+                    "Select a light or object in Hierarchy, or choose View > Editor Camera.");
                 break;
             case EditorSubject::Camera:
                 drawCameraSection(context);
-                break;
-            case EditorSubject::Rendering:
-                drawRenderingSection(context);
                 break;
             case EditorSubject::DirectionalLight:
                 drawDirectionalLightSection(context, context.selection.index);
