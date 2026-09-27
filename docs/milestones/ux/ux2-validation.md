@@ -4,8 +4,8 @@
 
 The [implemented record](ux2.md) owns placement and conventions. The owner accepted UX2 overall
 after the [completion gate](../../roadmap/editor-experience.md#completion-gate) checklist, without
-per-gesture results, then authorized local closure. The executor plan is closed and removed. Publication and integration
-remain pending under the original no-push instruction.
+per-gesture results, then authorized local closure. The executor plan is closed and removed. The owner authorized
+publication and squash integration on 2026-09-27.
 
 ## Revisions and evidence
 
@@ -163,7 +163,6 @@ reports retain their tests-first and review evidence. None changed the protected
 operator documents also corrected obsolete operator routes in the frame-pipeline, GPU-visibility and
 temporal-comparison guides, beyond its four named documents. Fenced commands stayed unchanged.
 
-The owner accepted local closure with these evidence limits. The plan's PR action is deferred:
-creating it requires publishing the currently local branch, and the original instruction still
-forbids pushes. A local PR description is prepared in `task15/pr-body.md`; no push, pull request
-or merge has occurred. UX3 remains inactive and requires its own execution authorization.
+The owner accepted local closure with these evidence limits, then authorized publication and
+squash integration on 2026-09-27; the validated revision's tag is published with the branch.
+UX3 remains inactive and requires its own execution authorization.

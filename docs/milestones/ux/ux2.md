@@ -1,6 +1,6 @@
 # UX2 — Editor Surfaces
 
-**Status**: Implemented — owner accepted on 2026-09-27; local integration pending
+**Status**: Implemented — owner accepted on 2026-09-27; integrated by squash merge
 
 On 2026-09-27 the owner accepted the final running editor and authorized closure. The four
 slices below are implemented: shared Codicons surfaces and menu-bar transport; scene-only
@@ -9,7 +9,8 @@ and workspace schema 4 with migration. The executor plan is closed and removed.
 [Validation](ux2-validation.md) records 8/8 exact scene-image pairs, passing unit/GPU suites,
 native workspace migration and the limits of overall owner acceptance. Per-gesture evidence
 not supplied remains unverified; no historical rendering gate is closed by this UI work.
-The branch remains local under the owner's no-push instruction; no pull request has been opened.
+Corrections made after acceptance are listed in the validation record and await the owner's
+editor check. The owner authorized publication and squash integration on 2026-09-27.
 
 From the owner's review of the running editor on 2026-09-25; its five open points were decided
 with the owner the same day. UX2 gives every control one home where its task belongs, removes duplicate routes and chrome that is

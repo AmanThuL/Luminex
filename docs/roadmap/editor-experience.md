@@ -135,8 +135,8 @@ a one-row Render Graph header (UX2.3); workspace schema 4 and acceptance (UX2.4)
 
 Implemented and owner-accepted on 2026-09-27; the executor plan is closed. The
 [validation record](../milestones/ux/ux2-validation.md) retains passing 8/8 exact-image pairs,
-unit/GPU suites and native schema migration, plus unverified per-gesture evidence. The branch
-remains local under the owner's no-push instruction; integration and PR publication are pending.
+unit/GPU suites and native schema migration, plus unverified per-gesture evidence and the
+corrections made after acceptance. It is integrated by squash merge.
 
 **Exit gate:** the [completion gate](#completion-gate) tasks pass on the new layout at both window
 sizes; every command removed from a surface stays reachable by a named route; schema 3 workspaces
