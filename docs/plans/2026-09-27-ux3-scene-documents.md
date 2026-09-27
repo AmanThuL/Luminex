@@ -65,7 +65,7 @@ endArray`, `key`, `string`, `number(float|double)`, `integer`, `boolean`, `take(
 `size`, `at`, `asFloat() -> std::expected<float, std::string>` (and `asDouble`, `asUInt`,
 `asString`, `asBool`) and `path()`, a JSON pointer such as `/extensions/LMX_scene/look/bloom/
 threshold`; `JsonTokens::parse(std::string) -> asset::AssetResult<JsonTokens>` and `root()`.
-- [ ] Tests first: a nested object writes exact golden bytes; `formatShortest` round-trips 100,000
+- [x] Tests first: a nested object writes exact golden bytes; `formatShortest` round-trips 100,000
   random finite floats via `std::from_chars`; a non-finite number asserts; an unterminated string
   reports its byte offset; `find` on a missing key is empty; a type mismatch names the pointer;
   `EngineGltfTests` pass after the move. Commit `core: add a byte-stable JSON writer (UX3)`.

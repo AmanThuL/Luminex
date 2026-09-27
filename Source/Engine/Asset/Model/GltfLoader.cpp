@@ -7,7 +7,6 @@
 
 #include "Core/Math/Transform.h"
 
-#define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
 
 #define STB_IMAGE_IMPLEMENTATION
