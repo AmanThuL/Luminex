@@ -28,7 +28,8 @@ RetainedFrame measuredFrame(uint64_t frameId, std::string label, double millisec
 } // namespace
 
 //======================================================================================================================
-TEST_CASE("graph publication owns one exact frame and changes topology only at four Hz", "[app]") {
+TEST_CASE("graph publication owns one exact frame and changes topology only at four Hz",
+          "[app][graph-snapshot]") {
     GraphSnapshot snapshot;
     snapshot.update(100.0, nullptr);
     snapshot.freeze();
@@ -65,7 +66,7 @@ TEST_CASE("graph publication owns one exact frame and changes topology only at f
 
 //======================================================================================================================
 TEST_CASE("graph freeze keeps the displayed publication through eviction and resumes immediately",
-          "[app]") {
+          "[app][graph-snapshot]") {
     FrameRecordRing ring;
     auto first = measuredFrame(7, "pass.first", 1.25);
     ring.retain(first.record, first.metrics);
@@ -101,7 +102,8 @@ TEST_CASE("graph freeze keeps the displayed publication through eviction and res
 }
 
 //======================================================================================================================
-TEST_CASE("graph publication only exposes joined timings when the whole frame publishes", "[app]") {
+TEST_CASE("graph publication only exposes joined timings when the whole frame publishes",
+          "[app][graph-snapshot]") {
     FrameRecordRing ring;
     auto frame = measuredFrame(20, "pass.measuredZero", 0.0);
     ring.retain(frame.record);
@@ -123,4 +125,33 @@ TEST_CASE("graph publication only exposes joined timings when the whole frame pu
     snapshot.update(0.5, &frame);
     REQUIRE_FALSE(snapshot.displayed()->timed);
     REQUIRE(snapshot.displayed()->timings.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("graph freshness tracks new arrivals independently of publication and freeze",
+          "[app][graph-snapshot]") {
+    GraphSnapshot snapshot;
+    REQUIRE_FALSE(snapshot.stale(100.0));
+    auto first = measuredFrame(7, "pass.first", 1.0);
+    snapshot.update(100.0, &first);
+    REQUIRE_FALSE(snapshot.stale(100.999));
+    snapshot.update(100.75, &first);
+    REQUIRE(snapshot.stale(101.0));
+    snapshot.update(101.0, nullptr);
+    REQUIRE(snapshot.stale(101.0));
+    auto second = measuredFrame(8, "pass.second", 2.0);
+    snapshot.update(101.01, &second);
+    REQUIRE_FALSE(snapshot.stale(101.01));
+    auto third = measuredFrame(9, "pass.third", 3.0);
+    snapshot.update(101.1, &third);
+    REQUIRE(snapshot.displayed()->record.frameId == 8);
+    REQUIRE_FALSE(snapshot.stale(102.05));
+    REQUIRE(snapshot.stale(102.1));
+    snapshot.freeze();
+    REQUIRE_FALSE(snapshot.stale(200.0));
+    snapshot.resume();
+    REQUIRE_FALSE(snapshot.stale(200.0));
+    snapshot.update(200.0, &third);
+    REQUIRE_FALSE(snapshot.stale(200.9));
+    REQUIRE(snapshot.stale(201.0));
 }

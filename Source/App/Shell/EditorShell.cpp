@@ -483,7 +483,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
 
     if (m_workspace.visibility.isVisible(EditorPanel::RenderGraph)) {
         bool open = true;
-        drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords);
+        drawRenderGraphPanel(open, m_renderGraphPanel, frameRecords, m_notices);
         setPanelVisible(EditorPanel::RenderGraph, open);
     }
 }

@@ -32,11 +32,16 @@ public:
     /// The owned displayed frame, or null while waiting; valid until
     /// publication/resume/destruction.
     const RetainedFrame* displayed() const;
+    /// True for a live displayed frame when no newer frame has arrived for one second. Waiting
+    /// and frozen states are distinct, never stale. Arrival tracking is independent of publication.
+    bool stale(double nowSeconds) const;
 
 private:
     std::optional<RetainedFrame> m_frame;
     double m_nextPublishSeconds = 0.0;
     bool m_frozen = false;
+    std::optional<uint64_t> m_lastObservedFrame;
+    double m_lastArrivalSeconds = 0.0;
 };
 
 } // namespace lmx::app

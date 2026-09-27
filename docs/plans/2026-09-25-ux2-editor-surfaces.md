@@ -255,9 +255,9 @@ members; }`; `groupPassStages(std::span<const PassTimingSummary>) -> std::vector
 **Produces:** `GraphLayoutOptions::expandedPinBundles` (node keys); a collapsed pin `N scene
 imports` standing for a node's version-0 inputs whose `resourceName` starts with `lmx.scene.`,
 when there are at least two.
-- [ ] Tests first: six `lmx.scene.*` imports show one bundle pin and six when expanded; one import
+- [x] Tests first: six `lmx.scene.*` imports show one bundle pin and six when expanded; one import
   stays a plain pin; other imports never bundle; `signature` follows expansion, not measurements.
-- [ ] One header row: Freeze/Resume (Lock/Unlock) with status only when frozen or stale, FitGraph,
+- [x] One header row: Freeze/Resume (Lock/Unlock) with status only when frozen or stale, FitGraph,
   FitSelection, `1:1`, and More (Reset layout, Columns, Dump). Dump posts a notice; the pooling
   line and explanation become tooltips; memory stays in Details. Commit `editor: compress the
   Render Graph header (UX2)`.

@@ -372,6 +372,10 @@ void drawPin(const GraphLayoutPin& pin, ed::PinId id, ed::PinKind kind, float ed
     ed::EndPin();
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         hoveredLabel = pin.label;
+        if (pin.sceneImportsToggle) {
+            hoveredLabel += pin.bundledImports.empty() ? "\nDouble-click to collapse scene imports."
+                                                       : "\nDouble-click to expand scene imports.";
+        }
     }
     ImGui::GetWindowDrawList()->AddCircleFilled(dot, scaled(kPinDotRadius), ImColor(accent));
 }
@@ -535,7 +539,26 @@ void drawItemOverlays(const GraphNodeModel& model, const GraphLayout& layout) {
 //======================================================================================================================
 // A double-click is the one gesture that changes how much of a stage is drawn: on a folded stage it
 // opens it, and on any member of an open one it folds that stage back up.
-void applyDoubleClick(const GraphLayout& layout, GraphLayoutOptions& options) {
+void applyDoubleClick(const GraphNodeModel& model, const GraphLayout& layout,
+                      GraphLayoutOptions& options) {
+    const auto clickedPin = ed::GetDoubleClickedPin();
+    if (clickedPin) {
+        for (uint32_t index = 0; index < layout.items.size(); ++index) {
+            const auto& item = layout.items[index];
+            for (uint32_t pin = 0; pin < item.inputs.size(); ++pin) {
+                if (item.inputs[pin].sceneImportsToggle &&
+                    clickedPin == pinIdOf(itemIdValue(layout, index), pin)) {
+                    const auto key = graphItemKey(model, layout, index);
+                    auto& expanded = options.expandedPinBundles;
+                    if (std::ranges::find(expanded, key) == expanded.end())
+                        expanded.push_back(key);
+                    else
+                        std::erase(expanded, key);
+                    return;
+                }
+            }
+        }
+    }
     const std::optional<uint32_t> itemIndex =
         itemOfCanvasId(layout, ed::GetDoubleClickedNode().Get());
     if (!itemIndex) {
@@ -820,7 +843,7 @@ void drawCanvas(const GraphNodeModel& model, const GraphLayout& layout,
     if (state.selectedItem) {
         state.selectionNotice.clear();
     }
-    applyDoubleClick(layout, state.layoutOptions);
+    applyDoubleClick(model, layout, state.layoutOptions);
 
     ed::SetCurrentEditor(nullptr);
 }

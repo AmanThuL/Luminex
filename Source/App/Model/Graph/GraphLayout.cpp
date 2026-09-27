@@ -130,7 +130,68 @@ std::vector<GraphLayoutGroup> buildGroups(const GraphNodeModel& model,
 }
 
 //======================================================================================================================
-std::string buildSignature(const GraphNodeModel& model, const GraphLayoutOptions& options) {
+// Collapse imports only after edge construction, then remap every surviving input index. Version
+// zero has no producer, but connected inputs after those imports still change their pin ordinal.
+void bundleSceneImports(const GraphNodeModel& model, const GraphLayoutOptions& options,
+                        GraphLayout& layout) {
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        auto& item = layout.items[index];
+        if (item.kind != GraphLayoutItemKind::Node)
+            continue;
+        const auto eligible = [](const GraphLayoutPin& pin) {
+            return pin.version == 0 && pin.resourceName.starts_with("lmx.scene.");
+        };
+        const auto count = std::ranges::count_if(item.inputs, eligible);
+        if (count < 2)
+            continue;
+        const std::string key = graphItemKey(model, layout, index);
+        const bool expanded =
+            std::ranges::find(options.expandedPinBundles, key) != options.expandedPinBundles.end();
+        if (expanded) {
+            for (auto& pin : item.inputs)
+                pin.sceneImportsToggle = eligible(pin);
+            continue;
+        }
+        GraphLayoutPin bundle{.resource = kNoIndex,
+                              .shortLabel = std::format("{} scene imports", count),
+                              .sceneImportsToggle = true};
+        for (const auto& pin : item.inputs) {
+            if (eligible(pin)) {
+                bundle.bundledImports.push_back({.resource = pin.resource,
+                                                 .resourceName = pin.resourceName,
+                                                 .version = pin.version,
+                                                 .label = pin.label});
+                if (!bundle.label.empty())
+                    bundle.label += '\n';
+                bundle.label +=
+                    std::format("r{} \"{}\" v{}", pin.resource, pin.resourceName, pin.version);
+            }
+        }
+        std::vector<uint32_t> remap(item.inputs.size());
+        std::vector<GraphLayoutPin> pins;
+        uint32_t bundleIndex = kNoIndex;
+        for (uint32_t pin = 0; pin < item.inputs.size(); ++pin) {
+            if (eligible(item.inputs[pin])) {
+                if (bundleIndex == kNoIndex) {
+                    bundleIndex = static_cast<uint32_t>(pins.size());
+                    pins.push_back(std::move(bundle));
+                }
+                remap[pin] = bundleIndex;
+            } else {
+                remap[pin] = static_cast<uint32_t>(pins.size());
+                pins.push_back(std::move(item.inputs[pin]));
+            }
+        }
+        item.inputs = std::move(pins);
+        for (auto& edge : layout.edges)
+            if (edge.toItem == index)
+                edge.toPin = remap[edge.toPin];
+    }
+}
+
+//======================================================================================================================
+std::string buildSignature(const GraphNodeModel& model, const GraphLayoutOptions& options,
+                           const GraphLayout& layout) {
     std::string out = model.shapeSignature;
     out += std::format("\ncolumns={}\n", options.columnsPerRow);
     std::vector<std::string> keys = options.expandedGroups;
@@ -139,6 +200,21 @@ std::string buildSignature(const GraphNodeModel& model, const GraphLayoutOptions
     for (const std::string& key : keys) {
         out += std::format("expanded={}\n", key);
     }
+    keys.clear();
+    for (uint32_t index = 0; index < layout.items.size(); ++index) {
+        const auto& item = layout.items[index];
+        if (item.kind != GraphLayoutItemKind::Node ||
+            !std::ranges::any_of(item.inputs,
+                                 [](const auto& pin) { return pin.sceneImportsToggle; }))
+            continue;
+        const auto key = graphItemKey(model, layout, index);
+        if (std::ranges::find(options.expandedPinBundles, key) != options.expandedPinBundles.end())
+            keys.push_back(key);
+    }
+    std::ranges::sort(keys);
+    keys.erase(std::ranges::unique(keys).begin(), keys.end());
+    for (const auto& key : keys)
+        out += std::format("expanded-pins={}\n", key);
     return out;
 }
 
@@ -339,7 +415,8 @@ GraphLayout layoutGraph(const GraphNodeModel& model, const GraphLayoutOptions& o
         layout.aliasLinks.push_back({.fromItem = fromItem, .toItem = toItem, .sourceLink = index});
     }
 
-    layout.signature = buildSignature(model, options);
+    bundleSceneImports(model, options, layout);
+    layout.signature = buildSignature(model, options, layout);
     return layout;
 }
 
