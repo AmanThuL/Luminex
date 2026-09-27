@@ -185,7 +185,7 @@ std::vector<bool> nodeEnabled; std::optional<engine::SceneCamera> sceneCamera; }
   (listed in `ToolsTests.cpp`). Commit `app: record scene documents in evidence (UX3)`.
 
 ### Task 10: UX3.1 gate (main thread)
-- [ ] At `--temporal off`, parent versus head BMP SHA-256 for eight scenes at `--frames 1` and
+- [x] At `--temporal off`, parent versus head BMP SHA-256 for eight scenes at `--frames 1` and
   Sponza and San Miguel at 600 and 3600; equal `LMX_GRAPH_DUMP`s; `parity_rounds.py` over fifteen
   cases; save-load-save; the validator; clean Metal validation. Record results in a new
   `docs/milestones/ux/ux3-validation.md`. **Owner checkpoint:** the parity report.
