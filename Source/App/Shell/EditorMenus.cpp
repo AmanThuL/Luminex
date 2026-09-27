@@ -113,6 +113,7 @@ void EditorShell::buildMainMenu(const render::Renderer& renderer) {
         visibilityItem(kViewportPanelWindowName, EditorPanel::Viewport);
         visibilityItem(kInspectorPanelWindowName, EditorPanel::Inspector);
         visibilityItem(kRenderingPanelWindowName, EditorPanel::Rendering);
+        visibilityItem("Performance summary", EditorPanel::PerformanceSummary);
         visibilityItem(kPerformancePanelWindowName, EditorPanel::Performance);
         visibilityItem(kRenderGraphPanelWindowName, EditorPanel::RenderGraph);
         visibilityItem(kConsolePanelWindowName, EditorPanel::Console);

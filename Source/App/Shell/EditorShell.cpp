@@ -423,6 +423,7 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
                                   [this] {
                                       setPanelVisible(EditorPanel::Performance, true);
                                       m_performancePanel.requestFocus = true;
+                                      m_performancePanel.requestLiveTab = true;
                                   },
                               .lightingDisplay = &m_lightingDisplay};
     if (m_workspace.visibility.isVisible(EditorPanel::Inspector)) {
@@ -462,6 +463,16 @@ void EditorShell::buildPanels(rojoRHI::Device& device, render::Renderer& rendere
             break;
         }
         setPanelVisible(EditorPanel::Performance, open);
+    }
+
+    if (m_workspace.visibility.isVisible(EditorPanel::PerformanceSummary)) {
+        bool open = true;
+        if (drawPerformanceSummary(open, m_performanceModel)) {
+            setPanelVisible(EditorPanel::Performance, true);
+            m_performancePanel.requestFocus = true;
+            m_performancePanel.requestLiveTab = true;
+        }
+        setPanelVisible(EditorPanel::PerformanceSummary, open);
     }
 
     if (m_workspace.visibility.isVisible(EditorPanel::Console)) {

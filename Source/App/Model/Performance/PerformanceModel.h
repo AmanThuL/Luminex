@@ -91,6 +91,7 @@ struct PerformanceSnapshot {
     uint32_t sceneTargetPixelHeight = 0; ///< Scene render target size, in device pixels.
     uint32_t renderPixelWidth = 0;       ///< Effective render width before reconstruction.
     uint32_t renderPixelHeight = 0;      ///< Effective render height before reconstruction.
+    double sampledAtSeconds = 0.0;       ///< Retirement arrival time for the displayed GPU rows.
     double publishedAtSeconds = 0.0; ///< Wall-clock seconds since model creation at publication.
     uint64_t transientRequestedBytes = 0;    ///< Bytes requested by the retained compiled frame.
     uint64_t transientHighWaterBytes = 0;    ///< Bytes its transient heap had to provide.
@@ -139,6 +140,9 @@ public:
     /// Whether the model is currently paused.
     bool paused() const { return m_paused; }
 
+    /// True while frozen, waiting, or when the displayed GPU retirement is at least one second old.
+    bool stale() const;
+
     /// Freezes the complete published snapshot. Resume clears both histories and reports waiting
     /// until a newer retired sample arrives; neither operation pauses scene playback.
     void setPaused(bool paused);
@@ -158,6 +162,7 @@ private:
     uint64_t m_lastSeenFrameId = 0;
     uint64_t m_contextEpoch = 0;
     double m_elapsedSeconds = 0.0;
+    double m_sampledAtSeconds = 0.0;
 
     std::vector<float> m_frameIntervalMsHistory;
     PassTimingHistory m_passTimingHistory;

@@ -238,10 +238,10 @@ accessor), `Source/App/Panels/Console/ConsolePanel.cpp`, `Tests/App/Model/Consol
 **Produces:** `passStage(std::string_view label) -> std::string_view`; `struct StageTimingRow {
 std::string stage; double averageMs, latestMs; uint32_t firstSchedule; std::vector<size_t>
 members; }`; `groupPassStages(std::span<const PassTimingSummary>) -> std::vector<StageTimingRow>`.
-- [ ] Tests first: `lmx.pass.bloom.downsample2` → `bloom`, `lmx.pass.scene` → `scene`, other labels
+- [x] Tests first: `lmx.pass.bloom.downsample2` → `bloom`, `lmx.pass.scene` → `scene`, other labels
   are their own stage; bloom rows fold into one stage summing average and latest, ordered by first
   schedule index; costliest-first ordering is stable.
-- [ ] Docked tab `Performance##Summary` (no window class): frame and GPU time, a sparkline of
+- [x] Docked tab `Performance##Summary` (no window class): frame and GPU time, a sparkline of
   `frameIntervalsMs`, the three costliest stages, freshness only when stale, and Details opening
   the detached window. That window keeps the name `Performance`, so schema 3 bounds carry over, and
   gains Live and Measure tabs, stage-grouped expandable rows and a sortable `#` column replacing the

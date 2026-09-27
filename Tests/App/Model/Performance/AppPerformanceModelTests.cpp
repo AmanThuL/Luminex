@@ -507,3 +507,33 @@ TEST_CASE("migrated rendering timings publish freeze and clear as one performanc
     REQUIRE_FALSE(model.snapshot().renderingTimings.compatibleGpu);
     REQUIRE_FALSE(model.snapshot().renderingTimings.controllerInput);
 }
+
+//======================================================================================================================
+TEST_CASE("performance freshness follows retired data rather than interval publication",
+          "[app][performance-freshness]") {
+    PerformanceModel model;
+    REQUIRE(model.stale());
+    const std::array timings{rojoRHI::PassTiming{.label = "scene", .gpuMilliseconds = 1.0}};
+    auto sample = sampleFor(1, timings);
+    model.tick(0.01f, &sample);
+    REQUIRE_FALSE(model.stale());
+    model.tick(0.75f, nullptr);
+    REQUIRE_FALSE(model.stale());
+    model.tick(0.3f, &sample);
+    REQUIRE(model.stale());
+    sample.frameId = 2;
+    model.tick(0.01f, &sample);
+    model.tick(0.25f, nullptr);
+    REQUIRE_FALSE(model.stale());
+    model.setPaused(true);
+    REQUIRE(model.stale());
+    model.clearHistory();
+    REQUIRE(model.stale());
+    model.setPaused(false);
+    REQUIRE(model.stale());
+    sample.frameId = 3;
+    model.tick(0.01f, &sample);
+    REQUIRE_FALSE(model.stale());
+    model.setContextEpoch(1);
+    REQUIRE(model.stale());
+}

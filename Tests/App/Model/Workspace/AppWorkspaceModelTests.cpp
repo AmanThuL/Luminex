@@ -439,3 +439,20 @@ TEST_CASE("Rendering visibility is shared and session local before schema migrat
     REQUIRE(parseWorkspaceSettings("Schema=3\nRendering=0\n").visibility.rendering);
     REQUIRE(resetWorkspaceVisibility().rendering);
 }
+
+//======================================================================================================================
+TEST_CASE("Performance summary visibility is independent and session-local", "[app][workspace]") {
+    auto visibility = resetWorkspaceVisibility();
+    REQUIRE(visibility.isVisible(EditorPanel::PerformanceSummary));
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::Performance));
+    visibility.setVisible(EditorPanel::PerformanceSummary, false);
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::PerformanceSummary));
+    visibility.setVisible(EditorPanel::Performance, true);
+    REQUIRE_FALSE(visibility.isVisible(EditorPanel::PerformanceSummary));
+    const auto saved = writeWorkspaceSettings(kWorkspaceSchemaVersion, visibility);
+    REQUIRE(saved.find("PerformanceSummary=") == std::string::npos);
+    const auto restored = decideWorkspace(parseWorkspaceSettings(saved));
+    REQUIRE(restored.visibility.isVisible(EditorPanel::PerformanceSummary));
+    REQUIRE(restored.visibility.isVisible(EditorPanel::Performance));
+    REQUIRE(kWorkspaceSchemaVersion == 3);
+}

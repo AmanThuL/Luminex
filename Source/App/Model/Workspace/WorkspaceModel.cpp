@@ -83,6 +83,8 @@ bool WorkspaceVisibility::isVisible(EditorPanel panel) const {
         return rendering;
     case EditorPanel::Inspector:
         return inspector;
+    case EditorPanel::PerformanceSummary:
+        return performanceSummary;
     case EditorPanel::Performance:
         return performance;
     case EditorPanel::Console:
@@ -108,6 +110,9 @@ void WorkspaceVisibility::setVisible(EditorPanel panel, bool visible) {
         return;
     case EditorPanel::Inspector:
         inspector = visible;
+        return;
+    case EditorPanel::PerformanceSummary:
+        performanceSummary = visible;
         return;
     case EditorPanel::Performance:
         performance = visible;
