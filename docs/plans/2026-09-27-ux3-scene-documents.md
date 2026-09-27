@@ -214,7 +214,7 @@ catalog, `AppOptionsTests.cpp`, `EngineSceneTests.cpp`, `ScenePlaybackTests.cpp`
 `OcclusionReference.cpp`, `SelectionOutline.cpp`, tests.
 **Produces:** `VisibilityReason::CullingOff` (renamed) and `AuthoredOff`,
 `VisibilityCounters::disabled`, `Scene::setObjectEnabled(size_t, bool)` bumping the coverage epoch.
-- [ ] Tests first: CPU classification rejects a flagged row as `AuthoredOff` even with culling off
+- [x] Tests first: CPU classification rejects a flagged row as `AuthoredOff` even with culling off
   or `viewUnculled`, counting it only as `disabled`; GPU (`[gpu][visibility]`) agrees with CPU on a
   population with disabled rows and emits no row or command for them; the shadow view and
   `OcclusionReference` skip them; a GPU image test disables and re-enables a Sponza pillar and

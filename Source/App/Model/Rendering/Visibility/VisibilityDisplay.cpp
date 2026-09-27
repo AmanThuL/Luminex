@@ -28,7 +28,7 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
     switch (reason) {
     case render::VisibilityReason::None:
         return "Frustum test";
-    case render::VisibilityReason::Disabled:
+    case render::VisibilityReason::CullingOff:
         return "Culling disabled";
     case render::VisibilityReason::ViewUnculled:
         return "Shadow view unculled";
@@ -36,6 +36,8 @@ std::string_view visibilityReasonName(render::VisibilityReason reason) {
         return "Unreliable bounds";
     case render::VisibilityReason::Occluded:
         return "Occluded (previous-frame HZB)";
+    case render::VisibilityReason::AuthoredOff:
+        return "Disabled";
     case render::VisibilityReason::NonFiniteTransform:
         return "Nonfinite transform";
     }
@@ -173,7 +175,8 @@ std::vector<VisibilityField> objectVisibilityFields(const render::InstanceVisibi
     std::vector<VisibilityField> fields{
         {"Visibility", std::string(visibilityStateName(visibility->state))},
         {"Reason", visibility->state == render::VisibilityState::Rejected &&
-                           visibility->reason != render::VisibilityReason::Occluded
+                           visibility->reason != render::VisibilityReason::Occluded &&
+                           visibility->reason != render::VisibilityReason::AuthoredOff
                        ? "Outside camera frustum"
                        : std::string(visibilityReasonName(visibility->reason))},
         {"World minimum",

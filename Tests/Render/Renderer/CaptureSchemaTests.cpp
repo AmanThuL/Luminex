@@ -221,11 +221,11 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"stateCapacity", 12},
                    {"candidateCount", 16},
                    {"viewCount", 20}});
-    requireLayout("VisibilityCounterWords", 8, 80,
+    requireLayout("VisibilityCounterWords", 8, 84,
                   {{"candidates", 0},
                    {"visible", 4},
                    {"rejected", 8},
-                   {"disabled", 12},
+                   {"cullingOff", 12},
                    {"unculled", 16},
                    {"unreliable", 20},
                    {"nonfinite", 24},
@@ -239,7 +239,8 @@ TEST_CASE("capture schema pins GPU visibility storage and frame parameter record
                    {"nearCrossing", 56},
                    {"outsideSource", 60},
                    {"rectTooLarge", 64},
-                   {"padding", 68}});
+                   {"disabled", 68},
+                   {"padding", 72}});
     requireLayout("OcclusionParams", 13, 96,
                   {{"sourceRows", 0},
                    {"sourceWidth", 64},

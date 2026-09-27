@@ -154,3 +154,37 @@ TEST_CASE("independent ID reference preserves wireframe coverage", "[gpu][occlus
     REQUIRE(check->falselyRejectedPixels < 256);
     REQUIRE(check->invalidReferencePixels == 0);
 }
+
+//======================================================================================================================
+TEST_CASE("independent reference excludes disabled geometry without losing row identity",
+          "[gpu][occlusion-reference][disabled-instance]") {
+    auto device = createDevice();
+    REQUIRE(device);
+    auto reference = OcclusionReference::create(**device);
+    REQUIRE(reference);
+    TransientPool pool(**device);
+    auto mesh = lmx::test::fixtureMesh(**device, referenceQuad(), "lmx.test.reference.disabled");
+    REQUIRE(mesh);
+    std::array<FixtureDrawItem, 2> items;
+    for (auto& item : items)
+        item.mesh = &*mesh;
+    items[0].model = glm::translate(glm::mat4(1), glm::vec3(0, 0, 1));
+    items[0].enabled = false;
+    FixtureSceneView fixture;
+    fixture.items = items;
+    for (bool backgroundEnabled : {true, false}) {
+        items[1].enabled = backgroundEnabled;
+        const auto status = referenceFrame(**device, pool, **reference, fixture);
+        (*device)->waitIdle();
+        (*reference)->retireThrough(status.frameNumber);
+        const auto check = (*reference)->check(status);
+        REQUIRE(check);
+        REQUIRE(check->visibleInstances == (backgroundEnabled ? 1 : 0));
+        REQUIRE(check->falselyRejectedPixels == (backgroundEnabled ? 256 : 0));
+        REQUIRE(check->invalidReferencePixels == 0);
+        REQUIRE(check->unmatchedCandidates == 0);
+        if (backgroundEnabled)
+            REQUIRE(check->missing[0].instanceRow == 1);
+        REQUIRE(fixture.state->scene.objects.size() == 2);
+    }
+}

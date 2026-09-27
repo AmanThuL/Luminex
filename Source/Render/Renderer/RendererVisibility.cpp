@@ -13,9 +13,10 @@ namespace lmx::render {
 namespace {
 //======================================================================================================================
 VisibilityCounters cpuCounters(const VisibilityResult& result, uint32_t commands) {
-    return {.candidates = static_cast<uint32_t>(result.candidates.size()),
+    return {.candidates = static_cast<uint32_t>(result.candidates.size()) - result.disabled,
             .visible = result.visible,
             .rejected = result.rejected,
+            .disabled = result.disabled,
             .bypassed = result.bypassed,
             .emittedRows = static_cast<uint32_t>(result.visibleItems.size()),
             .emittedCommands = commands};

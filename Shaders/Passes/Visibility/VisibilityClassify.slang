@@ -17,7 +17,7 @@ uint viewForCandidate(uint candidate)
 void count(uint view, uint word, uint value)
 {
     uint ignored;
-    InterlockedAdd(gCounters[view * 20u + word], value, ignored);
+    InterlockedAdd(gCounters[view * kVisibilityCounterWords + word], value, ignored);
 }
 [shader("compute")]
 [numthreads(256, 1, 1)]
@@ -32,9 +32,14 @@ void computeMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
     {
         uint view = viewForCandidate(candidate);
         uint state = classifyBounds(gInstances[gCandidates[candidate].instanceRow], gViews[view]);
-        count(view, 0u, 1u);
         uint type = state & 3u;
-        count(view, type == 0u ? 1u : type == 1u ? 2u : 2u + (state >> 2u), 1u);
+        uint reason = (state >> 2u) & 63u;
+        if (reason == 6u) count(view, 17u, 1u);
+        else
+        {
+            count(view, 0u, 1u);
+            count(view, type == 0u ? 1u : type == 1u ? 2u : 2u + reason, 1u);
+        }
         if (candidate < gParams.stateCapacity)
         {
             gStates[candidate] = state;

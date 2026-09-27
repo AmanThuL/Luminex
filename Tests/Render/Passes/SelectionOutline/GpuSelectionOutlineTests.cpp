@@ -401,3 +401,35 @@ TEST_CASE("rejected selection refreshes its UI target without a stale outline",
     const auto returned = outlineFrame(**device, pool, **renderer, outline->get(), view);
     REQUIRE(returned.outlined == highlighted.outlined);
 }
+
+//======================================================================================================================
+TEST_CASE("disabled selection and foreground contribute no outline coverage",
+          "[gpu][selection-outline][disabled-instance]") {
+    auto device = createDevice();
+    REQUIRE(device);
+    TransientPool pool(**device);
+    auto renderer = Renderer::create(**device, kSize, kSize, true);
+    REQUIRE(renderer);
+    auto outline = SelectionOutline::create(**device, kSize, kSize, true);
+    REQUIRE(outline);
+    auto mesh = fixtureMesh(**device, outlineQuad(), "lmx.test.selection.disabled");
+    REQUIRE(mesh);
+    std::array items{outlineItem(*mesh), outlineItem(*mesh)};
+    items[1].model = glm::translate(glm::mat4(1), glm::vec3(0, 0, 1));
+    items[1].enabled = false;
+    const auto view = outlineView(items);
+    const auto behindDisabled = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(changedPixels(behindDisabled) > 0);
+    items[1].model[3].x = 100;
+    items[1].enabled = true;
+    const auto unobstructed = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(unobstructed.outlined == behindDisabled.outlined);
+    items[0].enabled = false;
+    const auto disabled = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(disabled.outlined == disabled.display);
+    REQUIRE(selectionPasses(disabled.record) == 1);
+    REQUIRE(view.state->scene.objects.size() == 2);
+    items[0].enabled = true;
+    const auto restored = outlineFrame(**device, pool, **renderer, outline->get(), view);
+    REQUIRE(restored.outlined == unobstructed.outlined);
+}

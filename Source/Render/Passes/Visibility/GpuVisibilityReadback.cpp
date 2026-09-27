@@ -25,6 +25,7 @@ VisibilityCounters decodeCounters(const uint32_t* words) {
     result.nearCrossing = words[14];
     result.outsideSource = words[15];
     result.rectTooLarge = words[16];
+    result.disabled = words[17];
     return result;
 }
 //======================================================================================================================
@@ -38,10 +39,10 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
     auto result = std::move(pending.status);
     result.isRetired = true;
     const auto& params = pending.params;
-    std::array<uint32_t, 40> rawCounters{};
+    std::array<uint32_t, 2 * kVisibilityCounterWords> rawCounters{};
     pending.counters->readback(rawCounters.data(), sizeof(rawCounters));
     result.sceneCounters = decodeCounters(rawCounters.data());
-    result.shadowCounters = decodeCounters(rawCounters.data() + 20);
+    result.shadowCounters = decodeCounters(rawCounters.data() + kVisibilityCounterWords);
     result.submission.listBytes =
         (uint64_t{result.sceneCounters.emittedRows} + result.shadowCounters.emittedRows) *
         sizeof(uint32_t);
@@ -68,6 +69,7 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
         const auto& counts = v == 0 ? result.sceneCounters : result.shadowCounters;
         view.visible = counts.visible;
         view.rejected = counts.rejected;
+        view.disabled = counts.disabled;
         view.bypassed = counts.bypassed;
         view.visibleItems.clear();
         std::unordered_map<uint32_t, uint32_t> itemIndices;
@@ -107,6 +109,8 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
         const uint32_t bypassed =
             std::accumulate(counts.bypassed.begin(), counts.bypassed.end(), 0u);
         result.counterMismatches +=
+            difference(counts.candidates + counts.disabled, range.candidateCount);
+        result.counterMismatches +=
             difference(counts.candidates, counts.visible + counts.rejected + bypassed);
         result.counterMismatches +=
             difference(counts.emittedRows + counts.overflowedRows, counts.visible + bypassed);
@@ -133,7 +137,10 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
         expectedCounters.candidates = range.candidateCount;
         for (uint32_t i = 0; i < range.candidateCount; ++i) {
             const auto& expected = pending.expected[range.firstCandidate + i];
-            if (expected.state == VisibilityState::Visible)
+            if (expected.reason == VisibilityReason::AuthoredOff) {
+                ++expectedCounters.disabled;
+                --expectedCounters.candidates;
+            } else if (expected.state == VisibilityState::Visible)
                 ++expectedCounters.visible;
             else if (expected.state == VisibilityState::Rejected)
                 ++expectedCounters.rejected;
@@ -182,6 +189,8 @@ VisibilityStatus GpuVisibility::readback(Pending& pending) {
             result.argumentMismatches += actual.baseVertex != expected.baseVertex;
             result.argumentMismatches += difference(actual.firstInstance, expected.firstInstance);
         }
+        result.counterMismatches += difference(counts.candidates, expectedCounters.candidates);
+        result.counterMismatches += difference(counts.disabled, expectedCounters.disabled);
         result.counterMismatches += difference(counts.visible, expectedCounters.visible);
         result.counterMismatches += difference(counts.rejected, expectedCounters.rejected);
         for (uint32_t i = 1; i <= 4; ++i)

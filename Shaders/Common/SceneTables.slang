@@ -1,6 +1,7 @@
 // Shared CPU/Slang scene-row ABI. Entries own resources and binding declarations.
 static const uint kInstanceMotionInvalid = 1u;
 static const uint kInstanceBoundsUnreliable = 2u;
+static const uint kInstanceDisabled = 4u;
 static const uint kVisibleRowsSlot = 4u;
 static const uint kMaterialHasNormalMap = 1u;
 static const uint kMaterialMasked = 2u;

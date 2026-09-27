@@ -45,7 +45,7 @@ TEST_CASE("visibility extracts five inward guarded reversed infinite planes",
     REQUIRE(classifyInstance(planes, row, 7).reason == VisibilityReason::UnreliableBounds);
     row.model[0][0] = std::numeric_limits<float>::quiet_NaN();
     REQUIRE(classifyInstance(planes, row, 7).reason == VisibilityReason::NonFiniteTransform);
-    REQUIRE(classifyInstance(planes, row, 7, false).reason == VisibilityReason::Disabled);
+    REQUIRE(classifyInstance(planes, row, 7, false).reason == VisibilityReason::CullingOff);
     REQUIRE(classifyInstance(planes, row, 7, true, true).reason == VisibilityReason::ViewUnculled);
 }
 
@@ -99,4 +99,57 @@ TEST_CASE("draw submission preserves sparse rows and separates batched argument 
     const auto empty = buildDrawSubmission(view, scene, shadow, SubmissionMode::Batched);
     REQUIRE(empty.rows.empty());
     REQUIRE(empty.arguments.empty());
+}
+
+//======================================================================================================================
+TEST_CASE("authored-off rows precede every bypass and retain identity without contributing counts",
+          "[render][visibility][disabled-instance]") {
+    std::array<lmx::engine::InstanceRow, 4> rows;
+    std::array<lmx::engine::DrawItem, 4> items;
+    FrustumPlanes planes;
+    planes.valid = true;
+    planes.planes.fill({1, 0, 0, -1});
+    for (uint32_t i = 0; i < rows.size(); ++i) {
+        rows[i].worldBoundsMin = rows[i].worldBoundsMax = {i == 3 ? 0.0f : 2.0f, 0, 0};
+        items[i].instanceRow = i;
+        items[i].mesh.indexCount = 6;
+    }
+    rows[0].flags = lmx::engine::kInstanceDisabled;
+    rows[1].flags = lmx::engine::kInstanceDisabled | lmx::engine::kInstanceBoundsUnreliable;
+    rows[1].model[0][0] = std::numeric_limits<float>::quiet_NaN();
+    SceneView view;
+    view.items = items;
+    view.tables.instanceRows = rows;
+    for (bool culling : {false, true}) {
+        for (bool unculled : {false, true}) {
+            const auto result = classifyView(planes, items, view.tables, culling, unculled);
+            REQUIRE(result.candidates.size() == 4);
+            REQUIRE(result.disabled == 2);
+            for (uint32_t i : {0u, 1u}) {
+                REQUIRE(result.candidates[i].instanceRow == i);
+                REQUIRE(result.candidates[i].state == VisibilityState::Rejected);
+                REQUIRE(result.candidates[i].reason == VisibilityReason::AuthoredOff);
+            }
+            const bool bypass = !culling || unculled;
+            REQUIRE(result.visible == (bypass ? 0 : 1));
+            REQUIRE(result.rejected == (bypass ? 0 : 1));
+            REQUIRE(result.visibleItems ==
+                    (bypass ? std::vector<uint32_t>{2, 3} : std::vector<uint32_t>{2}));
+            REQUIRE(result.bypassed[static_cast<size_t>(VisibilityReason::CullingOff)] ==
+                    (!culling ? 2 : 0));
+            REQUIRE(result.bypassed[static_cast<size_t>(VisibilityReason::ViewUnculled)] ==
+                    (culling && unculled ? 2 : 0));
+            const auto shadow = classifyView(planes, items, view.tables, culling, true);
+            for (auto mode :
+                 {SubmissionMode::Direct, SubmissionMode::Indirect, SubmissionMode::Batched}) {
+                const auto submission = buildDrawSubmission(view, result, shadow, mode);
+                for (uint32_t row : submission.rows)
+                    REQUIRE(row >= 2);
+                uint32_t submitted = 0;
+                for (const auto& args : submission.arguments)
+                    submitted += args.instanceCount;
+                REQUIRE(submitted == result.visibleItems.size() + 2);
+            }
+        }
+    }
 }

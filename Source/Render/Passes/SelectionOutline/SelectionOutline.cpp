@@ -147,7 +147,10 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
     const auto backingScale = inputs.backingScale;
     const auto visible = inputs.visible;
     LMX_ASSERT(selectedDraw < view.items.size(), "selection must name a current draw");
-    if (!visible) {
+    const auto selectedRow = view.items[selectedDraw].instanceRow;
+    LMX_ASSERT(selectedRow < view.tables.instanceRows.size(),
+               "selection requires a canonical instance row");
+    if (!visible || (view.tables.instanceRows[selectedRow].flags & engine::kInstanceDisabled)) {
         const auto output = graph.importTexture(*m_target, kDisplayFormat, "selectionDisplay",
                                                 rojoRHI::TextureUse::ShaderRead);
         PassDesc passthrough;
@@ -190,6 +193,10 @@ GraphTexture SelectionOutline::declare(RenderGraph& graph, rojoRHI::CommandList&
                         {0, engine::kSceneInstancesSlot, engine::kSceneMaterialsSlot});
         for (uint32_t index = 0; index < view.items.size(); ++index) {
             const auto& item = view.items[index];
+            LMX_ASSERT(item.instanceRow < view.tables.instanceRows.size(),
+                       "outline coverage requires canonical instance rows");
+            if (view.tables.instanceRows[item.instanceRow].flags & engine::kInstanceDisabled)
+                continue;
             if (selectedOnly && index != selectedDraw) {
                 continue;
             }

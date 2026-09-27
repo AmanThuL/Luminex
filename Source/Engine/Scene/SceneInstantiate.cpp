@@ -5,6 +5,7 @@
 
 #include "Engine/Scene/SceneInstantiate.h"
 
+#include "Core/Diagnostics/Assert.h"
 #include "Core/Diagnostics/Log.h"
 #include "Core/Math/Color.h"
 #include "Core/Math/Sphere.h"
@@ -324,6 +325,10 @@ asset::AssetResult<LoadedScene> instantiateSceneDocument(rojoRHI::Device& device
     applyDocumentCamera(scene, doc);
     binding.nodes[doc.camera].camera = true;
     scene.animation.loop = doc.loop;
+    LMX_ASSERT(binding.objectEffective.size() == scene.objects.size(),
+               "every instantiated object requires effective enabled state");
+    for (size_t i = 0; i < scene.objects.size(); ++i)
+        scene.setObjectEnabled(i, binding.objectEffective[i]);
     scene.resetMotion();
     if (auto finalized = scene.finalize(device); !finalized)
         return std::unexpected(

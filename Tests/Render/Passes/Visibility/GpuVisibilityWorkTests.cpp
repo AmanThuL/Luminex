@@ -272,3 +272,71 @@ TEST_CASE("GPU safe visibility preserves ordered cancellation that an FMA would 
         REQUIRE(results[0].scene.visibleItems == std::vector<uint32_t>{0, 2});
     }
 }
+
+//======================================================================================================================
+TEST_CASE("GPU disabled rows contribute only disabled counters and no work in either view",
+          "[gpu][visibility][disabled-instance]") {
+    WorkFixture fixture(513);
+    uint32_t disabled = 0;
+    for (uint32_t i = 0; i < fixture.rows.size(); ++i) {
+        if (i % 5 == 0) {
+            fixture.rows[i].flags = lmx::engine::kInstanceDisabled;
+            ++disabled;
+        }
+    }
+    fixture.rows[0].model[0][0] = std::numeric_limits<float>::quiet_NaN();
+    fixture.rows[5].flags |= lmx::engine::kInstanceBoundsUnreliable;
+    for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
+        for (bool culling : {true, false}) {
+            fixture.submit(mode, culling);
+            const auto results = fixture.drain();
+            REQUIRE(results.size() == 1);
+            const auto& result = results[0];
+            requireExact(result);
+            REQUIRE_FALSE(result.overflow);
+            REQUIRE(result.submission.counterBytes == 2 * 21 * sizeof(uint32_t));
+            REQUIRE(result.sceneCounters.candidates == 513 - disabled);
+            REQUIRE(result.shadowCounters.candidates == 513 - disabled);
+            REQUIRE(result.sceneCounters.disabled == disabled);
+            REQUIRE(result.shadowCounters.disabled == disabled);
+            REQUIRE(result.shadowCounters.emittedRows == 513 - disabled);
+            for (const auto* view : {&result.scene, &result.shadow}) {
+                REQUIRE(view->candidates.size() == 513);
+                REQUIRE(view->disabled == disabled);
+                for (uint32_t index : view->visibleItems)
+                    REQUIRE(index % 5 != 0);
+                for (uint32_t i = 0; i < 513; i += 5) {
+                    REQUIRE(view->candidates[i].state == render::VisibilityState::Rejected);
+                    REQUIRE(view->candidates[i].reason == render::VisibilityReason::AuthoredOff);
+                }
+            }
+            if (mode == render::SubmissionMode::Indirect) {
+                std::vector<uint32_t> rows(fixture.lastRows->size() / 4);
+                fixture.lastRows->readback(rows.data(), fixture.lastRows->size());
+                std::vector<rojoRHI::DrawIndexedIndirectArgs> args(fixture.lastArgs->size() / 20);
+                fixture.lastArgs->readback(args.data(), fixture.lastArgs->size());
+                for (uint32_t i = 0; i < 513; i += 5) {
+                    REQUIRE(rows[i] == 0xcdcdcdcdu);
+                    REQUIRE(rows[513 + i] == 0xcdcdcdcdu);
+                    REQUIRE(args[i].instanceCount == 0);
+                    REQUIRE(args[513 + i].instanceCount == 0);
+                }
+            }
+        }
+    }
+    for (auto& row : fixture.rows)
+        row.flags |= lmx::engine::kInstanceDisabled;
+    for (auto mode : {render::SubmissionMode::Indirect, render::SubmissionMode::Batched}) {
+        fixture.submit(mode, false);
+        const auto results = fixture.drain();
+        REQUIRE(results.size() == 1);
+        requireExact(results[0]);
+        for (const auto* counts : {&results[0].sceneCounters, &results[0].shadowCounters}) {
+            REQUIRE(counts->disabled == 513);
+            REQUIRE(counts->candidates == 0);
+            REQUIRE(counts->rejected == 0);
+            REQUIRE(counts->emittedRows == 0);
+            REQUIRE(counts->emittedCommands == 0);
+        }
+    }
+}

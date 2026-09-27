@@ -35,9 +35,10 @@ struct VisibilityCounters {
     uint32_t nearCrossing = 0;          ///< Candidates retained at the source near plane.
     uint32_t outsideSource = 0;         ///< Candidates whose guarded rectangle leaves the source.
     uint32_t rectTooLarge = 0;          ///< Candidates without a sufficiently coarse mip.
-    uint32_t candidates = 0;            ///< Number of input candidates.
+    uint32_t candidates = 0;            ///< Number of enabled input candidates.
     uint32_t visible = 0;               ///< Tested retained candidates.
     uint32_t rejected = 0;              ///< Tested rejected candidates.
+    uint32_t disabled = 0;              ///< Authored-off rows; excluded from every other counter.
     std::array<uint32_t, 5> bypassed{}; ///< Counts indexed by VisibilityReason.
     uint32_t emittedRows = 0;           ///< Rows that fit all capacities.
     uint32_t emittedCommands = 0;       ///< Nonempty commands that fit.
@@ -59,11 +60,12 @@ enum class VisibilityState {
 /// Why the conservative oracle did not reject-test a candidate.
 enum class VisibilityReason {
     None,               ///< Ordinary tested candidate.
-    Disabled,           ///< User disabled camera culling.
+    CullingOff,         ///< User disabled camera culling.
     ViewUnculled,       ///< This view intentionally retains every candidate.
     UnreliableBounds,   ///< Bounds or clipping planes cannot be tested reliably.
     NonFiniteTransform, ///< Object transform contains a nonfinite component.
-    Occluded            ///< Rejected using the previous-frame HZB.
+    Occluded,           ///< Rejected using the previous-frame HZB.
+    AuthoredOff         ///< Authored-off instance, rejected before every culling bypass.
 };
 /// Five inward normalized half-spaces; an invalid frustum conservatively bypasses candidates.
 using FrustumPlanes = Frustum;
@@ -82,6 +84,7 @@ struct VisibilityResult {
     std::vector<uint32_t> visibleItems;         ///< Candidate indices retained for submission.
     uint32_t visible = 0;                       ///< Tested candidates that passed.
     uint32_t rejected = 0;                      ///< Tested candidates outside at least one plane.
+    uint32_t disabled = 0;                      ///< Authored-off rows, counted separately.
     std::array<uint32_t, 5> bypassed{};         ///< Indexed by VisibilityReason; None stays zero.
 };
 /// Published submission diagnostics, with actual commands and bytes for both views.
@@ -136,7 +139,8 @@ struct VisibilityStatus {
 };
 /// Extracts the five planes rasterization clips against, with the fixed outward guard.
 FrustumPlanes extractFrustumPlanes(const glm::mat4& viewProjection);
-/// Classifies one shared row; nonfinite inputs are always retained conservatively.
+/// Classifies one shared row; authored-off rows reject before culling bypasses. Nonfinite enabled
+/// rows are retained conservatively.
 InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::InstanceRow& row,
                                     uint32_t instanceRow, bool enabled = true,
                                     bool viewUnculled = false);

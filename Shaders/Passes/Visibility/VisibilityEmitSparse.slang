@@ -19,7 +19,7 @@ uint viewForCandidate(uint candidate)
 void count(uint view, uint word, uint value)
 {
     uint ignored;
-    InterlockedAdd(gCounters[view * 20u + word], value, ignored);
+    InterlockedAdd(gCounters[view * kVisibilityCounterWords + word], value, ignored);
 }
 void writeArgument(uint index, uint first, uint retained, MeshRow mesh)
 {
@@ -51,7 +51,9 @@ void computeMain(uint3 group : SV_GroupID, uint lane : SV_GroupIndex)
 
     uint position = candidate;
     bool fits = position < gParams.rowCapacity && run.argumentIndex < gParams.argumentCapacity;
-    if (candidate < gParams.rowCapacity) gRows[candidate] = record.instanceRow;
+    if (candidate < gParams.rowCapacity &&
+        (gInstances[record.instanceRow].flags & kInstanceDisabled) == 0u)
+        gRows[candidate] = record.instanceRow;
     if (retained != 0u)
     {
         if (fits) { gRows[position] = record.instanceRow; count(view, 7u, 1u); }

@@ -39,7 +39,7 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
     status.scene.visible = 2;
     status.scene.rejected = 1;
     status.scene.candidates.resize(4);
-    status.scene.bypassed[static_cast<size_t>(render::VisibilityReason::Disabled)] = 1;
+    status.scene.bypassed[static_cast<size_t>(render::VisibilityReason::CullingOff)] = 1;
     const auto fields = app::visibilityFields(status);
     REQUIRE(fields[0].value == "cpu");
     REQUIRE(fields[1].value == "8");
@@ -56,6 +56,8 @@ TEST_CASE("Visibility fields retain bypass counts and world bounds", "[app][visi
     REQUIRE(app::objectVisibilityFields(nullptr).size() == 1);
     object.state = render::VisibilityState::Rejected;
     REQUIRE(app::objectVisibilityFields(&object)[1].value == "Outside camera frustum");
+    object.reason = render::VisibilityReason::AuthoredOff;
+    REQUIRE(app::objectVisibilityFields(&object)[1].value == "Disabled");
 }
 
 //======================================================================================================================

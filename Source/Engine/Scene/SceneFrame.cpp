@@ -154,6 +154,8 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         row.materialRow = object.material.slot;
         row.flags =
             object.motionClass == engine::MotionClass::Invalid ? engine::kInstanceMotionInvalid : 0;
+        if (!object.enabled)
+            row.flags |= engine::kInstanceDisabled;
         row.emissiveScale = object.emissiveStrength;
         const auto localBounds = meshBounds(object.mesh);
         const auto worldBounds =
@@ -169,7 +171,8 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
         } else {
             const auto& previous = storage.instanceTable.shadow[object.id.slot];
             coverageChanged |= previous.model != row.model || previous.meshRow != row.meshRow ||
-                               previous.materialRow != row.materialRow;
+                               previous.materialRow != row.materialRow ||
+                               ((previous.flags ^ row.flags) & engine::kInstanceDisabled) != 0;
         }
         updateRow(storage.instanceTable, object.id.slot, row);
     }
@@ -238,6 +241,17 @@ rojoRHI::Result<void> Scene::prepareFrame(uint64_t frameNumber) {
     storage.lastFrame = frameNumber;
     storage.prepared = true;
     return {};
+}
+
+//======================================================================================================================
+void Scene::setObjectEnabled(size_t index, bool enabled) {
+    LMX_ASSERT(index < objects.size(), "enabled edit requires a current object index");
+    if (objects[index].enabled == enabled)
+        return;
+    objects[index].enabled = enabled;
+    LMX_ASSERT(m_storage->coverageEpoch < std::numeric_limits<uint64_t>::max(),
+               "scene coverage epoch exhausted");
+    ++m_storage->coverageEpoch;
 }
 
 //======================================================================================================================

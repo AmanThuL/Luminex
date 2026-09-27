@@ -23,8 +23,13 @@ InstanceVisibility classifyInstance(const FrustumPlanes& planes, const engine::I
         result.reason = reason;
         return result;
     };
+    if (row.flags & engine::kInstanceDisabled) {
+        result.state = VisibilityState::Rejected;
+        result.reason = VisibilityReason::AuthoredOff;
+        return result;
+    }
     if (!enabled)
-        return bypass(VisibilityReason::Disabled);
+        return bypass(VisibilityReason::CullingOff);
     if (viewUnculled)
         return bypass(VisibilityReason::ViewUnculled);
     if (!isFinite(row.model))
@@ -54,7 +59,9 @@ VisibilityResult classifyView(const FrustumPlanes& planes, std::span<const engin
         const auto state =
             classifyInstance(planes, tables.instanceRows[slot], slot, enabled, viewUnculled);
         result.candidates.push_back(state);
-        if (state.state == VisibilityState::Rejected)
+        if (state.reason == VisibilityReason::AuthoredOff)
+            ++result.disabled;
+        else if (state.state == VisibilityState::Rejected)
             ++result.rejected;
         else {
             result.visibleItems.push_back(index);

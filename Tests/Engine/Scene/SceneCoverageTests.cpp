@@ -158,3 +158,56 @@ TEST_CASE("Scene view tokens distinguish stores and recycled instance rows", "[s
     REQUIRE(newId.slot == oldId.slot);
     REQUIRE(token(first) != oldToken);
 }
+
+//======================================================================================================================
+TEST_CASE("object enabled edits keep identities and advance coverage only on change",
+          "[scene][disabled-instance]") {
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.enabled");
+    const auto material = scene.addMaterial({});
+    const auto id = scene.addObject({.mesh = mesh, .material = material});
+    const auto before = scene.coverageEpoch();
+    REQUIRE(scene.objects[0].enabled);
+    scene.setObjectEnabled(0, true);
+    REQUIRE(scene.coverageEpoch() == before);
+    scene.setObjectEnabled(0, false);
+    REQUIRE_FALSE(scene.objects[0].enabled);
+    REQUIRE(scene.coverageEpoch() == before + 1);
+    scene.setObjectEnabled(0, false);
+    REQUIRE(scene.coverageEpoch() == before + 1);
+    std::vector<engine::DrawItem> items;
+    scene.fillDrawItems(items);
+    REQUIRE(items.size() == 1);
+    REQUIRE(items[0].instanceRow == id.slot);
+    REQUIRE(scene.tryObject(id) == &scene.objects[0]);
+    scene.setObjectEnabled(0, true);
+    REQUIRE(scene.coverageEpoch() == before + 2);
+    REQUIRE(scene.objects[0].id == id);
+}
+
+//======================================================================================================================
+TEST_CASE("object enabled rows reach every paced slot and raw field edits invalidate coverage",
+          "[gpu][scene][disabled-instance]") {
+    auto device = rojoRHI::createDevice();
+    REQUIRE(device);
+    engine::Scene scene;
+    const auto mesh = scene.addMesh(engine::makeCube(), "lmx.test.enabled.slots");
+    const auto material = scene.addMaterial({});
+    const auto id = scene.addObject({.mesh = mesh, .material = material});
+    REQUIRE(scene.finalize(**device));
+    prepareCoverage(**device, scene);
+    for (bool enabled : {false, true}) {
+        scene.setObjectEnabled(0, enabled);
+        for (uint32_t frame = 0; frame < 4; ++frame) {
+            prepareCoverage(**device, scene);
+            const auto tables = scene.tables();
+            std::vector<engine::InstanceRow> rows(tables.instanceCapacity);
+            tables.instances->readback(rows.data(), rows.size() * sizeof(rows[0]));
+            REQUIRE(((rows[id.slot].flags & engine::kInstanceDisabled) == 0) == enabled);
+            REQUIRE(scene.objects[0].id == id);
+        }
+    }
+    const auto before = scene.coverageEpoch();
+    scene.objects[0].enabled = false;
+    REQUIRE(prepareCoverage(**device, scene) > before);
+}

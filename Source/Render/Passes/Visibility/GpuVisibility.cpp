@@ -83,7 +83,8 @@ rojoRHI::Result<void> GpuVisibility::prepareSlot(Slot& slot, const VisibilityTab
         result = allocate(replacement.states, uint64_t{capacity} * 4, "lmx.draw.states", true);
         if (!result)
             return result;
-        result = allocate(replacement.counters, 160, "lmx.draw.counters", true);
+        result = allocate(replacement.counters, 2 * kVisibilityCounterWords * sizeof(uint32_t),
+                          "lmx.draw.counters", true);
         if (!result)
             return result;
         replacement.capacity = capacity;
@@ -138,7 +139,7 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
     status.submission.runBytes = tables.runs.size() * sizeof(RunRecord);
     status.submission.chunkBytes = tables.chunks.size() * sizeof(ChunkRecord);
     status.submission.stateBytes = uint64_t{slot.capacity} * 4;
-    status.submission.counterBytes = 160;
+    status.submission.counterBytes = 2 * kVisibilityCounterWords * sizeof(uint32_t);
     Pending pending{.status = status,
                     .tables = tables,
                     .params = params,
@@ -171,7 +172,8 @@ GpuVisibilityOutputs GpuVisibility::declare(RenderGraph& graph, rojoRHI::Command
             ? graph.createBuffer({.size = chunkBytes, .storageRead = true, .storageWrite = true},
                                  "lmx.draw.chunkOffsets")
             : GraphBuffer{};
-    declareZeroFill(graph, commands, "lmx.pass.visibility.reset", counters, 160);
+    declareZeroFill(graph, commands, "lmx.pass.visibility.reset", counters,
+                    2 * kVisibilityCounterWords * sizeof(uint32_t));
     auto bindRead = [&commands](const PassResources& resources, uint32_t index,
                                 GraphBuffer handle) {
         commands.bindBuffer(index, lmx::render::buffer(resources, handle));

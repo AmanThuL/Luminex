@@ -56,6 +56,7 @@ struct SceneObject {
     float emissiveStrength = 1.0f;
     std::string sourceName;        ///< Exact authored node/mesh name, empty for generated objects.
     std::string materialQualifier; ///< Authored primitive material qualifier, empty when unneeded.
+    bool enabled = true; ///< Effective authored participation; false retains identity and row.
 
     /// Builds the object's model matrix from its authored transform fields.
     glm::mat4 modelMatrix() const;
@@ -98,6 +99,9 @@ public:
     MaterialId addMaterial(MaterialRecord material);
     /// Adds an instance with valid mesh/material handles and seeds its own previous pose.
     InstanceId addObject(SceneObject object);
+    /// Sets effective participation by current object index, preserving identity and row. A change
+    /// advances coverageEpoch immediately; an out-of-range index is a contract violation.
+    void setObjectEnabled(size_t index, bool enabled);
     /// Removes a live instance, invalidates its handle and preserves later rows.
     void removeObject(InstanceId id);
     /// Removes an unreferenced texture; stale or still-referenced identities are misuse.
@@ -159,7 +163,8 @@ public:
     /// Reports live counts, allocation capacities and the last preparation's upload work.
     SceneTableStats tableStats() const;
     /// Monotonic coverage revision, refreshed for public object/material edits by prepareFrame.
-    /// Add/remove identities advance it immediately; motion history and lighting edits do not.
+    /// Add/remove identities and enabled changes advance it immediately; motion history and
+    /// lighting edits do not.
     uint64_t coverageEpoch() const;
     /// Returns borrowed bindings for the prepared slot; valid through that frame's execution.
     /// An unfinalized CPU scene returns empty bindings and cannot be submitted to the renderer.

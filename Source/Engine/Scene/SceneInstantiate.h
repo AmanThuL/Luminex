@@ -60,7 +60,8 @@ struct SceneBinding {
     std::optional<uint32_t> localLightGroup; ///< Top-level group containing authored local lights.
     std::vector<ImportedNodeBinding> importedNodes; ///< Complete source hierarchy per asset.
     std::vector<BoundAssetAnimation> assets; ///< Local animation inputs retained for playback.
-    std::vector<bool> objectEffective; ///< Initial effective flags; row masking follows separately.
+    std::vector<bool>
+        objectEffective; ///< Initial effective flags applied to objects during instantiation.
 };
 
 /// Fully constructed snapshot; publish the whole value together after construction succeeds.
