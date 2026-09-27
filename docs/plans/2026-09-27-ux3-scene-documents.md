@@ -122,7 +122,7 @@ component, `encodeStrength`/`decodeStrength` with a power-of-two intensity.
 ### Task 6: One-time exporter and eight documents (UX3.1, Opus)
 **Files:** create `Tools/SceneExport/{main.cpp,xmake.lua}` (non-default target, contract-listed for
 this commit only), `Assets/Scenes/<id>.scene.{gltf,bin}` ×8. **Consumes:** Tasks 3, 4, C++ catalog.
-- [ ] Load each live scene through `SceneLibrary` and write: glTF scenes as one asset node (`uri`,
+- [x] Load each live scene through `SceneLibrary` and write: glTF scenes as one asset node (`uri`,
   SHA-256) with the scene camera, rails at `sampleRate` 60 with exact rotations and unwrapped yaw,
   and Sponza's 16 lights under a `Local Lights` group in rig order; labs as one generator node with
   default parameters; everywhere the key/fill/rim rig with roles, `castsShadow` on key, strengths
