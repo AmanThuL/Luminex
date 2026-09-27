@@ -13,6 +13,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -50,11 +51,24 @@ struct GltfImage {
     std::vector<std::byte> rgba8;   ///< Tightly packed RGBA8 texels.
 };
 
+/// One source node, indexed exactly as the glTF node array, including inactive and empty nodes.
+struct GltfNode {
+    std::string name;    ///< Authored node name; empty when absent, without mesh-name fallback.
+    int32_t parent = -1; ///< Source parent index, or -1 for a root.
+    std::vector<uint32_t> instances; ///< Active primitive indices into `GltfScene::instances`.
+    bool animated = false;       ///< Whether any clip targets this node or one of its ancestors.
+    glm::vec3 translation{0.0f}; ///< Authored local translation, in asset units.
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f}; ///< Authored local quaternion.
+    glm::vec3 scale{1.0f};                      ///< Authored local per-axis scale.
+    std::optional<glm::mat4> matrix; ///< Authored local matrix when present, superseding TRS.
+};
+
 /// One draw: a mesh (GltfScene::meshes index), the material it draws with, and its node's world
 /// transform (glTF's full T*R*S chain composed through every ancestor). This is the file's
 /// authored rest pose; an animated instance's motion lives in `GltfScene::tracks`, whose first key
 /// need not equal this transform.
 struct GltfInstance {
+    uint32_t node = 0;          ///< Source index into `GltfScene::nodes`.
     uint32_t meshIndex = 0;     ///< Index into `GltfScene::meshes`.
     uint32_t materialIndex = 0; ///< Index into `GltfScene::materials`.
     glm::mat4 world{1.f};       ///< Flattened object-to-world transform.
@@ -73,16 +87,47 @@ struct GltfAnimationTrack {
     std::vector<RigidKey> keys; ///< World-space poses sampled at a fixed rate, time-sorted.
 };
 
-/// Decoded active scene with flattened mesh, material, image, and instance arrays.
+/// The node-local component driven by one glTF animation channel.
+enum class GltfAnimationPath {
+    Translation, ///< Local translation in asset units, stored in key XYZ.
+    Rotation,    ///< Local quaternion stored as key XYZW.
+    Scale,       ///< Local per-axis scale, stored in key XYZ.
+};
+
+/// One baked local component sample; the unused W of translation and scale is zero.
+struct GltfAnimationKey {
+    double time = 0.0; ///< Seconds from clip start at the bake rate, including the exact endpoint.
+    glm::vec4 value{0.0f}; ///< Component value interpreted by `GltfAnimationChannel::path`.
+};
+
+/// One source channel, retained in source order for component-wise last-wins composition.
+struct GltfAnimationChannel {
+    uint32_t node = 0; ///< Source index into `GltfScene::nodes`.
+    GltfAnimationPath path = GltfAnimationPath::Translation; ///< The driven local component.
+    bool step = false; ///< Hold the previous sample; otherwise interpolate, slerping rotations.
+    std::vector<GltfAnimationKey> keys; ///< Local samples over the owning clip's entire duration.
+};
+
+/// One source clip with local channel samples for playback that loops clips independently.
+struct GltfAnimationClip {
+    std::string name;      ///< Authored animation name, empty when absent.
+    double duration = 0.0; ///< Longest channel endpoint in seconds; zero for an empty clip.
+    std::vector<GltfAnimationChannel> channels; ///< Source-order channels; later conflicts win.
+};
+
+/// Decoded active scene with flattened draw arrays and the complete source node/clip identity.
 struct GltfScene {
     std::vector<GeoData> meshes; ///< one per active-scene primitive, tangents authored-or-generated
-    std::vector<GltfMaterial> materials; ///< Decoded materials referenced by active instances.
-    std::vector<GltfImage> images;       ///< indexed like glTF; unreferenced entries stay empty
-    std::vector<GltfInstance> instances; ///< node transforms flattened at the clip's rest pose
-    /// One entry per instance the first animation moves, in instance order. Empty when the file
-    /// has no animation or none of its channels reach an active instance.
+    std::vector<GltfMaterial> materials;  ///< Decoded materials referenced by active instances.
+    std::vector<GltfImage> images;        ///< indexed like glTF; unreferenced entries stay empty
+    std::vector<GltfNode> nodes;          ///< All source nodes in their original index order.
+    std::vector<GltfAnimationClip> clips; ///< Every source clip, in source order.
+    std::vector<GltfInstance> instances;  ///< node transforms flattened at the clip's rest pose
+    /// One entry per animated active instance, in instance order. Every clip shares one clock;
+    /// channels clamp at their endpoints and later source clips/channels win component conflicts.
+    /// Independently looping playback instead consumes `clips` and the rest hierarchy in `nodes`.
     std::vector<GltfAnimationTrack> tracks;
-    double animationDuration = 0.0; ///< Baked clip length in seconds; 0 when there are no tracks.
+    double animationDuration = 0.0; ///< Longest source clip length in seconds; 0 without animation.
 };
 
 /// Loads a .glb (embedded buffers/images) or .gltf (+ external .bin and image files, resolved
@@ -98,13 +143,13 @@ struct GltfScene {
 /// Materials preserve OPAQUE/MASK coverage, the MASK cutoff and authored double-sided flag.
 /// Referenced BLEND materials fail with AssetErrorCode::Unsupported.
 ///
-/// The file's *first* animation, if it has one, is baked into `tracks`: every LINEAR or STEP
-/// translation, rotation and scale channel is evaluated at kAnimationBakeRate over the clip, the
-/// affected nodes' world transforms are recomposed through the hierarchy, and each animated
-/// instance's world pose becomes a track of world-space keys. Later animations are ignored.
-/// CUBICSPLINE samplers, morph-target channels or geometry, skins, an animated node carrying a
-/// matrix transform, and a baked pose that does not decompose into translation, rotation and scale
-/// all fail with AssetErrorCode::Unsupported.
+/// Every animation is baked into `clips` as local component samples at kAnimationBakeRate,
+/// retaining each clip's duration. LINEAR, STEP and CUBICSPLINE translation, rotation and scale
+/// channels are supported; cubic rotations normalize the component-wise Hermite result. `tracks`
+/// also retains the combined world-space bake over the longest clip on one non-wrapping clock,
+/// using source-order last-wins component assignment. Morph-target channels or geometry, skins,
+/// an animated node carrying a matrix transform, and a world pose that does not decompose into
+/// translation, rotation and scale fail with AssetErrorCode::Unsupported.
 AssetResult<GltfScene> loadGltf(std::string_view path);
 
 } // namespace lmx::asset

@@ -5,6 +5,7 @@
 #include <glm/gtc/epsilon.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Core/Util/Sha256.h"
 #include "Engine/Asset/Model/GltfLoader.h"
 #include "Engine/Asset/Model/SceneAnimation.h"
 #include "Support/EngineTestSupport.h"
@@ -14,6 +15,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -820,14 +822,19 @@ TEST_CASE("loadGltf bakes a LINEAR translation channel into world-space keys at 
 }
 
 //======================================================================================================================
-TEST_CASE("loadGltf rejects a CUBICSPLINE animation sampler", "[asset]") {
+TEST_CASE("loadGltf bakes CUBICSPLINE translation with Hermite interpolation", "[asset]") {
     const std::filesystem::path dir =
         std::filesystem::temp_directory_path() / "lmx-gltf-cubic-animation-test";
     const std::filesystem::path gltfPath = writeAnimatedQuadGltf(dir, "CUBICSPLINE");
 
     const auto scene = loadGltf(gltfPath.string());
-    REQUIRE_FALSE(scene.has_value());
-    REQUIRE(scene.error().code == AssetErrorCode::Unsupported);
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->tracks.size() == 1);
+    const auto& keys = scene->tracks[0].keys;
+    REQUIRE(keys.size() == 61);
+    REQUIRE(near3(keys[15].translation, glm::vec3(2.0f, 4.0f, -6.0f) * 0.15625f));
+    REQUIRE(near3(keys[30].translation, glm::vec3(1.0f, 2.0f, -3.0f)));
+    REQUIRE(near3(keys[45].translation, glm::vec3(2.0f, 4.0f, -6.0f) * 0.84375f));
 }
 
 //======================================================================================================================
@@ -850,7 +857,7 @@ TEST_CASE("loadGltf rejects skins and morph targets", "[asset]") {
 // second apart alternating unit and zero scale. Baked at 60 Hz that must hold each key's value
 // right up to the next key's sample and jump there, and the zero-scale keys must survive the
 // world-transform round trip rather than failing to decompose.
-TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyframes", "[asset]") {
+TEST_CASE("loadGltf bakes every InterpolationTest clip and preserves STEP samples", "[asset]") {
     const std::filesystem::path asset =
         findRepoPath("Assets/Fetched/InterpolationTest/InterpolationTest.glb");
     if (!std::filesystem::exists(asset)) {
@@ -861,7 +868,30 @@ TEST_CASE("loadGltf bakes InterpolationTest's STEP scale clip from its own keyfr
     const auto scene = loadGltf(asset.string());
     REQUIRE(scene.has_value());
     REQUIRE(scene->animationDuration == Catch::Approx(2.0));
-    REQUIRE(scene->tracks.size() == 1);
+    REQUIRE(scene->tracks.size() == 9);
+    REQUIRE(scene->nodes.size() == 10);
+    REQUIRE(scene->clips.size() == 9);
+    for (size_t i = 0; i < scene->tracks.size(); ++i) {
+        REQUIRE(scene->clips[i].duration == Catch::Approx(2.0));
+        REQUIRE(scene->clips[i].channels.size() == 1);
+        REQUIRE(scene->clips[i].channels[0].node == i);
+        REQUIRE(scene->clips[i].channels[0].keys.size() == 121);
+        REQUIRE(scene->tracks[i].instanceIndex == i);
+        REQUIRE(scene->tracks[i].keys.size() == 121);
+        REQUIRE(scene->nodes[i].animated);
+        REQUIRE(scene->nodes[i].name == (i == 0  ? "Cube"
+                                         : i < 7 ? "Cube.00" + std::to_string(i)
+                                                 : "Cube.00" + std::to_string(i + 1)));
+        for (const auto& key : scene->tracks[i].keys) {
+            REQUIRE(glm::length(key.rotation) == Catch::Approx(1.0f).margin(1e-5f));
+        }
+    }
+    REQUIRE_FALSE(scene->nodes[9].animated);
+    REQUIRE(scene->clips[0].channels[0].step);
+    REQUIRE_FALSE(scene->clips[1].channels[0].step);
+    REQUIRE_FALSE(scene->clips[2].channels[0].step);
+    REQUIRE(near3(scene->tracks[1].keys[15].scale, glm::vec3(0.5f)));
+    REQUIRE(near3(scene->tracks[2].keys[15].scale, glm::vec3(0.5f)));
     REQUIRE(scene->tracks[0].instanceIndex == 0);
     const std::vector<RigidKey>& keys = scene->tracks[0].keys;
     REQUIRE(keys.size() == 121);
@@ -995,6 +1025,234 @@ TEST_CASE("glTF instance identity retains source node name with mesh fallback", 
         const auto loaded = loadGltf(path.string());
         REQUIRE(loaded.has_value());
         REQUIRE(loaded->instances.front().sourceName.empty());
+    }
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf retains source node indices, empty ancestors and primitive associations",
+          "[asset]") {
+    const auto dir = std::filesystem::temp_directory_path() / "lmx-gltf-node-table-test";
+    const auto path = writeAnimatedQuadGltf(dir, "LINEAR", true);
+    std::ifstream input(path);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const std::string oldNodes = R"("nodes": [{"children": [1], "translation": [10.0, 0.0, 0.0]},
+            {"mesh": 0, "translation": [0.0, 1.0, 2.0]}])";
+    const std::string newNodes =
+        R"("nodes": [{"name": "Inactive", "matrix": [1, 0, 0, 0, 0.5, 1, 0, 0, 0, 0, 1, 0, 12, 2, 3, 1]},
+        {"name": "Animated ancestor", "children": [3], "translation": [10, 0, 0]},
+        {"name": "Primitive node", "mesh": 0, "translation": [0, 1, 2]},
+        {"children": [2]}, {"name": "Static sibling"}])";
+    REQUIRE(json.find(oldNodes) != std::string::npos);
+    json.replace(json.find(oldNodes), oldNodes.size(), newNodes);
+    const std::string oldRoots = R"("scenes": [{"nodes": [0]}])";
+    json.replace(json.find(oldRoots), oldRoots.size(), R"("scenes": [{"nodes": [1, 4]}])");
+    const std::string target = R"("target": {"node": 0)";
+    json.replace(json.find(target), target.size(), R"("target": {"node": 1)");
+    const size_t primitiveStart = json.find('[', json.find("\"primitives\"")) + 1;
+    const size_t primitiveEnd = json.find("]}", primitiveStart);
+    json.insert(primitiveEnd, "," + json.substr(primitiveStart, primitiveEnd - primitiveStart));
+    writeFile(path, json);
+
+    const auto scene = loadGltf(path.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->nodes.size() == 5);
+    REQUIRE(scene->nodes[0].name == "Inactive");
+    REQUIRE(scene->nodes[0].parent == -1);
+    REQUIRE(scene->nodes[0].matrix.has_value());
+    REQUIRE((*scene->nodes[0].matrix)[1][0] == 0.5f);
+    REQUIRE((*scene->nodes[0].matrix)[3][0] == 12.0f);
+    REQUIRE(scene->nodes[0].instances.empty());
+    REQUIRE_FALSE(scene->nodes[0].animated);
+    REQUIRE(scene->nodes[1].name == "Animated ancestor");
+    REQUIRE(scene->nodes[1].parent == -1);
+    REQUIRE(scene->nodes[1].instances.empty());
+    REQUIRE(scene->nodes[1].animated);
+    REQUIRE(scene->nodes[2].name == "Primitive node");
+    REQUIRE(scene->nodes[2].parent == 3);
+    REQUIRE(scene->nodes[2].instances == std::vector<uint32_t>{0, 1});
+    REQUIRE(scene->nodes[2].animated);
+    REQUIRE(scene->nodes[3].name.empty());
+    REQUIRE(scene->nodes[3].parent == 1);
+    REQUIRE(near3(scene->nodes[1].translation, glm::vec3(10, 0, 0)));
+    REQUIRE(near3(scene->nodes[2].translation, glm::vec3(0, 1, 2)));
+    REQUIRE_FALSE(scene->nodes[1].matrix.has_value());
+    REQUIRE(scene->nodes[3].instances.empty());
+    REQUIRE(scene->nodes[3].animated);
+    REQUIRE(scene->nodes[4].name == "Static sibling");
+    REQUIRE(scene->nodes[4].parent == -1);
+    REQUIRE_FALSE(scene->nodes[4].animated);
+    REQUIRE(scene->instances.size() == 2);
+    REQUIRE(scene->instances[0].node == 2);
+    REQUIRE(scene->instances[1].node == 2);
+    REQUIRE(scene->tracks.size() == 2);
+    REQUIRE(near3(scene->tracks[1].keys[30].translation, glm::vec3(1.0f, 3.0f, -1.0f)));
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf MilkTruck baked key bytes match the frozen parent", "[asset]") {
+    const auto path = findRepoPath("Assets/Fetched/CesiumMilkTruck/CesiumMilkTruck.glb");
+    if (!std::filesystem::exists(path)) {
+        SKIP("CesiumMilkTruck.glb not present (xmake setup fetches it)");
+    }
+    const auto scene = loadGltf(path.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->tracks.size() == 2);
+    REQUIRE(scene->animationDuration == Catch::Approx(1.25));
+    std::vector<std::byte> bytes;
+    const auto append = [&](const auto& value) {
+        const auto data = std::as_bytes(std::span(&value, 1));
+        bytes.insert(bytes.end(), data.begin(), data.end());
+    };
+    size_t keyCount = 0;
+    for (const auto& track : scene->tracks) {
+        for (const auto& key : track.keys) {
+            ++keyCount;
+            append(key.time);
+            append(key.translation);
+            append(key.rotation);
+            append(key.scale);
+        }
+    }
+    REQUIRE(keyCount == 152);
+    REQUIRE(bytes.size() == 7296);
+    REQUIRE(lmx::sha256Hex(bytes) ==
+            "602b44cf9bffe5e549fae7979de90f667fed0db71c5fbe350ce04c5a4314a1d3");
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf retains clip durations and applies conflicting components in source order",
+          "[asset]") {
+    const auto dir = std::filesystem::temp_directory_path() / "lmx-gltf-multiple-clips-test";
+    const auto path = writeAnimatedQuadGltf(dir, "LINEAR", true);
+    std::ifstream input(path);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const auto replace = [&](std::string_view from, std::string_view to) {
+        const auto offset = json.find(from);
+        REQUIRE(offset != std::string::npos);
+        json.replace(offset, from.size(), to);
+    };
+    const auto start = json.find(R"(  "animations")");
+    const auto end = json.find(R"(  "buffers")", start);
+    REQUIRE(start != std::string::npos);
+    REQUIRE(end != std::string::npos);
+    json.replace(start, end - start, R"(  "animations": [
+      {"name": "Short translation", "samplers": [{"input": 7, "output": 5}],
+       "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}}]},
+      {"name": "Long scale", "samplers": [{"input": 8, "output": 9}],
+       "channels": [{"sampler": 0, "target": {"node": 1, "path": "scale"}}]},
+      {"name": "Last translation", "samplers": [{"input": 4, "output": 5}, {"input": 4, "output": 10}],
+       "channels": [{"sampler": 0, "target": {"node": 0, "path": "translation"}},
+                    {"sampler": 1, "target": {"node": 0, "path": "translation"}}]}
+    ],
+)");
+    replace(R"("byteLength": 244)", R"("byteLength": 308)");
+    replace(R"({"buffer": 0, "byteOffset": 172, "byteLength": 72})",
+            R"({"buffer": 0, "byteOffset": 172, "byteLength": 72},
+               {"buffer": 0, "byteOffset": 244, "byteLength": 8},
+               {"buffer": 0, "byteOffset": 252, "byteLength": 8},
+               {"buffer": 0, "byteOffset": 260, "byteLength": 24},
+               {"buffer": 0, "byteOffset": 284, "byteLength": 24})");
+    replace(R"({"bufferView": 6, "componentType": 5126, "count": 6, "type": "VEC3"})",
+            R"({"bufferView": 6, "componentType": 5126, "count": 6, "type": "VEC3"},
+               {"bufferView": 7, "componentType": 5126, "count": 2, "type": "SCALAR"},
+               {"bufferView": 8, "componentType": 5126, "count": 2, "type": "SCALAR"},
+               {"bufferView": 9, "componentType": 5126, "count": 2, "type": "VEC3"},
+               {"bufferView": 10, "componentType": 5126, "count": 2, "type": "VEC3"})");
+    const float extra[] = {0, 0.5f, 0, 2, 1, 1, 1, 3, 3, 3, 4, 2, 0, 8, 6, -2};
+    std::ofstream buffer(dir / "quad.bin", std::ios::binary | std::ios::app);
+    buffer.write(reinterpret_cast<const char*>(extra), sizeof(extra));
+    buffer.close();
+    writeFile(path, json);
+
+    const auto scene = loadGltf(path.string());
+    INFO((scene ? std::string{} : scene.error().message));
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->animationDuration == Catch::Approx(2.0));
+    REQUIRE(scene->clips.size() == 3);
+    REQUIRE(scene->clips[0].name == "Short translation");
+    REQUIRE(scene->clips[0].duration == Catch::Approx(0.5));
+    REQUIRE(scene->clips[1].duration == Catch::Approx(2.0));
+    REQUIRE(scene->clips[2].duration == Catch::Approx(1.0));
+    REQUIRE(scene->clips[0].channels[0].keys.size() == 31);
+    REQUIRE(scene->clips[1].channels[0].keys.size() == 121);
+    REQUIRE(scene->clips[2].channels.size() == 2);
+    REQUIRE(scene->clips[2].channels[1].keys.size() == 61);
+    REQUIRE(scene->clips[1].channels[0].node == 1);
+    REQUIRE(scene->clips[1].channels[0].path == GltfAnimationPath::Scale);
+    REQUIRE_FALSE(scene->clips[1].channels[0].step);
+    REQUIRE(near3(glm::vec3(scene->clips[0].channels[0].keys[15].value), glm::vec3(1, 2, -3)));
+    REQUIRE(near3(glm::vec3(scene->clips[2].channels[0].keys[30].value), glm::vec3(1, 2, -3)));
+    REQUIRE(near3(glm::vec3(scene->clips[2].channels[1].keys[30].value), glm::vec3(6, 4, -1)));
+    REQUIRE(scene->tracks.size() == 1);
+    const auto& keys = scene->tracks[0].keys;
+    REQUIRE(keys.size() == 121);
+    REQUIRE(near3(keys[0].translation, glm::vec3(4, 3, 2)));
+    REQUIRE(near3(keys[30].translation, glm::vec3(6, 5, 1)));
+    REQUIRE(near3(keys[120].translation, glm::vec3(8, 7, 0)));
+    REQUIRE(near3(keys[30].scale, glm::vec3(1.5f)));
+    REQUIRE(near3(keys[120].scale, glm::vec3(3)));
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf cubic tangents scale by the key interval", "[asset]") {
+    const auto dir = std::filesystem::temp_directory_path() / "lmx-gltf-cubic-tangent-test";
+    const auto path = writeAnimatedQuadGltf(dir, "CUBICSPLINE");
+    std::fstream buffer(dir / "quad.bin", std::ios::binary | std::ios::in | std::ios::out);
+    const float endTime = 2.0f;
+    buffer.seekp(144);
+    buffer.write(reinterpret_cast<const char*>(&endTime), sizeof(endTime));
+    const float outTangent[3] = {2, 0, 0};
+    const float inTangent[3] = {0, 2, 0};
+    buffer.seekp(196);
+    buffer.write(reinterpret_cast<const char*>(outTangent), sizeof(outTangent));
+    buffer.write(reinterpret_cast<const char*>(inTangent), sizeof(inTangent));
+    buffer.close();
+    const auto scene = loadGltf(path.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->animationDuration == Catch::Approx(2.0));
+    REQUIRE(scene->tracks[0].keys.size() == 121);
+    REQUIRE(near3(scene->tracks[0].keys[60].translation, glm::vec3(1.5f, 1.5f, -3.0f)));
+    REQUIRE(
+        near3(glm::vec3(scene->clips[0].channels[0].keys[60].value), glm::vec3(1.5f, 1.5f, -3.0f)));
+    std::filesystem::remove_all(dir);
+}
+
+//======================================================================================================================
+TEST_CASE("loadGltf normalizes cubic quaternion component interpolation", "[asset]") {
+    const auto dir = std::filesystem::temp_directory_path() / "lmx-gltf-cubic-rotation-test";
+    const auto path = writeAnimatedQuadGltf(dir, "CUBICSPLINE");
+    std::ifstream input(path);
+    std::string json{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    const auto replace = [&](std::string_view from, std::string_view to) {
+        const auto offset = json.find(from);
+        REQUIRE(offset != std::string::npos);
+        json.replace(offset, from.size(), to);
+    };
+    replace(R"("path": "translation")", R"("path": "rotation")");
+    replace(R"("byteLength": 244)", R"("byteLength": 268)");
+    replace(R"("byteOffset": 172, "byteLength": 72)", R"("byteOffset": 172, "byteLength": 96)");
+    replace(R"("count": 6, "type": "VEC3")", R"("count": 6, "type": "VEC4")");
+    writeFile(path, json);
+    const float rotations[6][4] = {{0, 0, 0, 0}, {0, 0, 0, 1}, {0, 0, 0, 0},
+                                   {0, 0, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 0}};
+    std::fstream buffer(dir / "quad.bin", std::ios::binary | std::ios::in | std::ios::out);
+    buffer.seekp(172);
+    buffer.write(reinterpret_cast<const char*>(rotations), sizeof(rotations));
+    buffer.close();
+    const auto scene = loadGltf(path.string());
+    REQUIRE(scene.has_value());
+    REQUIRE(scene->clips[0].channels[0].path == GltfAnimationPath::Rotation);
+    const auto& keys = scene->clips[0].channels[0].keys;
+    REQUIRE(keys[30].value.z == Catch::Approx(std::sqrt(0.5f)));
+    REQUIRE(keys[30].value.w == Catch::Approx(std::sqrt(0.5f)));
+    for (const auto& key : keys) {
+        REQUIRE(glm::length(key.value) == Catch::Approx(1.0f).margin(1e-6f));
     }
     std::filesystem::remove_all(dir);
 }

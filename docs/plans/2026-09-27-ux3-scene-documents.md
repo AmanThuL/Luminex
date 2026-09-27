@@ -75,7 +75,7 @@ threshold`; `JsonTokens::parse(std::string) -> asset::AssetResult<JsonTokens>` a
 **Produces:** `struct GltfNode { std::string name; int32_t parent = -1; std::vector<uint32_t>
 instances; bool animated = false; }`, `GltfInstance::node`, `GltfScene::nodes`; every animation
 baked at `kAnimationBakeRate` onto one clock, `animationDuration` the longest.
-- [ ] Tests first: a two-primitive node yields two instances sharing `node`; names and parents
+- [x] Tests first: a two-primitive node yields two instances sharing `node`; names and parents
   match the file; InterpolationTest's clips all bake and STEP still steps; the Milk Truck's key
   count and key-byte digest equal the parent's. Commit `asset: keep glTF nodes (UX3)`.
 
