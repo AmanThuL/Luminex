@@ -278,7 +278,7 @@ when there are at least two.
 
 ### Task 14: Operator documents (UX2.4)
 
-- [ ] `docs/architecture/app.md` (new units), `docs/guides/gpu-debugging.md`, the editor lines of
+- [x] `docs/architecture/app.md` (new units), `docs/guides/gpu-debugging.md`, the editor lines of
   `AGENTS.md` (Debug View, transport, Console, Performance, schema 4, the Codicons setup line) and
   README only where it names removed controls, drafted with the `humanizer` skill loaded. Policy
   passes. Commit `docs: describe the UX2 editor surfaces`.

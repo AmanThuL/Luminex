@@ -17,13 +17,13 @@ xmake run App --scene san-miguel
 
 The scene uses the archive's realtime variant, imported at its authored metre scale, with diffuse
 alpha cutouts, two-sided foliage, tangent-space normal maps and a deterministic 12-second camera
-rail. Select Scene in the top toolbar, enable Follow camera rail in its options and use Play for repeatable movement.
+rail. Enable the menu-row rail-follow toggle and use Play for repeatable movement.
 Pause fixes playback time; Step advances 1/60 s and pauses. Stop restores camera/time and animation-owned object poses/emissive strength captured before Play, resetting motion/temporal/exposure history; scenes load Stopped.
 See [editor playback](gpu-debugging.md#editor-playback) for restoration scope. Freeze metrics and Freeze graph leave playback independent. In Rendering >
 Reconstruction, select Raw, Native TAA or MetalFX Temporal and verify the effective algorithm and
 any fallback reason. In Resolution, compare the same render scale; scale 0.5 makes reconstruction
 work easier to inspect. Keep dynamic resolution off for a controlled comparison. Active diagnostic
-views show a shader-derived legend and Return to Final in Viewport; Raw-mode placeholders are
+views use View > Debug View and the viewport legend title selector; its Close returns to Final. Raw-mode placeholders are
 identified explicitly rather than presented as native accumulation measurements.
 
 The archive is from [Morgan McGuire's Computer Graphics Archive](https://casual-effects.com/data/).

@@ -34,7 +34,7 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
 ## Commands
 - Clone with `git clone --recursive` so `RojoRHI/` (a git submodule of the public `rojo-rhi` repository) populates; a plain clone or a new worktree instead needs `git submodule update --init` before configuring.
 - Setup (once): `brew install xmake`, `xmake setup`, which fetches pinned ThirdParty deps (metal-cpp,
-  slang, Dear ImGui docking-branch commit, imgui-node-editor, Inter 4.1 font/license), Damaged Helmet, the CC0 Studio
+  slang, Dear ImGui docking-branch commit, imgui-node-editor, Inter 4.1 and Codicons 0.0.46-24 fonts/licenses), Damaged Helmet, the CC0 Studio
   Small 09 HDRI, and the official ~78 MB Crytek Sponza OBJ+PNG archive into gitignored
   `Assets/Fetched/`, with upstream provenance/license metadata.
   Setup deterministically converts Sponza to uncompressed core glTF, then bakes every base-color
@@ -102,38 +102,32 @@ live only in `docs/roadmap.md` and its linked parts under `docs/roadmap/`.
   budget before the frame loop begins, and logs every controller scale change at INFO, the
   automation hook for controller-settling evidence. Performance publishes a coherent 60-retired-
   frame rolling snapshot at 4 Hz, with sortable pass costs, frame interval/FPS, extents and memory.
-  `Freeze metrics` freezes the whole snapshot; frozen `Clear history` empties it; `Resume metrics`
-  waits for new samples. Timed-pass sum excludes presentation, driver and untimed GPU work.
+  The docked Performance summary and detached Live tab share that snapshot. Live has expandable stage rows and sortable #/Average/Latest; More > Individual pass rows adds Min/Max/Samples sorting. Freeze holds both surfaces; More > Clear history empties even frozen data; Resume waits for new samples.
+  Details opens/focuses Live. Timed-pass sum excludes presentation, driver and untimed GPU work.
   Render Graph owns a detached native window and publishes one owned frame at 4 Hz, including
   exact matched timings (never averages). First data/Resume publish immediately; later topology
   changes wait for publication. Freeze latches the displayed frame through scene switches.
   Physical temporal-resource alternation preserves unchanged canvas identity/navigation while
   details retain exact physical resources. Dump exports the displayed frame, including frozen.
-  Stage groups collapse by default; `columns` 0 means no wrap. Fit graph/selection, 100%, Reset
-  layout and output Copy path/Reveal are explicit actions. See `docs/guides/gpu-debugging.md`.
+  Stage groups and two-or-more scene-import pins collapse by default; double-click expands/collapses. The header has Freeze/Resume, Fit graph/selection and 1:1; More holds Reset layout, Columns (0 = no wrap) and Dump. Frozen/stale status is visible; memory stays in Details. Dump notices expose Copy path/Reveal. See `docs/guides/gpu-debugging.md`.
 - GitHub-hosted macOS exposes a paravirtual GPU without Metal 4. Hosted CI compiles and inventories
   GPU cases; docs-only changes (`docs/`, README, AGENTS/CLAUDE.md, LICENSE) run the policy job alone; renderer/RHI/shader PRs still require `MTL_DEBUG_LAYER=1 xmake test Tests/gpu` on
   Metal 4 Apple Silicon before merge.
-- Editor uses bundled Inter Regular at 16 pt with stable-width digits; App stages Fonts from setup. UI zoom: top-bar minus/percentage/plus or Layout > UI Scale, 75–150%, persisted; Cmd+-/Cmd++/Cmd+0 outside editing. Controls: RMB look, WASD move, Q/E down/up; release to edit.
-  `Camera help` explains controls; text entry suppresses camera/capture keys. Top Scene/Measure toolbar owns a state-switching Play/Pause button, separate Stop/Step and camera-rail follow options; scenes load Stopped. First Scene Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Step advances 1/60 s and pauses.
-  Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Measure Play starts fixed W/N; Pause is disabled, Stop cancels, and completion/Stop restores preview state. Performance retains plan/results/export in a detached native window; Measure Play opens/focuses it once, while mode selection and completion/cancellation do not. Closing it leaves the run active; toolbar options > Show measurement opens/focuses Measure anytime. CLI is unchanged.
-  Playback, metric freeze and graph freeze are independent. Reset camera restores its authored pose/lens and stops follow; static scenes allow camera preview; unavailable camera-rail options explain their disabled state.
-  Hierarchy has compact search, collapsible subjects and keyboard navigation; frustum-rejected names are dimmed but remain selectable, with reasons on hover/in Inspector. File > Open Scene
-  owns catalog loading/retry. Source names disambiguate per scene; filters retain selection. Frame
-  selected fits reliable bounds. A toggleable editor-only outline follows visible selected geometry.
-  Rendering expands in Hierarchy into Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables. Each Inspector topic keeps controls and compact live readings together without nested detail toggles. Visibility/Occlusion/Submission/Lighting readings publish coherent frames every 250 ms; fallback and failure warnings remain immediate.
-  Local lights use clipped Hierarchy rows, full LightId selection and per-light enable checkboxes that preserve IDs/edits/orbits; Inspector edits position/colour/intensity/range and spot direction/cones, with authored/current-orbit reset. Lighting owns mode/check/view and bounded LightLab pile Apply/Clear; scoped Reset leaves individual lights and other Rendering topics unchanged. Measure disables editor edits and freezes the initial enabled population. Fields reflow, vectors label XYZ/RGB, scoped Reset shows changes, and delayed tips explain
-  nonobvious controls; defaults/recovery are documented in `docs/guides/gpu-debugging.md`.
-  File/Window/Layout/Debug expose quit, visibility, Reset Default Layout and capture. Workspace schema 3, docking and viewport state persist in build-local `imgui.ini`.
-  Console alone occupies the bottom dock; Performance and Render Graph are detached native windows, closed by default. Window > Performance toggles it normally.
-  Schema 2 migrates to default topology while preserving valid UiScalePercent; schema 3 restores visibility and window bounds. Missing scale defaults to 100%.
-  Reset Default Layout preserves UI scale, closes Performance/Graph and resets Performance's next-open bounds; both detached windows otherwise remember geometry.
-  Menu, C and viewport capture share capability/pending/result state; disabled startup explains
-  `MTL_CAPTURE_ENABLED=1` and relaunch. Failures retain reasons; successes expose Copy path/Reveal.
-  Pending capture waits for a drawable. Scene-only captures contain no transport/selection cues.
-  Console retains 2,000 entries/2 MiB, truncates messages at 16 KiB, and shows UTC/severity/loss
-  counts. Search/minimum severity filter its display; Freeze keeps ingestion live, Clear empties
-  history/counters, and Copy visible exports matching displayed messages. It never executes commands.
+- Editor uses Inter Regular at 16 pt with stable-width digits and Codicons on a 16 px grid; App stages Fonts/licenses/provenance from setup. Missing Codicons uses labelled buttons and one runtime warning. UI zoom: View > UI Scale, 75–150%, persisted; menu-row percentage/Cmd+0 resets to 100%, Cmd+-/Cmd++ adjusts outside editing. Controls: RMB look, WASD move, Q/E down/up; Help > Controls explains movement.
+  The menu row owns Play/Pause, Stop, Step, time and rail follow when available; the window title names the scene. Tight rows hide time into Play's tooltip, then the zoom percentage; action buttons remain. Scenes load Stopped. First Play captures camera/time and animation-owned object poses/emissive strength and tracked light positions; Step advances 1/60 s and pauses.
+  Stop/scene switch restores the captured preview and resets motion/temporal/exposure; rendering settings and unrelated edits are outside restoration. Performance > Measure owns Warmup/Frames, Start/Stop, results and Export. Start requires stopped playback and dynamic resolution off; during a run the transport shows progress with only Stop enabled. Closing Performance leaves the run active; completion/Stop retains results without reopening it. CLI is unchanged.
+  Playback, metric freeze and graph freeze are independent. View > Reset Camera (Home) restores authored pose/lens and stops follow; View > Frame Selected (F), also in Hierarchy's context menu, fits reliable object bounds. View > Editor Camera selects the camera in Inspector; View > Selection Outline toggles the editor-only outline. F, Home and C do nothing during text entry, popups or RMB look.
+  Hierarchy contains directional lights, local lights and objects, with collapsible groups, keyboard navigation and inline search Clear. Counts include disabled local-light identities; filters retain selection. Frustum-rejected names stay selectable, with hover/Inspector reasons. File > Open Scene owns catalog loading/retry and source names disambiguate per scene.
+  Window > Rendering opens Reconstruction, Resolution, Visibility, Occlusion, Submission, Lighting, Exposure, Bloom, Shadows, Display and Scene tables. Topic headers hold scoped Reset; Reconstruction starts open. Controls precede readings and collapsed Diagnostics; timings link to Performance. Visibility/Occlusion/Submission/Lighting readings publish every 250 ms; warnings stay immediate.
+  View > Debug View is the grouped temporal/lighting/HZB selector, with disabled reasons. The viewport legend title also switches views, HZB has a mip stepper, and Close returns to Final. Invalidated views return to Final with a notice. Rendering topics keep no competing view selector.
+  Inspector headers show subject/kind/reset; the local-light header enables/disables full LightId identities without losing edits/orbits. Local-light fields edit position/colour/intensity/range and spot direction/cones, with authored/current-orbit reset. Lighting Reset restores mode/check and clears the bounded LightLab pile while preserving individual edits. Measure disables edits and freezes the initial enabled population.
+  Inspector grids reflow below 260 base UI points, vectors name XYZ/RGB, and IDs/bounds/frame numbers sit in Diagnostics. Delayed tips explain controls and reset scope; defaults/recovery are in `docs/guides/gpu-debugging.md`.
+  File/View/Window/Debug/Help own menus. Schema 4 persists eight visibilities and scale in build-local `imgui.ini`, alongside docking and viewport bounds. Rendering tabs beside Inspector; compact Performance tabs beside Console; Inspector/Console are selected on default construction. Detailed Performance and Render Graph are detached, closed by default, with separate Window toggles.
+  Schema 3 migration keeps six visibilities, valid scale and detached bounds, shows the two new panels and rebuilds main docks once; later schema 4 launches restore. Schema 2 rebuilds defaults keeping valid scale; unknown schemas use defaults. Missing scale is 100%.
+  Window > Reset Default Layout preserves scale, closes detached Performance/Graph and resets Performance's next-open bounds; ordinary launches retain both geometries.
+  Debug > Capture Next GPU Frame and C share capability/pending/result state; unavailable startup explains `MTL_CAPTURE_ENABLED=1` and relaunch. Success notices show Copy path/Reveal for six seconds; failures retain reasons until dismissed/replaced. Pending capture waits for a drawable. Scene-only captures omit transport/selection cues.
+  Console retains 2,000 entries/2 MiB and truncates messages at 16 KiB, with UTC/severity. Search and minimum-severity chips filter the display. Scroll-up freezes rows while logging continues; bottom/↓ N new resumes, and the chip stays visible at zero. More owns Clear and Copy visible; Clear keeps filters/freeze and counts arrivals from Clear, while Copy exports the held matching view.
+  Console prints loss counts only when nonzero; search help holds full statistics. Header counts may lag rows by one frame. Search never executes commands.
 - GPU debug: `MTL_CAPTURE_ENABLED=1 LMX_CAPTURE_AT_FRAME=N LMX_MAX_FRAMES=N+10
   LMX_CAPTURE_PATH=/tmp/out.gputrace xmake run App` then `python3
   Tools/GpuDebug/gputrace_dump.py /tmp/out.gputrace`; timings: `python3 Tools/GpuDebug/profile.py`.
@@ -202,14 +196,13 @@ paired with declared-frame counts, and compatible live retired timing. Renderer'
 per-frame reset field retains its original meaning. `DynamicResolutionState::lastObservedFrame`
 is the consumed/skipped publication cursor; `lastMeasurementFrame` pairs with the last controller
 measurement. `MeasurementRun` shares exact frame/GPU joins with serialized-retirement headless and unscored interactive runs. `FrameRecordRing` retains declaration-time counts/extents/context with compiled
-records; `GraphSnapshot` owns live/frozen 4 Hz copies. `ConsoleLog`/`ConsoleModel` own bounded
+records; `GraphSnapshot` owns live/frozen 4 Hz copies and arrival freshness; `DebugView`, `MenuBarFit`, `EditorIcon`, `NoticeQueue` and `PassStages` own editor choices. `ConsoleLog`/`ConsoleModel` own bounded
 thread-safe logging and filtered/frozen display) →
-`Source/App` (`Shell/` owns main and EditorShell partials; `Headless/` owns Screenshot/Measurement/OcclusionValidation; `Panels/` groups Scene/Inspector/Viewport/Graph/Performance/Console/Shared;
+`Source/App` (`Shell/` owns main and EditorShell partials; `Headless/` owns Screenshot/Measurement/OcclusionValidation; `Panels/` groups Scene/Inspector/Rendering/Viewport/Graph/Performance/Console/Shared;
 `EditorWorkspace` owns settings callbacks, default docking and UI-scale controls; `EditorInput` owns camera input. Inspector subject units share private `InspectorInternal.h`; dispatch/row helpers stay in `InspectorPanel`.
-SDL3 six-panel editor: Hierarchy/Viewport/Inspector dock with Console alone below; Performance and Render Graph own detached native windows. `EditorStyle.h` shares responsive fields/tips; Inspector separates
-requested/effective/available reconstruction, live timing and controller observations. Temporal
+SDL3 editor: Hierarchy/Viewport/Inspector dock with Rendering beside Inspector and Performance summary beside Console below; detailed Performance and Render Graph own detached native windows. `EditorStyle.h` shares responsive fields/tips; Rendering separates requested/effective/available reconstruction; Performance metric details retain CPU classify/prepare, compatible retired GPU and last-observed controller timings. Temporal
 off shows Off/N/A and full resolution while retaining requests. `DiagnosticLegend` supplies
-shader-derived legends and Raw placeholder notes; Viewport owns framing, the top toolbar playback. App alone declares
+shader-derived viewport legend chips and Raw placeholder notes; menus own framing and the menu row owns playback. App alone declares
 `Render/Passes/SelectionOutline/SelectionOutline` silhouette/scene-depth/composite passes into a separate SDR target; graph costs remain
 visible, while ordinary Renderer/offscreen paths and temporal histories are untouched.
 `EditorActions`/`ActionFeedback` share capability-aware results while the frame loop executes
@@ -219,7 +212,7 @@ Editor/capture loops share session playback/views/motion and declaration/retenti
 waits, UI sink and presentation scheduling; full structure: `docs/architecture/overview.md`).
 `LightClusters` mirrors fixed 16×9×24 pixel-aligned froxels; `LightClusterStage` owns three paced reset/count/scan/fill slots with 128 lights/froxel and 65,536 indices. Shared `LocalLights.slang` selects Off/Direct/Clustered using b8 lights/b9 grid/b10 indices/b11 frame params; PassUniforms stays 400 B. Normal-footprint filtering broadens only punctual specular alpha; authored roughness/directional/IBL remain unchanged. Zero-enabled frames add no light import/pass. `LightingStatus` joins declaration-time mirror and retired GPU lists/counters; post-display Count/Overflow/Missed diagnostics preserve scene/history. `LightingDisplay` owns 250 ms coherent readings with immediate warnings; accepted ADR 0023 owns the contract; validation records retain failed historical gates.
 `Render/Renderer/DisplayDomain.h` names the opaque 8-bit SDR BT.709/sRGB/PBR Neutral output; Renderer exposes it to capture metadata and
-the read-only Inspector Display details (domain, encoded SDR UI, backing scale and 1:1 status).
+the read-only Rendering > Display diagnostics (domain, encoded SDR UI, backing scale and 1:1 status).
 Asset `PngImage` owns tagged PNG read/write; RHI is SDR-only. Build: unit-local `xmake.lua`, shared `xmake/` tasks/rules/setup. Shaders: `Shaders/Common/` owns
 Encode, Lighting, LocalLights, Shadow, Motion, Tonemap, SceneTables and AlphaMask. Each pass family's entries and local modules live in `Shaders/Passes/<family>/`:
 ScenePass/ScenePassAuto, ScenePassMask/ScenePassAutoMask, ShadowPass/ShadowPassMask, Sky/SkyAuto,
