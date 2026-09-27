@@ -6,13 +6,13 @@
 #pragma once
 #include "App/Panels/Inspector/InspectorPanel.h"
 
-#include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
-
 #include <cstddef>
 #include <string>
 
 namespace lmx::app {
 
+bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip,
+                         bool* enabled = nullptr);
 void beginFieldRow(const char* label);
 void valueRow(const char* label, const std::string& value);
 bool beginReadings(const char* id);

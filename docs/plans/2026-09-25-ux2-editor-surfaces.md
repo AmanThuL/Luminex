@@ -208,7 +208,7 @@ InspectorPanelContext&)`.
 ### Task 9: Inspector pages (UX2.2)
 
 **Files:** `Source/App/Panels/Inspector/*`, `EditorStyle.h`.
-- [ ] Every page opens with `beginHeaderRow`: subject name, kind and a Reset icon whose tooltip
+- [x] Every page opens with `beginHeaderRow`: subject name, kind and a Reset icon whose tooltip
   names what it restores; the local-light page adds the enable checkbox calling `editLocalLight`.
   Every page uses `beginPropertyGrid`; identifiers, bounds and frame numbers move under
   `beginDiagnostics`; footnotes become tooltips. View > Editor Camera selects the Camera subject.

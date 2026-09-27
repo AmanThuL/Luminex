@@ -18,19 +18,31 @@ namespace lmx::app {
 void drawObjectSection(const InspectorPanelContext& context, size_t index) {
     auto& session = context.session;
     auto& object = session.scene().objects[index];
-    if (ImGui::Button("Reset transform")) {
+    const bool animated =
+        std::ranges::any_of(session.scene().animation.tracks,
+                            [index](const auto& track) { return track.objectIndex == index; });
+    if (drawInspectorHeader(sceneObjectLabel(session.scene(), index).c_str(), "Object",
+                            "Restore this object's authored transform and reset temporal "
+                            "history. Animated objects use their authored track at the current "
+                            "playback time.")) {
         session.resetObject(index);
         requestCameraCut(context.temporalState);
     }
-    editorTooltip("Restore this object's authored transform and reset temporal history. Animated "
-                  "objects use their authored track at the current playback time.");
-    ImGui::SameLine();
-    editor_style::message(session.objectChanged(index) ? "Changed from authored pose"
-                                                       : "Authored pose");
-    if (editor_style::beginFields("objectFields")) {
+    const auto visibilityFields = context.visibilityDisplay == nullptr
+                                      ? objectVisibilityFields(nullptr)
+                                      : context.visibilityDisplay->objectFields(
+                                            object.id, context.temporalState.sceneGeneration);
+    const auto diagnostic = [](const VisibilityField& row) {
+        return row.label != "Visibility" && row.label != "Reason" &&
+               row.label != "Occlusion outcome";
+    };
+    if (editor_style::beginPropertyGrid("objectFields")) {
         DecomposedTransform transform{object.position, object.eulerDegrees, object.scale};
         bool edited =
             editor_style::vector3("Position (world)", "position", &transform.position.x, 0.05f);
+        if (animated)
+            editorTooltip("Pause playback to edit. Reset samples the authored track at the current "
+                          "time; playback replaces transform edits on its next sample.");
         edited |= editor_style::vector3("Rotation (XYZ degrees)", "rotation",
                                         &transform.eulerDegrees.x, 1.0f);
         edited |= editor_style::vector3("Scale", "scale", &transform.scale.x, 0.01f, 0.01f, 100.0f,
@@ -39,23 +51,20 @@ void drawObjectSection(const InspectorPanelContext& context, size_t index) {
             session.editObject(index, transform);
             requestCameraCut(context.temporalState);
         }
-        valueRow("Mesh row", std::to_string(object.mesh.slot));
-        valueRow("Material row", std::to_string(object.material.slot));
-        const auto visibilityFields = context.visibilityDisplay == nullptr
-                                          ? objectVisibilityFields(nullptr)
-                                          : context.visibilityDisplay->objectFields(
-                                                object.id, context.temporalState.sceneGeneration);
-        for (const auto& field : visibilityFields)
-            valueRow(field.label.c_str(), field.value);
+        for (const auto& row : visibilityFields) {
+            if (!diagnostic(row))
+                valueRow(row.label.c_str(), row.value);
+        }
         editor_style::endFields();
     }
-    const bool animated =
-        std::ranges::any_of(session.scene().animation.tracks,
-                            [index](const auto& track) { return track.objectIndex == index; });
-    if (animated) {
-        editor_style::message(
-            "Animated transform: pause playback to edit. Reset samples the authored track at the "
-            "current time; playback replaces edits on its next sample.");
+    if (editor_style::beginDiagnostics() && editor_style::beginPropertyGrid("objectDiagnostics")) {
+        valueRow("Mesh row", std::to_string(object.mesh.slot));
+        valueRow("Material row", std::to_string(object.material.slot));
+        for (const auto& row : visibilityFields) {
+            if (diagnostic(row))
+                valueRow(row.label.c_str(), row.value);
+        }
+        editor_style::endFields();
     }
 }
 

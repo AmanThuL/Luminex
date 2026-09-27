@@ -11,13 +11,48 @@
 
 #include <imgui.h>
 
-#include <algorithm>
-#include <array>
 #include <string>
 
 namespace lmx::app {
 
 using editor_style::field;
+
+//======================================================================================================================
+bool drawInspectorHeader(const char* name, const char* kind, const char* resetTooltip,
+                         bool* enabled) {
+    editor_style::beginHeaderRow();
+    bool reset = false;
+    const auto flags = ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings;
+    if (ImGui::BeginTable("InspectorHeader", enabled ? 4 : 3, flags)) {
+        ImGui::TableSetupColumn("Subject", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("Kind", ImGuiTableColumnFlags_WidthFixed,
+                                ImGui::CalcTextSize(kind).x);
+        if (enabled)
+            ImGui::TableSetupColumn("Enabled", ImGuiTableColumnFlags_WidthFixed,
+                                    ImGui::GetFrameHeight());
+        ImGui::TableSetupColumn("Reset", ImGuiTableColumnFlags_WidthFixed,
+                                editor_style::iconButtonWidth(EditorIcon::Reset));
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted(name);
+        editorTooltip(name);
+        ImGui::TableNextColumn();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextColored(editor_style::kMuted, "%s", kind);
+        if (enabled) {
+            ImGui::TableNextColumn();
+            ImGui::Checkbox("##enabled", enabled);
+            editorTooltip("Enable this light without changing its identity, edited properties or "
+                          "orbit track.");
+        }
+        ImGui::TableNextColumn();
+        reset = editor_style::iconButton("resetSubject", EditorIcon::Reset, true, resetTooltip);
+        ImGui::EndTable();
+    }
+    editor_style::endHeaderRow();
+    ImGui::Separator();
+    return reset;
+}
 
 //======================================================================================================================
 void beginFieldRow(const char* label) {
@@ -42,21 +77,6 @@ bool beginReadings(const char* id) {
 void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
     if (ImGui::Begin(kInspectorPanelWindowName, &open)) {
         const auto subject = context.selection.subject;
-        if (subject == EditorSubject::Object) {
-            ImGui::TextWrapped(
-                "%s", sceneObjectLabel(context.session.scene(), context.selection.index).c_str());
-            editor_style::message("Object transform");
-        } else if (subject == EditorSubject::DirectionalLight) {
-            ImGui::TextWrapped("Light %zu", context.selection.index);
-            editor_style::message("Directional light");
-        } else if (subject == EditorSubject::LocalLight) {
-            ImGui::TextWrapped(
-                "%s",
-                sceneLocalLightLabel(context.session.scene(), context.selection.lightId).c_str());
-            editor_style::message("Local light");
-        } else if (subject == EditorSubject::Camera) {
-            ImGui::TextUnformatted("Editor Camera");
-        }
         if (context.selectionHiddenByFilter) {
             editor_style::message("Selection is hidden by the Scene search filter. Clear the "
                                   "filter to find it in the list.",
@@ -65,7 +85,6 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
                 context.sceneFilter->clear();
             }
         }
-        ImGui::Separator();
         const ImGuiID previousKey = ImGui::GetID("PreviousInspectorSubject");
         ImGuiStorage* storage = ImGui::GetStateStorage();
         ImGui::PushID(static_cast<int>(subject));
@@ -83,7 +102,7 @@ void drawInspectorPanel(bool& open, const InspectorPanelContext& context) {
             switch (subject) {
             case EditorSubject::None:
                 editor_style::message(
-                    "Select a light or object in Hierarchy, or Editor Camera in View.");
+                    "Select a light or object in Hierarchy, or choose View > Editor Camera.");
                 break;
             case EditorSubject::Camera:
                 drawCameraSection(context);

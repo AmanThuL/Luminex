@@ -8,6 +8,7 @@
 #include "App/Panels/Console/ConsolePanel.h"
 #include "App/Panels/Inspector/InspectorPanel.h"
 #include "App/Panels/Scene/ScenePanel.h"
+#include "App/Panels/Shared/EditorStyle.h"
 #include "App/Panels/Viewport/ViewportPanel.h"
 #include "Core/Diagnostics/Assert.h"
 
@@ -28,7 +29,7 @@ namespace {
 
 // The side panels are never narrower than this while the Viewport still has room to spare.
 constexpr float kMinSceneWidthPoints = 220.0f;
-constexpr float kMinInspectorWidthPoints = 320.0f;
+constexpr float kMinInspectorWidthPoints = 360.0f;
 // When it does not, the Viewport wins and the side and lower panels give these back first.
 constexpr float kMinViewportWidthPoints = 640.0f;
 constexpr float kMinViewportHeightPoints = 360.0f;
@@ -106,7 +107,9 @@ struct DefaultLayoutExtents {
 DefaultLayoutExtents defaultLayoutExtents(float workWidth, float workHeight) {
     DefaultLayoutExtents extents;
     extents.sceneWidth = workWidth >= 1500.0f ? 240.0f : kMinSceneWidthPoints;
-    extents.inspectorWidth = workWidth >= 1500.0f ? 340.0f : kMinInspectorWidthPoints;
+    // Include UI-scale headroom for the property grid and scrollbar before budget relaxation.
+    extents.inspectorWidth =
+        editor_style::scaled(workWidth >= 1500.0f ? 380.0f : kMinInspectorWidthPoints);
     extents.consoleHeight = workHeight >= 900.0f ? 300.0f : 210.0f;
 
     const float sideBudget = std::max(workWidth - kMinViewportWidthPoints, 0.0f);

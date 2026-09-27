@@ -9,7 +9,7 @@
 #include "App/Model/Rendering/Lighting/LightingHistory.h"
 #include "App/Model/Rendering/Settings/EditorRenderDefaults.h"
 #include "App/Model/Rendering/Temporal/DiagnosticLegend.h"
-#include "App/Panels/Inspector/InspectorPanel.h"
+#include "App/Panels/Inspector/InspectorInternal.h"
 #include "App/Panels/Shared/EditorStyle.h"
 #include "Core/Math/Color.h"
 
@@ -26,24 +26,30 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
                               true);
         return;
     }
-    if (ImGui::Button("Reset light")) {
+    auto light = *current;
+    const bool animated =
+        std::ranges::any_of(session.scene().animation.lightTracks, [&](const auto& track) {
+            return session.scene().animationLightId(track.light) == id;
+        });
+    if (drawInspectorHeader(sceneLocalLightLabel(session.scene(), id).c_str(),
+                            light.type == engine::LocalLightType::Point ? "Point" : "Spot",
+                            "Restore the authored enable state, colour, intensity, range, "
+                            "direction and cones. An orbiting light resets its position to the "
+                            "track at the current playback time.",
+                            &light.enabled)) {
         if (const auto result = session.resetLocalLight(id); !result)
             editor_style::message(result.error().message.c_str(), true);
         else
             requestCameraCut(context.temporalState);
+        light = *session.scene().light(id);
     }
-    editorTooltip("Restore authored colour, intensity, range and cone. An orbiting light resets "
-                  "its position to the track at the current playback time.");
-    ImGui::SameLine();
-    editor_style::message(session.localLightChanged(id) ? "Changed from scene default"
-                                                        : "Scene default");
-    auto light = *session.scene().light(id);
-    bool edited = false;
-    if (editor_style::beginFields("localLightFields")) {
-        editor_style::readOnly("Type",
-                               light.type == engine::LocalLightType::Point ? "Point" : "Spot");
+    bool edited = light.enabled != session.scene().light(id)->enabled;
+    if (editor_style::beginPropertyGrid("localLightFields")) {
         edited |=
             editor_style::vector3("Position (world metres)", "position", &light.position.x, 0.05f);
+        if (animated)
+            editorTooltip("Orbit playback replaces position on its next sample. Pause to edit "
+                          "position; other light edits survive Play and Stop.");
         glm::vec3 colour(linearToSrgb(light.colour.r), linearToSrgb(light.colour.g),
                          linearToSrgb(light.colour.b));
         editor_style::field("Colour (sRGB)");
@@ -54,6 +60,8 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         editor_style::field("Intensity (relative)");
         edited |= ImGui::DragFloat("##intensity", &light.intensity, 0.1f, 0.0f, 100000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
+        editorTooltip("Relative intensity on opaque and masked surfaces; local lights do not "
+                      "cast shadows.");
         editor_style::field("Range (metres)");
         edited |= ImGui::DragFloat("##range", &light.range, 0.05f, 0.01f, 1000.0f, "%.3f",
                                    ImGuiSliderFlags_AlwaysClamp);
@@ -85,14 +93,6 @@ void drawLocalLightSection(const InspectorPanelContext& context, engine::LightId
         else
             requestCameraCut(context.temporalState);
     }
-    const bool animated =
-        std::ranges::any_of(session.scene().animation.lightTracks, [&](const auto& track) {
-            return session.scene().animationLightId(track.light) == id;
-        });
-    if (animated)
-        editor_style::message("Orbit playback replaces position on its next sample. Pause to edit "
-                              "position; other light edits survive Play and Stop.");
-    editor_style::message("Local lights illuminate opaque and masked surfaces without shadows.");
 }
 
 } // namespace lmx::app
